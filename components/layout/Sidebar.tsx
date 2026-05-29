@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -10,6 +10,9 @@ const navItems = [
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/geofences', label: 'Geofences', icon: Hexagon },
   { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/accounting', label: 'Accounting', icon: Calculator },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -19,7 +22,7 @@ interface SidebarProps {
   onSignOut?: () => void
 }
 
-export function Sidebar({ companyName = 'TrackFlow Demo', alertCount = 0, onSignOut }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSignOut }: SidebarProps) {
   const pathname = usePathname()
   return (
     <aside className="hidden md:flex flex-col w-56 bg-slate-900 text-white h-screen fixed left-0 top-0 z-40 border-r border-slate-700">
@@ -29,7 +32,7 @@ export function Sidebar({ companyName = 'TrackFlow Demo', alertCount = 0, onSign
             <Map className="h-4 w-4 text-white" />
           </div>
           <div>
-            <p className="text-xs font-bold text-amber-400 tracking-wider uppercase">TrackFlow</p>
+            <p className="text-xs font-bold text-amber-400 tracking-wider uppercase">HammerTrack</p>
             <p className="text-xs text-slate-400 truncate max-w-[120px]">{companyName}</p>
           </div>
         </div>

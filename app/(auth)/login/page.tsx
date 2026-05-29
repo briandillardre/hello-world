@@ -47,7 +47,7 @@ export default function LoginPage() {
           <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Map className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">TrackFlow</h1>
+          <h1 className="text-2xl font-bold text-white">HammerTrack</h1>
           <p className="text-slate-400 text-sm mt-1">Asset tracking for construction</p>
         </div>
 
@@ -100,6 +100,12 @@ export default function LoginPage() {
           Demo mode active — Supabase not connected.{' '}
           <Link href="/map" className="text-amber-400 hover:underline">
             View demo →
+          </Link>
+        </p>
+
+        <p className="text-center text-xs text-slate-500">
+          <Link href="/pricing" className="text-slate-400 hover:text-amber-400 hover:underline">
+            See pricing & how we compare to Tenna →
           </Link>
         </p>
       </div>

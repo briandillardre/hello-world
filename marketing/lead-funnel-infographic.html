@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HammerTrack — Lead Funnel & Go-to-Market</title>
+<style>
+  :root{
+    --ink:#0f172a; --slate:#475569; --mute:#94a3b8;
+    --brand:#f97316; --brand2:#ea580c; --teal:#0d9488; --line:#e2e8f0;
+    --bg:#f8fafc; --card:#ffffff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);padding:40px 20px;line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto}
+  .head{text-align:center;margin-bottom:36px}
+  .logo{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:30px;letter-spacing:-.5px}
+  .dot{width:16px;height:16px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 5px rgba(249,115,22,.18)}
+  .sub{color:var(--slate);font-size:15px;margin-top:8px}
+  .tag{display:inline-block;margin-top:14px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;
+       padding:6px 14px;border-radius:999px;font-size:13px;font-weight:700}
+
+  h2{font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mute);
+     margin:40px 0 16px;text-align:center}
+
+  /* FUNNEL */
+  .funnel{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .stage{position:relative;color:#fff;border-radius:12px;padding:18px 24px;width:100%;
+         display:flex;align-items:center;justify-content:space-between;box-shadow:0 6px 18px rgba(2,6,23,.08)}
+  .s1{max-width:760px;background:linear-gradient(135deg,#fb923c,#f97316)}
+  .s2{max-width:620px;background:linear-gradient(135deg,#f97316,#ea580c)}
+  .s3{max-width:480px;background:linear-gradient(135deg,#ea580c,#c2410c)}
+  .s4{max-width:360px;background:linear-gradient(135deg,#0d9488,#0f766e)}
+  .s5{max-width:260px;background:linear-gradient(135deg,#0f766e,#115e59)}
+  .stage .l{font-weight:800;font-size:16px}
+  .stage .d{font-size:12.5px;opacity:.92;margin-top:2px;font-weight:500}
+  .stage .n{font-weight:800;font-size:19px;white-space:nowrap;margin-left:18px}
+  .arrow{color:var(--mute);font-size:18px;line-height:1}
+
+  .convo{display:flex;justify-content:center;gap:30px;flex-wrap:wrap;margin-top:22px;
+         color:var(--slate);font-size:13px}
+  .convo b{color:var(--ink)}
+
+  /* CHANNELS */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h3{font-size:15px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .card p{font-size:13px;color:var(--slate)}
+  .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;margin-left:auto}
+  .hot{background:#fef2f2;color:#dc2626}
+  .warm{background:#fff7ed;color:#c2410c}
+  .cool{background:#eff6ff;color:#2563eb}
+
+  /* AD */
+  .ad{background:#1e293b;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px rgba(2,6,23,.25);max-width:420px;margin:0 auto}
+  .ad .img{height:190px;background:linear-gradient(135deg,#0f172a,#1e3a5f);position:relative;overflow:hidden}
+  .ad .map-dots{position:absolute;inset:0}
+  .ad .pin{position:absolute;width:14px;height:14px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+           box-shadow:0 2px 6px rgba(0,0,0,.4)}
+  .ad .pin.o{background:#f97316}.ad .pin.t{background:#0d9488}.ad .pin.r{background:#ef4444}
+  .ad .badge{position:absolute;top:14px;left:14px;background:rgba(15,23,42,.7);color:#fff;
+             padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;backdrop-filter:blur(4px)}
+  .ad .body{padding:20px;background:#fff}
+  .ad .headline{font-size:20px;font-weight:800;color:var(--ink);line-height:1.25}
+  .ad .copy{font-size:14px;color:var(--slate);margin-top:8px}
+  .ad .cta{margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .ad .btn{background:var(--brand);color:#fff;font-weight:800;font-size:14px;padding:11px 18px;
+           border-radius:10px;border:none;flex:1;text-align:center}
+  .ad .url{font-size:12px;color:var(--mute);font-weight:600}
+  .adnote{text-align:center;color:var(--mute);font-size:12px;margin-top:12px}
+
+  .foot{text-align:center;color:var(--mute);font-size:12px;margin-top:44px;border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div class="logo"><span class="dot"></span> HammerTrack</div>
+    <div class="sub">Asset tracking that pays for itself before the first stolen tool.</div>
+    <div class="tag">Go-to-Market &amp; Lead Funnel · Built for regional construction fleets</div>
+  </div>
+
+  <h2>The Lead Funnel</h2>
+  <div class="funnel">
+    <div class="stage s1">
+      <div><div class="l">AWARENESS</div><div class="d">Facebook/IG geo-ads · Trade FB groups · Equipment-dealer referrals</div></div>
+      <div class="n">10,000</div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="stage s2">
+      <div><div class="l">CLICK → LANDING</div><div class="d">"See your whole fleet on one map" · /pricing page</div></div>
+      <div class="n">600</div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="stage s3">
+      <div><div class="l">LEAD (Demo request)</div><div class="d">Live demo-mode app · no signup wall</div></div>
+      <div class="n">120</div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="stage s4">
+      <div><div class="l">TRIAL / PILOT</div><div class="d">5 trackers, 30 days, we ship hardware</div></div>
+      <div class="n">35</div>
+    </div>
+    <div class="arrow">▼</div>
+    <div class="stage s5">
+      <div><div class="l">PAID</div><div class="d">$3–8 / asset / mo</div></div>
+      <div class="n">12</div>
+    </div>
+  </div>
+
+  <div class="convo">
+    <span><b>6%</b> click-through</span>
+    <span><b>20%</b> lead capture</span>
+    <span><b>29%</b> demo → pilot</span>
+    <span><b>34%</b> pilot → paid</span>
+    <span><b>~$1.2%</b> ad → customer</span>
+  </div>
+
+  <h2>Channel Priority</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>📍 Local FB/IG Ads <span class="pill hot">HOT</span></h3>
+      <p>Geo-target 50mi around your metro. Target job titles: owner, fleet manager, GC. Cheapest CPM, your buyers live here.</p>
+    </div>
+    <div class="card">
+      <h3>🤝 Dealer Referrals <span class="pill hot">HOT</span></h3>
+      <p>Equipment & truck dealers refer buyers. Revenue-share per activation. Warmest leads, highest close rate.</p>
+    </div>
+    <div class="card">
+      <h3>🔍 Google Search <span class="pill warm">WARM</span></h3>
+      <p>"Tenna alternative", "equipment GPS tracking", "tool tracking app". High intent, higher CPC.</p>
+    </div>
+    <div class="card">
+      <h3>👥 Trade FB Groups <span class="pill warm">WARM</span></h3>
+      <p>Contractor & GC groups. Show, don't sell — post the theft-alert story. Free reach.</p>
+    </div>
+    <div class="card">
+      <h3>📱 Trade Shows <span class="pill cool">COOL</span></h3>
+      <p>Regional construction expos. Live demo on a tablet. High cost, great for credibility.</p>
+    </div>
+    <div class="card">
+      <h3>📧 Cold Email <span class="pill cool">COOL</span></h3>
+      <p>Scrape local GC license registry. "Spot-check your fleet in 60 sec" demo link.</p>
+    </div>
+  </div>
+
+  <h2>Example Ad — Facebook / Instagram</h2>
+  <div class="ad">
+    <div class="img">
+      <div class="map-dots">
+        <div class="pin o" style="top:40px;left:60px"></div>
+        <div class="pin o" style="top:90px;left:140px"></div>
+        <div class="pin t" style="top:60px;left:240px"></div>
+        <div class="pin t" style="top:120px;left:300px"></div>
+        <div class="pin r" style="top:30px;left:340px"></div>
+        <div class="pin o" style="top:140px;left:90px"></div>
+      </div>
+      <div class="badge">🔴 After-hours movement — Skid Steer #3</div>
+    </div>
+    <div class="body">
+      <div class="headline">Your $80K excavator just left the jobsite at 2 AM. Did you know?</div>
+      <div class="copy">HammerTrack puts every truck, machine, and power tool on one map — and texts you the second something moves when it shouldn't. Half the price of Tenna. Setup in a day, no install crew.</div>
+      <div class="cta">
+        <span class="btn">Start Free 30-Day Pilot →</span>
+      </div>
+      <div class="url" style="margin-top:10px">hammertrack.ai/pricing</div>
+    </div>
+  </div>
+  <div class="adnote">Primary text + creative for Meta Ads Manager · Audience: construction owners/fleet managers, 50mi radius</div>
+
+  <div class="foot">HammerTrack · Competitive go-to-market plan · Funnel numbers are planning targets, not guarantees</div>
+</div>
+</body>
+</html>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import type { IngestLocationPayload } from '@/lib/types'
 
-const HMAC_SECRET = 'trackflow-api-key-comparison'
+const HMAC_SECRET = 'hammertrack-api-key-comparison'
 
 function verifyApiKey(request: NextRequest): boolean {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
