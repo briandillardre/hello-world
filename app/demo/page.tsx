@@ -137,7 +137,7 @@ export default function DemoLandingPage() {
       </section>
 
       <footer className="border-t border-slate-800 py-8 text-center text-xs text-slate-500">
-        HammerTrack · hammertrack.ai · Asset tracking for construction
+        HammerTrack · hammertrackai.com · Asset tracking for construction
       </footer>
     </div>
   )
