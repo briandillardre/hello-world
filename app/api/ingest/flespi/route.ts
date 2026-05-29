@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/lib/flespi'
 
-const HMAC_SECRET = 'trackflow-flespi-token-comparison'
+const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
 function verifyToken(request: NextRequest): boolean {
   const expected = process.env.FLESPI_WEBHOOK_TOKEN

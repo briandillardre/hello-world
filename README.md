@@ -1,4 +1,4 @@
-# TrackFlow
+# HammerTrack
 
 Mobile-first asset tracking SaaS for construction companies. Competes with Tenna at a lower price point.
 
@@ -69,10 +69,10 @@ Register each tool asset with its **BLE beacon ID/MAC as the `tracker_id`**. Whe
 
 ## Connecting Cat-M1 trackers via flespi (recommended for production)
 
-Professional Cat-M1 trackers — **Teltonika FMM130** (vehicles, OBD2 + BLE gateway) and **Digital Matter Oyster3** (equipment, 10-yr battery + BLE gateway) — stream through [flespi](https://flespi.com), which parses their protocol and forwards normalized JSON to TrackFlow.
+Professional Cat-M1 trackers — **Teltonika FMM130** (vehicles, OBD2 + BLE gateway) and **Digital Matter Oyster3** (equipment, 10-yr battery + BLE gateway) — stream through [flespi](https://flespi.com), which parses their protocol and forwards normalized JSON to HammerTrack.
 
 1. Add your devices in flespi (by IMEI) — flespi auto-detects Teltonika/Digital Matter.
-2. Set each device's flespi `ident` (IMEI) to match the asset's `tracker_id` in TrackFlow.
+2. Set each device's flespi `ident` (IMEI) to match the asset's `tracker_id` in HammerTrack.
 3. Create a flespi **stream** of type *webhook* pointing at:
    ```
    POST https://<your-app>/api/ingest/flespi
@@ -109,7 +109,7 @@ npm run build && npm start   # self-hosted
 
 ## Pricing vs Tenna
 
-| Feature | TrackFlow | Tenna |
+| Feature | HammerTrack | Tenna |
 |---|---|---|
 | Live map | ✅ | ✅ |
 | Geofencing & alerts | ✅ | ✅ |

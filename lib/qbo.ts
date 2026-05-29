@@ -58,7 +58,7 @@ export function getConnectionStatus() {
   return { connected: false, demo: false, connection: null }
 }
 
-/** Sync TrackFlow assets as QuickBooks fixed-asset items. */
+/** Sync HammerTrack assets as QuickBooks fixed-asset items. */
 export async function syncAssetsAsFixedItems(): Promise<{ synced: number; demo: boolean }> {
   if (!isQboConfigured) {
     // Demo: log what we WOULD send to QBO.

@@ -5,10 +5,10 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'TrackFlow — Asset Tracking for Construction',
+  title: 'HammerTrack — Asset Tracking for Construction',
   description: 'Real-time GPS tracking for vehicles, equipment, personnel, and small tools. Built for construction companies.',
   manifest: '/manifest.json',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'TrackFlow' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'HammerTrack' },
 }
 
 export const viewport: Viewport = {

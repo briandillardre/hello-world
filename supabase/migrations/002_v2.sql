@@ -1,4 +1,4 @@
--- TrackFlow v2: Bluetooth tools, theft alerts, maintenance, QuickBooks
+-- HammerTrack v2: Bluetooth tools, theft alerts, maintenance, QuickBooks
 -- Run after 001_initial.sql
 
 -- ── Work hours on companies (for after-hours theft detection) ──────────────────

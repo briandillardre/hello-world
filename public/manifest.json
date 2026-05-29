@@ -1,6 +1,6 @@
 {
-  "name": "TrackFlow",
-  "short_name": "TrackFlow",
+  "name": "HammerTrack",
+  "short_name": "HammerTrack",
   "description": "Real-time asset tracking for construction companies",
   "start_url": "/map",
   "display": "standalone",

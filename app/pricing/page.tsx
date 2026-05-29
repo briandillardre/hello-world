@@ -56,7 +56,7 @@ export default function PricingPage() {
           <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
             <Map className="h-4 w-4 text-white" />
           </div>
-          <span className="font-bold tracking-wider uppercase text-amber-400">TrackFlow</span>
+          <span className="font-bold tracking-wider uppercase text-amber-400">HammerTrack</span>
         </Link>
         <Link href="/login" className="text-sm text-slate-300 hover:text-white">Sign in</Link>
       </header>
