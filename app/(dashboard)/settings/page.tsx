@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Key, Map, Package, Wifi } from 'lucide-react'
+import Link from 'next/link'
+import { Key, Map, Package, Wifi, Calculator } from 'lucide-react'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -68,6 +69,32 @@ export default function SettingsPage() {
               endpoint="POST /api/ingest/location"
               payload='{ "tracker_id": "bt-003", "lat": 36.16, "lng": -86.78, "accuracy": 15 }'
             />
+          </div>
+        </section>
+
+        {/* QuickBooks */}
+        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+            <Calculator className="h-4 w-4 text-slate-400" />
+            <h2 className="font-semibold text-sm text-slate-700">QuickBooks Online</h2>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-slate-500">
+              Sync assets as fixed assets, push equipment-usage invoices per job site, and record
+              service costs as expenses — automatically.
+            </p>
+            <div className="flex gap-2">
+              <Link href="/accounting" className="flex-1">
+                <span className="block text-center text-sm font-medium bg-amber-500 text-white rounded-lg py-2.5 hover:bg-amber-600 transition-colors">
+                  Open Accounting
+                </span>
+              </Link>
+              <a href="/api/qbo/connect" className="flex-1">
+                <span className="block text-center text-sm font-medium border border-slate-300 text-slate-700 rounded-lg py-2.5 hover:bg-slate-50 transition-colors">
+                  Connect QuickBooks
+                </span>
+              </a>
+            </div>
           </div>
         </section>
 

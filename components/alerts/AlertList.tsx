@@ -10,13 +10,19 @@ const TRIGGER_LABELS: Record<AlertRule['trigger'], string> = {
   enter: 'Entered zone',
   exit: 'Exited zone',
   idle: 'Idle too long',
+  after_hours_movement: 'THEFT ALERT',
+  left_site: 'Left job site',
 }
 
 const TRIGGER_COLORS: Record<AlertRule['trigger'], 'default' | 'destructive' | 'secondary'> = {
   enter: 'default',
   exit: 'destructive',
   idle: 'secondary',
+  after_hours_movement: 'destructive',
+  left_site: 'destructive',
 }
+
+const CRITICAL_TRIGGERS: AlertRule['trigger'][] = ['after_hours_movement', 'left_site']
 
 interface AlertListProps {
   alerts: AlertEvent[]
@@ -75,17 +81,22 @@ export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
 function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?: (id: string) => void }) {
   const trigger = alert.rule?.trigger ?? 'exit'
   const isUnread = !alert.acknowledged_at
+  const isCritical = CRITICAL_TRIGGERS.includes(trigger)
   const assetName = alert.asset?.name ?? 'Unknown Asset'
   const zoneName = alert.rule?.geofence?.name ?? 'Unknown Zone'
 
+  const rowBg = isCritical && isUnread
+    ? 'bg-red-50 border-l-4 border-red-500'
+    : isUnread ? 'bg-amber-50/60' : 'hover:bg-slate-50'
+
   return (
-    <div className={`flex items-start gap-3 p-4 transition-colors ${isUnread ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}>
+    <div className={`flex items-start gap-3 p-4 transition-colors ${rowBg}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-        isUnread ? 'bg-amber-100' : 'bg-slate-100'
+        isCritical && isUnread ? 'bg-red-100' : isUnread ? 'bg-amber-100' : 'bg-slate-100'
       }`}>
         {trigger === 'idle'
           ? <Clock className={`h-4 w-4 ${isUnread ? 'text-amber-600' : 'text-slate-400'}`} />
-          : <AlertTriangle className={`h-4 w-4 ${isUnread ? 'text-amber-600' : 'text-slate-400'}`} />
+          : <AlertTriangle className={`h-4 w-4 ${isCritical && isUnread ? 'text-red-600' : isUnread ? 'text-amber-600' : 'text-slate-400'}`} />
         }
       </div>
 

@@ -23,10 +23,11 @@ const BATTERY_COLOR = (pct: number | null) => {
 
 interface AssetPanelProps {
   asset: AssetWithLocation
+  gateway?: { name: string; lastSeen: string }
   onClose: () => void
 }
 
-export function AssetPanel({ asset, onClose }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, onClose }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -47,7 +48,7 @@ export function AssetPanel({ asset, onClose }: AssetPanelProps) {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <AssetDetails asset={asset} loc={loc} meta={meta} />
+          <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
         </div>
       </div>
 
@@ -67,7 +68,7 @@ export function AssetPanel({ asset, onClose }: AssetPanelProps) {
             </button>
           </div>
           <div className="p-5 flex-1 overflow-y-auto">
-            <AssetDetails asset={asset} loc={loc} meta={meta} />
+            <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
           </div>
         </div>
       </div>
@@ -79,13 +80,25 @@ function AssetDetails({
   asset,
   loc,
   meta,
+  gateway,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
   meta: Record<string, unknown>
+  gateway?: { name: string; lastSeen: string }
 }) {
   return (
     <div className="space-y-3">
+      {asset.type === 'tool' && gateway && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center gap-2">
+          <Wifi className="h-4 w-4 text-purple-600 flex-shrink-0" />
+          <div className="text-sm">
+            <span className="text-purple-700">Currently with </span>
+            <span className="font-semibold text-purple-900">{gateway.name}</span>
+            <span className="text-purple-500 text-xs"> · {formatRelativeTime(gateway.lastSeen)}</span>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         {loc?.battery !== null && loc?.battery !== undefined && (
           <StatTile

@@ -44,10 +44,11 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
 interface MapViewProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
+  toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
 }
 
-export function MapView({ assets, geofences, onGeofenceSave }: MapViewProps) {
+export function MapView({ assets, geofences, toolGateways, onGeofenceSave }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
@@ -334,6 +335,7 @@ export function MapView({ assets, geofences, onGeofenceSave }: MapViewProps) {
       {selectedAsset && (
         <AssetPanel
           asset={selectedAsset}
+          gateway={toolGateways?.[selectedAsset.id]}
           onClose={() => setSelectedAsset(null)}
         />
       )}

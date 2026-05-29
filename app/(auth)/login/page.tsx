@@ -102,6 +102,12 @@ export default function LoginPage() {
             View demo →
           </Link>
         </p>
+
+        <p className="text-center text-xs text-slate-500">
+          <Link href="/pricing" className="text-slate-400 hover:text-amber-400 hover:underline">
+            See pricing & how we compare to Tenna →
+          </Link>
+        </p>
       </div>
     </div>
   )
