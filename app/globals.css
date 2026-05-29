@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* MapLibre GL overrides for touch-friendly controls */
+.maplibregl-ctrl-group button {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.maplibregl-ctrl-bottom-right {
+  bottom: 4px !important;
+  right: 4px !important;
+}
+
+/* Safe area for iOS notch / home indicator */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Prevent overscroll bounce on iOS */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Full-height layout without scroll bounce */
+html {
+  height: -webkit-fill-available;
+}
+body {
+  min-height: -webkit-fill-available;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
