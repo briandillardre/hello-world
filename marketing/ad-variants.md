@@ -1,6 +1,6 @@
 # HammerTrack — Ad Variants for A/B Testing
 
-All variants drive to **hammertrack.ai/demo** (the funnel landing page).
+All variants drive to **hammertrackai.com/demo** (the funnel landing page).
 Brand voice: blunt, contractor-to-contractor, theft/loss as the hook, price as the closer.
 
 ---
@@ -58,14 +58,14 @@ Co-branded; revenue-share per activation.
 > As a [Dealer Name] customer, your first 30 days are free and we ship the
 > trackers to you.
 >
-> **[ Start Your Free Pilot → hammertrack.ai/demo ]**
+> **[ Start Your Free Pilot → hammertrackai.com/demo ]**
 
 ### Counter-card / flyer (printed, handed out at the parts counter)
 > **JUST BOUGHT A $80K MACHINE?**
 > Don't let it disappear at 2 AM.
 > HammerTrack texts you the second it moves.
 > GPS + Bluetooth tracking · half the price of Tenna · free 30-day pilot.
-> **hammertrack.ai/demo** — ask [Dealer] for your activation code.
+> **hammertrackai.com/demo** — ask [Dealer] for your activation code.
 
 ---
 
@@ -85,7 +85,7 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 > tools — on one map and texts you the second something moves when it
 > shouldn't. Half the price of Tenna, set up in a day, no install crew.
 >
-> Worth a 60-second look? Live demo (no signup): hammertrack.ai/demo
+> Worth a 60-second look? Live demo (no signup): hammertrackai.com/demo
 >
 > — Brian, HammerTrack
 
@@ -97,7 +97,7 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 > Same live map, same geofence alerts, plus Bluetooth tool tracking and
 > QuickBooks — for $3–8/asset instead of $15–25, and no $500 setup.
 >
-> 30-day free pilot, we ship the trackers. Live demo here: hammertrack.ai/demo
+> 30-day free pilot, we ship the trackers. Live demo here: hammertrackai.com/demo
 >
 > Worth a quick call this week?
 >
@@ -113,7 +113,7 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 > you exactly which truck or machine each one is riding in. Plus full GPS on
 > trucks and equipment.
 >
-> 60-second demo, no signup: hammertrack.ai/demo
+> 60-second demo, no signup: hammertrackai.com/demo
 >
 > — Brian, HammerTrack
 
@@ -126,7 +126,7 @@ HammerTrack puts every truck, machine, and power tool on one map — and texts
 you the second something moves when it shouldn't. Half the price of Tenna.
 Setup in a day, no install crew.
 **Headline:** Start a Free 30-Day Pilot
-**CTA button:** Learn More → hammertrack.ai/demo
+**CTA button:** Learn More → hammertrackai.com/demo
 **Audience:** Construction owners/fleet managers, 50mi radius, interests: heavy
 equipment, construction management, QuickBooks.
 
