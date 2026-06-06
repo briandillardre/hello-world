@@ -13,6 +13,7 @@ import {
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
 import { PROJECTS, LIVE_DAY_FRACTION } from '@/lib/projects'
+import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
@@ -222,6 +223,27 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         },
       })
 
+      // ── Site devices (cameras + sensors) ──
+      m.addSource('devices', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: MOCK_SITE_DEVICES.map((d) => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [d.lng, d.lat] },
+            properties: { id: d.id, color: DEVICE_META[d.type].color, emoji: DEVICE_META[d.type].emoji },
+          })),
+        },
+      })
+      m.addLayer({
+        id: 'device-bg', type: 'circle', source: 'devices',
+        paint: { 'circle-color': '#001523', 'circle-radius': 13, 'circle-stroke-width': 2, 'circle-stroke-color': ['get', 'color'] },
+      })
+      m.addLayer({
+        id: 'device-icon', type: 'symbol', source: 'devices',
+        layout: { 'text-field': ['get', 'emoji'], 'text-size': 14, 'text-allow-overlap': true },
+      })
+
       // Draw preview
       m.addSource(drawPreviewSource.current, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({ id: 'draw-fill', type: 'fill', source: drawPreviewSource.current, paint: { 'fill-color': '#ff9e16', 'fill-opacity': 0.15 } })
@@ -244,7 +266,18 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           m.easeTo({ center: coords, zoom: zoom ?? m.getZoom() + 2 })
         })
       })
-      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads']) {
+      // Device pin → themed popover
+      m.on('click', 'device-bg', (e) => {
+        const id = e.features?.[0]?.properties?.id
+        const device = MOCK_SITE_DEVICES.find((d) => d.id === id)
+        if (!device) return
+        new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' })
+          .setLngLat([device.lng, device.lat])
+          .setHTML(devicePopupHTML(device))
+          .addTo(m)
+      })
+
+      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }

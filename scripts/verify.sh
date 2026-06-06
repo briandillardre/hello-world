@@ -18,7 +18,7 @@ check "/reports" "Utilization"; check "/maintenance" "Maintenance"; check "/acco
 pkill -f "next start" 2>/dev/null || true
 
 echo "▸ 3/3  Feature-logic checks"
-npx tsc scripts/verify-logic.ts lib/trails.ts lib/projects.ts lib/weather.ts lib/mock-data.ts lib/types.ts \
+npx tsc scripts/verify-logic.ts lib/trails.ts lib/projects.ts lib/weather.ts lib/site-devices.ts lib/mock-data.ts lib/types.ts \
   --outDir /tmp/vout --module nodenext --moduleResolution nodenext --target es2020 --skipLibCheck >/dev/null 2>&1
 node /tmp/vout/scripts/verify-logic.js || fail=1
 

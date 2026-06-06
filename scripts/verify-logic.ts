@@ -3,6 +3,7 @@ import { MOCK_ASSETS } from '../lib/mock-data'
 import { generateTracks, trailUpTo, positionAt, clockLabel } from '../lib/trails'
 import { PROJECTS, projectCost, money } from '../lib/projects'
 import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
+import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
 
 let fails = 0
 function ok(name: string, cond: boolean, detail = '') {
@@ -42,6 +43,14 @@ const url = weatherTileUrl('https://host', frames[0], 'radar')
 ok('radar tile url well-formed', url === 'https://host/v2/radar/100/256/{z}/{x}/{y}/4/1_1.png', url)
 const surl = weatherTileUrl('https://host', frames[0], 'satellite')
 ok('satellite tile url well-formed', surl.endsWith('/0/0_0.png'))
+
+// ── Site devices ──
+ok('site devices present', MOCK_SITE_DEVICES.length >= 5, `${MOCK_SITE_DEVICES.length}`)
+ok('every device has coords + name', MOCK_SITE_DEVICES.every((d) => d.name && Number.isFinite(d.lng) && Number.isFinite(d.lat)))
+const cam = MOCK_SITE_DEVICES.find((d) => d.type === 'camera')!
+ok('camera popup renders snapshot + name', devicePopupHTML(cam).includes(cam.name) && devicePopupHTML(cam).includes('LIVE'))
+const fuel = MOCK_SITE_DEVICES.find((d) => d.type === 'fuel')!
+ok('fuel popup shows level %', devicePopupHTML(fuel).includes(`${fuel.value}%`))
 
 console.log(fails === 0 ? '\nALL LOGIC CHECKS PASSED' : `\n${fails} CHECK(S) FAILED`)
 process.exit(fails === 0 ? 0 : 1)
