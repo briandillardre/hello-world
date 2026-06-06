@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Rest Stop Royale",
+    "slug": "rest-stop-royale",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dillardconstruction.reststoproyale",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "We need your location to find nearby rest areas and let you check in for King of the Hill.",
+        "NSLocationAlwaysUsageDescription": "Location is used to detect when you arrive at a rest area."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "package": "com.dillardconstruction.reststoproyale",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Show current location on the map and detect nearby rest areas."
+        }
+      ]
+    ]
+  }
+}
