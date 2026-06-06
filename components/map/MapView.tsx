@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
@@ -8,10 +8,15 @@ import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, clockLabel, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
 } from '@/lib/trails'
+import {
+  type WeatherFrames, type Conditions, type RadarFrame,
+  fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
+} from '@/lib/weather'
 import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
+import { WeatherControl, type WeatherMode } from './WeatherControl'
 
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
@@ -96,6 +101,25 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   filterRef.current = filter
   speedRef.current = pbSpeed
   tRef.current = pbT
+
+  // ── Weather layer state ───────────────────────────────────────────────────
+  const [weatherMode, setWeatherMode] = useState<WeatherMode>('off')
+  const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
+  const [conditions, setConditions] = useState<Conditions | null>(null)
+  const wxAdded = useRef(false)
+
+  const activeFrames: RadarFrame[] = useMemo(() => {
+    if (!weatherFrames) return []
+    return weatherMode === 'satellite' ? weatherFrames.satellite : weatherFrames.radar
+  }, [weatherFrames, weatherMode])
+
+  const currentFrame: RadarFrame | null = useMemo(() => {
+    if (activeFrames.length === 0) return null
+    const idx = pbActive
+      ? Math.min(activeFrames.length - 1, Math.round(pbT * (activeFrames.length - 1)))
+      : liveFrameIndex(activeFrames)
+    return activeFrames[idx]
+  }, [activeFrames, pbActive, pbT])
 
   const tileKey = process.env.NEXT_PUBLIC_MAPTILER_KEY
   const mapStyle = (tileKey && tileKey !== 'YOUR_MAPTILER_KEY')
@@ -253,6 +277,41 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracks, filter, pbT))
   }, [pbActive, pbT, filter, tracks])
 
+  // Fetch weather frames + conditions once
+  useEffect(() => {
+    let cancelled = false
+    fetchWeatherFrames().then((f) => { if (!cancelled) setWeatherFrames(f) })
+    fetchConditions(DEMO_MAP_CENTER[1], DEMO_MAP_CENTER[0]).then((c) => { if (!cancelled) setConditions(c) })
+    return () => { cancelled = true }
+  }, [])
+
+  // Add / update / toggle the weather raster layer
+  useEffect(() => {
+    const m = map.current
+    if (!m?.isStyleLoaded()) return
+
+    if (weatherMode === 'off' || !currentFrame || !weatherFrames) {
+      if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
+      return
+    }
+
+    const url = weatherTileUrl(weatherFrames.host, currentFrame, weatherMode)
+    if (!wxAdded.current) {
+      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256 })
+      // Draw weather above the basemap but beneath geofences/assets
+      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer(
+        { id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': weatherMode === 'satellite' ? 0.55 : 0.7 } },
+        beforeId
+      )
+      wxAdded.current = true
+    } else {
+      ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      m.setPaintProperty('wx-layer', 'raster-opacity', weatherMode === 'satellite' ? 0.55 : 0.7)
+      m.setLayoutProperty('wx-layer', 'visibility', 'visible')
+    }
+  }, [weatherMode, currentFrame, weatherFrames])
+
   // Animation loop
   useEffect(() => {
     if (!pbPlaying) return
@@ -338,6 +397,14 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       <div ref={mapContainer} className="w-full h-full" />
 
       <FilterBar filter={filter} onChange={setFilter} />
+
+      <WeatherControl
+        mode={weatherMode}
+        onMode={setWeatherMode}
+        conditions={conditions}
+        frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
+        scrubbing={pbActive}
+      />
 
       {!pbActive && (
         <GeofenceDrawer
