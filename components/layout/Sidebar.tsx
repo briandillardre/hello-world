@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Logo } from '@/components/brand/Logo'
 
 const navItems = [
   { href: '/map', label: 'Live Map', icon: Map },
@@ -25,17 +26,10 @@ interface SidebarProps {
 export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSignOut }: SidebarProps) {
   const pathname = usePathname()
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-slate-900 text-white h-screen fixed left-0 top-0 z-40 border-r border-slate-700">
-      <div className="p-4 border-b border-slate-700">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
-            <Map className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <p className="text-xs font-bold text-amber-400 tracking-wider uppercase">HammerTrack</p>
-            <p className="text-xs text-slate-400 truncate max-w-[120px]">{companyName}</p>
-          </div>
-        </div>
+    <aside className="hidden md:flex flex-col w-56 bg-navy-950 text-ink h-screen fixed left-0 top-0 z-40 border-r border-navy-800">
+      <div className="p-4 border-b border-navy-800">
+        <Logo size={28} />
+        <p className="text-xs text-faint truncate max-w-[180px] mt-2">{companyName}</p>
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
@@ -49,14 +43,14 @@ export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSi
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 active
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  ? 'bg-amber/15 text-amber border border-amber/30'
+                  : 'text-muted hover:text-ink hover:bg-navy-900'
               )}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
               <span>{label}</span>
               {isAlerts && alertCount > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+                <span className="ml-auto bg-alert text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
                   {alertCount > 9 ? '9+' : alertCount}
                 </span>
               )}
@@ -66,10 +60,10 @@ export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSi
       </nav>
 
       {onSignOut && (
-        <div className="p-3 border-t border-slate-700">
+        <div className="p-3 border-t border-navy-800">
           <button
             onClick={onSignOut}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 w-full transition-colors"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-navy-900 w-full transition-colors"
           >
             <LogOut className="h-4 w-4" />
             Sign out

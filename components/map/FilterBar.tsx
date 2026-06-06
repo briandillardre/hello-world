@@ -4,10 +4,10 @@ import type { AssetType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const FILTERS: { type: AssetType; label: string; emoji: string; color: string }[] = [
-  { type: 'vehicle', label: 'Vehicles', emoji: '🚛', color: 'bg-amber-100 border-amber-400 text-amber-800' },
-  { type: 'equipment', label: 'Equipment', emoji: '🏗️', color: 'bg-blue-100 border-blue-400 text-blue-800' },
-  { type: 'personnel', label: 'Personnel', emoji: '👷', color: 'bg-green-100 border-green-400 text-green-800' },
-  { type: 'tool', label: 'Tools', emoji: '🔧', color: 'bg-purple-100 border-purple-400 text-purple-800' },
+  { type: 'vehicle', label: 'Vehicles', emoji: '🚛', color: 'bg-amber/20 border-amber text-amber' },
+  { type: 'equipment', label: 'Equipment', emoji: '🏗️', color: 'bg-[#60a5fa]/20 border-[#60a5fa] text-[#93c5fd]' },
+  { type: 'personnel', label: 'Personnel', emoji: '👷', color: 'bg-[#34d399]/20 border-[#34d399] text-[#6ee7b7]' },
+  { type: 'tool', label: 'Tools', emoji: '🔧', color: 'bg-[#a78bfa]/20 border-[#a78bfa] text-[#c4b5fd]' },
 ]
 
 interface FilterBarProps {
@@ -30,8 +30,8 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
             key={type}
             onClick={() => toggle(type)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 shadow-md transition-all active:scale-95',
-              filter.has(type) ? color : 'bg-white border-slate-300 text-slate-400 opacity-70'
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 shadow-md backdrop-blur transition-all active:scale-95',
+              filter.has(type) ? color : 'bg-navy-950/70 border-navy-700 text-faint opacity-80'
             )}
           >
             <span>{emoji}</span>
