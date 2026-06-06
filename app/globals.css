@@ -10,7 +10,6 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -47,5 +46,22 @@ body {
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  /* Brand: white version of the navy logo mark for dark surfaces */
+  .mark-white {
+    filter: brightness(0) invert(1);
+  }
+  /* Subtle ambient brand glow behind dark marketing sections */
+  .brand-glow {
+    background:
+      radial-gradient(55% 45% at 82% -5%, rgba(255, 158, 22, 0.09), transparent 60%),
+      radial-gradient(45% 40% at 6% 6%, rgba(45, 212, 191, 0.08), transparent 60%);
+  }
+  /* Map grid texture used in marketing map mocks */
+  .map-grid {
+    background-image:
+      linear-gradient(rgba(111, 136, 160, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(111, 136, 160, 0.07) 1px, transparent 1px);
+    background-size: 40px 40px;
   }
 }

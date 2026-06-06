@@ -1,5 +1,14 @@
 import Link from 'next/link'
-import { Check, Map } from 'lucide-react'
+import type { Metadata } from 'next'
+import { Check } from 'lucide-react'
+import { SiteNav } from '@/components/marketing/SiteNav'
+import { SiteFooter } from '@/components/marketing/SiteFooter'
+
+export const metadata: Metadata = {
+  title: 'HammerTrack — Pricing',
+  description:
+    'Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price, with AI alerts and QuickBooks built in.',
+}
 
 const TIERS = [
   {
@@ -22,8 +31,8 @@ const TIERS = [
     cta: 'Start free trial',
     highlight: true,
     features: [
-      'Everything in Starter', 'QuickBooks integration', 'Maintenance & service records',
-      'Utilization & job-site reports', 'Equipment usage billing', 'Unlimited assets', 'Priority support',
+      'Everything in Starter', 'AI anomaly & theft detection', 'QuickBooks integration',
+      'Maintenance & service records', 'Utilization & job-site reports', 'Unlimited assets', 'Priority support',
     ],
   },
   {
@@ -43,63 +52,64 @@ const TIERS = [
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
   ['Bluetooth tools included', 'Tenna: paid add-on'],
+  ['AI alerts included', 'Tenna: enterprise only'],
   ['QuickBooks built in', 'Tenna: enterprise only'],
   ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
-  ['~$1–3/asset hardware data', 'Tenna: $15–25/asset/mo'],
+  ['~$3–8/asset/mo', 'Tenna: $15–25/asset/mo'],
 ]
 
 export default function PricingPage() {
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      <header className="max-w-5xl mx-auto px-4 py-6 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
-            <Map className="h-4 w-4 text-white" />
-          </div>
-          <span className="font-bold tracking-wider uppercase text-amber-400">HammerTrack</span>
-        </Link>
-        <Link href="/login" className="text-sm text-slate-300 hover:text-white">Sign in</Link>
-      </header>
+    <div className="relative min-h-screen bg-navy-950 text-ink font-sans">
+      <div className="fixed inset-0 z-0 pointer-events-none brand-glow" />
+      <SiteNav />
 
-      <main className="max-w-5xl mx-auto px-4 pb-20">
-        <div className="text-center py-10">
-          <h1 className="text-3xl md:text-4xl font-bold">Asset tracking that pays for itself</h1>
-          <p className="text-slate-400 mt-3 max-w-xl mx-auto">
-            Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price, with QuickBooks built in.
+      <main className="relative z-10 max-w-6xl mx-auto px-6 pb-20">
+        <div className="text-center py-12">
+          <h1 className="font-display font-black text-4xl md:text-5xl tracking-tight text-balance">
+            Asset tracking that pays for itself
+          </h1>
+          <p className="text-muted mt-4 max-w-xl mx-auto text-lg">
+            Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price,
+            with AI alerts and QuickBooks built in.
           </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-4">
-          {TIERS.map(tier => (
+          {TIERS.map((tier) => (
             <div
               key={tier.name}
-              className={`rounded-2xl p-6 flex flex-col ${
-                tier.highlight ? 'bg-white text-slate-900 ring-2 ring-amber-500 shadow-2xl' : 'bg-slate-800 text-white'
+              className={`rounded-2xl p-6 flex flex-col border ${
+                tier.highlight
+                  ? 'bg-navy-900 border-amber/60 shadow-glow-amber ring-1 ring-amber/30'
+                  : 'bg-navy-900 border-navy-800'
               }`}
             >
               {tier.highlight && (
-                <span className="self-start bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded-full mb-2">
-                  MOST POPULAR
+                <span className="self-start bg-amber text-[#1a1100] font-mono text-[11px] font-bold px-2 py-0.5 rounded-full mb-2 uppercase tracking-wider">
+                  Most popular
                 </span>
               )}
-              <h2 className="text-lg font-bold">{tier.name}</h2>
-              <p className={`text-sm mb-4 ${tier.highlight ? 'text-slate-500' : 'text-slate-400'}`}>{tier.blurb}</p>
+              <h2 className="font-display font-extrabold text-lg">{tier.name}</h2>
+              <p className="text-sm text-faint mb-4">{tier.blurb}</p>
               <div className="mb-4">
-                <span className="text-3xl font-bold">{tier.price}</span>
-                <span className={tier.highlight ? 'text-slate-500' : 'text-slate-400'}>{tier.unit}</span>
+                <span className="font-display font-black text-4xl">{tier.price}</span>
+                <span className="text-faint">{tier.unit}</span>
               </div>
-              <ul className="space-y-2 flex-1">
-                {tier.features.map(f => (
+              <ul className="space-y-2.5 flex-1">
+                {tier.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
-                    <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${tier.highlight ? 'text-amber-500' : 'text-amber-400'}`} />
-                    <span className={tier.highlight ? 'text-slate-700' : 'text-slate-300'}>{f}</span>
+                    <Check className="h-4 w-4 mt-0.5 flex-shrink-0 text-teal" />
+                    <span className="text-muted">{f}</span>
                   </li>
                 ))}
               </ul>
               <Link
                 href="/register"
-                className={`mt-6 text-center font-semibold rounded-lg py-2.5 transition-colors ${
-                  tier.highlight ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-slate-700 text-white hover:bg-slate-600'
+                className={`mt-6 text-center font-display font-bold rounded-xl py-3 transition-colors ${
+                  tier.highlight
+                    ? 'bg-amber text-[#1a1100] hover:bg-amber-600'
+                    : 'bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07]'
                 }`}
               >
                 {tier.cta}
@@ -108,21 +118,23 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <section className="mt-12 bg-slate-800 rounded-2xl p-6">
-          <h3 className="font-bold text-lg mb-4 text-center">Why contractors switch from Tenna</h3>
-          <div className="grid sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+        <section className="mt-12 bg-navy-900 border border-navy-800 rounded-2xl p-7">
+          <h3 className="font-display font-bold text-lg mb-5 text-center">Why contractors switch from Tenna</h3>
+          <div className="grid sm:grid-cols-2 gap-3.5 max-w-2xl mx-auto">
             {VS_TENNA.map(([us, them]) => (
-              <div key={us} className="flex items-start gap-2">
-                <Check className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+              <div key={us} className="flex items-start gap-2.5">
+                <Check className="h-5 w-5 text-teal flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-white">{us}</p>
-                  <p className="text-xs text-slate-400 line-through">{them}</p>
+                  <p className="text-sm font-medium text-ink">{us}</p>
+                  <p className="text-xs text-faint line-through">{them}</p>
                 </div>
               </div>
             ))}
           </div>
         </section>
       </main>
+
+      <SiteFooter />
     </div>
   )
 }
