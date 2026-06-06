@@ -1,13 +1,20 @@
 'use client'
 
-import { Play, Pause, Gauge } from 'lucide-react'
-import { type TimeRange, RANGES, rangeLabel } from '@/lib/trails'
+import { Play, Pause, Gauge, Ban, Route, Flame } from 'lucide-react'
+import { type TimeRange, type TrailMode, RANGES, rangeLabel } from '@/lib/trails'
 
 const SPEEDS = [60, 300, 500, 1000]
+const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
+  { key: 'off', label: 'Off', icon: Ban },
+  { key: 'trails', label: 'Trails', icon: Route },
+  { key: 'heatmap', label: 'Heatmap', icon: Flame },
+]
 
 interface TimelinePlaybackProps {
   range: TimeRange
   onRange: (r: TimeRange) => void
+  trailMode: TrailMode
+  onTrailMode: (m: TrailMode) => void
   t: number
   playing: boolean
   speed: number
@@ -17,36 +24,56 @@ interface TimelinePlaybackProps {
 }
 
 export function TimelinePlayback({
-  range, onRange, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => rangeLabel(range, f))
 
   return (
     <div className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10 rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* range pills */}
-      <div className="flex gap-1.5 px-3 pt-2.5 pb-2 overflow-x-auto no-scrollbar border-b border-navy-800">
-        {RANGES.map((r) => (
-          <button
-            key={r.key}
-            onClick={() => onRange(r.key)}
-            className={
-              'flex-none px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
-              (range === r.key
-                ? r.key === 'live' ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
-                : 'text-faint hover:text-ink hover:bg-navy-900')
-            }
-          >
-            {r.key === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
-            {r.label}
-          </button>
-        ))}
+      {/* range pills + movement-display control */}
+      <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-navy-800">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => onRange(r.key)}
+              className={
+                'flex-none px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
+                (range === r.key
+                  ? r.key === 'live' ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
+                  : 'text-faint hover:text-ink hover:bg-navy-900')
+              }
+            >
+              {r.key === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+          {MODES.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => onTrailMode(key)}
+              title={label}
+              className={
+                'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ' +
+                (trailMode === key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+              }
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {live ? (
         <div className="flex items-center gap-2 px-4 py-3 text-faint">
           <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" />
-          <span className="font-mono text-[12px] text-muted">Real-time. Pick a range above to replay.</span>
+          <span className="font-mono text-[12px] text-muted">
+            {trailMode === 'off' ? 'Real-time. Pick a range to replay, or turn on Trails / Heatmap.' : 'Real-time — showing all of today. Pick a range to replay.'}
+          </span>
         </div>
       ) : (
         <div className="flex items-center gap-3 px-4 py-3">

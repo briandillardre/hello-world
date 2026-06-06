@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
-  type AssetTrack, type TimeRange, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
+  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
 } from '@/lib/trails'
 import {
   type WeatherFrames, type Conditions, type RadarFrame,
@@ -32,7 +32,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclustered-label']
-const TRAIL_LAYERS = ['trails-line', 'trail-heads', 'trail-head-labels']
+const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
 function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJSON.FeatureCollection {
   return {
@@ -61,6 +61,18 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number):
         properties: { id: tr.assetId, color: tr.color },
       })),
   }
+}
+
+function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = []
+  for (const tr of tracks) {
+    if (!filter.has(tr.type)) continue
+    for (const p of tr.points) {
+      if (p.t > t) break
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: {} })
+    }
+  }
+  return { type: 'FeatureCollection', features }
 }
 
 function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): GeoJSON.FeatureCollection {
@@ -97,9 +109,12 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   // ── Timeline playback state ───────────────────────────────────────────────
   const [range, setRange] = useState<TimeRange>('live')
   const pbActive = range !== 'live'
+  const [trailMode, setTrailMode] = useState<TrailMode>('off')
   const [pbPlaying, setPbPlaying] = useState(false)
   const [pbT, setPbT] = useState(0)
   const [pbSpeed, setPbSpeed] = useState(500)
+  // How much of the window is revealed: full when live, scrubbed when replaying
+  const displayT = pbActive ? pbT : 1
   const tracksRef = useRef(tracks)
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
@@ -183,12 +198,32 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 1.5 },
       })
 
-      // ── Trail layers (hidden until playback) ──
+      // ── Trail / heatmap layers (hidden until a movement mode is on) ──
       m.addSource('trails', { type: 'geojson', data: trailsGeoJSON(tracksRef.current, filterRef.current, 0) })
       m.addLayer({
         id: 'trails-line', type: 'line', source: 'trails',
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
         paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-blur': 0.3 },
+      })
+      // Heatmap of movement density (alternative to trails)
+      m.addSource('trail-points', { type: 'geojson', data: pointsGeoJSON(tracksRef.current, filterRef.current, 0) })
+      m.addLayer({
+        id: 'trails-heat', type: 'heatmap', source: 'trail-points',
+        layout: { visibility: 'none' },
+        paint: {
+          'heatmap-weight': 1,
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 1, 16, 3],
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 34],
+          'heatmap-opacity': 0.85,
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(0,0,0,0)',
+            0.2, 'rgba(7,58,90,0.6)',
+            0.4, '#2dd4bf',
+            0.7, '#ff9e16',
+            1, '#fb5d5d',
+          ],
+        },
       })
       m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0) })
       m.addLayer({
@@ -312,21 +347,28 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     source?.setData(buildGeoJSON(assets, filter))
   }, [assets, filter])
 
-  // Toggle live vs trail layers when entering/leaving playback
+  // Show live pins vs trails vs heatmap based on the movement-display mode
   useEffect(() => {
     const m = map.current
     if (!m?.isStyleLoaded()) return
-    LIVE_LAYERS.forEach((l) => m.getLayer(l) && m.setLayoutProperty(l, 'visibility', pbActive ? 'none' : 'visible'))
-    TRAIL_LAYERS.forEach((l) => m.getLayer(l) && m.setLayoutProperty(l, 'visibility', pbActive ? 'visible' : 'none'))
-  }, [pbActive])
+    const set = (l: string, v: boolean) => m.getLayer(l) && m.setLayoutProperty(l, 'visibility', v ? 'visible' : 'none')
+    LIVE_LAYERS.forEach((l) => set(l, trailMode === 'off'))
+    set('trails-line', trailMode === 'trails')
+    set('trails-heat', trailMode === 'heatmap')
+    HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
+  }, [trailMode])
 
-  // Push trail/head geometry on time or filter change while in playback
+  // Push trail/heat/head geometry as time, filter, or mode changes
   useEffect(() => {
     const m = map.current
-    if (!pbActive || !m?.isStyleLoaded()) return
-    ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracks, filter, pbT))
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracks, filter, pbT))
-  }, [pbActive, pbT, filter, tracks])
+    if (trailMode === 'off' || !m?.isStyleLoaded()) return
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracks, filter, displayT))
+    if (trailMode === 'trails') {
+      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracks, filter, displayT))
+    } else {
+      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(tracks, filter, displayT))
+    }
+  }, [trailMode, displayT, filter, tracks])
 
   // Fetch weather frames + conditions once
   useEffect(() => {
@@ -392,6 +434,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       tRef.current = 0
       setPbT(0)
       setPbPlaying(true) // auto-play the replay
+      // give immediate visual feedback if no movement layer is on yet
+      setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     }
   }, [])
 
@@ -481,6 +525,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         <TimelinePlayback
           range={range}
           onRange={handleRange}
+          trailMode={trailMode}
+          onTrailMode={setTrailMode}
           t={pbT}
           playing={pbPlaying}
           speed={pbSpeed}

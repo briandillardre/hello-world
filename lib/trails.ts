@@ -99,6 +99,9 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   })
 }
 
+// How movement over the window is drawn — user-selectable on any time range.
+export type TrailMode = 'off' | 'trails' | 'heatmap'
+
 // ── Timeline ranges ──────────────────────────────────────────────────────────
 export type TimeRange = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all'
 
