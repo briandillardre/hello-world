@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
 const navItems = [
+  { href: '/command', label: 'Command Center', icon: MonitorPlay },
   { href: '/map', label: 'Live Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/geofences', label: 'Geofences', icon: Hexagon },

@@ -13,9 +13,9 @@ echo "▸ 2/3  Route smoke test"
 fail=0
 check () { c=$(curl -s -o /tmp/vbody -w "%{http_code}" "http://localhost:3000$1"); m=$(grep -c -- "$2" /tmp/vbody || true); [ "$c" = "200" ] && [ "$m" -ge 1 ] && echo "  ✓ $1 ($c)" || { echo "  ✗ $1 ($c, marker=$m)"; fail=1; }; }
 check "/" "You already got the text"; check "/pricing" "pays for itself"; check "/demo" "Would you know"
-check "/map" "Loading map"; check "/assets" "Asset"; check "/alerts" "Alert"
+check "/map" "Loading map"; check "/command" "Equip running"; check "/assets" "Asset"; check "/alerts" "Alert"
 check "/reports" "Utilization"; check "/maintenance" "Maintenance"; check "/accounting" "QuickBooks"; check "/settings" "Settings"
-pkill -f "next start" 2>/dev/null || true
+lsof -ti tcp:3000 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 
 echo "▸ 3/3  Feature-logic checks"
 npx tsc scripts/verify-logic.ts lib/trails.ts lib/projects.ts lib/weather.ts lib/site-devices.ts lib/mock-data.ts lib/types.ts \

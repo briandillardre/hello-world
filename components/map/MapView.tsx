@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
-  type AssetTrack, clockLabel, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
+  type AssetTrack, type TimeRange, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
 } from '@/lib/trails'
 import {
   type WeatherFrames, type Conditions, type RadarFrame,
@@ -18,8 +18,10 @@ import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
-import { WeatherControl, type WeatherMode } from './WeatherControl'
+import { WeatherControl, type BaseStyle } from './WeatherControl'
 import { ProjectsPanel } from './ProjectsPanel'
+
+const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
@@ -80,9 +82,10 @@ interface MapViewProps {
   tracks?: AssetTrack[]
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
+  kiosk?: boolean
 }
 
-export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofenceSave }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
@@ -92,7 +95,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const drawPreviewSource = useRef<string>('draw-preview')
 
   // ── Timeline playback state ───────────────────────────────────────────────
-  const [pbActive, setPbActive] = useState(false)
+  const [range, setRange] = useState<TimeRange>('live')
+  const pbActive = range !== 'live'
   const [pbPlaying, setPbPlaying] = useState(false)
   const [pbT, setPbT] = useState(0)
   const [pbSpeed, setPbSpeed] = useState(500)
@@ -105,16 +109,14 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   speedRef.current = pbSpeed
   tRef.current = pbT
 
-  // ── Weather layer state ───────────────────────────────────────────────────
-  const [weatherMode, setWeatherMode] = useState<WeatherMode>('off')
+  // ── Basemap + weather layer state ─────────────────────────────────────────
+  const [base, setBase] = useState<BaseStyle>('dark')
+  const [radarOn, setRadarOn] = useState(false)
   const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
   const wxAdded = useRef(false)
 
-  const activeFrames: RadarFrame[] = useMemo(() => {
-    if (!weatherFrames) return []
-    return weatherMode === 'satellite' ? weatherFrames.satellite : weatherFrames.radar
-  }, [weatherFrames, weatherMode])
+  const activeFrames: RadarFrame[] = useMemo(() => weatherFrames?.radar ?? [], [weatherFrames])
 
   const currentFrame: RadarFrame | null = useMemo(() => {
     if (activeFrames.length === 0) return null
@@ -158,6 +160,10 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
     map.current.on('load', () => {
       const m = map.current!
+
+      // Satellite (aerial) basemap — toggled on/off over the dark base
+      m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, attribution: 'Esri, Maxar' })
+      m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
       // Geofences (drawn under everything)
       m.addSource('geofences', {
@@ -281,6 +287,16 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
+
+      // Always frame the jobsite — fit to asset + device bounds
+      const pts: [number, number][] = [
+        ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
+        ...MOCK_SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
+      ]
+      if (pts.length > 0) {
+        const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
+        m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
+      }
     })
 
     return () => {
@@ -320,32 +336,35 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return () => { cancelled = true }
   }, [])
 
-  // Add / update / toggle the weather raster layer
+  // Toggle the satellite (aerial) basemap over the dark base
+  useEffect(() => {
+    const m = map.current
+    if (!m?.isStyleLoaded() || !m.getLayer('sat-base')) return
+    m.setLayoutProperty('sat-base', 'visibility', base === 'satellite' ? 'visible' : 'none')
+  }, [base])
+
+  // Add / update / toggle the rain-radar raster layer
   useEffect(() => {
     const m = map.current
     if (!m?.isStyleLoaded()) return
 
-    if (weatherMode === 'off' || !currentFrame || !weatherFrames) {
+    if (!radarOn || !currentFrame || !weatherFrames) {
       if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
       return
     }
 
-    const url = weatherTileUrl(weatherFrames.host, currentFrame, weatherMode)
+    const url = weatherTileUrl(weatherFrames.host, currentFrame, 'radar')
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256 })
-      // Draw weather above the basemap but beneath geofences/assets
+      // Draw radar above the basemap but beneath geofences/assets
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer(
-        { id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': weatherMode === 'satellite' ? 0.55 : 0.7 } },
-        beforeId
-      )
+      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': 0.7 } }, beforeId)
       wxAdded.current = true
     } else {
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
-      m.setPaintProperty('wx-layer', 'raster-opacity', weatherMode === 'satellite' ? 0.55 : 0.7)
       m.setLayoutProperty('wx-layer', 'visibility', 'visible')
     }
-  }, [weatherMode, currentFrame, weatherFrames])
+  }, [radarOn, currentFrame, weatherFrames])
 
   // Animation loop
   useEffect(() => {
@@ -365,13 +384,15 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return () => cancelAnimationFrame(raf)
   }, [pbPlaying])
 
-  const togglePlayback = useCallback(() => {
-    setPbActive((prev) => {
-      const next = !prev
-      if (next && tRef.current >= 1) { tRef.current = 0; setPbT(0) }
-      if (!next) setPbPlaying(false)
-      return next
-    })
+  const handleRange = useCallback((r: TimeRange) => {
+    setRange(r)
+    if (r === 'live') {
+      setPbPlaying(false)
+    } else {
+      tRef.current = 0
+      setPbT(0)
+      setPbPlaying(true) // auto-play the replay
+    }
   }, [])
 
   const handlePlayPause = useCallback(() => {
@@ -431,19 +452,22 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     <div className="relative w-full h-full bg-navy-950">
       <div ref={mapContainer} className="w-full h-full" />
 
-      <FilterBar filter={filter} onChange={setFilter} />
+      {!kiosk && <FilterBar filter={filter} onChange={setFilter} />}
 
       <WeatherControl
-        mode={weatherMode}
-        onMode={setWeatherMode}
+        base={base}
+        onBase={setBase}
+        radarOn={radarOn}
+        onRadar={setRadarOn}
         conditions={conditions}
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
         scrubbing={pbActive}
+        top={kiosk ? 70 : 58}
       />
 
       <ProjectsPanel projects={PROJECTS} t={pbActive ? pbT : LIVE_DAY_FRACTION} scrubbing={pbActive} />
 
-      {!pbActive && (
+      {!kiosk && !pbActive && (
         <GeofenceDrawer
           isDrawing={isDrawing}
           onStartDraw={startDrawing}
@@ -455,12 +479,11 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
       {tracks.length > 0 && (
         <TimelinePlayback
-          active={pbActive}
+          range={range}
+          onRange={handleRange}
           t={pbT}
           playing={pbPlaying}
           speed={pbSpeed}
-          label={clockLabel(pbT)}
-          onToggleActive={togglePlayback}
           onSeek={handleSeek}
           onPlayPause={handlePlayPause}
           onSpeed={setPbSpeed}

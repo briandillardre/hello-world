@@ -99,6 +99,45 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   })
 }
 
+// ── Timeline ranges ──────────────────────────────────────────────────────────
+export type TimeRange = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all'
+
+export const RANGES: { key: TimeRange; label: string }[] = [
+  { key: 'live', label: 'Live' },
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
+  { key: 'ytd', label: 'YTD' },
+  { key: 'all', label: 'All time' },
+]
+
+/** Number of days a replay range spans (used to map t → a date). */
+export function rangeSpanDays(range: TimeRange): number {
+  switch (range) {
+    case 'today':
+    case 'yesterday': return 1
+    case '7d': return 7
+    case '30d': return 30
+    case 'ytd': {
+      const now = new Date()
+      const jan1 = new Date(now.getFullYear(), 0, 1)
+      return Math.max(1, Math.round((now.getTime() - jan1.getTime()) / 86_400_000))
+    }
+    case 'all': return 365
+    default: return 1
+  }
+}
+
+/** Human label for the scrubber position within a range. */
+export function rangeLabel(range: TimeRange, t: number): string {
+  if (range === 'live') return 'LIVE'
+  if (range === 'today') return clockLabel(t)
+  if (range === 'yesterday') return 'Yest · ' + clockLabel(t)
+  const ms = Date.now() - (1 - t) * rangeSpanDays(range) * 86_400_000
+  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 /** Interpolated [lng, lat] position at normalized time t. */
 export function positionAt(track: AssetTrack, t: number): [number, number] {
   const pts = track.points

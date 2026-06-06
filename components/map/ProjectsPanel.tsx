@@ -11,7 +11,7 @@ interface ProjectsPanelProps {
 }
 
 export function ProjectsPanel({ projects, t, scrubbing }: ProjectsPanelProps) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
 
   const costs = projects.map((p) => projectCost(p, t))
   const todayLabor = costs.reduce((s, c) => s + c.laborToday, 0)
@@ -19,9 +19,10 @@ export function ProjectsPanel({ projects, t, scrubbing }: ProjectsPanelProps) {
 
   return (
     <div className="absolute right-3 top-[150px] z-10 w-[232px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-3 py-2.5 border-b border-navy-800">
+      <button onClick={() => setOpen((v) => !v)} className={`w-full flex items-center justify-between px-3 py-2.5 ${open ? 'border-b border-navy-800' : ''}`}>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint flex items-center gap-2">
           <HardHat className="h-3.5 w-3.5 text-amber" /> Projects · {projects.length}
+          <span className="text-amber normal-case tracking-normal">{money(todayLabor + todayEquip)} today</span>
         </span>
         {open ? <ChevronUp className="h-4 w-4 text-faint" /> : <ChevronDown className="h-4 w-4 text-faint" />}
       </button>

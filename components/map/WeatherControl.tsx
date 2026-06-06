@@ -1,70 +1,74 @@
 'use client'
 
-import { CloudRain, Satellite, Ban, Zap, Wind } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
-export type WeatherMode = 'off' | 'radar' | 'satellite'
+export type BaseStyle = 'dark' | 'satellite'
 
 interface WeatherControlProps {
-  mode: WeatherMode
-  onMode: (m: WeatherMode) => void
+  base: BaseStyle
+  onBase: (b: BaseStyle) => void
+  radarOn: boolean
+  onRadar: (v: boolean) => void
   conditions: Conditions | null
   frameTime: string | null
   scrubbing: boolean
+  top?: number
 }
 
-const MODES: { key: WeatherMode; label: string; icon: typeof CloudRain }[] = [
-  { key: 'off', label: 'Off', icon: Ban },
-  { key: 'radar', label: 'Radar', icon: CloudRain },
-  { key: 'satellite', label: 'Satellite', icon: Satellite },
-]
-
-export function WeatherControl({ mode, onMode, conditions, frameTime, scrubbing }: WeatherControlProps) {
+function Seg({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <div className="absolute top-[58px] left-3 z-10 w-[210px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* conditions */}
+    <button
+      onClick={onClick}
+      className={
+        'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' +
+        (active ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+      }
+    >
+      {children}
+    </button>
+  )
+}
+
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, scrubbing, top = 58 }: WeatherControlProps) {
+  return (
+    <div style={{ top }} className="absolute left-3 z-10 w-[188px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      {/* conditions chip */}
       {conditions && (
-        <div className="px-3 py-2 border-b border-navy-800">
-          <div className="flex items-center justify-between">
-            <span className="font-display font-black text-lg text-ink">
-              {weatherEmoji(conditions.code)} {conditions.tempF}°
-            </span>
-            <span className="font-mono text-[11px] text-muted flex items-center gap-1">
-              <Wind className="h-3 w-3" /> {conditions.windMph}mph
-            </span>
-          </div>
-          <div className="flex items-center gap-3 mt-1 font-mono text-[10.5px] text-faint">
-            <span className={conditions.precip > 0 ? 'text-teal' : ''}>{conditions.precip.toFixed(2)}&quot; rain</span>
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
+          <span className="font-display font-bold text-[15px] text-ink">{weatherEmoji(conditions.code)} {conditions.tempF}°</span>
+          <span className="font-mono text-[10px] text-muted flex items-center gap-2">
+            <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
             <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
-              <Zap className="h-3 w-3" /> {conditions.isThunder ? 'Storms' : 'Clear'}
+              <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
             </span>
-          </div>
+          </span>
         </div>
       )}
 
-      {/* mode toggle */}
-      <div className="flex p-1 gap-1">
-        {MODES.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => onMode(key)}
-            className={
-              'flex-1 flex flex-col items-center gap-1 py-1.5 rounded-lg text-[10px] font-semibold transition-colors ' +
-              (mode === key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink hover:bg-navy-900')
-            }
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      {/* basemap segmented */}
+      <div className="flex gap-1 p-1 border-b border-navy-800">
+        <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
+        <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
       </div>
 
-      {mode !== 'off' && frameTime && (
-        <div className="px-3 py-1.5 border-t border-navy-800 font-mono text-[10px] text-muted flex items-center justify-between">
-          <span>{scrubbing ? 'Replay' : 'Now'}</span>
-          <span className="text-teal">{frameTime}</span>
-        </div>
-      )}
+      {/* radar toggle */}
+      <button
+        onClick={() => onRadar(!radarOn)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+          <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Rain radar
+        </span>
+        {radarOn && frameTime ? (
+          <span className="font-mono text-[10px] text-teal">{scrubbing ? 'Replay' : 'Now'} {frameTime}</span>
+        ) : (
+          <span className={'w-9 h-5 rounded-full transition-colors relative ' + (radarOn ? 'bg-teal/40' : 'bg-navy-700')}>
+            <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (radarOn ? 'left-[18px]' : 'left-0.5')} />
+          </span>
+        )}
+      </button>
     </div>
   )
 }

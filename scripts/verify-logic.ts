@@ -1,6 +1,6 @@
 // Runtime checks for the new map-feature logic (run via tsc -> node).
 import { MOCK_ASSETS } from '../lib/mock-data'
-import { generateTracks, trailUpTo, positionAt, clockLabel } from '../lib/trails'
+import { generateTracks, trailUpTo, positionAt, clockLabel, rangeLabel, RANGES } from '../lib/trails'
 import { PROJECTS, projectCost, money } from '../lib/projects'
 import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
 import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
@@ -21,6 +21,11 @@ ok('trail ends at live location', Math.abs(last[0] - liveLoc[0]) < 1e-6 && Math.
 ok('trailUpTo grows with t', trailUpTo(tracks[0], 0.25).length < trailUpTo(tracks[0], 0.9).length)
 ok('clockLabel 0 / .5 / 1', clockLabel(0) === '6:00 AM' && clockLabel(0.5) === '12:00 PM' && clockLabel(1) === '6:00 PM',
   `${clockLabel(0)} / ${clockLabel(0.5)} / ${clockLabel(1)}`)
+
+// ── Timeline ranges ──
+ok('range presets present', RANGES.length === 7, RANGES.map((r) => r.key).join(','))
+ok('rangeLabel live/today/7d', rangeLabel('live', 0) === 'LIVE' && rangeLabel('today', 0) === '6:00 AM' && /\w+ \d+/.test(rangeLabel('7d', 1)),
+  `${rangeLabel('live', 0)} / ${rangeLabel('today', 0)} / ${rangeLabel('7d', 0.5)}`)
 
 // ── Projects / cost ──
 const p = PROJECTS[0]

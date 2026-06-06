@@ -77,6 +77,9 @@ body {
       radial-gradient(55% 45% at 82% -5%, rgba(255, 158, 22, 0.09), transparent 60%),
       radial-gradient(45% 40% at 6% 6%, rgba(45, 212, 191, 0.08), transparent 60%);
   }
+  /* Hide scrollbar on the timeline range pills */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   /* Map grid texture used in marketing map mocks */
   .map-grid {
     background-image:
