@@ -12,11 +12,13 @@ import {
   type WeatherFrames, type Conditions, type RadarFrame,
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
+import { PROJECTS, LIVE_DAY_FRACTION } from '@/lib/projects'
 import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type WeatherMode } from './WeatherControl'
+import { ProjectsPanel } from './ProjectsPanel'
 
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
@@ -405,6 +407,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
         scrubbing={pbActive}
       />
+
+      <ProjectsPanel projects={PROJECTS} t={pbActive ? pbT : LIVE_DAY_FRACTION} scrubbing={pbActive} />
 
       {!pbActive && (
         <GeofenceDrawer
