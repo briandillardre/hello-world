@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
 
 const STATUS_META = {
-  overdue: { label: 'Overdue', variant: 'destructive' as const, icon: AlertTriangle, bar: 'bg-red-500' },
-  due_soon: { label: 'Due soon', variant: 'default' as const, icon: Clock, bar: 'bg-amber-500' },
-  ok: { label: 'OK', variant: 'success' as const, icon: CheckCircle2, bar: 'bg-green-500' },
+  overdue: { label: 'Overdue', variant: 'destructive' as const, icon: AlertTriangle, bar: 'bg-alert' },
+  due_soon: { label: 'Due soon', variant: 'default' as const, icon: Clock, bar: 'bg-amber' },
+  ok: { label: 'OK', variant: 'success' as const, icon: CheckCircle2, bar: 'bg-[#34d399]' },
 }
 
 const UNIT = { engine_hours: 'hrs', mileage: 'mi', days: 'days' }
@@ -32,29 +32,29 @@ export default async function MaintenancePage() {
 
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-slate-900">Maintenance</h1>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
+        <h1 className="text-xl font-bold text-ink">Maintenance</h1>
         {overdueCount > 0 && <Badge variant="destructive">{overdueCount} overdue</Badge>}
-        <span className="ml-auto text-sm text-slate-400">
+        <span className="ml-auto text-sm text-faint">
           ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })} YTD
         </span>
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl">
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service Schedule</h2>
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Service Schedule</h2>
           {statuses.map(s => {
             const meta = STATUS_META[s.status]
             const Icon = meta.icon
             return (
-              <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div key={s.id} className="bg-navy-900 rounded-xl border border-navy-800 p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                    <Wrench className="h-5 w-5 text-slate-500" />
+                  <div className="w-10 h-10 rounded-lg bg-navy-800 flex items-center justify-center flex-shrink-0">
+                    <Wrench className="h-5 w-5 text-muted" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 truncate">{s.name}</p>
-                    <p className="text-xs text-slate-500">{s.description}</p>
+                    <p className="font-semibold text-ink truncate">{s.name}</p>
+                    <p className="text-xs text-muted">{s.description}</p>
                   </div>
                   <Badge variant={meta.variant} className="flex items-center gap-1">
                     <Icon className="h-3 w-3" />
@@ -62,10 +62,10 @@ export default async function MaintenancePage() {
                   </Badge>
                 </div>
                 <div className="mt-3">
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-2 bg-navy-800 rounded-full overflow-hidden">
                     <div className={`h-full ${meta.bar} rounded-full transition-all`} style={{ width: `${Math.min(100, s.pct)}%` }} />
                   </div>
-                  <div className="flex justify-between mt-1 text-xs text-slate-400">
+                  <div className="flex justify-between mt-1 text-xs text-faint">
                     <span>{Math.round(s.used)} / {s.interval_value} {UNIT[s.interval_type]}</span>
                     <span>
                       {s.remaining <= 0
@@ -80,24 +80,24 @@ export default async function MaintenancePage() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Service History</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Service History</h2>
+          <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {services.map(r => (
               <div key={r.id} className="p-4 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-slate-900 text-sm truncate">{assetName(r.asset_id)}</p>
-                  <p className="text-xs text-slate-500 truncate">{r.notes}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="font-medium text-ink text-sm truncate">{assetName(r.asset_id)}</p>
+                  <p className="text-xs text-muted truncate">{r.notes}</p>
+                  <p className="text-xs text-faint mt-0.5">
                     {r.vendor} · {formatRelativeTime(r.service_date)}
                   </p>
                 </div>
-                <span className="font-semibold text-slate-700 text-sm flex-shrink-0">
+                <span className="font-semibold text-muted text-sm flex-shrink-0">
                   ${r.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-faint text-center">
             Service costs sync to QuickBooks as expenses → see Accounting.
           </p>
         </section>

@@ -27,9 +27,9 @@ function pointInPolygon(point: [number, number], polygon: [number, number][]): b
 export default function GeofencesPage() {
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-slate-900">Geofences</h1>
-        <span className="text-sm text-slate-400">{MOCK_GEOFENCES.length} zones</span>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
+        <h1 className="text-xl font-bold text-ink">Geofences</h1>
+        <span className="text-sm text-faint">{MOCK_GEOFENCES.length} zones</span>
         <Link href="/map" className="ml-auto">
           <Button size="sm" className="gap-1">
             <Plus className="h-4 w-4" /> Draw Zone
@@ -41,7 +41,7 @@ export default function GeofencesPage() {
         {MOCK_GEOFENCES.map(fence => {
           const count = assetCountInFence(fence.id)
           return (
-            <div key={fence.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 shadow-sm">
+            <div key={fence.id} className="bg-navy-900 rounded-xl border border-navy-800 p-4 flex items-center gap-4">
               <div
                 className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{ backgroundColor: fence.color + '22', border: `2px solid ${fence.color}` }}
@@ -49,8 +49,8 @@ export default function GeofencesPage() {
                 <Hexagon className="h-6 w-6" style={{ color: fence.color }} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-slate-900">{fence.name}</p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="font-semibold text-ink">{fence.name}</p>
+                <p className="text-xs text-faint mt-0.5">
                   {count} asset{count !== 1 ? 's' : ''} currently inside
                 </p>
               </div>
@@ -62,7 +62,7 @@ export default function GeofencesPage() {
           )
         })}
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+        <div className="bg-amber/15 border border-amber/30 rounded-xl p-4 text-sm text-amber">
           <p className="font-semibold mb-1">📍 Draw geofences on the map</p>
           <p className="text-xs">Go to the Map view and tap the hexagon button to draw a new zone. Click points to form a polygon, then tap ✓ to save.</p>
         </div>

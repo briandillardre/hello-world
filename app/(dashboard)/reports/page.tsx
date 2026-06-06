@@ -17,53 +17,53 @@ export default function ReportsPage() {
 
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10">
-        <h1 className="text-xl font-bold text-slate-900">Utilization Reports</h1>
-        <p className="text-xs text-slate-400 mt-0.5">Last 30 days</p>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
+        <h1 className="text-xl font-bold text-ink">Utilization Reports</h1>
+        <p className="text-xs text-faint mt-0.5">Last 30 days</p>
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl">
         <section className="grid grid-cols-3 gap-3">
-          <SummaryCard icon={<Activity className="h-4 w-4 text-amber-500" />} label="Engine hours" value={`${totalEngineHours}`} />
-          <SummaryCard icon={<Clock className="h-4 w-4 text-red-500" />} label="Idle %" value={`${idlePct}%`} />
-          <SummaryCard icon={<Gauge className="h-4 w-4 text-blue-500" />} label="Miles" value={totalDistance.toLocaleString()} />
+          <SummaryCard icon={<Activity className="h-4 w-4 text-amber" />} label="Engine hours" value={`${totalEngineHours}`} />
+          <SummaryCard icon={<Clock className="h-4 w-4 text-alert" />} label="Idle %" value={`${idlePct}%`} />
+          <SummaryCard icon={<Gauge className="h-4 w-4 text-[#60a5fa]" />} label="Miles" value={totalDistance.toLocaleString()} />
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Engine Hours by Asset</h2>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 shadow-sm">
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Engine Hours by Asset</h2>
+          <div className="bg-navy-900 rounded-xl border border-navy-800 p-4 space-y-3">
             {util.map(u => (
               <div key={u.asset_id}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-700 font-medium">{TYPE_EMOJI[u.asset_type]} {u.asset_name}</span>
-                  <span className="text-slate-500">{u.engine_hours} hrs</span>
+                  <span className="text-muted font-medium">{TYPE_EMOJI[u.asset_type]} {u.asset_name}</span>
+                  <span className="text-muted">{u.engine_hours} hrs</span>
                 </div>
-                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: `${(u.engine_hours / maxEngine) * 100}%` }} />
+                <div className="h-2.5 bg-navy-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber rounded-full" style={{ width: `${(u.engine_hours / maxEngine) * 100}%` }} />
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">{u.idle_hours} hrs idle</p>
+                <p className="text-xs text-faint mt-0.5">{u.idle_hours} hrs idle</p>
               </div>
             ))}
           </div>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Hours by Job Site</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Hours by Job Site</h2>
+          <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {util.map(u => (
               <div key={u.asset_id} className="p-4">
-                <p className="font-medium text-slate-900 text-sm mb-1">{u.asset_name}</p>
+                <p className="font-medium text-ink text-sm mb-1">{u.asset_name}</p>
                 {u.job_site_hours.map(s => (
-                  <div key={s.geofence_id} className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                    <MapPin className="h-3 w-3 text-slate-400" />
+                  <div key={s.geofence_id} className="flex items-center gap-2 text-xs text-muted mt-1">
+                    <MapPin className="h-3 w-3 text-faint" />
                     <span className="flex-1">{s.geofence_name}</span>
-                    <span className="font-medium text-slate-700">{s.hours} hrs</span>
+                    <span className="font-medium text-muted">{s.hours} hrs</span>
                   </div>
                 ))}
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-faint text-center">
             Job-site hours drive equipment-usage billing → see Accounting.
           </p>
         </section>
@@ -74,10 +74,10 @@ export default function ReportsPage() {
 
 function SummaryCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+    <div className="bg-navy-900 rounded-xl border border-navy-800 p-3">
       <div className="flex items-center gap-1.5 mb-1">{icon}</div>
-      <p className="text-xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-xl font-bold text-ink">{value}</p>
+      <p className="text-xs text-faint">{label}</p>
     </div>
   )
 }

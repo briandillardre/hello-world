@@ -6,7 +6,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const unreadAlerts = MOCK_ALERTS.filter(a => !a.acknowledged_at).length
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-navy-950">
       <Sidebar alertCount={unreadAlerts} />
       <main className="flex-1 md:ml-56 overflow-hidden">
         {children}

@@ -20,7 +20,7 @@ export default async function AccountingPage() {
   // status.connection is non-null in demo mode; guard for the unconfigured path.
   if (!status.connection) {
     return (
-      <div className="h-full flex items-center justify-center p-8 text-center text-slate-400">
+      <div className="h-full flex items-center justify-center p-8 text-center text-faint">
         QuickBooks not connected.
       </div>
     )

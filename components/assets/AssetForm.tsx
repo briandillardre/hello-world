@@ -67,7 +67,7 @@ export function AssetForm({ onClose, onSubmit, initial }: AssetFormProps) {
               value={trackerId}
               onChange={e => setTrackerId(e.target.value)}
             />
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-faint">
               The tracker_id sent in POST /api/ingest/location payloads.
             </p>
           </div>

@@ -35,17 +35,17 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-slate-100 space-y-3 bg-white sticky top-0 z-10">
+      <div className="p-4 border-b border-navy-800 space-y-3 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-slate-900">Assets</h1>
-          <span className="text-sm text-slate-400">{assets.length} total</span>
+          <h1 className="text-xl font-bold text-ink">Assets</h1>
+          <span className="text-sm text-faint">{assets.length} total</span>
           <Button size="sm" onClick={() => setShowForm(true)} className="ml-auto gap-1">
             <Plus className="h-4 w-4" /> Add Asset
           </Button>
         </div>
 
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
           <Input
             placeholder="Search assets or tracker ID…"
             className="pl-9"
@@ -61,8 +61,8 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
               onClick={() => setTypeFilter(t)}
               className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 typeFilter === t
-                  ? 'bg-amber-500 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'bg-amber text-[#1a1100]'
+                  : 'bg-navy-800 text-muted hover:bg-navy-700'
               }`}
             >
               {t === 'all' ? 'All' : TYPE_EMOJI[t] + ' ' + t.charAt(0).toUpperCase() + t.slice(1)}
@@ -71,9 +71,9 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+      <div className="flex-1 overflow-y-auto divide-y divide-navy-800">
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-slate-400">
+          <div className="p-8 text-center text-faint">
             <p className="text-4xl mb-2">📦</p>
             <p>No assets found</p>
           </div>
@@ -99,18 +99,18 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
 
 function AssetRow({ asset }: { asset: AssetWithLocation }) {
   return (
-    <div className="flex items-center gap-3 p-4 hover:bg-slate-50 transition-colors">
-      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-slate-100 rounded-lg flex-shrink-0">
+    <div className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
+      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
         {TYPE_EMOJI[asset.type]}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-medium text-slate-900 truncate">{asset.name}</p>
+          <p className="font-medium text-ink truncate">{asset.name}</p>
           <Badge variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>
         </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400">
+        <div className="flex items-center gap-3 mt-0.5 text-xs text-faint">
           {asset.tracker_id && <span className="truncate">ID: {asset.tracker_id}</span>}
           {asset.location?.timestamp && (
             <span className="flex items-center gap-0.5">
@@ -121,15 +121,15 @@ function AssetRow({ asset }: { asset: AssetWithLocation }) {
         </div>
       </div>
       {asset.location?.battery !== null && asset.location?.battery !== undefined && (
-        <div className="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0">
+        <div className="flex items-center gap-1 text-xs text-muted flex-shrink-0">
           <Battery className="h-3 w-3" />
           {asset.location.battery}%
         </div>
       )}
       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
         asset.location && new Date(asset.location.timestamp).getTime() > Date.now() - 30 * 60000
-          ? 'bg-green-500'
-          : 'bg-slate-300'
+          ? 'bg-[#34d399]'
+          : 'bg-faint'
       }`} />
     </div>
   )

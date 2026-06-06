@@ -60,21 +60,21 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-navy-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Map className="h-7 w-7 text-white" />
+          <div className="w-14 h-14 bg-amber rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Map className="h-7 w-7 text-[#1a1100]" />
           </div>
-          <h1 className="text-2xl font-bold text-white">HammerTrack</h1>
-          <p className="text-slate-400 text-sm mt-1">Asset tracking for construction</p>
+          <h1 className="text-2xl font-bold text-ink">HammerTrack</h1>
+          <p className="text-faint text-sm mt-1">Asset tracking for construction</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 space-y-4 shadow-xl">
-          <h2 className="text-lg font-semibold text-slate-900">Create your account</h2>
+        <form onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-ink">Create your account</h2>
 
           {error && (
-            <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg border border-red-200">
+            <div className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">
               {error}
             </div>
           )}
@@ -119,9 +119,9 @@ export default function RegisterPage() {
             {loading ? 'Creating account…' : 'Get started free'}
           </Button>
 
-          <p className="text-center text-sm text-slate-500">
+          <p className="text-center text-sm text-muted">
             Already have an account?{' '}
-            <Link href="/login" className="text-amber-600 font-medium hover:underline">
+            <Link href="/login" className="text-amber font-medium hover:underline">
               Sign in
             </Link>
           </p>

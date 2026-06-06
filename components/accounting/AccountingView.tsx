@@ -34,8 +34,8 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
 
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-slate-900">Accounting</h1>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
+        <h1 className="text-xl font-bold text-ink">Accounting</h1>
         <Badge variant="success" className="flex items-center gap-1">
           <Check className="h-3 w-3" /> QuickBooks {demo ? 'Connected (Demo)' : 'Connected'}
         </Badge>
@@ -43,20 +43,20 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
 
       <div className="p-4 space-y-6 max-w-2xl">
         {/* Connection card */}
-        <section className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+        <section className="bg-navy-900 rounded-xl border border-navy-800 p-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-              <Building2 className="h-6 w-6 text-green-600" />
+            <div className="w-11 h-11 rounded-lg bg-[#34d399]/15 flex items-center justify-center flex-shrink-0">
+              <Building2 className="h-6 w-6 text-[#34d399]" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-slate-900">{connection.company_name}</p>
-              <p className="text-xs text-slate-400">
+              <p className="font-semibold text-ink">{connection.company_name}</p>
+              <p className="text-xs text-faint">
                 Realm {connection.realm_id} · connected {formatRelativeTime(connection.connected_at)}
               </p>
             </div>
           </div>
           {demo && (
-            <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+            <p className="mt-3 text-xs text-amber bg-amber/15 border border-amber/30 rounded-lg p-2">
               Demo connection. Add your Intuit app credentials (QBO_CLIENT_ID) to connect a real QuickBooks company.
             </p>
           )}
@@ -65,20 +65,20 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
         {/* Asset → QBO item mapping */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Assets → QuickBooks Items</h2>
+            <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Assets → QuickBooks Items</h2>
             <Button size="sm" variant="outline" onClick={handleSync} disabled={syncing} className="gap-1">
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {synced ? 'Synced' : 'Sync'}
             </Button>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+          <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {billableAssets.map(a => (
               <div key={a.id} className="p-3 flex items-center gap-3 text-sm">
                 <span className="text-lg">{TYPE_EMOJI[a.type]}</span>
-                <span className="flex-1 text-slate-800 truncate">{a.name}</span>
-                <Link2 className="h-3.5 w-3.5 text-slate-300" />
-                <span className="text-slate-500 text-xs truncate">Fixed Asset: {a.name}</span>
-                {synced && <Check className="h-4 w-4 text-green-500 flex-shrink-0" />}
+                <span className="flex-1 text-muted truncate">{a.name}</span>
+                <Link2 className="h-3.5 w-3.5 text-faint" />
+                <span className="text-muted text-xs truncate">Fixed Asset: {a.name}</span>
+                {synced && <Check className="h-4 w-4 text-[#34d399] flex-shrink-0" />}
               </div>
             ))}
           </div>
@@ -86,8 +86,8 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
 
         {/* Job sites → invoices */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Job Sites → Equipment Billing</h2>
-          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 shadow-sm">
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Job Sites → Equipment Billing</h2>
+          <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {geofences.map(g => {
               const inv = invoicesByFence[g.id]
               const hasBillable = inv && inv.lines.length > 0
@@ -95,8 +95,8 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
                 <div key={g.id} className="p-4 flex items-center gap-3">
                   <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: g.color }} />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-900 text-sm truncate">{g.name}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="font-medium text-ink text-sm truncate">{g.name}</p>
+                    <p className="text-xs text-faint">
                       {hasBillable ? `${inv.lines.length} billable asset(s) · $${inv.total.toLocaleString()}` : 'No billable usage'}
                     </p>
                   </div>
@@ -113,7 +113,7 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
               )
             })}
           </div>
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-faint text-center">
             Invoices are built from utilization × equipment hourly rates and pushed to QuickBooks.
           </p>
         </section>
@@ -128,17 +128,17 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
           {preview && (
             <div className="space-y-4 pt-2">
               <div className="text-sm">
-                <span className="text-slate-400">Customer / Job:</span>{' '}
-                <span className="font-medium text-slate-900">{preview.customer}</span>
+                <span className="text-faint">Customer / Job:</span>{' '}
+                <span className="font-medium text-ink">{preview.customer}</span>
               </div>
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="border border-navy-800 rounded-lg overflow-hidden">
                 {preview.lines.map((l, i) => (
-                  <div key={i} className="p-3 border-b border-slate-100 last:border-0 flex justify-between gap-3 text-sm">
-                    <span className="text-slate-700 flex-1">{l.description}</span>
-                    <span className="font-medium text-slate-900 flex-shrink-0">${l.amount.toLocaleString()}</span>
+                  <div key={i} className="p-3 border-b border-navy-800 last:border-0 flex justify-between gap-3 text-sm">
+                    <span className="text-muted flex-1">{l.description}</span>
+                    <span className="font-medium text-ink flex-shrink-0">${l.amount.toLocaleString()}</span>
                   </div>
                 ))}
-                <div className="p-3 bg-slate-50 flex justify-between font-semibold text-slate-900">
+                <div className="p-3 bg-navy-800 flex justify-between font-semibold text-ink">
                   <span>Total</span>
                   <span>${preview.total.toLocaleString()}</span>
                 </div>
@@ -151,7 +151,7 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
                   <Check className="h-4 w-4 mr-1" /> Push to QuickBooks
                 </Button>
               </div>
-              {demo && <p className="text-xs text-amber-600 text-center">Demo: invoice preview only — not sent.</p>}
+              {demo && <p className="text-xs text-amber text-center">Demo: invoice preview only — not sent.</p>}
             </div>
           )}
         </DialogContent>

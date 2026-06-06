@@ -8,16 +8,16 @@ import { Separator } from '@/components/ui/separator'
 export default function SettingsPage() {
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-slate-100 bg-white sticky top-0 z-10">
-        <h1 className="text-xl font-bold text-slate-900">Settings</h1>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
+        <h1 className="text-xl font-bold text-ink">Settings</h1>
       </div>
 
       <div className="p-4 space-y-4 max-w-xl">
         {/* Company info */}
-        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <Package className="h-4 w-4 text-slate-400" />
-            <h2 className="font-semibold text-sm text-slate-700">Company</h2>
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Package className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">Company</h2>
           </div>
           <div className="p-4 space-y-3">
             <Row label="Company Name" value={MOCK_COMPANY.name} />
@@ -27,28 +27,28 @@ export default function SettingsPage() {
         </section>
 
         {/* API Key */}
-        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <Key className="h-4 w-4 text-slate-400" />
-            <h2 className="font-semibold text-sm text-slate-700">Tracker API Key</h2>
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Key className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">Tracker API Key</h2>
           </div>
           <div className="p-4 space-y-3">
-            <p className="text-xs text-slate-500">Use this key to authenticate tracker hardware pushing location data.</p>
-            <div className="bg-slate-50 rounded-lg px-3 py-2 font-mono text-xs text-slate-700 break-all select-all border border-slate-200">
+            <p className="text-xs text-muted">Use this key to authenticate tracker hardware pushing location data.</p>
+            <div className="bg-navy-800 rounded-lg px-3 py-2 font-mono text-xs text-muted break-all select-all border border-navy-800">
               {MOCK_COMPANY.api_key}
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            <div className="bg-amber/15 border border-navy-800 rounded-lg p-3 text-xs text-amber">
               <p className="font-semibold mb-1">How to use with OBD2 trackers</p>
-              <p>Send a POST request to <code className="bg-amber-100 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber-100 px-1 rounded">x-api-key: YOUR_KEY</code></p>
+              <p>Send a POST request to <code className="bg-amber/15 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber/15 px-1 rounded">x-api-key: YOUR_KEY</code></p>
             </div>
           </div>
         </section>
 
         {/* Integration guide */}
-        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <Wifi className="h-4 w-4 text-slate-400" />
-            <h2 className="font-semibold text-sm text-slate-700">Tracker Integration</h2>
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Wifi className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">Tracker Integration</h2>
           </div>
           <div className="p-4 space-y-4">
             <IntegrationCard
@@ -73,24 +73,24 @@ export default function SettingsPage() {
         </section>
 
         {/* QuickBooks */}
-        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <Calculator className="h-4 w-4 text-slate-400" />
-            <h2 className="font-semibold text-sm text-slate-700">QuickBooks Online</h2>
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Calculator className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">QuickBooks Online</h2>
           </div>
           <div className="p-4 space-y-3">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               Sync assets as fixed assets, push equipment-usage invoices per job site, and record
               service costs as expenses — automatically.
             </p>
             <div className="flex gap-2">
               <Link href="/accounting" className="flex-1">
-                <span className="block text-center text-sm font-medium bg-amber-500 text-white rounded-lg py-2.5 hover:bg-amber-600 transition-colors">
+                <span className="block text-center text-sm font-medium bg-amber text-[#1a1100] rounded-lg py-2.5 hover:bg-amber-600 transition-colors">
                   Open Accounting
                 </span>
               </Link>
               <a href="/api/qbo/connect" className="flex-1">
-                <span className="block text-center text-sm font-medium border border-slate-300 text-slate-700 rounded-lg py-2.5 hover:bg-slate-50 transition-colors">
+                <span className="block text-center text-sm font-medium border border-navy-800 text-muted rounded-lg py-2.5 hover:bg-navy-800 transition-colors">
                   Connect QuickBooks
                 </span>
               </a>
@@ -99,10 +99,10 @@ export default function SettingsPage() {
         </section>
 
         {/* Map provider */}
-        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-            <Map className="h-4 w-4 text-slate-400" />
-            <h2 className="font-semibold text-sm text-slate-700">Map Provider</h2>
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Map className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">Map Provider</h2>
           </div>
           <div className="p-4 space-y-2">
             <Row
@@ -111,7 +111,7 @@ export default function SettingsPage() {
                 ? <Badge variant="success">Maptiler</Badge>
                 : <Badge variant="secondary">CARTO (free)</Badge>}
             />
-            <p className="text-xs text-slate-400">Set NEXT_PUBLIC_MAPTILER_KEY in .env.local to enable Maptiler Streets.</p>
+            <p className="text-xs text-faint">Set NEXT_PUBLIC_MAPTILER_KEY in .env.local to enable Maptiler Streets.</p>
           </div>
         </section>
       </div>
@@ -122,8 +122,8 @@ export default function SettingsPage() {
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-medium text-slate-800">{value}</span>
+      <span className="text-sm text-muted">{label}</span>
+      <span className="text-sm font-medium text-muted">{value}</span>
     </div>
   )
 }
@@ -132,12 +132,12 @@ function IntegrationCard({ title, description, endpoint, payload }: {
   title: string; description: string; endpoint: string; payload: string
 }) {
   return (
-    <div className="border border-slate-100 rounded-lg p-3 space-y-2">
-      <p className="font-semibold text-sm text-slate-800">{title}</p>
-      <p className="text-xs text-slate-500">{description}</p>
-      <div className="bg-slate-800 rounded-md p-2 space-y-1">
-        <p className="text-xs font-mono text-amber-400">{endpoint}</p>
-        <p className="text-xs font-mono text-slate-300 break-all">{payload}</p>
+    <div className="border border-navy-800 rounded-lg p-3 space-y-2">
+      <p className="font-semibold text-sm text-muted">{title}</p>
+      <p className="text-xs text-muted">{description}</p>
+      <div className="bg-navy-950 rounded-md p-2 space-y-1">
+        <p className="text-xs font-mono text-amber">{endpoint}</p>
+        <p className="text-xs font-mono text-faint break-all">{payload}</p>
       </div>
     </div>
   )
