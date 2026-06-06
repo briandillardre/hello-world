@@ -163,6 +163,15 @@ export function formatSpeed(n: number): string {
   return n + '×'
 }
 
+/** Full, human-readable date/time for the current scrub position. */
+export function scrubLabel(range: TimeRange, t: number): string {
+  if (range === 'live') return 'Live'
+  if (range === 'today') return 'Today · ' + clockLabel(t)
+  if (range === 'yesterday') return 'Yesterday · ' + clockLabel(t)
+  const ms = Date.now() - (1 - t) * rangeSpanDays(range) * 86_400_000
+  return new Date(ms).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 /** Human label for the scrubber position within a range. */
 export function rangeLabel(range: TimeRange, t: number): string {
   if (range === 'live') return 'LIVE'

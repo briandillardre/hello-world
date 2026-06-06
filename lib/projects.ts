@@ -38,6 +38,37 @@ export const PROJECTS: Project[] = [
   },
 ]
 
+import type { TimeRange } from './trails'
+import { rangeSpanDays } from './trails'
+
+export const RANGE_COST_LABEL: Record<TimeRange, string> = {
+  live: 'today', today: 'today', yesterday: 'yesterday',
+  '7d': 'last 7 days', '30d': 'last 30 days', ytd: 'year to date', all: 'all time',
+}
+
+export function rangeDays(range: TimeRange): number {
+  if (range === 'live' || range === 'today' || range === 'yesterday') return 1
+  return rangeSpanDays(range)
+}
+
+export interface PeriodCost { labor: number; equip: number; total: number }
+
+/** Cost over the selected range up to scrub position t (live = today so far). */
+export function periodCost(p: Project, range: TimeRange, t: number): PeriodCost {
+  const days = rangeDays(range)
+  const f = range === 'live' ? LIVE_DAY_FRACTION : t
+  const labor = p.crewSize * WORKDAY_HOURS * p.laborRate * days * f
+  const equip = p.equipCostPerDay * days * f
+  return { labor, equip, total: labor + equip }
+}
+
+/** Lifetime budget burn (stable across scrubbing). */
+export function lifetimeBurn(p: Project): { pct: number; status: ProjectStatus } {
+  const pct = (p.spentToDate / p.budget) * 100
+  const status: ProjectStatus = pct >= 100 ? 'over_budget' : pct >= 90 ? 'at_risk' : 'on_track'
+  return { pct, status }
+}
+
 export interface ProjectCost {
   laborToday: number
   equipToday: number

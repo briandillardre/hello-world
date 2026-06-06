@@ -13,7 +13,7 @@ import {
   type WeatherFrames, type Conditions, type RadarFrame,
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
-import { PROJECTS, LIVE_DAY_FRACTION } from '@/lib/projects'
+import { PROJECTS } from '@/lib/projects'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
@@ -136,13 +136,12 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
   const activeFrames: RadarFrame[] = useMemo(() => weatherFrames?.radar ?? [], [weatherFrames])
 
+  // Radar is a live overlay only — free RainViewer keeps just ~2h of history,
+  // so we always show the latest real frame rather than faking the past.
   const currentFrame: RadarFrame | null = useMemo(() => {
     if (activeFrames.length === 0) return null
-    const idx = pbActive
-      ? Math.min(activeFrames.length - 1, Math.round(pbT * (activeFrames.length - 1)))
-      : liveFrameIndex(activeFrames)
-    return activeFrames[idx]
-  }, [activeFrames, pbActive, pbT])
+    return activeFrames[liveFrameIndex(activeFrames)]
+  }, [activeFrames])
 
   const tileKey = process.env.NEXT_PUBLIC_MAPTILER_KEY
   const mapStyle = (tileKey && tileKey !== 'YOUR_MAPTILER_KEY')
@@ -509,11 +508,10 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         onRadar={setRadarOn}
         conditions={conditions}
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
-        scrubbing={pbActive}
         top={kiosk ? 70 : 58}
       />
 
-      <ProjectsPanel projects={PROJECTS} t={pbActive ? pbT : LIVE_DAY_FRACTION} scrubbing={pbActive} />
+      <ProjectsPanel projects={PROJECTS} range={range} t={pbT} />
 
       {!kiosk && !pbActive && (
         <GeofenceDrawer

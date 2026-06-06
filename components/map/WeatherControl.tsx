@@ -13,7 +13,6 @@ interface WeatherControlProps {
   onRadar: (v: boolean) => void
   conditions: Conditions | null
   frameTime: string | null
-  scrubbing: boolean
   top?: number
 }
 
@@ -31,7 +30,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, scrubbing, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, top = 58 }: WeatherControlProps) {
   return (
     <div style={{ top }} className="absolute left-3 z-10 w-[188px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       {/* conditions chip */}
@@ -53,7 +52,7 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
         <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
       </div>
 
-      {/* radar toggle */}
+      {/* radar toggle — always visible in live and timeline modes */}
       <button
         onClick={() => onRadar(!radarOn)}
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors"
@@ -61,14 +60,16 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
         <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
           <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Rain radar
         </span>
-        {radarOn && frameTime ? (
-          <span className="font-mono text-[10px] text-teal">{scrubbing ? 'Replay' : 'Now'} {frameTime}</span>
-        ) : (
-          <span className={'w-9 h-5 rounded-full transition-colors relative ' + (radarOn ? 'bg-teal/40' : 'bg-navy-700')}>
-            <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (radarOn ? 'left-[18px]' : 'left-0.5')} />
-          </span>
-        )}
+        <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (radarOn ? 'bg-teal/40' : 'bg-navy-700')}>
+          <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (radarOn ? 'left-[18px]' : 'left-0.5')} />
+        </span>
       </button>
+      {radarOn && (
+        <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
+          live radar{frameTime ? ` · ${frameTime}` : ''}
+        </div>
+      )}
     </div>
   )
 }

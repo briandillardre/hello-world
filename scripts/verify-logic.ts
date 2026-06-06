@@ -1,7 +1,7 @@
 // Runtime checks for the new map-feature logic (run via tsc -> node).
 import { MOCK_ASSETS } from '../lib/mock-data'
-import { generateTracks, trailUpTo, positionAt, clockLabel, rangeLabel, RANGES, speedsForRange, formatSpeed, rangeWindowSeconds } from '../lib/trails'
-import { PROJECTS, projectCost, money } from '../lib/projects'
+import { generateTracks, trailUpTo, positionAt, clockLabel, rangeLabel, scrubLabel, RANGES, speedsForRange, formatSpeed, rangeWindowSeconds } from '../lib/trails'
+import { PROJECTS, projectCost, periodCost, RANGE_COST_LABEL, money } from '../lib/projects'
 import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
 import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
 
@@ -43,6 +43,14 @@ ok('cost at t=1 accrues labor + equipment', c1.laborToday > 0 && c1.equipToday >
   `labor ${money(c1.laborToday)} + equip ${money(c1.equipToday)}`)
 ok('burn% rises through the day', c1.burnPct > c0.burnPct, `${c0.burnPct.toFixed(0)}% → ${c1.burnPct.toFixed(0)}%`)
 ok('status escalates as burn climbs', ['on_track', 'at_risk', 'over_budget'].includes(c1.status), c1.status)
+
+// period cost reflects the selected range, not just "today"
+const today1 = periodCost(p, 'today', 1).total
+const month1 = periodCost(p, '30d', 1).total
+ok('period cost scales ~30x for 30 days', month1 > today1 * 20, `${money(today1)} → ${money(month1)}`)
+ok('cost period labels', RANGE_COST_LABEL['30d'] === 'last 30 days' && RANGE_COST_LABEL.live === 'today')
+ok('scrubLabel live/today/30d', scrubLabel('live', 0) === 'Live' && scrubLabel('today', 0).includes('Today') && /\d{4}/.test(scrubLabel('30d', 0.5)),
+  `${scrubLabel('today', 0.5)} | ${scrubLabel('30d', 0.5)}`)
 
 // ── Weather frame handling ──
 const frames: RadarFrame[] = [

@@ -1,7 +1,7 @@
 'use client'
 
-import { Play, Pause, Gauge, Ban, Route, Flame } from 'lucide-react'
-import { type TimeRange, type TrailMode, RANGES, rangeLabel, speedsForRange, formatSpeed } from '@/lib/trails'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock } from 'lucide-react'
+import { type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed } from '@/lib/trails'
 
 const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
@@ -76,7 +76,13 @@ export function TimelinePlayback({
           </span>
         </div>
       ) : (
-        <div className="flex items-center gap-3 px-4 py-3">
+        <>
+        {/* prominent date/time readout (visible on mobile too) */}
+        <div className="px-4 pt-2.5 flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-amber flex-none" />
+          <span className="font-display font-bold text-amber text-[15px] tabular-nums">{scrubLabel(range, t)}</span>
+        </div>
+        <div className="flex items-center gap-3 px-4 pt-2 pb-3">
           <button
             onClick={onPlayPause}
             className="flex-none grid place-items-center w-10 h-10 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
@@ -96,10 +102,6 @@ export function TimelinePlayback({
             </div>
           </div>
 
-          <span className="flex-none font-display font-bold text-[14px] text-amber tabular-nums hidden sm:block min-w-[70px] text-right">
-            {rangeLabel(range, t)}
-          </span>
-
           <div className="flex-none flex items-center gap-1.5 text-faint">
             <Gauge className="h-4 w-4" />
             <select
@@ -111,6 +113,7 @@ export function TimelinePlayback({
             </select>
           </div>
         </div>
+        </>
       )}
     </div>
   )
