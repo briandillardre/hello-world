@@ -132,6 +132,37 @@ export function rangeSpanDays(range: TimeRange): number {
   }
 }
 
+/** Real-world seconds spanned by a range — used to make playback speed a true
+ *  real-time multiplier (so a year can be replayed as fast as a day). */
+export function rangeWindowSeconds(range: TimeRange): number {
+  if (range === 'today' || range === 'yesterday') return PLAYBACK_WINDOW_SECONDS // 12h workday
+  return rangeSpanDays(range) * 86_400
+}
+
+/** Speed options scale with the range — long windows need much bigger multipliers. */
+export function speedsForRange(range: TimeRange): number[] {
+  switch (range) {
+    case 'today':
+    case 'yesterday': return [60, 300, 1000, 5000]
+    case '7d': return [500, 2000, 10_000, 50_000]
+    case '30d': return [2000, 10_000, 50_000, 200_000]
+    case 'ytd':
+    case 'all': return [10_000, 100_000, 500_000, 1_000_000]
+    default: return [60, 300, 1000]
+  }
+}
+
+export function defaultSpeed(range: TimeRange): number {
+  const s = speedsForRange(range)
+  return s[Math.min(1, s.length - 1)]
+}
+
+export function formatSpeed(n: number): string {
+  if (n >= 1_000_000) return n / 1_000_000 + 'M×'
+  if (n >= 1_000) return n / 1_000 + 'k×'
+  return n + '×'
+}
+
 /** Human label for the scrubber position within a range. */
 export function rangeLabel(range: TimeRange, t: number): string {
   if (range === 'live') return 'LIVE'

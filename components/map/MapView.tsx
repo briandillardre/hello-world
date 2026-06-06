@@ -6,7 +6,8 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
-  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailUpTo, PLAYBACK_WINDOW_SECONDS,
+  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailUpTo,
+  rangeWindowSeconds, defaultSpeed,
 } from '@/lib/trails'
 import {
   type WeatherFrames, type Conditions, type RadarFrame,
@@ -119,10 +120,12 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
   const tRef = useRef(pbT)
+  const windowRef = useRef(rangeWindowSeconds(range))
   tracksRef.current = tracks
   filterRef.current = filter
   speedRef.current = pbSpeed
   tRef.current = pbT
+  windowRef.current = rangeWindowSeconds(range)
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
   const [base, setBase] = useState<BaseStyle>('dark')
@@ -416,7 +419,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
-      let next = tRef.current + (dt * speedRef.current) / PLAYBACK_WINDOW_SECONDS
+      let next = tRef.current + (dt * speedRef.current) / windowRef.current
       if (next >= 1) { next = 1; setPbPlaying(false) }
       tRef.current = next
       setPbT(next)
@@ -433,6 +436,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     } else {
       tRef.current = 0
       setPbT(0)
+      setPbSpeed(defaultSpeed(r)) // sensible multiplier for this range
       setPbPlaying(true) // auto-play the replay
       // give immediate visual feedback if no movement layer is on yet
       setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))

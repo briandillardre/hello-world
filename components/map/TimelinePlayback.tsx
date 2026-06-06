@@ -1,9 +1,8 @@
 'use client'
 
 import { Play, Pause, Gauge, Ban, Route, Flame } from 'lucide-react'
-import { type TimeRange, type TrailMode, RANGES, rangeLabel } from '@/lib/trails'
+import { type TimeRange, type TrailMode, RANGES, rangeLabel, speedsForRange, formatSpeed } from '@/lib/trails'
 
-const SPEEDS = [60, 300, 500, 1000]
 const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
   { key: 'trails', label: 'Trails', icon: Route },
@@ -28,6 +27,7 @@ export function TimelinePlayback({
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => rangeLabel(range, f))
+  const speeds = speedsForRange(range)
 
   return (
     <div className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10 rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
@@ -107,7 +107,7 @@ export function TimelinePlayback({
               onChange={(e) => onSpeed(Number(e.target.value))}
               className="bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs font-mono px-2 py-1.5 outline-none focus:border-amber"
             >
-              {SPEEDS.map((s) => <option key={s} value={s}>{s}x</option>)}
+              {speeds.map((s) => <option key={s} value={s}>{formatSpeed(s)}</option>)}
             </select>
           </div>
         </div>
