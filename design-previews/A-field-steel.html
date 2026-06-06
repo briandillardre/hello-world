@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HammerTrack — Direction A · Field Steel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --steel-950:#0c0e12; --steel-900:#14171d; --steel-800:#1d222b; --steel-700:#2a313d;
+    --steel-400:#8b96a8; --steel-300:#b7c0cf; --paper:#f4f5f7;
+    --amber:#ff9e16; --amber-600:#e8870a; --red:#ff3b3b;
+  }
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--steel-950);color:var(--paper);-webkit-font-smoothing:antialiased;line-height:1.5}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  h1,h2,h3,.display{font-family:'Archivo',sans-serif;letter-spacing:-.02em}
+  .tag{font-family:'Archivo';text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:700}
+  /* nav */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--steel-800)}
+  .logo{display:flex;align-items:center;gap:11px}
+  .logo .mark{width:34px;height:34px;border-radius:9px;background:var(--amber);display:grid;place-items:center;box-shadow:0 0 0 1px rgba(255,158,22,.3),0 8px 24px -6px rgba(255,158,22,.5)}
+  .logo .mark svg{width:18px;height:18px}
+  .logo span{font-family:'Archivo';font-weight:900;text-transform:uppercase;letter-spacing:.05em;font-size:18px}
+  .navlinks{display:flex;align-items:center;gap:26px;font-size:14px;font-weight:500;color:var(--steel-300)}
+  .navlinks a{color:inherit;text-decoration:none}
+  .btn{font-family:'Archivo';font-weight:700;text-decoration:none;border-radius:11px;padding:13px 22px;display:inline-flex;align-items:center;gap:9px;font-size:15px;transition:.15s}
+  .btn-amber{background:var(--amber);color:#1a1100;box-shadow:0 10px 30px -8px rgba(255,158,22,.55)}
+  .btn-ghost{background:var(--steel-800);color:var(--paper);border:1px solid var(--steel-700)}
+  .btn-sm{padding:10px 18px;font-size:14px}
+  /* hero */
+  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:76px 0 64px}
+  .alertpill{display:inline-flex;align-items:center;gap:8px;background:rgba(255,59,59,.1);border:1px solid rgba(255,59,59,.32);color:#ff8b8b;padding:7px 14px;border-radius:999px;font-size:12px;font-weight:700;font-family:'Archivo'}
+  .dot-r{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 rgba(255,59,59,.6);animation:pulse 1.8s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,59,59,.55)}70%{box-shadow:0 0 0 9px rgba(255,59,59,0)}100%{box-shadow:0 0 0 0 rgba(255,59,59,0)}}
+  h1.display{font-size:58px;font-weight:900;line-height:1.02;margin:22px 0 0}
+  h1 em{font-style:normal;color:var(--amber)}
+  .sub{color:var(--steel-300);font-size:18px;margin-top:22px;max-width:34ch}
+  .cta-row{display:flex;gap:14px;margin-top:34px}
+  .fine{color:var(--steel-400);font-size:13px;margin-top:14px}
+  /* product mock */
+  .mock{aspect-ratio:4/3.2;border-radius:20px;background:
+     radial-gradient(120% 90% at 80% 10%, rgba(255,158,22,.10), transparent 55%),
+     linear-gradient(160deg,#171b22,#0a0c10);
+     border:1px solid var(--steel-700);position:relative;overflow:hidden;box-shadow:0 40px 80px -30px rgba(0,0,0,.8)}
+  .mock .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:38px 38px}
+  .mock .road{position:absolute;height:2px;background:rgba(255,255,255,.07)}
+  .pin{position:absolute;width:13px;height:13px;border-radius:50%;border:2px solid rgba(0,0,0,.4)}
+  .pin.a{background:var(--amber)} .pin.t{background:#27d3c4}
+  .pin.alert{width:18px;height:18px;background:var(--red);box-shadow:0 0 0 6px rgba(255,59,59,.22);animation:pulse 1.6s infinite}
+  .toast{position:absolute;top:16px;left:16px;background:rgba(12,14,18,.82);backdrop-filter:blur(8px);border:1px solid var(--steel-700);border-left:3px solid var(--red);border-radius:11px;padding:11px 14px;max-width:230px}
+  .toast .t1{font-family:'Archivo';font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#ff8b8b;display:flex;align-items:center;gap:7px}
+  .toast .t2{font-size:13px;color:var(--steel-300);margin-top:3px}
+  .statbar{position:absolute;bottom:16px;left:16px;right:16px;display:flex;gap:10px}
+  .stat{flex:1;background:rgba(20,23,29,.8);backdrop-filter:blur(6px);border:1px solid var(--steel-700);border-radius:11px;padding:10px 12px}
+  .stat .n{font-family:'Archivo';font-weight:800;font-size:19px}
+  .stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--steel-400);margin-top:2px}
+  /* features */
+  .features{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:24px 0 70px}
+  .feat{background:var(--steel-900);border:1px solid var(--steel-800);border-radius:16px;padding:22px}
+  .feat .ic{width:42px;height:42px;border-radius:11px;background:rgba(255,158,22,.13);display:grid;place-items:center;margin-bottom:15px}
+  .feat .ic svg{width:21px;height:21px;stroke:var(--amber)}
+  .feat h3{font-size:16px;font-weight:800}
+  .feat p{font-size:13.5px;color:var(--steel-400);margin-top:6px}
+  /* strip */
+  .strip{border-top:1px solid var(--steel-800);border-bottom:1px solid var(--steel-800);padding:30px 0;display:flex;justify-content:space-between;flex-wrap:wrap;gap:18px}
+  .strip .k{font-family:'Archivo';font-weight:900;font-size:30px;color:var(--amber)}
+  .strip .v{font-size:13px;color:var(--steel-400);margin-top:2px}
+  footer{padding:40px 0;text-align:center;color:var(--steel-400);font-size:13px}
+  .label{position:fixed;top:14px;right:14px;background:var(--amber);color:#1a1100;font-family:'Archivo';font-weight:800;font-size:12px;padding:7px 13px;border-radius:8px;letter-spacing:.04em;z-index:99}
+  @media(max-width:880px){.hero{grid-template-columns:1fr;gap:34px;padding:48px 0}h1.display{font-size:42px}.features{grid-template-columns:1fr 1fr}.navlinks a:not(.btn){display:none}}
+</style>
+</head>
+<body>
+  <div class="label">DIRECTION A · FIELD STEEL</div>
+  <div class="wrap">
+    <nav>
+      <div class="logo">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" stroke="#1a1100" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <span>HammerTrack</span>
+      </div>
+      <div class="navlinks">
+        <a href="#">Product</a><a href="#">Pricing</a><a href="#">Sign in</a>
+        <a class="btn btn-amber btn-sm" href="#">Start free pilot</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <span class="alertpill"><span class="dot-r"></span> THEFT ALERT · Skid Steer #3 · 2:14 AM</span>
+        <h1 class="display">Every truck, machine &amp; tool.<br><em>One live map.</em></h1>
+        <p class="sub">HammerTrack puts your whole fleet on one screen and texts you the second something moves when it shouldn't. Half the price of Tenna. Live in a day.</p>
+        <div class="cta-row">
+          <a class="btn btn-amber" href="#">Start free 30-day pilot →</a>
+          <a class="btn btn-ghost" href="#">See live demo</a>
+        </div>
+        <p class="fine">No credit card. We ship the trackers. Cancel anytime.</p>
+      </div>
+      <div class="mock">
+        <div class="grid"></div>
+        <div class="road" style="top:42%;left:0;right:0"></div>
+        <div class="road" style="top:0;bottom:0;left:58%;width:2px;height:auto"></div>
+        <div class="toast"><div class="t1"><span class="dot-r"></span> After-hours move</div><div class="t2">Skid Steer #3 left jobsite at 2:14 AM</div></div>
+        <span class="pin a" style="top:30%;left:22%"></span>
+        <span class="pin t" style="top:55%;left:40%"></span>
+        <span class="pin a" style="top:62%;left:66%"></span>
+        <span class="pin t" style="top:38%;left:74%"></span>
+        <span class="pin alert" style="top:22%;left:80%"></span>
+        <span class="pin a" style="top:72%;left:30%"></span>
+        <div class="statbar">
+          <div class="stat"><div class="n">38</div><div class="l">Assets live</div></div>
+          <div class="stat"><div class="n">2</div><div class="l">Jobsites</div></div>
+          <div class="stat"><div class="n" style="color:var(--red)">1</div><div class="l">Alert</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.2-7-11a7 7 0 0114 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div><h3>Whole fleet, one map</h3><p>Trucks, heavy equipment, and Bluetooth-tagged tools — live and clustered.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6c0 7-3 8-3 8h18s-3-1-3-8a6 6 0 00-6-6z"/><path d="M10 21a2 2 0 004 0"/></svg></div><h3>After-hours theft alerts</h3><p>A text the moment a machine moves off-hours or leaves the site.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l3 3m-9 9l9-9m-9 9H4v-4l9-9 4 4-9 9z"/></svg></div><h3>Maintenance built in</h3><p>Service by engine hours, mileage, or days. Never miss an oil change.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></div><h3>QuickBooks native</h3><p>Auto-allocate equipment cost to jobs and bill usage automatically.</p></div>
+    </section>
+
+    <section class="strip">
+      <div><div class="k">$0</div><div class="v">setup — Tenna charges $500+</div></div>
+      <div><div class="k">~$3–8</div><div class="v">/asset/mo — Tenna is $15–25</div></div>
+      <div><div class="k">1 day</div><div class="v">to live — no install crew</div></div>
+      <div><div class="k">BLE</div><div class="v">tools included — Tenna add-on</div></div>
+    </section>
+  </div>
+  <footer>HammerTrack · hammertrackai.com · Asset tracking for construction</footer>
+</body>
+</html>

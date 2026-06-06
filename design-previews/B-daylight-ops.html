@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HammerTrack — Direction B · Daylight Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --ink:#0d1b16; --ink-2:#41514b; --ink-3:#6b7a73;
+    --line:#e6ebe8; --paper:#ffffff; --mist:#f5f8f6;
+    --pine:#0f7a52; --pine-600:#0c6444; --pine-50:#e7f4ee;
+    --amber:#f59e0b; --red:#e5484d;
+  }
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.55}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  h1,h2,h3,.dp{font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-.022em}
+  /* nav */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 0}
+  .logo{display:flex;align-items:center;gap:10px}
+  .logo .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(150deg,var(--pine),#15a06a);display:grid;place-items:center;box-shadow:0 6px 16px -4px rgba(15,122,82,.45)}
+  .logo .mark svg{width:18px;height:18px}
+  .logo span{font-family:'Plus Jakarta Sans';font-weight:800;font-size:18px;letter-spacing:-.01em}
+  .navlinks{display:flex;align-items:center;gap:28px;font-size:14.5px;font-weight:500;color:var(--ink-2)}
+  .navlinks a{color:inherit;text-decoration:none}
+  .btn{font-family:'Plus Jakarta Sans';font-weight:700;text-decoration:none;border-radius:11px;padding:13px 22px;display:inline-flex;align-items:center;gap:9px;font-size:15px;transition:.15s}
+  .btn-pine{background:var(--pine);color:#fff;box-shadow:0 10px 26px -8px rgba(15,122,82,.5)}
+  .btn-soft{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn-sm{padding:10px 18px;font-size:14px}
+  /* hero */
+  .hero{display:grid;grid-template-columns:1fr 1fr;gap:54px;align-items:center;padding:60px 0 56px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--pine-50);color:var(--pine-600);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600}
+  .eyebrow .d{width:7px;height:7px;border-radius:50%;background:var(--pine);animation:bp 1.8s infinite}
+  @keyframes bp{0%,100%{opacity:1}50%{opacity:.35}}
+  h1{font-size:56px;font-weight:800;line-height:1.04;margin:20px 0 0;color:var(--ink)}
+  h1 em{font-style:normal;color:var(--pine)}
+  .sub{color:var(--ink-2);font-size:18.5px;margin-top:20px;max-width:33ch}
+  .cta-row{display:flex;gap:13px;margin-top:30px;align-items:center}
+  .fine{color:var(--ink-3);font-size:13px;margin-top:14px;display:flex;gap:18px}
+  .fine span{display:flex;align-items:center;gap:6px}
+  .check{color:var(--pine);font-weight:700}
+  /* mock */
+  .mock{border-radius:20px;background:#fff;border:1px solid var(--line);box-shadow:0 30px 60px -28px rgba(13,27,22,.28),0 2px 6px rgba(13,27,22,.04);overflow:hidden}
+  .mock .bar{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .mock .bar i{width:10px;height:10px;border-radius:50%;background:#e3e8e5;display:block}
+  .mock .bar .ttl{margin-left:8px;font-size:12.5px;color:var(--ink-3);font-weight:500}
+  .map{position:relative;aspect-ratio:16/10;background:
+     radial-gradient(110% 80% at 75% 15%, #e8f3ee, transparent 60%),
+     linear-gradient(160deg,#f2f6f4,#eef2f0)}
+  .map .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(15,122,82,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(15,122,82,.05) 1px,transparent 1px);background-size:34px 34px}
+  .map .road{position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(13,27,22,.04)}
+  .pin{position:absolute;width:14px;height:14px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(13,27,22,.25)}
+  .pin.a{background:var(--amber)} .pin.t{background:var(--pine)}
+  .pin.alert{width:18px;height:18px;background:var(--red);box-shadow:0 0 0 6px rgba(229,72,77,.18),0 2px 6px rgba(13,27,22,.25);animation:pl 1.6s infinite}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(229,72,77,.35),0 2px 6px rgba(13,27,22,.25)}70%{box-shadow:0 0 0 11px rgba(229,72,77,0),0 2px 6px rgba(13,27,22,.25)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0),0 2px 6px rgba(13,27,22,.25)}}
+  .card{position:absolute;top:16px;left:16px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:0 12px 24px -10px rgba(13,27,22,.22);max-width:225px}
+  .card .t1{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--red);display:flex;align-items:center;gap:7px}
+  .card .t1 .dr{width:7px;height:7px;border-radius:50%;background:var(--red)}
+  .card .t2{font-size:13px;color:var(--ink-2);margin-top:4px}
+  .legend{position:absolute;bottom:14px;left:16px;display:flex;gap:14px;background:rgba(255,255,255,.85);backdrop-filter:blur(4px);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:11.5px;color:var(--ink-2);font-weight:500}
+  .legend i{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
+  /* features */
+  .features{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:30px 0 64px}
+  .feat{background:var(--mist);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .feat .ic{width:42px;height:42px;border-radius:11px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;margin-bottom:15px}
+  .feat .ic svg{width:21px;height:21px;stroke:var(--pine)}
+  .feat h3{font-size:16px;font-weight:700}
+  .feat p{font-size:13.5px;color:var(--ink-3);margin-top:6px}
+  /* strip */
+  .strip{background:var(--ink);border-radius:20px;padding:34px;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-bottom:60px}
+  .strip .k{font-family:'Plus Jakarta Sans';font-weight:800;font-size:30px;color:#fff}
+  .strip .v{font-size:13px;color:#9fb0a8;margin-top:4px}
+  footer{padding:36px 0;text-align:center;color:var(--ink-3);font-size:13px;border-top:1px solid var(--line)}
+  .label{position:fixed;top:14px;right:14px;background:var(--pine);color:#fff;font-family:'Plus Jakarta Sans';font-weight:800;font-size:12px;padding:7px 13px;border-radius:8px;letter-spacing:.03em;z-index:99}
+  @media(max-width:880px){.hero{grid-template-columns:1fr;gap:36px;padding:40px 0}h1{font-size:42px}.features,.strip{grid-template-columns:1fr 1fr}.navlinks a:not(.btn){display:none}}
+</style>
+</head>
+<body>
+  <div class="label">DIRECTION B · DAYLIGHT OPS</div>
+  <div class="wrap">
+    <nav>
+      <div class="logo">
+        <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <span>HammerTrack</span>
+      </div>
+      <div class="navlinks">
+        <a href="#">Product</a><a href="#">Pricing</a><a href="#">Sign in</a>
+        <a class="btn btn-pine btn-sm" href="#">Start free pilot</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div>
+        <span class="eyebrow"><span class="d"></span> Live for 38 assets across 2 jobsites</span>
+        <h1>Know where every<br>asset is. <em>Right now.</em></h1>
+        <p class="sub">Put your whole fleet on one map — trucks, machines, and Bluetooth-tagged tools — and get alerted the moment something moves when it shouldn't.</p>
+        <div class="cta-row">
+          <a class="btn btn-pine" href="#">Start free 30-day pilot →</a>
+          <a class="btn btn-soft" href="#">See live demo</a>
+        </div>
+        <p class="fine"><span><span class="check">✓</span> No credit card</span><span><span class="check">✓</span> Set up in a day</span><span><span class="check">✓</span> Cancel anytime</span></p>
+      </div>
+      <div class="mock">
+        <div class="bar"><i></i><i></i><i></i><span class="ttl">app.hammertrackai.com — Live map</span></div>
+        <div class="map">
+          <div class="grid"></div>
+          <div class="road" style="top:44%;left:0;right:0;height:8px"></div>
+          <div class="road" style="top:0;bottom:0;left:60%;width:8px"></div>
+          <div class="card"><div class="t1"><span class="dr"></span> After-hours move</div><div class="t2">Skid Steer #3 left jobsite · 2:14 AM</div></div>
+          <span class="pin a" style="top:30%;left:22%"></span>
+          <span class="pin t" style="top:58%;left:38%"></span>
+          <span class="pin a" style="top:64%;left:67%"></span>
+          <span class="pin t" style="top:36%;left:75%"></span>
+          <span class="pin alert" style="top:22%;left:82%"></span>
+          <span class="pin a" style="top:74%;left:28%"></span>
+          <div class="legend"><span><i style="background:#f59e0b"></i>Trucks</span><span><i style="background:#0f7a52"></i>Equipment</span><span><i style="background:#e5484d"></i>Alert</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.2-7-11a7 7 0 0114 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div><h3>Whole fleet, one map</h3><p>Trucks, heavy equipment, and Bluetooth-tagged tools — live and clustered.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 00-6 6c0 7-3 8-3 8h18s-3-1-3-8a6 6 0 00-6-6z"/><path d="M10 21a2 2 0 004 0"/></svg></div><h3>After-hours theft alerts</h3><p>A text the moment a machine moves off-hours or leaves the site.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l3 3m-9 9l9-9m-9 9H4v-4l9-9 4 4-9 9z"/></svg></div><h3>Maintenance built in</h3><p>Service by engine hours, mileage, or days. Never miss an oil change.</p></div>
+      <div class="feat"><div class="ic"><svg fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></div><h3>QuickBooks native</h3><p>Auto-allocate equipment cost to jobs and bill usage automatically.</p></div>
+    </section>
+
+    <section class="strip">
+      <div><div class="k">$0</div><div class="v">setup — Tenna charges $500+</div></div>
+      <div><div class="k">~$3–8</div><div class="v">/asset/mo — Tenna is $15–25</div></div>
+      <div><div class="k">1 day</div><div class="v">to live — no install crew</div></div>
+      <div><div class="k">BLE</div><div class="v">tools included — Tenna add-on</div></div>
+    </section>
+  </div>
+  <footer>HammerTrack · hammertrackai.com · Asset tracking for construction</footer>
+</body>
+</html>
