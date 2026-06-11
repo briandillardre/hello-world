@@ -101,6 +101,9 @@ interface MapViewProps {
 export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
+  // Flipped once the style + custom layers exist, so mutation effects that fired
+  // too early re-apply instead of silently dropping the change.
+  const [mapReady, setMapReady] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   const [isDrawing, setIsDrawing] = useState(false)
@@ -334,6 +337,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
         m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
       }
+
+      setMapReady(true)
     })
 
     return () => {
@@ -344,33 +349,33 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
   // Update live asset source when assets or filter change
   useEffect(() => {
-    if (!map.current?.isStyleLoaded()) return
-    const source = map.current.getSource('assets') as maplibregl.GeoJSONSource | undefined
+    if (!mapReady) return
+    const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     source?.setData(buildGeoJSON(assets, filter))
-  }, [assets, filter])
+  }, [mapReady, assets, filter])
 
   // Show live pins vs trails vs heatmap based on the movement-display mode
   useEffect(() => {
     const m = map.current
-    if (!m?.isStyleLoaded()) return
+    if (!mapReady || !m) return
     const set = (l: string, v: boolean) => m.getLayer(l) && m.setLayoutProperty(l, 'visibility', v ? 'visible' : 'none')
     LIVE_LAYERS.forEach((l) => set(l, trailMode === 'off'))
     set('trails-line', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
-  }, [trailMode])
+  }, [mapReady, trailMode])
 
   // Push trail/heat/head geometry as time, filter, or mode changes
   useEffect(() => {
     const m = map.current
-    if (trailMode === 'off' || !m?.isStyleLoaded()) return
+    if (!mapReady || trailMode === 'off' || !m) return
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracks, filter, displayT))
     if (trailMode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracks, filter, displayT))
     } else {
       ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(tracks, filter, displayT))
     }
-  }, [trailMode, displayT, filter, tracks])
+  }, [mapReady, trailMode, displayT, filter, tracks])
 
   // Fetch weather frames + conditions once
   useEffect(() => {
@@ -383,14 +388,14 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   // Toggle the satellite (aerial) basemap over the dark base
   useEffect(() => {
     const m = map.current
-    if (!m?.isStyleLoaded() || !m.getLayer('sat-base')) return
+    if (!mapReady || !m?.getLayer('sat-base')) return
     m.setLayoutProperty('sat-base', 'visibility', base === 'satellite' ? 'visible' : 'none')
-  }, [base])
+  }, [mapReady, base])
 
   // Add / update / toggle the rain-radar raster layer
   useEffect(() => {
     const m = map.current
-    if (!m?.isStyleLoaded()) return
+    if (!mapReady || !m) return
 
     if (!radarOn || !currentFrame || !weatherFrames) {
       if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
@@ -408,7 +413,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
       m.setLayoutProperty('wx-layer', 'visibility', 'visible')
     }
-  }, [radarOn, currentFrame, weatherFrames])
+  }, [mapReady, radarOn, currentFrame, weatherFrames])
 
   // Animation loop
   useEffect(() => {
