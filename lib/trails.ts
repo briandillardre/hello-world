@@ -65,9 +65,19 @@ const AMPLITUDE: Record<AssetType, number> = {
 
 const N_POINTS = 96
 
+// FNV-1a — tracks stay stable when the asset list reorders or grows
+function hashId(id: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
 export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
-  return assets.map((a, idx) => {
-    const rng = mulberry32(idx * 9277 + 12345)
+  return assets.map((a) => {
+    const rng = mulberry32(hashId(a.id))
     const amp = AMPLITUDE[a.type]
     const endLng = a.location?.lng ?? DEMO_MAP_CENTER[0]
     const endLat = a.location?.lat ?? DEMO_MAP_CENTER[1]
@@ -93,7 +103,7 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
       assetId: a.id,
       name: a.name,
       type: a.type,
-      color: TRAIL_PALETTE[idx % TRAIL_PALETTE.length],
+      color: TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
       points: pts,
     }
   })

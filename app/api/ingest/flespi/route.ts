@@ -4,9 +4,14 @@ import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 function verifyToken(request: NextRequest): boolean {
   const expected = process.env.FLESPI_WEBHOOK_TOKEN
-  if (!expected) return true // demo mode — accept
+  // Fail closed: with a real database but no webhook token configured,
+  // reject rather than accept unauthenticated location writes.
+  if (!expected) return isMock
 
   const token = request.headers.get('x-flespi-token') ?? ''
   if (!token) return false
@@ -38,9 +43,6 @@ export async function POST(request: NextRequest) {
   if (normalized.length === 0) {
     return NextResponse.json({ error: 'No valid messages (need ident + position)' }, { status: 422 })
   }
-
-  const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
   if (isMock) {
     return NextResponse.json({

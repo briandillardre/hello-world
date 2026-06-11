@@ -85,7 +85,7 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company }: Comm
 
         <div className="hidden sm:flex items-center">
           <Chip label="Assets" value={`${kpis.assetsOnline}/${kpis.assetsTotal}`} />
-          <Chip label="Equip running" value={`${kpis.equipmentRunning}`} tone="amber" />
+          <Chip label="Moving" value={`${kpis.equipmentRunning}`} tone="amber" />
           <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" />
           <Chip label="Sites" value={`${kpis.sites}`} />
           <Chip label="Alerts" value={`${kpis.activeAlerts}`} tone={kpis.activeAlerts > 0 ? 'alert' : 'ink'} />

@@ -1,13 +1,15 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { isQboConfigured, buildAuthorizeUrl } from '@/lib/qbo'
 
-export async function GET() {
+// Must never be statically prerendered: the redirect target depends on the
+// request origin and the OAuth state must be unique per visitor.
+export const dynamic = 'force-dynamic'
+
+export async function GET(request: NextRequest) {
   if (!isQboConfigured) {
     // Demo mode: nothing to connect to — bounce back to the accounting page.
-    return NextResponse.redirect(
-      new URL('/accounting?demo=1', process.env.QBO_REDIRECT_URI ?? 'http://localhost:3000')
-    )
+    return NextResponse.redirect(new URL('/accounting?demo=1', request.url))
   }
 
   const state = randomBytes(16).toString('hex')

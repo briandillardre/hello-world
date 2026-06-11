@@ -38,6 +38,13 @@ export const MOCK_SITE_DEVICES: SiteDevice[] = [
   { id: 'wx-1', type: 'weather_station', name: 'Site Weather', lng: -86.7812, lat: 36.1638, status: '78°F · 6mph · 0.00"', online: true },
 ]
 
+// Popup markup is injected via maplibre's setHTML (innerHTML) — every
+// data-derived string must pass through here before interpolation.
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
 function bar(pct: number, color: string): string {
   const safe = Math.max(0, Math.min(100, pct))
   const fill = safe < 20 ? '#fb5d5d' : color
@@ -50,7 +57,7 @@ export function devicePopupHTML(d: SiteDevice): string {
   const meta = DEVICE_META[d.type]
   const head = `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #14506f">
       <span style="font-size:15px">${meta.emoji}</span>
-      <span style="font-family:Archivo,sans-serif;font-weight:800;font-size:13px;color:#e8f0f7">${d.name}</span>
+      <span style="font-family:Archivo,sans-serif;font-weight:800;font-size:13px;color:#e8f0f7">${esc(d.name)}</span>
     </div>`
 
   let body = ''
@@ -63,13 +70,13 @@ export function devicePopupHTML(d: SiteDevice): string {
       <div style="padding:8px 12px;font-size:11px;color:#9fb6cc">Tap to open full feed →</div>`
   } else if (d.type === 'fuel' || d.type === 'generator') {
     body = `<div style="padding:10px 12px">
-        <div style="font-family:Archivo;font-weight:900;font-size:22px;color:#e8f0f7">${d.value}%</div>
+        <div style="font-family:Archivo;font-weight:900;font-size:22px;color:#e8f0f7">${Number(d.value ?? 0)}%</div>
         ${bar(d.value ?? 0, meta.color)}
-        <div style="font-family:monospace;font-size:11px;color:#9fb6cc;margin-top:7px">${d.status}</div>
+        <div style="font-family:monospace;font-size:11px;color:#9fb6cc;margin-top:7px">${esc(d.status)}</div>
       </div>`
   } else {
     body = `<div style="padding:10px 12px">
-        <div style="font-family:monospace;font-size:12px;color:#e8f0f7">${d.status}</div>
+        <div style="font-family:monospace;font-size:12px;color:#e8f0f7">${esc(d.status)}</div>
         <div style="font-family:monospace;font-size:10px;color:#6f88a0;margin-top:4px">${d.online ? '● online' : '○ offline'}</div>
       </div>`
   }

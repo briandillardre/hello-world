@@ -124,11 +124,15 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const speedRef = useRef(pbSpeed)
   const tRef = useRef(pbT)
   const windowRef = useRef(rangeWindowSeconds(range))
+  // Click handlers are bound once in the init effect; read assets via ref so
+  // they see live data instead of the first render's array.
+  const assetsRef = useRef(assets)
   tracksRef.current = tracks
   filterRef.current = filter
   speedRef.current = pbSpeed
   tRef.current = pbT
   windowRef.current = rangeWindowSeconds(range)
+  assetsRef.current = assets
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
   const [base, setBase] = useState<BaseStyle>('dark')
@@ -299,7 +303,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       m.on('click', 'unclustered-circle', (e) => {
         const props = e.features?.[0]?.properties
         if (!props) return
-        const asset = assets.find((a) => a.id === props.id)
+        const asset = assetsRef.current.find((a) => a.id === props.id)
         if (asset) setSelectedAsset(asset)
       })
       m.on('click', 'clusters', (e) => {
@@ -354,6 +358,18 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     source?.setData(buildGeoJSON(assets, filter))
   }, [mapReady, assets, filter])
 
+  // Re-render geofences when the prop changes (e.g. a newly saved zone)
+  useEffect(() => {
+    if (!mapReady) return
+    const source = map.current?.getSource('geofences') as maplibregl.GeoJSONSource | undefined
+    source?.setData({
+      type: 'FeatureCollection',
+      features: geofences.map((g) => ({
+        type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color },
+      })),
+    })
+  }, [mapReady, geofences])
+
   // Show live pins vs trails vs heatmap based on the movement-display mode
   useEffect(() => {
     const m = map.current
@@ -365,17 +381,28 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
   }, [mapReady, trailMode])
 
-  // Push trail/heat/head geometry as time, filter, or mode changes
-  useEffect(() => {
+  // Write movement geometry straight into the map sources. Called from the
+  // RAF loop during playback (bypassing React) and from the effect below for
+  // discrete changes (seek, filter, mode).
+  const trailModeRef = useRef(trailMode)
+  trailModeRef.current = trailMode
+  const updateMovementSources = useCallback((t: number) => {
     const m = map.current
-    if (!mapReady || trailMode === 'off' || !m) return
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracks, filter, displayT))
-    if (trailMode === 'trails') {
-      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracks, filter, displayT))
+    const mode = trailModeRef.current
+    if (mode === 'off' || !m) return
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracksRef.current, filterRef.current, t))
+    if (mode === 'trails') {
+      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracksRef.current, filterRef.current, t))
     } else {
-      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(tracks, filter, displayT))
+      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(tracksRef.current, filterRef.current, t))
     }
-  }, [mapReady, trailMode, displayT, filter, tracks])
+  }, [])
+
+  // Push trail/heat/head geometry on discrete changes (seek, filter, mode)
+  useEffect(() => {
+    if (!mapReady) return
+    updateMovementSources(displayT)
+  }, [mapReady, trailMode, displayT, filter, tracks, updateMovementSources])
 
   // Fetch weather frames + conditions once
   useEffect(() => {
@@ -402,7 +429,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       return
     }
 
-    const url = weatherTileUrl(weatherFrames.host, currentFrame, 'radar')
+    const url = weatherTileUrl(weatherFrames.host, currentFrame)
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256 })
       // Draw radar above the basemap but beneath geofences/assets
@@ -415,23 +442,30 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     }
   }, [mapReady, radarOn, currentFrame, weatherFrames])
 
-  // Animation loop
+  // Animation loop: map sources update every frame (smooth movement), but
+  // React state — scrubber, labels, cost panel — only ~10Hz, so the whole
+  // overlay tree isn't re-rendered 60 times a second.
   useEffect(() => {
     if (!pbPlaying) return
     let raf = 0
     let last = performance.now()
+    let lastReact = 0
     const tick = (now: number) => {
       const dt = (now - last) / 1000
       last = now
       let next = tRef.current + (dt * speedRef.current) / windowRef.current
       if (next >= 1) { next = 1; setPbPlaying(false) }
       tRef.current = next
-      setPbT(next)
+      updateMovementSources(next)
+      if (next >= 1 || now - lastReact > 100) {
+        lastReact = now
+        setPbT(next)
+      }
       if (next < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [pbPlaying])
+  }, [pbPlaying, updateMovementSources])
 
   const handleRange = useCallback((r: TimeRange) => {
     setRange(r)
@@ -486,8 +520,12 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     map.current.off('click', handleDrawClick)
     map.current.getCanvas().style.cursor = ''
     setIsDrawing(false)
-    if (drawCoords.current.length < 3) return null
-    return { type: 'Polygon', coordinates: [[...drawCoords.current, drawCoords.current[0]]] }
+    const pts = drawCoords.current
+    drawCoords.current = []
+    const src = map.current.getSource(drawPreviewSource.current) as maplibregl.GeoJSONSource | undefined
+    src?.setData({ type: 'FeatureCollection', features: [] })
+    if (pts.length < 3) return null
+    return { type: 'Polygon', coordinates: [[...pts, pts[0]]] }
   }, [handleDrawClick])
 
   const cancelDrawing = useCallback(() => {

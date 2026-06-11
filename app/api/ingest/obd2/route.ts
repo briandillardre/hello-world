@@ -4,16 +4,23 @@ import type { IngestObd2Payload } from '@/lib/types'
 
 const HMAC_SECRET = 'hammertrack-api-key-comparison'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 function verifyApiKey(request: NextRequest): boolean {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) return false
+  // Dedicated ingest credential — never the Supabase service-role key, which
+  // would hand every tracker integration full database access.
+  const expected = process.env.INGEST_API_KEY
+  // Demo mode accepts unauthenticated posts (nothing is persisted);
+  // with a real database but no key configured, fail closed.
+  if (!expected) return isMock
 
   const key = request.headers.get('x-api-key') ?? ''
   if (!key) return false
 
   try {
     const hashA = createHmac('sha256', HMAC_SECRET).update(key).digest()
-    const hashB = createHmac('sha256', HMAC_SECRET).update(serviceKey).digest()
+    const hashB = createHmac('sha256', HMAC_SECRET).update(expected).digest()
     return timingSafeEqual(hashA, hashB)
   } catch {
     return false
@@ -41,9 +48,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid coordinates' }, { status: 422 })
   }
 
-  const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
-
   if (isMock) {
     return NextResponse.json({ ok: true, mode: 'demo', message: 'Demo mode: OBD2 data logged (not persisted)' })
   }
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
 
   const { data: asset } = await supabase
     .from('assets')
-    .select('id, company_id')
+    .select('id, company_id, metadata')
     .eq('tracker_id', tracker_id)
     .single()
 
@@ -74,11 +78,17 @@ export async function POST(request: NextRequest) {
     raw: { speed, odometer, engine_on, ...body },
   })
 
-  if (asset) {
+  // Merge telemetry into metadata — never replace the whole jsonb blob,
+  // and skip the write entirely when the payload carries neither field.
+  if (odometer !== undefined || engine_on !== undefined) {
     await supabase
       .from('assets')
       .update({
-        metadata: { odometer, engine_on },
+        metadata: {
+          ...((asset.metadata as Record<string, unknown> | null) ?? {}),
+          ...(odometer !== undefined ? { odometer } : {}),
+          ...(engine_on !== undefined ? { engine_on } : {}),
+        },
       })
       .eq('id', asset.id)
   }

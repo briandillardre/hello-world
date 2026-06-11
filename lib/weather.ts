@@ -1,8 +1,9 @@
 /**
  * Weather layer data — all free + keyless so it runs client-side in production.
  *
- * - Radar / satellite tiles: RainViewer public API. Returns timestamped past +
- *   nowcast frames, which the timeline slider scrubs through to animate weather.
+ * - Radar tiles: RainViewer public API. Timestamped past + nowcast frames;
+ *   the map shows the latest observation as a live overlay. (The "Satellite"
+ *   basemap is Esri aerial imagery, not RainViewer.)
  * - Current conditions + thunderstorm flag: Open-Meteo.
  */
 
@@ -15,7 +16,6 @@ export interface RadarFrame {
 export interface WeatherFrames {
   host: string
   radar: RadarFrame[]
-  satellite: RadarFrame[]
 }
 
 export async function fetchWeatherFrames(): Promise<WeatherFrames | null> {
@@ -28,20 +28,16 @@ export async function fetchWeatherFrames(): Promise<WeatherFrames | null> {
       ...(j.radar?.past ?? []).map((f: { time: number; path: string }) => ({ time: f.time, path: f.path, kind: 'past' as const })),
       ...(j.radar?.nowcast ?? []).map((f: { time: number; path: string }) => ({ time: f.time, path: f.path, kind: 'nowcast' as const })),
     ]
-    const satellite: RadarFrame[] = (j.satellite?.infrared ?? []).map(
-      (f: { time: number; path: string }) => ({ time: f.time, path: f.path, kind: 'past' as const })
-    )
-    return { host, radar, satellite }
+    return { host, radar }
   } catch {
     return null
   }
 }
 
-export function weatherTileUrl(host: string, frame: RadarFrame, kind: 'radar' | 'satellite'): string {
+export function weatherTileUrl(host: string, frame: RadarFrame): string {
   // RainViewer: {host}{path}/{size}/{z}/{x}/{y}/{color}/{smooth}_{snow}.png
-  const color = kind === 'radar' ? 4 : 0 // 4 = "The Weather Channel" palette, reads well on dark
-  const opts = kind === 'radar' ? '1_1' : '0_0'
-  return `${host}${frame.path}/256/{z}/{x}/{y}/${color}/${opts}.png`
+  // Color 4 = "The Weather Channel" palette, reads well on dark.
+  return `${host}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`
 }
 
 /** Index of the most recent "live" frame (latest past observation). */

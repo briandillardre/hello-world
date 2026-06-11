@@ -48,6 +48,9 @@ ok('status escalates as burn climbs', ['on_track', 'at_risk', 'over_budget'].inc
 const today1 = periodCost(p, 'today', 1).total
 const month1 = periodCost(p, '30d', 1).total
 ok('period cost scales ~30x for 30 days', month1 > today1 * 20, `${money(today1)} → ${money(month1)}`)
+// replaying Today to the end must land exactly on the live number
+ok('today replay capped at live', periodCost(p, 'today', 1).total === periodCost(p, 'live', 0).total,
+  money(periodCost(p, 'today', 1).total))
 ok('cost period labels', RANGE_COST_LABEL['30d'] === 'last 30 days' && RANGE_COST_LABEL.live === 'today')
 ok('scrubLabel live/today/30d', scrubLabel('live', 0) === 'Live' && scrubLabel('today', 0).includes('Today') && /\d{4}/.test(scrubLabel('30d', 0.5)),
   `${scrubLabel('today', 0.5)} | ${scrubLabel('30d', 0.5)}`)
@@ -59,10 +62,8 @@ const frames: RadarFrame[] = [
   { time: 300, path: '/v2/radar/300', kind: 'nowcast' },
 ]
 ok('liveFrameIndex picks last past frame', liveFrameIndex(frames) === 1, `idx ${liveFrameIndex(frames)}`)
-const url = weatherTileUrl('https://host', frames[0], 'radar')
+const url = weatherTileUrl('https://host', frames[0])
 ok('radar tile url well-formed', url === 'https://host/v2/radar/100/256/{z}/{x}/{y}/4/1_1.png', url)
-const surl = weatherTileUrl('https://host', frames[0], 'satellite')
-ok('satellite tile url well-formed', surl.endsWith('/0/0_0.png'))
 
 // ── Site devices ──
 ok('site devices present', MOCK_SITE_DEVICES.length >= 5, `${MOCK_SITE_DEVICES.length}`)

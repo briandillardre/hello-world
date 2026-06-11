@@ -29,10 +29,14 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const pathname = request.nextUrl.pathname
 
+  // Note: /command is intentionally NOT public — with a real database it shows
+  // live fleet positions and job costs. (Demo mode never reaches this check.)
+  // API routes are public only if they carry their own auth (webhook token /
+  // ingest key / OAuth state); everything else under /api requires a session.
   const isPublic = pathname === '/' ||
     pathname.startsWith('/login') || pathname.startsWith('/register') ||
     pathname.startsWith('/pricing') || pathname.startsWith('/demo') ||
-    pathname.startsWith('/command') || pathname.startsWith('/api')
+    pathname.startsWith('/api/ingest/') || pathname === '/api/qbo/callback'
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
   }

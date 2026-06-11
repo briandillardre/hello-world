@@ -56,7 +56,11 @@ export interface PeriodCost { labor: number; equip: number; total: number }
 /** Cost over the selected range up to scrub position t (live = today so far). */
 export function periodCost(p: Project, range: TimeRange, t: number): PeriodCost {
   const days = rangeDays(range)
-  const f = range === 'live' ? LIVE_DAY_FRACTION : t
+  // "Today" can't accrue past the live position — the rest of the day hasn't
+  // happened yet, so replaying to the end must match the live number.
+  const f = range === 'live' ? LIVE_DAY_FRACTION
+    : range === 'today' ? Math.min(t, LIVE_DAY_FRACTION)
+    : t
   const labor = p.crewSize * WORKDAY_HOURS * p.laborRate * days * f
   const equip = p.equipCostPerDay * days * f
   return { labor, equip, total: labor + equip }

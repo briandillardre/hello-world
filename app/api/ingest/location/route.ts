@@ -4,16 +4,23 @@ import type { IngestLocationPayload } from '@/lib/types'
 
 const HMAC_SECRET = 'hammertrack-api-key-comparison'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 function verifyApiKey(request: NextRequest): boolean {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) return false
+  // Dedicated ingest credential — never the Supabase service-role key, which
+  // would hand every tracker integration full database access.
+  const expected = process.env.INGEST_API_KEY
+  // Demo mode accepts unauthenticated posts (nothing is persisted);
+  // with a real database but no key configured, fail closed.
+  if (!expected) return isMock
 
   const key = request.headers.get('x-api-key') ?? ''
   if (!key) return false
 
   try {
     const hashA = createHmac('sha256', HMAC_SECRET).update(key).digest()
-    const hashB = createHmac('sha256', HMAC_SECRET).update(serviceKey).digest()
+    const hashB = createHmac('sha256', HMAC_SECRET).update(expected).digest()
     return timingSafeEqual(hashA, hashB)
   } catch {
     return false
@@ -40,9 +47,6 @@ export async function POST(request: NextRequest) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return NextResponse.json({ error: 'Invalid coordinates' }, { status: 422 })
   }
-
-  const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
   if (isMock) {
     return NextResponse.json({ ok: true, mode: 'demo', message: 'Demo mode: location logged (not persisted)' })
