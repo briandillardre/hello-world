@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Slider } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -118,11 +119,12 @@ export default function GasGuesserGame({ onComplete }: Props) {
         <Text style={styles.guessLabel}>Your guess:</Text>
         <Text style={styles.guessValue}>${guess.toFixed(2)}/gal</Text>
         <Slider
+          key={roundIndex}
           style={styles.slider}
           minimumValue={2.00}
           maximumValue={7.00}
           step={0.01}
-          value={guess}
+          value={3.50}
           onValueChange={setGuess}
           minimumTrackTintColor="#7c3aed"
           maximumTrackTintColor="#2d2d5a"

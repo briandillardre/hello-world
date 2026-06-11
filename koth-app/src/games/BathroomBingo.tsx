@@ -42,21 +42,22 @@ export default function BathroomBingo({ onComplete }: Props) {
   const [items] = useState(() => shuffle(BINGO_ITEMS).slice(0, GRID * GRID));
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [hasBingo, setHasBingo] = useState(false);
-  const [phase, setPhase] = useState<'ready' | 'playing' | 'done'>('ready');
+  const [phase, setPhase] = useState<'ready' | 'playing'>('ready');
 
-  const toggleItem = useCallback((idx: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setChecked(prev => {
-      const next = new Set(prev);
+  const toggleItem = useCallback(
+    (idx: number) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const next = new Set(checked);
       if (next.has(idx)) next.delete(idx);
       else next.add(idx);
+      setChecked(next);
       if (!hasBingo && checkBingo(next, GRID)) {
         setHasBingo(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      return next;
-    });
-  }, [hasBingo]);
+    },
+    [checked, hasBingo],
+  );
 
   const handleSubmit = useCallback(() => {
     const baseScore = checked.size * 8;

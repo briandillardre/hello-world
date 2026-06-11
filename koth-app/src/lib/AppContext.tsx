@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, GameScore, Review } from '../types';
 import { UserLocation, getCurrentLocation, requestLocationPermission } from './location';
-import { getProfile, saveProfile, addScore, addCheckIn, getLocalReviews, saveReview } from './storage';
+import {
+  getProfile,
+  createProfile as createProfileInStorage,
+  addScore,
+  addCheckIn,
+  getLocalReviews,
+  saveReview,
+} from './storage';
 import { MOCK_REST_AREAS, MOCK_REVIEWS } from '../data/mockData';
 import type { RestArea, CheckIn } from '../types';
 
@@ -28,9 +35,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const stored = await getProfile();
-      setProfile(stored);
-      setIsLoadingProfile(false);
+      try {
+        const stored = await getProfile();
+        setProfile(stored);
+      } finally {
+        setIsLoadingProfile(false);
+      }
     })();
     (async () => {
       const local = await getLocalReviews();
@@ -40,10 +50,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function initLocation() {
-    const granted = await requestLocationPermission();
-    if (granted) {
-      const loc = await getCurrentLocation();
-      setUserLocation(loc);
+    try {
+      const granted = await requestLocationPermission();
+      if (granted) {
+        const loc = await getCurrentLocation();
+        setUserLocation(loc);
+      }
+    } catch {
+      // Location is optional — the app still works without it.
     }
   }
 
@@ -53,8 +67,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createProfile = useCallback(async (username: string) => {
-    const { createProfile: create } = await import('./storage');
-    const p = await create(username);
+    const p = await createProfileInStorage(username);
     setProfile(p);
   }, []);
 

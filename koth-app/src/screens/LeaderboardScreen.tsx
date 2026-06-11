@@ -93,6 +93,7 @@ export default function LeaderboardScreen() {
         )}
         ItemSeparatorComponent={() => <View style={styles.sep} />}
         style={styles.list}
+        contentContainerStyle={styles.listContent}
       />
     </View>
   );
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 8,
   },
-  crownScroll: { maxHeight: 120 },
+  crownScroll: { maxHeight: 120, flexGrow: 0 },
   crownScrollContent: { paddingHorizontal: 12, gap: 8 },
   crownCard: {
     backgroundColor: '#1e1e3a',
@@ -145,6 +146,7 @@ const styles = StyleSheet.create({
   gameTabEmoji: { fontSize: 18 },
   gameTabName: { color: '#64748b', fontSize: 10, fontWeight: '600', marginTop: 2 },
   list: { flex: 1, paddingHorizontal: 12 },
+  listContent: { paddingBottom: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

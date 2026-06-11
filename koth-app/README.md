@@ -21,7 +21,10 @@ Tap fast, guess gas prices, and play Bathroom Bingo to claim the crown at rest s
 
 ---
 
-## Quick Start
+## Quick Start (Android via Expo Go)
+
+1. Install [Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent) on your Android phone.
+2. On your computer (phone and computer must be on the same Wi-Fi):
 
 ```bash
 cd koth-app
@@ -29,15 +32,21 @@ npm install
 npx expo start
 ```
 
-Scan the QR code with **Expo Go** on your phone. You're in.
+3. Scan the QR code in the terminal with the Expo Go app. You're in.
 
-### Build a real APK
+> If your network blocks device-to-device traffic (hotel/office Wi-Fi), use a tunnel:
+> `npx expo start --tunnel`
+
+### Build a real APK (installable without Expo Go)
 
 ```bash
 npm install -g eas-cli
 eas login
+cd koth-app
 eas build --platform android --profile preview
 ```
+
+When the build finishes, EAS prints a URL — open it on your phone and download/install the APK. Build profiles live in `eas.json`.
 
 ---
 

@@ -7,8 +7,12 @@ const KEYS = {
 };
 
 export async function getProfile(): Promise<UserProfile | null> {
-  const raw = await AsyncStorage.getItem(KEYS.PROFILE);
-  return raw ? JSON.parse(raw) : null;
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.PROFILE);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function saveProfile(profile: UserProfile): Promise<void> {
@@ -62,8 +66,12 @@ export async function addCheckIn(profile: UserProfile, checkIn: CheckIn): Promis
 }
 
 export async function getLocalReviews(): Promise<Review[]> {
-  const raw = await AsyncStorage.getItem(KEYS.REVIEWS);
-  return raw ? JSON.parse(raw) : [];
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.REVIEWS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function saveReview(review: Review): Promise<void> {

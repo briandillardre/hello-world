@@ -27,7 +27,7 @@ export const MOCK_REST_AREAS: RestArea[] = [
     highway: 'I-24',
     direction: 'Northbound',
     amenities: ['Restrooms', 'Vending', 'Dog Walk', 'Picnic Tables'],
-    funFact: 'Perched at 1,900 ft — trucks use runaway ramps more often than they'd admit',
+    funFact: "Perched at 1,900 ft — trucks use runaway ramps more often than they'd admit",
     avgRating: 3.2,
     reviewCount: 31,
     topReview: 'Nothing like a mountain bathroom that smells like 1,000 truckers. Spiritual experience.',

@@ -1,8 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Animated, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useApp } from '../lib/AppContext';
-import { GameScore } from '../types';
 
 interface Props {
   restAreaId: string;
@@ -11,8 +9,7 @@ interface Props {
 
 const GAME_DURATION = 10;
 
-export default function TruckerTapGame({ restAreaId, onComplete }: Props) {
-  const { profile } = useApp();
+export default function TruckerTapGame({ onComplete }: Props) {
   const [phase, setPhase] = useState<'ready' | 'playing' | 'done'>('ready');
   const [taps, setTaps] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
@@ -35,7 +32,14 @@ export default function TruckerTapGame({ restAreaId, onComplete }: Props) {
     }, 1000);
   }, []);
 
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+  // Clean up the countdown and any in-flight tap animation on unmount.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      scaleAnim.stopAnimation();
+    },
+    [scaleAnim],
+  );
 
   const handleTap = useCallback(() => {
     if (phase !== 'playing') return;

@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  FlatList,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -31,7 +30,7 @@ function StarRow({ label, value }: { label: string; value: number }) {
 export default function RestAreaScreen() {
   const route = useRoute<RouteT>();
   const navigation = useNavigation<Nav>();
-  const { restAreas, userLocation, profile, recordCheckIn, reviews } = useApp();
+  const { restAreas, userLocation, profile, recordCheckIn, reviews, refreshLocation } = useApp();
   const [activeTab, setActiveTab] = useState<'info' | 'reviews' | 'games'>('info');
   const [checkedIn, setCheckedIn] = useState(false);
 
@@ -47,10 +46,27 @@ export default function RestAreaScreen() {
   const myScore = profile ? getRestAreaScore(profile, restArea.id) : 0;
 
   const handleCheckIn = useCallback(async () => {
+    if (!userLocation) {
+      Alert.alert(
+        'Location Unavailable',
+        "We can't see where you are. Make sure location permission is enabled for Expo Go and GPS is on, then try again.",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry Location', onPress: () => refreshLocation() },
+        ],
+      );
+      return;
+    }
     if (!isNear) {
+      const away =
+        distKm !== null
+          ? distKm < 1
+            ? `${(distKm * 1000).toFixed(0)}m`
+            : `${distKm.toFixed(1)}km`
+          : 'an unknown distance';
       Alert.alert(
         'Too Far Away',
-        `You need to be within ${CHECK_IN_RADIUS_KM * 1000}m to check in. You're ${distKm ? (distKm * 1000).toFixed(0) : '?'}m away.`,
+        `You need to be within ${CHECK_IN_RADIUS_KM * 1000}m to check in. You're ${away} away.`,
       );
       return;
     }
@@ -66,7 +82,7 @@ export default function RestAreaScreen() {
     await recordCheckIn(checkIn);
     setCheckedIn(true);
     Alert.alert('Checked In! 🎉', `+50 points for visiting ${restArea.name}!`);
-  }, [isNear, profile, restArea, distKm, recordCheckIn]);
+  }, [userLocation, isNear, profile, restArea, distKm, recordCheckIn, refreshLocation]);
 
   const handlePlayGame = useCallback(
     (gameId: GameId) => {
@@ -104,7 +120,8 @@ export default function RestAreaScreen() {
         {/* Check-in button */}
         <TouchableOpacity
           style={[styles.checkInBtn, isNear && styles.checkInBtnActive, checkedIn && styles.checkInBtnDone]}
-          onPress={checkedIn ? undefined : handleCheckIn}
+          onPress={handleCheckIn}
+          disabled={checkedIn}
         >
           <Text style={styles.checkInText}>
             {checkedIn

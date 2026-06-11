@@ -138,9 +138,9 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Recent Games</Text>
           {recentScores.map((s, i) => (
             <View key={s.id ?? i} style={styles.scoreRow}>
-              <Text style={styles.scoreGameEmoji}>{GAMES_INFO[s.gameId].emoji}</Text>
+              <Text style={styles.scoreGameEmoji}>{GAMES_INFO[s.gameId]?.emoji ?? '🎮'}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.scoreGame}>{GAMES_INFO[s.gameId].name}</Text>
+                <Text style={styles.scoreGame}>{GAMES_INFO[s.gameId]?.name ?? s.gameId}</Text>
                 <Text style={styles.scoreTimestamp}>
                   {new Date(s.timestamp).toLocaleDateString()}
                 </Text>

@@ -67,15 +67,17 @@ export interface CheckIn {
   pointsEarned: number;
 }
 
-export type RootStackParamList = {
-  Main: undefined;
-  RestArea: { restAreaId: string };
-  Game: { gameId: GameId; restAreaId: string };
-  AddReview: { restAreaId: string };
-};
+import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type TabParamList = {
   Map: undefined;
   Leaderboard: undefined;
   Profile: undefined;
+};
+
+export type RootStackParamList = {
+  Main: NavigatorScreenParams<TabParamList> | undefined;
+  RestArea: { restAreaId: string };
+  Game: { gameId: GameId; restAreaId: string };
+  AddReview: { restAreaId: string };
 };

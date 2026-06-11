@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -118,6 +118,9 @@ function buildMapHtml(restAreas: RestArea[], userLat?: number, userLng?: number)
     });
 
     map.on('load', () => {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+      }
       MARKERS.forEach(ra => {
         const el = document.createElement('div');
         el.className = ra.isKing ? 'marker-crown' : 'marker-pin';
@@ -127,7 +130,7 @@ function buildMapHtml(restAreas: RestArea[], userLat?: number, userLng?: number)
           .setHTML(\`
             <div class="popup-box">
               <div class="popup-title">\${ra.isKing ? '👑 ' : ''}\${ra.name}</div>
-              <div class="popup-sub">\${ra.highway} · \${ra.country === 'US' ? ra.country : ra.country}</div>
+              <div class="popup-sub">\${ra.highway} · \${ra.country}</div>
               \${ra.isKing ? '<div class="popup-king">King: @' + ra.kingName + '</div>' : ''}
               <button class="popup-btn" onclick="selectRA('\${ra.id}')">View Rest Stop →</button>
             </div>
@@ -162,11 +165,18 @@ export default function MapScreen() {
   const navigation = useNavigation<Nav>();
   const { restAreas, userLocation, refreshLocation, profile, isLoadingProfile } = useApp();
   const webViewRef = useRef<WebView>(null);
+  const [isMapLoading, setIsMapLoading] = useState(true);
 
-  const html = buildMapHtml(
-    restAreas,
-    userLocation?.lat,
-    userLocation?.lng,
+  // Safety net: never leave the loading overlay up forever if the CDN is slow/blocked.
+  useEffect(() => {
+    if (!isMapLoading) return;
+    const timeout = setTimeout(() => setIsMapLoading(false), 12000);
+    return () => clearTimeout(timeout);
+  }, [isMapLoading]);
+
+  const html = useMemo(
+    () => buildMapHtml(restAreas, userLocation?.lat, userLocation?.lng),
+    [restAreas, userLocation?.lat, userLocation?.lng],
   );
 
   const onMessage = useCallback(
@@ -175,9 +185,11 @@ export default function MapScreen() {
         const msg = JSON.parse(event.nativeEvent.data);
         if (msg.type === 'SELECT_REST_AREA') {
           navigation.navigate('RestArea', { restAreaId: msg.id });
+        } else if (msg.type === 'MAP_READY') {
+          setIsMapLoading(false);
         }
       } catch {
-        // ignore
+        // ignore malformed messages
       }
     },
     [navigation],
@@ -199,9 +211,22 @@ export default function MapScreen() {
         style={styles.map}
         onMessage={onMessage}
         javaScriptEnabled
+        domStorageEnabled
         originWhitelist={['*']}
         mixedContentMode="always"
+        allowUniversalAccessFromFileURLs
+        allowFileAccessFromFileURLs
+        onLoadStart={() => setIsMapLoading(true)}
+        onError={() => setIsMapLoading(false)}
       />
+
+      {/* Map loading overlay (MapLibre JS comes from a CDN) */}
+      {isMapLoading && (
+        <View style={styles.mapLoading} pointerEvents="none">
+          <ActivityIndicator size="large" color="#7c3aed" />
+          <Text style={styles.mapLoadingText}>Loading the kingdom map…</Text>
+        </View>
+      )}
 
       {/* Header overlay */}
       <View style={styles.header} pointerEvents="none">
@@ -222,7 +247,7 @@ export default function MapScreen() {
       {!profile && (
         <TouchableOpacity
           style={styles.profileBanner}
-          onPress={() => navigation.navigate('Main')}
+          onPress={() => navigation.navigate('Main', { screen: 'Profile' })}
         >
           <Text style={styles.profileBannerText}>
             👆 Set your username to claim crowns
@@ -242,8 +267,15 @@ const styles = StyleSheet.create({
     top: Platform.OS === 'ios' ? 56 : 16,
     left: 16,
     right: 16,
-    pointerEvents: 'none',
   },
+  mapLoading: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#1a1a2e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  mapLoadingText: { color: '#94a3b8', fontSize: 13 },
   headerInner: {
     backgroundColor: 'rgba(26, 26, 46, 0.88)',
     borderRadius: 12,
