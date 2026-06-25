@@ -4,6 +4,8 @@ import { generateTracks, trailUpTo, positionAt, clockLabel, rangeLabel, scrubLab
 import { PROJECTS, projectCost, periodCost, RANGE_COST_LABEL, money } from '../lib/projects'
 import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
 import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
+import { MOCK_GEOFENCES } from '../lib/mock-data'
+import { geofencePresence, presencePopupHTML } from '../lib/site-presence'
 
 let fails = 0
 function ok(name: string, cond: boolean, detail = '') {
@@ -72,6 +74,16 @@ const cam = MOCK_SITE_DEVICES.find((d) => d.type === 'camera')!
 ok('camera popup renders snapshot + name', devicePopupHTML(cam).includes(cam.name) && devicePopupHTML(cam).includes('LIVE'))
 const fuel = MOCK_SITE_DEVICES.find((d) => d.type === 'fuel')!
 ok('fuel popup shows level %', devicePopupHTML(fuel).includes(`${fuel.value}%`))
+
+// ── Geofence presence / in-zone tracking ──
+const river = MOCK_GEOFENCES.find((g) => g.name === 'Riverfront Tower')!
+const maple = MOCK_GEOFENCES.find((g) => g.name === 'Maple St Grading')!
+const rp = geofencePresence(river, MOCK_ASSETS)
+const mp = geofencePresence(maple, MOCK_ASSETS)
+ok('Riverfront has assets on site', rp.total > 0, `${rp.total}`)
+ok('Maple St has assets on site', mp.total > 0, `${mp.total}`)
+ok('zones do not double-count same asset', !rp.insideIds.some((id) => mp.insideIds.includes(id)))
+ok('presence popup shows site + cost', presencePopupHTML(river, rp).includes('Riverfront') && presencePopupHTML(river, rp).includes('Cost today'))
 
 console.log(fails === 0 ? '\nALL LOGIC CHECKS PASSED' : `\n${fails} CHECK(S) FAILED`)
 process.exit(fails === 0 ? 0 : 1)

@@ -131,41 +131,41 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
 
 export const MOCK_GEOFENCES: Geofence[] = [
   {
-    id: 'fence-1', company_id: 'mock-company-1', name: 'Main Site',
-    color: '#F59E0B',
+    id: 'fence-1', company_id: 'mock-company-1', name: 'Riverfront Tower',
+    color: '#ff9e16',
     created_at: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7865, 36.1600], [-86.7755, 36.1600],
-        [-86.7755, 36.1670], [-86.7865, 36.1670],
-        [-86.7865, 36.1600],
+        [-86.7862, 36.1602], [-86.7813, 36.1602],
+        [-86.7813, 36.1652], [-86.7862, 36.1652],
+        [-86.7862, 36.1602],
       ]],
     },
   },
   {
-    id: 'fence-2', company_id: 'mock-company-1', name: 'Equipment Yard',
-    color: '#3B82F6',
+    id: 'fence-2', company_id: 'mock-company-1', name: 'Maple St Grading',
+    color: '#2dd4bf',
     created_at: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7810, 36.1640], [-86.7780, 36.1640],
-        [-86.7780, 36.1660], [-86.7810, 36.1660],
-        [-86.7810, 36.1640],
+        [-86.7811, 36.1605], [-86.7762, 36.1605],
+        [-86.7762, 36.1668], [-86.7811, 36.1668],
+        [-86.7811, 36.1605],
       ]],
     },
   },
   {
-    id: 'fence-3', company_id: 'mock-company-1', name: 'Office Trailer',
-    color: '#10B981',
+    id: 'fence-3', company_id: 'mock-company-1', name: 'Equipment Yard',
+    color: '#60a5fa',
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7835, 36.1608], [-86.7820, 36.1608],
-        [-86.7820, 36.1618], [-86.7835, 36.1618],
-        [-86.7835, 36.1608],
+        [-86.7788, 36.1656], [-86.7768, 36.1656],
+        [-86.7768, 36.1667], [-86.7788, 36.1667],
+        [-86.7788, 36.1656],
       ]],
     },
   },

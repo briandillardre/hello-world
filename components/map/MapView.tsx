@@ -15,6 +15,7 @@ import {
 } from '@/lib/weather'
 import { PROJECTS } from '@/lib/projects'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
+import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
@@ -327,7 +328,19 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           .addTo(m)
       })
 
-      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon']) {
+      // Geofence zone → live presence + cost popover
+      m.on('click', 'geofence-fill', (e) => {
+        const id = e.features?.[0]?.properties?.id
+        const fence = geofences.find((g) => g.id === id)
+        if (!fence) return
+        const presence = geofencePresence(fence, assetsRef.current)
+        new maplibregl.Popup({ closeButton: true, maxWidth: '240px' })
+          .setLngLat(e.lngLat)
+          .setHTML(presencePopupHTML(fence, presence))
+          .addTo(m)
+      })
+
+      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
