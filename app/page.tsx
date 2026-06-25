@@ -88,9 +88,9 @@ export default function HomePage() {
             </Link>
             <Link
               href="/map"
-              className="font-display font-bold rounded-xl px-6 py-3.5 bg-white/[0.03] border border-navy-700 hover:bg-white/[0.06] transition-colors inline-flex items-center justify-center"
+              className="font-display font-bold rounded-xl px-6 py-3.5 bg-teal/[0.08] border border-teal/40 text-teal hover:bg-teal/[0.15] transition-colors inline-flex items-center justify-center gap-2"
             >
-              See live demo
+              <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" /> See the live map
             </Link>
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
