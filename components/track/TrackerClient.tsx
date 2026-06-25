@@ -2,7 +2,7 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle } from 'lucide-react'
+import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle, Navigation, RotateCcw } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,13 +45,19 @@ export function TrackerClient() {
   const ready = useRef(false)
   const watchId = useRef<number | null>(null)
   const trail = useRef<[number, number][]>([])
+  const lastPos = useRef<[number, number] | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wakeLock = useRef<any>(null)
 
   const [name, setName] = useState('')
   const [tracking, setTracking] = useState(false)
   const [pos, setPos] = useState<{ speed: number; accuracy: number } | null>(null)
   const [dist, setDist] = useState(0)
+  const [topSpeed, setTopSpeed] = useState(0)
   const [start, setStart] = useState<number | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [firstFix, setFirstFix] = useState(false)
+  const [summary, setSummary] = useState<{ duration: number; miles: string; topSpeed: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
@@ -100,6 +106,22 @@ export function TrackerClient() {
     return () => clearInterval(id)
   }, [tracking, start])
 
+  // Keep the screen awake while on the clock — without this, the phone dims and
+  // the OS suspends GPS. Re-acquire when the tab returns to the foreground.
+  const acquireWake = useCallback(async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wl = (navigator as any).wakeLock
+      if (wl) wakeLock.current = await wl.request('screen')
+    } catch { /* not supported / denied — fine */ }
+  }, [])
+  useEffect(() => {
+    if (!tracking) return
+    const onVis = () => { if (document.visibilityState === 'visible') acquireWake() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [tracking, acquireWake])
+
   const onPos = useCallback((p: GeolocationPosition) => {
     const lng = p.coords.longitude
     const lat = p.coords.latitude
@@ -108,7 +130,10 @@ export function TrackerClient() {
     const prev = trail.current[trail.current.length - 1]
     if (prev) setDist((d) => d + haversine(prev, [lng, lat]))
     trail.current.push([lng, lat])
+    lastPos.current = [lng, lat]
     setPos({ speed, accuracy })
+    setTopSpeed((t) => Math.max(t, speed))
+    setFirstFix(true)
     const m = map.current
     if (m && ready.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,23 +151,35 @@ export function TrackerClient() {
     }
     localStorage.setItem('ht-emp-name', name || 'Me')
     setErr(null)
+    setSummary(null)
     trail.current = []
+    lastPos.current = null
     setDist(0)
+    setTopSpeed(0)
     setPos(null)
+    setFirstFix(false)
     setStart(Date.now())
     setElapsed(0)
     setTracking(true)
+    acquireWake()
     watchId.current = navigator.geolocation.watchPosition(
       onPos,
       (e) => setErr(e.message || 'Location blocked — allow location access for this site.'),
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 }
     )
-  }, [name, onPos])
+  }, [name, onPos, acquireWake])
 
   const clockOut = useCallback(() => {
     if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current)
     watchId.current = null
+    wakeLock.current?.release?.()
+    wakeLock.current = null
+    setSummary({ duration: elapsed, miles: (dist / 1609.34).toFixed(2), topSpeed })
     setTracking(false)
+  }, [elapsed, dist, topSpeed])
+
+  const recenter = useCallback(() => {
+    if (lastPos.current && map.current) map.current.easeTo({ center: lastPos.current, zoom: 16, duration: 500 })
   }, [])
 
   const miles = (dist / 1609.34).toFixed(2)
@@ -162,10 +199,22 @@ export function TrackerClient() {
       {/* map */}
       <div className="relative flex-1 min-h-0">
         <div ref={mapDiv} className="absolute inset-0" />
-        {!tracking && (
+        {!tracking && !summary && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none">
             <p className="font-mono text-[12px] text-faint bg-navy-950/70 px-3 py-1.5 rounded-full">Clock in to start tracking</p>
           </div>
+        )}
+        {tracking && !firstFix && (
+          <div className="absolute inset-0 grid place-items-center pointer-events-none">
+            <p className="font-mono text-[12px] text-teal bg-navy-950/80 px-3 py-1.5 rounded-full flex items-center gap-2">
+              <span className="w-3 h-3 border-2 border-teal border-t-transparent rounded-full animate-spin" /> Acquiring GPS…
+            </p>
+          </div>
+        )}
+        {(tracking || summary) && (
+          <button onClick={recenter} className="absolute bottom-3 right-3 grid place-items-center w-11 h-11 rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 text-teal active:scale-95" aria-label="Recenter">
+            <Navigation className="h-5 w-5" />
+          </button>
         )}
       </div>
 
@@ -189,6 +238,20 @@ export function TrackerClient() {
               <Square className="h-5 w-5" /> Clock Out
             </button>
           </>
+        ) : summary ? (
+          <>
+            <div className="rounded-xl border border-teal/30 bg-teal/[0.06] p-3.5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-2">Shift complete</div>
+              <div className="grid grid-cols-3 gap-2">
+                <Stat icon={<Clock className="h-3.5 w-3.5" />} label="On clock" value={clock(summary.duration)} mono />
+                <Stat icon={<Route className="h-3.5 w-3.5" />} label="Distance" value={`${summary.miles} mi`} />
+                <Stat icon={<Gauge className="h-3.5 w-3.5" />} label="Top speed" value={`${summary.topSpeed}`} unit="mph" />
+              </div>
+            </div>
+            <button onClick={() => setSummary(null)} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
+              <RotateCcw className="h-5 w-5" /> Start new shift
+            </button>
+          </>
         ) : (
           <>
             <input
@@ -200,7 +263,7 @@ export function TrackerClient() {
             <button onClick={clockIn} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
               <Play className="h-5 w-5" /> Clock In & Track
             </button>
-            <p className="text-center font-mono text-[10px] text-faint">Keep this screen on while working — web tracking pauses when the phone locks.</p>
+            <p className="text-center font-mono text-[10px] text-faint">We keep the screen awake while you&apos;re on the clock. Full background tracking comes with the native app.</p>
           </>
         )}
       </div>

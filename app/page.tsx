@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, Users, Sparkles, Banknote } from 'lucide-react'
+import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, Users, Sparkles, Banknote, Package } from 'lucide-react'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { MapConsole } from '@/components/marketing/MapConsole'
@@ -127,6 +127,28 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="max-w-6xl mx-auto px-6 mt-16">
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Live in a day</p>
+          <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center">Three steps. No install crew.</h2>
+          <div className="grid sm:grid-cols-3 gap-4 mt-7">
+            {[
+              { n: '1', icon: Package, title: 'We ship the trackers', body: 'Plug the OBD2 into trucks, drop a GPS on equipment, stick a Bluetooth tag on tools. Crews clock in from their phones.' },
+              { n: '2', icon: MapPin, title: 'Everything appears on your map', body: 'Trucks, machines, tools, and people show up live within minutes of powering on — no IT, no setup crew.' },
+              { n: '3', icon: Bell, title: 'It watches and warns', body: 'After-hours theft texts, geofence-verified hours, and live job cost — automatically, the moment something moves.' },
+            ].map(({ n, icon: Icon, title, body }) => (
+              <div key={n} className="bg-navy-900 border border-navy-800 rounded-2xl p-6">
+                <div className="flex items-center gap-3 mb-3.5">
+                  <span className="grid place-items-center w-8 h-8 rounded-lg bg-amber/15 text-amber font-display font-black">{n}</span>
+                  <Icon className="h-5 w-5 text-teal" />
+                </div>
+                <h3 className="font-display font-bold text-base">{title}</h3>
+                <p className="text-[13.5px] text-faint mt-1.5">{body}</p>
+              </div>
+            ))}
           </div>
         </section>
 
