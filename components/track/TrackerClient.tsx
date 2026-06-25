@@ -62,6 +62,7 @@ export function TrackerClient() {
   // Init map (maplibre loaded client-side only)
   useEffect(() => {
     let cancelled = false
+    let ro: ResizeObserver | null = null
     ;(async () => {
       const maplibregl = (await import('maplibre-gl')).default
       if (cancelled || !mapDiv.current || map.current) return
@@ -80,9 +81,16 @@ export function TrackerClient() {
         m.addLayer({ id: 'me-halo', type: 'circle', source: 'me', paint: { 'circle-color': '#2dd4bf', 'circle-opacity': 0.18, 'circle-radius': 22 } })
         m.addLayer({ id: 'me-dot', type: 'circle', source: 'me', paint: { 'circle-color': '#2dd4bf', 'circle-radius': 8, 'circle-stroke-width': 3, 'circle-stroke-color': '#001523' } })
         ready.current = true
+        m.resize()
       })
+      // Keep the canvas matched to the container — fixes the "map only renders in a
+      // thin strip" bug when the map mounts before mobile layout settles.
+      ro = new ResizeObserver(() => map.current?.resize())
+      ro.observe(mapDiv.current)
+      requestAnimationFrame(() => map.current?.resize())
+      setTimeout(() => map.current?.resize(), 400)
     })()
-    return () => { cancelled = true; map.current?.remove(); map.current = null }
+    return () => { cancelled = true; ro?.disconnect(); map.current?.remove(); map.current = null }
   }, [])
 
   // On-the-clock timer
@@ -152,7 +160,7 @@ export function TrackerClient() {
       </div>
 
       {/* map */}
-      <div className="relative flex-1">
+      <div className="relative flex-1 min-h-0">
         <div ref={mapDiv} className="absolute inset-0" />
         {!tracking && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none">
