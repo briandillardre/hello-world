@@ -90,6 +90,24 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): 
   }
 }
 
+// Build label anchor points at the TOP edge of each geofence so the zone name
+// floats above the busy interior instead of being covered by clustered pins.
+function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: geofences.map((g) => {
+      const ring = g.geometry.coordinates[0] as [number, number][]
+      let minLng = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      for (const [lng, lat] of ring) {
+        if (lng < minLng) minLng = lng
+        if (lng > maxLng) maxLng = lng
+        if (lat > maxLat) maxLat = lat
+      }
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, color: g.color } }
+    }),
+  }
+}
+
 interface MapViewProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
@@ -202,11 +220,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       })
       m.addLayer({ id: 'geofence-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.1 } })
       m.addLayer({ id: 'geofence-outline', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [3, 2] } })
-      m.addLayer({
-        id: 'geofence-labels', type: 'symbol', source: 'geofences',
-        layout: { 'text-field': ['get', 'name'], 'text-size': 12, 'text-font': ['Open Sans SemiBold', 'Arial Unicode MS Bold'] },
-        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 1.5 },
-      })
+      // Labels anchored to the top edge of each zone (added last so they sit above pins)
+      m.addSource('geofence-label-pts', { type: 'geojson', data: geofenceLabelPoints(geofences) })
 
       // ── Trail / heatmap layers (hidden until a movement mode is on) ──
       m.addSource('trails', { type: 'geojson', data: trailsGeoJSON(tracksRef.current, filterRef.current, 0) })
@@ -295,6 +310,17 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         layout: { 'text-field': ['get', 'emoji'], 'text-size': 14, 'text-allow-overlap': true },
       })
 
+      // Zone labels — on top, anchored above the zone so pins never cover them
+      m.addLayer({
+        id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
+        layout: {
+          'text-field': ['get', 'name'], 'text-size': 13,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'bottom', 'text-offset': [0, -0.4], 'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001016', 'text-halo-width': 2.4 },
+      })
+
       // Draw preview
       m.addSource(drawPreviewSource.current, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({ id: 'draw-fill', type: 'fill', source: drawPreviewSource.current, paint: { 'fill-color': '#ff9e16', 'fill-opacity': 0.15 } })
@@ -381,6 +407,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color },
       })),
     })
+    ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences))
   }, [mapReady, geofences])
 
   // Show live pins vs trails vs heatmap based on the movement-display mode

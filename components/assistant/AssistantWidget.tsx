@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Sparkles, X, Send, HardHat } from 'lucide-react'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
@@ -12,6 +13,12 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Pages with the timeline bar at the bottom need the launcher lifted above it
+  const pathname = usePathname()
+  const overTimeline = pathname === '/map' || pathname === '/command'
+  const launcherPos = overTimeline
+    ? 'bottom-[190px] right-3 md:bottom-[120px] md:right-6'
+    : 'bottom-[84px] right-4 md:bottom-6 md:right-6'
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -44,7 +51,7 @@ export function AssistantWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-[84px] right-4 md:bottom-6 md:right-6 z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition"
+          className={`fixed ${launcherPos} z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
           aria-label="Ask HammerTrack AI"
         >
           <Sparkles className="h-5 w-5" /> Ask

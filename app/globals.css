@@ -14,10 +14,32 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* MapLibre GL overrides for touch-friendly controls */
+/* MapLibre GL overrides — touch-friendly + on-brand navy glass (not stark white) */
+.maplibregl-ctrl-group {
+  background: rgba(0, 21, 35, 0.82) !important;
+  border: 1px solid #14506f !important;
+  border-radius: 12px !important;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.7) !important;
+  overflow: hidden;
+}
 .maplibregl-ctrl-group button {
   width: 44px !important;
   height: 44px !important;
+  background-color: transparent !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid #0d3a52 !important;
+}
+.maplibregl-ctrl-group button:hover {
+  background-color: rgba(45, 212, 191, 0.12) !important;
+}
+/* Default control icons are dark (made for white bg) — invert to light teal-ish */
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(78%) sepia(12%) saturate(380%) hue-rotate(150deg) brightness(95%);
+}
+.maplibregl-ctrl-icon.maplibregl-ctrl-geolocate-active {
+  filter: invert(64%) sepia(86%) saturate(420%) hue-rotate(120deg) brightness(102%);
 }
 
 /* Dark-themed device popovers */
