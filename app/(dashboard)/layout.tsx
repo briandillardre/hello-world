@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/layout/Sidebar'
 import { BottomNav } from '@/components/layout/BottomNav'
+import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getAlertEvents } from '@/lib/db/alerts'
 
@@ -14,6 +15,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {children}
       </main>
       <BottomNav alertCount={unreadAlerts} />
+      <AssistantWidget />
     </div>
   )
 }

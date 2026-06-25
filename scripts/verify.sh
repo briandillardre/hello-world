@@ -25,7 +25,7 @@ pkill -9 -f "next-server" 2>/dev/null || true
 lsof -ti tcp:3000 2>/dev/null | xargs -r kill -9 2>/dev/null || true
 
 echo "▸ 3/3  Feature-logic checks"
-npx tsc scripts/verify-logic.ts lib/trails.ts lib/projects.ts lib/weather.ts lib/site-devices.ts lib/site-presence.ts lib/alerts-engine.ts lib/mock-data.ts lib/types.ts \
+npx tsc scripts/verify-logic.ts lib/trails.ts lib/projects.ts lib/weather.ts lib/site-devices.ts lib/site-presence.ts lib/assistant.ts lib/alerts-engine.ts lib/mock-data.ts lib/types.ts \
   --outDir /tmp/vout --module nodenext --moduleResolution nodenext --target es2020 --skipLibCheck >/dev/null 2>&1
 node /tmp/vout/scripts/verify-logic.js || fail=1
 

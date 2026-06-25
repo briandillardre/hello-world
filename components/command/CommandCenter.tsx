@@ -7,6 +7,7 @@ import { X } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { Logo } from '@/components/brand/Logo'
+import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
 const MapView = dynamic(() => import('@/components/map/MapView').then((m) => ({ default: m.MapView })), {
   ssr: false,
@@ -105,6 +106,8 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company }: Comm
           </Link>
         </div>
       </div>
+
+      <AssistantWidget />
     </div>
   )
 }

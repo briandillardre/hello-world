@@ -6,6 +6,8 @@ import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
 import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
 import { MOCK_GEOFENCES } from '../lib/mock-data'
 import { geofencePresence, presencePopupHTML } from '../lib/site-presence'
+import { MOCK_ALERTS } from '../lib/mock-data'
+import { answerQuestion } from '../lib/assistant'
 
 let fails = 0
 function ok(name: string, cond: boolean, detail = '') {
@@ -84,6 +86,18 @@ ok('Riverfront has assets on site', rp.total > 0, `${rp.total}`)
 ok('Maple St has assets on site', mp.total > 0, `${mp.total}`)
 ok('zones do not double-count same asset', !rp.insideIds.some((id) => mp.insideIds.includes(id)))
 ok('presence popup shows site + cost', presencePopupHTML(river, rp).includes('Riverfront') && presencePopupHTML(river, rp).includes('Cost today'))
+
+// ── Fleet assistant (grounded Q&A) ──
+const actx = { assets: MOCK_ASSETS, geofences: MOCK_GEOFENCES, projects: PROJECTS, alerts: MOCK_ALERTS }
+const aWho = answerQuestion("who's at Riverfront Tower?", actx).answer
+ok('assistant: who is at a site', /Riverfront/.test(aWho) && /(crew|No crew)/.test(aWho), aWho.slice(0, 60))
+const aEquip = answerQuestion('what equipment is at Maple St?', actx).answer
+ok('assistant: equipment at a site', /Maple/.test(aEquip), aEquip.slice(0, 60))
+const aLabor = answerQuestion('labor hours at Riverfront today?', actx)
+ok('assistant: labor hours grounded', /labor hours/.test(aLabor.answer) && typeof aLabor.facts.laborHours === 'number', `${aLabor.facts.laborHours}`)
+const aCost = answerQuestion("what's the cost at Riverfront?", actx)
+ok('assistant: cost grounded', typeof aCost.facts.today === 'number' && aCost.answer.includes('$'))
+ok('assistant: alerts answer', /alert|clear/i.test(answerQuestion('any theft alerts?', actx).answer))
 
 console.log(fails === 0 ? '\nALL LOGIC CHECKS PASSED' : `\n${fails} CHECK(S) FAILED`)
 process.exit(fails === 0 ? 0 : 1)
