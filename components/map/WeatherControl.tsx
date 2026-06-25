@@ -1,7 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'satellite'
@@ -31,20 +31,46 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
 }
 
 export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, top = 58 }: WeatherControlProps) {
-  return (
-    <div style={{ top }} className="absolute left-3 z-10 w-[188px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* conditions chip */}
-      {conditions && (
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
-          <span className="font-display font-bold text-[15px] text-ink">{weatherEmoji(conditions.code)} {conditions.tempF}°</span>
-          <span className="font-mono text-[10px] text-muted flex items-center gap-2">
-            <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
-            <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
-              <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
-            </span>
+  const [open, setOpen] = useState(false)
+  const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
+
+  // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles
+  if (!open) {
+    return (
+      <button
+        style={{ top }}
+        onClick={() => setOpen(true)}
+        className="absolute left-3 z-10 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
+      >
+        {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
+        {(radarOn || base === 'satellite') && (
+          <span className="flex items-center gap-1">
+            {radarOn && <CloudRain className="h-3.5 w-3.5 text-teal" />}
+            {base === 'satellite' && <Satellite className="h-3.5 w-3.5 text-teal" />}
           </span>
-        </div>
-      )}
+        )}
+        <Layers className="h-3.5 w-3.5 text-faint" />
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      {/* header — tap to collapse */}
+      <button onClick={() => setOpen(false)} className="w-full flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
+        <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>
+        <span className="font-mono text-[10px] text-muted flex items-center gap-2">
+          {conditions && (
+            <>
+              <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
+              <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
+                <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
+              </span>
+            </>
+          )}
+          <ChevronUp className="h-3.5 w-3.5" />
+        </span>
+      </button>
 
       {/* basemap segmented */}
       <div className="flex gap-1 p-1 border-b border-navy-800">
@@ -52,11 +78,8 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
         <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
       </div>
 
-      {/* radar toggle — always visible in live and timeline modes */}
-      <button
-        onClick={() => onRadar(!radarOn)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors"
-      >
+      {/* radar toggle */}
+      <button onClick={() => onRadar(!radarOn)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
         <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
           <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Rain radar
         </span>

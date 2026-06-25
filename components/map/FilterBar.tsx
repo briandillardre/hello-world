@@ -30,8 +30,8 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
             key={type}
             onClick={() => toggle(type)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 shadow-md backdrop-blur transition-all active:scale-95',
-              filter.has(type) ? color : 'bg-navy-950/70 border-navy-700 text-faint opacity-80'
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
+              filter.has(type) ? color : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
             )}
           >
             <span>{emoji}</span>

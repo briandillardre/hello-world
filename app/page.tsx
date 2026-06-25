@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight } from 'lucide-react'
+import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, Users, Sparkles, Banknote } from 'lucide-react'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { MapConsole } from '@/components/marketing/MapConsole'
@@ -25,6 +25,12 @@ const AI = [
     tag: 'LIVE',
   },
   {
+    icon: Sparkles,
+    title: 'Ask your fleet',
+    body: '"Who\'s at Maple St? What\'s it cost today?" Plain-English answers from your live data.',
+    tag: 'LIVE',
+  },
+  {
     icon: TrendingUp,
     title: 'Utilization insights',
     body: "Spots the idle machine you're paying for and the job that's eating equipment cost — in plain English.",
@@ -35,6 +41,8 @@ const AI = [
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live and clustered.' },
   { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site.' },
+  { icon: Users, title: 'Track crews, not just machines', body: 'Phone clock-in with GPS that follows the crew all shift — people and equipment on one map.' },
+  { icon: Banknote, title: 'Live job-site cost', body: 'Watch labor + equipment dollars stack up on each job in real time, against budget.' },
   { icon: Wrench, title: 'Maintenance built in', body: 'Service by engine hours, mileage, or days. Never miss an oil change.' },
   { icon: Calculator, title: 'QuickBooks native', body: 'Auto-allocate equipment cost to jobs and bill usage automatically.' },
 ]
@@ -68,7 +76,10 @@ export default function HomePage() {
             our AI texts you the second something moves when it shouldn&apos;t. Half the price of
             Tenna. Live in a day.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3.5 mt-8 justify-center">
+          <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
+            For contractors, excavation, grading &amp; site crews — 5 to 500 assets
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
               href="/register"
               className="font-display font-bold rounded-xl px-6 py-3.5 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors inline-flex items-center justify-center gap-2"
@@ -90,6 +101,9 @@ export default function HomePage() {
         {/* Map console hero */}
         <section className="max-w-6xl mx-auto px-6">
           <MapConsole />
+          <p className="text-center font-mono text-[12.5px] text-faint mt-6 max-w-3xl mx-auto">
+            We ship the trackers — Teltonika GPS, OBD2 plug-ins &amp; BlueCharm Bluetooth tags. Built in Nashville for working contractors.
+          </p>
         </section>
 
         {/* AI band */}
@@ -99,7 +113,7 @@ export default function HomePage() {
             <h2 className="font-display font-extrabold text-[1.85rem] mt-2 max-w-[24ch]">
               It doesn&apos;t just track. It watches, learns, and warns.
             </h2>
-            <div className="grid sm:grid-cols-3 gap-4 mt-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
               {AI.map(({ icon: Icon, title, body, tag }) => (
                 <div key={title} className="bg-navy-900 border border-navy-800 rounded-xl p-5">
                   <div className="w-[38px] h-[38px] rounded-[10px] bg-teal/10 border border-teal/20 grid place-items-center mb-3.5">
@@ -118,7 +132,7 @@ export default function HomePage() {
 
         {/* Features */}
         <section id="features" className="max-w-6xl mx-auto px-6 py-14">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {FEATURES.map(({ icon: Icon, title, body }) => (
               <div key={title} className="bg-navy-900 border border-navy-800 rounded-2xl p-6">
                 <div className="w-[42px] h-[42px] rounded-xl bg-amber/[0.13] grid place-items-center mb-4">

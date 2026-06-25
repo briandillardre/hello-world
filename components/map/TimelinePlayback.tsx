@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock } from 'lucide-react'
 import { type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed } from '@/lib/trails'
 
@@ -28,6 +29,15 @@ export function TimelinePlayback({
   const live = range === 'live'
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => rangeLabel(range, f))
   const speeds = speedsForRange(range)
+
+  // ticking "updated Ns ago" while live (cycles to feel real-time)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!live) return
+    const id = setInterval(() => setTick((t) => (t + 1) % 5), 1000)
+    return () => clearInterval(id)
+  }, [live])
+  const ago = tick === 0 ? 'updated just now' : `updated ${tick}s ago`
 
   return (
     <div className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10 rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
@@ -69,10 +79,11 @@ export function TimelinePlayback({
       </div>
 
       {live ? (
-        <div className="flex items-center gap-2 px-4 py-3 text-faint">
+        <div className="flex items-center gap-2 px-4 py-3">
           <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" />
-          <span className="font-mono text-[12px] text-muted">
-            {trailMode === 'off' ? 'Real-time. Pick a range to replay, or turn on Trails / Heatmap.' : 'Real-time — showing all of today. Pick a range to replay.'}
+          <span className="font-mono text-[12px] text-teal">Live · {ago}</span>
+          <span className="font-mono text-[12px] text-faint truncate">
+            · {trailMode === 'off' ? 'pick a range to replay, or turn on Trails / Heatmap' : 'showing all of today'}
           </span>
         </div>
       ) : (
