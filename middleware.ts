@@ -36,6 +36,7 @@ export async function middleware(request: NextRequest) {
   const isPublic = pathname === '/' ||
     pathname.startsWith('/login') || pathname.startsWith('/register') ||
     pathname.startsWith('/pricing') || pathname.startsWith('/demo') ||
+    pathname.startsWith('/track') ||
     pathname.startsWith('/api/ingest/') || pathname === '/api/qbo/callback'
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))

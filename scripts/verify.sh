@@ -20,6 +20,7 @@ check () { c=$(curl -s -o /tmp/vbody -w "%{http_code}" "http://localhost:3000$1"
 check "/" "You already got the text"; check "/pricing" "pays for itself"; check "/demo" "Would you know"
 check "/map" "Loading map"; check "/command" "Moving"; check "/assets" "Asset"; check "/alerts" "Alert"
 check "/reports" "Utilization"; check "/maintenance" "Maintenance"; check "/accounting" "QuickBooks"; check "/settings" "Settings"
+check "/track" "Field Tracker"
 pkill -9 -f "next start" 2>/dev/null || true
 pkill -9 -f "next-server" 2>/dev/null || true
 lsof -ti tcp:3000 2>/dev/null | xargs -r kill -9 2>/dev/null || true
