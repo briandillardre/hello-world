@@ -55,12 +55,16 @@ function mulberry32(seed: number) {
   }
 }
 
-// How far each asset class roams over the day (degrees per step)
-const AMPLITUDE: Record<AssetType, number> = {
-  vehicle: 0.010,
-  equipment: 0.0035,
-  personnel: 0.0016,
-  tool: 0.0010,
+// Demo movement is constrained to a street grid so trails run along roads
+// (right-angle turns) instead of cutting diagonally across blocks. Block sizes
+// in degrees at ~36°N; per-step distance and roam radius vary by asset class.
+const BLOCK_LAT = 0.00090
+const BLOCK_LNG = 0.00111
+const STEP: Record<AssetType, number> = { vehicle: 0.0015, equipment: 0.0007, personnel: 0.00045, tool: 0.00030 }
+const RADIUS: Record<AssetType, number> = { vehicle: 0.013, equipment: 0.0045, personnel: 0.0026, tool: 0.0018 }
+
+function snapToGrid(v: number, origin: number, step: number): number {
+  return origin + Math.round((v - origin) / step) * step
 }
 
 const N_POINTS = 96
@@ -78,25 +82,42 @@ function hashId(id: string): number {
 export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   return assets.map((a) => {
     const rng = mulberry32(hashId(a.id))
-    const amp = AMPLITUDE[a.type]
     const endLng = a.location?.lng ?? DEMO_MAP_CENTER[0]
     const endLat = a.location?.lat ?? DEMO_MAP_CENTER[1]
+    const stepLat = STEP[a.type]
+    const stepLng = STEP[a.type] * (BLOCK_LNG / BLOCK_LAT)
+    const rLat = RADIUS[a.type]
+    const rLng = RADIUS[a.type] * (BLOCK_LNG / BLOCK_LAT)
 
-    // Random walk backward from the current ("now") position with momentum, so
-    // the last point lands exactly on the live location.
+    // Grid-constrained walk backward from the live position: move along one axis
+    // at a time (riding a "street"), turn 90° at the end of each leg. Reads as
+    // driving the road grid instead of cutting diagonally across blocks.
     const pts: TrackPoint[] = new Array(N_POINTS)
     let lng = endLng
     let lat = endLat
-    let hLng = rng() - 0.5
-    let hLat = rng() - 0.5
+    let horiz = rng() < 0.5
+    let sign = rng() < 0.5 ? 1 : -1
+    let legLeft = 3 + Math.floor(rng() * 6)
     for (let i = N_POINTS - 1; i >= 0; i--) {
       pts[i] = { lng, lat, t: i / (N_POINTS - 1) }
-      hLng = hLng * 0.8 + (rng() - 0.5) * 0.6
-      hLat = hLat * 0.8 + (rng() - 0.5) * 0.6
+      if (legLeft <= 0) {
+        horiz = !horiz // 90° turn at the intersection
+        sign = rng() < 0.5 ? 1 : -1
+        legLeft = 3 + Math.floor(rng() * 6)
+        // snap the now-fixed axis to a street line so we ride the grid
+        if (horiz) lat = snapToGrid(lat, endLat, BLOCK_LAT)
+        else lng = snapToGrid(lng, endLng, BLOCK_LNG)
+      }
+      legLeft--
       // tools/personnel sit parked for stretches
-      const move = a.type === 'tool' || a.type === 'personnel' ? (rng() < 0.6 ? 0.2 : 1) : 1
-      lng -= hLng * amp * move
-      lat -= hLat * amp * move
+      const moving = a.type === 'tool' || a.type === 'personnel' ? (rng() < 0.5 ? 0 : 1) : 1
+      if (horiz) lng -= sign * stepLng * moving
+      else lat -= sign * stepLat * moving
+      // keep within the asset's roam radius (rides the perimeter street if clamped)
+      if (lng > endLng + rLng) { lng = endLng + rLng; legLeft = 0 }
+      else if (lng < endLng - rLng) { lng = endLng - rLng; legLeft = 0 }
+      if (lat > endLat + rLat) { lat = endLat + rLat; legLeft = 0 }
+      else if (lat < endLat - rLat) { lat = endLat - rLat; legLeft = 0 }
     }
 
     return {

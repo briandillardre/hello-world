@@ -42,12 +42,13 @@ body {
   filter: invert(64%) sepia(86%) saturate(420%) hue-rotate(120deg) brightness(102%);
 }
 
-/* Dark-themed device popovers */
+/* Dark-themed map popovers (override MapLibre's default white) */
 .maplibregl-popup-content {
-  background: #001a2e;
+  background: #001a2e !important;
+  color: #e8f0f7 !important;
   border: 1px solid #14506f;
   border-radius: 12px;
-  padding: 0;
+  padding: 0 !important;
   overflow: hidden;
   box-shadow: 0 24px 50px -20px rgba(0, 0, 0, 0.85);
 }

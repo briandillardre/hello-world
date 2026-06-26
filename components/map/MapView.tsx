@@ -97,13 +97,16 @@ function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
     type: 'FeatureCollection',
     features: geofences.map((g) => {
       const ring = g.geometry.coordinates[0] as [number, number][]
-      let minLng = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
       for (const [lng, lat] of ring) {
         if (lng < minLng) minLng = lng
         if (lng > maxLng) maxLng = lng
+        if (lat < minLat) minLat = lat
         if (lat > maxLat) maxLat = lat
       }
-      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, color: g.color } }
+      const area = (maxLng - minLng) * (maxLat - minLat)
+      // smaller sort key = placed first = wins collisions, so bigger zones win
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, color: g.color, pri: -area } }
     }),
   }
 }
@@ -120,6 +123,7 @@ interface MapViewProps {
 export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
+  const popupRef = useRef<maplibregl.Popup | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
   // too early re-apply instead of silently dropping the change.
   const [mapReady, setMapReady] = useState(false)
@@ -310,13 +314,16 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         layout: { 'text-field': ['get', 'emoji'], 'text-size': 14, 'text-allow-overlap': true },
       })
 
-      // Zone labels — on top, anchored above the zone so pins never cover them
+      // Zone labels — anchored above each zone, with collision avoidance so
+      // nearby labels don't overlap (the larger/billable zone wins).
       m.addLayer({
         id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
         layout: {
           'text-field': ['get', 'name'], 'text-size': 13,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-anchor': 'bottom', 'text-offset': [0, -0.4], 'text-allow-overlap': true,
+          'text-anchor': 'bottom', 'text-offset': [0, -0.5],
+          'text-allow-overlap': false, 'text-ignore-placement': false,
+          'text-padding': 6, 'symbol-sort-key': ['get', 'pri'],
         },
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001016', 'text-halo-width': 2.4 },
       })
@@ -326,12 +333,25 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       m.addLayer({ id: 'draw-fill', type: 'fill', source: drawPreviewSource.current, paint: { 'fill-color': '#ff9e16', 'fill-opacity': 0.15 } })
       m.addLayer({ id: 'draw-line', type: 'line', source: drawPreviewSource.current, paint: { 'line-color': '#ff9e16', 'line-width': 2 } })
 
+      // Only one popover on the map at a time — clears any open popup + asset panel
+      const showPopup = (lngLat: maplibregl.LngLatLike, html: string) => {
+        popupRef.current?.remove()
+        setSelectedAsset(null)
+        popupRef.current = new maplibregl.Popup({ offset: 16, closeButton: true, closeOnClick: true, maxWidth: '240px' })
+          .setLngLat(lngLat)
+          .setHTML(html)
+          .addTo(m)
+      }
+
       // Click handlers
       m.on('click', 'unclustered-circle', (e) => {
         const props = e.features?.[0]?.properties
         if (!props) return
         const asset = assetsRef.current.find((a) => a.id === props.id)
-        if (asset) setSelectedAsset(asset)
+        if (asset) {
+          popupRef.current?.remove() // close any zone/device popover first
+          setSelectedAsset(asset)
+        }
       })
       m.on('click', 'clusters', (e) => {
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
@@ -348,10 +368,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         const id = e.features?.[0]?.properties?.id
         const device = MOCK_SITE_DEVICES.find((d) => d.id === id)
         if (!device) return
-        new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '240px' })
-          .setLngLat([device.lng, device.lat])
-          .setHTML(devicePopupHTML(device))
-          .addTo(m)
+        showPopup([device.lng, device.lat], devicePopupHTML(device))
       })
 
       // Geofence zone → live presence + cost popover
@@ -359,11 +376,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         const id = e.features?.[0]?.properties?.id
         const fence = geofences.find((g) => g.id === id)
         if (!fence) return
-        const presence = geofencePresence(fence, assetsRef.current)
-        new maplibregl.Popup({ closeButton: true, maxWidth: '240px' })
-          .setLngLat(e.lngLat)
-          .setHTML(presencePopupHTML(fence, presence))
-          .addTo(m)
+        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current)))
       })
 
       for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {

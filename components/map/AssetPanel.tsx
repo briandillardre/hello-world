@@ -33,9 +33,12 @@ export function AssetPanel({ asset, gateway, onClose }: AssetPanelProps) {
 
   return (
     <>
-      {/* Mobile: slide-up sheet */}
-      <div className="absolute bottom-[70px] left-0 right-0 z-20 md:hidden">
-        <div className="bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-4 pb-6 mx-2 border border-navy-800">
+      {/* Mobile: tap-away backdrop + slide-up sheet (above the Ask button) */}
+      <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />
+      <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
+        <div className="bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-2.5 pb-6 mx-2 border border-navy-800">
+          {/* grab handle */}
+          <div className="w-9 h-1 rounded-full bg-navy-700 mx-auto mb-3" />
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="flex items-center gap-2">
@@ -44,8 +47,8 @@ export function AssetPanel({ asset, gateway, onClose }: AssetPanelProps) {
               </div>
               <Badge variant="secondary" className="mt-1">{TYPE_LABELS[asset.type]}</Badge>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-navy-800 rounded-full">
-              <X className="h-4 w-4" />
+            <button onClick={onClose} aria-label="Close" className="grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95">
+              <X className="h-5 w-5" />
             </button>
           </div>
           <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
@@ -63,8 +66,8 @@ export function AssetPanel({ asset, gateway, onClose }: AssetPanelProps) {
               </div>
               <Badge variant="secondary" className="mt-1">{TYPE_LABELS[asset.type]}</Badge>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-navy-800 rounded-full">
-              <X className="h-4 w-4" />
+            <button onClick={onClose} aria-label="Close" className="grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink">
+              <X className="h-5 w-5" />
             </button>
           </div>
           <div className="p-5 flex-1 overflow-y-auto">

@@ -81,16 +81,16 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
-              href="/register"
-              className="font-display font-bold rounded-xl px-6 py-3.5 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors inline-flex items-center justify-center gap-2"
+              href="/map"
+              className="font-display font-bold text-[17px] rounded-xl px-7 py-4 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors inline-flex items-center justify-center gap-2"
             >
-              Start free 30-day pilot <ArrowRight className="h-4 w-4" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#1a1100]/70 animate-blink" /> See the live map <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/map"
-              className="font-display font-bold rounded-xl px-6 py-3.5 bg-teal/[0.08] border border-teal/40 text-teal hover:bg-teal/[0.15] transition-colors inline-flex items-center justify-center gap-2"
+              href="/register"
+              className="font-display font-bold rounded-xl px-6 py-3.5 bg-white/[0.03] border border-navy-700 text-ink hover:bg-white/[0.06] transition-colors inline-flex items-center justify-center"
             >
-              <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" /> See the live map
+              Start free 30-day pilot
             </Link>
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
