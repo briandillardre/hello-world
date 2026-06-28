@@ -3,8 +3,9 @@
  * accruing there today. Powers the tap-a-zone popover on the map.
  */
 import type { AssetWithLocation, AssetType, Geofence } from './types'
+import type { TimeRange } from './trails'
 import { pointInPolygon } from './alerts-engine'
-import { PROJECTS, periodCost, moneyFull } from './projects'
+import { PROJECTS, periodCost, moneyFull, RANGE_COST_LABEL } from './projects'
 
 export interface SitePresence {
   total: number
@@ -37,14 +38,16 @@ function statRow(emoji: string, label: string, n: number): string {
       <span style="color:#e8f0f7;font-weight:700">${n}</span></div>`
 }
 
-/** Themed popover for a tapped job-site zone (rendered via maplibre setHTML). */
-export function presencePopupHTML(g: Geofence, p: SitePresence): string {
+/** Themed popover for a tapped job-site zone (rendered via maplibre setHTML).
+ *  Cost reflects the same range + scrub position as the timeline. */
+export function presencePopupHTML(g: Geofence, p: SitePresence, range: TimeRange = 'live', t = 1): string {
   const project = PROJECTS.find((pr) => pr.geofenceId === g.id)
-  const cost = project ? periodCost(project, 'live', 1) : null
+  const cost = project ? periodCost(project, range, t) : null
+  const costLabel = `Cost · ${RANGE_COST_LABEL[range]}`
 
   const costBlock = cost
     ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #14506f">
-        <div style="font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f88a0">Cost today</div>
+        <div style="font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f88a0">${esc(costLabel)}</div>
         <div style="font-family:Archivo,sans-serif;font-weight:900;font-size:20px;color:#ff9e16">${esc(moneyFull(cost.total))}</div>
         <div style="font-family:monospace;font-size:10px;color:#6f88a0">${esc(moneyFull(cost.labor))} labor + ${esc(moneyFull(cost.equip))} equipment</div>
       </div>`

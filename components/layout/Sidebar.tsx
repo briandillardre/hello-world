@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, PanelLeftClose, PanelLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
@@ -22,18 +22,41 @@ interface SidebarProps {
   companyName?: string
   alertCount?: number
   onSignOut?: () => void
+  collapsed?: boolean
+  onToggle?: () => void
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSignOut }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSignOut, collapsed = false, onToggle }: SidebarProps) {
   const pathname = usePathname()
   return (
-    <aside className="hidden md:flex flex-col w-56 bg-navy-950 text-ink h-screen fixed left-0 top-0 z-40 border-r border-navy-800">
-      <div className="p-4 border-b border-navy-800">
-        <Logo size={28} />
-        <p className="text-xs text-faint truncate max-w-[180px] mt-2">{companyName}</p>
+    <aside
+      className={cn(
+        'hidden md:flex flex-col bg-navy-950 text-ink h-screen fixed left-0 top-0 z-40 border-r border-navy-800 transition-[width] duration-200',
+        collapsed ? 'w-16' : 'w-56'
+      )}
+    >
+      {/* brand + collapse toggle */}
+      <div className={cn('border-b border-navy-800 flex', collapsed ? 'flex-col items-center gap-2 p-3' : 'items-start justify-between p-4')}>
+        {collapsed ? (
+          <Logo wordmark={false} size={26} href="/map" />
+        ) : (
+          <div className="min-w-0">
+            <Logo size={26} href="/map" />
+            <p className="text-xs text-faint truncate max-w-[150px] mt-2">{companyName}</p>
+          </div>
+        )}
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="grid place-items-center w-7 h-7 rounded-md text-faint hover:text-ink hover:bg-navy-900 flex-none"
+          >
+            {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
           const isAlerts = href === '/alerts'
@@ -41,19 +64,25 @@ export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSi
             <Link
               key={href}
               href={href}
+              title={collapsed ? label : undefined}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                'relative flex items-center rounded-lg text-sm font-medium transition-colors',
+                collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5',
                 active
                   ? 'bg-amber/15 text-amber border border-amber/30'
                   : 'text-muted hover:text-ink hover:bg-navy-900'
               )}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
-              <span>{label}</span>
+              {!collapsed && <span>{label}</span>}
               {isAlerts && alertCount > 0 && (
-                <span className="ml-auto bg-alert text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
-                  {alertCount > 9 ? '9+' : alertCount}
-                </span>
+                collapsed ? (
+                  <span className="absolute top-1.5 right-2.5 w-2 h-2 rounded-full bg-alert" />
+                ) : (
+                  <span className="ml-auto bg-alert text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+                    {alertCount > 9 ? '9+' : alertCount}
+                  </span>
+                )
               )}
             </Link>
           )
@@ -61,13 +90,17 @@ export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSi
       </nav>
 
       {onSignOut && (
-        <div className="p-3 border-t border-navy-800">
+        <div className="p-2 border-t border-navy-800">
           <button
             onClick={onSignOut}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-navy-900 w-full transition-colors"
+            title={collapsed ? 'Sign out' : undefined}
+            className={cn(
+              'flex items-center rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-navy-900 w-full transition-colors',
+              collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5'
+            )}
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {!collapsed && 'Sign out'}
           </button>
         </div>
       )}

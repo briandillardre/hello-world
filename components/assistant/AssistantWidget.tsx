@@ -16,8 +16,9 @@ export function AssistantWidget() {
   // Pages with the timeline bar at the bottom need the launcher lifted above it
   const pathname = usePathname()
   const overTimeline = pathname === '/map' || pathname === '/command'
+  // Sit above the timeline bar — tall enough to clear it in replay mode too
   const launcherPos = overTimeline
-    ? 'bottom-[190px] right-3 md:bottom-[120px] md:right-6'
+    ? 'bottom-[212px] right-3 md:bottom-[160px] md:right-6'
     : 'bottom-[84px] right-4 md:bottom-6 md:right-6'
 
   useEffect(() => {

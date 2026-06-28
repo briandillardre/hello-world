@@ -85,7 +85,8 @@ const mp = geofencePresence(maple, MOCK_ASSETS)
 ok('Riverfront has assets on site', rp.total > 0, `${rp.total}`)
 ok('Maple St has assets on site', mp.total > 0, `${mp.total}`)
 ok('zones do not double-count same asset', !rp.insideIds.some((id) => mp.insideIds.includes(id)))
-ok('presence popup shows site + cost', presencePopupHTML(river, rp).includes('Riverfront') && presencePopupHTML(river, rp).includes('Cost today'))
+ok('presence popup shows site + cost', presencePopupHTML(river, rp).includes('Riverfront') && presencePopupHTML(river, rp).includes('Cost ·'))
+ok('presence popup cost follows range', /274|275|273/.test(presencePopupHTML(river, rp, '30d', 1)))
 
 // ── Fleet assistant (grounded Q&A) ──
 const actx = { assets: MOCK_ASSETS, geofences: MOCK_GEOFENCES, projects: PROJECTS, alerts: MOCK_ALERTS }

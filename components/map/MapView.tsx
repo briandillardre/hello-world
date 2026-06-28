@@ -146,6 +146,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
   const tRef = useRef(pbT)
+  const rangeRef = useRef(range)
   const windowRef = useRef(rangeWindowSeconds(range))
   // Click handlers are bound once in the init effect; read assets via ref so
   // they see live data instead of the first render's array.
@@ -154,6 +155,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   filterRef.current = filter
   speedRef.current = pbSpeed
   tRef.current = pbT
+  rangeRef.current = range
   windowRef.current = rangeWindowSeconds(range)
   assetsRef.current = assets
 
@@ -377,12 +379,14 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         showPopup([device.lng, device.lat], devicePopupHTML(device))
       })
 
-      // Geofence zone → live presence + cost popover
+      // Geofence zone → live presence + cost popover (cost matches the timeline)
       m.on('click', 'geofence-fill', (e) => {
         const id = e.features?.[0]?.properties?.id
         const fence = geofences.find((g) => g.id === id)
         if (!fence) return
-        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current)))
+        const r = rangeRef.current
+        const t = r === 'live' ? 1 : tRef.current
+        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
       })
 
       for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {
@@ -610,6 +614,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         onRadar={setRadarOn}
         conditions={conditions}
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
+        place="Nashville, TN"
         top={kiosk ? 70 : 58}
       />
 

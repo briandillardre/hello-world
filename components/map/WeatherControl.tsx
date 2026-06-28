@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'satellite'
@@ -13,6 +13,7 @@ interface WeatherControlProps {
   onRadar: (v: boolean) => void
   conditions: Conditions | null
   frameTime: string | null
+  place?: string
   top?: number
 }
 
@@ -30,7 +31,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
@@ -56,6 +57,12 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
 
   return (
     <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      {/* location — makes it obvious which site this weather is for */}
+      {place && (
+        <div className="px-3 pt-2 -mb-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
+          <MapPin className="h-3 w-3 text-teal" /> {place}
+        </div>
+      )}
       {/* header — tap to collapse */}
       <button onClick={() => setOpen(false)} className="w-full flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
         <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>

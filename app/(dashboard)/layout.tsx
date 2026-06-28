@@ -1,6 +1,4 @@
-import { Sidebar } from '@/components/layout/Sidebar'
-import { BottomNav } from '@/components/layout/BottomNav'
-import { AssistantWidget } from '@/components/assistant/AssistantWidget'
+import { DashboardShell } from '@/components/layout/DashboardShell'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getAlertEvents } from '@/lib/db/alerts'
 
@@ -10,12 +8,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-navy-950">
-      <Sidebar alertCount={unreadAlerts} />
-      <main className="flex-1 md:ml-56 overflow-hidden">
-        {children}
-      </main>
-      <BottomNav alertCount={unreadAlerts} />
-      <AssistantWidget />
+      <DashboardShell alertCount={unreadAlerts}>{children}</DashboardShell>
     </div>
   )
 }
