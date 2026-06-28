@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Plus, Battery, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { Search, Plus, Battery, Clock, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -71,7 +72,7 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-navy-800">
+      <div className="flex-1 overflow-y-auto divide-y divide-navy-800 pb-24 md:pb-20">
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-faint">
             <p className="text-4xl mb-2">📦</p>
@@ -99,7 +100,7 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
 
 function AssetRow({ asset }: { asset: AssetWithLocation }) {
   return (
-    <div className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
+    <Link href={`/assets/${asset.id}`} className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
       <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
         {TYPE_EMOJI[asset.type]}
       </div>
@@ -131,6 +132,7 @@ function AssetRow({ asset }: { asset: AssetWithLocation }) {
           ? 'bg-[#34d399]'
           : 'bg-faint'
       }`} />
-    </div>
+      <ChevronRight className="h-4 w-4 text-faint flex-shrink-0" />
+    </Link>
   )
 }

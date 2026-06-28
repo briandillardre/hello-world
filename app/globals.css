@@ -41,6 +41,10 @@ body {
 .maplibregl-ctrl-icon.maplibregl-ctrl-geolocate-active {
   filter: invert(64%) sepia(86%) saturate(420%) hue-rotate(120deg) brightness(102%);
 }
+/* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden */
+.kiosk-map .maplibregl-ctrl-top-right {
+  margin-top: 60px;
+}
 
 /* Dark-themed map popovers (override MapLibre's default white) */
 .maplibregl-popup-content {

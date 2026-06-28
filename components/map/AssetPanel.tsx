@@ -1,7 +1,8 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { X, Battery, Zap, Clock, Wifi } from 'lucide-react'
+import Link from 'next/link'
+import { X, Battery, Zap, Clock, Wifi, ArrowRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -151,6 +152,13 @@ function AssetDetails({
           {loc.accuracy && ` ±${loc.accuracy}m`}
         </div>
       )}
+
+      <Link
+        href={`/assets/${asset.id}`}
+        className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-navy-800 border border-navy-700 text-ink text-sm font-medium py-2.5 hover:bg-navy-700 transition-colors"
+      >
+        View full details <ArrowRight className="h-4 w-4" />
+      </Link>
     </div>
   )
 }

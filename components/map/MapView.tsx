@@ -602,7 +602,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   }, [handleDrawClick])
 
   return (
-    <div className="relative w-full h-full bg-navy-950">
+    <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
       <div ref={mapContainer} className="w-full h-full" />
 
       {!kiosk && <FilterBar filter={filter} onChange={setFilter} />}
