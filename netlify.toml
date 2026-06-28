@@ -4,3 +4,20 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Always revalidate the interactive app routes so a new deploy is picked up
+# immediately (these were being served stale from the edge).
+[[headers]]
+  for = "/map"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/command"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/track"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

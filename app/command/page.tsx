@@ -14,8 +14,8 @@ export const metadata: Metadata = {
   description: 'Live fleet command center for the lobby TV.',
 }
 
-// Live fleet data must never be baked at build time.
-export const dynamic = 'force-dynamic'
+// Demo mode renders mock data → statically prerendered for clean atomic deploys.
+// Re-add `force-dynamic` (+ a no-cache header) when Supabase provides live data.
 
 export default async function CommandPage() {
   const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([

@@ -5,9 +5,9 @@ import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 
-// Live fleet data must never be baked at build time.
-export const dynamic = 'force-dynamic'
-
+// Demo mode renders mock data, so this is statically prerendered (deploys
+// atomically + cleanly, like the homepage). When Supabase is wired, switch this
+// to `force-dynamic` AND add a no-cache header so the edge doesn't serve stale.
 export default async function MapPage() {
   const [rawAssets, geofences, toolAssociations] = await Promise.all([
     getAssetsWithLocations(MOCK_COMPANY.id),
