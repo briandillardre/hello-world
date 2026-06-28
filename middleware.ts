@@ -1,20 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Only enforce auth when Supabase is configured
-const isSupabaseConfigured =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-  process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
+// Trim guards against a stray space/newline pasted into the env var on Vercel.
+const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()
+const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+
+// Only enforce auth when Supabase is configured with a *valid* https URL.
+// A malformed URL (e.g. the dashboard link instead of https://<ref>.supabase.co)
+// would otherwise make createServerClient throw and 500 the entire site.
+function isValidSupabaseUrl(url: string): boolean {
+  if (!url || url === 'https://your-project.supabase.co') return false
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && u.hostname.length > 0
+  } catch {
+    return false
+  }
+}
+
+const isSupabaseConfigured = isValidSupabaseUrl(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 0
 
 export async function middleware(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.next()
 
-  const { createServerClient } = await import('@supabase/ssr')
   const response = NextResponse.next()
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  // Never let an auth/network hiccup hard-500 every page. If anything in the
+  // Supabase session check throws, fall through and let route-level auth decide.
+  let user = null
+  try {
+    const { createServerClient } = await import('@supabase/ssr')
+    const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookies) => {
@@ -23,10 +38,14 @@ export async function middleware(request: NextRequest) {
           })
         },
       },
-    }
-  )
+    })
+    const result = await supabase.auth.getUser()
+    user = result.data.user
+  } catch (err) {
+    console.error('[middleware] supabase auth check failed:', err)
+    return response
+  }
 
-  const { data: { user } } = await supabase.auth.getUser()
   const pathname = request.nextUrl.pathname
 
   // Note: /command is intentionally NOT public — with a real database it shows
