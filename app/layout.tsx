@@ -39,6 +39,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${archivo.variable} ${mono.variable}`}>
+      <head>
+        {/* One-time cleanup: kill any stale service worker / cache left on a
+            device by an earlier PWA build, which can keep serving an old app
+            shell even after new deploys. Harmless when there's nothing to clear. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})}).catch(function(){})}if(typeof caches!=='undefined'&&caches.keys){caches.keys().then(function(ks){ks.forEach(function(k){caches.delete(k)})}).catch(function(){})}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="font-sans">{children}</body>
     </html>
   )
