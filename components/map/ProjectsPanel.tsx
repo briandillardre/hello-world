@@ -20,7 +20,7 @@ export function ProjectsPanel({ projects, range, t }: ProjectsPanelProps) {
   const totalEquip = costs.reduce((s, c) => s + c.equip, 0)
 
   return (
-    <div className="absolute right-3 top-[150px] z-10 w-[236px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+    <div className="absolute right-3 top-[178px] z-10 w-[236px] rounded-xl bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className={`w-full flex items-center justify-between px-3 py-2.5 ${open ? 'border-b border-navy-800' : ''}`}>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint flex items-center gap-2 min-w-0">
           <HardHat className="h-3.5 w-3.5 text-amber flex-none" /> Projects · {projects.length}

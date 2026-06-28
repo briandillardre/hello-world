@@ -50,7 +50,7 @@ export function presencePopupHTML(g: Geofence, p: SitePresence): string {
       </div>`
     : `<div style="margin-top:8px;font-family:monospace;font-size:10px;color:#6f88a0">Support zone</div>`
 
-  return `<div style="width:205px">
+  return `<div style="width:205px;background:#001a2e;color:#e8f0f7;border-radius:12px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #14506f">
       <span style="width:9px;height:9px;border-radius:50%;background:${g.color};display:inline-block"></span>
       <span style="font-family:Archivo,sans-serif;font-weight:800;font-size:13px;color:#e8f0f7">${esc(g.name)}</span>

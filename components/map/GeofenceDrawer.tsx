@@ -49,7 +49,7 @@ export function GeofenceDrawer({
 
   return (
     <>
-      <div className="absolute bottom-[80px] right-3 z-10 flex flex-col gap-2 md:bottom-6">
+      <div className="absolute bottom-[188px] left-3 z-10 flex flex-col gap-2 md:bottom-[120px] md:left-4">
         {isDrawing ? (
           <>
             <button
@@ -70,7 +70,7 @@ export function GeofenceDrawer({
         ) : (
           <button
             onClick={onStartDraw}
-            className="flex items-center justify-center w-12 h-12 bg-slate-900 text-white rounded-full shadow-lg hover:bg-slate-700 transition-colors"
+            className="flex items-center justify-center w-12 h-12 bg-navy-950/85 backdrop-blur border border-navy-700 text-teal rounded-full shadow-panel hover:bg-navy-900 transition-colors"
             title="Draw geofence"
           >
             <Hexagon className="h-5 w-5" />
@@ -79,7 +79,7 @@ export function GeofenceDrawer({
       </div>
 
       {isDrawing && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg pointer-events-none">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 bg-navy-950/90 backdrop-blur border border-navy-700 text-ink text-sm px-4 py-2 rounded-full shadow-panel pointer-events-none">
           Click to add points • ✓ to finish • ✕ to cancel
         </div>
       )}

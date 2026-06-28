@@ -158,7 +158,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   assetsRef.current = assets
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
-  const [base, setBase] = useState<BaseStyle>('dark')
+  // Default to satellite — real aerial imagery reads as "the actual jobsite"
+  const [base, setBase] = useState<BaseStyle>('satellite')
   const [radarOn, setRadarOn] = useState(false)
   const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
@@ -222,8 +223,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           })),
         },
       })
-      m.addLayer({ id: 'geofence-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.1 } })
-      m.addLayer({ id: 'geofence-outline', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [3, 2] } })
+      m.addLayer({ id: 'geofence-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.14 } })
+      m.addLayer({ id: 'geofence-outline', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [3, 2] } })
       // Labels anchored to the top edge of each zone (added last so they sit above pins)
       m.addSource('geofence-label-pts', { type: 'geojson', data: geofenceLabelPoints(geofences) })
 
@@ -281,9 +282,14 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 13, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
         paint: { 'text-color': '#ff9e16' },
       })
+      // soft glow under each pin so assets pop off the satellite imagery
+      m.addLayer({
+        id: 'asset-glow', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
+        paint: { 'circle-color': ['get', 'color'], 'circle-opacity': 0.22, 'circle-radius': 24, 'circle-blur': 0.7 },
+      })
       m.addLayer({
         id: 'unclustered-circle', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
-        paint: { 'circle-color': ['get', 'color'], 'circle-radius': 14, 'circle-stroke-width': 2, 'circle-stroke-color': '#001523' },
+        paint: { 'circle-color': ['get', 'color'], 'circle-radius': 14, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d' },
       })
       m.addLayer({
         id: 'unclustered-label', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],

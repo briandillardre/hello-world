@@ -80,5 +80,5 @@ export function devicePopupHTML(d: SiteDevice): string {
         <div style="font-family:monospace;font-size:10px;color:#6f88a0;margin-top:4px">${d.online ? '● online' : '○ offline'}</div>
       </div>`
   }
-  return `<div style="width:215px">${head}${body}</div>`
+  return `<div style="width:215px;background:#001a2e;color:#e8f0f7;border-radius:12px;overflow:hidden">${head}${body}</div>`
 }
