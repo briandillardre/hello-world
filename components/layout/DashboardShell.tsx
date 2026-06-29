@@ -10,7 +10,17 @@ import { AssistantWidget } from '@/components/assistant/AssistantWidget'
  * main content margin tracks the sidebar width. Data (alert count) is fetched
  * in the server layout and passed in.
  */
-export function DashboardShell({ alertCount, children }: { alertCount: number; children: React.ReactNode }) {
+export function DashboardShell({
+  alertCount,
+  companyName,
+  userName,
+  children,
+}: {
+  alertCount: number
+  companyName?: string
+  userName?: string | null
+  children: React.ReactNode
+}) {
   const [collapsed, setCollapsed] = useState(false)
   useEffect(() => {
     setCollapsed(localStorage.getItem('ht-sidebar') === '1')
@@ -24,7 +34,7 @@ export function DashboardShell({ alertCount, children }: { alertCount: number; c
 
   return (
     <>
-      <Sidebar alertCount={alertCount} collapsed={collapsed} onToggle={toggle} />
+      <Sidebar alertCount={alertCount} companyName={companyName} userName={userName} collapsed={collapsed} onToggle={toggle} />
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200'}>
         {children}
       </main>

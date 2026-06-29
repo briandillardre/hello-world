@@ -20,13 +20,14 @@ const navItems = [
 
 interface SidebarProps {
   companyName?: string
+  userName?: string | null
   alertCount?: number
   onSignOut?: () => void
   collapsed?: boolean
   onToggle?: () => void
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSignOut, collapsed = false, onToggle }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, onSignOut, collapsed = false, onToggle }: SidebarProps) {
   const pathname = usePathname()
   return (
     <aside
@@ -42,7 +43,8 @@ export function Sidebar({ companyName = 'HammerTrack Demo', alertCount = 0, onSi
         ) : (
           <div className="min-w-0">
             <Logo size={26} href="/map" />
-            <p className="text-xs text-faint truncate max-w-[150px] mt-2">{companyName}</p>
+            <p className="text-xs font-semibold text-ink truncate max-w-[150px] mt-2">{companyName}</p>
+            {userName && <p className="text-[11px] text-faint truncate max-w-[150px]">{userName}</p>}
           </div>
         )}
         {onToggle && (

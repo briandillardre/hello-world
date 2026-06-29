@@ -27,3 +27,36 @@ export async function getCurrentCompanyId(): Promise<string> {
 
   return data?.company_id ?? user.id
 }
+
+/**
+ * Current company id + display name + the signed-in user's name, for the
+ * sidebar header. Demo mode shows the "HammerTrack Demo" label; real mode shows
+ * the logged-in company and user.
+ */
+export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null }> {
+  if (isMock) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id, name')
+    .eq('id', user.id)
+    .single()
+  const companyId = profile?.company_id ?? user.id
+
+  const { data: company } = await supabase
+    .from('companies')
+    .select('name')
+    .eq('id', companyId)
+    .single()
+
+  return {
+    id: companyId,
+    name: company?.name ?? 'HammerTrack',
+    userName: profile?.name || user.email || null,
+  }
+}
