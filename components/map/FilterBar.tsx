@@ -1,5 +1,6 @@
 'use client'
 
+import { Hexagon } from 'lucide-react'
 import type { AssetType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -13,9 +14,11 @@ const FILTERS: { type: AssetType; label: string; emoji: string; color: string }[
 interface FilterBarProps {
   filter: Set<AssetType>
   onChange: (f: Set<AssetType>) => void
+  showZones: boolean
+  onToggleZones: () => void
 }
 
-export function FilterBar({ filter, onChange }: FilterBarProps) {
+export function FilterBar({ filter, onChange, showZones, onToggleZones }: FilterBarProps) {
   const toggle = (type: AssetType) => {
     const next = new Set(filter)
     if (next.has(type)) { next.delete(type) } else { next.add(type) }
@@ -38,6 +41,17 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
             <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
+        <button
+          onClick={onToggleZones}
+          title={showZones ? 'Hide all zones' : 'Show all zones'}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
+            showZones ? 'bg-amber/20 border-amber text-amber' : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
+          )}
+        >
+          <Hexagon className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Zones</span>
+        </button>
       </div>
     </div>
   )

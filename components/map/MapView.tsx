@@ -129,6 +129,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const [mapReady, setMapReady] = useState(false)
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
+  const [showZones, setShowZones] = useState(true)
   const [isDrawing, setIsDrawing] = useState(false)
   const drawCoords = useRef<[number, number][]>([])
   const drawPreviewSource = useRef<string>('draw-preview')
@@ -180,21 +181,20 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return activeFrames[liveFrameIndex(activeFrames)]
   }, [activeFrames])
 
-  const tileKey = process.env.NEXT_PUBLIC_MAPTILER_KEY
-  const mapStyle = (tileKey && tileKey !== 'YOUR_MAPTILER_KEY')
-    ? `https://api.maptiler.com/maps/streets-dark/style.json?key=${tileKey}`
-    : {
-        version: 8 as const,
-        sources: {
-          'carto-dark': {
-            type: 'raster' as const,
-            tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'],
-            tileSize: 256,
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
-          },
-        },
-        layers: [{ id: 'carto-base', type: 'raster' as const, source: 'carto-dark' }],
-      }
+  // Free, no-key basemap: CARTO dark raster. (Satellite + 3D buildings are added
+  // on load from free sources — no paid MapTiler key required.)
+  const mapStyle = {
+    version: 8 as const,
+    sources: {
+      'carto-dark': {
+        type: 'raster' as const,
+        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'],
+        tileSize: 256,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
+      },
+    },
+    layers: [{ id: 'carto-base', type: 'raster' as const, source: 'carto-dark' }],
+  }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -208,40 +208,52 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       attributionControl: false,
     })
 
-    map.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+    map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right')
     map.current.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right')
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     map.current.on('load', () => {
       const m = map.current!
 
-      // Satellite (aerial) basemap — toggled on/off over the dark base
+      // ── Free basemap layers stacked over the CARTO dark base ──
+      // Streets (labeled, no imagery) — CARTO Voyager
+      m.addSource('streets-base', {
+        type: 'raster',
+        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors © CARTO',
+      })
+      m.addLayer({ id: 'streets-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' } })
+
+      // Satellite (aerial) imagery — Esri World Imagery
       m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, attribution: 'Esri, Maxar' })
       m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
-      // 3D building extrusions — only possible when the basemap is a vector
-      // style (i.e. a MapTiler key is set). OpenMapTiles schema exposes a
-      // 'building' source-layer with render_height / render_min_height.
-      const styleSources = m.getStyle().sources ?? {}
-      const vectorSourceId = Object.keys(styleSources).find(
-        (id) => (styleSources[id] as { type?: string }).type === 'vector'
-      )
-      if (vectorSourceId) {
-        m.addLayer({
-          id: 'buildings-3d',
-          type: 'fill-extrusion',
-          source: vectorSourceId,
-          'source-layer': 'building',
-          minzoom: 13,
-          layout: { visibility: 'none' },
-          paint: {
-            'fill-extrusion-color': '#22344a',
-            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
-            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-            'fill-extrusion-opacity': 0.85,
-          },
-        })
-      }
+      // Reference labels (roads / places) — transparent overlay for Hybrid
+      m.addSource('labels-overlay', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+      })
+      m.addLayer({ id: 'labels-overlay', type: 'raster', source: 'labels-overlay', layout: { visibility: 'none' } })
+
+      // 3D building extrusions from OpenFreeMap (free vector tiles, no key).
+      // OpenMapTiles schema: 'building' layer with render_height / render_min_height.
+      m.addSource('ofm', { type: 'vector', url: 'https://tiles.openfreemap.org/planet' })
+      m.addLayer({
+        id: 'buildings-3d',
+        type: 'fill-extrusion',
+        source: 'ofm',
+        'source-layer': 'building',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': '#2a3f57',
+          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
+          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+          'fill-extrusion-opacity': 0.85,
+        },
+      })
 
       // Geofences (drawn under everything)
       m.addSource('geofences', {
@@ -409,6 +421,9 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
       // Geofence zone → live presence + cost popover (cost matches the timeline)
       m.on('click', 'geofence-fill', (e) => {
+        // Don't hijack clicks that land on an asset/cluster — let the pin win so
+        // assets inside a zone stay selectable.
+        if (m.queryRenderedFeatures(e.point, { layers: ['unclustered-circle', 'clusters'] }).length) return
         const id = e.features?.[0]?.properties?.id
         const fence = geofences.find((g) => g.id === id)
         if (!fence) return
@@ -503,17 +518,29 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return () => { cancelled = true }
   }, [])
 
-  // Toggle the satellite (aerial) basemap, 3D buildings, and camera pitch
+  // Switch basemap layers (dark / streets / satellite / hybrid / 3D) + camera tilt
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('sat-base')) return
-    m.setLayoutProperty('sat-base', 'visibility', base === 'satellite' ? 'visible' : 'none')
-    if (m.getLayer('buildings-3d')) {
-      m.setLayoutProperty('buildings-3d', 'visibility', base === '3d' ? 'visible' : 'none')
+    const set = (id: string, on: boolean) => {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
     }
-    // Tilt the camera for 3D, flatten for the 2D basemaps.
+    set('streets-base', base === 'streets')
+    set('sat-base', base === 'satellite' || base === 'hybrid')
+    set('labels-overlay', base === 'hybrid')
+    set('buildings-3d', base === '3d')
+    // Tilt for 3D, flatten otherwise.
     m.easeTo({ pitch: base === '3d' ? 55 : 0, duration: 600 })
   }, [mapReady, base])
+
+  // Toggle visibility of all geofence layers at once
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady) return
+    for (const id of ['geofence-fill', 'geofence-outline', 'geofence-labels']) {
+      if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones ? 'visible' : 'none')
+    }
+  }, [mapReady, showZones])
 
   // Add / update / toggle the rain-radar raster layer
   useEffect(() => {
@@ -638,7 +665,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {!kiosk && <FilterBar filter={filter} onChange={setFilter} />}
+      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} />}
 
       <WeatherControl
         base={base}

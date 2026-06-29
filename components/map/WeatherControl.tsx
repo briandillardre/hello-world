@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin, Box } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin, Box, Signpost, Globe2 } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
-export type BaseStyle = 'dark' | 'satellite' | '3d'
+export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid' | '3d'
 
 interface WeatherControlProps {
   base: BaseStyle
@@ -80,9 +80,11 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
       </button>
 
       {/* basemap segmented */}
-      <div className="flex gap-1 p-1 border-b border-navy-800">
+      <div className="grid grid-cols-3 gap-1 p-1 border-b border-navy-800">
         <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
+        <Seg active={base === 'streets'} onClick={() => onBase('streets')}><Signpost className="h-3.5 w-3.5" />Streets</Seg>
         <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
+        <Seg active={base === 'hybrid'} onClick={() => onBase('hybrid')}><Globe2 className="h-3.5 w-3.5" />Hybrid</Seg>
         <Seg active={base === '3d'} onClick={() => onBase('3d')}><Box className="h-3.5 w-3.5" />3D</Seg>
       </div>
 
