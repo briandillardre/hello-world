@@ -7,24 +7,36 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export async function getGeofences(companyId: string): Promise<Geofence[]> {
   if (isMock) return MOCK_GEOFENCES
 
-  const { createClient } = await import('../supabase-server')
-  const supabase = createClient()
-  // Read from the GeoJSON view so geometry comes back as GeoJSON (not PostGIS WKB).
-  const { data } = await supabase
-    .from('geofences_json')
-    .select('*')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
-  return (data ?? []) as Geofence[]
+  // Read from the GeoJSON view (geometry as GeoJSON). If the view is missing
+  // (migration 005 not run yet) or anything errors, degrade to empty instead of
+  // throwing — a geofence hiccup must never take down the whole map page.
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('geofences_json')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false })
+    if (error) return []
+    return (data ?? []) as Geofence[]
+  } catch {
+    return []
+  }
 }
 
 export async function getGeofence(id: string): Promise<Geofence | null> {
   if (isMock) return MOCK_GEOFENCES.find((g) => g.id === id) ?? null
 
-  const { createClient } = await import('../supabase-server')
-  const supabase = createClient()
-  const { data } = await supabase.from('geofences_json').select('*').eq('id', id).single()
-  return (data as Geofence) ?? null
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data, error } = await supabase.from('geofences_json').select('*').eq('id', id).single()
+    if (error) return null
+    return (data as Geofence) ?? null
+  } catch {
+    return null
+  }
 }
 
 export async function createGeofence(

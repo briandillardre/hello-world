@@ -14,18 +14,22 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export async function getCurrentCompanyId(): Promise<string> {
   if (isMock) return MOCK_COMPANY.id
 
-  const { createClient } = await import('../supabase-server')
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return MOCK_COMPANY.id
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return MOCK_COMPANY.id
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('id', user.id)
-    .single()
+    const { data } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', user.id)
+      .single()
 
-  return data?.company_id ?? user.id
+    return data?.company_id ?? user.id
+  } catch {
+    return MOCK_COMPANY.id
+  }
 }
 
 /**
@@ -36,27 +40,31 @@ export async function getCurrentCompanyId(): Promise<string> {
 export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null }> {
   if (isMock) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
 
-  const { createClient } = await import('../supabase-server')
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id, name')
-    .eq('id', user.id)
-    .single()
-  const companyId = profile?.company_id ?? user.id
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id, name')
+      .eq('id', user.id)
+      .single()
+    const companyId = profile?.company_id ?? user.id
 
-  const { data: company } = await supabase
-    .from('companies')
-    .select('name')
-    .eq('id', companyId)
-    .single()
+    const { data: company } = await supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .single()
 
-  return {
-    id: companyId,
-    name: company?.name ?? 'HammerTrack',
-    userName: profile?.name || user.email || null,
+    return {
+      id: companyId,
+      name: company?.name ?? 'HammerTrack',
+      userName: profile?.name || user.email || null,
+    }
+  } catch {
+    return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null }
   }
 }
