@@ -121,6 +121,7 @@ export interface Geofence {
   name: string
   geometry: GeoJSON.Polygon
   color: string
+  parent_id?: string | null   // nest a sub-zone under a parent site
   created_at: string
 }
 
