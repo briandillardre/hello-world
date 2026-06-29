@@ -60,3 +60,22 @@ export async function createAlertRule(
     .single()
   return data
 }
+
+export async function updateAlertRule(
+  id: string,
+  payload: Partial<Pick<AlertRule, 'geofence_id' | 'asset_id' | 'trigger' | 'idle_minutes' | 'active'>>
+): Promise<void> {
+  if (isMock) return
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await supabase.from('alert_rules').update(payload).eq('id', id)
+}
+
+export async function deleteAlertRule(id: string): Promise<void> {
+  if (isMock) return
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await supabase.from('alert_rules').delete().eq('id', id)
+}

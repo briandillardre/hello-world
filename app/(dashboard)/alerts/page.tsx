@@ -1,22 +1,22 @@
-'use client'
+import { AlertsView } from '@/components/alerts/AlertsView'
+import { getAlertEvents, getAlertRules } from '@/lib/db/alerts'
+import { getGeofences } from '@/lib/db/geofences'
+import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getCurrentCompanyId } from '@/lib/db/company'
 
-import { useState } from 'react'
-import { AlertList } from '@/components/alerts/AlertList'
-import { MOCK_ALERTS } from '@/lib/mock-data'
-import type { AlertEvent } from '@/lib/types'
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
-export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<AlertEvent[]>(MOCK_ALERTS)
-
-  const handleAcknowledge = (id: string) => {
-    setAlerts(prev =>
-      prev.map(a => a.id === id ? { ...a, acknowledged_at: new Date().toISOString() } : a)
-    )
-  }
+export default async function AlertsPage() {
+  const companyId = await getCurrentCompanyId()
+  const [alerts, rules, geofences, assets] = await Promise.all([
+    getAlertEvents(companyId),
+    getAlertRules(companyId),
+    getGeofences(companyId),
+    getAssetsWithLocations(companyId),
+  ])
 
   return (
-    <div className="h-full overflow-hidden flex flex-col pb-[70px] md:pb-0">
-      <AlertList alerts={alerts} onAcknowledge={handleAcknowledge} />
-    </div>
+    <AlertsView alerts={alerts} rules={rules} geofences={geofences} assets={assets} editable={!isMock} />
   )
 }
