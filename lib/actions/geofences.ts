@@ -1,7 +1,15 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getGeofence, updateGeofence, deleteGeofence } from '@/lib/db/geofences'
+import { getGeofence, createGeofence, updateGeofence, deleteGeofence } from '@/lib/db/geofences'
+import { getCurrentCompanyId } from '@/lib/db/company'
+
+export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string) {
+  const companyId = await getCurrentCompanyId()
+  await createGeofence(companyId, { name, geometry, color })
+  revalidatePath('/geofences')
+  revalidatePath('/map')
+}
 
 export async function saveGeofenceAction(
   id: string,

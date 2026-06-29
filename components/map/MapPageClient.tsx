@@ -5,6 +5,10 @@ import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { MOCK_COMPANY } from '@/lib/mock-data'
+import { createGeofenceAction } from '@/lib/actions/geofences'
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 const MapView = dynamic(
   () => import('@/components/map/MapView').then((m) => ({ default: m.MapView })),
@@ -31,8 +35,8 @@ interface MapPageClientProps {
 export function MapPageClient({ assets, geofences: initialGeofences, tracks, toolGateways }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
 
-  // Demo mode: keep newly drawn zones in client state so they render and the
-  // alerts engine can reference them. Production swaps this for a DB insert.
+  // Show the new zone immediately (optimistic), and in real mode persist it to
+  // the database so it survives a refresh and appears on every screen.
   const handleGeofenceSave = useCallback((name: string, geometry: GeoJSON.Polygon, color: string) => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
@@ -43,6 +47,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, too
       created_at: new Date().toISOString(),
     }
     setGeofences((prev) => [...prev, fence])
+    if (!isMock) createGeofenceAction(name, geometry, color)
   }, [])
 
   return (
