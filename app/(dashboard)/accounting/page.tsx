@@ -2,14 +2,15 @@ import { AccountingView } from '@/components/accounting/AccountingView'
 import { getConnectionStatus, buildEquipmentUsageInvoice } from '@/lib/qbo'
 import { getAssets } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
-import { MOCK_COMPANY } from '@/lib/mock-data'
+import { getCurrentCompanyId } from '@/lib/db/company'
 import type { QboInvoicePreview } from '@/lib/types'
 
 export default async function AccountingPage() {
   const status = getConnectionStatus()
+  const companyId = await getCurrentCompanyId()
   const [assets, geofences] = await Promise.all([
-    getAssets(MOCK_COMPANY.id),
-    getGeofences(MOCK_COMPANY.id),
+    getAssets(companyId),
+    getGeofences(companyId),
   ])
 
   const invoicesByFence: Record<string, QboInvoicePreview> = {}

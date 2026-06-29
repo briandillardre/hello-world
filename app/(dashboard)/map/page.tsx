@@ -1,7 +1,7 @@
-import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getCurrentCompanyId } from '@/lib/db/company'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 
@@ -9,10 +9,11 @@ import { MapPageClient } from '@/components/map/MapPageClient'
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
 // to `force-dynamic` AND add a no-cache header so the edge doesn't serve stale.
 export default async function MapPage() {
+  const companyId = await getCurrentCompanyId()
   const [rawAssets, geofences, toolAssociations] = await Promise.all([
-    getAssetsWithLocations(MOCK_COMPANY.id),
-    getGeofences(MOCK_COMPANY.id),
-    getToolAssociations(MOCK_COMPANY.id),
+    getAssetsWithLocations(companyId),
+    getGeofences(companyId),
+    getToolAssociations(companyId),
   ])
 
   // Tools have no GPS of their own — resolve their position from the gateway

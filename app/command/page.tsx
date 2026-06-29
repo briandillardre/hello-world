@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { MOCK_COMPANY } from '@/lib/mock-data'
 import { generateTracks } from '@/lib/trails'
 import { PROJECTS, projectCost, LIVE_DAY_FRACTION, moneyFull } from '@/lib/projects'
 import { pointInPolygon } from '@/lib/alerts-engine'
@@ -18,11 +19,12 @@ export const metadata: Metadata = {
 // Re-add `force-dynamic` (+ a no-cache header) when Supabase provides live data.
 
 export default async function CommandPage() {
+  const companyId = await getCurrentCompanyId()
   const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
-    getAssetsWithLocations(MOCK_COMPANY.id),
-    getGeofences(MOCK_COMPANY.id),
-    getAlertEvents(MOCK_COMPANY.id),
-    getToolAssociations(MOCK_COMPANY.id),
+    getAssetsWithLocations(companyId),
+    getGeofences(companyId),
+    getAlertEvents(companyId),
+    getToolAssociations(companyId),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tracks = generateTracks(assets)

@@ -1,7 +1,7 @@
 import { Wrench, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'
 import { getMaintenanceSchedules, getServiceRecords, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import { getAssets } from '@/lib/db/assets'
-import { MOCK_COMPANY } from '@/lib/mock-data'
+import { getCurrentCompanyId } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
 
@@ -14,11 +14,12 @@ const STATUS_META = {
 const UNIT = { engine_hours: 'hrs', mileage: 'mi', days: 'days' }
 
 export default async function MaintenancePage() {
+  const companyId = await getCurrentCompanyId()
   const [schedules, assets, readings, services] = await Promise.all([
-    getMaintenanceSchedules(MOCK_COMPANY.id),
-    getAssets(MOCK_COMPANY.id),
+    getMaintenanceSchedules(companyId),
+    getAssets(companyId),
     getCurrentReadings(),
-    getServiceRecords(MOCK_COMPANY.id),
+    getServiceRecords(companyId),
   ])
 
   const assetName = (id: string) => assets.find(a => a.id === id)?.name ?? 'Unknown asset'
