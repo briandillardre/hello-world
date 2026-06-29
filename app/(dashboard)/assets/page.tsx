@@ -1,10 +1,19 @@
 import { AssetList } from '@/components/assets/AssetList'
-import { MOCK_ASSETS } from '@/lib/mock-data'
+import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getCurrentCompanyId } from '@/lib/db/company'
 
-export default function AssetsPage() {
+export default async function AssetsPage() {
+  const companyId = await getCurrentCompanyId()
+  const [rawAssets, toolAssociations] = await Promise.all([
+    getAssetsWithLocations(companyId),
+    getToolAssociations(companyId),
+  ])
+  const assets = resolveToolLocations(rawAssets, toolAssociations)
+
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[70px] md:pb-0">
-      <AssetList assets={MOCK_ASSETS} />
+      <AssetList assets={assets} />
     </div>
   )
 }

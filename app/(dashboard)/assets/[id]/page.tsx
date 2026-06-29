@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
-import { MOCK_ASSETS, MOCK_TOOL_ASSOCIATIONS, MOCK_COMPANY } from '@/lib/mock-data'
-import { resolveToolLocations } from '@/lib/db/tools'
+import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -18,11 +19,16 @@ const M_STATUS = {
 }
 
 export default async function AssetDetailPage({ params }: { params: { id: string } }) {
-  const assets = resolveToolLocations(MOCK_ASSETS, MOCK_TOOL_ASSOCIATIONS)
+  const companyId = await getCurrentCompanyId()
+  const [rawAssets, toolAssociations] = await Promise.all([
+    getAssetsWithLocations(companyId),
+    getToolAssociations(companyId),
+  ])
+  const assets = resolveToolLocations(rawAssets, toolAssociations)
   const asset = assets.find((a) => a.id === params.id)
   if (!asset) notFound()
 
-  const [schedules, readings] = await Promise.all([getMaintenanceSchedules(MOCK_COMPANY.id), getCurrentReadings()])
+  const [schedules, readings] = await Promise.all([getMaintenanceSchedules(companyId), getCurrentReadings()])
   const assetSchedules = schedules
     .filter((s) => s.asset_id === asset.id)
     .map((s) => ({ ...computeStatus(s, readings[s.asset_id] ?? s.last_service_value), name: s.description }))
