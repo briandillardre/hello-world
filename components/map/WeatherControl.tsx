@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin, Box } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
-export type BaseStyle = 'dark' | 'satellite'
+export type BaseStyle = 'dark' | 'satellite' | '3d'
 
 interface WeatherControlProps {
   base: BaseStyle
@@ -83,6 +83,7 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
       <div className="flex gap-1 p-1 border-b border-navy-800">
         <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
         <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
+        <Seg active={base === '3d'} onClick={() => onBase('3d')}><Box className="h-3.5 w-3.5" />3D</Seg>
       </div>
 
       {/* radar toggle */}

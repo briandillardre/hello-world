@@ -219,6 +219,30 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, attribution: 'Esri, Maxar' })
       m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
+      // 3D building extrusions — only possible when the basemap is a vector
+      // style (i.e. a MapTiler key is set). OpenMapTiles schema exposes a
+      // 'building' source-layer with render_height / render_min_height.
+      const styleSources = m.getStyle().sources ?? {}
+      const vectorSourceId = Object.keys(styleSources).find(
+        (id) => (styleSources[id] as { type?: string }).type === 'vector'
+      )
+      if (vectorSourceId) {
+        m.addLayer({
+          id: 'buildings-3d',
+          type: 'fill-extrusion',
+          source: vectorSourceId,
+          'source-layer': 'building',
+          minzoom: 13,
+          layout: { visibility: 'none' },
+          paint: {
+            'fill-extrusion-color': '#22344a',
+            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+            'fill-extrusion-opacity': 0.85,
+          },
+        })
+      }
+
       // Geofences (drawn under everything)
       m.addSource('geofences', {
         type: 'geojson',
@@ -479,11 +503,16 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return () => { cancelled = true }
   }, [])
 
-  // Toggle the satellite (aerial) basemap over the dark base
+  // Toggle the satellite (aerial) basemap, 3D buildings, and camera pitch
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('sat-base')) return
     m.setLayoutProperty('sat-base', 'visibility', base === 'satellite' ? 'visible' : 'none')
+    if (m.getLayer('buildings-3d')) {
+      m.setLayoutProperty('buildings-3d', 'visibility', base === '3d' ? 'visible' : 'none')
+    }
+    // Tilt the camera for 3D, flatten for the 2D basemaps.
+    m.easeTo({ pitch: base === '3d' ? 55 : 0, duration: 600 })
   }, [mapReady, base])
 
   // Add / update / toggle the rain-radar raster layer
