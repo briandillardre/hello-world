@@ -88,6 +88,9 @@ export interface Asset {
   company_id: string
   name: string
   type: AssetType
+  category?: string | null   // free-form group, e.g. "Dozers", "Pickups", "Crew A"
+  serial?: string | null     // serial / VIN / asset tag
+  photo_url?: string | null
   tracker_id: string | null
   metadata: Record<string, unknown>
   active: boolean

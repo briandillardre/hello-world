@@ -8,7 +8,7 @@ import { formatRelativeTime } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { AssetForm } from './AssetForm'
+import { AssetForm, type AssetFormData } from './AssetForm'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
@@ -19,7 +19,7 @@ const TYPE_COLORS: Record<AssetType, string> = {
 
 interface AssetListProps {
   assets: AssetWithLocation[]
-  onAdd?: (data: { name: string; type: AssetType; tracker_id: string; metadata: Record<string, unknown> }) => void
+  onAdd?: (data: AssetFormData) => void
 }
 
 export function AssetList({ assets, onAdd }: AssetListProps) {
@@ -28,8 +28,10 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
   const [showForm, setShowForm] = useState(false)
 
   const filtered = assets.filter(a => {
-    const matchesQ = a.name.toLowerCase().includes(query.toLowerCase()) ||
-      (a.tracker_id?.toLowerCase().includes(query.toLowerCase()) ?? false)
+    const q = query.toLowerCase()
+    const matchesQ = a.name.toLowerCase().includes(q) ||
+      (a.tracker_id?.toLowerCase().includes(q) ?? false) ||
+      (a.category?.toLowerCase().includes(q) ?? false)
     const matchesType = typeFilter === 'all' || a.type === typeFilter
     return matchesQ && matchesType
   })

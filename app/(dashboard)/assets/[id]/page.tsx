@@ -35,7 +35,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
   const loc = asset.location
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
-  const serial = (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
+  const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin'].includes(k))
 
   return (
@@ -49,7 +49,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           <div className="text-3xl w-12 h-12 grid place-items-center bg-navy-800 rounded-xl">{TYPE_EMOJI[asset.type]}</div>
           <div>
             <h1 className="text-xl font-bold text-ink">{asset.name}</h1>
-            <Badge variant="secondary" className="mt-1">{TYPE_LABEL[asset.type]}</Badge>
+            <div className="flex items-center gap-1.5 mt-1">
+              <Badge variant="secondary">{TYPE_LABEL[asset.type]}</Badge>
+              {asset.category && <Badge variant="outline">{asset.category}</Badge>}
+            </div>
           </div>
           <Link href="/map" className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
             <MapPin className="h-4 w-4" /> View on map
@@ -60,12 +63,17 @@ export default async function AssetDetailPage({ params }: { params: { id: string
       <div className="p-4 max-w-3xl space-y-6">
         {/* photo + identity */}
         <section className="grid sm:grid-cols-[200px_1fr] gap-4">
-          <div className="aspect-square rounded-xl border border-navy-800 bg-navy-900 grid place-items-center text-center">
-            <div>
-              <p className="text-5xl mb-1">{TYPE_EMOJI[asset.type]}</p>
-              <p className="font-mono text-[11px] text-faint">No photo yet</p>
+          {asset.photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={asset.photo_url} alt={asset.name} className="aspect-square w-full rounded-xl border border-navy-800 bg-navy-900 object-cover" />
+          ) : (
+            <div className="aspect-square rounded-xl border border-navy-800 bg-navy-900 grid place-items-center text-center">
+              <div>
+                <p className="text-5xl mb-1">{TYPE_EMOJI[asset.type]}</p>
+                <p className="font-mono text-[11px] text-faint">No photo yet</p>
+              </div>
             </div>
-          </div>
+          )}
           <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
             <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker ID" value={asset.tracker_id ?? '—'} />
             <Field icon={<Hash className="h-4 w-4 text-faint" />} label="Serial number" value={serial ?? '— (add later)'} />

@@ -8,21 +8,38 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
+export interface AssetFormData {
+  name: string
+  type: AssetType
+  category: string
+  serial: string
+  photo_url: string
+  tracker_id: string
+  metadata: Record<string, unknown>
+}
+
 interface AssetFormProps {
   onClose: () => void
-  onSubmit: (data: { name: string; type: AssetType; tracker_id: string; metadata: Record<string, unknown> }) => void
-  initial?: { name: string; type: AssetType; tracker_id: string }
+  onSubmit: (data: AssetFormData) => void
+  initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string }
 }
 
 export function AssetForm({ onClose, onSubmit, initial }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
+  const [category, setCategory] = useState(initial?.category ?? '')
+  const [serial, setSerial] = useState(initial?.serial ?? '')
+  const [photoUrl, setPhotoUrl] = useState(initial?.photo_url ?? '')
   const [trackerId, setTrackerId] = useState(initial?.tracker_id ?? '')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onSubmit({ name: name.trim(), type, tracker_id: trackerId.trim(), metadata: {} })
+    onSubmit({
+      name: name.trim(), type,
+      category: category.trim(), serial: serial.trim(), photo_url: photoUrl.trim(),
+      tracker_id: trackerId.trim(), metadata: {},
+    })
   }
 
   return (
@@ -57,6 +74,38 @@ export function AssetForm({ onClose, onSubmit, initial }: AssetFormProps) {
                 <SelectItem value="tool">🔧 Small Tool</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="asset-category">Category</Label>
+              <Input
+                id="asset-category"
+                placeholder="e.g. Dozers, Pickups, Crew A"
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                list="asset-category-suggestions"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="asset-serial">Serial / VIN</Label>
+              <Input
+                id="asset-serial"
+                placeholder="e.g. 1FT8W3DT5..."
+                value={serial}
+                onChange={e => setSerial(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="asset-photo">Photo URL</Label>
+            <Input
+              id="asset-photo"
+              placeholder="https://… (paste a photo link)"
+              value={photoUrl}
+              onChange={e => setPhotoUrl(e.target.value)}
+            />
           </div>
 
           <div className="space-y-2">

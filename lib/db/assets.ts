@@ -43,7 +43,8 @@ export async function getAssets(companyId: string): Promise<Asset[]> {
 
 export async function createAsset(
   companyId: string,
-  payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'>
+  payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'> &
+    Partial<Pick<Asset, 'category' | 'serial' | 'photo_url'>>
 ): Promise<Asset | null> {
   if (isMock) return null
 
