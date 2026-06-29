@@ -170,6 +170,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const [radarOn, setRadarOn] = useState(false)
   const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
+  const [wxPlace, setWxPlace] = useState('Nashville, TN')
   const wxAdded = useRef(false)
 
   const activeFrames: RadarFrame[] = useMemo(() => weatherFrames?.radar ?? [], [weatherFrames])
@@ -518,6 +519,23 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     return () => { cancelled = true }
   }, [])
 
+  // Change the weather location: geocode the name (free Open-Meteo geocoder),
+  // refetch conditions for it, and fly the map there.
+  const handlePlaceChange = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(name)}`)
+      const json = await res.json()
+      const hit = json?.results?.[0]
+      if (!hit) return
+      const label = [hit.name, hit.admin1, hit.country_code].filter(Boolean).join(', ')
+      setWxPlace(label)
+      fetchConditions(hit.latitude, hit.longitude).then((c) => setConditions(c))
+      map.current?.flyTo({ center: [hit.longitude, hit.latitude], zoom: 12, duration: 1200 })
+    } catch {
+      /* ignore geocode failures */
+    }
+  }, [])
+
   // Switch basemap layers (dark / streets / satellite / hybrid / 3D) + camera tilt
   useEffect(() => {
     const m = map.current
@@ -674,7 +692,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         onRadar={setRadarOn}
         conditions={conditions}
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
-        place="Nashville, TN"
+        place={wxPlace}
+        onPlaceChange={handlePlaceChange}
         top={kiosk ? 70 : 58}
       />
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, MapPin, Box, Signpost, Globe2 } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid' | '3d'
@@ -14,6 +14,7 @@ interface WeatherControlProps {
   conditions: Conditions | null
   frameTime: string | null
   place?: string
+  onPlaceChange?: (name: string) => void
   top?: number
 }
 
@@ -31,9 +32,16 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
+  const [placeInput, setPlaceInput] = useState(place ?? '')
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
+
+  const submitPlace = (e: React.FormEvent) => {
+    e.preventDefault()
+    const v = placeInput.trim()
+    if (v && onPlaceChange) onPlaceChange(v)
+  }
 
   // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles
   if (!open) {
@@ -44,25 +52,42 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
         className="absolute left-3 z-10 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
         {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
-        {(radarOn || base === 'satellite') && (
+        {(radarOn || base === 'satellite' || base === 'hybrid') && (
           <span className="flex items-center gap-1">
             {radarOn && <CloudRain className="h-3.5 w-3.5 text-teal" />}
-            {base === 'satellite' && <Satellite className="h-3.5 w-3.5 text-teal" />}
+            {(base === 'satellite' || base === 'hybrid') && <Satellite className="h-3.5 w-3.5 text-teal" />}
           </span>
         )}
-        <Layers className="h-3.5 w-3.5 text-faint" />
+        {/* maximize affordance */}
+        <span className="flex items-center gap-0.5 text-faint">
+          <Layers className="h-3.5 w-3.5" />
+          <ChevronDown className="h-3.5 w-3.5" />
+        </span>
       </button>
     )
   }
 
   return (
     <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* location — makes it obvious which site this weather is for */}
-      {place && (
+      {/* location — editable so the weather can follow any site/city */}
+      {onPlaceChange ? (
+        <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 pt-2 -mb-0.5">
+          <MapPin className="h-3 w-3 text-teal flex-none" />
+          <input
+            value={placeInput}
+            onChange={(e) => setPlaceInput(e.target.value)}
+            placeholder="City or place…"
+            className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
+          />
+          <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
+            <Search className="h-3 w-3" />
+          </button>
+        </form>
+      ) : place ? (
         <div className="px-3 pt-2 -mb-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
           <MapPin className="h-3 w-3 text-teal" /> {place}
         </div>
-      )}
+      ) : null}
       {/* header — tap to collapse */}
       <button onClick={() => setOpen(false)} className="w-full flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
         <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>

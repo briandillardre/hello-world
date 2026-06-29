@@ -37,13 +37,13 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
       )}
     >
       {/* brand + collapse toggle */}
-      <div className={cn('border-b border-navy-800 flex', collapsed ? 'flex-col items-center gap-2 p-3' : 'items-start justify-between p-4')}>
+      <div className={cn('border-b border-navy-800 flex min-h-[68px]', collapsed ? 'flex-col items-center gap-2 py-3' : 'items-center justify-between px-4')}>
         {collapsed ? (
           <Logo wordmark={false} size={26} href="/map" />
         ) : (
           <div className="min-w-0">
             <Logo size={26} href="/map" />
-            <p className="text-xs font-semibold text-ink truncate max-w-[150px] mt-2">{companyName}</p>
+            <p className="text-xs font-semibold text-ink truncate max-w-[150px] mt-1.5">{companyName}</p>
             {userName && <p className="text-[11px] text-faint truncate max-w-[150px]">{userName}</p>}
           </div>
         )}
@@ -51,7 +51,8 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
           <button
             onClick={onToggle}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="grid place-items-center w-7 h-7 rounded-md text-faint hover:text-ink hover:bg-navy-900 flex-none"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="grid place-items-center w-8 h-8 rounded-lg bg-navy-900 border border-navy-800 text-faint hover:text-ink hover:border-navy-700 transition-colors flex-none"
           >
             {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
