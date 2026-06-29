@@ -55,6 +55,26 @@ export function rangeDays(range: TimeRange, customDays?: number): number {
 
 export interface PeriodCost { labor: number; equip: number; total: number }
 
+// Fallback day-rates for zones that aren't tied to a named project — used to
+// estimate a live cost from whatever assets are currently inside the zone.
+export const DEFAULT_RATES = { laborPerHr: 45, equipPerDay: 350, vehiclePerDay: 120 }
+
+/** Estimate cost from the assets present in a zone (by type), over the range. */
+export function presenceCost(
+  byType: { personnel: number; equipment: number; vehicle: number; tool: number },
+  range: TimeRange,
+  t: number,
+  customDays?: number
+): PeriodCost {
+  const days = rangeDays(range, customDays)
+  const f = range === 'live' ? LIVE_DAY_FRACTION
+    : range === 'today' ? Math.min(t, LIVE_DAY_FRACTION)
+    : t
+  const labor = byType.personnel * WORKDAY_HOURS * DEFAULT_RATES.laborPerHr * days * f
+  const equip = (byType.equipment * DEFAULT_RATES.equipPerDay + byType.vehicle * DEFAULT_RATES.vehiclePerDay) * days * f
+  return { labor, equip, total: labor + equip }
+}
+
 /** Cost over the selected range up to scrub position t (live = today so far).
  *  customDays sets the window length when range === 'custom'. */
 export function periodCost(p: Project, range: TimeRange, t: number, customDays?: number): PeriodCost {
