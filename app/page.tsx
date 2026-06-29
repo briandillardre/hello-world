@@ -70,9 +70,9 @@ export default function HomePage() {
           </span>
           <AnimatedHeadline />
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[56ch] mx-auto">
-            HammerTrack puts every truck, machine, and Bluetooth-tagged tool on one live map — and
-            our AI texts you the second something moves when it shouldn&apos;t. Half the price of
-            Tenna. Live in a day.
+            HammerTrack puts every truck, employee, machine, trailer, and Bluetooth-tagged tool on
+            one live map — and our AI texts you the second something moves when it shouldn&apos;t.
+            Half the price of competitors. Live in a day.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
             For any operation with vehicles, equipment &amp; tools in the field — from 5 assets to fleets of thousands
