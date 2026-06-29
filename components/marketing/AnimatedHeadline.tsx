@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 // holds on screen, then cycles to the next example of what HammerTrack catches.
 const SCENARIOS: { lead: string; punch: string }[] = [
   { lead: 'Your $80K excavator just left at 2 AM.', punch: 'You already got the text.' },
+  { lead: 'John took a three-hour lunch break.', punch: 'You saw every minute of it.' },
   { lead: 'A $1,200 tool kit walked off the site.', punch: 'You knew before it hit the gate.' },
   { lead: 'Your loader sat idle all afternoon.', punch: 'Now those hours are on the invoice.' },
   { lead: 'A truck drifted off the job site.', punch: 'You saw it the second it moved.' },
