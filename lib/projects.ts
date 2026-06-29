@@ -44,18 +44,21 @@ import { rangeSpanDays } from './trails'
 export const RANGE_COST_LABEL: Record<TimeRange, string> = {
   live: 'today', today: 'today', yesterday: 'yesterday',
   '7d': 'last 7 days', '30d': 'last 30 days', ytd: 'year to date', all: 'all time',
+  custom: 'custom range',
 }
 
-export function rangeDays(range: TimeRange): number {
+export function rangeDays(range: TimeRange, customDays?: number): number {
   if (range === 'live' || range === 'today' || range === 'yesterday') return 1
+  if (range === 'custom') return customDays ?? 7
   return rangeSpanDays(range)
 }
 
 export interface PeriodCost { labor: number; equip: number; total: number }
 
-/** Cost over the selected range up to scrub position t (live = today so far). */
-export function periodCost(p: Project, range: TimeRange, t: number): PeriodCost {
-  const days = rangeDays(range)
+/** Cost over the selected range up to scrub position t (live = today so far).
+ *  customDays sets the window length when range === 'custom'. */
+export function periodCost(p: Project, range: TimeRange, t: number, customDays?: number): PeriodCost {
+  const days = rangeDays(range, customDays)
   // "Today" can't accrue past the live position — the rest of the day hasn't
   // happened yet, so replaying to the end must match the live number.
   const f = range === 'live' ? LIVE_DAY_FRACTION

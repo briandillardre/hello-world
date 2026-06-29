@@ -134,7 +134,7 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
 export type TrailMode = 'off' | 'trails' | 'heatmap'
 
 // ── Timeline ranges ──────────────────────────────────────────────────────────
-export type TimeRange = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all'
+export type TimeRange = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all' | 'custom'
 
 export const RANGES: { key: TimeRange; label: string }[] = [
   { key: 'live', label: 'Live' },
@@ -179,8 +179,26 @@ export function speedsForRange(range: TimeRange): number[] {
     case '30d': return [2000, 10_000, 50_000, 200_000]
     case 'ytd':
     case 'all': return [10_000, 100_000, 500_000, 1_000_000]
+    case 'custom': return [500, 2000, 10_000, 50_000]
     default: return [60, 300, 1000]
   }
+}
+
+/** Days spanned by a custom From/To window (epoch ms), clamped to >= 1. */
+export function customSpanDays(fromMs: number, toMs: number): number {
+  return Math.max(1, Math.round((toMs - fromMs) / 86_400_000))
+}
+
+/** Date/time at scrub position t within a custom From/To window. */
+export function customScrubLabel(fromMs: number, toMs: number, t: number): string {
+  const ms = fromMs + t * (toMs - fromMs)
+  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+/** Short tick label at scrub position t within a custom window. */
+export function customTickLabel(fromMs: number, toMs: number, t: number): string {
+  const ms = fromMs + t * (toMs - fromMs)
+  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export function defaultSpeed(range: TimeRange): number {

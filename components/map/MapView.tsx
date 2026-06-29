@@ -135,6 +135,10 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
   // ── Timeline playback state ───────────────────────────────────────────────
   const [range, setRange] = useState<TimeRange>('live')
+  // Custom From/To window (defaults to the last 7 days). Epoch ms.
+  const [customFrom, setCustomFrom] = useState(() => Date.now() - 7 * 86_400_000)
+  const [customTo, setCustomTo] = useState(() => Date.now())
+  const customDays = Math.max(1, Math.round((customTo - customFrom) / 86_400_000))
   const pbActive = range !== 'live'
   const [trailMode, setTrailMode] = useState<TrailMode>('off')
   const [pbPlaying, setPbPlaying] = useState(false)
@@ -618,7 +622,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         top={kiosk ? 70 : 58}
       />
 
-      <ProjectsPanel projects={PROJECTS} range={range} t={pbT} />
+      <ProjectsPanel projects={PROJECTS} range={range} t={pbT} customDays={customDays} />
 
       {!kiosk && !pbActive && (
         <GeofenceDrawer
@@ -642,6 +646,9 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           onSeek={handleSeek}
           onPlayPause={handlePlayPause}
           onSpeed={setPbSpeed}
+          customFrom={customFrom}
+          customTo={customTo}
+          onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to) }}
         />
       )}
 

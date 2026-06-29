@@ -9,13 +9,14 @@ interface ProjectsPanelProps {
   projects: Project[]
   range: TimeRange
   t: number
+  customDays?: number
 }
 
-export function ProjectsPanel({ projects, range, t }: ProjectsPanelProps) {
+export function ProjectsPanel({ projects, range, t, customDays }: ProjectsPanelProps) {
   const [open, setOpen] = useState(false)
-  const periodLabel = RANGE_COST_LABEL[range]
+  const periodLabel = range === 'custom' ? `${customDays ?? 7}-day window` : RANGE_COST_LABEL[range]
 
-  const costs = projects.map((p) => periodCost(p, range, t))
+  const costs = projects.map((p) => periodCost(p, range, t, customDays))
   const totalLabor = costs.reduce((s, c) => s + c.labor, 0)
   const totalEquip = costs.reduce((s, c) => s + c.equip, 0)
 

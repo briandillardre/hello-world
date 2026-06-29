@@ -1,8 +1,20 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock } from 'lucide-react'
-import { type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed } from '@/lib/trails'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal } from 'lucide-react'
+import {
+  type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed,
+  customScrubLabel, customTickLabel,
+} from '@/lib/trails'
+
+// epoch ms <-> <input type="datetime-local"> value (local time, no seconds)
+function toLocalInput(ms: number): string {
+  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000)
+  return d.toISOString().slice(0, 16)
+}
+function fromLocalInput(v: string): number {
+  return new Date(v).getTime()
+}
 
 const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
@@ -21,13 +33,21 @@ interface TimelinePlaybackProps {
   onSeek: (t: number) => void
   onPlayPause: () => void
   onSpeed: (s: number) => void
+  customFrom: number
+  customTo: number
+  onCustom: (fromMs: number, toMs: number) => void
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  customFrom, customTo, onCustom,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => rangeLabel(range, f))
+  const custom = range === 'custom'
+  const [showCustom, setShowCustom] = useState(false)
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
+    custom ? customTickLabel(customFrom, customTo, f) : rangeLabel(range, f)
+  )
   const speeds = speedsForRange(range)
 
   // ticking "updated Ns ago" while live (cycles to feel real-time)
@@ -59,6 +79,49 @@ export function TimelinePlayback({
               {r.label}
             </button>
           ))}
+          {/* Custom From/To range */}
+          <div className="relative flex-none">
+            <button
+              onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
+              className={
+                'flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
+                (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink hover:bg-navy-900')
+              }
+            >
+              <SlidersHorizontal className="h-3 w-3" />
+              Custom
+            </button>
+            {showCustom && (
+              <div className="absolute bottom-full mb-2 right-0 z-20 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-3 space-y-2">
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-faint">From</span>
+                  <input
+                    type="datetime-local"
+                    value={toLocalInput(customFrom)}
+                    max={toLocalInput(customTo)}
+                    onChange={(e) => onCustom(fromLocalInput(e.target.value), customTo)}
+                    className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber"
+                  />
+                </label>
+                <label className="block">
+                  <span className="font-mono text-[10px] uppercase tracking-wide text-faint">To</span>
+                  <input
+                    type="datetime-local"
+                    value={toLocalInput(customTo)}
+                    min={toLocalInput(customFrom)}
+                    onChange={(e) => onCustom(customFrom, fromLocalInput(e.target.value))}
+                    className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber"
+                  />
+                </label>
+                <button
+                  onClick={() => setShowCustom(false)}
+                  className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
           {MODES.map(({ key, label, icon: Icon }) => (
@@ -91,7 +154,9 @@ export function TimelinePlayback({
         {/* prominent date/time readout (visible on mobile too) */}
         <div className="px-4 pt-2.5 flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-amber flex-none" />
-          <span className="font-display font-bold text-amber text-[15px] tabular-nums">{scrubLabel(range, t)}</span>
+          <span className="font-display font-bold text-amber text-[15px] tabular-nums">
+            {custom ? customScrubLabel(customFrom, customTo, t) : scrubLabel(range, t)}
+          </span>
         </div>
         <div className="flex items-center gap-3 px-4 pt-2 pb-3">
           <button
