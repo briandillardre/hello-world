@@ -4,6 +4,7 @@ import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, 
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { MapConsole } from '@/components/marketing/MapConsole'
+import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Mission control for your entire fleet',
@@ -67,17 +68,14 @@ export default function HomePage() {
             <span className="w-[7px] h-[7px] rounded-full bg-teal shadow-glow-teal animate-blink" />
             AI watching 38 assets · 2 sites · live now
           </span>
-          <h1 className="font-display font-black text-[2.6rem] sm:text-[3.9rem] leading-[1.0] tracking-tight mt-6 text-balance">
-            Your $80K excavator just left at 2 AM.{' '}
-            <span className="text-amber">You already got the text.</span>
-          </h1>
+          <AnimatedHeadline />
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[56ch] mx-auto">
             HammerTrack puts every truck, machine, and Bluetooth-tagged tool on one live map — and
             our AI texts you the second something moves when it shouldn&apos;t. Half the price of
             Tenna. Live in a day.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
-            For contractors, excavation, grading &amp; site crews — 5 to 500 assets
+            For any operation with vehicles, equipment &amp; tools in the field — from 5 assets to fleets of thousands
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
