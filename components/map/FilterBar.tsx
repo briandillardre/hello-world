@@ -1,6 +1,6 @@
 'use client'
 
-import { Hexagon } from 'lucide-react'
+import { Hexagon, Cctv } from 'lucide-react'
 import type { AssetType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -16,9 +16,11 @@ interface FilterBarProps {
   onChange: (f: Set<AssetType>) => void
   showZones: boolean
   onToggleZones: () => void
+  showDevices: boolean
+  onToggleDevices: () => void
 }
 
-export function FilterBar({ filter, onChange, showZones, onToggleZones }: FilterBarProps) {
+export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevices, onToggleDevices }: FilterBarProps) {
   const toggle = (type: AssetType) => {
     const next = new Set(filter)
     if (next.has(type)) { next.delete(type) } else { next.add(type) }
@@ -51,6 +53,17 @@ export function FilterBar({ filter, onChange, showZones, onToggleZones }: Filter
         >
           <Hexagon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Zones</span>
+        </button>
+        <button
+          onClick={onToggleDevices}
+          title={showDevices ? 'Hide devices (cameras, fuel, generators, weather station)' : 'Show devices'}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
+            showDevices ? 'bg-teal/20 border-teal text-teal' : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
+          )}
+        >
+          <Cctv className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Devices</span>
         </button>
       </div>
     </div>

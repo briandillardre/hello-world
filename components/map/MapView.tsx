@@ -131,6 +131,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   const [showZones, setShowZones] = useState(true)
+  const [showDevices, setShowDevices] = useState(true)
   const [isDrawing, setIsDrawing] = useState(false)
   const drawCoords = useRef<[number, number][]>([])
   const drawPreviewSource = useRef<string>('draw-preview')
@@ -617,6 +618,15 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     }
   }, [mapReady, showZones])
 
+  // Toggle the site-device markers (cameras, fuel, generators, weather station…)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady) return
+    for (const id of ['device-bg', 'device-icon']) {
+      if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showDevices ? 'visible' : 'none')
+    }
+  }, [mapReady, showDevices])
+
   // Keep an open zone popup's cost in sync with the timeline scrub/range
   useEffect(() => {
     const fence = openFenceRef.current
@@ -750,7 +760,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} />}
+      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={() => setShowDevices((v) => !v)} />}
 
       <WeatherControl
         base={base}
