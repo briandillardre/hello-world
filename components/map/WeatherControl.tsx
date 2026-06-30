@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
@@ -35,6 +35,8 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
 export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
+  // Keep the input in sync with the resolved location after a search.
+  useEffect(() => { setPlaceInput(place ?? '') }, [place])
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
   const submitPlace = (e: React.FormEvent) => {

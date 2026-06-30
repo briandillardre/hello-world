@@ -13,7 +13,7 @@ import {
   type WeatherFrames, type Conditions, type RadarFrame,
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
-import { PROJECTS } from '@/lib/projects'
+import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -21,7 +21,6 @@ import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
-import { ProjectsPanel } from './ProjectsPanel'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -147,6 +146,9 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const [pbSpeed, setPbSpeed] = useState(500)
   // How much of the window is revealed: full when live, scrubbed when replaying
   const displayT = pbActive ? pbT : 1
+  // Project cost shown inside the timeline (tracks the current range + scrub)
+  const costTotal = PROJECTS.reduce((s, p) => s + periodCost(p, range, pbT, customDays).total, 0)
+  const costLabel = range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
   const tracksRef = useRef(tracks)
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
@@ -156,6 +158,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   // Click handlers are bound once in the init effect; read assets via ref so
   // they see live data instead of the first render's array.
   const assetsRef = useRef(assets)
+  const geofencesRef = useRef(geofences)
   tracksRef.current = tracks
   filterRef.current = filter
   speedRef.current = pbSpeed
@@ -163,6 +166,23 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   rangeRef.current = range
   windowRef.current = rangeWindowSeconds(range)
   assetsRef.current = assets
+  geofencesRef.current = geofences
+
+  // Fit the map to everything — assets, zones, and site devices.
+  const fitAll = useCallback(() => {
+    const m = map.current
+    if (!m) return
+    const pts: [number, number][] = []
+    for (const a of assetsRef.current) if (a.location) pts.push([a.location.lng, a.location.lat])
+    for (const d of MOCK_SITE_DEVICES) pts.push([d.lng, d.lat])
+    for (const g of geofencesRef.current) {
+      const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+      if (ring) for (const c of ring) pts.push([c[0], c[1]])
+    }
+    if (!pts.length) return
+    const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
+    m.fitBounds(bounds, { padding: 60, maxZoom: 16, duration: 600 })
+  }, [])
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
   // Default to satellite — real aerial imagery reads as "the actual jobsite"
@@ -211,6 +231,24 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right')
     map.current.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right')
+
+    // Zoom-to-all control (sits below the geolocate button)
+    const fitAllControl: maplibregl.IControl = {
+      onAdd() {
+        const div = document.createElement('div')
+        div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.title = 'Zoom to all'
+        btn.setAttribute('aria-label', 'Zoom to all')
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
+        btn.onclick = () => fitAll()
+        div.appendChild(btn)
+        return div
+      },
+      onRemove() {},
+    }
+    map.current.addControl(fitAllControl, 'top-right')
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     map.current.on('load', () => {
@@ -697,7 +735,6 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         top={kiosk ? 70 : 58}
       />
 
-      <ProjectsPanel projects={PROJECTS} range={range} t={pbT} customDays={customDays} />
 
       {!kiosk && !pbActive && (
         <GeofenceDrawer
@@ -724,6 +761,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           customFrom={customFrom}
           customTo={customTo}
           onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to) }}
+          costTotal={costTotal}
+          costLabel={costLabel}
         />
       )}
 

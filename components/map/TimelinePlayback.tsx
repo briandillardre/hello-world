@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat } from 'lucide-react'
 import {
   type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed,
   customScrubLabel, customTickLabel,
 } from '@/lib/trails'
+import { money } from '@/lib/projects'
 
 // epoch ms <-> <input type="datetime-local"> value (local time, no seconds)
 function toLocalInput(ms: number): string {
@@ -36,11 +37,13 @@ interface TimelinePlaybackProps {
   customFrom: number
   customTo: number
   onCustom: (fromMs: number, toMs: number) => void
+  costTotal: number
+  costLabel: string
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
-  customFrom, customTo, onCustom,
+  customFrom, customTo, onCustom, costTotal, costLabel,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -122,6 +125,12 @@ export function TimelinePlayback({
               </div>
             )}
           </div>
+        </div>
+        {/* Live project cost — moved here from the floating panel */}
+        <div className="flex-none flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap" title={`Project cost · ${costLabel}`}>
+          <HardHat className="h-3.5 w-3.5" />
+          {money(costTotal)}
+          <span className="hidden md:inline text-faint">· {costLabel}</span>
         </div>
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
           {MODES.map(({ key, label, icon: Icon }) => (

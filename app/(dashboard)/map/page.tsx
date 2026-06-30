@@ -1,15 +1,17 @@
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
-import { getCurrentCompanyId } from '@/lib/db/company'
+import { getCurrentCompany } from '@/lib/db/company'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
+import { MapTopBar } from '@/components/map/MapTopBar'
 
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
 // to `force-dynamic` AND add a no-cache header so the edge doesn't serve stale.
 export default async function MapPage() {
-  const companyId = await getCurrentCompanyId()
+  const company = await getCurrentCompany()
+  const companyId = company.id
   const [rawAssets, geofences, toolAssociations] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
@@ -31,8 +33,11 @@ export default async function MapPage() {
   }
 
   return (
-    <div className="h-full pb-[70px] md:pb-0">
-      <MapPageClient assets={assets} geofences={geofences} tracks={tracks} toolGateways={toolGateways} />
+    <div className="h-full flex flex-col pb-[70px] md:pb-0">
+      <MapTopBar companyName={company.name} />
+      <div className="flex-1 relative min-h-0">
+        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} toolGateways={toolGateways} />
+      </div>
     </div>
   )
 }

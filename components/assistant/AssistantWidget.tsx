@@ -13,10 +13,11 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Pages with the timeline bar at the bottom need the launcher lifted above it
+  // The map page hosts its own "Ask" button in the top banner, so the floating
+  // launcher is hidden there to keep the map clean.
   const pathname = usePathname()
-  const overTimeline = pathname === '/map' || pathname === '/command'
-  // Sit above the timeline bar — tall enough to clear it in replay mode too
+  const inBanner = pathname === '/map'
+  const overTimeline = pathname === '/command'
   const launcherPos = overTimeline
     ? 'bottom-[212px] right-3 md:bottom-[160px] md:right-6'
     : 'bottom-[84px] right-4 md:bottom-6 md:right-6'
@@ -24,6 +25,13 @@ export function AssistantWidget() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs, loading])
+
+  // Allow other UI (e.g. the map top-banner "Ask" button) to open the assistant.
+  useEffect(() => {
+    const openIt = () => setOpen(true)
+    window.addEventListener('ht:ask', openIt)
+    return () => window.removeEventListener('ht:ask', openIt)
+  }, [])
 
   async function ask(q: string) {
     const question = q.trim()
@@ -48,8 +56,8 @@ export function AssistantWidget() {
 
   return (
     <>
-      {/* Floating launcher */}
-      {!open && (
+      {/* Floating launcher (hidden on the map — it lives in the banner there) */}
+      {!open && !inBanner && (
         <button
           onClick={() => setOpen(true)}
           className={`fixed ${launcherPos} z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
