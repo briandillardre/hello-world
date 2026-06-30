@@ -12,9 +12,19 @@ export function createClient() {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
+          // In a Server Component render, cookieStore.set throws ("Cookies can
+          // only be modified in a Server Action or Route Handler"). Swallow it:
+          // getUser() still returns the refreshed session in-memory for this
+          // request, which is all the read-only dashboard pages need. (Without
+          // this guard the throw bubbles up and the page falls back to an empty
+          // company — no fleet, no zones, no timeline.)
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            /* called from a Server Component — safe to ignore */
+          }
         },
       },
     }
