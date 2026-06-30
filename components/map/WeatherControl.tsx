@@ -39,8 +39,31 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
   useEffect(() => { setPlaceInput(place ?? '') }, [place])
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
+  // Live place autocomplete (free Open-Meteo geocoder), debounced.
+  type Place = { name: string; admin1?: string; country_code?: string }
+  const [suggestions, setSuggestions] = useState<Place[]>([])
+  const [sugOpen, setSugOpen] = useState(false)
+  useEffect(() => {
+    const q = placeInput.trim()
+    if (q.length < 2) { setSuggestions([]); return }
+    const id = setTimeout(() => {
+      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=5&name=${encodeURIComponent(q)}`)
+        .then((r) => r.json())
+        .then((j) => setSuggestions(Array.isArray(j?.results) ? j.results : []))
+        .catch(() => setSuggestions([]))
+    }, 250)
+    return () => clearTimeout(id)
+  }, [placeInput])
+  const placeLabel = (s: Place) => [s.name, s.admin1, s.country_code].filter(Boolean).join(', ')
+  const pickPlace = (s: Place) => {
+    setSugOpen(false)
+    setSuggestions([])
+    onPlaceChange?.(placeLabel(s))
+  }
+
   const submitPlace = (e: React.FormEvent) => {
     e.preventDefault()
+    setSugOpen(false)
     const v = placeInput.trim()
     if (v && onPlaceChange) onPlaceChange(v)
   }
@@ -73,18 +96,37 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
     <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
-        <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 pt-2 -mb-0.5">
-          <MapPin className="h-3 w-3 text-teal flex-none" />
-          <input
-            value={placeInput}
-            onChange={(e) => setPlaceInput(e.target.value)}
-            placeholder="City or place…"
-            className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
-          />
-          <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
-            <Search className="h-3 w-3" />
-          </button>
-        </form>
+        <div className="relative">
+          <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 pt-2 -mb-0.5">
+            <MapPin className="h-3 w-3 text-teal flex-none" />
+            <input
+              value={placeInput}
+              onChange={(e) => setPlaceInput(e.target.value)}
+              onFocus={() => setSugOpen(true)}
+              onBlur={() => setTimeout(() => setSugOpen(false), 150)}
+              placeholder="City or place…"
+              className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
+            />
+            <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
+              <Search className="h-3 w-3" />
+            </button>
+          </form>
+          {sugOpen && suggestions.length > 0 && (
+            <ul className="absolute left-2 right-2 top-full mt-1 z-30 rounded-lg bg-navy-900 border border-navy-700 shadow-panel overflow-hidden">
+              {suggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); pickPlace(s) }}
+                    className="w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-navy-800 flex items-center gap-1.5"
+                  >
+                    <MapPin className="h-3 w-3 text-faint flex-none" />
+                    <span className="truncate">{placeLabel(s)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : place ? (
         <div className="px-3 pt-2 -mb-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
           <MapPin className="h-3 w-3 text-teal" /> {place}
