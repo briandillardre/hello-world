@@ -123,6 +123,8 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
+  // The zone whose popup is currently open, so its cost can live-update on scrub.
+  const openFenceRef = useRef<Geofence | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
   // too early re-apply instead of silently dropping the change.
   const [mapReady, setMapReady] = useState(false)
@@ -260,12 +262,15 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         type: 'raster',
         tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
         tileSize: 256,
+        maxzoom: 20,
         attribution: '© OpenStreetMap contributors © CARTO',
       })
       m.addLayer({ id: 'streets-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' } })
 
-      // Satellite (aerial) imagery — Esri World Imagery
-      m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, attribution: 'Esri, Maxar' })
+      // Satellite (aerial) imagery — Esri World Imagery. maxzoom caps tile
+      // requests at 19 (Esri's global max) and over-scales beyond, so deep zoom
+      // no longer throws "zoom level not supported".
+      m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, maxzoom: 19, attribution: 'Esri, Maxar' })
       m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
       // Reference labels (roads / places) — transparent overlay for Hybrid
@@ -273,6 +278,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         type: 'raster',
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256,
+        maxzoom: 16,
       })
       m.addLayer({ id: 'labels-overlay', type: 'raster', source: 'labels-overlay', layout: { visibility: 'none' } })
 
@@ -424,22 +430,28 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       const showPopup = (lngLat: maplibregl.LngLatLike, html: string) => {
         popupRef.current?.remove()
         setSelectedAsset(null)
+        openFenceRef.current = null
         popupRef.current = new maplibregl.Popup({ offset: 16, closeButton: true, closeOnClick: true, maxWidth: '240px' })
           .setLngLat(lngLat)
           .setHTML(html)
           .addTo(m)
+        popupRef.current.on('close', () => { openFenceRef.current = null })
       }
 
-      // Click handlers
-      m.on('click', 'unclustered-circle', (e) => {
+      // Click handlers — bind to both the pin and its glow so the whole dot is a
+      // hit target (assets always win over the zone underneath).
+      const selectAsset = (e: maplibregl.MapLayerMouseEvent) => {
         const props = e.features?.[0]?.properties
         if (!props) return
         const asset = assetsRef.current.find((a) => a.id === props.id)
         if (asset) {
           popupRef.current?.remove() // close any zone/device popover first
+          openFenceRef.current = null
           setSelectedAsset(asset)
         }
-      })
+      }
+      m.on('click', 'unclustered-circle', selectAsset)
+      m.on('click', 'asset-glow', selectAsset)
       m.on('click', 'clusters', (e) => {
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
@@ -460,15 +472,22 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
 
       // Geofence zone → live presence + cost popover (cost matches the timeline)
       m.on('click', 'geofence-fill', (e) => {
-        // Don't hijack clicks that land on an asset/cluster — let the pin win so
-        // assets inside a zone stay selectable.
-        if (m.queryRenderedFeatures(e.point, { layers: ['unclustered-circle', 'clusters'] }).length) return
+        // Don't hijack clicks landing on/near any asset, cluster, or device — the
+        // pin always wins. Query a small box so the whole dot (incl. its glow) is
+        // protected, not just the exact pixel.
+        const pad = 14
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+          [e.point.x - pad, e.point.y - pad],
+          [e.point.x + pad, e.point.y + pad],
+        ]
+        if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-glow', 'clusters', 'device-bg'] }).length) return
         const id = e.features?.[0]?.properties?.id
         const fence = geofences.find((g) => g.id === id)
         if (!fence) return
         const r = rangeRef.current
         const t = r === 'live' ? 1 : tRef.current
         showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
+        openFenceRef.current = fence
       })
 
       for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {
@@ -597,6 +616,16 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones ? 'visible' : 'none')
     }
   }, [mapReady, showZones])
+
+  // Keep an open zone popup's cost in sync with the timeline scrub/range
+  useEffect(() => {
+    const fence = openFenceRef.current
+    const popup = popupRef.current
+    if (!mapReady || !fence || !popup) return
+    const r = rangeRef.current
+    const t = r === 'live' ? 1 : displayT
+    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
+  }, [mapReady, displayT, range])
 
   // Add / update / toggle the rain-radar raster layer
   useEffect(() => {
