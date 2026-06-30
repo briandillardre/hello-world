@@ -28,7 +28,7 @@ export default async function GeofencesPage() {
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
-        <h1 className="text-xl font-bold text-ink">Geofences</h1>
+        <h1 className="text-xl font-bold text-ink">Zones</h1>
         <span className="text-sm text-faint">{geofences.length} zones</span>
         <Link href="/map" className="ml-auto">
           <Button size="sm" className="gap-1">

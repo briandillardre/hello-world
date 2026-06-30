@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
@@ -10,7 +10,7 @@ const navItems = [
   { href: '/command', label: 'Command Center', icon: MonitorPlay },
   { href: '/map', label: 'Live Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
-  { href: '/geofences', label: 'Geofences', icon: Hexagon },
+  { href: '/geofences', label: 'Zones', icon: Hexagon },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
@@ -36,28 +36,30 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
         collapsed ? 'w-16' : 'w-56'
       )}
     >
-      {/* brand + collapse toggle */}
-      <div className={cn('border-b border-navy-800 flex min-h-[68px]', collapsed ? 'flex-col items-center gap-2 py-3' : 'items-center justify-between px-4')}>
+      {/* brand */}
+      <div className={cn('border-b border-navy-800 flex items-center min-h-[68px]', collapsed ? 'justify-center px-2' : 'px-4')}>
         {collapsed ? (
           <Logo wordmark={false} size={26} href="/map" />
         ) : (
           <div className="min-w-0">
             <Logo size={26} href="/map" />
-            <p className="text-xs font-semibold text-ink truncate max-w-[150px] mt-1.5">{companyName}</p>
-            {userName && <p className="text-[11px] text-faint truncate max-w-[150px]">{userName}</p>}
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
+            {userName && <p className="text-[10px] text-faint/70 truncate max-w-[160px]">{userName}</p>}
           </div>
         )}
-        {onToggle && (
-          <button
-            onClick={onToggle}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="grid place-items-center w-8 h-8 rounded-lg bg-navy-900 border border-navy-800 text-faint hover:text-ink hover:border-navy-700 transition-colors flex-none"
-          >
-            {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
-        )}
       </div>
+
+      {/* collapse pull-tab on the right seam (in / out) */}
+      {onToggle && (
+        <button
+          onClick={onToggle}
+          title={collapsed ? 'Expand' : 'Collapse'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="absolute top-1/2 -translate-y-1/2 -right-3 z-50 grid place-items-center w-6 h-12 rounded-md bg-navy-900 border border-navy-800 text-faint hover:text-ink hover:border-navy-700 transition-colors"
+        >
+          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
+      )}
 
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {

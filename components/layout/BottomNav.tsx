@@ -13,7 +13,7 @@ const primaryItems = [
 ]
 
 const moreItems = [
-  { href: '/geofences', label: 'Geofences', icon: Hexagon },
+  { href: '/geofences', label: 'Zones', icon: Hexagon },
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', icon: Calculator },
