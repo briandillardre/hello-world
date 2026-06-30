@@ -44,7 +44,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
           <div className="min-w-0">
             <Logo size={26} href="/map" />
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
-            {userName && <p className="text-[10px] text-faint/70 truncate max-w-[160px]">{userName}</p>}
+            {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
           </div>
         )}
       </div>

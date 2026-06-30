@@ -63,7 +63,23 @@ export function TimelinePlayback({
   const ago = tick === 0 ? 'updated just now' : `updated ${tick}s ago`
 
   return (
-    <div className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10 rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+    <div className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10">
+      {/* Custom From/To panel — sibling of the bar so it escapes the overflow clip */}
+      {custom && showCustom && (
+        <div className="absolute bottom-full mb-2 right-0 z-30 w-[260px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-3 space-y-2">
+          <p className="font-display font-bold text-[13px] text-ink">Custom range</p>
+          <label className="block">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">From</span>
+            <input type="datetime-local" value={toLocalInput(customFrom)} max={toLocalInput(customTo)} onChange={(e) => onCustom(fromLocalInput(e.target.value), customTo)} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
+          </label>
+          <label className="block">
+            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">To</span>
+            <input type="datetime-local" value={toLocalInput(customTo)} min={toLocalInput(customFrom)} onChange={(e) => onCustom(customFrom, fromLocalInput(e.target.value))} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
+          </label>
+          <button onClick={() => setShowCustom(false)} className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors">Done</button>
+        </div>
+      )}
+      <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       {/* range pills + movement-display control */}
       <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-navy-800">
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
@@ -82,50 +98,17 @@ export function TimelinePlayback({
               {r.label}
             </button>
           ))}
-          {/* Custom From/To range */}
-          <div className="relative flex-none">
-            <button
-              onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
-              className={
-                'flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
-                (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink hover:bg-navy-900')
-              }
-            >
-              <SlidersHorizontal className="h-3 w-3" />
-              Custom
-            </button>
-            {showCustom && (
-              <div className="absolute bottom-full mb-2 right-0 z-20 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-3 space-y-2">
-                <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-wide text-faint">From</span>
-                  <input
-                    type="datetime-local"
-                    value={toLocalInput(customFrom)}
-                    max={toLocalInput(customTo)}
-                    onChange={(e) => onCustom(fromLocalInput(e.target.value), customTo)}
-                    className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber"
-                  />
-                </label>
-                <label className="block">
-                  <span className="font-mono text-[10px] uppercase tracking-wide text-faint">To</span>
-                  <input
-                    type="datetime-local"
-                    value={toLocalInput(customTo)}
-                    min={toLocalInput(customFrom)}
-                    onChange={(e) => onCustom(customFrom, fromLocalInput(e.target.value))}
-                    className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber"
-                  />
-                </label>
-                <button
-                  onClick={() => setShowCustom(false)}
-                  className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors"
-                >
-                  Done
-                </button>
-              </div>
-            )}
-          </div>
         </div>
+        {/* Custom pill — pinned outside the scroll area so its panel isn't clipped */}
+        <button
+          onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
+          className={
+            'flex-none flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
+            (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink hover:bg-navy-900')
+          }
+        >
+          <SlidersHorizontal className="h-3 w-3" /> Custom
+        </button>
         {/* Live project cost — moved here from the floating panel */}
         <div className="flex-none flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap" title={`Project cost · ${costLabel}`}>
           <HardHat className="h-3.5 w-3.5" />
@@ -200,6 +183,7 @@ export function TimelinePlayback({
         </div>
         </>
       )}
+      </div>
     </div>
   )
 }
