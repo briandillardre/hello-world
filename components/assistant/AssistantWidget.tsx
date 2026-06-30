@@ -54,7 +54,7 @@ export function AssistantWidget() {
   return (
     <>
       {/* Floating launcher (hidden on the map — it lives in the banner there) */}
-      {!open && !inBanner && (
+      {!open && !hideLauncher && (
         <button
           onClick={() => setOpen(true)}
           className={`fixed ${launcherPos} z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
