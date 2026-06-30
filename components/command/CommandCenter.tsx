@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { X } from 'lucide-react'
+import { X, Sparkles } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { Logo } from '@/components/brand/Logo'
@@ -94,6 +94,12 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company }: Comm
         </div>
 
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-3 py-1.5 hover:brightness-110 transition"
+          >
+            <Sparkles className="h-4 w-4" /> Ask
+          </button>
           <div className="text-right pointer-events-none">
             <div className="font-display font-black text-[18px] leading-none tabular-nums">{time}</div>
             <div className="font-mono text-[10px] text-faint">{date}</div>

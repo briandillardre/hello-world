@@ -13,14 +13,11 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  // The map page hosts its own "Ask" button in the top banner, so the floating
-  // launcher is hidden there to keep the map clean.
+  // The map + command pages host their own "Ask" button (banner / header), so the
+  // floating launcher is hidden there to keep those screens clean.
   const pathname = usePathname()
-  const inBanner = pathname === '/map'
-  const overTimeline = pathname === '/command'
-  const launcherPos = overTimeline
-    ? 'bottom-[212px] right-3 md:bottom-[160px] md:right-6'
-    : 'bottom-[84px] right-4 md:bottom-6 md:right-6'
+  const hideLauncher = pathname === '/map' || pathname === '/command'
+  const launcherPos = 'bottom-[84px] right-4 md:bottom-6 md:right-6'
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
