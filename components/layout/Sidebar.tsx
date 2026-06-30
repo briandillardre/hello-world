@@ -49,15 +49,15 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
         )}
       </div>
 
-      {/* collapse pull-tab on the right seam (in / out) */}
+      {/* collapse toggle — circular chevron on the top of the right seam (Wix-style) */}
       {onToggle && (
         <button
           onClick={onToggle}
           title={collapsed ? 'Expand' : 'Collapse'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="absolute top-1/2 -translate-y-1/2 -right-3 z-50 grid place-items-center w-6 h-12 rounded-md bg-navy-900 border border-navy-800 text-faint hover:text-ink hover:border-navy-700 transition-colors"
+          className="absolute top-[22px] -right-3 z-50 grid place-items-center w-7 h-7 rounded-full bg-navy-900 border border-navy-700 text-faint shadow-md hover:text-ink hover:border-teal/60 transition-colors"
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
         </button>
       )}
 
