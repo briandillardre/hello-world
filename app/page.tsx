@@ -150,6 +150,29 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Site IoT */}
+        <section className="max-w-6xl mx-auto px-6 mt-16">
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking</p>
+          <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center max-w-[26ch] mx-auto">Your whole jobsite on one map — not just what moves</h2>
+          <p className="text-faint text-center mt-2 max-w-[54ch] mx-auto text-[14px]">
+            Cameras, fuel tanks, generators, pumps, and an on-site weather station — live on the same map as your fleet. One pane of glass for the entire site.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-7">
+            {[
+              { e: '📷', t: 'Site cameras', d: 'Gate + perimeter feeds pinned right on the map.' },
+              { e: '⛽', t: 'Fuel tank levels', d: 'Diesel & genset fill %, with low-fuel alerts.' },
+              { e: '⚡', t: 'Generators & pumps', d: 'Runtime, fuel, and dewatering flow at a glance.' },
+              { e: '🌤️', t: 'Weather station', d: 'Real on-site temp, wind & rain — not just a forecast.' },
+            ].map(({ e, t, d }) => (
+              <div key={t} className="bg-navy-900 border border-navy-800 rounded-2xl p-5">
+                <div className="text-2xl mb-2">{e}</div>
+                <h3 className="font-display font-bold text-[15px]">{t}</h3>
+                <p className="text-[13px] text-faint mt-1">{d}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Features */}
         <section id="features" className="max-w-6xl mx-auto px-6 py-14">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

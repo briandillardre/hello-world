@@ -56,14 +56,14 @@ export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevi
         </button>
         <button
           onClick={onToggleDevices}
-          title={showDevices ? 'Hide devices (cameras, fuel, generators, weather station)' : 'Show devices'}
+          title={showDevices ? 'Hide site IoT (cameras, fuel, generators, weather station)' : 'Show site IoT'}
           className={cn(
             'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
             showDevices ? 'bg-teal/20 border-teal text-teal' : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
           )}
         >
           <Cctv className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Devices</span>
+          <span className="hidden sm:inline">Site IoT</span>
         </button>
       </div>
     </div>
