@@ -7,7 +7,7 @@ import type {
 // Nashville, TN construction site area
 export const MOCK_COMPANY: Company = {
   id: 'mock-company-1',
-  name: 'Dillard Construction Group',
+  name: 'Blue Ridge Sitework Co.',
   api_key: 'tf_demo_key_for_display_only',
   plan: 'pro',
   created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
@@ -354,7 +354,7 @@ export const MOCK_QBO_CONNECTION: QboConnection = {
   company_id: 'mock-company-1',
   realm_id: 'demo-realm-4620816365',
   connected_at: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-  company_name: 'Dillard Construction Group (Sandbox)',
+  company_name: 'Blue Ridge Sitework Co. (Sandbox)',
 }
 
 // Equipment billing rates ($/engine-hour) used for usage-invoice generation

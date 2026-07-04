@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { X, Sparkles } from 'lucide-react'
-import type { AssetWithLocation, Geofence } from '@/lib/types'
+import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
+import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
@@ -34,6 +35,15 @@ interface CommandCenterProps {
   tracks: AssetTrack[]
   kpis: CommandKpis
   company: string
+  alerts?: AlertEvent[]
+}
+
+const TRIGGER_LABEL: Record<string, string> = {
+  after_hours_movement: 'AFTER-HOURS MOVEMENT',
+  left_site: 'LEFT SITE',
+  exit: 'exited zone',
+  enter: 'entered zone',
+  idle: 'idle too long',
 }
 
 function Chip({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'amber' | 'teal' | 'alert' }) {
@@ -46,7 +56,7 @@ function Chip({ label, value, tone = 'ink' }: { label: string; value: string; to
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, kpis, company }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts = [] }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
   useEffect(() => {
     setNow(new Date())
@@ -56,6 +66,20 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company }: Comm
 
   const time = now?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) ?? '—'
   const date = now?.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase() ?? ''
+
+  // Live event ticker: real alerts first (loud), then fleet status lines.
+  const ticker: { text: string; alert?: boolean }[] = [
+    ...alerts.slice(0, 6).map((a) => ({
+      alert: a.rule?.trigger === 'after_hours_movement' || a.rule?.trigger === 'left_site',
+      text: `${a.asset?.name ?? 'Asset'} · ${TRIGGER_LABEL[a.rule?.trigger ?? ''] ?? 'alert'}${a.rule?.geofence ? ` · ${a.rule.geofence.name}` : ''} · ${formatRelativeTime(a.triggered_at)}`,
+    })),
+    ...assets
+      .filter((a) => a.location)
+      .slice(0, 10)
+      .map((a) => ({
+        text: `${a.name} · ${a.location!.speed && a.location!.speed > 2 ? `moving · ${Math.round(a.location!.speed!)} mph` : 'on site'} · ${formatRelativeTime(a.location!.timestamp)}`,
+      })),
+  ]
 
   return (
     <div className="fixed inset-0 bg-navy-950 text-ink overflow-hidden">
@@ -112,6 +136,20 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company }: Comm
           </Link>
         </div>
       </div>
+
+      {/* live event ticker — the wall display's heartbeat */}
+      {ticker.length > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
+          <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[12px]">
+            {[...ticker, ...ticker].map((item, i) => (
+              <span key={i} className={'flex items-center gap-2 ' + (item.alert ? 'text-alert font-bold' : 'text-faint')}>
+                <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (item.alert ? 'bg-alert animate-blink' : 'bg-teal/60')} />
+                {item.text}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <AssistantWidget />
     </div>

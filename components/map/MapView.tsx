@@ -143,7 +143,9 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
   const [customTo, setCustomTo] = useState(() => Date.now())
   const customDays = Math.max(1, Math.round((customTo - customFrom) / 86_400_000))
   const pbActive = range !== 'live'
-  const [trailMode, setTrailMode] = useState<TrailMode>('off')
+  // Kiosk (Command Center) shows movement trails by default — the wall display
+  // should look alive without anyone touching it.
+  const [trailMode, setTrailMode] = useState<TrailMode>(kiosk ? 'trails' : 'off')
   const [pbPlaying, setPbPlaying] = useState(false)
   const [pbT, setPbT] = useState(0)
   const [pbSpeed, setPbSpeed] = useState(500)
@@ -618,6 +620,36 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
     }
   }, [mapReady, showZones])
 
+  // Kiosk auto-tour: slow cinematic cycle overview → each zone → overview.
+  // Any manual drag cancels it (someone walked up to the TV and took over).
+  useEffect(() => {
+    if (!kiosk || !mapReady) return
+    const m = map.current
+    if (!m) return
+    let stopped = false
+    let i = -1
+    const step = () => {
+      if (stopped) return
+      const zones = geofencesRef.current
+      i = (i + 1) % (zones.length + 1)
+      if (i === zones.length || zones.length === 0) {
+        fitAll()
+      } else {
+        const ring = zones[i].geometry?.coordinates?.[0] as [number, number][] | undefined
+        if (!ring?.length) return
+        const c: [number, number] = [
+          ring.reduce((s, p) => s + p[0], 0) / ring.length,
+          ring.reduce((s, p) => s + p[1], 0) / ring.length,
+        ]
+        m.easeTo({ center: c, zoom: 15.4, duration: 2600 })
+      }
+    }
+    const id = setInterval(step, 18000)
+    const cancel = () => { stopped = true; clearInterval(id) }
+    m.on('dragstart', cancel)
+    return () => { cancel(); m.off('dragstart', cancel) }
+  }, [kiosk, mapReady, fitAll])
+
   // Toggle the site-device markers (cameras, fuel, generators, weather station…)
   useEffect(() => {
     const m = map.current
@@ -785,7 +817,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
         />
       )}
 
-      {tracks.length > 0 && (
+      {!kiosk && tracks.length > 0 && (
         <TimelinePlayback
           range={range}
           onRange={handleRange}

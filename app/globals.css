@@ -132,6 +132,17 @@ body {
   }
 }
 
+/* Command Center event ticker — seamless marquee (content is duplicated once,
+   so -50% loops cleanly) */
+.ticker-track {
+  width: max-content;
+  animation: ticker 45s linear infinite;
+}
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
 /* Word-by-word dramatic reveal for the rotating hero headline */
 .anim-word {
   opacity: 0;
