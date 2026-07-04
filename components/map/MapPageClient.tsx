@@ -51,12 +51,46 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, too
   }, [])
 
   return (
-    <MapView
-      assets={assets}
-      geofences={geofences}
-      tracks={tracks}
-      toolGateways={toolGateways}
-      onGeofenceSave={handleGeofenceSave}
-    />
+    <>
+      <MapView
+        assets={assets}
+        geofences={geofences}
+        tracks={tracks}
+        toolGateways={toolGateways}
+        onGeofenceSave={handleGeofenceSave}
+      />
+      {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}
+    </>
+  )
+}
+
+/** First-run onboarding: a brand-new company lands on an empty map — give them
+ *  a path instead of a blank screen. */
+function GetSetUp({ hasZones }: { hasZones: boolean }) {
+  return (
+    <div className="absolute left-1/2 -translate-x-1/2 top-16 md:top-20 z-30 w-[92%] max-w-sm rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel p-5">
+      <p className="font-display font-bold text-ink text-[16px]">Let&apos;s get your fleet on the map</p>
+      <ol className="mt-3 space-y-2.5 text-[13.5px]">
+        <li className="flex items-start gap-2.5">
+          <span className="grid place-items-center w-5 h-5 rounded-full bg-amber/20 text-amber font-display font-bold text-[11px] flex-none mt-0.5">1</span>
+          <span className="text-muted">
+            <a href="/assets" className="text-amber font-semibold hover:underline">Add your first asset</a>
+            {' '}— a truck, machine, or tool, with its tracker ID.
+          </span>
+        </li>
+        <li className="flex items-start gap-2.5">
+          <span className="grid place-items-center w-5 h-5 rounded-full bg-amber/20 text-amber font-display font-bold text-[11px] flex-none mt-0.5">2</span>
+          <span className="text-muted">
+            {hasZones ? 'Zones drawn ✓ — nice.' : 'Draw a zone around your yard or job site (hexagon button, bottom-left).'}
+          </span>
+        </li>
+        <li className="flex items-start gap-2.5">
+          <span className="grid place-items-center w-5 h-5 rounded-full bg-amber/20 text-amber font-display font-bold text-[11px] flex-none mt-0.5">3</span>
+          <span className="text-muted">
+            Plug in your trackers — assets go live the moment they report.
+          </span>
+        </li>
+      </ol>
+    </div>
   )
 }

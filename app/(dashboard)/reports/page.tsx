@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Activity, Clock, Gauge, MapPin } from 'lucide-react'
-import { MOCK_UTILIZATION } from '@/lib/mock-data'
+import { MOCK_UTILIZATION, MOCK_EQUIPMENT_RATES } from '@/lib/mock-data'
 import type { AssetType } from '@/lib/types'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
@@ -14,6 +14,7 @@ export default function ReportsPage() {
   const totalDistance = util.reduce((s, u) => s + u.distance_miles, 0)
   const maxEngine = Math.max(...util.map(u => u.engine_hours), 1)
   const idlePct = totalEngineHours > 0 ? Math.round((totalIdle / (totalEngineHours + totalIdle)) * 100) : 0
+  const billableValue = util.reduce((s, u) => s + u.engine_hours * (MOCK_EQUIPMENT_RATES[u.asset_id] ?? 0), 0)
 
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
@@ -23,6 +24,18 @@ export default function ReportsPage() {
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl">
+        {/* Hero: what the tracked hours are worth — the reason this page exists */}
+        <section className="rounded-2xl border border-navy-800 bg-gradient-to-br from-navy-900 to-navy-950 p-5 relative overflow-hidden">
+          <div className="absolute inset-0 brand-glow" />
+          <div className="relative">
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable equipment value · last 30 days</p>
+            <p className="font-display font-black text-[2.1rem] text-amber leading-tight">
+              ${billableValue.toLocaleString()}
+            </p>
+            <p className="text-xs text-faint">{totalEngineHours.toLocaleString()} tracked engine hours at your billing rates — job-costed automatically.</p>
+          </div>
+        </section>
+
         <section className="grid grid-cols-3 gap-3">
           <SummaryCard icon={<Activity className="h-4 w-4 text-amber" />} label="Engine hours" value={`${totalEngineHours}`} />
           <SummaryCard icon={<Clock className="h-4 w-4 text-alert" />} label="Idle %" value={`${idlePct}%`} />

@@ -49,7 +49,7 @@ export function GeofenceDrawer({
 
   return (
     <>
-      <div className="absolute bottom-[188px] left-3 z-10 flex flex-col gap-2 md:bottom-[120px] md:left-4">
+      <div className="absolute bottom-[218px] left-3 z-10 flex flex-col gap-2 md:bottom-[140px] md:left-4">
         {isDrawing ? (
           <>
             <button

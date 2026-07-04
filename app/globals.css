@@ -72,6 +72,22 @@ body {
   right: 4px !important;
 }
 
+/* Attribution: dark glass instead of the default white pill (it sat glaring on
+   top of the translucent timeline bar). */
+.maplibregl-ctrl-attrib {
+  background: rgba(0, 21, 35, 0.75) !important;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib a {
+  color: #7f9bb3 !important;
+  font-size: 10px !important;
+}
+.maplibregl-ctrl-attrib-button {
+  filter: invert(78%) sepia(12%) saturate(380%) hue-rotate(150deg) brightness(95%);
+}
+
 /* Safe area for iOS notch / home indicator */
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);

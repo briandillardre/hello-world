@@ -134,10 +134,10 @@ export function TimelinePlayback({
       </div>
 
       {live ? (
-        <div className="flex items-center gap-2 px-4 py-3">
-          <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" />
-          <span className="font-mono text-[12px] text-teal">Live · {ago}</span>
-          <span className="font-mono text-[12px] text-faint truncate">
+        <div className="flex items-center gap-2 px-4 py-3 min-w-0 flex-nowrap overflow-hidden">
+          <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
+          <span className="font-mono text-[12px] text-teal whitespace-nowrap flex-none">Live · {ago}</span>
+          <span className="font-mono text-[12px] text-faint truncate whitespace-nowrap min-w-0">
             · {trailMode === 'off' ? 'pick a range to replay, or turn on Trails / Heatmap' : 'showing all of today'}
           </span>
         </div>

@@ -74,7 +74,7 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-navy-800 pb-24 md:pb-20">
+      <div className="flex-1 overflow-y-auto divide-y divide-navy-800 pb-32 md:pb-28">
         {filtered.length === 0 ? (
           <div className="p-8 text-center text-faint">
             <p className="text-4xl mb-2">📦</p>
