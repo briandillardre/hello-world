@@ -88,11 +88,11 @@ export default function HomePage() {
               href="/register"
               className="font-display font-bold rounded-xl px-6 py-3.5 bg-white/[0.03] border border-navy-700 text-ink hover:bg-white/[0.06] transition-colors inline-flex items-center justify-center"
             >
-              Start free 30-day pilot
+              Start free pilot
             </Link>
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
-            No credit card · we ship the trackers · cancel anytime
+            Free 30 days · no credit card · we ship the trackers · cancel anytime
           </p>
         </section>
 
@@ -100,7 +100,7 @@ export default function HomePage() {
         <section className="max-w-6xl mx-auto px-6">
           <MapConsole />
           <p className="text-center font-mono text-[12.5px] text-faint mt-6 max-w-3xl mx-auto">
-            We ship the trackers — Teltonika GPS, OBD2 plug-ins &amp; BlueCharm Bluetooth tags. Built in Nashville for working contractors.
+            We ship the trackers — Teltonika GPS, OBD2 plug-ins &amp; BlueCharm Bluetooth tags. Built in South Carolina by a working contractor.
           </p>
         </section>
 
@@ -201,6 +201,23 @@ export default function HomePage() {
           <p className="text-center font-mono text-[13px] text-faint mt-5">
             Same fleet visibility as the big guys. A fraction of the price.
           </p>
+        </section>
+
+        {/* Founder note — built by the customer, not a telematics giant */}
+        <section className="max-w-3xl mx-auto px-6 mt-16">
+          <div className="rounded-2xl border border-navy-800 bg-navy-900 p-8 text-center relative overflow-hidden">
+            <div className="absolute inset-0 brand-glow" />
+            <div className="relative">
+              <p className="font-display text-[1.35rem] font-bold leading-snug text-ink max-w-[38ch] mx-auto">
+                &ldquo;I run crews and equipment every day. I built HammerTrack because the big
+                telematics platforms wanted $500 setup and $20 a machine to tell me where my own
+                excavator was.&rdquo;
+              </p>
+              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-faint mt-4">
+                — Brian D. · Founder · working contractor, South Carolina
+              </p>
+            </div>
+          </div>
         </section>
 
         {/* Final CTA */}

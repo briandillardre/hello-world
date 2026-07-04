@@ -16,7 +16,7 @@ const TIERS = [
     price: '$3',
     unit: '/asset/mo',
     blurb: 'For small crews getting started.',
-    cta: 'Start free trial',
+    cta: 'Start free pilot',
     highlight: false,
     features: [
       'Live GPS map', 'Bluetooth tool tracking', 'Geofences & alerts',
@@ -28,7 +28,7 @@ const TIERS = [
     price: '$5',
     unit: '/asset/mo',
     blurb: 'For growing contractors.',
-    cta: 'Start free trial',
+    cta: 'Start free pilot',
     highlight: true,
     features: [
       'Everything in Starter', 'AI anomaly & theft detection', 'QuickBooks integration',
@@ -46,6 +46,29 @@ const TIERS = [
       'Everything in Pro', 'Dedicated onboarding', 'Custom integrations',
       'SLA & phone support', 'Volume hardware pricing',
     ],
+  },
+]
+
+const FAQ = [
+  {
+    q: 'What do the trackers cost?',
+    a: 'At-cost, no markup: OBD2 plug-ins for trucks run about $40–60, GPS units for equipment $60–90, and Bluetooth tool tags about $20. Free pilots include loaner trackers, and Fleet plans get volume hardware pricing.',
+  },
+  {
+    q: 'Is there a contract?',
+    a: 'No. Month-to-month, cancel anytime from your account, no setup fees. The free pilot doesn’t even take a credit card.',
+  },
+  {
+    q: 'What counts as an asset?',
+    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, a crew member clocking in by phone, or a $20-tagged tool kit. You only pay for what you track.',
+  },
+  {
+    q: 'Who installs the hardware?',
+    a: 'You do, in minutes — OBD2 plugs into the port under the dash, equipment units mount with bolts or adhesive, tags stick to tools. No install crew, no downtime.',
+  },
+  {
+    q: 'Who owns my data?',
+    a: 'You do. Export it anytime, and if you leave we delete it. We never sell or share your fleet’s location data.',
   },
 ]
 
@@ -118,6 +141,20 @@ export default function PricingPage() {
           ))}
         </div>
 
+        {/* Hardware — the question every prospect asks first */}
+        <section className="mt-6 rounded-2xl border border-navy-800 bg-navy-900 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+          <div className="flex-1">
+            <h3 className="font-display font-bold text-[15px]">Hardware at cost — no markup, no rental games</h3>
+            <p className="text-[13px] text-faint mt-1">
+              OBD2 plug-ins ~$40–60 · equipment GPS ~$60–90 · Bluetooth tool tags ~$20.
+              Yours to keep. Free pilots ship with loaner trackers.
+            </p>
+          </div>
+          <Link href="/register" className="flex-none font-display font-bold text-sm rounded-xl px-4 py-2.5 bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07] transition-colors">
+            Start free pilot
+          </Link>
+        </section>
+
         <section className="mt-12 bg-navy-900 border border-navy-800 rounded-2xl p-7">
           <h3 className="font-display font-bold text-lg mb-5 text-center">Why contractors switch from Tenna</h3>
           <div className="grid sm:grid-cols-2 gap-3.5 max-w-2xl mx-auto">
@@ -129,6 +166,22 @@ export default function PricingPage() {
                   <p className="text-xs text-faint line-through">{them}</p>
                 </div>
               </div>
+            ))}
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section className="mt-12 max-w-2xl mx-auto">
+          <h3 className="font-display font-bold text-lg mb-5 text-center">Common questions</h3>
+          <div className="space-y-3">
+            {FAQ.map(({ q, a }) => (
+              <details key={q} className="group rounded-xl border border-navy-800 bg-navy-900 px-5 py-4">
+                <summary className="cursor-pointer list-none flex items-center justify-between gap-3 font-display font-bold text-[14.5px] text-ink">
+                  {q}
+                  <span className="text-faint transition-transform group-open:rotate-45 text-lg leading-none">+</span>
+                </summary>
+                <p className="text-[13.5px] text-muted mt-3 leading-relaxed">{a}</p>
+              </details>
             ))}
           </div>
         </section>

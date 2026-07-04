@@ -8,7 +8,7 @@ import { MapConsole } from '@/components/marketing/MapConsole'
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine & tool is. Right now.',
   description:
-    'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. Half the price of Tenna, set up in a day. Start a free 30-day pilot.',
+    'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. Half the price of the big telematics platforms, set up in a day. Start a free pilot.',
 }
 
 const FEATURES = [
@@ -44,15 +44,15 @@ export default function DemoLandingPage() {
             </h1>
             <p className="text-muted mt-5 text-lg">
               HammerTrack puts every truck, machine, and power tool on one live map — and our AI texts you
-              the second something moves when it shouldn&apos;t. Half the price of Tenna. Set up in a day,
-              no install crew.
+              the second something moves when it shouldn&apos;t. Half the price of the big telematics
+              platforms. Set up in a day, no install crew.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-8">
               <Link
                 href="/register"
                 className="bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 text-center inline-flex items-center justify-center gap-2 shadow-glow-amber transition-colors"
               >
-                Start Free 30-Day Pilot <ArrowRight className="h-4 w-4" />
+                Start free pilot <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/map"
@@ -110,7 +110,7 @@ export default function DemoLandingPage() {
               href="/register"
               className="inline-flex items-center justify-center gap-2 bg-navy-950 text-ink font-display font-bold rounded-xl px-8 py-3.5 mt-6 hover:bg-navy-900 transition-colors"
             >
-              Start Free Pilot <ArrowRight className="h-4 w-4" />
+              Start free pilot <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </section>

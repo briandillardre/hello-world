@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Map } from 'lucide-react'
+import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,11 +44,10 @@ export default function LoginPage() {
     <div className="min-h-screen bg-navy-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <div className="w-14 h-14 bg-amber rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Map className="h-7 w-7 text-[#1a1100]" />
+          <div className="flex justify-center mb-3">
+            <Logo size={34} href="/" />
           </div>
-          <h1 className="text-2xl font-bold text-ink">HammerTrack</h1>
-          <p className="text-faint text-sm mt-1">Asset tracking for construction</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">Every asset · one live map</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
