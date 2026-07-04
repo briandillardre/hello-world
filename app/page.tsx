@@ -214,7 +214,7 @@ export default function HomePage() {
                 excavator was.&rdquo;
               </p>
               <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-faint mt-4">
-                — Brian D. · Founder · working contractor, South Carolina
+                — Founder · working contractor, South Carolina
               </p>
             </div>
           </div>
