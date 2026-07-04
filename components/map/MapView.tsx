@@ -323,7 +323,11 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
       m.addLayer({
         id: 'trails-line', type: 'line', source: 'trails',
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-        paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-blur': 0.3 },
+        // Kiosk shows every asset's full history at once — fade the lines so the
+        // wall display reads as ambiance, not spaghetti.
+        paint: kiosk
+          ? { 'line-color': ['get', 'color'], 'line-width': 1.6, 'line-opacity': 0.3, 'line-blur': 0.4 }
+          : { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-blur': 0.3 },
       })
       // Heatmap of movement density (alternative to trails)
       m.addSource('trail-points', { type: 'geojson', data: pointsGeoJSON(tracksRef.current, filterRef.current, 0) })
