@@ -13,6 +13,7 @@ export const BALL_SKINS: BallSkin[] = [
   { id: 'earth', name: 'Planet Earth', cost: 90, colors: ['#7dd3fc', '#0369a1'], emoji: '🌍' },
   { id: 'cookie', name: 'Cookie', cost: 130, colors: ['#fcd34d', '#b45309'], emoji: '🍪' },
   { id: 'disco', name: 'Disco Ball', cost: 180, colors: ['#e9d5ff', '#7c3aed'], emoji: '🪩' },
+  { id: 'whalehog', name: 'Whalehog', cost: 200, colors: ['#7dd3fc', '#f472b6'], emoji: '🐋' },
   { id: 'monster', name: 'Monster Eye', cost: 240, colors: ['#86efac', '#15803d'], emoji: '👁️' },
   { id: 'dragon', name: 'Dragon Egg', cost: 320, colors: ['#fca5a5', '#b91c1c'], emoji: '🐉' },
   { id: 'rainbow', name: 'Rainbow', cost: 420, colors: ['#f0abfc', '#4f46e5'], emoji: '🌈' },

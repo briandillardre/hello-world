@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from 'next'
 import { PlayApp } from '@/components/game/PlayApp'
 
 export const metadata: Metadata = {
-  title: 'Brain Ball — roll, answer, grow!',
+  title: 'Brain Ball — a Whalehogs game',
   description:
-    'A kindergarten-readiness game: roll your ball into the right answer and watch it grow. Adaptive difficulty, coins & ball skins, and a grown-ups progress report.',
+    'A kindergarten-readiness game for the Whalehogs: roll your ball into the right answer and watch it grow. Adaptive difficulty, coins & ball skins, and a grown-ups progress report.',
   robots: { index: false, follow: false },
   manifest: '/brainball.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Brain Ball' },

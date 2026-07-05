@@ -60,8 +60,8 @@ interface Floater {
 type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'done'
 
 const CONFETTI = ['#f97316', '#22c55e', '#3b82f6', '#eab308', '#ec4899', '#a855f7']
-const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!']
-const ENCOURAGE = ['Good try!', 'Almost!', 'Keep going!', "You'll get it!"]
+const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!', 'Go Whalehogs!', 'Whalehog smart!']
+const ENCOURAGE = ['Good try!', 'Almost!', 'Keep going!', "You'll get it!", "We don't say can't!", 'Whalehogs never quit!']
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))

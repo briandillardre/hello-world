@@ -6,6 +6,12 @@ Built for Marshall (b. 2020-09-15) and Lincoln (b. 2022-02-10). Roll a smiley ba
 right answer bubble and it eats it and grows (hole.io style). Wrong answers gently reveal the
 correct bubble and shrink nothing — encouragement only.
 
+**Whalehogs theming** (the Dillard crew name — Marshall misheard Avicii's "wild heart" as
+"whalehog"): the picker is badged "A Whalehogs Game", selecting a kid runs the family ritual
+("Dada says: Today's going to be a…" → tap → **GREAT DAY!!!** with confetti and a spoken yell),
+encouragement lines include "We don't say can't!" and "Whalehogs never quit!", and there's an
+unlockable Whalehog ball skin in the shop.
+
 ## How it works
 
 | Piece | File | What it does |

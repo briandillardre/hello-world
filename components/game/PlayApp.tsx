@@ -12,7 +12,7 @@ import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { ParentDashboard } from './ParentDashboard'
 
-type Screen = 'pick' | 'home' | 'game' | 'summary' | 'shop' | 'parents'
+type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents'
 
 export function PlayApp() {
   const [profiles, setProfiles] = useState<KidProfile[]>([])
@@ -113,11 +113,14 @@ export function PlayApp() {
     return (
       <Shell>
         <div className="text-center pt-10 pb-6">
+          <span className="inline-block text-xs font-extrabold uppercase tracking-widest bg-blue-600 text-white rounded-full px-3 py-1 mb-3">
+            🐋🐗 A Whalehogs Game
+          </span>
           <div className="text-6xl mb-2">🧠⚽</div>
           <h1 className="text-4xl font-black text-slate-800">Brain Ball</h1>
           <p className="text-slate-500 font-semibold mt-1">Roll. Answer. Grow your ball!</p>
         </div>
-        <p className="text-center text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Who&apos;s playing?</p>
+        <p className="text-center text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Which Whalehog is playing?</p>
         <div className="grid grid-cols-2 gap-4 px-6 max-w-md mx-auto">
           {profiles.map((p) => {
             const lvl = brainLevel(p)
@@ -126,7 +129,7 @@ export function PlayApp() {
                 key={p.id}
                 onClick={() => {
                   setActiveId(p.id)
-                  setScreen('home')
+                  setScreen('greatday')
                 }}
                 className="rounded-3xl bg-white border-2 border-blue-200 shadow-lg p-5 flex flex-col items-center gap-1 active:scale-95 transition-transform"
               >
@@ -138,6 +141,14 @@ export function PlayApp() {
             )
           })}
         </div>
+      </Shell>
+    )
+  }
+
+  if (screen === 'greatday') {
+    return (
+      <Shell>
+        <GreatDay onDone={() => setScreen('home')} />
       </Shell>
     )
   }
@@ -168,7 +179,11 @@ export function PlayApp() {
             {r.bestStreak >= 3 && <p className="text-sm font-bold text-orange-500 mt-1">🔥 Best streak: {r.bestStreak} in a row!</p>}
           </div>
           <p className="text-sm text-slate-500 font-semibold mb-6">
-            {r.correct === r.total ? 'PERFECT round — the questions will get trickier!' : r.stars >= 2 ? 'Awesome work, keep rolling!' : 'Nice practice — every roll makes you smarter!'}
+            {r.correct === r.total
+              ? 'PERFECT round — Whalehogs are on FIRE! It gets trickier now!'
+              : r.stars >= 2
+              ? 'Awesome work, keep rolling!'
+              : "We don't say can't — every roll makes a Whalehog smarter!"}
           </p>
           <div className="grid gap-3">
             <BigButton color="green" onClick={() => startGame(gameSkill)}>
@@ -306,6 +321,76 @@ export function PlayApp() {
         </p>
       </div>
     </Shell>
+  )
+}
+
+// ---------------------------------------------------------------- great day ritual
+
+const BURST = ['🎉', '⭐', '🐋', '🐗', '💥', '🌟', '🎊']
+
+function GreatDay({ onDone }: { onDone: () => void }) {
+  const [yelled, setYelled] = useState(false)
+  const burst = useMemo(
+    () =>
+      Array.from({ length: 26 }, (_, i) => ({
+        emoji: BURST[i % BURST.length],
+        left: Math.random() * 90 + 2,
+        top: Math.random() * 80 + 5,
+        delay: Math.random() * 0.4,
+        size: 22 + Math.random() * 26,
+      })),
+    []
+  )
+
+  const yell = () => {
+    if (yelled) return
+    setYelled(true)
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+        const u = new SpeechSynthesisUtterance('GREAT DAY!!')
+        u.rate = 1
+        u.pitch = 1.35
+        u.volume = 1
+        window.speechSynthesis.speak(u)
+      }
+    } catch {
+      // no speech — the confetti still lands
+    }
+    window.setTimeout(onDone, 1800)
+  }
+
+  return (
+    <div className="relative max-w-md mx-auto px-6 pt-20 text-center min-h-[80dvh] overflow-hidden">
+      {yelled &&
+        burst.map((b, i) => (
+          <span
+            key={i}
+            className="absolute animate-ping pointer-events-none"
+            style={{ left: `${b.left}%`, top: `${b.top}%`, fontSize: b.size, animationDelay: `${b.delay}s`, animationDuration: '1.1s' }}
+          >
+            {b.emoji}
+          </span>
+        ))}
+      <div className="text-5xl mb-6">🐋🐗</div>
+      <p className="text-sm font-extrabold uppercase tracking-widest text-slate-400 mb-2">Dada says…</p>
+      <h2 className="text-3xl font-black text-slate-800 mb-10 leading-snug">
+        &ldquo;Today&apos;s going to be a…&rdquo;
+      </h2>
+      {yelled ? (
+        <div className="text-5xl font-black text-green-600 animate-bounce">GREAT DAY!!!</div>
+      ) : (
+        <button
+          onClick={yell}
+          className="rounded-3xl bg-gradient-to-b from-yellow-400 to-orange-500 border-b-8 border-orange-700 text-white text-4xl font-black px-10 py-6 shadow-2xl active:scale-95 active:border-b-2 transition-all animate-pulse"
+        >
+          GREAT DAY!!!
+        </button>
+      )}
+      <p className="mt-14 text-[11px] text-slate-400 italic">
+        &ldquo;He got a whalehog… wild heart&rdquo; — Marshall, singing Avicii
+      </p>
+    </div>
   )
 }
 

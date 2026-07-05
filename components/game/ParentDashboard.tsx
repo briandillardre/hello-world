@@ -158,6 +158,7 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
         their exact age ({ageLabel(kid.birthdate)}). They&apos;re for encouragement and spotting trends — not a clinical assessment. Difficulty
         auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.
       </p>
+      <p className="text-center text-xs font-extrabold text-blue-500 mt-3">Go Whalehogs 🐋🐗 — we don&apos;t say can&apos;t!</p>
     </div>
   )
 }
