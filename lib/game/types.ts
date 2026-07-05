@@ -28,6 +28,17 @@ export interface Question {
   visual?: string
   choices: string[]
   answer: number
+  /** kid-friendly "here's why" for the end-of-round miss review */
+  explain?: string
+}
+
+export interface MissedQuestion {
+  skill: SkillId
+  prompt: string
+  visual?: string
+  picked: string
+  answer: string
+  explain?: string
 }
 
 export interface AnswerRecord {
@@ -53,6 +64,10 @@ export interface RoundResult {
   coinsEarned: number
   stars: 1 | 2 | 3
   bestStreak: number
+  /** skill-level changes over this round (rounded start → end) */
+  deltas?: Array<{ skill: SkillId; from: number; to: number }>
+  /** questions missed this round, for the walk-through review */
+  misses?: MissedQuestion[]
 }
 
 export interface KidProfile {

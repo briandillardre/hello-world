@@ -104,7 +104,8 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
         {SKILLS.map((s) => {
           const st = kid.skills[s.id]
           const played = st.attempts > 0
-          const calibrated = st.attempts >= 10
+          const calibrated = st.attempts >= 3
+          const firm = st.attempts >= 10
           const { percentile, z } = percentileForSkill(st.theta, kid.birthdate)
           const acc = recentAccuracy(kid.history, s.id, 20)
           const tr = trend(kid.history, s.id)
@@ -126,7 +127,9 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
                 <>
                   <div className="flex items-center justify-between text-xs font-bold mb-2">
                     <span className="text-blue-600">
-                      {calibrated ? `~${percentile}th percentile for age · ${percentileLabel(percentile)}` : `Calibrating… (${st.attempts}/10 answers)`}
+                      {calibrated
+                        ? `~${percentile}th percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`
+                        : `Warming up… (${st.attempts}/3 answers to first estimate)`}
                     </span>
                     {tr && (
                       <span className={`flex items-center gap-1 ${tr === 'up' ? 'text-green-600' : tr === 'down' ? 'text-orange-500' : 'text-slate-400'}`}>

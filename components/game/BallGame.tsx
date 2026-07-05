@@ -7,8 +7,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Volume2, X } from 'lucide-react'
 import { nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
 import { generateQuestion, SKILLS } from '@/lib/game/questions'
+import { speak as speakText } from '@/lib/game/speech'
 import { BALL_SKINS } from '@/lib/game/storage'
-import type { KidProfile, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
+import type { KidProfile, MissedQuestion, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
 
 export const ROUND_LENGTH = 10
 
@@ -93,8 +94,12 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
     t: 0,
   })
   const skillsRef = useRef<Record<SkillId, SkillState>>(clone(profile.skills))
+  const startThetasRef = useRef<Record<SkillId, number>>(
+    Object.fromEntries(Object.entries(profile.skills).map(([k, s]) => [k, s.theta])) as Record<SkillId, number>
+  )
   const questionRef = useRef<Question | null>(null)
   const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0 })
+  const missesRef = useRef<MissedQuestion[]>([])
   const audioRef = useRef<AudioContext | null>(null)
   const mutedRef = useRef(false)
   mutedRef.current = muted
@@ -136,18 +141,8 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
   }, [tone])
 
   const speak = useCallback((text: string) => {
-    if (mutedRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return
-    try {
-      window.speechSynthesis.cancel()
-      const u = new SpeechSynthesisUtterance(text)
-      u.rate = 0.92
-      u.pitch = 1.1
-      const voice = window.speechSynthesis.getVoices().find((v) => v.lang.startsWith('en'))
-      if (voice) u.voice = voice
-      window.speechSynthesis.speak(u)
-    } catch {
-      // speech unsupported — visual play still works
-    }
+    if (mutedRef.current) return
+    speakText(text, { rate: 0.92, pitch: 1.1 })
   }, [])
 
   // ------------------------------------------------------------- questions
@@ -171,7 +166,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
     (index: number) => {
       const sk: SkillId = skill === 'mix' ? pickMixSkill(skillsRef.current) : skill
       const state = skillsRef.current[sk]
-      const q = generateQuestion(sk, nextDifficulty(state, index))
+      const q = generateQuestion(sk, nextDifficulty(state, index, world.current.streak))
       questionRef.current = q
       setQuestion(q)
       setQIndex(index)
@@ -247,6 +242,14 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         w.streak = 0
         w.phase = 'reveal'
         w.bubbles[bubbleIndex].wrongFlash = 1
+        missesRef.current.push({
+          skill: q.skill,
+          prompt: q.prompt,
+          visual: q.visual,
+          picked: q.choices[bubbleIndex],
+          answer: q.choices[q.answer],
+          explain: q.explain,
+        })
         w.floaters.push({
           x: w.w / 2,
           y: w.h * 0.55,
@@ -267,6 +270,9 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
           w.phase = 'done'
           const accuracy = stats.correct / ROUND_LENGTH
           const stars: 1 | 2 | 3 = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : 1
+          const deltas = (Object.keys(skillsRef.current) as SkillId[])
+            .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
+            .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
           onComplete({
             skill,
             total: ROUND_LENGTH,
@@ -274,6 +280,8 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
             coinsEarned: stats.coins + stars * 5,
             stars,
             bestStreak: stats.bestStreak,
+            deltas,
+            misses: missesRef.current,
           })
         } else {
           nextQuestion(idx)
@@ -616,6 +624,11 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         {skillMeta && (
           <span className="absolute -top-2.5 left-3 text-[10px] font-extrabold uppercase tracking-wide bg-blue-500 text-white rounded-full px-2 py-0.5">
             {skillMeta.emoji} {skillMeta.name}
+          </span>
+        )}
+        {question && (
+          <span className="absolute -top-2.5 right-3 text-[10px] font-extrabold bg-purple-500 text-white rounded-full px-2 py-0.5">
+            ⚡ Level {question.difficulty}
           </span>
         )}
         <div className="flex items-center justify-center gap-2">

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { ageLabel, brainLevel } from '@/lib/game/adaptive'
 import { SKILLS } from '@/lib/game/questions'
+import { speak } from '@/lib/game/speech'
 import { BALL_SKINS, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
@@ -130,6 +131,8 @@ export function PlayApp() {
                 onClick={() => {
                   setActiveId(p.id)
                   setScreen('greatday')
+                  // speak inside the tap gesture so mobile browsers allow it
+                  speak("Dada says: Today's going to be a…", { rate: 0.95, pitch: 1.1 })
                 }}
                 className="rounded-3xl bg-white border-2 border-blue-200 shadow-lg p-5 flex flex-col items-center gap-1 active:scale-95 transition-transform"
               >
@@ -178,6 +181,59 @@ export function PlayApp() {
             <p className="text-lg font-extrabold text-yellow-600">+{r.coinsEarned} 🪙 coins earned</p>
             {r.bestStreak >= 3 && <p className="text-sm font-bold text-orange-500 mt-1">🔥 Best streak: {r.bestStreak} in a row!</p>}
           </div>
+          {r.misses && r.misses.length > 0 && (
+            <div className="rounded-2xl bg-white border-2 border-orange-200 shadow p-4 mb-2 text-left">
+              <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2 text-center">
+                Let&apos;s learn from the tricky ones
+              </p>
+              {r.misses.map((m, i) => {
+                const meta = SKILLS.find((s) => s.id === m.skill)!
+                const line = `${m.prompt} The answer was ${m.answer}. ${m.explain ?? ''}`
+                return (
+                  <div key={i} className={`py-2 ${i > 0 ? 'border-t border-slate-100' : ''}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-extrabold text-slate-700">
+                        {meta.emoji} {m.prompt}
+                        {m.visual ? <span className="block text-xl leading-snug whitespace-pre-wrap">{m.visual}</span> : null}
+                      </p>
+                      <button
+                        onClick={() => speak(line, { rate: 0.92, pitch: 1.1 })}
+                        aria-label="Read this explanation aloud"
+                        className="shrink-0 w-8 h-8 rounded-full bg-blue-500 text-white text-sm flex items-center justify-center active:scale-90"
+                      >
+                        🔊
+                      </button>
+                    </div>
+                    <p className="text-xs font-bold mt-1">
+                      <span className="text-orange-500">You picked {m.picked}</span>
+                      <span className="text-slate-400"> · </span>
+                      <span className="text-green-600">it was {m.answer}</span>
+                    </p>
+                    {m.explain && <p className="text-xs text-slate-500 font-semibold mt-0.5">{m.explain}</p>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {r.deltas && r.deltas.length > 0 && (
+            <div className="rounded-2xl bg-white border-2 border-blue-200 shadow p-4 mb-2 text-left">
+              <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2 text-center">Skill levels this round</p>
+              {r.deltas.map((d) => {
+                const meta = SKILLS.find((s) => s.id === d.skill)!
+                const up = d.to > d.from
+                return (
+                  <div key={d.skill} className="flex items-center justify-between py-0.5">
+                    <span className="text-sm font-bold text-slate-600">
+                      {meta.emoji} {meta.name}
+                    </span>
+                    <span className={`text-sm font-extrabold ${up ? 'text-green-600' : 'text-orange-500'}`}>
+                      {d.from} → {d.to} {up ? '📈' : '📉'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <p className="text-sm text-slate-500 font-semibold mb-6">
             {r.correct === r.total
               ? 'PERFECT round — Whalehogs are on FIRE! It gets trickier now!'
@@ -191,6 +247,9 @@ export function PlayApp() {
             </BigButton>
             <BigButton color="blue" onClick={() => setScreen('shop')}>
               🛍️ Spend coins
+            </BigButton>
+            <BigButton color="slate" onClick={() => setScreen('parents')}>
+              📊 Full report (grown-ups)
             </BigButton>
             <BigButton color="slate" onClick={() => setScreen('home')}>
               🏠 Home
@@ -345,18 +404,7 @@ function GreatDay({ onDone }: { onDone: () => void }) {
   const yell = () => {
     if (yelled) return
     setYelled(true)
-    try {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel()
-        const u = new SpeechSynthesisUtterance('GREAT DAY!!')
-        u.rate = 1
-        u.pitch = 1.35
-        u.volume = 1
-        window.speechSynthesis.speak(u)
-      }
-    } catch {
-      // no speech — the confetti still lands
-    }
+    speak('A GREAT DAY!!', { rate: 1, pitch: 1.35 })
     window.setTimeout(onDone, 1800)
   }
 
@@ -374,9 +422,16 @@ function GreatDay({ onDone }: { onDone: () => void }) {
         ))}
       <div className="text-5xl mb-6">🐋🐗</div>
       <p className="text-sm font-extrabold uppercase tracking-widest text-slate-400 mb-2">Dada says…</p>
-      <h2 className="text-3xl font-black text-slate-800 mb-10 leading-snug">
+      <h2 className="text-3xl font-black text-slate-800 mb-2 leading-snug">
         &ldquo;Today&apos;s going to be a…&rdquo;
       </h2>
+      <button
+        onClick={() => speak("Dada says: Today's going to be a…", { rate: 0.95, pitch: 1.1 })}
+        aria-label="Hear it again"
+        className="mb-8 text-2xl active:scale-90 transition-transform"
+      >
+        🔊
+      </button>
       {yelled ? (
         <div className="text-5xl font-black text-green-600 animate-bounce">GREAT DAY!!!</div>
       ) : (

@@ -16,21 +16,23 @@ export function pCorrect(theta: number, difficulty: number): number {
 
 /** update ability after an answer; faster K while calibrating a new kid */
 export function updateTheta(state: SkillState, difficulty: number, correct: boolean): number {
-  const K = state.attempts < 15 ? 10 : 5
+  const K = state.attempts < 10 ? 14 : state.attempts < 25 ? 8 : 5
   const p = pCorrect(state.theta, difficulty)
   const next = state.theta + K * ((correct ? 1 : 0) - p)
   return Math.max(1, Math.min(99, next))
 }
 
 /**
- * Pick the next question difficulty. Mostly slightly above ability
- * (stretch), with an occasional easy "confidence" question.
+ * Pick the next question difficulty. Slightly above ability (stretch), an
+ * occasional easy "confidence" question, and a hot-streak bonus so a run of
+ * right answers visibly cranks the challenge up within the round.
  */
-export function nextDifficulty(state: SkillState, questionIndex: number): number {
-  if (questionIndex > 0 && questionIndex % 5 === 4) {
+export function nextDifficulty(state: SkillState, questionIndex: number, streak = 0): number {
+  if (questionIndex > 0 && questionIndex % 5 === 4 && streak < 3) {
     return Math.max(1, state.theta - 15) // confidence builder
   }
-  const offset = -6 + Math.random() * 14 // -6 … +8 around theta
+  const heat = Math.min(14, streak * 3.5) // 4-in-a-row ≈ +14 harder
+  const offset = -4 + Math.random() * 12 + heat
   return Math.max(1, Math.min(99, state.theta + offset))
 }
 
