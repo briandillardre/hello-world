@@ -1,0 +1,18 @@
+{
+  "name": "Brain Ball — Roll, Answer, Grow!",
+  "short_name": "Brain Ball",
+  "description": "A kindergarten-readiness game: roll your ball into the right answer and watch it grow. Adaptive difficulty, coins and ball skins, and a grown-ups progress report.",
+  "id": "/play",
+  "start_url": "/play",
+  "scope": "/play",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#bfe6ff",
+  "theme_color": "#bae6fd",
+  "categories": ["education", "kids", "games"],
+  "icons": [
+    { "src": "/icons/brainball-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/brainball-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/brainball-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
