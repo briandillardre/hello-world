@@ -202,7 +202,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         sk = review.skill
         difficulty = Math.max(1, review.difficulty - 8)
       } else {
-        sk = skill === 'mix' ? pickMixSkill(skillsRef.current, profile.birthdate) : skill
+        // testers get no age-percentile weighting — norms don't apply to adults
+        sk = skill === 'mix' ? pickMixSkill(skillsRef.current, profile.isTester ? undefined : profile.birthdate) : skill
         difficulty = nextDifficulty(skillsRef.current[sk], index, world.current.streak)
       }
       const q = generateQuestion(sk, difficulty)
@@ -217,7 +218,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       world.current.tappedIndex = -1
       speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
     },
-    [skill, layoutBubbles, speak, profile.birthdate]
+    [skill, layoutBubbles, speak, profile.birthdate, profile.isTester]
   )
 
   // start round

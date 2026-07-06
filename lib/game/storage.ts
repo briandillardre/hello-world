@@ -22,18 +22,18 @@ export const BALL_SKINS: BallSkin[] = [
 
 const SKILL_IDS: SkillId[] = ['counting', 'numbers', 'addition', 'letters', 'sounds', 'shapes', 'words']
 
-function freshSkillState(): SkillState {
-  return { theta: START_THETA, attempts: 0, correct: 0, bestStreak: 0 }
+function freshSkillState(startTheta = START_THETA): SkillState {
+  return { theta: startTheta, attempts: 0, correct: 0, bestStreak: 0 }
 }
 
-function freshSkills(): Record<SkillId, SkillState> {
+function freshSkills(startTheta = START_THETA): Record<SkillId, SkillState> {
   return SKILL_IDS.reduce((acc, id) => {
-    acc[id] = freshSkillState()
+    acc[id] = freshSkillState(startTheta)
     return acc
   }, {} as Record<SkillId, SkillState>)
 }
 
-function makeKid(id: string, name: string, birthdate: string, avatar: string): KidProfile {
+function makeKid(id: string, name: string, birthdate: string, avatar: string, opts?: { tester?: boolean; startTheta?: number }): KidProfile {
   return {
     id,
     name,
@@ -44,9 +44,10 @@ function makeKid(id: string, name: string, birthdate: string, avatar: string): K
     stars: 0,
     ownedSkins: ['classic'],
     activeSkin: 'classic',
-    skills: freshSkills(),
+    skills: freshSkills(opts?.startTheta),
     history: [],
     roundsPlayed: 0,
+    ...(opts?.tester ? { isTester: true } : {}),
   }
 }
 
@@ -54,6 +55,10 @@ export function defaultProfiles(): KidProfile[] {
   return [
     makeKid('marshall', 'Marshall', '2020-09-15', '🦖'),
     makeKid('lincoln', 'Lincoln', '2022-02-10', '🦁'),
+    // grown-up testers: separate scores, questions start much harder,
+    // age-norm percentiles suppressed in the report
+    makeKid('brian', 'Brian', '1984-06-15', '🛠️', { tester: true, startTheta: 60 }),
+    makeKid('leslie', 'Leslie', '1986-06-15', '🌻', { tester: true, startTheta: 60 }),
   ]
 }
 
@@ -65,11 +70,14 @@ export function loadProfiles(): KidProfile[] {
     const parsed = JSON.parse(raw) as { profiles: KidProfile[] }
     if (!Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return defaultProfiles()
     // merge any newly-added skills into stored profiles
-    return parsed.profiles.map((p) => ({
+    const stored = parsed.profiles.map((p) => ({
       ...p,
       skills: { ...freshSkills(), ...p.skills },
       ownedSkins: p.ownedSkins?.length ? p.ownedSkins : ['classic'],
     }))
+    // append default profiles added after this device first saved (e.g. testers)
+    const have = new Set(stored.map((p) => p.id))
+    return [...stored, ...defaultProfiles().filter((d) => !have.has(d.id))]
   } catch {
     return defaultProfiles()
   }

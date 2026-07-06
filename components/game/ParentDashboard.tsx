@@ -88,10 +88,13 @@ export function ParentDashboard({
   const totalAnswered = kid.history.length
   const months = ageInMonths(kid.birthdate)
 
-  // strongest / focus skill among those with enough signal
-  const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
-    .map((s) => ({ meta: s, pct: percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile }))
-    .sort((a, b) => b.pct - a.pct)
+  // strongest / focus skill among those with enough signal (kids only —
+  // age-norm percentiles don't apply to grown-up testers)
+  const ranked = kid.isTester
+    ? []
+    : SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
+        .map((s) => ({ meta: s, pct: percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile }))
+        .sort((a, b) => b.pct - a.pct)
   const strongest = ranked[0]
   const focus = ranked.length > 1 ? ranked[ranked.length - 1] : undefined
 
@@ -104,26 +107,34 @@ export function ParentDashboard({
       </div>
 
       {/* kid tabs */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {profiles.map((p) => (
           <button
             key={p.id}
             onClick={() => setKidId(p.id)}
-            className={`flex-1 rounded-2xl border-2 px-3 py-2 font-extrabold flex items-center justify-center gap-2 ${
+            className={`flex-1 min-w-[40%] rounded-2xl border-2 px-2 py-2 font-extrabold text-sm flex items-center justify-center gap-1.5 ${
               p.id === kid.id ? 'bg-blue-600 text-white border-blue-700' : 'bg-white text-slate-600 border-slate-200'
             }`}
           >
-            <span className="text-xl">{p.avatar}</span> {p.name}
+            <span className="text-lg">{p.avatar}</span> {p.name}
+            {p.isTester && <span className="text-[9px] font-bold opacity-60">TEST</span>}
           </button>
         ))}
       </div>
+
+      {kid.isTester && (
+        <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 p-3 mb-4 text-xs font-semibold text-slate-500">
+          🧪 Grown-up tester profile — scores are fully separate from the kids. Age-based percentiles, bell curves, and benchmarks are
+          hidden (kindergarten norms don&apos;t apply to adults); skill levels and accuracy still track normally.
+        </div>
+      )}
 
       {/* parent account & sync */}
       <AccountSync profiles={profiles} onRestore={(p) => onRestore?.(p)} />
 
       {/* summary stats */}
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <Stat label="Age" value={ageLabel(kid.birthdate)} />
+        <Stat label="Age" value={kid.isTester ? 'Adult' : ageLabel(kid.birthdate)} />
         <Stat label="Questions" value={String(totalAnswered)} />
         <Stat label="Recent accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
       </div>
@@ -175,7 +186,9 @@ export function ParentDashboard({
                 <>
                   <div className="flex items-center justify-between text-xs font-bold mb-2">
                     <span className="text-blue-600">
-                      {calibrated
+                      {kid.isTester
+                        ? 'Tester — no age comparison'
+                        : calibrated
                         ? `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`
                         : `Warming up… (${st.attempts}/3 answers to first estimate)`}
                     </span>
@@ -186,7 +199,7 @@ export function ParentDashboard({
                       </span>
                     )}
                   </div>
-                  {calibrated && (
+                  {calibrated && !kid.isTester && (
                     <>
                       <BellCurve z={z} percentile={percentile} kidName={kid.name} />
                       <div className="flex gap-1.5 mt-1 flex-wrap">
@@ -201,11 +214,13 @@ export function ParentDashboard({
                   <div className="mt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-0.5">
                       <span>Skill level {Math.round(st.theta)}/99</span>
-                      <span>typical for age: {Math.round(expectedThetaForAge(months))}</span>
+                      {!kid.isTester && <span>typical for age: {Math.round(expectedThetaForAge(months))}</span>}
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
                       <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${st.theta}%` }} />
-                      <div className="absolute top-0 bottom-0 w-0.5 bg-slate-500" style={{ left: `${expectedThetaForAge(months)}%` }} title="typical for age" />
+                      {!kid.isTester && (
+                        <div className="absolute top-0 bottom-0 w-0.5 bg-slate-500" style={{ left: `${expectedThetaForAge(months)}%` }} title="typical for age" />
+                      )}
                     </div>
                   </div>
                 </>

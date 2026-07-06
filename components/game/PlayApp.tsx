@@ -184,7 +184,13 @@ export function PlayApp() {
               >
                 <span className="text-5xl">{p.avatar}</span>
                 <span className="text-xl font-extrabold text-slate-800">{p.name}</span>
-                <span className="text-xs font-bold text-blue-500">Brain Level {lvl.level}</span>
+                {p.isTester ? (
+                  <span className="text-[10px] font-extrabold uppercase tracking-wide bg-slate-200 text-slate-500 rounded-full px-2 py-0.5">
+                    Grown-up tester
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-blue-500">Brain Level {lvl.level}</span>
+                )}
                 <span className="text-xs font-semibold text-yellow-600">🪙 {p.coins} · ⭐ {p.stars}</span>
               </button>
             )
@@ -491,7 +497,9 @@ export function PlayApp() {
           </button>
         </div>
         <p className="text-center text-[11px] text-slate-400 mt-4">
-          {kid.name} · {ageLabel(kid.birthdate)} · questions adapt to how {kid.name} plays
+          {kid.isTester
+            ? `${kid.name} · grown-up tester — scores kept separate from the kids`
+            : `${kid.name} · ${ageLabel(kid.birthdate)} · questions adapt to how ${kid.name} plays`}
         </p>
       </div>
     </Shell>

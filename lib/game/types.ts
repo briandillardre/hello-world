@@ -108,6 +108,8 @@ export interface KidProfile {
   reviewQueue?: ReviewItem[]
   /** "Who Am I?" temperament quiz result + history (see lib/game/personality.ts) */
   personality?: import('./personality').PersonalityState
+  /** grown-up test profile: separate scores, no age-norm percentiles */
+  isTester?: boolean
 }
 
 export interface BallSkin {
