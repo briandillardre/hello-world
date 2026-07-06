@@ -67,6 +67,24 @@ Apple doesn't accept plain PWAs; wrap with **Capacitor** in a separate repo:
 4. Native niceties to add inside the wrapper later: haptics on correct answers, App Store
    in-app-purchase if the coin shop ever goes paid.
 
+## Parent accounts & cloud sync
+
+Built and wired, activates when the production Supabase project is connected (same env vars as
+the main app — see CLAUDE.md):
+
+- **Sign-in options:** Google OAuth ("Continue with Google") + email/password, via the site's
+  existing Supabase auth. The card lives at the top of the Grown-ups Progress Report.
+- **Sync:** kid profiles auto-push (debounced) whenever progress changes; on sign-in, cloud and
+  local copies merge per kid (whichever has more recorded answers wins), so a new phone picks up
+  where the old one left off.
+- **Storage:** `supabase/migrations/003_brainball.sql` — one row per parent
+  (`brainball_profiles`), RLS locked to `auth.uid()`.
+- **Google provider setup (one-time):** create an OAuth client at console.cloud.google.com with
+  redirect `https://<project-ref>.supabase.co/auth/v1/callback`, paste ID + secret into Supabase →
+  Authentication → Providers → Google, and add `https://hammertrackai.com/play` to the auth
+  redirect allow-list. (Steps also in the migration file header.)
+- **Demo mode:** without env vars the card explains sync is coming and play stays local-only.
+
 ### Down the road
 - Move profiles from localStorage to Supabase (already in the stack) for multi-device sync.
 - Replace Web Speech API with recorded voice for consistent narration in store builds.

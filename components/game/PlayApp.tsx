@@ -34,6 +34,18 @@ export function PlayApp() {
     setProfiles(loadProfiles())
   }, [])
 
+  // debounce-push progress to the parent's cloud account (no-op when signed
+  // out or in demo mode — sync.ts guards internally)
+  useEffect(() => {
+    if (profiles.length === 0) return
+    const t = window.setTimeout(() => {
+      import('@/lib/game/sync').then(({ cloudEnabled, pushCloudProfiles }) => {
+        if (cloudEnabled) pushCloudProfiles(profiles).catch(() => {})
+      })
+    }, 2500)
+    return () => window.clearTimeout(t)
+  }, [profiles])
+
   const kid = useMemo(() => profiles.find((p) => p.id === activeId) ?? null, [profiles, activeId])
 
   const updateKid = useCallback((id: string, fn: (k: KidProfile) => KidProfile) => {
@@ -358,7 +370,14 @@ export function PlayApp() {
   if (screen === 'parents') {
     return (
       <Shell>
-        <ParentDashboard profiles={profiles} onBack={() => setScreen('home')} />
+        <ParentDashboard
+          profiles={profiles}
+          onBack={() => setScreen('home')}
+          onRestore={(merged) => {
+            setProfiles(merged)
+            saveProfiles(merged)
+          }}
+        />
       </Shell>
     )
   }

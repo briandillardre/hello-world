@@ -19,6 +19,7 @@ import {
 import { RETAKE_DAYS, retakeDue, TEMPERAMENTS } from '@/lib/game/personality'
 import { SKILLS } from '@/lib/game/questions'
 import type { KidProfile } from '@/lib/game/types'
+import { AccountSync } from './AccountSync'
 
 /** 1 → "1st", 2 → "2nd", 11 → "11th", 22 → "22nd" */
 function ord(n: number): string {
@@ -27,7 +28,15 @@ function ord(n: number): string {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
 }
 
-export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; onBack: () => void }) {
+export function ParentDashboard({
+  profiles,
+  onBack,
+  onRestore,
+}: {
+  profiles: KidProfile[]
+  onBack: () => void
+  onRestore?: (profiles: KidProfile[]) => void
+}) {
   const [unlocked, setUnlocked] = useState(false)
   const gate = useMemo(() => {
     const a = 3 + Math.floor(Math.random() * 6)
@@ -108,6 +117,9 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
           </button>
         ))}
       </div>
+
+      {/* parent account & sync */}
+      <AccountSync profiles={profiles} onRestore={(p) => onRestore?.(p)} />
 
       {/* summary stats */}
       <div className="grid grid-cols-3 gap-2 mb-4">
