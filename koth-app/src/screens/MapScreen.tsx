@@ -1,316 +1,155 @@
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
+import React, { useMemo, useState, useCallback } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../lib/AppContext';
-import { RootStackParamList, RestArea } from '../types';
+import { RootStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-function buildMapHtml(restAreas: RestArea[], userLat?: number, userLng?: number): string {
-  const markers = restAreas.map(ra => ({
-    id: ra.id,
-    name: ra.name,
-    lat: ra.lat,
-    lng: ra.lng,
-    isKing: !!ra.king,
-    kingName: ra.king?.username ?? null,
-    country: ra.country,
-    highway: ra.highway,
-  }));
-
-  const centerLat = userLat ?? 39.8;
-  const centerLng = userLng ?? -98.5;
-  const zoom = userLat ? 10 : 4;
-
+function buildMapHtml(restAreas: { id: string; lat: number; lng: number; name: string; hasKing: boolean }[]): string {
+  const markers = JSON.stringify(restAreas);
   return `<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.css" />
-  <script src="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a2e; overflow: hidden; }
-    #map { width: 100vw; height: 100vh; }
-    .marker-crown {
-      font-size: 28px;
-      cursor: pointer;
-      text-shadow: 0 2px 6px rgba(0,0,0,0.8);
-      filter: drop-shadow(0 0 8px #f59e0b);
-      transition: transform 0.15s;
-    }
-    .marker-pin {
-      font-size: 22px;
-      cursor: pointer;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-    }
-    .marker-crown:active, .marker-pin:active { transform: scale(1.3); }
-    .popup-box {
-      background: #1e1e3a;
-      color: #e2e8f0;
-      border-radius: 10px;
-      padding: 10px 14px;
-      font-family: -apple-system, sans-serif;
-      border: 1px solid #4a4a8a;
-      min-width: 180px;
-    }
-    .popup-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-    .popup-sub { font-size: 12px; color: #94a3b8; margin-bottom: 8px; }
-    .popup-king { font-size: 11px; color: #f59e0b; margin-bottom: 6px; }
-    .popup-btn {
-      background: #7c3aed;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
-    }
-    .popup-btn:active { background: #6d28d9; }
-    .maplibregl-popup-content { background: transparent; padding: 0; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
-    .maplibregl-popup-tip { display: none; }
-    .maplibregl-popup-close-button { color: #94a3b8; font-size: 18px; top: 6px; right: 8px; }
-    .user-dot {
-      width: 16px; height: 16px;
-      background: #3b82f6;
-      border: 3px solid white;
-      border-radius: 50%;
-      box-shadow: 0 0 12px #3b82f6;
-    }
-  </style>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link href="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4.1.3/dist/maplibre-gl.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #map { width: 100%; height: 100%; background: #0f0f1e; }
+.marker { cursor: pointer; font-size: 24px; line-height: 1; filter: drop-shadow(0 0 4px #7c3aed); }
+.marker.king { font-size: 28px; filter: drop-shadow(0 0 8px #f59e0b); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
+</style>
 </head>
 <body>
-  <div id="map"></div>
-  <script>
-    const MARKERS = ${JSON.stringify(markers)};
-    const USER_LAT = ${userLat ?? 'null'};
-    const USER_LNG = ${userLng ?? 'null'};
+<div id="map"></div>
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  center: [-95, 38],
+  zoom: 3.5,
+});
 
-    const map = new maplibregl.Map({
-      container: 'map',
-      style: {
-        version: 8,
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-        sources: {
-          carto: {
-            type: 'raster',
-            tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-          }
-        },
-        layers: [{ id: 'carto', type: 'raster', source: 'carto' }]
-      },
-      center: [${centerLng}, ${centerLat}],
-      zoom: ${zoom},
-    });
+const MARKERS = ${markers};
 
-    map.on('load', () => {
-      if (window.ReactNativeWebView) {
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
-      }
-      MARKERS.forEach(ra => {
-        const el = document.createElement('div');
-        el.className = ra.isKing ? 'marker-crown' : 'marker-pin';
-        el.textContent = ra.isKing ? '👑' : '🚻';
-
-        const popup = new maplibregl.Popup({ offset: 10, closeOnClick: false })
-          .setHTML(\`
-            <div class="popup-box">
-              <div class="popup-title">\${ra.isKing ? '👑 ' : ''}\${ra.name}</div>
-              <div class="popup-sub">\${ra.highway} · \${ra.country}</div>
-              \${ra.isKing ? '<div class="popup-king">King: @' + ra.kingName + '</div>' : ''}
-              <button class="popup-btn" onclick="selectRA('\${ra.id}')">View Rest Stop →</button>
-            </div>
-          \`);
-
-        new maplibregl.Marker({ element: el })
-          .setLngLat([ra.lng, ra.lat])
-          .setPopup(popup)
-          .addTo(map);
-
-        el.addEventListener('click', () => popup.addTo(map));
-      });
-
-      if (USER_LAT !== null && USER_LNG !== null) {
-        const userEl = document.createElement('div');
-        userEl.className = 'user-dot';
-        new maplibregl.Marker({ element: userEl })
-          .setLngLat([USER_LNG, USER_LAT])
-          .addTo(map);
-      }
-    });
-
-    function selectRA(id) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'SELECT_REST_AREA', id }));
-    }
-  </script>
+map.on('load', () => {
+  MARKERS.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'marker' + (m.hasKing ? ' king' : '');
+    el.textContent = m.hasKing ? '👑' : '🚻';
+    el.onclick = () => {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'SELECT', id: m.id }));
+    };
+    new maplibregl.Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(map);
+  });
+  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'READY' }));
+});
+</script>
 </body>
 </html>`;
 }
 
 export default function MapScreen() {
+  const { restAreas, userLocation, refreshLocation } = useApp();
   const navigation = useNavigation<Nav>();
-  const { restAreas, userLocation, refreshLocation, profile, isLoadingProfile } = useApp();
-  const webViewRef = useRef<WebView>(null);
-  const [isMapLoading, setIsMapLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
-  // Safety net: never leave the loading overlay up forever if the CDN is slow/blocked.
-  useEffect(() => {
-    if (!isMapLoading) return;
-    const timeout = setTimeout(() => setIsMapLoading(false), 12000);
-    return () => clearTimeout(timeout);
-  }, [isMapLoading]);
-
-  const html = useMemo(
-    () => buildMapHtml(restAreas, userLocation?.lat, userLocation?.lng),
-    [restAreas, userLocation?.lat, userLocation?.lng],
+  const markerData = useMemo(
+    () => restAreas.map(r => ({ id: r.id, lat: r.lat, lng: r.lng, name: r.name, hasKing: !!r.king })),
+    [restAreas],
   );
 
+  const html = useMemo(() => buildMapHtml(markerData), [markerData]);
+
   const onMessage = useCallback(
-    (event: { nativeEvent: { data: string } }) => {
+    (e: WebViewMessageEvent) => {
       try {
-        const msg = JSON.parse(event.nativeEvent.data);
-        if (msg.type === 'SELECT_REST_AREA') {
-          navigation.navigate('RestArea', { restAreaId: msg.id });
-        } else if (msg.type === 'MAP_READY') {
-          setIsMapLoading(false);
-        }
-      } catch {
-        // ignore malformed messages
-      }
+        const msg = JSON.parse(e.nativeEvent.data) as { type: string; id?: string };
+        if (msg.type === 'READY') setMapReady(true);
+        if (msg.type === 'SELECT' && msg.id) navigation.navigate('RestArea', { restAreaId: msg.id });
+      } catch {}
     },
     [navigation],
   );
 
-  if (isLoadingProfile) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#7c3aed" />
-      </View>
-    );
-  }
+  const kingCount = restAreas.filter(r => r.king).length;
 
   return (
     <View style={styles.container}>
       <WebView
-        ref={webViewRef}
         source={{ html }}
         style={styles.map}
         onMessage={onMessage}
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['*']}
-        mixedContentMode="always"
         allowUniversalAccessFromFileURLs
         allowFileAccessFromFileURLs
-        onLoadStart={() => setIsMapLoading(true)}
-        onError={() => setIsMapLoading(false)}
+        mixedContentMode="always"
+        originWhitelist={['*']}
       />
 
-      {/* Map loading overlay (MapLibre JS comes from a CDN) */}
-      {isMapLoading && (
-        <View style={styles.mapLoading} pointerEvents="none">
+      {!mapReady && (
+        <View style={styles.loader}>
           <ActivityIndicator size="large" color="#7c3aed" />
-          <Text style={styles.mapLoadingText}>Loading the kingdom map…</Text>
+          <Text style={styles.loaderText}>Loading map...</Text>
         </View>
       )}
 
-      {/* Header overlay */}
-      <View style={styles.header} pointerEvents="none">
-        <View style={styles.headerInner}>
-          <Text style={styles.appName}>👑 Rest Stop Royale</Text>
-          <Text style={styles.subtitle}>
-            {restAreas.filter(r => r.king).length} kingdoms active
-          </Text>
-        </View>
+      <View pointerEvents="none" style={styles.header}>
+        <Text style={styles.appName}>Rest Stop Royale 👑</Text>
+        <Text style={styles.kingCount}>{kingCount} active kings</Text>
       </View>
 
-      {/* Location refresh button */}
-      <TouchableOpacity style={styles.locBtn} onPress={refreshLocation}>
-        <Text style={styles.locBtnText}>📍</Text>
+      <TouchableOpacity style={styles.locationBtn} onPress={refreshLocation}>
+        <Text style={styles.locationBtnText}>📍</Text>
       </TouchableOpacity>
-
-      {/* Profile indicator */}
-      {!profile && (
-        <TouchableOpacity
-          style={styles.profileBanner}
-          onPress={() => navigation.navigate('Main', { screen: 'Profile' })}
-        >
-          <Text style={styles.profileBannerText}>
-            👆 Set your username to claim crowns
-          </Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#1a1a2e' },
+  container: { flex: 1, backgroundColor: '#0f0f1e' },
   map: { flex: 1 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a2e' },
-  header: {
+  loader: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 56 : 16,
-    left: 16,
-    right: 16,
-  },
-  mapLoading: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#1a1a2e',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0f0f1e',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
-  mapLoadingText: { color: '#94a3b8', fontSize: 13 },
-  headerInner: {
-    backgroundColor: 'rgba(26, 26, 46, 0.88)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.4)',
-    alignSelf: 'flex-start',
-  },
-  appName: { color: '#f1f5f9', fontSize: 16, fontWeight: '700' },
-  subtitle: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
-  locBtn: {
+  loaderText: { color: '#64748b', fontSize: 14 },
+  header: {
     position: 'absolute',
-    bottom: 100,
+    top: 12,
+    left: 12,
+    backgroundColor: '#1e1e3add',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  appName: { color: '#f1f5f9', fontSize: 16, fontWeight: '800' },
+  kingCount: { color: '#f59e0b', fontSize: 12, fontWeight: '600' },
+  locationBtn: {
+    position: 'absolute',
+    bottom: 24,
     right: 16,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+    backgroundColor: '#1e1e3a',
+    borderRadius: 28,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(124, 58, 237, 0.4)',
+    borderColor: '#2d2d5a',
   },
-  locBtnText: { fontSize: 22 },
-  profileBanner: {
-    position: 'absolute',
-    bottom: 160,
-    left: 16,
-    right: 16,
-    backgroundColor: '#7c3aed',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  profileBannerText: { color: 'white', fontWeight: '600', fontSize: 13 },
+  locationBtnText: { fontSize: 22 },
 });

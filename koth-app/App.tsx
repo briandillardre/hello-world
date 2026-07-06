@@ -1,10 +1,10 @@
-import 'react-native-url-polyfill/auto';
+import 'react-native-gesture-handler';
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppProvider } from './src/lib/AppContext';
@@ -20,8 +20,9 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
 const THEME = {
-  dark: true,
+  ...DarkTheme,
   colors: {
+    ...DarkTheme.colors,
     primary: '#7c3aed',
     background: '#0f0f1e',
     card: '#1e1e3a',
@@ -36,12 +37,7 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: '#1e1e3a',
-          borderTopColor: '#2d2d5a',
-          paddingBottom: 8,
-          height: 64,
-        },
+        tabBarStyle: { backgroundColor: '#1e1e3a', borderTopColor: '#2d2d5a', paddingBottom: 8, height: 64 },
         tabBarActiveTintColor: '#a855f7',
         tabBarInactiveTintColor: '#4a5568',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
@@ -52,9 +48,7 @@ function TabNavigator() {
         component={MapScreen}
         options={{
           tabBarLabel: 'Map',
-          tabBarIcon: ({ focused }) => (
-            <Text style={{ fontSize: 22 }}>{focused ? '🗺️' : '🗺'}</Text>
-          ),
+          tabBarIcon: ({ focused }) => <Text style={{ fontSize: 22 }}>{focused ? '🗺️' : '🗺'}</Text>,
         }}
       />
       <Tab.Screen
@@ -62,9 +56,7 @@ function TabNavigator() {
         component={LeaderboardScreen}
         options={{
           tabBarLabel: 'Hall of Kings',
-          tabBarIcon: ({ focused }) => (
-            <Text style={{ fontSize: 22 }}>{focused ? '👑' : '🏅'}</Text>
-          ),
+          tabBarIcon: ({ focused }) => <Text style={{ fontSize: 22 }}>{focused ? '👑' : '🏅'}</Text>,
         }}
       />
       <Tab.Screen
@@ -72,40 +64,25 @@ function TabNavigator() {
         component={ProfileScreen}
         options={{
           tabBarLabel: 'My Kingdom',
-          tabBarIcon: ({ focused }) => (
-            <Text style={{ fontSize: 22 }}>{focused ? '🧑‍🤴' : '👤'}</Text>
-          ),
+          tabBarIcon: ({ focused }) => <Text style={{ fontSize: 22 }}>{focused ? '🧑‍🤴' : '👤'}</Text>,
         }}
       />
     </Tab.Navigator>
   );
 }
 
-interface ErrorBoundaryState {
-  error: Error | null;
-}
-
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null };
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { error };
-  }
-
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {
       return (
-        <View style={errorStyles.container}>
-          <Text style={errorStyles.emoji}>🚧</Text>
-          <Text style={errorStyles.title}>Wrong exit!</Text>
-          <Text style={errorStyles.message}>
-            Something went sideways: {this.state.error.message}
-          </Text>
-          <TouchableOpacity
-            style={errorStyles.button}
-            onPress={() => this.setState({ error: null })}
-          >
-            <Text style={errorStyles.buttonText}>Back on the Road →</Text>
+        <View style={eb.container}>
+          <Text style={eb.emoji}>🚧</Text>
+          <Text style={eb.title}>Wrong exit!</Text>
+          <Text style={eb.msg}>{(this.state.error as Error).message}</Text>
+          <TouchableOpacity style={eb.btn} onPress={() => this.setState({ error: null })}>
+            <Text style={eb.btnText}>Back on the Road →</Text>
           </TouchableOpacity>
         </View>
       );
@@ -114,26 +91,13 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
   }
 }
 
-const errorStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    gap: 12,
-  },
+const eb = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#0f0f1e', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   emoji: { fontSize: 56 },
   title: { color: '#f1f5f9', fontSize: 22, fontWeight: '800' },
-  message: { color: '#94a3b8', fontSize: 14, textAlign: 'center', lineHeight: 20 },
-  button: {
-    backgroundColor: '#7c3aed',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    marginTop: 8,
-  },
-  buttonText: { color: 'white', fontWeight: '700', fontSize: 15 },
+  msg: { color: '#94a3b8', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  btn: { backgroundColor: '#7c3aed', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 32, marginTop: 8 },
+  btnText: { color: 'white', fontWeight: '700', fontSize: 15 },
 });
 
 export default function App() {
@@ -152,28 +116,17 @@ export default function App() {
               }}
             >
               <Stack.Screen name="Main" component={TabNavigator} options={{ headerShown: false }} />
-              <Stack.Screen
-                name="RestArea"
-                component={RestAreaScreen}
-                options={{ title: 'Rest Stop', headerBackTitle: 'Map' }}
-              />
+              <Stack.Screen name="RestArea" component={RestAreaScreen} options={{ title: 'Rest Stop', headerBackTitle: 'Map' }} />
               <Stack.Screen
                 name="Game"
                 component={GameScreen}
                 options={({ route }) => ({
-                  title: route.params.gameId === 'trucker-tap'
-                    ? '🚛 Trucker Tap'
-                    : route.params.gameId === 'gas-guesser'
-                    ? '⛽ Gas Guessr'
-                    : '🚽 Bathroom Bingo',
+                  title: route.params.gameId === 'trucker-tap' ? '🚛 Trucker Tap' :
+                         route.params.gameId === 'gas-guesser' ? '⛽ Gas Guessr' : '🚽 Bathroom Bingo',
                   headerBackTitle: 'Back',
                 })}
               />
-              <Stack.Screen
-                name="AddReview"
-                component={AddReviewScreen}
-                options={{ title: '✍️ Write a Review', headerBackTitle: 'Back' }}
-              />
+              <Stack.Screen name="AddReview" component={AddReviewScreen} options={{ title: '✍️ Write a Review', headerBackTitle: 'Back' }} />
             </Stack.Navigator>
           </NavigationContainer>
         </AppProvider>

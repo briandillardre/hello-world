@@ -7,29 +7,31 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1a1a2e"
+      "backgroundColor": "#0f0f1e"
     },
-    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.dillardconstruction.reststoproyale",
+      "bundleIdentifier": "com.reststoproyale.app",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "We need your location to find nearby rest areas and let you check in for King of the Hill.",
-        "NSLocationAlwaysUsageDescription": "Location is used to detect when you arrive at a rest area."
+        "NSLocationWhenInUseUsageDescription": "We need your location to check you in at nearby rest areas and unlock mini-games.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "We need your location to detect nearby rest areas."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1a1a2e"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#0f0f1e"
       },
-      "package": "com.dillardconstruction.reststoproyale",
+      "package": "com.reststoproyale.app",
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,9 +40,10 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Show current location on the map and detect nearby rest areas."
+          "locationWhenInUsePermission": "We need your location to check you in at nearby rest areas."
         }
       ]
-    ]
+    ],
+    "scheme": "reststoproyale"
   }
 }

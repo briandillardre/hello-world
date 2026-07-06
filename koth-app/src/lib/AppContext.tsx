@@ -1,25 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { UserProfile, GameScore, Review } from '../types';
-import { UserLocation, getCurrentLocation, requestLocationPermission } from './location';
-import {
-  getProfile,
-  createProfile as createProfileInStorage,
-  addScore,
-  addCheckIn,
-  getLocalReviews,
-  saveReview,
-} from './storage';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { UserProfile, RestArea, Review, GameScore, CheckIn } from '../types';
 import { MOCK_REST_AREAS, MOCK_REVIEWS } from '../data/mockData';
-import type { RestArea, CheckIn } from '../types';
+import * as storage from './storage';
+import { requestLocationPermission, getCurrentLocation } from './location';
 
 interface AppContextValue {
   profile: UserProfile | null;
-  userLocation: UserLocation | null;
+  isLoadingProfile: boolean;
+  userLocation: { lat: number; lng: number } | null;
   restAreas: RestArea[];
   reviews: Review[];
-  isLoadingProfile: boolean;
   createProfile: (username: string) => Promise<void>;
-  recordScore: (score: GameScore, restAreaId: string) => Promise<void>;
+  recordScore: (score: GameScore) => Promise<void>;
   recordCheckIn: (checkIn: CheckIn) => Promise<void>;
   addReview: (review: Review) => Promise<void>;
   refreshLocation: () => Promise<void>;
@@ -27,70 +19,55 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
-  const [reviews, setReviews] = useState<Review[]>([...MOCK_REVIEWS]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [reviews, setReviews] = useState<Review[]>(MOCK_REVIEWS);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const stored = await getProfile();
-        setProfile(stored);
-      } finally {
-        setIsLoadingProfile(false);
+    storage.getProfile().then(p => {
+      setProfile(p);
+      setIsLoadingProfile(false);
+    });
+    storage.getLocalReviews().then(localReviews => {
+      if (localReviews.length > 0) {
+        setReviews(prev => [...localReviews, ...prev]);
       }
-    })();
-    (async () => {
-      const local = await getLocalReviews();
-      if (local.length > 0) setReviews([...local, ...MOCK_REVIEWS]);
-    })();
+    });
     initLocation();
   }, []);
 
   async function initLocation() {
-    try {
-      const granted = await requestLocationPermission();
-      if (granted) {
-        const loc = await getCurrentLocation();
-        setUserLocation(loc);
-      }
-    } catch {
-      // Location is optional — the app still works without it.
+    const granted = await requestLocationPermission();
+    if (granted) {
+      const loc = await getCurrentLocation();
+      if (loc) setUserLocation(loc);
     }
   }
 
   const refreshLocation = useCallback(async () => {
     const loc = await getCurrentLocation();
-    setUserLocation(loc);
+    if (loc) setUserLocation(loc);
   }, []);
 
   const createProfile = useCallback(async (username: string) => {
-    const p = await createProfileInStorage(username);
+    const p = await storage.createProfile(username);
     setProfile(p);
   }, []);
 
-  const recordScore = useCallback(
-    async (score: GameScore, restAreaId: string) => {
-      if (!profile) return;
-      const updated = await addScore(profile, score, restAreaId);
-      setProfile(updated);
-    },
-    [profile],
-  );
+  const recordScore = useCallback(async (score: GameScore) => {
+    const updated = await storage.addScore(score);
+    if (updated) setProfile(updated);
+  }, []);
 
-  const recordCheckIn = useCallback(
-    async (checkIn: CheckIn) => {
-      if (!profile) return;
-      const updated = await addCheckIn(profile, checkIn);
-      setProfile(updated);
-    },
-    [profile],
-  );
+  const recordCheckIn = useCallback(async (checkIn: CheckIn) => {
+    const updated = await storage.addCheckIn(checkIn);
+    if (updated) setProfile(updated);
+  }, []);
 
-  const addReviewFn = useCallback(async (review: Review) => {
-    await saveReview(review);
+  const addReview = useCallback(async (review: Review) => {
+    await storage.saveReview(review);
     setReviews(prev => [review, ...prev]);
   }, []);
 
@@ -98,14 +75,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider
       value={{
         profile,
+        isLoadingProfile,
         userLocation,
         restAreas: MOCK_REST_AREAS,
         reviews,
-        isLoadingProfile,
         createProfile,
         recordScore,
         recordCheckIn,
-        addReview: addReviewFn,
+        addReview,
         refreshLocation,
       }}
     >
@@ -114,8 +91,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useApp() {
+export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  if (!ctx) throw new Error('useApp must be used inside AppProvider');
   return ctx;
 }

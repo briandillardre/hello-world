@@ -1,5 +1,12 @@
 export type GameId = 'trucker-tap' | 'gas-guesser' | 'bathroom-bingo';
 
+export interface KingEntry {
+  userId: string;
+  username: string;
+  score: number;
+  since: string;
+}
+
 export interface RestArea {
   id: string;
   name: string;
@@ -17,15 +24,8 @@ export interface RestArea {
   topReview?: string;
 }
 
-export interface KingEntry {
-  userId: string;
-  username: string;
-  score: number;
-  since: string;
-}
-
 export interface GameScore {
-  id: string;
+  id?: string;
   userId: string;
   username: string;
   gameId: GameId;
@@ -49,6 +49,12 @@ export interface Review {
   timestamp: string;
 }
 
+export interface CheckIn {
+  restAreaId: string;
+  timestamp: string;
+  pointsEarned: number;
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -61,23 +67,15 @@ export interface UserProfile {
   checkIns: CheckIn[];
 }
 
-export interface CheckIn {
-  restAreaId: string;
-  timestamp: string;
-  pointsEarned: number;
-}
-
-import type { NavigatorScreenParams } from '@react-navigation/native';
+export type RootStackParamList = {
+  Main: undefined;
+  RestArea: { restAreaId: string };
+  Game: { gameId: GameId; restAreaId: string };
+  AddReview: { restAreaId: string };
+};
 
 export type TabParamList = {
   Map: undefined;
   Leaderboard: undefined;
   Profile: undefined;
-};
-
-export type RootStackParamList = {
-  Main: NavigatorScreenParams<TabParamList> | undefined;
-  RestArea: { restAreaId: string };
-  Game: { gameId: GameId; restAreaId: string };
-  AddReview: { restAreaId: string };
 };

@@ -3,7 +3,6 @@ import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native
 import * as Haptics from 'expo-haptics';
 
 interface Props {
-  restAreaId: string;
   onComplete: (score: number) => void;
 }
 
@@ -15,6 +14,13 @@ export default function TruckerTapGame({ onComplete }: Props) {
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      scaleAnim.stopAnimation();
+    };
+  }, [scaleAnim]);
 
   const startGame = useCallback(() => {
     setPhase('playing');
@@ -32,15 +38,6 @@ export default function TruckerTapGame({ onComplete }: Props) {
     }, 1000);
   }, []);
 
-  // Clean up the countdown and any in-flight tap animation on unmount.
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      scaleAnim.stopAnimation();
-    },
-    [scaleAnim],
-  );
-
   const handleTap = useCallback(() => {
     if (phase !== 'playing') return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -52,8 +49,12 @@ export default function TruckerTapGame({ onComplete }: Props) {
   }, [phase, scaleAnim]);
 
   const finalScore = Math.round(taps * 10);
-
-  const grade = taps >= 80 ? '🔥 LEGENDARY' : taps >= 60 ? '💪 BEAST' : taps >= 40 ? '👌 SOLID' : taps >= 20 ? '😅 WARMING UP' : '🐌 GRANDMA SPEED';
+  const grade =
+    taps >= 80 ? '🔥 LEGENDARY' :
+    taps >= 60 ? '💪 BEAST' :
+    taps >= 40 ? '👌 SOLID' :
+    taps >= 20 ? '😅 WARMING UP' :
+    '🐌 GRANDMA SPEED';
 
   if (phase === 'ready') {
     return (
@@ -113,37 +114,16 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 64 },
   title: { color: '#f1f5f9', fontSize: 28, fontWeight: '800' },
   subtitle: { color: '#94a3b8', fontSize: 16, textAlign: 'center', lineHeight: 24 },
-  startBtn: {
-    backgroundColor: '#f59e0b',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-    marginTop: 8,
-  },
+  startBtn: { backgroundColor: '#f59e0b', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, marginTop: 8 },
   startBtnText: { color: '#1a1a2e', fontWeight: '900', fontSize: 18, letterSpacing: 1 },
-  timerRing: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    borderWidth: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  timerRing: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, alignItems: 'center', justifyContent: 'center' },
   timerNum: { fontSize: 32, fontWeight: '900' },
   tapCount: { color: '#f1f5f9', fontSize: 72, fontWeight: '900', lineHeight: 80 },
   tapLabel: { color: '#64748b', fontSize: 14, marginTop: -12 },
   tapBtn: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#7c3aed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7c3aed',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 12,
+    width: 180, height: 180, borderRadius: 90, backgroundColor: '#7c3aed',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#7c3aed', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 20, elevation: 12,
   },
   tapBtnText: { fontSize: 56 },
   tapBtnSub: { color: 'white', fontWeight: '900', fontSize: 20, letterSpacing: 2, marginTop: -4 },
@@ -152,11 +132,6 @@ const styles = StyleSheet.create({
   doneTaps: { color: '#f1f5f9', fontSize: 48, fontWeight: '900' },
   doneScore: { color: '#22c55e', fontSize: 24, fontWeight: '700' },
   doneContext: { color: '#64748b', fontSize: 14, textAlign: 'center' },
-  submitBtn: {
-    backgroundColor: '#7c3aed',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-  },
+  submitBtn: { backgroundColor: '#7c3aed', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40 },
   submitText: { color: 'white', fontWeight: '800', fontSize: 16 },
 });

@@ -1,191 +1,123 @@
 import React, { useState, useCallback } from 'react';
 import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
+  StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../lib/AppContext';
-import { isNearRestArea, CHECK_IN_RADIUS_KM, distanceBetween } from '../lib/location';
-import { getRestAreaScore } from '../lib/storage';
-import { RootStackParamList, GameId, CheckIn } from '../types';
+import { RootStackParamList, GameId } from '../types';
 import { GAMES_INFO } from '../data/mockData';
+import { distanceBetween, CHECK_IN_RADIUS_KM } from '../lib/location';
 
-type RouteT = RouteProp<RootStackParamList, 'RestArea'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Route = RouteProp<RootStackParamList, 'RestArea'>;
 
-function StarRow({ label, value }: { label: string; value: number }) {
+const TABS = ['Info', 'Games', 'Reviews'] as const;
+type Tab = typeof TABS[number];
+
+function Stars({ rating }: { rating: number }) {
   return (
-    <View style={styles.starRow}>
-      <Text style={styles.starLabel}>{label}</Text>
-      <Text style={styles.stars}>{'⭐'.repeat(value)}{'☆'.repeat(5 - value)}</Text>
-    </View>
+    <Text>
+      {[1, 2, 3, 4, 5].map(i => (
+        <Text key={i} style={{ color: i <= Math.round(rating) ? '#f59e0b' : '#374151' }}>★</Text>
+      ))}
+    </Text>
   );
 }
 
 export default function RestAreaScreen() {
-  const route = useRoute<RouteT>();
+  const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
-  const { restAreas, userLocation, profile, recordCheckIn, reviews, refreshLocation } = useApp();
-  const [activeTab, setActiveTab] = useState<'info' | 'reviews' | 'games'>('info');
+  const { restAreas, reviews, profile, userLocation, recordCheckIn } = useApp();
+  const [activeTab, setActiveTab] = useState<Tab>('Info');
   const [checkedIn, setCheckedIn] = useState(false);
 
   const restArea = restAreas.find(r => r.id === route.params.restAreaId);
   if (!restArea) return null;
 
   const areaReviews = reviews.filter(r => r.restAreaId === restArea.id);
-
-  const distKm = userLocation
+  const distanceKm = userLocation
     ? distanceBetween(userLocation.lat, userLocation.lng, restArea.lat, restArea.lng)
     : null;
-  const isNear = userLocation ? isNearRestArea(userLocation, restArea) : false;
-  const myScore = profile ? getRestAreaScore(profile, restArea.id) : 0;
+  const distanceText = distanceKm != null
+    ? distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m away` : `${distanceKm.toFixed(1)}km away`
+    : 'Location unknown';
+  const canCheckIn = distanceKm != null && distanceKm <= CHECK_IN_RADIUS_KM;
 
   const handleCheckIn = useCallback(async () => {
-    if (!userLocation) {
-      Alert.alert(
-        'Location Unavailable',
-        "We can't see where you are. Make sure location permission is enabled for Expo Go and GPS is on, then try again.",
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Retry Location', onPress: () => refreshLocation() },
-        ],
-      );
-      return;
-    }
-    if (!isNear) {
-      const away =
-        distKm !== null
-          ? distKm < 1
-            ? `${(distKm * 1000).toFixed(0)}m`
-            : `${distKm.toFixed(1)}km`
-          : 'an unknown distance';
-      Alert.alert(
-        'Too Far Away',
-        `You need to be within ${CHECK_IN_RADIUS_KM * 1000}m to check in. You're ${away} away.`,
-      );
-      return;
-    }
-    if (!profile) {
-      Alert.alert('No Profile', 'Set up a username in the Profile tab first!');
-      return;
-    }
-    const checkIn: CheckIn = {
-      restAreaId: restArea.id,
-      timestamp: new Date().toISOString(),
-      pointsEarned: 50,
-    };
-    await recordCheckIn(checkIn);
+    if (!profile) { Alert.alert('No profile', 'Set a username in My Kingdom first.'); return; }
+    if (!canCheckIn) { Alert.alert('Too far', `You need to be within 500m. You are ${distanceText}.`); return; }
+    await recordCheckIn({ restAreaId: restArea.id, timestamp: new Date().toISOString(), pointsEarned: 50 });
     setCheckedIn(true);
-    Alert.alert('Checked In! 🎉', `+50 points for visiting ${restArea.name}!`);
-  }, [userLocation, isNear, profile, restArea, distKm, recordCheckIn, refreshLocation]);
+    Alert.alert('Checked in! 👑', '+50 points. Now go play some games.');
+  }, [profile, canCheckIn, distanceText, restArea.id, recordCheckIn]);
 
-  const handlePlayGame = useCallback(
-    (gameId: GameId) => {
-      if (!isNear && !checkedIn) {
-        Alert.alert(
-          'You Have to Actually Be There',
-          "No cheating! Drive to this rest area to play games. (Or hit Check In if you're there.)",
-        );
-        return;
-      }
-      navigation.navigate('Game', { gameId, restAreaId: restArea.id });
-    },
-    [isNear, checkedIn, navigation, restArea.id],
-  );
+  const myScore = profile?.scores
+    .filter(s => s.restAreaId === restArea.id)
+    .reduce((sum, s) => sum + s.score, 0) ?? 0;
+
+  const isKing = restArea.king?.userId === profile?.id;
 
   return (
     <View style={styles.container}>
       {/* Hero */}
       <View style={styles.hero}>
-        <View style={styles.heroContent}>
-          <Text style={styles.emoji}>{restArea.king ? '👑' : '🚻'}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{restArea.name}</Text>
-            <Text style={styles.highway}>
-              {restArea.highway} {restArea.direction} · {restArea.state}, {restArea.country}
+        <View style={styles.heroLeft}>
+          <Text style={styles.heroName}>{restArea.name}</Text>
+          <Text style={styles.heroSub}>{restArea.highway} · {restArea.state} · {restArea.country}</Text>
+          {restArea.king && (
+            <Text style={styles.kingBadge}>
+              👑 {isKing ? 'YOU ARE THE KING' : `@${restArea.king.username}`} · {restArea.king.score.toLocaleString()} pts
             </Text>
-            {restArea.king && (
-              <Text style={styles.kingTag}>
-                👑 King: @{restArea.king.username} — {restArea.king.score.toLocaleString()} pts
-              </Text>
-            )}
-          </View>
+          )}
         </View>
-
-        {/* Check-in button */}
         <TouchableOpacity
-          style={[styles.checkInBtn, isNear && styles.checkInBtnActive, checkedIn && styles.checkInBtnDone]}
+          style={[styles.checkInBtn, (checkedIn || isKing) && styles.checkInBtnDone, canCheckIn && !checkedIn && styles.checkInBtnReady]}
           onPress={handleCheckIn}
-          disabled={checkedIn}
+          disabled={checkedIn || isKing}
         >
-          <Text style={styles.checkInText}>
-            {checkedIn
-              ? '✅ Checked In! (+50 pts)'
-              : isNear
-              ? '📍 Check In Here'
-              : distKm !== null
-              ? `🛣 ${distKm < 1 ? (distKm * 1000).toFixed(0) + 'm away' : distKm.toFixed(1) + 'km away'}`
-              : '📍 Check In'}
-          </Text>
+          <Text style={styles.checkInBtnText}>{checkedIn || isKing ? '✓ In' : '📍 Check In'}</Text>
+          <Text style={styles.checkInDist}>{distanceText}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {(['info', 'games', 'reviews'] as const).map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab === 'info' ? 'Info' : tab === 'games' ? '🎮 Games' : `💬 Reviews (${areaReviews.length})`}
-            </Text>
+        {TABS.map(t => (
+          <TouchableOpacity key={t} style={[styles.tab, activeTab === t && styles.tabActive]} onPress={() => setActiveTab(t)}>
+            <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>{t}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentPad}>
-        {activeTab === 'info' && (
+      <ScrollView style={styles.content} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        {activeTab === 'Info' && (
           <>
-            {/* Fun fact */}
-            <View style={styles.funFactCard}>
-              <Text style={styles.funFactLabel}>🎭 Fun Fact</Text>
-              <Text style={styles.funFactText}>{restArea.funFact}</Text>
+            <View style={styles.card}>
+              <Text style={styles.label}>FUN FACT</Text>
+              <Text style={styles.funFact}>{restArea.funFact}</Text>
             </View>
-
-            {/* Amenities */}
-            <Text style={styles.sectionTitle}>Amenities</Text>
-            <View style={styles.amenityRow}>
-              {restArea.amenities.map(a => (
-                <View key={a} style={styles.amenityChip}>
-                  <Text style={styles.amenityText}>{a}</Text>
-                </View>
-              ))}
+            <View style={styles.card}>
+              <Text style={styles.label}>AMENITIES</Text>
+              <View style={styles.chips}>
+                {restArea.amenities.map(a => (
+                  <View key={a} style={styles.chip}><Text style={styles.chipText}>{a}</Text></View>
+                ))}
+              </View>
             </View>
-
-            {/* Ratings */}
-            <Text style={styles.sectionTitle}>Ratings</Text>
-            <View style={styles.ratingCard}>
-              <Text style={styles.ratingOverall}>{restArea.avgRating.toFixed(1)} / 5</Text>
-              <Text style={styles.ratingCount}>from {restArea.reviewCount} reviews</Text>
-              {restArea.topReview && (
-                <Text style={styles.topReview}>"{restArea.topReview}"</Text>
-              )}
+            <View style={styles.card}>
+              <Text style={styles.label}>RATINGS</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <Stars rating={restArea.avgRating} />
+                <Text style={{ color: '#94a3b8', fontSize: 13 }}>{restArea.avgRating.toFixed(1)} ({restArea.reviewCount} reviews)</Text>
+              </View>
             </View>
-
-            {/* My score */}
-            {profile && (
-              <View style={styles.myScoreCard}>
-                <Text style={styles.myScoreLabel}>Your Score Here (30-day)</Text>
-                <Text style={styles.myScore}>{myScore.toLocaleString()} pts</Text>
-                {restArea.king && restArea.king.userId !== profile.id && (
-                  <Text style={styles.myScoreGap}>
+            {myScore > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.label}>MY SCORE HERE</Text>
+                <Text style={{ color: '#a855f7', fontSize: 28, fontWeight: '800', marginTop: 4 }}>{myScore.toLocaleString()} pts</Text>
+                {restArea.king && myScore < restArea.king.score && (
+                  <Text style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
                     {(restArea.king.score - myScore).toLocaleString()} pts behind the king
                   </Text>
                 )}
@@ -194,61 +126,62 @@ export default function RestAreaScreen() {
           </>
         )}
 
-        {activeTab === 'games' && (
+        {activeTab === 'Games' && (
           <>
-            <Text style={styles.gamesHint}>
-              {isNear || checkedIn
-                ? '🟢 You\'re here — all games unlocked!'
-                : '🔒 Drive to this rest area to unlock games'}
-            </Text>
-            {Object.values(GAMES_INFO).map(game => (
+            {!checkedIn && !isKing && (
+              <View style={styles.lockBanner}>
+                <Text style={styles.lockText}>📍 Check in first to play games{'\n'}(must be within 500m of this rest area)</Text>
+              </View>
+            )}
+            {Object.values(GAMES_INFO).map(g => (
               <TouchableOpacity
-                key={game.id}
-                style={[styles.gameCard, { borderColor: game.color }]}
-                onPress={() => handlePlayGame(game.id)}
+                key={g.id}
+                style={[styles.gameCard, { borderLeftColor: g.color }, (!checkedIn && !isKing) && styles.gameCardLocked]}
+                onPress={() => {
+                  if (!checkedIn && !isKing) { Alert.alert('Check in first', 'You need to be at this rest area.'); return; }
+                  navigation.navigate('Game', { gameId: g.id as GameId, restAreaId: restArea.id });
+                }}
               >
-                <Text style={styles.gameEmoji}>{game.emoji}</Text>
+                <Text style={styles.gameEmoji}>{g.emoji}</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.gameName}>{game.name}</Text>
-                  <Text style={styles.gameTagline}>{game.tagline}</Text>
-                  <Text style={styles.gameDesc}>{game.description}</Text>
+                  <Text style={styles.gameName}>{g.name}</Text>
+                  <Text style={styles.gameTagline}>{g.tagline}</Text>
                 </View>
-                <Text style={styles.gameArrow}>▶</Text>
+                <Text style={{ color: g.color, fontSize: 20 }}>›</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={styles.addReviewBtn}
-              onPress={() => navigation.navigate('AddReview', { restAreaId: restArea.id })}
-            >
-              <Text style={styles.addReviewText}>📝 Leave a Review</Text>
-            </TouchableOpacity>
           </>
         )}
 
-        {activeTab === 'reviews' && (
+        {activeTab === 'Reviews' && (
           <>
             <TouchableOpacity
-              style={styles.addReviewBtn}
-              onPress={() => navigation.navigate('AddReview', { restAreaId: restArea.id })}
+              style={styles.writeReviewBtn}
+              onPress={() => {
+                if (!profile) { Alert.alert('No profile', 'Set a username in My Kingdom first.'); return; }
+                navigation.navigate('AddReview', { restAreaId: restArea.id });
+              }}
             >
-              <Text style={styles.addReviewText}>✍️ Add Your Review</Text>
+              <Text style={styles.writeReviewText}>✍️ Write a Review</Text>
             </TouchableOpacity>
             {areaReviews.length === 0 && (
-              <Text style={styles.emptyReviews}>No reviews yet. Be the first!</Text>
+              <Text style={styles.emptyReviews}>No reviews yet. Be the first brave soul.</Text>
             )}
             {areaReviews.map(r => (
               <View key={r.id} style={styles.reviewCard}>
                 <View style={styles.reviewHeader}>
                   <Text style={styles.reviewUser}>@{r.username}</Text>
                   {r.photoEmoji && <Text style={{ fontSize: 20 }}>{r.photoEmoji}</Text>}
-                  <Text style={styles.reviewRating}>{'⭐'.repeat(r.overallRating)}</Text>
+                  <Stars rating={r.overallRating} />
                 </View>
                 <Text style={styles.reviewText}>{r.text}</Text>
-                <View style={styles.reviewFooter}>
-                  <StarRow label="🧹" value={r.cleanlinessRating} />
-                  <StarRow label="🍫" value={r.vendingRating} />
-                  <StarRow label="✨" value={r.vibesRating} />
-                  <Text style={styles.upvotes}>👍 {r.upvotes}</Text>
+                <View style={styles.reviewRatings}>
+                  {(['cleanlinessRating', 'vendingRating', 'vibesRating'] as const).map((k, i) => (
+                    <View key={k} style={styles.miniRating}>
+                      <Text style={styles.miniRatingLabel}>{['🧼', '🍫', '✨'][i]}</Text>
+                      <Text style={styles.miniRatingVal}>{r[k]}/5</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             ))}
@@ -262,124 +195,90 @@ export default function RestAreaScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f1e' },
   hero: {
-    backgroundColor: '#1e1e3a',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     padding: 16,
+    backgroundColor: '#1e1e3a',
     borderBottomWidth: 1,
     borderBottomColor: '#2d2d5a',
+    gap: 12,
   },
-  heroContent: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
-  emoji: { fontSize: 36 },
-  name: { color: '#f1f5f9', fontSize: 18, fontWeight: '700' },
-  highway: { color: '#94a3b8', fontSize: 13, marginTop: 2 },
-  kingTag: { color: '#f59e0b', fontSize: 13, marginTop: 4, fontWeight: '600' },
+  heroLeft: { flex: 1, gap: 4 },
+  heroName: { color: '#f1f5f9', fontSize: 18, fontWeight: '800' },
+  heroSub: { color: '#64748b', fontSize: 12 },
+  kingBadge: { color: '#f59e0b', fontSize: 12, fontWeight: '700', marginTop: 4 },
   checkInBtn: {
-    backgroundColor: '#2d2d5a',
+    backgroundColor: '#1a1a3e',
     borderRadius: 10,
-    paddingVertical: 12,
+    padding: 10,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#4a4a8a',
+    borderColor: '#2d2d5a',
+    minWidth: 90,
   },
-  checkInBtnActive: { backgroundColor: '#7c3aed', borderColor: '#a855f7' },
-  checkInBtnDone: { backgroundColor: '#166534', borderColor: '#22c55e' },
-  checkInText: { color: '#e2e8f0', fontWeight: '700', fontSize: 14 },
+  checkInBtnReady: { borderColor: '#22c55e', backgroundColor: '#052e16' },
+  checkInBtnDone: { borderColor: '#7c3aed', backgroundColor: '#2e1065' },
+  checkInBtnText: { color: '#f1f5f9', fontSize: 13, fontWeight: '700' },
+  checkInDist: { color: '#64748b', fontSize: 10, marginTop: 2 },
   tabs: { flexDirection: 'row', backgroundColor: '#1e1e3a', borderBottomWidth: 1, borderBottomColor: '#2d2d5a' },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   tabActive: { borderBottomWidth: 2, borderBottomColor: '#7c3aed' },
-  tabText: { color: '#64748b', fontSize: 13, fontWeight: '500' },
-  tabTextActive: { color: '#a855f7', fontWeight: '700' },
+  tabText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#a855f7' },
   content: { flex: 1 },
-  contentPad: { padding: 16, paddingBottom: 40 },
-  funFactCard: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
-  },
-  funFactLabel: { color: '#f59e0b', fontSize: 12, fontWeight: '700', marginBottom: 4 },
-  funFactText: { color: '#cbd5e1', fontSize: 14, lineHeight: 20 },
-  sectionTitle: { color: '#94a3b8', fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 8, marginTop: 4 },
-  amenityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  amenityChip: {
-    backgroundColor: '#2d2d5a',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  amenityText: { color: '#cbd5e1', fontSize: 12 },
-  ratingCard: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 16,
+  card: { backgroundColor: '#1e1e3a', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#2d2d5a' },
+  label: { color: '#64748b', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 6 },
+  funFact: { color: '#94a3b8', fontSize: 14, lineHeight: 20 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  chip: { backgroundColor: '#2d2d5a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText: { color: '#94a3b8', fontSize: 11 },
+  lockBanner: {
+    backgroundColor: '#1c1c2e',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-  },
-  ratingOverall: { color: '#f59e0b', fontSize: 36, fontWeight: '800' },
-  ratingCount: { color: '#64748b', fontSize: 12, marginTop: 2 },
-  topReview: { color: '#94a3b8', fontSize: 13, fontStyle: 'italic', marginTop: 10, textAlign: 'center' },
-  myScoreCard: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 10,
-    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#4a4a8a',
-    alignItems: 'center',
+    borderColor: '#374151',
   },
-  myScoreLabel: { color: '#94a3b8', fontSize: 12, marginBottom: 4 },
-  myScore: { color: '#7c3aed', fontSize: 28, fontWeight: '800' },
-  myScoreGap: { color: '#ef4444', fontSize: 12, marginTop: 4 },
-  gamesHint: {
-    color: '#94a3b8',
-    fontSize: 13,
-    textAlign: 'center',
-    marginBottom: 16,
-    backgroundColor: '#1e1e3a',
-    borderRadius: 8,
-    padding: 10,
-  },
+  lockText: { color: '#64748b', fontSize: 13, textAlign: 'center', lineHeight: 20 },
   gameCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1e1e3a',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
     gap: 12,
-    borderWidth: 1,
   },
-  gameEmoji: { fontSize: 32 },
-  gameName: { color: '#f1f5f9', fontSize: 16, fontWeight: '700' },
-  gameTagline: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
-  gameDesc: { color: '#64748b', fontSize: 11, marginTop: 4 },
-  gameArrow: { color: '#7c3aed', fontSize: 18 },
-  addReviewBtn: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 10,
-    padding: 14,
+  gameCardLocked: { opacity: 0.5 },
+  gameEmoji: { fontSize: 28 },
+  gameName: { color: '#f1f5f9', fontSize: 15, fontWeight: '700' },
+  gameTagline: { color: '#64748b', fontSize: 12, marginTop: 2 },
+  writeReviewBtn: {
+    backgroundColor: '#7c3aed',
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#4a4a8a',
+    marginBottom: 14,
   },
-  addReviewText: { color: '#a855f7', fontWeight: '600', fontSize: 14 },
-  emptyReviews: { color: '#64748b', textAlign: 'center', marginTop: 24, fontSize: 14 },
+  writeReviewText: { color: 'white', fontWeight: '800', fontSize: 14 },
+  emptyReviews: { color: '#4a5568', textAlign: 'center', marginTop: 24, fontSize: 14 },
   reviewCard: {
     backgroundColor: '#1e1e3a',
-    borderRadius: 10,
+    borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#2d2d5a',
+    gap: 8,
   },
-  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  reviewUser: { color: '#a855f7', fontWeight: '700', fontSize: 13, flex: 1 },
-  reviewRating: { fontSize: 12 },
-  reviewText: { color: '#cbd5e1', fontSize: 14, lineHeight: 20, marginBottom: 8 },
-  reviewFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  starRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  starLabel: { fontSize: 12 },
-  stars: { fontSize: 10 },
-  upvotes: { color: '#64748b', fontSize: 12, marginLeft: 'auto' },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reviewUser: { color: '#a855f7', fontSize: 13, fontWeight: '700', flex: 1 },
+  reviewText: { color: '#94a3b8', fontSize: 13, lineHeight: 19 },
+  reviewRatings: { flexDirection: 'row', gap: 12 },
+  miniRating: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  miniRatingLabel: { fontSize: 14 },
+  miniRatingVal: { color: '#64748b', fontSize: 12 },
 });

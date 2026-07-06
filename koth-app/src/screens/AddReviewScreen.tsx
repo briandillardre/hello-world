@@ -1,31 +1,24 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
+  StyleSheet, View, Text, TextInput, TouchableOpacity,
+  ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { useApp } from '../lib/AppContext';
-import { RootStackParamList, Review } from '../types';
+import { RootStackParamList } from '../types';
 
-type RouteT = RouteProp<RootStackParamList, 'AddReview'>;
+type Route = RouteProp<RootStackParamList, 'AddReview'>;
 
-const EMOJIS = ['🚛', '💩', '🧻', '⛽', '🤠', '💨', '🦟', '🎸', '🍕', '🛞', '🪠', '🌵'];
+const VIBES = ['😍', '😊', '😐', '😬', '💀', '🤠', '🚛', '🏆', '🌵', '🌄', '🦅', '🐔'];
 
-function StarPicker({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
+function StarPicker({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <View style={styles.starPickerRow}>
-      <Text style={styles.starPickerLabel}>{label}</Text>
-      <View style={styles.starPickerStars}>
-        {[1, 2, 3, 4, 5].map(n => (
-          <TouchableOpacity key={n} onPress={() => onChange(n)}>
-            <Text style={{ fontSize: 24 }}>{n <= value ? '⭐' : '☆'}</Text>
+    <View style={styles.starRow}>
+      <Text style={styles.starLabel}>{label}</Text>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {[1, 2, 3, 4, 5].map(i => (
+          <TouchableOpacity key={i} onPress={() => onChange(i)}>
+            <Text style={{ fontSize: 24, color: i <= value ? '#f59e0b' : '#374151' }}>★</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -34,32 +27,29 @@ function StarPicker({ value, onChange, label }: { value: number; onChange: (v: n
 }
 
 export default function AddReviewScreen() {
-  const route = useRoute<RouteT>();
+  const route = useRoute<Route>();
   const navigation = useNavigation();
-  const { restAreas, profile, addReview } = useApp();
-  const restArea = restAreas.find(r => r.id === route.params.restAreaId);
-
+  const { profile, addReview, restAreas } = useApp();
   const [overall, setOverall] = useState(3);
   const [cleanliness, setCleanliness] = useState(3);
   const [vending, setVending] = useState(3);
   const [vibes, setVibes] = useState(3);
   const [text, setText] = useState('');
-  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+  const [selectedEmoji, setSelectedEmoji] = useState<string | undefined>(undefined);
+  const [submitting, setSubmitting] = useState(false);
 
-  if (!restArea) return null;
+  const restArea = restAreas.find(r => r.id === route.params.restAreaId);
 
   const handleSubmit = async () => {
-    if (!profile) {
-      Alert.alert('No Profile', 'Set up a username in the Profile tab first!');
-      return;
-    }
+    if (!profile) return;
     if (text.trim().length < 10) {
-      Alert.alert('Too Short', 'Give us at least 10 characters. You have opinions. Share them.');
+      Alert.alert('Too short', 'Write at least 10 characters — give the people something.');
       return;
     }
-    const review: Review = {
-      id: `review_${Date.now()}`,
-      restAreaId: restArea.id,
+    setSubmitting(true);
+    await addReview({
+      id: `rev_${Date.now()}`,
+      restAreaId: route.params.restAreaId,
       userId: profile.id,
       username: profile.username,
       overallRating: overall,
@@ -67,58 +57,61 @@ export default function AddReviewScreen() {
       vendingRating: vending,
       vibesRating: vibes,
       text: text.trim(),
-      photoEmoji: selectedEmoji ?? undefined,
+      photoEmoji: selectedEmoji,
       upvotes: 0,
       timestamp: new Date().toISOString(),
-    };
-    await addReview(review);
-    Alert.alert('Review Posted! 🎉', 'Your hot take has been immortalized.', [
-      { text: 'OK', onPress: () => navigation.goBack() },
+    });
+    setSubmitting(false);
+    Alert.alert('Review posted! 🎉', 'Your wisdom lives on.', [
+      { text: 'Done', onPress: () => navigation.goBack() },
     ]);
   };
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={{ flex: 1, backgroundColor: '#0f0f1e' }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Review {restArea.name}</Text>
-        <Text style={styles.subtitle}>Be honest. Be funny. Both preferred.</Text>
+        {restArea && <Text style={styles.restAreaName}>{restArea.name}</Text>}
 
         <StarPicker label="Overall" value={overall} onChange={setOverall} />
-        <StarPicker label="🧹 Cleanliness" value={cleanliness} onChange={setCleanliness} />
-        <StarPicker label="🍫 Vending" value={vending} onChange={setVending} />
-        <StarPicker label="✨ Vibes" value={vibes} onChange={setVibes} />
+        <StarPicker label="Cleanliness 🧼" value={cleanliness} onChange={setCleanliness} />
+        <StarPicker label="Vending 🍫" value={vending} onChange={setVending} />
+        <StarPicker label="Vibes ✨" value={vibes} onChange={setVibes} />
 
-        <Text style={styles.sectionLabel}>Your Hot Take</Text>
+        <Text style={styles.label}>YOUR REVIEW</Text>
         <TextInput
           style={styles.textInput}
-          placeholder="Tell the people what they need to know..."
-          placeholderTextColor="#4a5568"
           value={text}
           onChangeText={setText}
           multiline
           numberOfLines={4}
+          placeholder="What did you witness here today?"
+          placeholderTextColor="#4a5568"
           maxLength={280}
         />
         <Text style={styles.charCount}>{text.length}/280</Text>
 
-        <Text style={styles.sectionLabel}>Pick a Vibe Emoji</Text>
-        <View style={styles.emojiRow}>
-          {EMOJIS.map(e => (
+        <Text style={styles.label}>VIBE PHOTO</Text>
+        <View style={styles.emojiGrid}>
+          {VIBES.map(e => (
             <TouchableOpacity
               key={e}
               style={[styles.emojiBtn, selectedEmoji === e && styles.emojiBtnSelected]}
-              onPress={() => setSelectedEmoji(selectedEmoji === e ? null : e)}
+              onPress={() => setSelectedEmoji(selectedEmoji === e ? undefined : e)}
             >
               <Text style={{ fontSize: 24 }}>{e}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitText}>Post Review →</Text>
+        <TouchableOpacity
+          style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          <Text style={styles.submitText}>{submitting ? 'Posting...' : 'Post Review →'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -126,51 +119,20 @@ export default function AddReviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f1e' },
-  content: { padding: 16, paddingBottom: 40, gap: 16 },
-  title: { color: '#f1f5f9', fontSize: 20, fontWeight: '800' },
-  subtitle: { color: '#64748b', fontSize: 13, marginTop: -8 },
-  starPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1e1e3a',
-    borderRadius: 10,
-    padding: 12,
-  },
-  starPickerLabel: { color: '#94a3b8', fontSize: 14, fontWeight: '500' },
-  starPickerStars: { flexDirection: 'row', gap: 2 },
-  sectionLabel: { color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  content: { padding: 16, gap: 12, paddingBottom: 40 },
+  restAreaName: { color: '#64748b', fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  starRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e3a', borderRadius: 10, padding: 12 },
+  starLabel: { color: '#94a3b8', fontSize: 14 },
+  label: { color: '#64748b', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 4 },
   textInput: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 12,
-    padding: 14,
-    color: '#f1f5f9',
-    fontSize: 15,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: '#2d2d5a',
+    backgroundColor: '#1e1e3a', borderRadius: 12, padding: 14, color: '#f1f5f9',
+    fontSize: 14, lineHeight: 20, minHeight: 100, textAlignVertical: 'top',
+    borderWidth: 1, borderColor: '#2d2d5a',
   },
   charCount: { color: '#4a5568', fontSize: 11, textAlign: 'right', marginTop: -8 },
-  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
-    backgroundColor: '#1e1e3a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2d2d5a',
-  },
-  emojiBtnSelected: { backgroundColor: '#2d1b5e', borderColor: '#7c3aed' },
-  submitBtn: {
-    backgroundColor: '#7c3aed',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  submitText: { color: 'white', fontWeight: '800', fontSize: 16 },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  emojiBtn: { backgroundColor: '#1e1e3a', borderRadius: 10, padding: 8, borderWidth: 1, borderColor: '#2d2d5a' },
+  emojiBtnSelected: { borderColor: '#7c3aed', backgroundColor: '#2d1b5e' },
+  submitBtn: { backgroundColor: '#7c3aed', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  submitText: { color: 'white', fontWeight: '800', fontSize: 15 },
 });

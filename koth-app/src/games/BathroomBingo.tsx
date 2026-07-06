@@ -9,11 +9,11 @@ interface Props {
 const BINGO_ITEMS = [
   '🧼 Out of soap', '🚿 Broken hand dryer', '🕳️ Gap in stall door', '💧 Mystery puddle',
   '📱 Phone left behind', '🪥 Someone\'s toothbrush', '🦟 Bug on ceiling', '✍️ Stall philosophy',
-  '🔩 Missing stall door lock', '🧻 Empty TP roll still mounted', '🏛️ Ancient air freshener',
-  '⚠️ "Wet Floor" sign (dry floor)', '🎵 Awkward radio choices', '🪞 Cracked mirror',
-  '💡 One light out', '🚫 "Out of Order" sign', '🌡️ Temperature extreme', '👣 Footprint on seat',
-  '🗑️ Overflowing trash', '📢 Very loud flush', '🪟 Window that doesn\'t close',
-  '🤔 Vague mystery smell', '🐛 Insect friend', '🎨 Artistic stall graffiti',
+  '🔩 Missing stall lock', '🧻 Empty TP still mounted', '🏛️ Ancient air freshener',
+  '⚠️ Wet Floor sign (dry floor)', '🎵 Awkward radio choices', '🪞 Cracked mirror',
+  '💡 One light out', '🚫 Out of Order sign', '🌡️ Temperature extreme', '👣 Footprint on seat',
+  '🗑️ Overflowing trash', '📢 Very loud flush', '🪟 Window that won\'t close',
+  '🤔 Vague mystery smell', '🐛 Insect friend', '🎨 Artistic graffiti',
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -25,48 +25,40 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function checkBingo(checked: Set<number>, size: number): boolean {
-  for (let row = 0; row < size; row++) {
-    if ([...Array(size)].every((_, col) => checked.has(row * size + col))) return true;
+const GRID = 4;
+
+function checkBingo(checked: Set<number>): boolean {
+  for (let row = 0; row < GRID; row++) {
+    if ([...Array(GRID)].every((_, col) => checked.has(row * GRID + col))) return true;
   }
-  for (let col = 0; col < size; col++) {
-    if ([...Array(size)].every((_, row) => checked.has(row * size + col))) return true;
+  for (let col = 0; col < GRID; col++) {
+    if ([...Array(GRID)].every((_, row) => checked.has(row * GRID + col))) return true;
   }
-  if ([...Array(size)].every((_, i) => checked.has(i * size + i))) return true;
-  if ([...Array(size)].every((_, i) => checked.has(i * size + (size - 1 - i)))) return true;
+  if ([...Array(GRID)].every((_, i) => checked.has(i * GRID + i))) return true;
+  if ([...Array(GRID)].every((_, i) => checked.has(i * GRID + (GRID - 1 - i)))) return true;
   return false;
 }
 
 export default function BathroomBingo({ onComplete }: Props) {
-  const GRID = 4;
   const [items] = useState(() => shuffle(BINGO_ITEMS).slice(0, GRID * GRID));
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [hasBingo, setHasBingo] = useState(false);
   const [phase, setPhase] = useState<'ready' | 'playing'>('ready');
 
-  const toggleItem = useCallback(
-    (idx: number) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const next = new Set(checked);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      setChecked(next);
-      if (!hasBingo && checkBingo(next, GRID)) {
+  const toggleItem = useCallback((idx: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      if (!hasBingo && checkBingo(next)) {
         setHasBingo(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-    },
-    [checked, hasBingo],
-  );
+      return next;
+    });
+  }, [hasBingo]);
 
-  const handleSubmit = useCallback(() => {
-    const baseScore = checked.size * 8;
-    const bingoBonus = hasBingo ? 50 : 0;
-    onComplete(baseScore + bingoBonus);
-  }, [checked.size, hasBingo, onComplete]);
-
-  const baseScore = checked.size * 8;
-  const totalScore = baseScore + (hasBingo ? 50 : 0);
+  const totalScore = checked.size * 8 + (hasBingo ? 50 : 0);
 
   if (phase === 'ready') {
     return (
@@ -96,12 +88,10 @@ export default function BathroomBingo({ onComplete }: Props) {
           <Text style={styles.bingoText}>🎉 BINGO! +50 BONUS!</Text>
         </View>
       )}
-
       <View style={styles.scoreBar}>
         <Text style={styles.scoreBarText}>Found: {checked.size}/{items.length}</Text>
         <Text style={styles.scoreBarPts}>{totalScore} pts</Text>
       </View>
-
       <ScrollView contentContainerStyle={styles.grid}>
         {items.map((item, idx) => (
           <TouchableOpacity
@@ -117,11 +107,8 @@ export default function BathroomBingo({ onComplete }: Props) {
           </TouchableOpacity>
         ))}
       </ScrollView>
-
-      <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-        <Text style={styles.submitText}>
-          I Survived — Bank {totalScore} pts →
-        </Text>
+      <TouchableOpacity style={styles.submitBtn} onPress={() => onComplete(totalScore)}>
+        <Text style={styles.submitText}>I Survived — Bank {totalScore} pts →</Text>
       </TouchableOpacity>
     </View>
   );
@@ -132,84 +119,31 @@ const styles = StyleSheet.create({
   heroEmoji: { fontSize: 64 },
   title: { color: '#f1f5f9', fontSize: 28, fontWeight: '800' },
   subtitle: { color: '#94a3b8', fontSize: 15, textAlign: 'center', lineHeight: 22 },
-  ruleBox: {
-    backgroundColor: '#1e1e3a',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#8b5cf6',
-  },
+  ruleBox: { backgroundColor: '#1e1e3a', borderRadius: 12, padding: 16, width: '100%', gap: 6, borderWidth: 1, borderColor: '#8b5cf6' },
   ruleTitle: { color: '#a855f7', fontWeight: '700', fontSize: 13, marginBottom: 2 },
   rule: { color: '#94a3b8', fontSize: 13 },
-  startBtn: {
-    backgroundColor: '#8b5cf6',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    width: '100%',
-    alignItems: 'center',
-  },
+  startBtn: { backgroundColor: '#8b5cf6', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 32, width: '100%', alignItems: 'center' },
   startBtnText: { color: 'white', fontWeight: '800', fontSize: 15 },
   gameContainer: { flex: 1, backgroundColor: '#0f0f1e' },
-  bingoBanner: {
-    backgroundColor: '#f59e0b',
-    padding: 10,
-    alignItems: 'center',
-  },
+  bingoBanner: { backgroundColor: '#f59e0b', padding: 10, alignItems: 'center' },
   bingoText: { color: '#1a1a2e', fontWeight: '900', fontSize: 18, letterSpacing: 2 },
   scoreBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#1e1e3a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2d2d5a',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: 12, backgroundColor: '#1e1e3a', borderBottomWidth: 1, borderBottomColor: '#2d2d5a',
   },
   scoreBarText: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
   scoreBarPts: { color: '#a855f7', fontSize: 18, fontWeight: '800' },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 8,
-    gap: 4,
-    justifyContent: 'center',
-  },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', padding: 8, gap: 4, justifyContent: 'center' },
   cell: {
-    width: '23%',
-    aspectRatio: 0.9,
-    backgroundColor: '#1e1e3a',
-    borderRadius: 8,
-    padding: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#2d2d5a',
-    position: 'relative',
+    width: '23%', aspectRatio: 0.9, backgroundColor: '#1e1e3a', borderRadius: 8,
+    padding: 6, alignItems: 'center', justifyContent: 'center', borderWidth: 1,
+    borderColor: '#2d2d5a', position: 'relative',
   },
-  cellChecked: {
-    backgroundColor: '#2d1b5e',
-    borderColor: '#8b5cf6',
-  },
+  cellChecked: { backgroundColor: '#2d1b5e', borderColor: '#8b5cf6' },
   cellEmoji: { fontSize: 18, marginBottom: 2 },
   cellText: { color: '#64748b', fontSize: 9, textAlign: 'center', lineHeight: 12 },
   cellTextChecked: { color: '#c4b5fd' },
-  checkmark: {
-    position: 'absolute',
-    top: 2,
-    right: 4,
-    color: '#22c55e',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  submitBtn: {
-    backgroundColor: '#8b5cf6',
-    margin: 12,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  checkmark: { position: 'absolute', top: 2, right: 4, color: '#22c55e', fontSize: 12, fontWeight: '900' },
+  submitBtn: { backgroundColor: '#8b5cf6', margin: 12, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   submitText: { color: 'white', fontWeight: '800', fontSize: 14 },
 });
