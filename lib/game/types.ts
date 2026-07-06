@@ -68,6 +68,19 @@ export interface RoundResult {
   deltas?: Array<{ skill: SkillId; from: number; to: number }>
   /** questions missed this round, for the walk-through review */
   misses?: MissedQuestion[]
+  /** random bonus coins from the 3-star mystery chest */
+  chestBonus?: number
+  /** this round paid double coins (first round of the day) */
+  dailyDouble?: boolean
+  /** daily-quest completion bonus granted with this round (set by the app shell) */
+  questBonus?: number
+  /** updated spaced-repetition queue after this round */
+  reviewQueue?: ReviewItem[]
+}
+
+export interface ReviewItem {
+  skill: SkillId
+  difficulty: number
 }
 
 export interface KidProfile {
@@ -85,6 +98,16 @@ export interface KidProfile {
   /** rolling answer log (capped) for trends */
   history: AnswerRecord[]
   roundsPlayed: number
+  /** habit loop: local YYYY-MM-DD of last round, consecutive-day streak, rounds today */
+  lastPlayedDay?: string
+  dayStreak?: number
+  roundsToday?: number
+  /** day the daily quest reward was claimed */
+  questClaimedDay?: string
+  /** missed questions queued for spaced-repetition comebacks in Mix rounds */
+  reviewQueue?: ReviewItem[]
+  /** "Who Am I?" temperament quiz result + history (see lib/game/personality.ts) */
+  personality?: import('./personality').PersonalityState
 }
 
 export interface BallSkin {

@@ -12,8 +12,15 @@ import { BALL_SKINS, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { ParentDashboard } from './ParentDashboard'
+import { PersonalityQuiz } from './PersonalityQuiz'
+import { retakeDue, TEMPERAMENTS, type PersonalityResult } from '@/lib/game/personality'
 
-type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents'
+type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents' | 'whoami'
+
+/** local calendar day as YYYY-MM-DD */
+const localDay = (d = new Date()) => d.toLocaleDateString('en-CA')
+const QUEST_ROUNDS = 3
+const QUEST_BONUS = 15
 
 export function PlayApp() {
   const [profiles, setProfiles] = useState<KidProfile[]>([])
@@ -64,24 +71,51 @@ export function PlayApp() {
   const handleComplete = useCallback(
     (result: RoundResult) => {
       if (!activeId) return
+      const today = localDay()
+      const yesterday = localDay(new Date(Date.now() - 86400000))
+      let questBonus = 0
+      updateKid(activeId, (k) => {
+        const roundsToday = (k.lastPlayedDay === today ? k.roundsToday ?? 0 : 0) + 1
+        const dayStreak = k.lastPlayedDay === today ? k.dayStreak ?? 1 : k.lastPlayedDay === yesterday ? (k.dayStreak ?? 0) + 1 : 1
+        const questDone = roundsToday >= QUEST_ROUNDS && k.questClaimedDay !== today
+        if (questDone) questBonus = QUEST_BONUS
+        return {
+          ...k,
+          // round-end bonuses (per-answer coins already applied)
+          coins: k.coins + result.stars * 5 + (result.chestBonus ?? 0) + questBonus,
+          stars: k.stars + result.stars,
+          roundsPlayed: k.roundsPlayed + 1,
+          lastPlayedDay: today,
+          roundsToday,
+          dayStreak,
+          questClaimedDay: questDone ? today : k.questClaimedDay,
+          reviewQueue: result.reviewQueue ?? k.reviewQueue,
+          skills:
+            result.skill === 'mix'
+              ? k.skills
+              : {
+                  ...k.skills,
+                  [result.skill]: {
+                    ...k.skills[result.skill],
+                    bestStreak: Math.max(k.skills[result.skill].bestStreak, result.bestStreak),
+                  },
+                },
+        }
+      })
+      setLastResult({ ...result, questBonus })
+      setScreen('summary')
+    },
+    [activeId, updateKid]
+  )
+
+  const handlePersonality = useCallback(
+    (r: PersonalityResult) => {
+      if (!activeId) return
       updateKid(activeId, (k) => ({
         ...k,
-        coins: k.coins + result.stars * 5, // round-end star bonus (per-answer coins already applied)
-        stars: k.stars + result.stars,
-        roundsPlayed: k.roundsPlayed + 1,
-        skills:
-          result.skill === 'mix'
-            ? k.skills
-            : {
-                ...k.skills,
-                [result.skill]: {
-                  ...k.skills[result.skill],
-                  bestStreak: Math.max(k.skills[result.skill].bestStreak, result.bestStreak),
-                },
-              },
+        coins: k.coins + 10, // small thank-you for finishing the quiz
+        personality: { current: r, history: [...(k.personality?.history ?? []), r].slice(-8) },
       }))
-      setLastResult(result)
-      setScreen('summary')
     },
     [activeId, updateKid]
   )
@@ -157,9 +191,26 @@ export function PlayApp() {
   }
 
   if (screen === 'game') {
+    const isDailyDouble = kid.lastPlayedDay !== localDay()
     return (
       <Shell noPad>
-        <BallGame key={gameKey} profile={kid} skill={gameSkill} onAnswer={handleAnswer} onComplete={handleComplete} onQuit={() => setScreen('home')} />
+        <BallGame
+          key={gameKey}
+          profile={kid}
+          skill={gameSkill}
+          dailyDouble={isDailyDouble}
+          onAnswer={handleAnswer}
+          onComplete={handleComplete}
+          onQuit={() => setScreen('home')}
+        />
+      </Shell>
+    )
+  }
+
+  if (screen === 'whoami') {
+    return (
+      <Shell>
+        <PersonalityQuiz kid={kid} onResult={handlePersonality} onExit={() => setScreen('home')} />
       </Shell>
     )
   }
@@ -178,7 +229,10 @@ export function PlayApp() {
             <span className="opacity-20">{'⭐'.repeat(3 - r.stars)}</span>
           </div>
           <div className="rounded-2xl bg-white border-2 border-yellow-200 shadow p-4 mb-2">
-            <p className="text-lg font-extrabold text-yellow-600">+{r.coinsEarned} 🪙 coins earned</p>
+            <p className="text-lg font-extrabold text-yellow-600">+{r.coinsEarned + (r.questBonus ?? 0)} 🪙 coins earned</p>
+            {r.dailyDouble && <p className="text-sm font-bold text-orange-500 mt-1">🌅 Daily Double — first round today paid 2×!</p>}
+            {(r.chestBonus ?? 0) > 0 && <p className="text-sm font-bold text-purple-600 mt-1">🎁 Mystery chest: +{r.chestBonus} bonus coins!</p>}
+            {(r.questBonus ?? 0) > 0 && <p className="text-sm font-bold text-blue-600 mt-1">🎯 Daily quest complete: +{r.questBonus} coins!</p>}
             {r.bestStreak >= 3 && <p className="text-sm font-bold text-orange-500 mt-1">🔥 Best streak: {r.bestStreak} in a row!</p>}
           </div>
           {r.misses && r.misses.length > 0 && (
@@ -311,6 +365,12 @@ export function PlayApp() {
 
   // ---------------------------------------------------------- home
   const lvl = brainLevel(kid)
+  const today = localDay()
+  const roundsToday = kid.lastPlayedDay === today ? kid.roundsToday ?? 0 : 0
+  const dayStreak = kid.lastPlayedDay === today || kid.lastPlayedDay === localDay(new Date(Date.now() - 86400000)) ? kid.dayStreak ?? 0 : 0
+  const questClaimed = kid.questClaimedDay === today
+  const quizDue = retakeDue(kid.personality)
+  const temperament = kid.personality ? TEMPERAMENTS[kid.personality.current.primary] : null
   return (
     <Shell>
       <div className="max-w-md mx-auto px-4 pb-10">
@@ -329,7 +389,7 @@ export function PlayApp() {
         </div>
 
         {/* level bar */}
-        <div className="rounded-2xl bg-white border-2 border-blue-100 shadow p-3 mb-4">
+        <div className="rounded-2xl bg-white border-2 border-blue-100 shadow p-3 mb-3">
           <div className="flex justify-between text-xs font-extrabold text-slate-500 mb-1">
             <span>🧠 Brain Level {lvl.level}</span>
             <span>{Math.round(lvl.progress * 25)}/25 to level {lvl.level + 1}</span>
@@ -339,8 +399,27 @@ export function PlayApp() {
           </div>
         </div>
 
+        {/* daily quest + day streak */}
+        <div className="rounded-2xl bg-white border-2 border-orange-200 shadow p-3 mb-4 flex items-center gap-3">
+          <span className="text-2xl">{questClaimed ? '✅' : '🎯'}</span>
+          <div className="flex-1">
+            <div className="flex justify-between text-xs font-extrabold text-slate-600">
+              <span>{questClaimed ? `Quest done! +${QUEST_BONUS} 🪙` : `Today's quest: play ${QUEST_ROUNDS} rounds (+${QUEST_BONUS} 🪙)`}</span>
+              <span>{Math.min(roundsToday, QUEST_ROUNDS)}/{QUEST_ROUNDS}</span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden mt-1">
+              <div className="h-full rounded-full bg-orange-400 transition-all" style={{ width: `${Math.min(100, (roundsToday / QUEST_ROUNDS) * 100)}%` }} />
+            </div>
+          </div>
+          {dayStreak >= 1 && (
+            <span className="text-xs font-extrabold text-orange-600 bg-orange-100 border border-orange-300 rounded-full px-2 py-1 whitespace-nowrap">
+              🔥 {dayStreak}-day
+            </span>
+          )}
+        </div>
+
         <BigButton color="green" onClick={() => startGame('mix')}>
-          🎲 Mix it up! <span className="block text-xs font-semibold opacity-80">A little of everything</span>
+          🎲 Mix it up! <span className="block text-xs font-semibold opacity-80">A little of everything{roundsToday === 0 ? ' · 🌅 2× coins!' : ''}</span>
         </BigButton>
 
         <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mt-5 mb-2">Or pick a challenge</p>
@@ -364,7 +443,24 @@ export function PlayApp() {
           })}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mt-5">
+        {/* Who Am I? quiz */}
+        <button
+          onClick={() => setScreen('whoami')}
+          className="w-full mt-4 rounded-2xl bg-white border-2 border-purple-200 shadow p-3 flex items-center gap-3 text-left active:scale-95 transition-transform"
+        >
+          <span className="text-3xl">{temperament ? temperament.animal : '🦁🦜🦉🐢'}</span>
+          <span className="flex-1">
+            <span className="block font-extrabold text-slate-700">
+              {temperament ? `${kid.name} the ${temperament.title}` : 'Who Am I? quiz'}
+            </span>
+            <span className="block text-[11px] text-slate-400 font-semibold">
+              {temperament ? (quizDue ? "You've grown — take it again!" : 'Tap to take it again') : 'Find your animal! +10 🪙'}
+            </span>
+          </span>
+          {quizDue && <span className="text-[10px] font-extrabold bg-purple-500 text-white rounded-full px-2 py-0.5 animate-pulse">{temperament ? 'UPDATE' : 'NEW'}</span>}
+        </button>
+
+        <div className="grid grid-cols-2 gap-3 mt-3">
           <BigButton color="blue" onClick={() => setScreen('shop')}>
             🛍️ Ball Shop
           </BigButton>

@@ -7,15 +7,25 @@ import { useMemo, useState } from 'react'
 import { ArrowLeft, TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import {
   ageLabel,
+  BENCHMARKS,
   expectedThetaForAge,
   ageInMonths,
   percentileForSkill,
   percentileLabel,
+  percentileVsBenchmark,
   recentAccuracy,
   trend,
 } from '@/lib/game/adaptive'
+import { RETAKE_DAYS, retakeDue, TEMPERAMENTS } from '@/lib/game/personality'
 import { SKILLS } from '@/lib/game/questions'
 import type { KidProfile } from '@/lib/game/types'
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th", 22 → "22nd" */
+function ord(n: number): string {
+  const v = n % 100
+  if (v >= 11 && v <= 13) return `${n}th`
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
+}
 
 export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; onBack: () => void }) {
   const [unlocked, setUnlocked] = useState(false)
@@ -69,6 +79,13 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
   const totalAnswered = kid.history.length
   const months = ageInMonths(kid.birthdate)
 
+  // strongest / focus skill among those with enough signal
+  const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
+    .map((s) => ({ meta: s, pct: percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile }))
+    .sort((a, b) => b.pct - a.pct)
+  const strongest = ranked[0]
+  const focus = ranked.length > 1 ? ranked[ranked.length - 1] : undefined
+
   return (
     <div className="max-w-md mx-auto px-4 pb-10">
       <div className="flex items-center justify-between pt-4 pb-2">
@@ -99,6 +116,25 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
         <Stat label="Recent accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
       </div>
 
+      {/* strengths & focus */}
+      {strongest && (
+        <div className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4 mb-4">
+          <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2">At a glance</p>
+          <p className="text-sm font-bold text-green-700">
+            💪 Excelling: {strongest.meta.emoji} {strongest.meta.name} — ~{ord(strongest.pct)} percentile for age
+          </p>
+          {focus && (
+            <p className="text-sm font-bold text-orange-600 mt-1">
+              🌱 Focus next: {focus.meta.emoji} {focus.meta.name} — ~{ord(focus.pct)} percentile. Try a {focus.meta.name} round today; Mix
+              rounds are already steering extra questions there automatically.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* personality */}
+      <PersonalityCard kid={kid} />
+
       {/* per-skill cards */}
       <div className="grid gap-3">
         {SKILLS.map((s) => {
@@ -128,7 +164,7 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
                   <div className="flex items-center justify-between text-xs font-bold mb-2">
                     <span className="text-blue-600">
                       {calibrated
-                        ? `~${percentile}th percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`
+                        ? `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`
                         : `Warming up… (${st.attempts}/3 answers to first estimate)`}
                     </span>
                     {tr && (
@@ -138,7 +174,18 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
                       </span>
                     )}
                   </div>
-                  {calibrated && <BellCurve z={z} percentile={percentile} kidName={kid.name} />}
+                  {calibrated && (
+                    <>
+                      <BellCurve z={z} percentile={percentile} kidName={kid.name} />
+                      <div className="flex gap-1.5 mt-1 flex-wrap">
+                        {BENCHMARKS.map((b) => (
+                          <span key={b.key} className="text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-2 py-0.5">
+                            {b.flag} vs {b.label}: ~{ord(percentileVsBenchmark(st.theta, kid.birthdate, b.z))}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   <div className="mt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-0.5">
                       <span>Skill level {Math.round(st.theta)}/99</span>
@@ -158,8 +205,9 @@ export function ParentDashboard({ profiles, onBack }: { profiles: KidProfile[]; 
 
       <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
         Percentiles are in-game estimates comparing {kid.name}&apos;s adaptive skill level to typical pre-K → kindergarten expectations for
-        their exact age ({ageLabel(kid.birthdate)}). They&apos;re for encouragement and spotting trends — not a clinical assessment. Difficulty
-        auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.
+        their exact age ({ageLabel(kid.birthdate)}). The US / Tennessee / Global markers are modeled from published kindergarten-readiness
+        distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to
+        keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.
       </p>
       <p className="text-center text-xs font-extrabold text-blue-500 mt-3">Go Whalehogs 🐋🐗 — we don&apos;t say can&apos;t!</p>
     </div>
@@ -188,15 +236,19 @@ function BellCurve({ z, percentile, kidName }: { z: number; percentile: number; 
   const mx = xFor(zClamped)
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`${kidName} is at the ${percentile}th percentile`}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`${kidName} is at the ${ord(percentile)} percentile`}>
       <line x1={pad} y1={H - 12} x2={W - pad} y2={H - 12} stroke="#cbd5e1" strokeWidth="1.5" />
       <path d={fill} fill="#bfdbfe" opacity="0.7" />
       <path d={curve} fill="none" stroke="#3b82f6" strokeWidth="2" />
-      {/* mean marker */}
-      <line x1={xFor(0)} y1={yFor(0)} x2={xFor(0)} y2={H - 12} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-      <text x={xFor(0)} y={H - 2} textAnchor="middle" fontSize="8" fill="#94a3b8" fontWeight="700">
-        typical for age
-      </text>
+      {/* benchmark markers: US mean (center), TN & Global offsets */}
+      {BENCHMARKS.map((b) => (
+        <g key={b.key}>
+          <line x1={xFor(b.z)} y1={yFor(b.z)} x2={xFor(b.z)} y2={H - 12} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+          <text x={xFor(b.z)} y={b.key === 'us' ? H - 2 : yFor(b.z) - 3} textAnchor="middle" fontSize="7.5" fill="#94a3b8" fontWeight="700">
+            {b.key === 'us' ? '🇺🇸 US typical for age' : b.flag}
+          </text>
+        </g>
+      ))}
       {/* kid marker */}
       <line x1={mx} y1={Math.min(yFor(zClamped), yFor(0)) - 6} x2={mx} y2={H - 12} stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" />
       <circle cx={mx} cy={Math.min(yFor(zClamped), yFor(0)) - 10} r="3.5" fill="#f97316" />
@@ -208,9 +260,70 @@ function BellCurve({ z, percentile, kidName }: { z: number; percentile: number; 
         fill="#ea580c"
         fontWeight="800"
       >
-        {kidName} · {percentile}th
+        {kidName} · {ord(percentile)}
       </text>
     </svg>
+  )
+}
+
+// ---------------------------------------------------------------- personality
+
+function PersonalityCard({ kid }: { kid: KidProfile }) {
+  const p = kid.personality
+  if (!p) {
+    return (
+      <div className="rounded-2xl bg-white border-2 border-purple-200 shadow p-4 mb-4">
+        <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-1">Personality — 🦁🦜🦉🐢 Who Am I?</p>
+        <p className="text-sm text-slate-500 font-semibold">
+          {kid.name} hasn&apos;t taken the Who Am I? quiz yet. It&apos;s 12 this-or-that questions about play and friends (four classic
+          temperaments as friendly animals) and gives you parenting & teaching tips matched to their wiring.
+        </p>
+      </div>
+    )
+  }
+  const t = TEMPERAMENTS[p.current.primary]
+  const s = TEMPERAMENTS[p.current.secondary]
+  const due = retakeDue(p)
+  const taken = new Date(p.current.takenAt)
+  const total = Object.values(p.current.scores).reduce((a, b) => a + b, 0) || 1
+  return (
+    <div className="rounded-2xl bg-white border-2 border-purple-200 shadow p-4 mb-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide">Personality</p>
+        <span className="text-[10px] font-bold text-slate-400">
+          taken {taken.toLocaleDateString()} {due && <span className="text-purple-600">· update due (every ~{RETAKE_DAYS} days)</span>}
+        </span>
+      </div>
+      <p className="text-lg font-black text-slate-800">
+        {t.animal} {t.title} <span className="text-xs font-bold text-slate-400">({t.classic})</span>
+        <span className="text-sm font-bold text-slate-500"> · part {s.animal} {s.title}</span>
+      </p>
+      <div className="flex gap-1 my-2">
+        {(Object.keys(TEMPERAMENTS) as Array<keyof typeof TEMPERAMENTS>).map((k) => (
+          <div key={k} className="flex-1 text-center">
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full rounded-full bg-purple-400" style={{ width: `${(p.current.scores[k] / total) * 100 * 2}%` }} />
+            </div>
+            <span className="text-[10px] font-bold text-slate-400">{TEMPERAMENTS[k].animal} {p.current.scores[k]}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 font-semibold mb-2">{t.summary}</p>
+      <p className="text-xs font-extrabold text-green-700 mb-1">For parents:</p>
+      <ul className="text-xs text-slate-500 font-semibold list-disc pl-4 space-y-0.5 mb-2">
+        {t.parentTips.map((tip) => (
+          <li key={tip}>{tip}</li>
+        ))}
+      </ul>
+      <p className="text-xs font-extrabold text-blue-700 mb-1">For teachers:</p>
+      <p className="text-xs text-slate-500 font-semibold mb-2">{t.teacherTip}</p>
+      <p className="text-[11px] text-slate-400 italic">{t.verse}</p>
+      {p.history.length > 1 && (
+        <p className="text-[10px] text-slate-400 mt-2">
+          History: {p.history.map((h) => `${TEMPERAMENTS[h.primary].animal} ${new Date(h.takenAt).toLocaleDateString()}`).join(' → ')}
+        </p>
+      )}
+    </div>
   )
 }
 

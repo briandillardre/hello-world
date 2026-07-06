@@ -36,10 +36,21 @@ export function nextDifficulty(state: SkillState, questionIndex: number, streak 
   return Math.max(1, Math.min(99, state.theta + offset))
 }
 
-/** weighted skill pick for "Mix it up" rounds: favor least-practiced skills */
-export function pickMixSkill(skills: Record<SkillId, SkillState>): SkillId {
+/**
+ * Weighted skill pick for "Mix it up" rounds. Auto-customizes to the kid:
+ * favors least-practiced skills AND skills where they sit below age
+ * expectations, so play time flows toward the gaps.
+ */
+export function pickMixSkill(skills: Record<SkillId, SkillState>, birthdate?: string): SkillId {
   const ids = Object.keys(skills) as SkillId[]
-  const weights = ids.map((id) => 1 / (1 + skills[id].attempts / 10))
+  const weights = ids.map((id) => {
+    let w = 1 / (1 + skills[id].attempts / 10)
+    if (birthdate && skills[id].attempts >= 3) {
+      const { percentile } = percentileForSkill(skills[id].theta, birthdate)
+      w *= 1 + Math.max(0, 60 - percentile) / 60 // up to 2× weight for lagging skills
+    }
+    return w
+  })
   const total = weights.reduce((a, b) => a + b, 0)
   let r = Math.random() * total
   for (let i = 0; i < ids.length; i++) {
@@ -90,6 +101,24 @@ export function percentileForSkill(theta: number, birthdate: string): { percenti
   const z = (theta - mean) / NORM_SD
   const percentile = Math.max(1, Math.min(99, Math.round(normalCdf(z) * 100)))
   return { percentile, z }
+}
+
+/**
+ * Peer-group benchmarks, expressed as z-offsets from the US-national age
+ * norm. Modeled from published kindergarten-readiness distributions (TN
+ * readiness rates run slightly below national; global early-childhood
+ * composites slightly below that) — estimates for context, not live data.
+ */
+export const BENCHMARKS = [
+  { key: 'us', label: 'US national', flag: '🇺🇸', z: 0 },
+  { key: 'tn', label: 'Tennessee', flag: '🎸', z: -0.08 },
+  { key: 'global', label: 'Global', flag: '🌍', z: -0.18 },
+] as const
+
+/** percentile vs a specific benchmark group (z-offset from the US norm) */
+export function percentileVsBenchmark(theta: number, birthdate: string, benchmarkZ: number): number {
+  const { z } = percentileForSkill(theta, birthdate)
+  return Math.max(1, Math.min(99, Math.round(normalCdf(z - benchmarkZ) * 100)))
 }
 
 export function percentileLabel(p: number): string {

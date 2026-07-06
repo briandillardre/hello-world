@@ -25,6 +25,8 @@ export interface AnswerDelta {
 interface BallGameProps {
   profile: KidProfile
   skill: SkillId | 'mix'
+  /** first round of the day pays double coins */
+  dailyDouble?: boolean
   onAnswer: (delta: AnswerDelta) => void
   onComplete: (result: RoundResult) => void
   onQuit: () => void
@@ -36,8 +38,18 @@ interface Bubble {
   r: number
   text: string
   eaten: boolean
+  /** 1→0 pop animation after being eaten */
+  pop: number
   wrongFlash: number
   isCorrect: boolean
+}
+
+interface Ring {
+  x: number
+  y: number
+  r: number
+  life: number
+  color: string
 }
 
 interface Particle {
@@ -58,7 +70,7 @@ interface Floater {
   color: string
 }
 
-type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'done'
+type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'redeem' | 'done'
 
 const CONFETTI = ['#f97316', '#22c55e', '#3b82f6', '#eab308', '#ec4899', '#a855f7']
 const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!', 'Go Whalehogs!', 'Whalehog smart!']
@@ -68,7 +80,7 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v))
 }
 
-export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallGameProps) {
+export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComplete, onQuit }: BallGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -78,6 +90,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
   const [streak, setStreak] = useState(0)
   const [results, setResults] = useState<boolean[]>([])
   const [muted, setMuted] = useState(false)
+  const [isBonus, setIsBonus] = useState(false)
 
   // mutable game world (never triggers React renders)
   const world = useRef({
@@ -87,9 +100,11 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
     bubbles: [] as Bubble[],
     particles: [] as Particle[],
     floaters: [] as Floater[],
+    rings: [] as Ring[],
     phase: 'idle' as Phase,
     grow: 0,
     streak: 0,
+    shake: 0,
     tappedIndex: -1,
     t: 0,
   })
@@ -100,6 +115,12 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
   const questionRef = useRef<Question | null>(null)
   const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0 })
   const missesRef = useRef<MissedQuestion[]>([])
+  // variable-reward bonus question (never the first two)
+  const bonusIndexRef = useRef(2 + Math.floor(Math.random() * (ROUND_LENGTH - 2)))
+  const bonusRef = useRef(false)
+  // spaced repetition of past misses, consumed during Mix rounds
+  const queueRef = useRef([...(profile.reviewQueue ?? [])])
+  const advanceTimerRef = useRef<number | null>(null)
   const audioRef = useRef<AudioContext | null>(null)
   const mutedRef = useRef(false)
   mutedRef.current = muted
@@ -130,11 +151,19 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
     o.stop(ctx.currentTime + start + dur + 0.05)
   }, [])
 
-  const playCorrect = useCallback(() => {
-    tone(523, 0, 0.15, 'triangle')
-    tone(659, 0.1, 0.15, 'triangle')
-    tone(784, 0.2, 0.3, 'triangle')
-  }, [tone])
+  // combo ladder: every streak step raises the arpeggio's pitch — the round
+  // literally sounds like it's heating up
+  const playCorrect = useCallback(
+    (streak = 0) => {
+      const m = 1 + Math.min(streak, 8) * 0.06
+      tone(523 * m, 0, 0.15, 'triangle')
+      tone(659 * m, 0.1, 0.15, 'triangle')
+      tone(784 * m, 0.2, 0.3, 'triangle')
+      if (streak >= 3) tone(1047 * m, 0.3, 0.35, 'triangle', 0.1)
+      if (streak >= 5) tone(1319 * m, 0.42, 0.4, 'sine', 0.08)
+    },
+    [tone]
+  )
   const playWrong = useCallback(() => {
     tone(220, 0, 0.25, 'sine', 0.08)
     tone(185, 0.12, 0.3, 'sine', 0.08)
@@ -157,6 +186,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       r,
       text,
       eaten: false,
+      pop: 0,
       wrongFlash: 0,
       isCorrect: i === q.answer,
     }))
@@ -164,18 +194,30 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
 
   const nextQuestion = useCallback(
     (index: number) => {
-      const sk: SkillId = skill === 'mix' ? pickMixSkill(skillsRef.current) : skill
-      const state = skillsRef.current[sk]
-      const q = generateQuestion(sk, nextDifficulty(state, index, world.current.streak))
+      let sk: SkillId
+      let difficulty: number
+      // comeback question: re-visit a past miss (slightly easier) in Mix rounds
+      const review = skill === 'mix' && queueRef.current.length > 0 && Math.random() < 0.35 ? queueRef.current.shift() : undefined
+      if (review) {
+        sk = review.skill
+        difficulty = Math.max(1, review.difficulty - 8)
+      } else {
+        sk = skill === 'mix' ? pickMixSkill(skillsRef.current, profile.birthdate) : skill
+        difficulty = nextDifficulty(skillsRef.current[sk], index, world.current.streak)
+      }
+      const q = generateQuestion(sk, difficulty)
       questionRef.current = q
       setQuestion(q)
       setQIndex(index)
       layoutBubbles(q)
+      const bonus = index === bonusIndexRef.current
+      bonusRef.current = bonus
+      setIsBonus(bonus)
       world.current.phase = 'idle'
       world.current.tappedIndex = -1
-      speak(q.speech)
+      speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
     },
-    [skill, layoutBubbles, speak]
+    [skill, layoutBubbles, speak, profile.birthdate]
   )
 
   // start round
@@ -210,32 +252,37 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         stats.correct += 1
         stats.bestStreak = Math.max(stats.bestStreak, w.streak)
         state.bestStreak = Math.max(state.bestStreak, w.streak)
-        coinsDelta = 2 + (w.streak >= 5 ? 2 : w.streak >= 3 ? 1 : 0)
+        const multiplier = (bonusRef.current ? 2 : 1) * (dailyDouble ? 2 : 1)
+        coinsDelta = (2 + (w.streak >= 5 ? 2 : w.streak >= 3 ? 1 : 0)) * multiplier
         stats.coins += coinsDelta
         w.grow += 1
         w.phase = 'celebrate'
+        w.shake = bonusRef.current ? 14 : 8 + Math.min(w.streak, 6)
         const b = w.bubbles[bubbleIndex]
         b.eaten = true
-        for (let i = 0; i < 26; i++) {
+        b.pop = 1
+        const burst = 34 + Math.min(w.streak, 6) * 6 + (bonusRef.current ? 20 : 0)
+        for (let i = 0; i < burst; i++) {
           w.particles.push({
             x: b.x,
             y: b.y,
-            vx: (Math.random() - 0.5) * 9,
-            vy: (Math.random() - 0.7) * 9,
+            vx: (Math.random() - 0.5) * 12,
+            vy: (Math.random() - 0.75) * 12,
             life: 1,
             color: CONFETTI[i % CONFETTI.length],
-            size: 3 + Math.random() * 4,
+            size: 4 + Math.random() * 6,
           })
         }
-        w.floaters.push({ x: b.x, y: b.y - b.r, text: `+${coinsDelta} 🪙`, life: 1, color: '#eab308' })
+        w.rings.push({ x: b.x, y: b.y, r: b.r * 0.5, life: 1, color: bonusRef.current ? '#eab308' : '#22c55e' })
+        w.floaters.push({ x: b.x, y: b.y - b.r, text: `+${coinsDelta} 🪙${multiplier > 1 ? ` ×${multiplier}!` : ''}`, life: 1.2, color: '#eab308' })
         w.floaters.push({
           x: w.w / 2,
           y: w.h * 0.55,
-          text: PRAISE[Math.floor(Math.random() * PRAISE.length)],
+          text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : PRAISE[Math.floor(Math.random() * PRAISE.length)],
           life: 1.4,
           color: '#16a34a',
         })
-        playCorrect()
+        playCorrect(w.streak)
         setStreak(w.streak)
         setCoins(stats.coins)
       } else {
@@ -250,6 +297,8 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
           answer: q.choices[q.answer],
           explain: q.explain,
         })
+        // queue this miss for a comeback question in a future Mix round
+        queueRef.current = [...queueRef.current, { skill: q.skill, difficulty: q.difficulty }].slice(-12)
         w.floaters.push({
           x: w.w / 2,
           y: w.h * 0.55,
@@ -263,13 +312,26 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       setResults((r) => [...r, correct])
       onAnswer({ skill: q.skill, difficulty: q.difficulty, correct, coins: coinsDelta, xp: correct ? 1 : 0, newTheta })
 
-      const idx = stats.answered
-      window.setTimeout(() => {
+      scheduleAdvance(correct ? 900 : 3200)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onAnswer, nextQuestion, playCorrect, playWrong, skill, dailyDouble]
+  )
+
+  const scheduleAdvance = useCallback(
+    (delay: number) => {
+      if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
+      advanceTimerRef.current = window.setTimeout(() => {
+        advanceTimerRef.current = null
+        const w = world.current
+        const stats = statsRef.current
         w.ball.target = { x: w.w / 2, y: w.h * 0.78 }
+        const idx = stats.answered
         if (idx >= ROUND_LENGTH) {
           w.phase = 'done'
           const accuracy = stats.correct / ROUND_LENGTH
           const stars: 1 | 2 | 3 = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : 1
+          const chestBonus = stars === 3 ? 5 + Math.floor(Math.random() * 11) : 0
           const deltas = (Object.keys(skillsRef.current) as SkillId[])
             .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
             .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
@@ -277,18 +339,21 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
             skill,
             total: ROUND_LENGTH,
             correct: stats.correct,
-            coinsEarned: stats.coins + stars * 5,
+            coinsEarned: stats.coins + stars * 5 + chestBonus,
             stars,
             bestStreak: stats.bestStreak,
             deltas,
             misses: missesRef.current,
+            chestBonus,
+            dailyDouble,
+            reviewQueue: queueRef.current,
           })
         } else {
           nextQuestion(idx)
         }
-      }, correct ? 900 : 1700)
+      }, delay)
     },
-    [onAnswer, onComplete, nextQuestion, playCorrect, playWrong, skill]
+    [onComplete, nextQuestion, skill, dailyDouble]
   )
 
   // ------------------------------------------------------------- input
@@ -299,7 +364,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       ensureAudio()
       audioRef.current?.resume().catch(() => {})
       const w = world.current
-      if (w.phase !== 'idle') return
+      if (w.phase !== 'idle' && w.phase !== 'reveal') return
       const rect = canvas.getBoundingClientRect()
       const x = ((e.clientX - rect.left) / rect.width) * w.w
       const y = ((e.clientY - rect.top) / rect.height) * w.h
@@ -307,6 +372,16 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         const b = w.bubbles[i]
         const dist = Math.hypot(x - b.x, y - b.y)
         if (dist <= b.r * 1.15) {
+          if (w.phase === 'reveal') {
+            // after a miss, let them roll to the revealed answer — closes the
+            // loop with a small win (no points, pure mastery)
+            if (!b.isCorrect || b.eaten) return
+            if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
+            w.phase = 'redeem'
+            w.tappedIndex = i
+            w.ball.target = { x: b.x, y: b.y }
+            return
+          }
           w.phase = 'rolling'
           w.tappedIndex = i
           w.ball.target = { x: b.x, y: b.y }
@@ -365,8 +440,8 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       const w = world.current
       w.t += 1
       const { ball } = w
-      const baseR = Math.min(w.w, w.h) * 0.075
-      const targetR = Math.min(baseR * (1 + w.grow * 0.07), baseR * 1.8)
+      const baseR = Math.min(w.w, w.h) * 0.07
+      const targetR = Math.min(baseR * (1 + w.grow * 0.16), baseR * 2.3)
       ball.r += (targetR - ball.r) * 0.1
 
       // move ball toward target
@@ -383,6 +458,23 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
             ball.target = null
             w.phase = 'celebrate' // temporarily; resolveAnswer sets real phase
             resolveAnswer(idx)
+          } else if (w.phase === 'redeem') {
+            const b = w.bubbles[w.tappedIndex]
+            ball.target = null
+            b.eaten = true
+            b.pop = 1
+            w.shake = 6
+            for (let i = 0; i < 20; i++) {
+              w.particles.push({
+                x: b.x, y: b.y,
+                vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.75) * 8,
+                life: 1, color: CONFETTI[i % CONFETTI.length], size: 3 + Math.random() * 5,
+              })
+            }
+            w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: 'Now you got it! 🎉', life: 1.3, color: '#16a34a' })
+            playCorrect(0)
+            w.phase = 'celebrate'
+            scheduleAdvance(800)
           } else {
             ball.target = null
           }
@@ -405,6 +497,15 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         }
       }
 
+      // ---------- screen shake (decaying random offset on correct answers)
+      ctx.save()
+      if (w.shake > 0.5) {
+        ctx.translate((Math.random() - 0.5) * w.shake, (Math.random() - 0.5) * w.shake)
+        w.shake *= 0.86
+      } else {
+        w.shake = 0
+      }
+
       // ---------- background
       const sky = ctx.createLinearGradient(0, 0, 0, w.h)
       sky.addColorStop(0, '#bfe6ff')
@@ -412,7 +513,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       sky.addColorStop(0.56, '#bbe98d')
       sky.addColorStop(1, '#8fd15f')
       ctx.fillStyle = sky
-      ctx.fillRect(0, 0, w.w, w.h)
+      ctx.fillRect(-20, -20, w.w + 40, w.h + 40)
       // sun
       ctx.fillStyle = 'rgba(255, 220, 100, 0.9)'
       ctx.beginPath()
@@ -432,7 +533,24 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
 
       // ---------- bubbles
       w.bubbles.forEach((b, i) => {
-        if (b.eaten) return
+        if (b.eaten) {
+          // pop: scale up + fade out
+          if (b.pop > 0) {
+            b.pop = Math.max(0, b.pop - 0.07)
+            ctx.save()
+            ctx.globalAlpha = b.pop
+            ctx.translate(b.x, b.y)
+            const s = 1 + (1 - b.pop) * 0.7
+            ctx.strokeStyle = '#22c55e'
+            ctx.lineWidth = 4
+            ctx.beginPath()
+            ctx.arc(0, 0, b.r * s, 0, Math.PI * 2)
+            ctx.stroke()
+            ctx.restore()
+            ctx.globalAlpha = 1
+          }
+          return
+        }
         const bob = Math.sin(w.t * 0.03 + i * 2.1) * 5
         const y = b.y + bob
         let shake = 0
@@ -546,7 +664,54 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
       if (happy) ctx.arc(0, ball.r * 0.15, ball.r * 0.32, 0.15, Math.PI - 0.15)
       else ctx.arc(0, ball.r * 0.22, ball.r * 0.24, 0.3, Math.PI - 0.3)
       ctx.stroke()
+      // streak status gear: shades at 4+, crown at 7+
+      if (w.streak >= 4) {
+        ctx.fillStyle = '#1e293b'
+        const gw = ball.r * 0.42
+        ctx.beginPath()
+        ctx.roundRect(-ball.r * 0.3 - gw / 2, eyeY - gw * 0.35, gw, gw * 0.7, gw * 0.2)
+        ctx.roundRect(ball.r * 0.3 - gw / 2, eyeY - gw * 0.35, gw, gw * 0.7, gw * 0.2)
+        ctx.fill()
+        ctx.strokeStyle = '#1e293b'
+        ctx.lineWidth = Math.max(2, ball.r * 0.06)
+        ctx.beginPath()
+        ctx.moveTo(-ball.r * 0.3 + gw / 2, eyeY)
+        ctx.lineTo(ball.r * 0.3 - gw / 2, eyeY)
+        ctx.stroke()
+      }
+      if (w.streak >= 7) {
+        ctx.fillStyle = '#fbbf24'
+        ctx.strokeStyle = '#d97706'
+        ctx.lineWidth = 2
+        const cw = ball.r * 0.9
+        const cy = -ball.r * 1.05
+        ctx.beginPath()
+        ctx.moveTo(-cw / 2, cy)
+        ctx.lineTo(-cw / 2, cy - cw * 0.35)
+        ctx.lineTo(-cw / 4, cy - cw * 0.15)
+        ctx.lineTo(0, cy - cw * 0.45)
+        ctx.lineTo(cw / 4, cy - cw * 0.15)
+        ctx.lineTo(cw / 2, cy - cw * 0.35)
+        ctx.lineTo(cw / 2, cy)
+        ctx.closePath()
+        ctx.fill()
+        ctx.stroke()
+      }
       ctx.restore()
+
+      // ---------- shockwave rings
+      w.rings = w.rings.filter((r) => r.life > 0)
+      w.rings.forEach((r) => {
+        r.r += 5
+        r.life -= 0.04
+        ctx.globalAlpha = Math.max(0, r.life) * 0.7
+        ctx.strokeStyle = r.color
+        ctx.lineWidth = 5 * r.life
+        ctx.beginPath()
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2)
+        ctx.stroke()
+      })
+      ctx.globalAlpha = 1
 
       // ---------- particles
       w.particles = w.particles.filter((p) => p.life > 0)
@@ -577,6 +742,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         ctx.fillText(f.text, f.x, f.y)
       })
       ctx.globalAlpha = 1
+      ctx.restore() // close screen-shake transform
 
       raf = requestAnimationFrame(draw)
     }
@@ -612,6 +778,7 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {dailyDouble && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 border border-orange-300 rounded-full px-2 py-0.5">🌅 2×</span>}
           {streak >= 3 && <span className="text-sm font-extrabold text-orange-500">🔥{streak}</span>}
           <span className="text-sm font-extrabold text-yellow-600 bg-yellow-100 border border-yellow-300 rounded-full px-2 py-0.5">
             🪙 {coins}
@@ -629,6 +796,11 @@ export function BallGame({ profile, skill, onAnswer, onComplete, onQuit }: BallG
         {question && (
           <span className="absolute -top-2.5 right-3 text-[10px] font-extrabold bg-purple-500 text-white rounded-full px-2 py-0.5">
             ⚡ Level {question.difficulty}
+          </span>
+        )}
+        {isBonus && (
+          <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[11px] font-extrabold bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-full px-3 py-0.5 animate-bounce shadow">
+            ✨ BONUS — 2× coins!
           </span>
         )}
         <div className="flex items-center justify-center gap-2">
