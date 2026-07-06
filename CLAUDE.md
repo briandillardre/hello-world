@@ -64,6 +64,16 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 | Tool tags | BlueCharm BC021 | BLE iBeacon, IP67, $20, Amazon Prime |
 | SIM cards | Hologram (hologram.io) | nano SIM, Cat-M1, ~$1-2/mo per device |
 
+### Live pilot units (T1 = FMM00A OBD units, deployed Jul 2026)
+| Unit | IMEI suffix | Hologram SIM | Installed in |
+|------|-------------|--------------|--------------|
+| T1-a | …02222 | 44398 | (configured first) |
+| T1-b | …00200 | 44406 | (charged in Atlas) |
+
+- flespi channel: `ch1401177.flespi.gw:24397` TCP · Codec 8 Extended · APN `hologram` (no user/pass, roaming on)
+- Naming convention: T1 = OBD truck unit, T2 = equipment unit, T3 = tool tags. Model numbers stay out of vendor dashboards/marketing.
+- FMM00A gotcha: internal battery ships DISCONNECTED — open case, click battery plug in, close case fully (case is the OBD plug housing; won't power open).
+
 ### TAT141 Battery Note
 At active tracking rates (5-min intervals when moving), battery alone is insufficient.
 **Need solar accessory** for equipment left outside, or wire to 12V/24V aux on machines that have it.
