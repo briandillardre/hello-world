@@ -1,0 +1,10 @@
+# Claude: rename this file to .gitignore when copying the template into a new
+# repo (kept un-dotted here so it doesn't affect the hello-world repo).
+node_modules
+.next
+out
+.env*.local
+.env
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
