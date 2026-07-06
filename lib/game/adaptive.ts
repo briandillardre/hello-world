@@ -121,6 +121,33 @@ export function percentileVsBenchmark(theta: number, birthdate: string, benchmar
   return Math.max(1, Math.min(99, Math.round(normalCdf(z - benchmarkZ) * 100)))
 }
 
+/**
+ * Adult norms for the tester profiles: typical adults ace early-learning
+ * content but lose points to speed/attention slips, so the modeled adult
+ * mean sits at theta 85 (SD 10). Scores are presented IQ-style
+ * (mean 100, SD 15). A kindergarten quiz can't measure real adult IQ —
+ * this is honest-fun framing until adult question banks exist.
+ */
+export const ADULT_NORM = { mean: 85, sd: 10 }
+
+export const ADULT_BENCHMARKS = [
+  { key: 'hs', label: 'Adults (HS diploma)', flag: '🎓', z: 0 },
+  { key: 'college', label: 'Adults (college grad)', flag: '🏛️', z: 0.3 },
+] as const
+
+/** percentile + z of a tester vs adult norms (optionally vs a benchmark group) */
+export function percentileForAdult(theta: number, benchmarkZ = 0): { percentile: number; z: number } {
+  const z = (theta - ADULT_NORM.mean) / ADULT_NORM.sd
+  const percentile = Math.max(1, Math.min(99, Math.round(normalCdf(z - benchmarkZ) * 100)))
+  return { percentile, z }
+}
+
+/** IQ-style score (mean 100, SD 15), clamped to a sane display range */
+export function iqStyleScore(theta: number): number {
+  const z = (theta - ADULT_NORM.mean) / ADULT_NORM.sd
+  return Math.max(55, Math.min(145, Math.round(100 + 15 * z)))
+}
+
 export function percentileLabel(p: number): string {
   if (p >= 90) return 'Way ahead 🚀'
   if (p >= 75) return 'Ahead of the curve ⭐'

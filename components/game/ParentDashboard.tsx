@@ -6,10 +6,14 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import {
+  ADULT_BENCHMARKS,
+  ADULT_NORM,
   ageLabel,
   BENCHMARKS,
   expectedThetaForAge,
   ageInMonths,
+  iqStyleScore,
+  percentileForAdult,
   percentileForSkill,
   percentileLabel,
   percentileVsBenchmark,
@@ -88,13 +92,16 @@ export function ParentDashboard({
   const totalAnswered = kid.history.length
   const months = ageInMonths(kid.birthdate)
 
-  // strongest / focus skill among those with enough signal (kids only —
-  // age-norm percentiles don't apply to grown-up testers)
-  const ranked = kid.isTester
-    ? []
-    : SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
-        .map((s) => ({ meta: s, pct: percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile }))
-        .sort((a, b) => b.pct - a.pct)
+  // strongest / focus skill among those with enough signal
+  // (testers rank against adult norms, kids against age norms)
+  const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
+    .map((s) => ({
+      meta: s,
+      pct: kid.isTester
+        ? percentileForAdult(kid.skills[s.id].theta).percentile
+        : percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile,
+    }))
+    .sort((a, b) => b.pct - a.pct)
   const strongest = ranked[0]
   const focus = ranked.length > 1 ? ranked[ranked.length - 1] : undefined
 
@@ -124,8 +131,9 @@ export function ParentDashboard({
 
       {kid.isTester && (
         <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 p-3 mb-4 text-xs font-semibold text-slate-500">
-          🧪 Grown-up tester profile — scores are fully separate from the kids. Age-based percentiles, bell curves, and benchmarks are
-          hidden (kindergarten norms don&apos;t apply to adults); skill levels and accuracy still track normally.
+          🧪 Grown-up tester profile — scores are fully separate from the kids. Bell curves grade against <b>adult norms</b> with an
+          IQ-style score (mean 100), shown once enough answers exist. Honest caveat: the questions top out at kindergarten level, so
+          this measures speed &amp; slip-ups, not real adult IQ — proper adult question banks would fix that.
         </div>
       )}
 
@@ -144,7 +152,7 @@ export function ParentDashboard({
         <div className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4 mb-4">
           <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2">At a glance</p>
           <p className="text-sm font-bold text-green-700">
-            💪 Excelling: {strongest.meta.emoji} {strongest.meta.name} — ~{ord(strongest.pct)} percentile for age
+            💪 Excelling: {strongest.meta.emoji} {strongest.meta.name} — ~{ord(strongest.pct)} percentile {kid.isTester ? 'of adults' : 'for age'}
           </p>
           {focus && (
             <p className="text-sm font-bold text-orange-600 mt-1">
@@ -165,7 +173,7 @@ export function ParentDashboard({
           const played = st.attempts > 0
           const calibrated = st.attempts >= 3
           const firm = st.attempts >= 10
-          const { percentile, z } = percentileForSkill(st.theta, kid.birthdate)
+          const { percentile, z } = kid.isTester ? percentileForAdult(st.theta) : percentileForSkill(st.theta, kid.birthdate)
           const acc = recentAccuracy(kid.history, s.id, 20)
           const tr = trend(kid.history, s.id)
           return (
@@ -186,11 +194,11 @@ export function ParentDashboard({
                 <>
                   <div className="flex items-center justify-between text-xs font-bold mb-2">
                     <span className="text-blue-600">
-                      {kid.isTester
-                        ? 'Tester — no age comparison'
-                        : calibrated
-                        ? `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`
-                        : `Warming up… (${st.attempts}/3 answers to first estimate)`}
+                      {!calibrated
+                        ? `Warming up… (${st.attempts}/3 answers to first estimate)`
+                        : kid.isTester
+                        ? `~${ord(percentile)} percentile of adults · IQ-style ~${iqStyleScore(st.theta)}${firm ? '' : ' · early estimate'}`
+                        : `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`}
                     </span>
                     {tr && (
                       <span className={`flex items-center gap-1 ${tr === 'up' ? 'text-green-600' : tr === 'down' ? 'text-orange-500' : 'text-slate-400'}`}>
@@ -199,13 +207,20 @@ export function ParentDashboard({
                       </span>
                     )}
                   </div>
-                  {calibrated && !kid.isTester && (
+                  {calibrated && (
                     <>
-                      <BellCurve z={z} percentile={percentile} kidName={kid.name} />
+                      <BellCurve
+                        z={z}
+                        percentile={percentile}
+                        kidName={kid.name}
+                        centerLabel={kid.isTester ? '🎓 typical adult (IQ-style 100)' : '🇺🇸 US typical for age'}
+                        benchmarks={kid.isTester ? ADULT_BENCHMARKS : BENCHMARKS}
+                      />
                       <div className="flex gap-1.5 mt-1 flex-wrap">
-                        {BENCHMARKS.map((b) => (
+                        {(kid.isTester ? ADULT_BENCHMARKS : BENCHMARKS).map((b) => (
                           <span key={b.key} className="text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-2 py-0.5">
-                            {b.flag} vs {b.label}: ~{ord(percentileVsBenchmark(st.theta, kid.birthdate, b.z))}
+                            {b.flag} vs {b.label}: ~
+                            {ord(kid.isTester ? percentileForAdult(st.theta, b.z).percentile : percentileVsBenchmark(st.theta, kid.birthdate, b.z))}
                           </span>
                         ))}
                       </div>
@@ -214,13 +229,14 @@ export function ParentDashboard({
                   <div className="mt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-0.5">
                       <span>Skill level {Math.round(st.theta)}/99</span>
-                      {!kid.isTester && <span>typical for age: {Math.round(expectedThetaForAge(months))}</span>}
+                      <span>{kid.isTester ? `typical adult: ${ADULT_NORM.mean}` : `typical for age: ${Math.round(expectedThetaForAge(months))}`}</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
                       <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${st.theta}%` }} />
-                      {!kid.isTester && (
-                        <div className="absolute top-0 bottom-0 w-0.5 bg-slate-500" style={{ left: `${expectedThetaForAge(months)}%` }} title="typical for age" />
-                      )}
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-slate-500"
+                        style={{ left: `${kid.isTester ? ADULT_NORM.mean : expectedThetaForAge(months)}%` }}
+                      />
                     </div>
                   </div>
                 </>
@@ -231,10 +247,9 @@ export function ParentDashboard({
       </div>
 
       <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
-        Percentiles are in-game estimates comparing {kid.name}&apos;s adaptive skill level to typical pre-K → kindergarten expectations for
-        their exact age ({ageLabel(kid.birthdate)}). The US / Tennessee / Global markers are modeled from published kindergarten-readiness
-        distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to
-        keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.
+        {kid.isTester
+          ? `Tester percentiles compare ${kid.name}'s adaptive skill level to modeled adult performance on early-learning content, presented IQ-style (mean 100, SD 15). It's for testing and fun — kindergarten questions can't measure adult IQ, and none of this is a clinical assessment.`
+          : `Percentiles are in-game estimates comparing ${kid.name}'s adaptive skill level to typical pre-K → kindergarten expectations for their exact age (${ageLabel(kid.birthdate)}). The US / Tennessee / Global markers are modeled from published kindergarten-readiness distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.`}
       </p>
       <p className="text-center text-xs font-extrabold text-blue-500 mt-3">Go Whalehogs 🐋🐗 — we don&apos;t say can&apos;t!</p>
     </div>
@@ -243,7 +258,19 @@ export function ParentDashboard({
 
 // ---------------------------------------------------------------- bell curve
 
-function BellCurve({ z, percentile, kidName }: { z: number; percentile: number; kidName: string }) {
+function BellCurve({
+  z,
+  percentile,
+  kidName,
+  centerLabel = '🇺🇸 US typical for age',
+  benchmarks = BENCHMARKS,
+}: {
+  z: number
+  percentile: number
+  kidName: string
+  centerLabel?: string
+  benchmarks?: ReadonlyArray<{ key: string; flag: string; z: number }>
+}) {
   const W = 300
   const H = 90
   const pad = 8
@@ -267,12 +294,12 @@ function BellCurve({ z, percentile, kidName }: { z: number; percentile: number; 
       <line x1={pad} y1={H - 12} x2={W - pad} y2={H - 12} stroke="#cbd5e1" strokeWidth="1.5" />
       <path d={fill} fill="#bfdbfe" opacity="0.7" />
       <path d={curve} fill="none" stroke="#3b82f6" strokeWidth="2" />
-      {/* benchmark markers: US mean (center), TN & Global offsets */}
-      {BENCHMARKS.map((b) => (
+      {/* benchmark markers: primary group mean (center) + offset groups */}
+      {benchmarks.map((b, i) => (
         <g key={b.key}>
           <line x1={xFor(b.z)} y1={yFor(b.z)} x2={xFor(b.z)} y2={H - 12} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-          <text x={xFor(b.z)} y={b.key === 'us' ? H - 2 : yFor(b.z) - 3} textAnchor="middle" fontSize="7.5" fill="#94a3b8" fontWeight="700">
-            {b.key === 'us' ? '🇺🇸 US typical for age' : b.flag}
+          <text x={xFor(b.z)} y={i === 0 ? H - 2 : yFor(b.z) - 3} textAnchor="middle" fontSize="7.5" fill="#94a3b8" fontWeight="700">
+            {i === 0 ? centerLabel : b.flag}
           </text>
         </g>
       ))}
