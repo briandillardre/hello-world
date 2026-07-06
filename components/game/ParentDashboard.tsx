@@ -21,9 +21,20 @@ import {
   trend,
 } from '@/lib/game/adaptive'
 import { RETAKE_DAYS, retakeDue, TEMPERAMENTS } from '@/lib/game/personality'
-import { SKILLS } from '@/lib/game/questions'
+import { ADULT_SKILL_NAMES, SKILLS } from '@/lib/game/questions'
 import type { KidProfile } from '@/lib/game/types'
 import { AccountSync } from './AccountSync'
+
+/** median answer time (ms) over the last 20 timed answers for a skill */
+function medianMs(history: KidProfile['history'], skill: string): number | null {
+  const times = history
+    .filter((h) => h.skill === skill && typeof h.ms === 'number')
+    .slice(-20)
+    .map((h) => h.ms as number)
+    .sort((a, b) => a - b)
+  if (times.length === 0) return null
+  return times[Math.floor(times.length / 2)]
+}
 
 /** 1 → "1st", 2 → "2nd", 11 → "11th", 22 → "22nd" */
 function ord(n: number): string {
@@ -180,11 +191,12 @@ export function ParentDashboard({
             <div key={s.id} className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-extrabold text-slate-800">
-                  {s.emoji} {s.name}
+                  {s.emoji} {kid.isTester ? ADULT_SKILL_NAMES[s.id] : s.name}
                 </span>
                 {played ? (
                   <span className="text-xs font-bold text-slate-500">
                     {st.correct}/{st.attempts} correct{acc !== null ? ` · last 20: ${Math.round(acc * 100)}%` : ''}
+                    {medianMs(kid.history, s.id) !== null ? ` · ~${(medianMs(kid.history, s.id)! / 1000).toFixed(1)}s` : ''}
                   </span>
                 ) : (
                   <span className="text-xs font-bold text-slate-400">Not played yet</span>

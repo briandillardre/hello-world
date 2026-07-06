@@ -54,8 +54,8 @@ function genCounting(d: number): Question {
   else if (d < 60) n = ri(5, 10)
   else if (d < 80) n = ri(8, 15)
   else {
-    // skip counting: by 2s, 5s or 10s
-    const step = pick([2, 5, 10] as const)
+    // skip counting: by 2s, 5s, 10s — 3s and 4s at the very top
+    const step = d >= 90 ? pick([3, 4, 5] as const) : pick([2, 5, 10] as const)
     const start = step * ri(1, 3)
     const seq = [start, start + step, start + step * 2]
     const next = start + step * 3
@@ -149,8 +149,9 @@ function genNumbers(d: number): Question {
       explain: `Count it out: ${after ? `${n}, then ${correct}` : `${correct}, then ${n}`} — ${correct} comes right ${after ? 'after' : 'before'} ${n}.`,
     }
   }
-  const n = ri(2, 18)
-  const { choices, answer } = makeChoices(n, numberDistractors(n, 2, 0, 20))
+  const hi = d >= 93 ? 48 : 18
+  const n = ri(2, hi)
+  const { choices, answer } = makeChoices(n, numberDistractors(n, 2, 0, hi + 2))
   return {
     skill: 'numbers',
     difficulty: d,
@@ -241,11 +242,26 @@ function genAddition(d: number): Question {
       explain: `Start at ${a} and count down ${b}: you land on ${a - b}.`,
     }
   }
+  if (d >= 93) {
+    // top of the kid band: two-digit plus one-digit
+    const a = ri(21, 89)
+    const b = ri(3, 9)
+    const { choices, answer } = makeChoices(a + b, numberDistractors(a + b, 4, 0, 99))
+    return {
+      skill: 'addition',
+      difficulty: d,
+      prompt: `${a} + ${b} = ?`,
+      speech: `What is ${a} plus ${sayNum(b)}?`,
+      choices,
+      answer,
+      explain: `Start at ${a} and count up ${b}: you land on ${a + b}.`,
+    }
+  }
   // missing addend
-  const total = ri(5, 10)
+  const total = ri(5, 12)
   const a = ri(1, total - 1)
   const missing = total - a
-  const { choices, answer } = makeChoices(missing, numberDistractors(missing, 2, 0, 10))
+  const { choices, answer } = makeChoices(missing, numberDistractors(missing, 2, 0, 12))
   return {
     skill: 'addition',
     difficulty: d,
@@ -556,6 +572,309 @@ function genWords(d: number): Question {
   }
 }
 
+// ================================================================ ADULT BANK
+// Genuinely hard content for the grown-up tester profiles — same skill ids,
+// entirely different generators: mental math, sequences, number sense,
+// vocabulary, analogies, logic patterns, and spelling.
+
+// ---- counting → number sequences
+function genAdultSequences(d: number): Question {
+  if (d < 40) {
+    const step = ri(3, 9)
+    const start = ri(4, 30)
+    const seq = [start, start + step, start + step * 2, start + step * 3]
+    const next = start + step * 4
+    const { choices, answer } = makeChoices(next, numberDistractors(next, step, 1, 200))
+    return {
+      skill: 'counting', difficulty: d,
+      prompt: `What comes next? ${seq.join(', ')}, …`,
+      speech: 'What number comes next in the sequence?',
+      choices, answer,
+      explain: `The sequence adds ${step} each time: ${seq[3]} + ${step} = ${next}.`,
+    }
+  }
+  if (d < 65) {
+    const mult = pick([2, 3] as const)
+    const start = ri(2, 5)
+    const seq = [start, start * mult, start * mult ** 2]
+    const next = start * mult ** 3
+    const { choices, answer } = makeChoices(next, [next + start, next - start * 2, Math.round(next * 1.5), next + mult])
+    return {
+      skill: 'counting', difficulty: d,
+      prompt: `What comes next? ${seq.join(', ')}, …`,
+      speech: 'What number comes next in the sequence?',
+      choices, answer,
+      explain: `Each term is ×${mult}: ${seq[2]} × ${mult} = ${next}.`,
+    }
+  }
+  if (d < 85) {
+    const start = ri(1, 5)
+    const seq = [start ** 2, (start + 1) ** 2, (start + 2) ** 2, (start + 3) ** 2]
+    const next = (start + 4) ** 2
+    const { choices, answer } = makeChoices(next, [next - 2, next + 2, next + start, (start + 4) * 2])
+    return {
+      skill: 'counting', difficulty: d,
+      prompt: `What comes next? ${seq.join(', ')}, …`,
+      speech: 'What number comes next in the sequence?',
+      choices, answer,
+      explain: `They're perfect squares: ${start + 4}² = ${next}.`,
+    }
+  }
+  const a = ri(1, 4)
+  const b = a + ri(1, 3)
+  const seq = [a, b, a + b, a + 2 * b, 2 * a + 3 * b]
+  const next = 3 * a + 5 * b
+  const { choices, answer } = makeChoices(next, [next - a, next + a, next + b, 2 * a + 4 * b])
+  return {
+    skill: 'counting', difficulty: d,
+    prompt: `What comes next? ${seq.join(', ')}, …`,
+    speech: 'What number comes next in the sequence?',
+    choices, answer,
+    explain: `Fibonacci-style: each term is the sum of the previous two (${seq[3]} + ${seq[4]} = ${next}).`,
+  }
+}
+
+// ---- numbers → number sense (compare, round, place value)
+function genAdultNumbers(d: number): Question {
+  if (d < 35) {
+    const n = ri(3, 9) * 100 + ri(11, 89)
+    const rounded = Math.round(n / 100) * 100
+    const { choices, answer } = makeChoices(rounded, [rounded + 100, rounded - 100, Math.round(n / 10) * 10])
+    return {
+      skill: 'numbers', difficulty: d,
+      prompt: `Round ${n.toLocaleString()} to the nearest hundred`,
+      speech: 'Round the number to the nearest hundred.',
+      choices, answer,
+      explain: `The tens digit is ${Math.floor((n % 100) / 10)}, so ${n} rounds to ${rounded}.`,
+    }
+  }
+  if (d < 60) {
+    const n = ri(1000, 9999)
+    const places = ['thousands', 'hundreds', 'tens', 'ones'] as const
+    const pi = ri(0, 3)
+    const digit = Number(String(n)[pi])
+    const others = Array.from(new Set(String(n).split('').map(Number).filter((x) => x !== digit)))
+    const { choices, answer } = makeChoices(digit, others.length >= 2 ? others : [(digit + 1) % 10, (digit + 3) % 10])
+    return {
+      skill: 'numbers', difficulty: d,
+      prompt: `In ${n.toLocaleString()}, which digit is in the ${places[pi]} place?`,
+      speech: `Which digit is in the ${places[pi]} place?`,
+      choices, answer,
+      explain: `Reading ${n.toLocaleString()} left to right: thousands, hundreds, tens, ones — the ${places[pi]} digit is ${digit}.`,
+    }
+  }
+  // compare fraction / decimal / percent
+  const trios: Array<{ opts: [string, string, string]; vals: [number, number, number] }> = [
+    { opts: ['3/4', '0.7', '66%'], vals: [0.75, 0.7, 0.66] },
+    { opts: ['2/5', '0.45', '39%'], vals: [0.4, 0.45, 0.39] },
+    { opts: ['5/8', '0.6', '64%'], vals: [0.625, 0.6, 0.64] },
+    { opts: ['1/3', '0.35', '30%'], vals: [1 / 3, 0.35, 0.3] },
+    { opts: ['7/10', '0.68', '72%'], vals: [0.7, 0.68, 0.72] },
+    { opts: ['4/5', '0.85', '78%'], vals: [0.8, 0.85, 0.78] },
+  ]
+  const t = pick(trios)
+  const biggest = Math.random() < 0.5
+  const target = biggest ? Math.max(...t.vals) : Math.min(...t.vals)
+  const idx = t.vals.indexOf(target)
+  return {
+    skill: 'numbers', difficulty: d,
+    prompt: `Which is ${biggest ? 'LARGEST' : 'SMALLEST'}?`,
+    speech: `Which value is the ${biggest ? 'largest' : 'smallest'}?`,
+    choices: [...t.opts],
+    answer: idx,
+    explain: `As decimals: ${t.opts.map((o, i) => `${o} = ${t.vals[i].toFixed(2)}`).join(', ')} — ${t.opts[idx]} is the ${biggest ? 'largest' : 'smallest'}.`,
+  }
+}
+
+// ---- addition → mental math
+function genAdultMath(d: number): Question {
+  if (d < 25) {
+    const a = ri(23, 78)
+    const b = ri(14, 99 - a)
+    const { choices, answer } = makeChoices(a + b, numberDistractors(a + b, 6, 10, 200))
+    return { skill: 'addition', difficulty: d, prompt: `${a} + ${b} = ?`, speech: 'Add them up.', choices, answer, explain: `${a} + ${b}: add the tens (${Math.floor(a / 10) * 10}+${Math.floor(b / 10) * 10}), then the ones — ${a + b}.` }
+  }
+  if (d < 45) {
+    const a = ri(6, 12)
+    const b = ri(6, 12)
+    const { choices, answer } = makeChoices(a * b, [a * b + a, a * b - b, a * (b + 1), (a - 1) * b])
+    return { skill: 'addition', difficulty: d, prompt: `${a} × ${b} = ?`, speech: 'Multiply.', choices, answer, explain: `${a} × ${b} = ${a * b}.` }
+  }
+  if (d < 65) {
+    if (Math.random() < 0.5) {
+      const b = ri(6, 12)
+      const q = ri(7, 15)
+      const a = b * q
+      const { choices, answer } = makeChoices(q, [q + 1, q - 1, q + 2])
+      return { skill: 'addition', difficulty: d, prompt: `${a} ÷ ${b} = ?`, speech: 'Divide.', choices, answer, explain: `${b} × ${q} = ${a}, so ${a} ÷ ${b} = ${q}.` }
+    }
+    const a = ri(23, 89)
+    const b = ri(3, 9)
+    const { choices, answer } = makeChoices(a * b, [a * b + b, a * b - a, (a + 1) * b])
+    return { skill: 'addition', difficulty: d, prompt: `${a} × ${b} = ?`, speech: 'Multiply.', choices, answer, explain: `${a} × ${b}: (${Math.floor(a / 10) * 10} × ${b}) + (${a % 10} × ${b}) = ${a * b}.` }
+  }
+  if (d < 85) {
+    const pcts = [10, 15, 20, 25, 30, 40, 75] as const
+    const p = pick(pcts)
+    const base = ri(2, 12) * 20
+    const val = (p / 100) * base
+    const { choices, answer } = makeChoices(val, [val + base / 20, val - base / 20, val * 2, val / 2].map((x) => Math.round(x)))
+    return {
+      skill: 'addition', difficulty: d,
+      prompt: `${p}% of ${base} = ?`,
+      speech: `What is ${p} percent of ${base}?`,
+      choices, answer,
+      explain: `10% of ${base} is ${base / 10} — scale from there: ${p}% = ${val}.`,
+    }
+  }
+  const a = ri(12, 19)
+  const b = ri(4, 8)
+  const c = ri(11, 39)
+  const val = a * b - c
+  const { choices, answer } = makeChoices(val, numberDistractors(val, 6, 1, 400))
+  return {
+    skill: 'addition', difficulty: d,
+    prompt: `(${a} × ${b}) − ${c} = ?`,
+    speech: 'Work it out in two steps.',
+    choices, answer,
+    explain: `${a} × ${b} = ${a * b}, minus ${c} = ${val}.`,
+  }
+}
+
+// ---- letters → vocabulary (synonyms)
+const SYN_T1: Array<[string, string, string[]]> = [
+  ['happy', 'glad', ['angry', 'tired']], ['big', 'large', ['thin', 'loud']], ['fast', 'quick', ['slow', 'heavy']],
+  ['begin', 'start', ['finish', 'wait']], ['loud', 'noisy', ['quiet', 'bright']], ['easy', 'simple', ['hard', 'messy']],
+]
+const SYN_T2: Array<[string, string, string[]]> = [
+  ['rapid', 'swift', ['sluggish', 'sturdy']], ['ancient', 'old', ['modern', 'fragile']], ['brave', 'courageous', ['timid', 'careless']],
+  ['exhausted', 'tired', ['alert', 'furious']], ['enormous', 'huge', ['tiny', 'average']], ['furious', 'enraged', ['calm', 'joyful']],
+]
+const SYN_T3: Array<[string, string, string[]]> = [
+  ['candid', 'honest', ['deceitful', 'reserved']], ['prudent', 'cautious', ['reckless', 'generous']], ['obstinate', 'stubborn', ['flexible', 'gloomy']],
+  ['lucid', 'clear', ['confusing', 'ornate']], ['frugal', 'thrifty', ['wasteful', 'wealthy']], ['gregarious', 'sociable', ['solitary', 'hostile']],
+  ['ephemeral', 'fleeting', ['permanent', 'essential']], ['ubiquitous', 'everywhere', ['rare', 'hidden']],
+]
+function genAdultVocab(d: number): Question {
+  const bank = d < 35 ? SYN_T1 : d < 70 ? SYN_T2 : SYN_T3
+  const [word, syn, wrong] = pick(bank)
+  const opts = shuffle([syn, ...wrong])
+  return {
+    skill: 'letters', difficulty: d,
+    prompt: `Which means the same as "${word}"?`,
+    speech: `Which word means the same as ${word}?`,
+    choices: opts,
+    answer: opts.indexOf(syn),
+    explain: `"${word.charAt(0).toUpperCase() + word.slice(1)}" means ${syn}.`,
+  }
+}
+
+// ---- sounds → analogies
+const ANALOGIES: Array<{ tier: 1 | 2 | 3; a: string; b: string; c: string; d: string; misses: string[] }> = [
+  { tier: 1, a: 'glove', b: 'hand', c: 'sock', d: 'foot', misses: ['shoe', 'leg'] },
+  { tier: 1, a: 'puppy', b: 'dog', c: 'kitten', d: 'cat', misses: ['mouse', 'lion'] },
+  { tier: 1, a: 'day', b: 'sun', c: 'night', d: 'moon', misses: ['star', 'cloud'] },
+  { tier: 2, a: 'author', b: 'book', c: 'composer', d: 'symphony', misses: ['piano', 'singer'] },
+  { tier: 2, a: 'sapling', b: 'tree', c: 'cub', d: 'bear', misses: ['den', 'wolf'] },
+  { tier: 2, a: 'keyboard', b: 'type', c: 'brush', d: 'paint', misses: ['canvas', 'color'] },
+  { tier: 3, a: 'drought', b: 'rain', c: 'famine', d: 'food', misses: ['hunger', 'harvest'] },
+  { tier: 3, a: 'novice', b: 'experience', c: 'pauper', d: 'money', misses: ['work', 'poverty'] },
+  { tier: 3, a: 'archipelago', b: 'islands', c: 'constellation', d: 'stars', misses: ['planets', 'sky'] },
+]
+function genAdultAnalogy(d: number): Question {
+  const tier = d < 35 ? 1 : d < 70 ? 2 : 3
+  const bank = ANALOGIES.filter((x) => x.tier === tier)
+  const a = pick(bank)
+  const opts = shuffle([a.d, ...a.misses])
+  return {
+    skill: 'sounds', difficulty: d,
+    prompt: `${a.a} → ${a.b}, as ${a.c} → ?`,
+    speech: `${a.a} is to ${a.b} as ${a.c} is to what?`,
+    choices: opts,
+    answer: opts.indexOf(a.d),
+    explain: `A ${a.a} goes with ${a.b} the way a ${a.c} goes with ${a.d}.`,
+  }
+}
+
+// ---- shapes → letter/number logic patterns
+function genAdultLogic(d: number): Question {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  if (d < 45) {
+    const step = ri(1, 2)
+    const start = ri(0, 25 - step * 4)
+    const seq = [0, 1, 2, 3].map((i) => A[start + i * step])
+    const next = A[start + 4 * step]
+    const { choices, answer } = makeChoices(next, letterDistractors(next))
+    return {
+      skill: 'shapes', difficulty: d,
+      prompt: `${seq.join(', ')}, …?`,
+      speech: 'Which letter comes next in the pattern?',
+      choices, answer,
+      explain: `The letters step forward by ${step}: after ${seq[3]} comes ${next}.`,
+    }
+  }
+  if (d < 75) {
+    // growing skips: A, B, D, G, K (+1, +2, +3, +4)
+    const start = ri(0, 10)
+    const pos = [start, start + 1, start + 3, start + 6]
+    const next = A[start + 10]
+    const seq = pos.map((p) => A[p])
+    const { choices, answer } = makeChoices(next, letterDistractors(next))
+    return {
+      skill: 'shapes', difficulty: d,
+      prompt: `${seq.join(', ')}, …?`,
+      speech: 'Which letter comes next in the pattern?',
+      choices, answer,
+      explain: `The skips grow by one each time (+1, +2, +3, +4): ${next}.`,
+    }
+  }
+  // paired letter+number: B2, D4, F6 → H8
+  const start = ri(0, 8)
+  const step = ri(2, 3)
+  const items = [0, 1, 2].map((i) => `${A[start + i * step]}${(i + 1) * step}`)
+  const next = `${A[start + 3 * step]}${4 * step}`
+  const wrongs = [`${A[start + 3 * step]}${3 * step}`, `${A[start + 2 * step]}${4 * step}`]
+  const opts = shuffle([next, ...wrongs])
+  return {
+    skill: 'shapes', difficulty: d,
+    prompt: `${items.join(', ')}, …?`,
+    speech: 'What comes next in the pattern?',
+    choices: opts,
+    answer: opts.indexOf(next),
+    explain: `Letters step by ${step} and numbers count up by ${step}: ${next}.`,
+  }
+}
+
+// ---- words → spelling
+const SPELL: Array<{ tier: 1 | 2 | 3; right: string; wrong: [string, string] }> = [
+  { tier: 1, right: 'because', wrong: ['becuase', 'becase'] },
+  { tier: 1, right: 'friend', wrong: ['freind', 'frend'] },
+  { tier: 1, right: 'people', wrong: ['peaple', 'poeple'] },
+  { tier: 2, right: 'separate', wrong: ['seperate', 'separete'] },
+  { tier: 2, right: 'definitely', wrong: ['definately', 'definitly'] },
+  { tier: 2, right: 'receive', wrong: ['recieve', 'receeve'] },
+  { tier: 2, right: 'believe', wrong: ['beleive', 'believ'] },
+  { tier: 3, right: 'necessary', wrong: ['neccessary', 'necessery'] },
+  { tier: 3, right: 'occurrence', wrong: ['occurence', 'occurrance'] },
+  { tier: 3, right: 'accommodate', wrong: ['accomodate', 'acommodate'] },
+  { tier: 3, right: 'embarrass', wrong: ['embarass', 'embarras'] },
+  { tier: 3, right: 'conscience', wrong: ['concience', 'consciense'] },
+  { tier: 3, right: 'rhythm', wrong: ['rythm', 'rythym'] },
+]
+function genAdultSpelling(d: number): Question {
+  const tier = d < 35 ? 1 : d < 70 ? 2 : 3
+  const s = pick(SPELL.filter((x) => x.tier === tier))
+  const opts = shuffle([s.right, ...s.wrong])
+  return {
+    skill: 'words', difficulty: d,
+    prompt: 'Which is spelled correctly?',
+    speech: 'Which one is spelled correctly?',
+    choices: opts,
+    answer: opts.indexOf(s.right),
+    explain: `The correct spelling is "${s.right}".`,
+  }
+}
+
 const GENERATORS: Record<SkillId, (d: number) => Question> = {
   counting: genCounting,
   numbers: genNumbers,
@@ -566,12 +885,34 @@ const GENERATORS: Record<SkillId, (d: number) => Question> = {
   words: genWords,
 }
 
-export function generateQuestion(skill: SkillId, difficulty: number): Question {
+const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
+  counting: genAdultSequences,
+  numbers: genAdultNumbers,
+  addition: genAdultMath,
+  letters: genAdultVocab,
+  sounds: genAdultAnalogy,
+  shapes: genAdultLogic,
+  words: genAdultSpelling,
+}
+
+/** adult display names for the same skill slots */
+export const ADULT_SKILL_NAMES: Record<SkillId, string> = {
+  counting: 'Sequences',
+  numbers: 'Number sense',
+  addition: 'Mental math',
+  letters: 'Vocabulary',
+  sounds: 'Analogies',
+  shapes: 'Logic patterns',
+  words: 'Spelling',
+}
+
+export function generateQuestion(skill: SkillId, difficulty: number, adult = false): Question {
   const d = Math.max(1, Math.min(99, Math.round(difficulty)))
-  const q = GENERATORS[skill](d)
+  const gen = adult ? ADULT_GENERATORS[skill] : GENERATORS[skill]
+  const q = gen(d)
   // safety: guarantee a valid answer index even if a generator edge case slips
   if (q.answer < 0 || q.answer >= q.choices.length) {
-    return GENERATORS[skill](d)
+    return gen(d)
   }
   return q
 }

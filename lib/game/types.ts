@@ -47,6 +47,8 @@ export interface AnswerRecord {
   skill: SkillId
   difficulty: number
   correct: boolean
+  /** time to answer, in ms */
+  ms?: number
 }
 
 export interface SkillState {
@@ -76,6 +78,10 @@ export interface RoundResult {
   questBonus?: number
   /** updated spaced-repetition queue after this round */
   reviewQueue?: ReviewItem[]
+  /** count of ⚡ fast-answer bonuses earned this round */
+  speedBonuses?: number
+  /** count of 📖 answered-before-the-voice reading bonuses this round */
+  readBonuses?: number
 }
 
 export interface ReviewItem {

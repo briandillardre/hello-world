@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { ageLabel, brainLevel } from '@/lib/game/adaptive'
-import { SKILLS } from '@/lib/game/questions'
+import { ADULT_SKILL_NAMES, SKILLS } from '@/lib/game/questions'
 import { speak } from '@/lib/game/speech'
 import { BALL_SKINS, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
@@ -64,7 +64,7 @@ export function PlayApp() {
         ...k,
         coins: k.coins + delta.coins,
         xp: k.xp + delta.xp,
-        history: [...k.history, { t: Date.now(), skill: delta.skill, difficulty: delta.difficulty, correct: delta.correct }],
+        history: [...k.history, { t: Date.now(), skill: delta.skill, difficulty: delta.difficulty, correct: delta.correct, ms: delta.ms }],
         skills: {
           ...k.skills,
           [delta.skill]: {
@@ -251,6 +251,8 @@ export function PlayApp() {
             {r.dailyDouble && <p className="text-sm font-bold text-orange-500 mt-1">🌅 Daily Double — first round today paid 2×!</p>}
             {(r.chestBonus ?? 0) > 0 && <p className="text-sm font-bold text-purple-600 mt-1">🎁 Mystery chest: +{r.chestBonus} bonus coins!</p>}
             {(r.questBonus ?? 0) > 0 && <p className="text-sm font-bold text-blue-600 mt-1">🎯 Daily quest complete: +{r.questBonus} coins!</p>}
+            {(r.speedBonuses ?? 0) > 0 && <p className="text-sm font-bold text-amber-600 mt-1">⚡ Lightning answers: {r.speedBonuses}</p>}
+            {(r.readBonuses ?? 0) > 0 && <p className="text-sm font-bold text-blue-500 mt-1">📖 Read it yourself: {r.readBonuses} — that&apos;s reading!</p>}
             {r.bestStreak >= 3 && <p className="text-sm font-bold text-orange-500 mt-1">🔥 Best streak: {r.bestStreak} in a row!</p>}
           </div>
           {r.misses && r.misses.length > 0 && (
@@ -458,8 +460,8 @@ export function PlayApp() {
                 className="rounded-2xl bg-white border-2 border-slate-200 shadow p-3 text-left active:scale-95 transition-transform"
               >
                 <div className="text-2xl">{s.emoji}</div>
-                <div className="font-extrabold text-slate-700">{s.name}</div>
-                <div className="text-[11px] text-slate-400 font-semibold leading-tight">{s.blurb}</div>
+                <div className="font-extrabold text-slate-700">{kid.isTester ? ADULT_SKILL_NAMES[s.id] : s.name}</div>
+                <div className="text-[11px] text-slate-400 font-semibold leading-tight">{kid.isTester ? 'Adult challenge' : s.blurb}</div>
                 <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                   <div className="h-full rounded-full bg-green-400" style={{ width: `${st.theta}%` }} />
                 </div>

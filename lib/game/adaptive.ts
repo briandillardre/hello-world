@@ -14,9 +14,15 @@ export function pCorrect(theta: number, difficulty: number): number {
   return 1 / (1 + Math.pow(10, (difficulty - theta) / 20))
 }
 
-/** update ability after an answer; faster K while calibrating a new kid */
-export function updateTheta(state: SkillState, difficulty: number, correct: boolean): number {
-  const K = state.attempts < 10 ? 14 : state.attempts < 25 ? 8 : 5
+/**
+ * Update ability after an answer; faster K while calibrating a new kid.
+ * speedBoost (0..1) makes FAST correct answers count extra — fluency is
+ * stronger evidence of mastery than a slow, effortful right answer. Slow
+ * answers are never penalized.
+ */
+export function updateTheta(state: SkillState, difficulty: number, correct: boolean, speedBoost = 0): number {
+  let K = state.attempts < 10 ? 14 : state.attempts < 25 ? 8 : 5
+  if (correct && speedBoost > 0) K *= 1 + 0.35 * speedBoost
   const p = pCorrect(state.theta, difficulty)
   const next = state.theta + K * ((correct ? 1 : 0) - p)
   return Math.max(1, Math.min(99, next))

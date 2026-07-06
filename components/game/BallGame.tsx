@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Volume2, X } from 'lucide-react'
 import { nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
-import { generateQuestion, SKILLS } from '@/lib/game/questions'
+import { ADULT_SKILL_NAMES, generateQuestion, SKILLS } from '@/lib/game/questions'
 import { speak as speakText } from '@/lib/game/speech'
 import { BALL_SKINS } from '@/lib/game/storage'
 import type { KidProfile, MissedQuestion, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
@@ -20,7 +20,15 @@ export interface AnswerDelta {
   coins: number
   xp: number
   newTheta: number
+  /** time to answer, ms */
+  ms: number
 }
+
+/** quiet window before a question auto-reads — readers can beat the voice */
+const AUTO_READ_DELAY_MS = 4000
+/** answer speed thresholds for the ⚡ bonus */
+const FAST_MS = 3500
+const QUICK_MS = 6500
 
 interface BallGameProps {
   profile: KidProfile
@@ -113,8 +121,11 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     Object.fromEntries(Object.entries(profile.skills).map(([k, s]) => [k, s.theta])) as Record<SkillId, number>
   )
   const questionRef = useRef<Question | null>(null)
-  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0 })
+  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0, speedBonuses: 0, readBonuses: 0 })
   const missesRef = useRef<MissedQuestion[]>([])
+  const qStartRef = useRef(0)
+  const spokeRef = useRef(false)
+  const autoReadTimerRef = useRef<number | null>(null)
   // variable-reward bonus question (never the first two)
   const bonusIndexRef = useRef(2 + Math.floor(Math.random() * (ROUND_LENGTH - 2)))
   const bonusRef = useRef(false)
@@ -206,7 +217,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         sk = skill === 'mix' ? pickMixSkill(skillsRef.current, profile.isTester ? undefined : profile.birthdate) : skill
         difficulty = nextDifficulty(skillsRef.current[sk], index, world.current.streak)
       }
-      const q = generateQuestion(sk, difficulty)
+      const q = generateQuestion(sk, difficulty, !!profile.isTester)
       questionRef.current = q
       setQuestion(q)
       setQIndex(index)
@@ -216,7 +227,18 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       setIsBonus(bonus)
       world.current.phase = 'idle'
       world.current.tappedIndex = -1
-      speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
+      // quiet reading window: auto-read only after a pause, so readers can
+      // beat the voice for a 📖 bonus (pre-readers still hear every question)
+      qStartRef.current = Date.now()
+      spokeRef.current = false
+      if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
+      autoReadTimerRef.current = window.setTimeout(() => {
+        autoReadTimerRef.current = null
+        if (questionRef.current === q && world.current.phase === 'idle') {
+          spokeRef.current = true
+          speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
+        }
+      }, AUTO_READ_DELAY_MS)
     },
     [skill, layoutBubbles, speak, profile.birthdate, profile.isTester]
   )
@@ -227,6 +249,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     // preload voices (some browsers populate the list async)
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.getVoices()
     return () => {
+      if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,8 +262,10 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       if (!q) return
       const w = world.current
       const correct = bubbleIndex === q.answer
+      const elapsed = Date.now() - qStartRef.current
+      const speedBoost = elapsed <= FAST_MS ? 1 : elapsed <= QUICK_MS ? 0.5 : 0
       const state = skillsRef.current[q.skill]
-      const newTheta = updateTheta(state, q.difficulty, correct)
+      const newTheta = updateTheta(state, q.difficulty, correct, speedBoost)
       state.theta = newTheta
       state.attempts += 1
       if (correct) state.correct += 1
@@ -255,6 +280,18 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         state.bestStreak = Math.max(state.bestStreak, w.streak)
         const multiplier = (bonusRef.current ? 2 : 1) * (dailyDouble ? 2 : 1)
         coinsDelta = (2 + (w.streak >= 5 ? 2 : w.streak >= 3 ? 1 : 0)) * multiplier
+        // ⚡ speed + 📖 read-it-myself bonuses (flat, outside the multipliers)
+        if (speedBoost > 0) {
+          const speedCoins = speedBoost === 1 ? 2 : 1
+          coinsDelta += speedCoins
+          stats.speedBonuses += 1
+          w.floaters.push({ x: w.w * 0.25, y: w.h * 0.48, text: `⚡ Fast! +${speedCoins}`, life: 1.2, color: '#f59e0b' })
+        }
+        if (!spokeRef.current) {
+          coinsDelta += 2
+          stats.readBonuses += 1
+          w.floaters.push({ x: w.w * 0.75, y: w.h * 0.48, text: '📖 Read it! +2', life: 1.2, color: '#3b82f6' })
+        }
         stats.coins += coinsDelta
         w.grow += 1
         w.phase = 'celebrate'
@@ -311,7 +348,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         setStreak(0)
       }
       setResults((r) => [...r, correct])
-      onAnswer({ skill: q.skill, difficulty: q.difficulty, correct, coins: coinsDelta, xp: correct ? 1 : 0, newTheta })
+      onAnswer({ skill: q.skill, difficulty: q.difficulty, correct, coins: coinsDelta, xp: correct ? 1 : 0, newTheta, ms: elapsed })
 
       scheduleAdvance(correct ? 900 : 3200)
     },
@@ -348,6 +385,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
             chestBonus,
             dailyDouble,
             reviewQueue: queueRef.current,
+            speedBonuses: stats.speedBonuses,
+            readBonuses: stats.readBonuses,
           })
         } else {
           nextQuestion(idx)
@@ -791,7 +830,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       <div className="mx-3 mb-2 rounded-2xl bg-white shadow-md border-2 border-blue-200 px-4 py-3 text-center relative">
         {skillMeta && (
           <span className="absolute -top-2.5 left-3 text-[10px] font-extrabold uppercase tracking-wide bg-blue-500 text-white rounded-full px-2 py-0.5">
-            {skillMeta.emoji} {skillMeta.name}
+            {skillMeta.emoji} {profile.isTester ? ADULT_SKILL_NAMES[skillMeta.id] : skillMeta.name}
           </span>
         )}
         {question && (
@@ -809,9 +848,10 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
           <button
             onClick={() => {
               ensureAudio()
+              spokeRef.current = true // asked for the voice — no reading bonus
               if (question) speak(question.speech)
             }}
-            aria-label="Hear the question again"
+            aria-label="Hear the question"
             className="shrink-0 w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shadow active:scale-95"
           >
             <Volume2 className="w-5 h-5" />
@@ -820,6 +860,14 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         {question?.visual && (
           <p className="mt-1 text-3xl leading-relaxed whitespace-pre-wrap break-words">{question.visual}</p>
         )}
+        {/* ⚡ speed window: answer while the bar still glows for bonus coins */}
+        <div className="mt-2 flex items-center gap-1.5">
+          <span className="text-[10px]">⚡</span>
+          <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            <div key={qIndex} className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" style={{ animation: `bb-speedbar ${QUICK_MS}ms linear forwards` }} />
+          </div>
+        </div>
+        <style>{`@keyframes bb-speedbar { from { width: 100% } to { width: 0% } }`}</style>
       </div>
 
       {/* Game canvas */}
