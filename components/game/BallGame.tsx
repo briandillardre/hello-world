@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Volume2, X } from 'lucide-react'
-import { nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
+import { ADULT_THETA_CAP, nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
 import { ADULT_SKILL_NAMES, generateQuestion, SKILLS } from '@/lib/game/questions'
 import { speak as speakText } from '@/lib/game/speech'
 import { BALL_SKINS } from '@/lib/game/storage'
@@ -303,7 +303,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       const elapsed = Date.now() - qStartRef.current
       const speedBoost = elapsed <= FAST_MS ? 1 : elapsed <= QUICK_MS ? 0.5 : 0
       const state = skillsRef.current[q.skill]
-      const newTheta = updateTheta(state, q.difficulty, correct, speedBoost)
+      const newTheta = updateTheta(state, q.difficulty, correct, speedBoost, profile.isTester ? ADULT_THETA_CAP : 99)
       state.theta = newTheta
       state.attempts += 1
       if (correct) state.correct += 1

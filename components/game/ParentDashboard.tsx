@@ -8,8 +8,10 @@ import { ArrowLeft, TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import {
   ADULT_BENCHMARKS,
   ADULT_NORM,
+  adultAdjustedScore,
   ageLabel,
   BENCHMARKS,
+  consistencyScore,
   expectedThetaForAge,
   ageInMonths,
   iqStyleScore,
@@ -103,13 +105,21 @@ export function ParentDashboard({
   const totalAnswered = kid.history.length
   const months = ageInMonths(kid.birthdate)
 
+  // adjusted adult score per skill: ability + accuracy + speed combined, so
+  // saturated ratings still separate (100% @ 3.7s beats 75% @ 11s)
+  const adjustedFor = (skillId: (typeof SKILLS)[number]['id']) => {
+    const acc = recentAccuracy(kid.history, skillId, 20)
+    const med = medianMs(kid.history, skillId)
+    return adultAdjustedScore(kid.skills[skillId].theta, acc, med !== null ? med / 1000 : null)
+  }
+
   // strongest / focus skill among those with enough signal
-  // (testers rank against adult norms, kids against age norms)
+  // (testers rank by adjusted adult score, kids by age-norm percentile)
   const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
     .map((s) => ({
       meta: s,
       pct: kid.isTester
-        ? percentileForAdult(kid.skills[s.id].theta).percentile
+        ? percentileForAdult(adjustedFor(s.id)).percentile
         : percentileForSkill(kid.skills[s.id].theta, kid.birthdate).percentile,
     }))
     .sort((a, b) => b.pct - a.pct)
@@ -142,9 +152,9 @@ export function ParentDashboard({
 
       {kid.isTester && (
         <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 p-3 mb-4 text-xs font-semibold text-slate-500">
-          🧪 Grown-up tester profile — scores are fully separate from the kids. Bell curves grade against <b>adult norms</b> with an
-          IQ-style score (mean 100), shown once enough answers exist. Honest caveat: the questions top out at kindergarten level, so
-          this measures speed &amp; slip-ups, not real adult IQ — proper adult question banks would fix that.
+          🧪 Grown-up tester profile — scores are fully separate from the kids. Skill scores combine three signals: <b>ability</b> (which
+          difficulty you can handle), <b>accuracy</b> (last 20 answers vs the 75% adaptive target), and <b>processing speed</b> (median
+          response time vs an 8s reference) — presented IQ-style (mean 100). More play = firmer numbers.
         </div>
       )}
 
@@ -153,20 +163,27 @@ export function ParentDashboard({
 
       {/* summary stats — adults get a cognitive-style panel, kids an age panel */}
       {kid.isTester ? (
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="grid grid-cols-2 gap-2 mb-4">
           <Stat
             label="Composite (IQ-style)"
             value={(() => {
-              const scored = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3).map((s) => iqStyleScore(kid.skills[s.id].theta))
+              const scored = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3).map((s) => iqStyleScore(adjustedFor(s.id)))
               return scored.length ? `~${Math.round(scored.reduce((a, b) => a + b, 0) / scored.length)}` : '—'
             })()}
           />
           <Stat label="Accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
           <Stat
-            label="Med. speed"
+            label="Processing speed"
             value={(() => {
               const times = kid.history.filter((h) => typeof h.ms === 'number').slice(-40).map((h) => h.ms as number).sort((a, b) => a - b)
-              return times.length ? `${(times[Math.floor(times.length / 2)] / 1000).toFixed(1)}s` : '—'
+              return times.length ? `${(times[Math.floor(times.length / 2)] / 1000).toFixed(1)}s med.` : '—'
+            })()}
+          />
+          <Stat
+            label="Consistency"
+            value={(() => {
+              const c = consistencyScore(kid.history)
+              return c === null ? '—' : `${c}/100`
             })()}
           />
         </div>
@@ -185,12 +202,12 @@ export function ParentDashboard({
           <p className="text-sm font-bold text-green-700">
             💪 {kid.isTester ? 'Sharpest' : 'Excelling'}: {strongest.meta.emoji}{' '}
             {kid.isTester ? ADULT_SKILL_NAMES[strongest.meta.id] : strongest.meta.name} —{' '}
-            {kid.isTester ? `IQ-style ~${iqStyleScore(kid.skills[strongest.meta.id].theta)}` : `~${ord(strongest.pct)} percentile for age`}
+            {kid.isTester ? `IQ-style ~${iqStyleScore(adjustedFor(strongest.meta.id))}` : `~${ord(strongest.pct)} percentile for age`}
           </p>
           {focus && (
             <p className="text-sm font-bold text-orange-600 mt-1">
               🌱 Focus next: {focus.meta.emoji} {kid.isTester ? ADULT_SKILL_NAMES[focus.meta.id] : focus.meta.name} —{' '}
-              {kid.isTester ? `IQ-style ~${iqStyleScore(kid.skills[focus.meta.id].theta)}` : `~${ord(focus.pct)} percentile`}.{' '}
+              {kid.isTester ? `IQ-style ~${iqStyleScore(adjustedFor(focus.meta.id))}` : `~${ord(focus.pct)} percentile`}.{' '}
               {kid.isTester ? '' : `Try a ${focus.meta.name} round today; Mix rounds are already steering extra questions there automatically.`}
             </p>
           )}
@@ -207,7 +224,8 @@ export function ParentDashboard({
           const played = st.attempts > 0
           const calibrated = st.attempts >= 3
           const firm = st.attempts >= 10
-          const { percentile, z } = kid.isTester ? percentileForAdult(st.theta) : percentileForSkill(st.theta, kid.birthdate)
+          const adjusted = kid.isTester ? adjustedFor(s.id) : st.theta
+          const { percentile, z } = kid.isTester ? percentileForAdult(adjusted) : percentileForSkill(st.theta, kid.birthdate)
           const acc = recentAccuracy(kid.history, s.id, 20)
           const tr = trend(kid.history, s.id)
           return (
@@ -232,7 +250,7 @@ export function ParentDashboard({
                       {!calibrated
                         ? `Warming up… (${st.attempts}/3 answers to first estimate)`
                         : kid.isTester
-                        ? `~${ord(percentile)} percentile of adults · IQ-style ~${iqStyleScore(st.theta)}${firm ? '' : ' · early estimate'}`
+                        ? `~${ord(percentile)} percentile of adults · IQ-style ~${iqStyleScore(adjusted)}${firm ? '' : ' · early estimate'}`
                         : `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`}
                     </span>
                     {tr && (
@@ -255,7 +273,7 @@ export function ParentDashboard({
                         {(kid.isTester ? ADULT_BENCHMARKS : BENCHMARKS).map((b) => (
                           <span key={b.key} className="text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-2 py-0.5">
                             {b.flag} vs {b.label}: ~
-                            {ord(kid.isTester ? percentileForAdult(st.theta, b.z).percentile : percentileVsBenchmark(st.theta, kid.birthdate, b.z))}
+                            {ord(kid.isTester ? percentileForAdult(adjusted, b.z).percentile : percentileVsBenchmark(st.theta, kid.birthdate, b.z))}
                           </span>
                         ))}
                       </div>
@@ -263,14 +281,14 @@ export function ParentDashboard({
                   )}
                   <div className="mt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-0.5">
-                      <span>Skill level {Math.round(st.theta)}/99</span>
+                      <span>{kid.isTester ? `Adjusted score ${Math.round(adjusted)}/130 (ability + accuracy + speed)` : `Skill level ${Math.round(st.theta)}/99`}</span>
                       <span>{kid.isTester ? `typical adult: ${ADULT_NORM.mean}` : `typical for age: ${Math.round(expectedThetaForAge(months))}`}</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
-                      <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${st.theta}%` }} />
+                      <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${kid.isTester ? (adjusted / 130) * 100 : st.theta}%` }} />
                       <div
                         className="absolute top-0 bottom-0 w-0.5 bg-slate-500"
-                        style={{ left: `${kid.isTester ? ADULT_NORM.mean : expectedThetaForAge(months)}%` }}
+                        style={{ left: `${kid.isTester ? (ADULT_NORM.mean / 130) * 100 : expectedThetaForAge(months)}%` }}
                       />
                     </div>
                   </div>
@@ -283,7 +301,7 @@ export function ParentDashboard({
 
       <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
         {kid.isTester
-          ? `Tester percentiles compare ${kid.name}'s adaptive skill level to modeled adult performance on early-learning content, presented IQ-style (mean 100, SD 15). It's for testing and fun — kindergarten questions can't measure adult IQ, and none of this is a clinical assessment.`
+          ? `Adult scores are a three-signal composite — ability level reached by the adaptive engine (up to 120), recent accuracy vs its 75% target, and median response speed vs an 8s reference — mapped to an IQ-style scale (mean 100, SD 15) against modeled adult norms. Directionally meaningful and great for comparing skills or tracking growth; still not a clinical IQ assessment.`
           : `Percentiles are in-game estimates comparing ${kid.name}'s adaptive skill level to typical pre-K → kindergarten expectations for their exact age (${ageLabel(kid.birthdate)}). The US / Tennessee / Global markers are modeled from published kindergarten-readiness distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.`}
       </p>
       <p className="text-center text-xs font-extrabold text-blue-500 mt-3">Go Whalehogs 🐋🐗 — we don&apos;t say can&apos;t!</p>

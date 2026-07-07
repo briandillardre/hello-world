@@ -20,13 +20,16 @@ export function pCorrect(theta: number, difficulty: number): number {
  * stronger evidence of mastery than a slow, effortful right answer. Slow
  * answers are never penalized.
  */
-export function updateTheta(state: SkillState, difficulty: number, correct: boolean, speedBoost = 0): number {
+export function updateTheta(state: SkillState, difficulty: number, correct: boolean, speedBoost = 0, cap = 99): number {
   let K = state.attempts < 10 ? 14 : state.attempts < 25 ? 8 : 5
   if (correct && speedBoost > 0) K *= 1 + 0.35 * speedBoost
   const p = pCorrect(state.theta, difficulty)
   const next = state.theta + K * ((correct ? 1 : 0) - p)
-  return Math.max(1, Math.min(99, next))
+  return Math.max(1, Math.min(cap, next))
 }
+
+/** adults can keep climbing past the kid scale so top performers separate */
+export const ADULT_THETA_CAP = 120
 
 /**
  * Pick the next question difficulty. Slightly above ability (stretch), an
@@ -151,7 +154,33 @@ export function percentileForAdult(theta: number, benchmarkZ = 0): { percentile:
 /** IQ-style score (mean 100, SD 15), clamped to a sane display range */
 export function iqStyleScore(theta: number): number {
   const z = (theta - ADULT_NORM.mean) / ADULT_NORM.sd
-  return Math.max(55, Math.min(145, Math.round(100 + 15 * z)))
+  return Math.max(55, Math.min(155, Math.round(100 + 15 * z)))
+}
+
+/**
+ * Adjusted adult skill score: ability estimate refined by the two signals a
+ * saturated rating throws away — recent accuracy vs the ~75% adaptive target,
+ * and response speed vs an 8s reference. This is what separates "100% correct
+ * at 3.7s" from "75% correct at 11s" when both pinned the ability ceiling.
+ */
+export function adultAdjustedScore(theta: number, recentAcc: number | null, medianSec: number | null): number {
+  let score = theta
+  if (recentAcc !== null) score += (recentAcc - 0.75) * 30 // ±7.5 around the adaptive target
+  if (medianSec !== null) score += Math.max(-0.5, Math.min(0.75, (8 - medianSec) / 8)) * 12
+  return Math.max(1, Math.min(130, score))
+}
+
+/**
+ * Consistency (0–100): how steady the last-20 answers were. 100 = no
+ * correct/incorrect flip-flopping; low values = streaky, attention-driven
+ * performance even when overall accuracy looks fine.
+ */
+export function consistencyScore(history: AnswerRecord[], n = 20): number | null {
+  const recent = history.slice(-n)
+  if (recent.length < 6) return null
+  let flips = 0
+  for (let i = 1; i < recent.length; i++) if (recent[i].correct !== recent[i - 1].correct) flips++
+  return Math.round(100 - (flips / (recent.length - 1)) * 100)
 }
 
 export function percentileLabel(p: number): string {

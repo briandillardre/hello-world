@@ -714,6 +714,21 @@ function genAdultSequences(d: number): Question {
       explain: `They're perfect squares: ${start + 4}² = ${next}.`,
     }
   }
+  if (d >= 95 && Math.random() < 0.5) {
+    // expert: primes
+    const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31]
+    const start = ri(0, 5)
+    const seq = primes.slice(start, start + 4)
+    const next = primes[start + 4]
+    const { choices, answer } = makeChoices(next, [next + 1, next - 1, next + 2])
+    return {
+      skill: 'counting', difficulty: d,
+      prompt: `What comes next? ${seq.join(', ')}, …`,
+      speech: 'What number comes next in the sequence?',
+      choices, answer,
+      explain: `They're prime numbers — the next prime after ${seq[3]} is ${next}.`,
+    }
+  }
   const a = ri(1, 4)
   const b = a + ri(1, 3)
   const seq = [a, b, a + b, a + 2 * b, 2 * a + 3 * b]
@@ -821,6 +836,22 @@ function genAdultMath(d: number): Question {
       explain: `10% of ${base} is ${base / 10} — scale from there: ${p}% = ${val}.`,
     }
   }
+  if (d >= 95) {
+    // expert: three-step chains
+    const a = ri(13, 24)
+    const b = ri(6, 9)
+    const c = ri(3, 6)
+    const e = ri(17, 59)
+    const val = a * b + c * 10 - e
+    const { choices, answer } = makeChoices(val, numberDistractors(val, 8, 1, 500))
+    return {
+      skill: 'addition', difficulty: d,
+      prompt: `(${a} × ${b}) + (${c} × 10) − ${e} = ?`,
+      speech: 'Three steps — take your time.',
+      choices, answer,
+      explain: `${a} × ${b} = ${a * b}, plus ${c * 10} = ${a * b + c * 10}, minus ${e} = ${val}.`,
+    }
+  }
   const a = ri(12, 19)
   const b = ri(4, 8)
   const c = ri(11, 39)
@@ -854,6 +885,9 @@ const SYN_T3: Array<[string, string, string[]]> = [
   ['magnanimous', 'generous', ['petty', 'cautious']], ['taciturn', 'quiet', ['talkative', 'angry']], ['pragmatic', 'practical', ['idealistic', 'hostile']],
   ['ambivalent', 'torn', ['certain', 'hopeful']], ['tenacious', 'persistent', ['yielding', 'timid']], ['aloof', 'distant', ['friendly', 'nervous']],
   ['astute', 'shrewd', ['naive', 'generous']], ['verbose', 'wordy', ['concise', 'quiet']],
+  ['perspicacious', 'insightful', ['oblivious', 'talkative']], ['laconic', 'terse', ['rambling', 'cheerful']],
+  ['recalcitrant', 'defiant', ['obedient', 'joyful']], ['sycophant', 'flatterer', ['critic', 'leader']],
+  ['esoteric', 'obscure', ['common', 'shallow']], ['intransigent', 'unyielding', ['flexible', 'gentle']],
 ]
 function genAdultVocab(d: number): Question {
   const bank = d < 35 ? SYN_T1 : d < 70 ? SYN_T2 : SYN_T3
