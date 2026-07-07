@@ -107,7 +107,7 @@ QBO_ENVIRONMENT=production
 ## Pending / Next Steps
 1. **Hardware order** — FMM003 (trucks), TAT141 + solar accessory (equipment), BC021 (tools), Hologram SIMs
 2. **flespi account** — flespi.com, add device IMEIs, create webhook stream → hammertrackai.com/api/ingest/flespi
-3. **Supabase production** — create project, run 001_initial.sql then 002_v2.sql
+3. **Supabase production** — create project, then run **all 5** migrations (001→005). Easiest: paste `supabase/setup.sql` (the 5 concatenated in order) into the SQL Editor and Run once. See `docs/GO-LIVE.md`. NOTE: skipping 004 breaks the Add Asset form (category/serial/photo_url columns).
 4. **Add Netlify env vars** — paste Supabase keys into Netlify dashboard
 5. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
 6. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
