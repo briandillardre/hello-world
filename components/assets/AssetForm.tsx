@@ -21,10 +21,11 @@ export interface AssetFormData {
 interface AssetFormProps {
   onClose: () => void
   onSubmit: (data: AssetFormData) => void
+  saving?: boolean
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string }
 }
 
-export function AssetForm({ onClose, onSubmit, initial }: AssetFormProps) {
+export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -122,11 +123,11 @@ export function AssetForm({ onClose, onSubmit, initial }: AssetFormProps) {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1" disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!name.trim()} className="flex-1">
-              {initial ? 'Save Changes' : 'Add Asset'}
+            <Button type="submit" disabled={!name.trim() || saving} className="flex-1">
+              {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Asset'}
             </Button>
           </div>
         </form>

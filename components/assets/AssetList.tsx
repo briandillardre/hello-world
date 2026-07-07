@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Plus, Battery, Clock, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
+import { createAssetAction } from '@/lib/actions/assets'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,9 +25,33 @@ interface AssetListProps {
 }
 
 export function AssetList({ assets, onAdd }: AssetListProps) {
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
   const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleAdd = async (data: AssetFormData) => {
+    // Allow a parent to override persistence (e.g. tests / custom flows).
+    if (onAdd) {
+      onAdd(data)
+      setShowForm(false)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await createAssetAction(data)
+      setShowForm(false)
+      router.refresh()
+    } catch (err) {
+      console.error('Failed to save asset', err)
+      setError('Could not save asset. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const filtered = assets.filter(a => {
     const q = query.toLowerCase()
@@ -46,6 +72,12 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
             <Plus className="h-4 w-4" /> Add Asset
           </Button>
         </div>
+
+        {error && (
+          <p className="text-xs text-alert bg-alert/10 border border-alert/30 rounded-md px-3 py-2">
+            {error}
+          </p>
+        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
@@ -90,10 +122,8 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
       {showForm && (
         <AssetForm
           onClose={() => setShowForm(false)}
-          onSubmit={(data) => {
-            onAdd?.(data)
-            setShowForm(false)
-          }}
+          onSubmit={handleAdd}
+          saving={saving}
         />
       )}
     </div>
