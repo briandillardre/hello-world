@@ -8,6 +8,7 @@ import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/li
 import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
+import { CostCard } from '@/components/assets/CostCard'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -82,6 +83,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             ))}
           </div>
         </section>
+
+        {/* cost structure */}
+        <CostCard asset={asset} />
 
         {/* live telemetry */}
         <section>

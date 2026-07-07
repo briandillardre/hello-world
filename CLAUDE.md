@@ -111,7 +111,7 @@ QBO_ENVIRONMENT=production
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
-2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Migration 006 (asset-photos storage bucket) added Jul 7 — run it in the SQL Editor.** Fresh installs: paste `supabase/setup.sql` (all 6). See `docs/GO-LIVE.md`.
+2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 7). See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
 4. **Point hammertrackai.com at Vercel** — add domain in Vercel project settings, update Namecheap DNS (currently still on Netlify)
 5. **Remaining hardware** — install T1-b; order TAT141 + solar accessory (equipment), BC021 tool tags

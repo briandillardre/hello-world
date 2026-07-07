@@ -13,12 +13,22 @@ export interface CreateAssetInput {
   photo_url?: string
   tracker_id?: string
   metadata?: Record<string, unknown>
+  // Cost structure — numbers or null (form converts empty inputs to null)
+  hourly_rate?: number | null
+  mileage_rate?: number | null
+  daily_cost?: number | null
+  purchase_value?: number | null
 }
 
 /** Normalize a form string to a trimmed value or null (empty → null). */
 function orNull(v: string | undefined): string | null {
   const t = v?.trim()
   return t ? t : null
+}
+
+/** Coerce a cost field to a non-negative finite number or null. */
+function numOrNull(v: number | null | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
 }
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -72,6 +82,10 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
     category: orNull(input.category),
     serial: orNull(input.serial),
     photo_url: photoUrl,
+    hourly_rate: numOrNull(input.hourly_rate),
+    mileage_rate: numOrNull(input.mileage_rate),
+    daily_cost: numOrNull(input.daily_cost),
+    purchase_value: numOrNull(input.purchase_value),
     metadata: input.metadata ?? {},
   })
 
@@ -90,6 +104,12 @@ export async function updateAssetAction(
     ...(input.tracker_id !== undefined ? { tracker_id: orNull(input.tracker_id) } : {}),
     ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
     ...(input.active !== undefined ? { active: input.active } : {}),
+    ...(input.category !== undefined ? { category: orNull(input.category) } : {}),
+    ...(input.serial !== undefined ? { serial: orNull(input.serial) } : {}),
+    ...(input.hourly_rate !== undefined ? { hourly_rate: numOrNull(input.hourly_rate) } : {}),
+    ...(input.mileage_rate !== undefined ? { mileage_rate: numOrNull(input.mileage_rate) } : {}),
+    ...(input.daily_cost !== undefined ? { daily_cost: numOrNull(input.daily_cost) } : {}),
+    ...(input.purchase_value !== undefined ? { purchase_value: numOrNull(input.purchase_value) } : {}),
   })
 
   revalidatePath('/assets')

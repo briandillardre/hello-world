@@ -3,6 +3,7 @@ import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany } from '@/lib/db/company'
 import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
+import { buildCostCurve, type CostCurve } from '@/lib/costs'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
 
@@ -30,6 +31,9 @@ export default async function MapPage() {
   const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
   // Real window → scrubber shows true timestamps instead of the demo clock.
   const trackWindow = history ? historyWindow(history) : null
+  // Real cost curve from per-asset rates × observed activity (null = demo).
+  const realCost: CostCurve | null =
+    history && trackWindow ? buildCostCurve(assets, history, trackWindow.from, trackWindow.to) : null
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
@@ -42,7 +46,7 @@ export default async function MapPage() {
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
-        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} toolGateways={toolGateways} />
+        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} toolGateways={toolGateways} />
       </div>
     </div>
   )

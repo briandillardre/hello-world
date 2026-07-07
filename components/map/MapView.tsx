@@ -116,12 +116,14 @@ interface MapViewProps {
   tracks?: AssetTrack[]
   /** Real-history window the tracks span (null/undefined = synthetic demo tracks). */
   realWindow?: import('@/lib/trails').TrackWindow | null
+  /** Real cost curve from asset rates x observed activity (null = demo PROJECTS). */
+  realCost?: import('@/lib/costs').CostCurve | null
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
 }
 
-export function MapView({ assets, geofences, tracks = [], realWindow = null, toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -153,9 +155,15 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, too
   const [pbSpeed, setPbSpeed] = useState(500)
   // How much of the window is revealed: full when live, scrubbed when replaying
   const displayT = pbActive ? pbT : 1
-  // Project cost shown inside the timeline (tracks the current range + scrub)
-  const costTotal = PROJECTS.reduce((s, p) => s + periodCost(p, range, pbT, customDays).total, 0)
-  const costLabel = range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
+  // Cost shown inside the timeline. Real accounts: cumulative curve built from
+  // per-asset rates x observed activity over the loaded (last-24h) window --
+  // the scrub position reads the honest ledger, never demo PROJECT rates.
+  const costTotal = realCost
+    ? realCost.curve[Math.min(realCost.curve.length - 1, Math.max(0, Math.floor(displayT * (realCost.curve.length - 1))))] ?? 0
+    : PROJECTS.reduce((s, p) => s + periodCost(p, range, pbT, customDays).total, 0)
+  const costLabel = realCost
+    ? (realCost.hasRates ? 'last 24h \u00b7 from asset rates' : 'set cost rates on assets')
+    : range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
   const tracksRef = useRef(tracks)
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)

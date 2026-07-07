@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack, TrackWindow } from '@/lib/trails'
+import type { CostCurve } from '@/lib/costs'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction } from '@/lib/actions/geofences'
 
@@ -30,10 +31,11 @@ interface MapPageClientProps {
   geofences: Geofence[]
   tracks: AssetTrack[]
   realWindow?: TrackWindow | null
+  realCost?: CostCurve | null
   toolGateways: Record<string, { name: string; lastSeen: string }>
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, toolGateways }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, toolGateways }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
@@ -58,6 +60,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, rea
         geofences={geofences}
         tracks={tracks}
         realWindow={realWindow}
+        realCost={realCost}
         toolGateways={toolGateways}
         onGeofenceSave={handleGeofenceSave}
       />

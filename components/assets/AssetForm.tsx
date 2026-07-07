@@ -16,6 +16,40 @@ export interface AssetFormData {
   photo_url: string
   tracker_id: string
   metadata: Record<string, unknown>
+  hourly_rate: number | null
+  mileage_rate: number | null
+  daily_cost: number | null
+  purchase_value: number | null
+}
+
+/** Which cost fields make sense per asset type, with owner-friendly labels. */
+export const COST_FIELDS: Record<AssetType, { key: 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'; label: string; hint: string }[]> = {
+  vehicle: [
+    { key: 'hourly_rate', label: 'Operating $/hr', hint: 'fuel + wear while running' },
+    { key: 'mileage_rate', label: '$/mile', hint: 'per-mile cost (IRS-style)' },
+    { key: 'daily_cost', label: 'Ownership $/day', hint: 'payment, insurance, depreciation' },
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+  ],
+  equipment: [
+    { key: 'hourly_rate', label: 'Operating $/engine-hr', hint: 'fuel + wear per engine hour' },
+    { key: 'daily_cost', label: 'Ownership $/day', hint: 'payment, insurance, depreciation' },
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+  ],
+  personnel: [
+    { key: 'hourly_rate', label: 'Loaded labor $/hr', hint: 'wage + burden (taxes, insurance)' },
+  ],
+  tool: [
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+    { key: 'daily_cost', label: 'Ownership $/day', hint: 'optional — rental-equivalent' },
+  ],
+}
+
+/** Parse a cost input: '' → null, otherwise a non-negative number or null. */
+export function parseCost(v: string): number | null {
+  const t = v.trim()
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? n : null
 }
 
 interface AssetFormProps {
@@ -60,6 +94,8 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Cost inputs kept as strings while typing; parsed on submit.
+  const [costs, setCosts] = useState<Record<string, string>>({})
 
   const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -89,12 +125,17 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       name: name.trim(), type,
       category: category.trim(), serial: serial.trim(), photo_url: photoUrl.trim(),
       tracker_id: trackerId.trim(), metadata: {},
+      hourly_rate: parseCost(costs.hourly_rate ?? ''),
+      mileage_rate: parseCost(costs.mileage_rate ?? ''),
+      daily_cost: parseCost(costs.daily_cost ?? ''),
+      purchase_value: parseCost(costs.purchase_value ?? ''),
     }, photo)
   }
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent>
+      {/* Form grew past small viewports (cost section) — scroll inside the dialog */}
+      <DialogContent className="max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{initial ? 'Edit Asset' : 'Add New Asset'}</DialogTitle>
         </DialogHeader>
@@ -203,6 +244,28 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             <p className="text-xs text-faint">
               The tracker_id sent in POST /api/ingest/location payloads.
             </p>
+          </div>
+
+          <div className="space-y-2 rounded-lg border border-navy-800 p-3">
+            <p className="text-sm font-medium text-ink">Cost structure <span className="text-faint font-normal">(powers job-cost tracking)</span></p>
+            <div className="grid grid-cols-2 gap-3">
+              {COST_FIELDS[type].map((f) => (
+                <div key={f.key} className="space-y-1">
+                  <Label htmlFor={`cost-${f.key}`} className="text-xs">{f.label}</Label>
+                  <Input
+                    id={`cost-${f.key}`}
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={costs[f.key] ?? ''}
+                    onChange={(e) => setCosts((c) => ({ ...c, [f.key]: e.target.value }))}
+                  />
+                  <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="flex gap-3 pt-2">

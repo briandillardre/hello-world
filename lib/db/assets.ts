@@ -45,6 +45,7 @@ export interface LocationHistoryRow {
   asset_id: string
   lat: number
   lng: number
+  speed: number | null
   timestamp: string
 }
 
@@ -64,7 +65,7 @@ export async function getLocationHistory(
   const supabase = createClient()
   const { data } = await supabase
     .from('asset_locations')
-    .select('asset_id, lat, lng, timestamp')
+    .select('asset_id, lat, lng, speed, timestamp')
     .eq('company_id', companyId)
     .gte('timestamp', sinceIso)
     .order('timestamp', { ascending: false })
@@ -75,7 +76,7 @@ export async function getLocationHistory(
 export async function createAsset(
   companyId: string,
   payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'> &
-    Partial<Pick<Asset, 'category' | 'serial' | 'photo_url'>>
+    Partial<Pick<Asset, 'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'>>
 ): Promise<Asset | null> {
   if (isMock) return null
 
@@ -91,7 +92,8 @@ export async function createAsset(
 
 export async function updateAsset(
   id: string,
-  payload: Partial<Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata' | 'active'>>
+  payload: Partial<Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata' | 'active' |
+    'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'>>
 ): Promise<Asset | null> {
   if (isMock) return null
 
