@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
       battery: r.battery,
       accuracy: null,
       timestamp: r.timestamp,
-      raw: { source: 'flespi' },
+      // Full telemetry (OBD PIDs, ignition, voltages, DTCs, events…) so
+      // nothing the tracker reports is discarded — the asset page and future
+      // maintenance/utilization features read from here.
+      raw: { source: 'flespi', ...r.params },
     })
     persisted++
 

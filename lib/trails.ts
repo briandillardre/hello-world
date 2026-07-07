@@ -155,6 +155,34 @@ export function tracksFromHistory(
   })
 }
 
+/** Epoch-ms window real tracks were normalized over (t=0 → from, t=1 → to). */
+export interface TrackWindow {
+  from: number
+  to: number
+}
+
+/** Window spanned by real history rows, for truthful scrubber labels. */
+export function historyWindow(rows: { timestamp: string }[]): TrackWindow | null {
+  let from = Infinity
+  let to = -Infinity
+  for (const r of rows) {
+    const ms = new Date(r.timestamp).getTime()
+    if (!Number.isFinite(ms)) continue
+    if (ms < from) from = ms
+    if (ms > to) to = ms
+  }
+  return to > from ? { from, to } : null
+}
+
+/** Short tick label inside a real window: clock time for ≤36h spans, else date. */
+export function windowTickLabel(w: TrackWindow, f: number): string {
+  const ms = w.from + f * (w.to - w.from)
+  const d = new Date(ms)
+  return w.to - w.from <= 36 * 3_600_000
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 // How movement over the window is drawn — user-selectable on any time range.
 export type TrailMode = 'off' | 'trails' | 'heatmap'
 

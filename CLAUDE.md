@@ -5,19 +5,21 @@ Mobile-first asset tracking SaaS for construction companies. Competes with Tenna
 Tracks vehicles (OBD2), heavy equipment (GPS), personnel, small tools (Bluetooth) on a live map.
 Owner: Brian Dillard / Dillard Construction Group (Nashville, TN area).
 
-## Live Site
-- **URL:** https://hammertrackai.com
-- **Host:** Netlify (project: stately-heliotrope-0b2bff)
+## Live Site (updated Jul 2026 — app moved to Vercel)
+- **Live app:** https://hammertrackjune28.vercel.app (Vercel — auto-deploys `master`)
+- **Database:** Supabase project **"Hammertrack 2026"** — all 6 migrations applied (Jul 6 2026), env vars set in Vercel (Production + Preview)
+- **hammertrackai.com** (Namecheap) still points at the OLD Netlify site (stately-heliotrope-0b2bff) — pending: add domain to the Vercel project
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
 - **Dev branch convention:** `claude/...` branches, open PR → squash merge to master
+- **Pilot status:** T1-a live in Brian's Chevy 1500 since Jul 6 2026 (Greenville, SC area) — full pipeline verified: OBD → Hologram → flespi → webhook → Supabase → map
 
 ## Tech Stack
 - Next.js 14 (App Router, TypeScript)
 - Supabase — Postgres + PostGIS, Auth, Realtime (demo mode when env vars absent)
 - MapLibre GL JS — open-source map, CARTO free tiles
 - Tailwind CSS + shadcn/ui
-- Netlify deployment (netlify.toml + @netlify/plugin-nextjs)
+- Vercel deployment (moved from Netlify Jul 2026; netlify.toml remains for the old site)
 
 ## Demo Mode
 App works fully with zero env vars — 10 mock assets at a Nashville construction site.
@@ -67,10 +69,13 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 ### Live pilot units (T1 = FMM00A OBD units, deployed Jul 2026)
 | Unit | IMEI suffix | Hologram SIM | Installed in |
 |------|-------------|--------------|--------------|
-| T1-a | …02222 | 44398 | (configured first) |
+| T1-a | …02222 | 44398 | **Brian's Chevy 1500 — LIVE since Jul 6 2026** (asset "Chevy 1500 - Brian", tracker_id = full IMEI 868996068802222) |
 | T1-b | …00200 | 44406 | (charged in Atlas) |
 
 - flespi channel: `ch1401177.flespi.gw:24397` TCP · Codec 8 Extended · APN `hologram` (no user/pass, roaming on)
+- flespi webhook `hammertrack-ingest` (#16402) → POST https://hammertrackjune28.vercel.app/api/ingest/flespi with `x-flespi-token` header (= FLESPI_WEBHOOK_TOKEN in Vercel)
+- **Webhook topic GOTCHA (cost a night of debugging):** trigger topic must be `flespi/message/gw/channels/1401177/+` — the last MQTT level is the device IMEI, so a literal `.../message` suffix silently matches nothing. Also verify the webhook's Enabled toggle actually saved.
+- Engine-off behavior: device sleeps and checks in ~hourly; ignition-on switches to active tracking (records every few seconds when moving). Zero flespi traffic for an hour with engine off is normal, not a fault.
 - Naming convention: T1 = OBD truck unit, T2 = equipment unit, T3 = tool tags. Model numbers stay out of vendor dashboards/marketing.
 - FMM00A gotcha: internal battery ships DISCONNECTED — open case, click battery plug in, close case fully (case is the OBD plug housing; won't power open).
 
@@ -105,13 +110,16 @@ QBO_ENVIRONMENT=production
 ```
 
 ## Pending / Next Steps
-1. **Hardware order** — FMM003 (trucks), TAT141 + solar accessory (equipment), BC021 (tools), Hologram SIMs
-2. **flespi account** — flespi.com, add device IMEIs, create webhook stream → hammertrackai.com/api/ingest/flespi
-3. **Supabase production** — create project, then run **all 5** migrations (001→005). Easiest: paste `supabase/setup.sql` (the 5 concatenated in order) into the SQL Editor and Run once. See `docs/GO-LIVE.md`. NOTE: skipping 004 breaks the Add Asset form (category/serial/photo_url columns).
-4. **Add Netlify env vars** — paste Supabase keys into Netlify dashboard
-5. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
-6. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
-7. **hammertrack.ai domain** — buy when business proves out ($185.96/2yr at Namecheap)
+1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
+2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Migration 006 (asset-photos storage bucket) added Jul 7 — run it in the SQL Editor.** Fresh installs: paste `supabase/setup.sql` (all 6). See `docs/GO-LIVE.md`.
+3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
+4. **Point hammertrackai.com at Vercel** — add domain in Vercel project settings, update Namecheap DNS (currently still on Netlify)
+5. **Remaining hardware** — install T1-b; order TAT141 + solar accessory (equipment), BC021 tool tags
+6. **After-hours theft alert live test** — move the truck outside work hours (07:00–17:00) and confirm the alert fires
+7. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
+8. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
+9. **hammertrack.ai domain** — buy when business proves out ($185.96/2yr at Namecheap)
+10. **Trails/playback timezone** — scrubber clock labels; see `docs/TRACKER-DATA.md` for tracker data reference + per-asset reporting-profile design
 
 ## Go-to-Market
 - Lead funnel: FB/IG theft-hook ad → hammertrackai.com/demo → /register

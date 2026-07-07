@@ -2,7 +2,7 @@ import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany } from '@/lib/db/company'
-import { generateTracks, tracksFromHistory } from '@/lib/trails'
+import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
 
@@ -28,6 +28,8 @@ export default async function MapPage() {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const history = await getLocationHistory(companyId, since)
   const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
+  // Real window → scrubber shows true timestamps instead of the demo clock.
+  const trackWindow = history ? historyWindow(history) : null
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
@@ -40,7 +42,7 @@ export default async function MapPage() {
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
-        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} toolGateways={toolGateways} />
+        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} toolGateways={toolGateways} />
       </div>
     </div>
   )

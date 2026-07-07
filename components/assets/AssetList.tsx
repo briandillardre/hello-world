@@ -32,7 +32,7 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleAdd = async (data: AssetFormData) => {
+  const handleAdd = async (data: AssetFormData, photo?: Blob | null) => {
     // Allow a parent to override persistence (e.g. tests / custom flows).
     if (onAdd) {
       onAdd(data)
@@ -42,7 +42,13 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
     setSaving(true)
     setError(null)
     try {
-      await createAssetAction(data)
+      // Blobs can't ride in a plain server-action argument — wrap in FormData.
+      let photoForm: FormData | undefined
+      if (photo && photo.size > 0) {
+        photoForm = new FormData()
+        photoForm.append('photo', photo, 'photo.jpg')
+      }
+      await createAssetAction(data, photoForm)
       setShowForm(false)
       router.refresh()
     } catch (err) {

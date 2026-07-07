@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat } from 'lucide-react'
 import {
-  type TimeRange, type TrailMode, RANGES, rangeLabel, scrubLabel, speedsForRange, formatSpeed,
-  customScrubLabel, customTickLabel,
+  type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
+  speedsForRange, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
 } from '@/lib/trails'
 import { money } from '@/lib/projects'
 
@@ -39,17 +39,22 @@ interface TimelinePlaybackProps {
   onCustom: (fromMs: number, toMs: number) => void
   costTotal: number
   costLabel: string
+  /** When tracks come from REAL history, the epoch window they span — labels
+   *  then show true timestamps instead of the demo's 6AM-6PM pretend clock. */
+  realWindow?: TrackWindow | null
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
-  customFrom, customTo, onCustom, costTotal, costLabel,
+  customFrom, customTo, onCustom, costTotal, costLabel, realWindow,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
   const [showCustom, setShowCustom] = useState(false)
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
-    custom ? customTickLabel(customFrom, customTo, f) : rangeLabel(range, f)
+    custom ? customTickLabel(customFrom, customTo, f)
+    : realWindow ? windowTickLabel(realWindow, f)
+    : rangeLabel(range, f)
   )
   const speeds = speedsForRange(range)
 
@@ -147,7 +152,9 @@ export function TimelinePlayback({
         <div className="px-4 pt-2.5 flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-amber flex-none" />
           <span className="font-display font-bold text-amber text-[15px] tabular-nums">
-            {custom ? customScrubLabel(customFrom, customTo, t) : scrubLabel(range, t)}
+            {custom ? customScrubLabel(customFrom, customTo, t)
+              : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t)
+              : scrubLabel(range, t)}
           </span>
         </div>
         <div className="flex items-center gap-3 px-4 pt-2 pb-3">

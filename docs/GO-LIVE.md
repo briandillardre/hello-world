@@ -23,7 +23,7 @@ are things only you can do (they need your accounts); everything is copy‑paste
 2. Open `supabase/setup.sql` from this repo, copy the **whole file**, paste it in.
 3. Press **Run**. You should see "Success. No rows returned."
 
-`setup.sql` is the 5 migrations (`001`–`005`) concatenated in order. It creates
+`setup.sql` is the 6 migrations (`001`–`006`) concatenated in order. It creates
 every table, the Row‑Level‑Security policies that keep each company's data
 private, and the `category / serial / photo_url` columns the Add Asset form
 writes. Run it **once** on a fresh project. (Validated here against Postgres 16 +

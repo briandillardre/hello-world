@@ -4,15 +4,16 @@
 -- Paste this WHOLE file into the Supabase SQL Editor (Dashboard → SQL Editor →
 -- New query → paste → Run) on a FRESH project, then press Run once.
 --
--- It is the 5 migrations in supabase/migrations/ concatenated in order:
+-- It is the 6 migrations in supabase/migrations/ concatenated in order:
 --   001_initial.sql         core schema (companies, assets, locations, RLS)
 --   002_v2.sql              tools, maintenance, QuickBooks, theft-alert fields
 --   003_signup_policies.sql lets a new signup create its own company/profile
 --   004_asset_fields.sql    assets.category / serial / photo_url  <-- Add Asset form needs this
 --   005_geofence_edit.sql   editable geofences + GeoJSON view
+--   006_asset_photos.sql    public storage bucket for asset photos
 --
--- Supabase already provides PostGIS, the auth schema, auth.uid(), and the
--- supabase_realtime publication, so no shims are needed here.
+-- Supabase already provides PostGIS, the auth schema, auth.uid(), the storage
+-- schema, and the supabase_realtime publication, so no shims are needed here.
 -- Run ONCE on a new project (it is not re-runnable — CREATE POLICY/TABLE will
 -- error on a second run; that error just means it is already set up).
 -- ============================================================================
@@ -328,4 +329,22 @@ BEGIN
   RETURN v_id;
 END;
 $$;
+
+
+-- ==================== 006_asset_photos.sql ====================
+
+-- Asset photo storage.
+--
+-- Photos upload through a server action using the service-role key (which
+-- bypasses storage RLS), into a PUBLIC bucket so assets.photo_url can be a
+-- plain public URL the <img> tag renders without signed-URL churn.
+--
+-- No INSERT/UPDATE/DELETE policies are created on storage.objects for this
+-- bucket: with none present, anon/authenticated clients cannot write to it —
+-- only the server (service role) can. Object paths are namespaced by company:
+--   asset-photos/{company_id}/{uuid}.jpg
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('asset-photos', 'asset-photos', true)
+ON CONFLICT (id) DO NOTHING;
 

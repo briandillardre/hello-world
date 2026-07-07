@@ -114,12 +114,14 @@ interface MapViewProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   tracks?: AssetTrack[]
+  /** Real-history window the tracks span (null/undefined = synthetic demo tracks). */
+  realWindow?: import('@/lib/trails').TrackWindow | null
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
 }
 
-export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], realWindow = null, toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -838,6 +840,7 @@ export function MapView({ assets, geofences, tracks = [], toolGateways, onGeofen
           onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to) }}
           costTotal={costTotal}
           costLabel={costLabel}
+          realWindow={realWindow}
         />
       )}
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { AssetType } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,9 +20,33 @@ export interface AssetFormData {
 
 interface AssetFormProps {
   onClose: () => void
-  onSubmit: (data: AssetFormData) => void
+  onSubmit: (data: AssetFormData, photo?: Blob | null) => void
   saving?: boolean
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string }
+}
+
+/**
+ * Downscale a chosen photo to ≤maxDim px and re-encode as JPEG so phone
+ * camera shots (5-10 MB HEIC/JPEG) become a few hundred KB before upload.
+ * Falls back to the original file if decoding fails (e.g. exotic formats).
+ */
+async function resizePhoto(file: File, maxDim = 1600, quality = 0.82): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
+    bitmap.close()
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode failed'))), 'image/jpeg', quality)
+    )
+  } catch {
+    return file
+  }
 }
 
 export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetFormProps) {
@@ -32,6 +56,31 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
   const [serial, setSerial] = useState(initial?.serial ?? '')
   const [photoUrl, setPhotoUrl] = useState(initial?.photo_url ?? '')
   const [trackerId, setTrackerId] = useState(initial?.tracker_id ?? '')
+  const [photo, setPhoto] = useState<Blob | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoBusy(true)
+    try {
+      const resized = await resizePhoto(file)
+      setPhoto(resized)
+      if (photoPreview) URL.revokeObjectURL(photoPreview)
+      setPhotoPreview(URL.createObjectURL(resized))
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
+  const clearPhoto = () => {
+    setPhoto(null)
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
+    setPhotoPreview(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,7 +89,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       name: name.trim(), type,
       category: category.trim(), serial: serial.trim(), photo_url: photoUrl.trim(),
       tracker_id: trackerId.trim(), metadata: {},
-    })
+    }, photo)
   }
 
   return (
@@ -100,13 +149,47 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="asset-photo">Photo URL</Label>
-            <Input
-              id="asset-photo"
-              placeholder="https://… (paste a photo link)"
-              value={photoUrl}
-              onChange={e => setPhotoUrl(e.target.value)}
+            <Label htmlFor="asset-photo-file">Photo</Label>
+            <input
+              ref={fileInputRef}
+              id="asset-photo-file"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoPick}
             />
+            {photoPreview ? (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photoPreview} alt="Asset photo preview" className="h-16 w-16 rounded-lg object-cover border border-navy-700" />
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    Change
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={clearPhoto}>
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={photoBusy}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {photoBusy ? 'Processing…' : '📷 Take photo or choose from library'}
+              </Button>
+            )}
+            {!photo && (
+              <Input
+                id="asset-photo"
+                placeholder="…or paste a photo URL"
+                value={photoUrl}
+                onChange={e => setPhotoUrl(e.target.value)}
+              />
+            )}
           </div>
 
           <div className="space-y-2">

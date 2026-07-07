@@ -25,7 +25,18 @@ export interface NormalizedReading {
   battery: number | null
   timestamp: string
   beacons: { id: string; rssi: number | null }[]
+  /** Everything else the tracker reported (OBD PIDs, voltages, ignition,
+   *  movement, odometer, DTCs…) — persisted so no telemetry is lost. */
+  params: Record<string, unknown>
 }
+
+// Position fields are lifted into dedicated columns; skip them in the params
+// bag. Everything else (can.*, obd.*, engine.*, battery.*, movement.*, …) is
+// kept verbatim under the tracker's own field names.
+const LIFTED = new Set([
+  'ident', 'device.id', 'timestamp',
+  'position.latitude', 'position.longitude', 'position.speed', 'position.direction',
+])
 
 function voltageToPercent(v: number): number {
   // Rough 3xAA Li (Oyster) / backup-cell mapping, clamped 0-100.
@@ -66,6 +77,15 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
     }
   }
 
+  // Preserve all remaining scalar telemetry (OBD, power, events, cellular…).
+  const params: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(msg)) {
+    if (LIFTED.has(k)) continue
+    if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      params[k] = v
+    }
+  }
+
   return {
     tracker_id,
     lat,
@@ -75,5 +95,6 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
     battery,
     timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString(),
     beacons,
+    params,
   }
 }
