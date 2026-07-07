@@ -7,6 +7,7 @@ import type { AssetTrack, TrackWindow } from '@/lib/trails'
 import type { CostCurve } from '@/lib/costs'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction } from '@/lib/actions/geofences'
+import { setWeatherDefaultAction } from '@/lib/actions/company'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -33,14 +34,16 @@ interface MapPageClientProps {
   realWindow?: TrackWindow | null
   realCost?: CostCurve | null
   toolGateways: Record<string, { name: string; lastSeen: string }>
+  defaultWeatherPlace?: string | null
+  canSetWeatherDefault?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, toolGateways }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
-  const handleGeofenceSave = useCallback((name: string, geometry: GeoJSON.Polygon, color: string) => {
+  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string) => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
       company_id: MOCK_COMPANY.id,
@@ -50,7 +53,18 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, rea
       created_at: new Date().toISOString(),
     }
     setGeofences((prev) => [...prev, fence])
-    if (!isMock) createGeofenceAction(name, geometry, color)
+    if (!isMock) {
+      // Await + surface failure — this used to be fire-and-forget, so a failed
+      // insert looked saved until the next page load quietly dropped it.
+      try {
+        const id = await createGeofenceAction(name, geometry, color)
+        if (!id) throw new Error('no id returned')
+      } catch (err) {
+        console.error('Geofence save failed', err)
+        setGeofences((prev) => prev.filter((g) => g.id !== fence.id))
+        alert(`Zone "${name}" could not be saved to the database. Please try drawing it again.`)
+      }
+    }
   }, [])
 
   return (
@@ -63,6 +77,8 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, rea
         realCost={realCost}
         toolGateways={toolGateways}
         onGeofenceSave={handleGeofenceSave}
+        defaultWeatherPlace={defaultWeatherPlace}
+        onSaveWeatherDefault={canSetWeatherDefault ? setWeatherDefaultAction : undefined}
       />
       {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}
     </>

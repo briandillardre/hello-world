@@ -4,7 +4,7 @@
 -- Paste this WHOLE file into the Supabase SQL Editor (Dashboard → SQL Editor →
 -- New query → paste → Run) on a FRESH project, then press Run once.
 --
--- It is the 7 migrations in supabase/migrations/ concatenated in order:
+-- It is the 8 migrations in supabase/migrations/ concatenated in order:
 --   001_initial.sql         core schema (companies, assets, locations, RLS)
 --   002_v2.sql              tools, maintenance, QuickBooks, theft-alert fields
 --   003_signup_policies.sql lets a new signup create its own company/profile
@@ -12,6 +12,7 @@
 --   005_geofence_edit.sql   editable geofences + GeoJSON view
 --   006_asset_photos.sql    public storage bucket for asset photos
 --   007_asset_costs.sql     per-asset cost structure (hourly/mileage/daily/value)
+--   008_company_prefs.sql   company weather default + admin update policy
 --
 -- Supabase already provides PostGIS, the auth schema, auth.uid(), the storage
 -- schema, and the supabase_realtime publication, so no shims are needed here.
@@ -368,4 +369,19 @@ ALTER TABLE assets ADD COLUMN IF NOT EXISTS hourly_rate    NUMERIC CHECK (hourly
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS mileage_rate   NUMERIC CHECK (mileage_rate   >= 0);
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS daily_cost     NUMERIC CHECK (daily_cost     >= 0);
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS purchase_value NUMERIC CHECK (purchase_value >= 0);
+
+
+-- ==================== 008_company_prefs.sql ====================
+
+-- Company preferences: default weather location for the map.
+-- NULL = follow the fleet (weather at the most recent asset position).
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS weather_place TEXT;
+
+-- Admins update their own company's settings (001 only created SELECT).
+-- Scoped to admins via the profiles.role check.
+CREATE POLICY "admins update own company" ON companies
+  FOR UPDATE USING (
+    id = current_company_id()
+    AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+  );
 

@@ -1,7 +1,7 @@
 import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
-import { getCurrentCompany } from '@/lib/db/company'
+import { getCurrentCompany, getCompanyPrefs } from '@/lib/db/company'
 import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
 import { buildCostCurve, type CostCurve } from '@/lib/costs'
 import { MapPageClient } from '@/components/map/MapPageClient'
@@ -13,6 +13,7 @@ import { MapTopBar } from '@/components/map/MapTopBar'
 export default async function MapPage() {
   const company = await getCurrentCompany()
   const companyId = company.id
+  const prefs = await getCompanyPrefs()
   const [rawAssets, geofences, toolAssociations] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
@@ -46,7 +47,7 @@ export default async function MapPage() {
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
-        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} toolGateways={toolGateways} />
+        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} toolGateways={toolGateways} defaultWeatherPlace={prefs.weatherPlace} canSetWeatherDefault={prefs.isAdmin} />
       </div>
     </div>
   )

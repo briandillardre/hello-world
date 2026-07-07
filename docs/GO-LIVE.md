@@ -23,14 +23,14 @@ are things only you can do (they need your accounts); everything is copy‑paste
 2. Open `supabase/setup.sql` from this repo, copy the **whole file**, paste it in.
 3. Press **Run**. You should see "Success. No rows returned."
 
-`setup.sql` is the 7 migrations (`001`–`007`) concatenated in order. It creates
+`setup.sql` is the 8 migrations (`001`–`008`) concatenated in order. It creates
 every table, the Row‑Level‑Security policies that keep each company's data
 private, and the `category / serial / photo_url` columns the Add Asset form
 writes. Run it **once** on a fresh project. (Validated here against Postgres 16 +
 PostGIS: applies clean, 12 tables, and the exact "add the pilot truck" insert
 passes RLS.)
 
-> Prefer running them one at a time? Run `supabase/migrations/001…007` in
+> Prefer running them one at a time? Run `supabase/migrations/001…008` in
 > numeric order instead — same result.
 
 ## 3. Grab the API keys

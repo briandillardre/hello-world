@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const primaryItems = [
@@ -14,6 +14,7 @@ const primaryItems = [
 
 const moreItems = [
   { href: '/geofences', label: 'Zones', icon: Hexagon },
+  { href: '/command', label: 'Command Center', icon: MonitorPlay },
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', icon: Calculator },

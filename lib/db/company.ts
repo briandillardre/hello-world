@@ -68,3 +68,38 @@ export async function getCurrentCompany(): Promise<{ id: string; name: string; u
     return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null }
   }
 }
+
+/**
+ * Company preferences + the caller's role, for the map's weather panel.
+ * weatherPlace null = follow the fleet. isAdmin gates the "save default" star.
+ */
+export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; isAdmin: boolean }> {
+  if (isMock) return { weatherPlace: null, isAdmin: false }
+
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { weatherPlace: null, isAdmin: false }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id, role')
+      .eq('id', user.id)
+      .single()
+    const companyId = profile?.company_id ?? user.id
+
+    const { data: company } = await supabase
+      .from('companies')
+      .select('weather_place')
+      .eq('id', companyId)
+      .single()
+
+    return {
+      weatherPlace: company?.weather_place ?? null,
+      isAdmin: profile?.role === 'admin' || user.id === companyId,
+    }
+  } catch {
+    return { weatherPlace: null, isAdmin: false }
+  }
+}

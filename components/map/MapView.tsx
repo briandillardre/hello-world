@@ -121,9 +121,13 @@ interface MapViewProps {
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
+  /** Company-wide default weather location (admin-set); null = follow the fleet. */
+  defaultWeatherPlace?: string | null
+  /** Show the admin-only "save as company default" control in the weather panel. */
+  onSaveWeatherDefault?: (place: string) => Promise<void>
 }
 
-export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, toolGateways, onGeofenceSave, kiosk = false }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -294,6 +298,17 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         maxzoom: 16,
       })
       m.addLayer({ id: 'labels-overlay', type: 'raster', source: 'labels-overlay', layout: { visibility: 'none' } })
+
+      // Road lines + road names for Hybrid (Boundaries_and_Places is cities
+      // only). Esri's transportation reference layer completes the classic
+      // imagery + roads + labels hybrid stack.
+      m.addSource('roads-overlay', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        maxzoom: 19,
+      })
+      m.addLayer({ id: 'roads-overlay', type: 'raster', source: 'roads-overlay', layout: { visibility: 'none' } })
 
       // 3D building extrusions from OpenFreeMap (free vector tiles, no key).
       // OpenMapTiles schema: 'building' layer with render_height / render_min_height.
@@ -585,26 +600,62 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     updateMovementSources(displayT)
   }, [mapReady, trailMode, displayT, filter, tracks, updateMovementSources])
 
-  // Fetch weather frames + conditions once
+  // Fetch weather frames + conditions once. Location priority: the company's
+  // admin-set default place, else wherever the fleet last reported (the weather
+  // that actually matters), else the demo center.
   useEffect(() => {
     let cancelled = false
     fetchWeatherFrames().then((f) => { if (!cancelled) setWeatherFrames(f) })
-    fetchConditions(DEMO_MAP_CENTER[1], DEMO_MAP_CENTER[0]).then((c) => { if (!cancelled) setConditions(c) })
+
+    const newest = assets
+      .filter((a) => a.location)
+      .sort((a, b) => new Date(b.location!.timestamp).getTime() - new Date(a.location!.timestamp).getTime())[0]
+
+    if (defaultWeatherPlace) {
+      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(defaultWeatherPlace)}`)
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled) return
+          const hit = j?.results?.[0]
+          if (hit) {
+            setWxPlace([hit.name, hit.admin1].filter(Boolean).join(', '))
+            fetchConditions(hit.latitude, hit.longitude).then((c) => { if (!cancelled) setConditions(c) })
+          }
+        })
+        .catch(() => {})
+    } else if (newest?.location) {
+      setWxPlace(`near ${newest.name}`)
+      fetchConditions(newest.location.lat, newest.location.lng).then((c) => { if (!cancelled) setConditions(c) })
+    } else {
+      fetchConditions(DEMO_MAP_CENTER[1], DEMO_MAP_CENTER[0]).then((c) => { if (!cancelled) setConditions(c) })
+    }
     return () => { cancelled = true }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultWeatherPlace])
 
   // Change the weather location: geocode the name (free Open-Meteo geocoder),
   // refetch conditions for it, and fly the map there.
-  const handlePlaceChange = useCallback(async (name: string) => {
+  const handlePlaceChange = useCallback(async (name: string, lat?: number, lng?: number) => {
     try {
-      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(name)}`)
-      const json = await res.json()
-      const hit = json?.results?.[0]
-      if (!hit) return
-      const label = [hit.name, hit.admin1, hit.country_code].filter(Boolean).join(', ')
-      setWxPlace(label)
-      fetchConditions(hit.latitude, hit.longitude).then((c) => setConditions(c))
-      map.current?.flyTo({ center: [hit.longitude, hit.latitude], zoom: 12, duration: 1200 })
+      // Autocomplete picks arrive with coordinates — no second geocode (which
+      // used to fail on labels like "Greenville, South Carolina, US" and left
+      // the weather silently unchanged).
+      if (lat == null || lng == null) {
+        // Free-typed text: geocode the first word-ish token ("Greenville sc"
+        // as a whole matches nothing in Open-Meteo's index).
+        const q = name.split(',')[0].trim()
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(q)}`)
+        const json = await res.json()
+        const hit = json?.results?.[0]
+        if (!hit) return
+        lat = hit.latitude
+        lng = hit.longitude
+        name = [hit.name, hit.admin1].filter(Boolean).join(', ')
+      }
+      if (lat == null || lng == null) return
+      setWxPlace(name)
+      fetchConditions(lat, lng).then((c) => setConditions(c))
+      map.current?.flyTo({ center: [lng, lat], zoom: 12, duration: 1200 })
     } catch {
       /* ignore geocode failures */
     }
@@ -619,6 +670,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     }
     set('streets-base', base === 'streets')
     set('sat-base', base === 'satellite' || base === 'hybrid')
+    set('roads-overlay', base === 'hybrid')
     set('labels-overlay', base === 'hybrid')
     set('buildings-3d', base === '3d')
     // Tilt for 3D, flatten otherwise.
@@ -695,7 +747,11 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
 
     const url = weatherTileUrl(weatherFrames.host, currentFrame)
     if (!wxAdded.current) {
-      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256 })
+      // maxzoom 8: RainViewer's free radar tiles stop there — beyond it they
+      // return "Zoom Level Not Supported" placeholder images. Capping the
+      // source makes MapLibre over-scale z8 tiles instead (radar is coarse
+      // anyway, so this looks right at street zoom).
+      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 8 })
       // Draw radar above the basemap but beneath geofences/assets
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
       m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': 0.7 } }, beforeId)
@@ -817,6 +873,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
         place={wxPlace}
         onPlaceChange={handlePlaceChange}
+        onSaveDefault={onSaveWeatherDefault}
         top={kiosk ? 70 : 58}
       />
 

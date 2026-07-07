@@ -25,7 +25,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const unreadAlerts = alerts.filter(a => !a.acknowledged_at).length
 
   return (
-    <div className="flex h-screen overflow-hidden bg-navy-950">
+    // h-[100dvh]: dynamic viewport height — plain 100vh over-measures on iPad/
+    // mobile browsers (URL bar chrome), leaving a white band + scrollable page.
+    <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <DashboardShell alertCount={unreadAlerts} companyName={company.name} userName={company.userName}>
         {children}
       </DashboardShell>

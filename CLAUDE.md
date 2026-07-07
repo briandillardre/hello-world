@@ -7,7 +7,7 @@ Owner: Brian Dillard / Dillard Construction Group (Nashville, TN area).
 
 ## Live Site (updated Jul 2026 — app moved to Vercel)
 - **Live app:** https://hammertrackjune28.vercel.app (Vercel — auto-deploys `master`)
-- **Database:** Supabase project **"Hammertrack 2026"** — all 6 migrations applied (Jul 6 2026), env vars set in Vercel (Production + Preview)
+- **Database:** Supabase project **"Hammertrack 2026"** — 8 migrations: 001–005 applied Jul 6 2026, 006–008 pending in SQL Editor (see Pending); env vars set in Vercel (Production + Preview)
 - **hammertrackai.com** (Namecheap) still points at the OLD Netlify site (stately-heliotrope-0b2bff) — pending: add domain to the Vercel project
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
@@ -111,7 +111,7 @@ QBO_ENVIRONMENT=production
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
-2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 7). See `docs/GO-LIVE.md`.
+2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 8). See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
 4. **Point hammertrackai.com at Vercel** — add domain in Vercel project settings, update Namecheap DNS (currently still on Netlify)
 5. **Remaining hardware** — install T1-b; order TAT141 + solar accessory (equipment), BC021 tool tags

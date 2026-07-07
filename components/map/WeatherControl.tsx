@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid' | '3d'
@@ -14,7 +14,9 @@ interface WeatherControlProps {
   conditions: Conditions | null
   frameTime: string | null
   place?: string
-  onPlaceChange?: (name: string) => void
+  onPlaceChange?: (name: string, lat?: number, lng?: number) => void
+  /** Admin only: persist the current place as the company-wide default. */
+  onSaveDefault?: (place: string) => Promise<void>
   top?: number
 }
 
@@ -32,7 +34,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
@@ -40,7 +42,7 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
   // Live place autocomplete (free Open-Meteo geocoder), debounced.
-  type Place = { name: string; admin1?: string; country_code?: string }
+  type Place = { name: string; admin1?: string; country_code?: string; latitude?: number; longitude?: number }
   const [suggestions, setSuggestions] = useState<Place[]>([])
   const [sugOpen, setSugOpen] = useState(false)
   useEffect(() => {
@@ -58,7 +60,19 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
   const pickPlace = (s: Place) => {
     setSugOpen(false)
     setSuggestions([])
-    onPlaceChange?.(placeLabel(s))
+    // Pass the coordinates straight through — re-geocoding the full label
+    // ("Greenville, South Carolina, US") fails and left the weather stale.
+    onPlaceChange?.([s.name, s.admin1].filter(Boolean).join(', '), s.latitude, s.longitude)
+  }
+
+  const [savedDefault, setSavedDefault] = useState(false)
+  const saveDefault = async () => {
+    if (!onSaveDefault || !place) return
+    try {
+      await onSaveDefault(place)
+      setSavedDefault(true)
+      setTimeout(() => setSavedDefault(false), 2000)
+    } catch { /* keep quiet; the star simply doesn't confirm */ }
   }
 
   const submitPlace = (e: React.FormEvent) => {
@@ -110,6 +124,16 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
             <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
               <Search className="h-3 w-3" />
             </button>
+            {onSaveDefault && (
+              <button
+                type="button"
+                onClick={saveDefault}
+                title="Save as company default location"
+                className="grid place-items-center w-5 h-5 rounded text-faint hover:text-amber flex-none"
+              >
+                {savedDefault ? <Check className="h-3 w-3 text-amber" /> : <Star className="h-3 w-3" />}
+              </button>
+            )}
           </form>
           {sugOpen && suggestions.length > 0 && (
             <ul className="absolute left-2 right-2 top-full mt-1 z-30 rounded-lg bg-navy-900 border border-navy-700 shadow-panel overflow-hidden">

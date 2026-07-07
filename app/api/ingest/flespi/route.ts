@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/lib/flespi'
+import { evaluateAlerts } from '@/lib/alerts-engine'
+import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
 
   let persisted = 0
+  // company_id -> latest reading per updated asset, for alert evaluation below
+  const updated = new Map<string, Map<string, NormalizedReading>>()
   for (const r of normalized) {
     const { data: asset } = await supabase
       .from('assets')
@@ -82,6 +86,8 @@ export async function POST(request: NextRequest) {
       raw: { source: 'flespi', ...r.params },
     })
     persisted++
+    if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
+    updated.get(asset.company_id)!.set(asset.id, r)
 
     // Associate detected BLE beacons (tools) with this gateway asset.
     // Convention: a tool asset's `tracker_id` is set to its BLE beacon ID/MAC
@@ -108,5 +114,59 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, persisted })
+  // ── Alert rules: evaluate against the fresh readings ──────────────────────
+  // Theft ("after-hours movement"), left-site, enter/exit. Fires here, on real
+  // telemetry, with a 60-min dedupe per (rule, asset) so a moving truck doesn't
+  // page the owner on every ping. Failures never break ingestion.
+  let alertsFired = 0
+  try {
+    for (const [companyId, byAsset] of Array.from(updated.entries())) {
+      const [{ data: rules }, { data: fences }, { data: companyRow }, { data: assetRows }] = await Promise.all([
+        supabase.from('alert_rules').select('*').eq('company_id', companyId).eq('active', true),
+        supabase.from('geofences_json').select('*').eq('company_id', companyId),
+        supabase.from('companies').select('work_start, work_end, work_days').eq('id', companyId).single(),
+        supabase.from('assets').select('*').eq('company_id', companyId).eq('active', true),
+      ])
+      if (!rules?.length || !companyRow || !assetRows?.length) continue
+
+      const targets = (assetRows as Asset[]).filter((a) => byAsset.has(a.id))
+      const locations: Record<string, AssetLocation> = {}
+      for (const a of targets) {
+        const r = byAsset.get(a.id)!
+        locations[a.id] = {
+          id: '', asset_id: a.id, company_id: companyId,
+          lat: r.lat, lng: r.lng, accuracy: null, battery: r.battery,
+          speed: r.speed, heading: r.heading, timestamp: r.timestamp, raw: null,
+        }
+      }
+
+      const fired = evaluateAlerts({
+        assets: targets,
+        locations,
+        rules: rules as AlertRule[],
+        geofences: (fences ?? []) as Geofence[],
+        company: companyRow,
+      })
+
+      for (const f of fired) {
+        const sinceIso = new Date(Date.now() - 60 * 60_000).toISOString()
+        const { data: recent } = await supabase
+          .from('alert_events')
+          .select('id')
+          .eq('rule_id', f.rule_id)
+          .eq('asset_id', f.asset_id)
+          .gte('triggered_at', sinceIso)
+          .limit(1)
+        if (recent?.length) continue
+        await supabase.from('alert_events').insert({
+          company_id: companyId, rule_id: f.rule_id, asset_id: f.asset_id,
+        })
+        alertsFired++
+      }
+    }
+  } catch (err) {
+    console.error('alert evaluation failed', err)
+  }
+
+  return NextResponse.json({ ok: true, persisted, alerts: alertsFired })
 }

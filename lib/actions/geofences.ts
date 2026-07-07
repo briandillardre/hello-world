@@ -6,9 +6,11 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 
 export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string) {
   const companyId = await getCurrentCompanyId()
-  await createGeofence(companyId, { name, geometry, color })
+  const id = await createGeofence(companyId, { name, geometry, color })
   revalidatePath('/geofences')
   revalidatePath('/map')
+  // Null = the insert didn't happen (RPC error / RLS) — callers surface it.
+  return id
 }
 
 export async function saveGeofenceAction(
