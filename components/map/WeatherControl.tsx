@@ -17,6 +17,9 @@ interface WeatherControlProps {
   onPlaceChange?: (name: string, lat?: number, lng?: number) => void
   /** Admin only: persist the current place as the company-wide default. */
   onSaveDefault?: (place: string) => Promise<void>
+  /** Tax-parcel overlay toggle — rendered only when a parcel service is configured. */
+  parcelsOn?: boolean
+  onParcels?: (v: boolean) => void
   top?: number
 }
 
@@ -34,7 +37,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
@@ -195,6 +198,25 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
           <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
           live radar{frameTime ? ` · ${frameTime}` : ''}
         </div>
+      )}
+
+      {/* tax parcel lines — county GIS overlay, appears at street zoom */}
+      {onParcels && (
+        <>
+          <button onClick={() => onParcels(!parcelsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Layers className={'h-4 w-4 ' + (parcelsOn ? 'text-amber' : 'text-faint')} /> Parcel lines
+            </span>
+            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (parcelsOn ? 'bg-amber/40' : 'bg-navy-700')}>
+              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (parcelsOn ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+          </button>
+          {parcelsOn && (
+            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-amber">
+              county tax parcels · zoom in to see lines
+            </div>
+          )}
+        </>
       )}
     </div>
   )

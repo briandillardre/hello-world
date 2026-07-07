@@ -14,6 +14,7 @@ import {
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
+import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -207,6 +208,8 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   // Default to satellite — real aerial imagery reads as "the actual jobsite"
   const [base, setBase] = useState<BaseStyle>('satellite')
   const [radarOn, setRadarOn] = useState(false)
+  const [parcelsOn, setParcelsOn] = useState(false)
+  const parcelAbort = useRef<AbortController | null>(null)
   const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
   const [wxPlace, setWxPlace] = useState('Nashville, TN')
@@ -735,6 +738,55 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
   }, [mapReady, displayT, range])
 
+  // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+
+    const ensureLayers = () => {
+      if (!m.getSource('parcels')) {
+        m.addSource('parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+        const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        m.addLayer({
+          id: 'parcels-line', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM,
+          paint: { 'line-color': '#ffd166', 'line-width': 1, 'line-opacity': 0.85 },
+        }, beforeId)
+        m.addLayer({
+          id: 'parcels-label', type: 'symbol', source: 'parcels', minzoom: PARCEL_LABEL_MIN_ZOOM,
+          layout: { 'text-field': ['get', 'parcel_label'], 'text-size': 10, 'symbol-placement': 'point' },
+          paint: { 'text-color': '#ffe9b3', 'text-halo-color': 'rgba(10,15,30,0.9)', 'text-halo-width': 1.2 },
+        }, beforeId)
+      }
+    }
+
+    const refresh = async () => {
+      if (!parcelsOn || m.getZoom() < PARCEL_MIN_ZOOM) {
+        ;(m.getSource('parcels') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+        return
+      }
+      parcelAbort.current?.abort()
+      const ctrl = new AbortController()
+      parcelAbort.current = ctrl
+      const b = m.getBounds()
+      const fc = await fetchParcels(PARCEL_SERVICE_URL, {
+        west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(),
+      }, ctrl.signal)
+      if (ctrl.signal.aborted) return
+      ;(m.getSource('parcels') as maplibregl.GeoJSONSource | undefined)?.setData(fc)
+    }
+
+    if (parcelsOn) {
+      ensureLayers()
+      for (const id of ['parcels-line', 'parcels-label']) m.setLayoutProperty(id, 'visibility', 'visible')
+      refresh()
+      m.on('moveend', refresh)
+      return () => { m.off('moveend', refresh); parcelAbort.current?.abort() }
+    }
+    for (const id of ['parcels-line', 'parcels-label']) {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none')
+    }
+  }, [mapReady, parcelsOn])
+
   // Add / update / toggle the rain-radar raster layer
   useEffect(() => {
     const m = map.current
@@ -874,6 +926,8 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         place={wxPlace}
         onPlaceChange={handlePlaceChange}
         onSaveDefault={onSaveWeatherDefault}
+        parcelsOn={parcelsOn}
+        onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
         top={kiosk ? 70 : 58}
       />
 
