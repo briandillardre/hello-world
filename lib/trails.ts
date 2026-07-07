@@ -106,6 +106,55 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   })
 }
 
+/**
+ * Build tracks from REAL location history (see getLocationHistory). Points are
+ * normalized fleet-wide across the fetched window (first→last timestamp) so
+ * playback heads move in sync. Assets with no history get an empty track —
+ * an honest "no movement recorded" rather than a fabricated walk.
+ */
+export function tracksFromHistory(
+  assets: AssetWithLocation[],
+  rows: { asset_id: string; lat: number; lng: number; timestamp: string }[]
+): AssetTrack[] {
+  const MAX_POINTS_PER_ASSET = 400
+
+  let minTs = Infinity
+  let maxTs = -Infinity
+  const byAsset = new Map<string, { lng: number; lat: number; ms: number }[]>()
+  for (const r of rows) {
+    const ms = new Date(r.timestamp).getTime()
+    if (!Number.isFinite(ms)) continue
+    if (ms < minTs) minTs = ms
+    if (ms > maxTs) maxTs = ms
+    let list = byAsset.get(r.asset_id)
+    if (!list) byAsset.set(r.asset_id, (list = []))
+    list.push({ lng: r.lng, lat: r.lat, ms })
+  }
+  const span = Math.max(1, maxTs - minTs) // avoid /0 when all points share one ts
+
+  return assets.map((a) => {
+    const raw = byAsset.get(a.id) ?? []
+    // Thin dense pings (OBD units report every few seconds) to a drawable count.
+    const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS_PER_ASSET))
+    const thinned = raw.filter((_, i) => i % step === 0 || i === raw.length - 1)
+    const points: TrackPoint[] =
+      thinned.length === 1
+        ? [ // single fix: pin the head there across the whole playback window
+            { lng: thinned[0].lng, lat: thinned[0].lat, t: 0 },
+            { lng: thinned[0].lng, lat: thinned[0].lat, t: 1 },
+          ]
+        : thinned.map((p) => ({ lng: p.lng, lat: p.lat, t: (p.ms - minTs) / span }))
+
+    return {
+      assetId: a.id,
+      name: a.name,
+      type: a.type,
+      color: TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
+      points,
+    }
+  })
+}
+
 // How movement over the window is drawn — user-selectable on any time range.
 export type TrailMode = 'off' | 'trails' | 'heatmap'
 

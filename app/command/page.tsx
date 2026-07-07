@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany } from '@/lib/db/company'
-import { generateTracks } from '@/lib/trails'
+import { generateTracks, tracksFromHistory } from '@/lib/trails'
 import { PROJECTS, projectCost, LIVE_DAY_FRACTION, moneyFull } from '@/lib/projects'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { CommandCenter, type CommandKpis } from '@/components/command/CommandCenter'
@@ -27,7 +27,10 @@ export default async function CommandPage() {
     getToolAssociations(companyId),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  const tracks = generateTracks(assets)
+  // Real mode: trails from actual history; demo mode: synthetic walks.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const history = await getLocationHistory(companyId, since)
+  const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
 
   const costToday = PROJECTS.reduce((s, p) => s + projectCost(p, LIVE_DAY_FRACTION).todayTotal, 0)
 

@@ -41,6 +41,37 @@ export async function getAssets(companyId: string): Promise<Asset[]> {
   return data ?? []
 }
 
+export interface LocationHistoryRow {
+  asset_id: string
+  lat: number
+  lng: number
+  timestamp: string
+}
+
+/**
+ * Location history since `sinceIso`, oldest-first, for drawing real movement
+ * trails. Returns null in demo mode so callers can fall back to synthetic
+ * tracks. Fetches newest-first (PostgREST caps result sets, so bias recent)
+ * then reverses to chronological order.
+ */
+export async function getLocationHistory(
+  companyId: string,
+  sinceIso: string
+): Promise<LocationHistoryRow[] | null> {
+  if (isMock) return null
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('asset_locations')
+    .select('asset_id, lat, lng, timestamp')
+    .eq('company_id', companyId)
+    .gte('timestamp', sinceIso)
+    .order('timestamp', { ascending: false })
+    .limit(5000)
+  return (data ?? []).reverse()
+}
+
 export async function createAsset(
   companyId: string,
   payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'> &

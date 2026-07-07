@@ -1,8 +1,8 @@
-import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany } from '@/lib/db/company'
-import { generateTracks } from '@/lib/trails'
+import { generateTracks, tracksFromHistory } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
 
@@ -23,7 +23,11 @@ export default async function MapPage() {
   const assets = resolveToolLocations(rawAssets, toolAssociations)
 
   // Time-series tracks for the Equipment Trails + Timeline Playback view.
-  const tracks = generateTracks(assets)
+  // Real mode: last 24h of actual asset_locations (assets with no history get
+  // no trail). Demo mode (history === null): synthetic walks for the demo.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const history = await getLocationHistory(companyId, since)
+  const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
