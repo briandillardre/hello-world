@@ -48,6 +48,28 @@ const COUNT_EMOJI = ['🐤', '🐞', '🍎', '🚗', '🐟', '⭐', '🎈', '�
 // ---------------------------------------------------------------- counting
 function genCounting(d: number): Question {
   const emoji = pick(COUNT_EMOJI)
+  // variation: which group has MORE / FEWER?
+  if (d >= 20 && d < 70 && Math.random() < 0.35) {
+    const e1 = pick(COUNT_EMOJI)
+    let e2 = pick(COUNT_EMOJI)
+    while (e2 === e1) e2 = pick(COUNT_EMOJI)
+    const a = ri(2, d < 45 ? 6 : 9)
+    let b = ri(2, d < 45 ? 6 : 9)
+    while (b === a) b = ri(2, d < 45 ? 6 : 9)
+    const more = Math.random() < 0.5
+    const winner = more ? (a > b ? e1 : e2) : a > b ? e2 : e1
+    const opts = shuffle([e1, e2])
+    return {
+      skill: 'counting',
+      difficulty: d,
+      prompt: `Which group has ${more ? 'MORE' : 'FEWER'}?`,
+      speech: `Look at both groups. Which one has ${more ? 'more' : 'fewer'}?`,
+      visual: `${e1.repeat(a)}\n${e2.repeat(b)}`,
+      choices: opts,
+      answer: opts.indexOf(winner),
+      explain: `Count them: ${a} on top and ${b} on the bottom — ${winner} has ${more ? 'more' : 'fewer'}.`,
+    }
+  }
   let n: number
   if (d < 20) n = ri(1, 4)
   else if (d < 40) n = ri(3, 7)
@@ -187,6 +209,22 @@ function genAddition(d: number): Question {
     const a = ri(1, 6)
     const b = ri(1, Math.min(6, 10 - a))
     const { choices, answer } = makeChoices(a + b, numberDistractors(a + b, 2, 0, 12))
+    // variation: little word problems
+    if (Math.random() < 0.4) {
+      const things = pick([
+        ['apples', '🍎'], ['toy cars', '🚗'], ['balloons', '🎈'], ['strawberries', '🍓'], ['ducks', '🦆'],
+      ] as const)
+      return {
+        skill: 'addition',
+        difficulty: d,
+        prompt: `You have ${a} ${things[0]} and get ${b} more. How many now?`,
+        speech: `You have ${sayNum(a)} ${things[0]}, and you get ${sayNum(b)} more. How many do you have now?`,
+        visual: things[1],
+        choices,
+        answer,
+        explain: `${a} ${things[0]} plus ${b} more: count up ${countUp(a, b)} — ${a + b}!`,
+      }
+    }
     return {
       skill: 'addition',
       difficulty: d,
@@ -329,6 +367,20 @@ function genLetters(d: number): Question {
       explain: `Capital ${c} and little ${c.toLowerCase()} are partners — the same letter in big and small.`,
     }
   }
+  // variation at the top: vowels
+  if (Math.random() < 0.35) {
+    const v = pick(['A', 'E', 'I', 'O', 'U'])
+    const { choices, answer } = makeChoices(v, shuffle('BCDFGHJKLMNPQRSTVWXYZ'.split('')).slice(0, 4))
+    return {
+      skill: 'letters',
+      difficulty: d,
+      prompt: 'Which one is a VOWEL?',
+      speech: 'Which letter is a vowel? A, E, I, O and U are the vowels.',
+      choices,
+      answer,
+      explain: `The vowels are A, E, I, O, U — ${v} is a vowel!`,
+    }
+  }
   const after = Math.random() < 0.5
   const i = ri(after ? 0 : 1, after ? 24 : 25)
   const c = ALPHABET[i]
@@ -365,6 +417,14 @@ const PHONICS: Array<{ word: string; emoji: string; first: string; last: string 
   { word: 'van', emoji: '🚐', first: 'V', last: 'N' },
   { word: 'rain', emoji: '🌧️', first: 'R', last: 'N' },
   { word: 'wagon', emoji: '🛒', first: 'W', last: 'N' },
+  { word: 'octopus', emoji: '🐙', first: 'O', last: 'S' },
+  { word: 'ice', emoji: '🧊', first: 'I', last: 'E' },
+  { word: 'umbrella', emoji: '☂️', first: 'U', last: 'A' },
+  { word: 'yo-yo', emoji: '🪀', first: 'Y', last: 'O' },
+  { word: 'queen', emoji: '👑', first: 'Q', last: 'N' },
+  { word: 'nest', emoji: '🪺', first: 'N', last: 'T' },
+  { word: 'jam', emoji: '🍓', first: 'J', last: 'M' },
+  { word: 'xylophone', emoji: '🎵', first: 'X', last: 'E' },
 ]
 const RHYMES: Array<{ target: string; match: string; misses: string[] }> = [
   { target: 'cat', match: 'hat', misses: ['dog', 'sun'] },
@@ -374,6 +434,11 @@ const RHYMES: Array<{ target: string; match: string; misses: string[] }> = [
   { target: 'goat', match: 'boat', misses: ['duck', 'ring'] },
   { target: 'moon', match: 'spoon', misses: ['star', 'frog'] },
   { target: 'bug', match: 'rug', misses: ['ant', 'bee'] },
+  { target: 'star', match: 'car', misses: ['moon', 'sky'] },
+  { target: 'bed', match: 'red', misses: ['blue', 'nap'] },
+  { target: 'tree', match: 'bee', misses: ['leaf', 'nut'] },
+  { target: 'king', match: 'ring', misses: ['crown', 'hat'] },
+  { target: 'mouse', match: 'house', misses: ['cheese', 'trap'] },
 ]
 
 function genSounds(d: number): Question {
@@ -451,6 +516,28 @@ const COLOR_SHAPES = [
 ] as const
 
 function genShapes(d: number): Question {
+  // variation: odd one out (same shape in two colors + one different shape)
+  if (d < 55 && Math.random() < 0.3) {
+    const families = [
+      { name: 'circle', members: ['🟢', '🔵', '🟠', '🟣'] },
+      { name: 'square', members: ['🟦', '🟥', '🟨'] },
+      { name: 'heart', members: ['❤️', '💜', '💙'] },
+    ]
+    const fam = pick(families)
+    const other = pick(families.filter((f) => f.name !== fam.name))
+    const pair = shuffle([...fam.members]).slice(0, 2)
+    const odd = pick(other.members)
+    const opts = shuffle([...pair, odd])
+    return {
+      skill: 'shapes',
+      difficulty: d,
+      prompt: 'Which one is a DIFFERENT shape?',
+      speech: 'One of these is a different shape. Which one?',
+      choices: opts,
+      answer: opts.indexOf(odd),
+      explain: `Two are ${fam.name}s (colors don't matter) — the ${other.name} is the different shape!`,
+    }
+  }
   if (d < 30) {
     const s = pick(SHAPES)
     const others = shuffle(SHAPES.filter((x) => x.name !== s.name)).slice(0, 2)
@@ -527,9 +614,9 @@ function genShapes(d: number): Question {
 }
 
 // ---------------------------------------------------------------- sight words / first reading
-const SIGHT_1 = ['a', 'I', 'the', 'to', 'and', 'go', 'we', 'my', 'see', 'in', 'it', 'up']
-const SIGHT_2 = ['he', 'she', 'was', 'are', 'you', 'they', 'said', 'have', 'like', 'this', 'for', 'play']
-const SIGHT_3 = ['what', 'when', 'out', 'some', 'come', 'here', 'want', 'good', 'little', 'down', 'look', 'jump']
+const SIGHT_1 = ['a', 'I', 'the', 'to', 'and', 'go', 'we', 'my', 'see', 'in', 'it', 'up', 'me', 'at', 'am', 'is', 'can', 'you']
+const SIGHT_2 = ['he', 'she', 'was', 'are', 'they', 'said', 'have', 'like', 'this', 'for', 'play', 'with', 'went', 'her', 'him', 'get', 'not', 'all']
+const SIGHT_3 = ['what', 'when', 'out', 'some', 'come', 'here', 'want', 'good', 'little', 'down', 'look', 'jump', 'where', 'there', 'because', 'again', 'every', 'about']
 const CVC: Array<{ word: string; emoji: string; misses: string[] }> = [
   { word: 'cat', emoji: '🐱', misses: ['cot', 'cut'] },
   { word: 'dog', emoji: '🐶', misses: ['dig', 'dug'] },
@@ -539,6 +626,13 @@ const CVC: Array<{ word: string; emoji: string; misses: string[] }> = [
   { word: 'pig', emoji: '🐷', misses: ['peg', 'pug'] },
   { word: 'bus', emoji: '🚌', misses: ['bas', 'bos'] },
   { word: 'map', emoji: '🗺️', misses: ['mop', 'mup'] },
+  { word: 'bed', emoji: '🛏️', misses: ['bad', 'bud'] },
+  { word: 'fox', emoji: '🦊', misses: ['fix', 'fax'] },
+  { word: 'web', emoji: '🕸️', misses: ['wab', 'wib'] },
+  { word: 'cup', emoji: '☕', misses: ['cap', 'cop'] },
+  { word: 'frog', emoji: '🐸', misses: ['flog', 'frag'] },
+  { word: 'crab', emoji: '🦀', misses: ['crib', 'crob'] },
+  { word: 'star', emoji: '⭐', misses: ['stir', 'stor'] },
 ]
 
 const spellOut = (w: string) => w.toUpperCase().split('').join('-')
@@ -745,15 +839,21 @@ function genAdultMath(d: number): Question {
 const SYN_T1: Array<[string, string, string[]]> = [
   ['happy', 'glad', ['angry', 'tired']], ['big', 'large', ['thin', 'loud']], ['fast', 'quick', ['slow', 'heavy']],
   ['begin', 'start', ['finish', 'wait']], ['loud', 'noisy', ['quiet', 'bright']], ['easy', 'simple', ['hard', 'messy']],
+  ['smart', 'clever', ['dull', 'lazy']], ['cold', 'chilly', ['warm', 'dry']], ['scared', 'afraid', ['brave', 'sleepy']],
 ]
 const SYN_T2: Array<[string, string, string[]]> = [
   ['rapid', 'swift', ['sluggish', 'sturdy']], ['ancient', 'old', ['modern', 'fragile']], ['brave', 'courageous', ['timid', 'careless']],
   ['exhausted', 'tired', ['alert', 'furious']], ['enormous', 'huge', ['tiny', 'average']], ['furious', 'enraged', ['calm', 'joyful']],
+  ['fragile', 'delicate', ['sturdy', 'flexible']], ['abundant', 'plentiful', ['scarce', 'ordinary']], ['reluctant', 'unwilling', ['eager', 'careless']],
+  ['vivid', 'bright', ['dull', 'distant']], ['peculiar', 'strange', ['normal', 'pleasant']], ['diligent', 'hardworking', ['idle', 'clumsy']],
 ]
 const SYN_T3: Array<[string, string, string[]]> = [
   ['candid', 'honest', ['deceitful', 'reserved']], ['prudent', 'cautious', ['reckless', 'generous']], ['obstinate', 'stubborn', ['flexible', 'gloomy']],
   ['lucid', 'clear', ['confusing', 'ornate']], ['frugal', 'thrifty', ['wasteful', 'wealthy']], ['gregarious', 'sociable', ['solitary', 'hostile']],
   ['ephemeral', 'fleeting', ['permanent', 'essential']], ['ubiquitous', 'everywhere', ['rare', 'hidden']],
+  ['magnanimous', 'generous', ['petty', 'cautious']], ['taciturn', 'quiet', ['talkative', 'angry']], ['pragmatic', 'practical', ['idealistic', 'hostile']],
+  ['ambivalent', 'torn', ['certain', 'hopeful']], ['tenacious', 'persistent', ['yielding', 'timid']], ['aloof', 'distant', ['friendly', 'nervous']],
+  ['astute', 'shrewd', ['naive', 'generous']], ['verbose', 'wordy', ['concise', 'quiet']],
 ]
 function genAdultVocab(d: number): Question {
   const bank = d < 35 ? SYN_T1 : d < 70 ? SYN_T2 : SYN_T3
@@ -780,6 +880,12 @@ const ANALOGIES: Array<{ tier: 1 | 2 | 3; a: string; b: string; c: string; d: st
   { tier: 3, a: 'drought', b: 'rain', c: 'famine', d: 'food', misses: ['hunger', 'harvest'] },
   { tier: 3, a: 'novice', b: 'experience', c: 'pauper', d: 'money', misses: ['work', 'poverty'] },
   { tier: 3, a: 'archipelago', b: 'islands', c: 'constellation', d: 'stars', misses: ['planets', 'sky'] },
+  { tier: 1, a: 'bird', b: 'nest', c: 'bee', d: 'hive', misses: ['flower', 'honey'] },
+  { tier: 1, a: 'hot', b: 'cold', c: 'up', d: 'down', misses: ['high', 'over'] },
+  { tier: 2, a: 'sculptor', b: 'statue', c: 'baker', d: 'bread', misses: ['oven', 'flour'] },
+  { tier: 2, a: 'library', b: 'books', c: 'orchard', d: 'trees', misses: ['fruit', 'farm'] },
+  { tier: 3, a: 'ephemeral', b: 'permanent', c: 'ravenous', d: 'satiated', misses: ['hungry', 'eager'] },
+  { tier: 3, a: 'oasis', b: 'desert', c: 'harbor', d: 'sea', misses: ['ship', 'storm'] },
 ]
 function genAdultAnalogy(d: number): Question {
   const tier = d < 35 ? 1 : d < 70 ? 2 : 3
@@ -860,6 +966,14 @@ const SPELL: Array<{ tier: 1 | 2 | 3; right: string; wrong: [string, string] }> 
   { tier: 3, right: 'embarrass', wrong: ['embarass', 'embarras'] },
   { tier: 3, right: 'conscience', wrong: ['concience', 'consciense'] },
   { tier: 3, right: 'rhythm', wrong: ['rythm', 'rythym'] },
+  { tier: 1, right: 'beautiful', wrong: ['beutiful', 'beautifull'] },
+  { tier: 1, right: 'tomorrow', wrong: ['tommorow', 'tomorow'] },
+  { tier: 2, right: 'privilege', wrong: ['priviledge', 'privelege'] },
+  { tier: 2, right: 'calendar', wrong: ['calender', 'calandar'] },
+  { tier: 2, right: 'restaurant', wrong: ['restaraunt', 'restuarant'] },
+  { tier: 3, right: 'liaison', wrong: ['liason', 'liasion'] },
+  { tier: 3, right: 'questionnaire', wrong: ['questionaire', 'questionnair'] },
+  { tier: 3, right: 'maintenance', wrong: ['maintainance', 'maintenence'] },
 ]
 function genAdultSpelling(d: number): Question {
   const tier = d < 35 ? 1 : d < 70 ? 2 : 3

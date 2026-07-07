@@ -60,6 +60,16 @@ interface Ring {
   color: string
 }
 
+/** bubble debris that gets sucked into the ball (hole.io gulp) */
+interface Crumb {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  size: number
+  color: string
+}
+
 interface Particle {
   x: number
   y: number
@@ -104,11 +114,13 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   const world = useRef({
     w: 360,
     h: 480,
-    ball: { x: 180, y: 380, r: 30, rot: 0, target: null as { x: number; y: number } | null },
+    ball: { x: 180, y: 380, r: 30, rot: 0, sx: 1, sy: 1, target: null as { x: number; y: number } | null },
     bubbles: [] as Bubble[],
     particles: [] as Particle[],
     floaters: [] as Floater[],
     rings: [] as Ring[],
+    crumbs: [] as Crumb[],
+    eating: 0,
     phase: 'idle' as Phase,
     grow: 0,
     streak: 0,
@@ -179,18 +191,44 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     tone(220, 0, 0.25, 'sine', 0.08)
     tone(185, 0.12, 0.3, 'sine', 0.08)
   }, [tone])
+  const playGulp = useCallback(() => {
+    tone(392, 0.15, 0.1, 'sine', 0.1)
+    tone(294, 0.24, 0.1, 'sine', 0.12)
+    tone(196, 0.33, 0.18, 'sine', 0.12)
+  }, [tone])
+
+  /** bubble → crumbs that spiral into the ball's mouth */
+  const spawnEat = useCallback((b: Bubble) => {
+    const w = world.current
+    b.eaten = true
+    b.pop = 1
+    w.eating = 1
+    const colors = ['#ffffff', '#dbeafe', '#bfdbfe', '#93c5fd']
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2
+      w.crumbs.push({
+        x: b.x + Math.cos(ang) * b.r * 0.6,
+        y: b.y + Math.sin(ang) * b.r * 0.6,
+        vx: Math.cos(ang) * 2.5,
+        vy: Math.sin(ang) * 2.5,
+        size: 4 + Math.random() * 7,
+        color: colors[i % colors.length],
+      })
+    }
+  }, [])
 
   const speak = useCallback((text: string) => {
     if (mutedRef.current) return
-    speakText(text, { rate: 0.92, pitch: 1.1 })
+    speakText(text, { rate: 0.97 })
   }, [])
 
   // ------------------------------------------------------------- questions
   const layoutBubbles = useCallback((q: Question) => {
     const w = world.current
     const r = Math.min(w.w, w.h) * 0.135
-    const xs = [0.2, 0.5, 0.8]
-    const ys = [0.3, 0.24, 0.3]
+    const two = q.choices.length === 2
+    const xs = two ? [0.3, 0.7] : [0.2, 0.5, 0.8]
+    const ys = two ? [0.27, 0.27] : [0.3, 0.24, 0.3]
     w.bubbles = q.choices.map((text, i) => ({
       x: w.w * xs[i % 3],
       y: w.h * ys[i % 3],
@@ -297,8 +335,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         w.phase = 'celebrate'
         w.shake = bonusRef.current ? 14 : 8 + Math.min(w.streak, 6)
         const b = w.bubbles[bubbleIndex]
-        b.eaten = true
-        b.pop = 1
+        spawnEat(b)
+        playGulp()
         const burst = 34 + Math.min(w.streak, 6) * 6 + (bonusRef.current ? 20 : 0)
         for (let i = 0; i < burst; i++) {
           w.particles.push({
@@ -459,9 +497,12 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         w.ball.x *= sx
         w.ball.y *= sy
         const r = Math.min(w.w, w.h) * 0.135
+        const two = w.bubbles.length === 2
+        const xs = two ? [0.3, 0.7] : [0.2, 0.5, 0.8]
+        const ys = two ? [0.27, 0.27] : [0.3, 0.24, 0.3]
         w.bubbles.forEach((b, i) => {
-          b.x = w.w * [0.2, 0.5, 0.8][i % 3]
-          b.y = w.h * [0.3, 0.24, 0.3][i % 3]
+          b.x = w.w * xs[i % xs.length]
+          b.y = w.h * ys[i % ys.length]
           b.r = r
         })
       }
@@ -501,8 +542,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
           } else if (w.phase === 'redeem') {
             const b = w.bubbles[w.tappedIndex]
             ball.target = null
-            b.eaten = true
-            b.pop = 1
+            spawnEat(b)
+            playGulp()
             w.shake = 6
             for (let i = 0; i < 20; i++) {
               w.particles.push({
@@ -650,6 +691,35 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         ctx.restore()
       })
 
+      // ---------- crumbs spiral into the ball (the "eat")
+      w.crumbs = w.crumbs.filter((c) => {
+        const dx = ball.x - c.x
+        const dy = ball.y - ball.r * 0.2 - c.y
+        const dist = Math.hypot(dx, dy)
+        if (dist < ball.r * 0.5) {
+          // gulp! squash the ball as each crumb lands
+          ball.sy = 0.78
+          ball.sx = 1.2
+          return false
+        }
+        // accelerate toward the mouth with a little spiral
+        c.vx += (dx / dist) * 1.6 - dy * 0.004
+        c.vy += (dy / dist) * 1.6 + dx * 0.004
+        c.vx *= 0.88
+        c.vy *= 0.88
+        c.x += c.vx
+        c.y += c.vy
+        ctx.fillStyle = c.color
+        ctx.beginPath()
+        ctx.arc(c.x, c.y, c.size, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#93c5fd'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        return true
+      })
+      w.eating = w.crumbs.length > 0 ? 1 : Math.max(0, w.eating - 0.06)
+
       // ---------- ball
       ctx.save()
       ctx.translate(ball.x, ball.y)
@@ -658,6 +728,10 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       ctx.beginPath()
       ctx.ellipse(0, ball.r * 0.95, ball.r * 0.8, ball.r * 0.22, 0, 0, Math.PI * 2)
       ctx.fill()
+      // squash & stretch eases back after each gulp
+      ball.sx += (1 - ball.sx) * 0.18
+      ball.sy += (1 - ball.sy) * 0.18
+      ctx.scale(ball.sx, ball.sy)
       // body
       const bodyGrad = ctx.createRadialGradient(-ball.r * 0.3, -ball.r * 0.3, ball.r * 0.15, 0, 0, ball.r)
       bodyGrad.addColorStop(0, activeSkin.colors[0])
@@ -697,13 +771,25 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       ctx.arc(-ball.r * 0.3, eyeY, ball.r * 0.07, 0, Math.PI * 2)
       ctx.arc(ball.r * 0.3, eyeY, ball.r * 0.07, 0, Math.PI * 2)
       ctx.fill()
-      ctx.strokeStyle = '#1e293b'
-      ctx.lineWidth = Math.max(2, ball.r * 0.07)
-      ctx.lineCap = 'round'
-      ctx.beginPath()
-      if (happy) ctx.arc(0, ball.r * 0.15, ball.r * 0.32, 0.15, Math.PI - 0.15)
-      else ctx.arc(0, ball.r * 0.22, ball.r * 0.24, 0.3, Math.PI - 0.3)
-      ctx.stroke()
+      if (w.eating > 0.25) {
+        // wide-open chomping mouth while crumbs fly in
+        ctx.fillStyle = '#7f1d1d'
+        ctx.beginPath()
+        ctx.ellipse(0, ball.r * 0.32, ball.r * 0.34, ball.r * 0.4 * w.eating, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#fca5a5'
+        ctx.beginPath()
+        ctx.ellipse(0, ball.r * 0.45, ball.r * 0.18, ball.r * 0.14 * w.eating, 0, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        ctx.strokeStyle = '#1e293b'
+        ctx.lineWidth = Math.max(2, ball.r * 0.07)
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        if (happy) ctx.arc(0, ball.r * 0.15, ball.r * 0.32, 0.15, Math.PI - 0.15)
+        else ctx.arc(0, ball.r * 0.22, ball.r * 0.24, 0.3, Math.PI - 0.3)
+        ctx.stroke()
+      }
       // streak status gear: shades at 4+, crown at 7+
       if (w.streak >= 4) {
         ctx.fillStyle = '#1e293b'

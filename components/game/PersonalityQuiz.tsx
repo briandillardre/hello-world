@@ -22,7 +22,7 @@ export function PersonalityQuiz({ kid, onResult, onExit }: PersonalityQuizProps)
 
   const startQuiz = () => {
     setStep(0)
-    speak(QUIZ[0].speech, { rate: 0.95, pitch: 1.1 })
+    speak(QUIZ[0].speech, { rate: 0.97 })
   }
 
   const choose = (type: TemperamentId) => {
@@ -33,12 +33,12 @@ export function PersonalityQuiz({ kid, onResult, onExit }: PersonalityQuizProps)
       setStep(QUIZ.length)
       onResult(r)
       const t = TEMPERAMENTS[r.primary]
-      speak(`Wow! ${kid.name}, you are a ${t.title}!`, { rate: 0.95, pitch: 1.2 })
+      speak(`Wow! ${kid.name}, you are a ${t.title}!`, { rate: 0.97, pitch: 1.1 })
       return
     }
     setPicks(next)
     setStep(next.length)
-    speak(QUIZ[next.length].speech, { rate: 0.95, pitch: 1.1 })
+    speak(QUIZ[next.length].speech, { rate: 0.97 })
   }
 
   // ---------------------------------------------------------------- intro
@@ -121,7 +121,7 @@ export function PersonalityQuiz({ kid, onResult, onExit }: PersonalityQuizProps)
         <div className="flex items-center justify-center gap-2">
           <p className="text-lg font-extrabold text-slate-800">{q.prompt}</p>
           <button
-            onClick={() => speak(q.speech, { rate: 0.95, pitch: 1.1 })}
+            onClick={() => speak(q.speech, { rate: 0.97 })}
             aria-label="Hear the question again"
             className="shrink-0 w-9 h-9 rounded-full bg-purple-500 text-white flex items-center justify-center shadow active:scale-95"
           >

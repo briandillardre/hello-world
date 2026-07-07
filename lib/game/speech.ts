@@ -4,15 +4,20 @@
 let cachedVoice: SpeechSynthesisVoice | null = null
 let listening = false
 
+// macOS/iOS novelty voices that sound like a haunted robot — never pick these
+const NOVELTY =
+  /albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|fred|junior|kathy|ralph|grandma|grandpa|rocko|shelley|sandy|eddy|flo|reed/
+
 function rankVoice(v: SpeechSynthesisVoice): number {
   if (!v.lang.toLowerCase().startsWith('en')) return -1
   const name = v.name.toLowerCase()
+  if (NOVELTY.test(name)) return -0.5 // better than nothing, worse than anything
   let score = v.lang.toLowerCase().startsWith('en-us') ? 1 : 0.5
   if (/neural|natural|premium|enhanced/.test(name)) score += 8
-  if (/google us english/.test(name)) score += 6
-  if (/samantha|karen|daniel|ava|allison|nicky/.test(name)) score += 4
+  if (/google us english/.test(name)) score += 7 // Chrome's network voice — far better than local defaults
+  if (/samantha|ava|allison|nicky|joanna|aria|jenny/.test(name)) score += 4
+  if (/karen|daniel|moira|tessa/.test(name)) score += 2
   if (/siri/.test(name)) score += 3
-  if (v.localService) score += 0.25 // no network stall mid-question
   return score
 }
 
@@ -44,8 +49,9 @@ export function speak(text: string, opts: { rate?: number; pitch?: number } = {}
     if (!cachedVoice) cachedVoice = pickVoice()
     window.speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text)
-    u.rate = opts.rate ?? 0.95
-    u.pitch = opts.pitch ?? 1.05
+    // natural defaults — pitched-up speech is what makes TTS sound robotic
+    u.rate = opts.rate ?? 1.0
+    u.pitch = opts.pitch ?? 1.0
     if (cachedVoice) u.voice = cachedVoice
     window.speechSynthesis.speak(u)
   } catch {

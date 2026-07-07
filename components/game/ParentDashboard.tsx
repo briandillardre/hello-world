@@ -151,24 +151,47 @@ export function ParentDashboard({
       {/* parent account & sync */}
       <AccountSync profiles={profiles} onRestore={(p) => onRestore?.(p)} />
 
-      {/* summary stats */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <Stat label="Age" value={kid.isTester ? 'Adult' : ageLabel(kid.birthdate)} />
-        <Stat label="Questions" value={String(totalAnswered)} />
-        <Stat label="Recent accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
-      </div>
+      {/* summary stats — adults get a cognitive-style panel, kids an age panel */}
+      {kid.isTester ? (
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <Stat
+            label="Composite (IQ-style)"
+            value={(() => {
+              const scored = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3).map((s) => iqStyleScore(kid.skills[s.id].theta))
+              return scored.length ? `~${Math.round(scored.reduce((a, b) => a + b, 0) / scored.length)}` : '—'
+            })()}
+          />
+          <Stat label="Accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
+          <Stat
+            label="Med. speed"
+            value={(() => {
+              const times = kid.history.filter((h) => typeof h.ms === 'number').slice(-40).map((h) => h.ms as number).sort((a, b) => a - b)
+              return times.length ? `${(times[Math.floor(times.length / 2)] / 1000).toFixed(1)}s` : '—'
+            })()}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <Stat label="Age" value={ageLabel(kid.birthdate)} />
+          <Stat label="Questions" value={String(totalAnswered)} />
+          <Stat label="Recent accuracy" value={overallAcc === null ? '—' : `${Math.round(overallAcc * 100)}%`} />
+        </div>
+      )}
 
       {/* strengths & focus */}
       {strongest && (
         <div className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4 mb-4">
           <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2">At a glance</p>
           <p className="text-sm font-bold text-green-700">
-            💪 Excelling: {strongest.meta.emoji} {strongest.meta.name} — ~{ord(strongest.pct)} percentile {kid.isTester ? 'of adults' : 'for age'}
+            💪 {kid.isTester ? 'Sharpest' : 'Excelling'}: {strongest.meta.emoji}{' '}
+            {kid.isTester ? ADULT_SKILL_NAMES[strongest.meta.id] : strongest.meta.name} —{' '}
+            {kid.isTester ? `IQ-style ~${iqStyleScore(kid.skills[strongest.meta.id].theta)}` : `~${ord(strongest.pct)} percentile for age`}
           </p>
           {focus && (
             <p className="text-sm font-bold text-orange-600 mt-1">
-              🌱 Focus next: {focus.meta.emoji} {focus.meta.name} — ~{ord(focus.pct)} percentile. Try a {focus.meta.name} round today; Mix
-              rounds are already steering extra questions there automatically.
+              🌱 Focus next: {focus.meta.emoji} {kid.isTester ? ADULT_SKILL_NAMES[focus.meta.id] : focus.meta.name} —{' '}
+              {kid.isTester ? `IQ-style ~${iqStyleScore(kid.skills[focus.meta.id].theta)}` : `~${ord(focus.pct)} percentile`}.{' '}
+              {kid.isTester ? '' : `Try a ${focus.meta.name} round today; Mix rounds are already steering extra questions there automatically.`}
             </p>
           )}
         </div>

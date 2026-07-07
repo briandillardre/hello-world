@@ -11,11 +11,12 @@ import { speak } from '@/lib/game/speech'
 import { BALL_SKINS, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
+import { MissReview } from './MissReview'
 import { ParentDashboard } from './ParentDashboard'
 import { PersonalityQuiz } from './PersonalityQuiz'
 import { retakeDue, TEMPERAMENTS, type PersonalityResult } from '@/lib/game/personality'
 
-type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents' | 'whoami'
+type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents' | 'whoami' | 'review'
 
 /** local calendar day as YYYY-MM-DD */
 const localDay = (d = new Date()) => d.toLocaleDateString('en-CA')
@@ -178,7 +179,7 @@ export function PlayApp() {
                   setActiveId(p.id)
                   setScreen('greatday')
                   // speak inside the tap gesture so mobile browsers allow it
-                  speak("Dada says: Today's going to be a…", { rate: 0.95, pitch: 1.1 })
+                  speak("Dada says: Today's going to be a…", { rate: 0.97 })
                 }}
                 className="rounded-3xl bg-white border-2 border-blue-200 shadow-lg p-5 flex flex-col items-center gap-1 active:scale-95 transition-transform"
               >
@@ -220,6 +221,21 @@ export function PlayApp() {
           onAnswer={handleAnswer}
           onComplete={handleComplete}
           onQuit={() => setScreen('home')}
+        />
+      </Shell>
+    )
+  }
+
+  if (screen === 'review' && lastResult?.misses?.length) {
+    return (
+      <Shell>
+        <MissReview
+          misses={lastResult.misses}
+          kidName={kid.name}
+          onDone={(fixedCount) => {
+            if (fixedCount > 0) updateKid(kid.id, (k) => ({ ...k, coins: k.coins + fixedCount }))
+            setScreen('summary')
+          }}
         />
       </Shell>
     )
@@ -271,7 +287,7 @@ export function PlayApp() {
                         {m.visual ? <span className="block text-xl leading-snug whitespace-pre-wrap">{m.visual}</span> : null}
                       </p>
                       <button
-                        onClick={() => speak(line, { rate: 0.92, pitch: 1.1 })}
+                        onClick={() => speak(line, { rate: 0.95 })}
                         aria-label="Read this explanation aloud"
                         className="shrink-0 w-8 h-8 rounded-full bg-blue-500 text-white text-sm flex items-center justify-center active:scale-90"
                       >
@@ -316,6 +332,11 @@ export function PlayApp() {
               : "We don't say can't — every roll makes a Whalehog smarter!"}
           </p>
           <div className="grid gap-3">
+            {r.misses && r.misses.length > 0 && (
+              <BigButton color="orange" onClick={() => setScreen('review')}>
+                🔁 Fix the tricky ones <span className="block text-xs font-semibold opacity-80">Hear each one & try again (+1 🪙 each)</span>
+              </BigButton>
+            )}
             <BigButton color="green" onClick={() => startGame(gameSkill)}>
               ▶️ Play again
             </BigButton>
@@ -404,8 +425,10 @@ export function PlayApp() {
         <div className="flex items-center justify-between pt-4 pb-2">
           <button
             onClick={() => setScreen('pick')}
-            className="flex items-center gap-2 rounded-full bg-white border-2 border-blue-200 pl-2 pr-4 py-1.5 shadow active:scale-95"
+            aria-label="Back to player picker"
+            className="flex items-center gap-1.5 rounded-full bg-white border-2 border-blue-200 pl-2.5 pr-4 py-1.5 shadow active:scale-95"
           >
+            <ArrowLeft className="w-5 h-5 text-blue-500" strokeWidth={3} />
             <span className="text-2xl">{kid.avatar}</span>
             <span className="font-extrabold text-slate-700">{kid.name}</span>
           </button>
@@ -529,7 +552,7 @@ function GreatDay({ onDone }: { onDone: () => void }) {
   const yell = () => {
     if (yelled) return
     setYelled(true)
-    speak('A GREAT DAY!!', { rate: 1, pitch: 1.35 })
+    speak('A GREAT DAY!!', { rate: 1, pitch: 1.2 })
     window.setTimeout(onDone, 1800)
   }
 
@@ -551,7 +574,7 @@ function GreatDay({ onDone }: { onDone: () => void }) {
         &ldquo;Today&apos;s going to be a…&rdquo;
       </h2>
       <button
-        onClick={() => speak("Dada says: Today's going to be a…", { rate: 0.95, pitch: 1.1 })}
+        onClick={() => speak("Dada says: Today's going to be a…", { rate: 0.97 })}
         aria-label="Hear it again"
         className="mb-8 text-2xl active:scale-90 transition-transform"
       >
@@ -616,11 +639,12 @@ function Header({ title, coins, onBack }: { title: string; coins?: number; onBac
   )
 }
 
-function BigButton({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color: 'green' | 'blue' | 'slate' }) {
+function BigButton({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color: 'green' | 'blue' | 'slate' | 'orange' }) {
   const styles = {
     green: 'bg-gradient-to-b from-green-400 to-green-600 text-white border-green-700',
     blue: 'bg-gradient-to-b from-blue-400 to-blue-600 text-white border-blue-700',
     slate: 'bg-white text-slate-600 border-slate-200',
+    orange: 'bg-gradient-to-b from-orange-400 to-orange-600 text-white border-orange-700',
   }[color]
   return (
     <button onClick={onClick} className={`w-full rounded-2xl border-b-4 shadow-lg px-4 py-3.5 text-lg font-extrabold active:scale-95 active:border-b-2 transition-all ${styles}`}>
