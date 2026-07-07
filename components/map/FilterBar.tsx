@@ -17,7 +17,8 @@ interface FilterBarProps {
   showZones: boolean
   onToggleZones: () => void
   showDevices: boolean
-  onToggleDevices: () => void
+  /** Omit to hide the Site IoT chip entirely (real accounts have no IoT yet). */
+  onToggleDevices?: () => void
 }
 
 export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevices, onToggleDevices }: FilterBarProps) {
@@ -54,17 +55,19 @@ export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevi
           <Hexagon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Zones</span>
         </button>
-        <button
-          onClick={onToggleDevices}
-          title={showDevices ? 'Hide site IoT (cameras, fuel, generators, weather station)' : 'Show site IoT'}
-          className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
-            showDevices ? 'bg-teal/20 border-teal text-teal' : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
-          )}
-        >
-          <Cctv className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Site IoT</span>
-        </button>
+        {onToggleDevices && (
+          <button
+            onClick={onToggleDevices}
+            title={showDevices ? 'Hide site IoT (cameras, fuel, generators, weather station)' : 'Show site IoT'}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border backdrop-blur transition-all active:scale-95',
+              showDevices ? 'bg-teal/20 border-teal text-teal' : 'bg-navy-950/70 border-navy-700 text-faint opacity-75'
+            )}
+          >
+            <Cctv className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Site IoT</span>
+          </button>
+        )}
       </div>
     </div>
   )

@@ -109,3 +109,65 @@ export function buildCostCurve(
   }
   return { curve, hasRates }
 }
+
+
+// ── Per-zone job cost from history ──────────────────────────────────────────
+
+export interface ZoneCost {
+  total: number
+  /** Hours of observed ACTIVE (moving) time inside the zone. */
+  activeHours: number
+}
+
+import { pointInPolygon } from './alerts-engine'
+
+/**
+ * Real cost accrued INSIDE each geofence over the window: walks consecutive
+ * point pairs per asset and only bills pairs whose current fix is inside the
+ * zone — so the meter stops the moment an asset leaves. Same rate rules as
+ * buildCostCurve (hourly while moving, $/mile driven); ownership daily_cost is
+ * deliberately excluded (it isn't attributable to a site).
+ */
+export function zoneCostsFromHistory(
+  geofences: { id: string; geometry: { coordinates: unknown[] } }[],
+  assets: (Asset | CostInput)[],
+  rows: HistoryPoint[]
+): Record<string, ZoneCost> {
+  const out: Record<string, ZoneCost> = {}
+  const rings = geofences.map((g) => ({
+    id: g.id,
+    ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][],
+  })).filter((g) => g.ring.length >= 3)
+  for (const g of rings) out[g.id] = { total: 0, activeHours: 0 }
+  if (!rings.length) return out
+
+  const rates = new Map(assets.map((a) => [a.id, a]))
+  const last = new Map<string, HistoryPoint & { ms: number }>()
+  for (const r of rows) {
+    const ms = new Date(r.timestamp).getTime()
+    if (!Number.isFinite(ms)) continue
+    const prev = last.get(r.asset_id)
+    last.set(r.asset_id, { ...r, ms })
+    if (!prev) continue
+    const a = rates.get(r.asset_id)
+    if (!a) continue
+    const dt = ms - prev.ms
+    if (dt <= 0 || dt > MAX_ACTIVE_GAP_MS) continue
+
+    const dist = haversineMeters(prev.lat, prev.lng, r.lat, r.lng)
+    const moving = (r.speed ?? 0) > MIN_ACTIVE_SPEED || dist > MIN_MOVE_METERS
+    if (!moving) continue
+
+    let cost = 0
+    if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
+    if ((a.mileage_rate ?? 0) > 0) cost += a.mileage_rate! * (dist / 1609.34)
+
+    for (const g of rings) {
+      if (!pointInPolygon([r.lng, r.lat], g.ring)) continue
+      out[g.id].total += cost
+      out[g.id].activeHours += dt / 3_600_000
+      break // zones rarely overlap; attribute to the first hit
+    }
+  }
+  return out
+}

@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack, TrackWindow } from '@/lib/trails'
-import type { CostCurve } from '@/lib/costs'
+import type { CostCurve, ZoneCost } from '@/lib/costs'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction } from '@/lib/actions/geofences'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
@@ -33,12 +33,13 @@ interface MapPageClientProps {
   tracks: AssetTrack[]
   realWindow?: TrackWindow | null
   realCost?: CostCurve | null
+  realZoneCosts?: Record<string, ZoneCost> | null
   toolGateways: Record<string, { name: string; lastSeen: string }>
   defaultWeatherPlace?: string | null
   canSetWeatherDefault?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, realZoneCosts = null, toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
@@ -75,6 +76,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, rea
         tracks={tracks}
         realWindow={realWindow}
         realCost={realCost}
+        realZoneCosts={realZoneCosts}
         toolGateways={toolGateways}
         onGeofenceSave={handleGeofenceSave}
         defaultWeatherPlace={defaultWeatherPlace}

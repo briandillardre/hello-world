@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/lib/flespi'
-import { evaluateAlerts } from '@/lib/alerts-engine'
+import { evaluateAlerts, pointInPolygon } from '@/lib/alerts-engine'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
@@ -62,6 +62,10 @@ export async function POST(request: NextRequest) {
   let persisted = 0
   // company_id -> latest reading per updated asset, for alert evaluation below
   const updated = new Map<string, Map<string, NormalizedReading>>()
+  // asset_id -> the fix on record BEFORE this batch, for edge-triggered zone
+  // alerts (left/entered = a transition, not a state — otherwise a truck
+  // driving around town re-fires "left site" every dedupe window all day).
+  const prevFix = new Map<string, { lat: number; lng: number }>()
   for (const r of normalized) {
     const { data: asset } = await supabase
       .from('assets')
@@ -69,6 +73,17 @@ export async function POST(request: NextRequest) {
       .eq('tracker_id', r.tracker_id)
       .single()
     if (!asset) continue
+
+    if (!prevFix.has(asset.id)) {
+      const { data: prev } = await supabase
+        .from('asset_locations')
+        .select('lat, lng')
+        .eq('asset_id', asset.id)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (prev) prevFix.set(asset.id, prev)
+    }
 
     await supabase.from('asset_locations').insert({
       asset_id: asset.id,
@@ -149,6 +164,17 @@ export async function POST(request: NextRequest) {
       })
 
       for (const f of fired) {
+        // Zone-boundary triggers fire only on the TRANSITION across the edge.
+        if (f.trigger === 'enter' || f.trigger === 'exit' || f.trigger === 'left_site') {
+          const fence = (fences ?? []).find((g: { id: string }) => g.id === f.geofence_id) as Geofence | undefined
+          const prev = prevFix.get(f.asset_id)
+          const cur = byAsset.get(f.asset_id)
+          if (!fence || !prev || !cur) continue
+          const ring = fence.geometry.coordinates[0] as [number, number][]
+          const wasInside = pointInPolygon([prev.lng, prev.lat], ring)
+          const isInside = pointInPolygon([cur.lng, cur.lat], ring)
+          if (f.trigger === 'enter' ? !( !wasInside && isInside ) : !( wasInside && !isInside )) continue
+        }
         const sinceIso = new Date(Date.now() - 60 * 60_000).toISOString()
         const { data: recent } = await supabase
           .from('alert_events')

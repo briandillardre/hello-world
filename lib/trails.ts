@@ -14,6 +14,10 @@ export interface TrackPoint {
   lng: number
   lat: number
   t: number // normalized 0..1 across the playback window
+  /** True when there's a data gap before this point (device asleep / out of
+   *  coverage). Interpolation must SNAP across it, not glide, and trails
+   *  break the line here instead of drawing a chord across town. */
+  gap?: boolean
 }
 
 export interface AssetTrack {
@@ -132,8 +136,10 @@ export function tracksFromHistory(
   }
   const span = Math.max(1, maxTs - minTs) // avoid /0 when all points share one ts
 
+  const GAP_MS = 15 * 60_000
+
   return assets.map((a) => {
-    const raw = byAsset.get(a.id) ?? []
+    const raw = (byAsset.get(a.id) ?? []).sort((x, y) => x.ms - y.ms)
     // Thin dense pings (OBD units report every few seconds) to a drawable count.
     const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS_PER_ASSET))
     const thinned = raw.filter((_, i) => i % step === 0 || i === raw.length - 1)
@@ -143,7 +149,12 @@ export function tracksFromHistory(
             { lng: thinned[0].lng, lat: thinned[0].lat, t: 0 },
             { lng: thinned[0].lng, lat: thinned[0].lat, t: 1 },
           ]
-        : thinned.map((p) => ({ lng: p.lng, lat: p.lat, t: (p.ms - minTs) / span }))
+        : thinned.map((p, i) => ({
+            lng: p.lng,
+            lat: p.lat,
+            t: (p.ms - minTs) / span,
+            gap: i > 0 && p.ms - thinned[i - 1].ms > GAP_MS ? true : undefined,
+          }))
 
     return {
       assetId: a.id,
@@ -287,14 +298,46 @@ export function rangeLabel(range: TimeRange, t: number): string {
 export function positionAt(track: AssetTrack, t: number): [number, number] {
   const pts = track.points
   if (pts.length === 0) return DEMO_MAP_CENTER
-  if (t <= 0) return [pts[0].lng, pts[0].lat]
-  if (t >= 1) return [pts[pts.length - 1].lng, pts[pts.length - 1].lat]
-  const f = t * (pts.length - 1)
-  const i = Math.floor(f)
-  const frac = f - i
-  const a = pts[i]
-  const b = pts[Math.min(i + 1, pts.length - 1)]
+  if (t <= pts[0].t) return [pts[0].lng, pts[0].lat]
+  if (t >= pts[pts.length - 1].t) return [pts[pts.length - 1].lng, pts[pts.length - 1].lat]
+
+  // Interpolate by TIME, not array index. Real telemetry is wildly uneven
+  // (1/sec driving, 1/hour asleep) — index-based lerp made the playback head
+  // glide across town at 3 AM and pinned wrong clock times to positions.
+  let lo = 0
+  let hi = pts.length - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (pts[mid].t <= t) lo = mid
+    else hi = mid
+  }
+  const a = pts[lo]
+  const b = pts[hi]
+  // Across a data gap the asset's position is unknown — hold the last fix
+  // (park it) instead of inventing a slow drift along the chord.
+  if (b.gap) return [a.lng, a.lat]
+  const span = b.t - a.t
+  const frac = span > 0 ? (t - a.t) / span : 0
   return [a.lng + (b.lng - a.lng) * frac, a.lat + (b.lat - a.lat) * frac]
+}
+
+/** Trail split into segments at data gaps — no chords across sleep periods. */
+export function trailSegmentsUpTo(track: AssetTrack, t: number): [number, number][][] {
+  const segments: [number, number][][] = []
+  let current: [number, number][] = []
+  for (const p of track.points) {
+    if (p.t > t) break
+    if (p.gap && current.length) {
+      segments.push(current)
+      current = []
+    }
+    current.push([p.lng, p.lat])
+  }
+  // Head position (time-correct; snaps across gaps, so this never invents
+  // a mid-gap coordinate).
+  current.push(positionAt(track, t))
+  segments.push(current)
+  return segments.filter((seg) => seg.length >= 2)
 }
 
 /** Trail polyline coordinates from the start of the window up to time t. */

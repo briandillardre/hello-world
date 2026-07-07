@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
-  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailUpTo,
+  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
   rangeWindowSeconds, defaultSpeed,
 } from '@/lib/trails'
 import {
@@ -24,6 +24,13 @@ import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+
+// Demo mode renders the mock Site-IoT devices (cameras, fuel, generators…).
+// Real accounts must never see them: they're fake pins at the demo site, and
+// including them in fit-to-content dragged the camera toward Tennessee.
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+const SITE_DEVICES = isMock ? MOCK_SITE_DEVICES : []
 
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
@@ -58,8 +65,10 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number):
     features: tracks
       .filter((tr) => filter.has(tr.type))
       .map((tr) => ({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: trailUpTo(tr, t) },
+        type: 'Feature' as const,
+        // MultiLineString: segments break at data gaps (device asleep) so the
+        // trail never draws a straight chord across town.
+        geometry: { type: 'MultiLineString' as const, coordinates: trailSegmentsUpTo(tr, t) },
         properties: { id: tr.assetId, color: tr.color },
       })),
   }
@@ -119,6 +128,8 @@ interface MapViewProps {
   realWindow?: import('@/lib/trails').TrackWindow | null
   /** Real cost curve from asset rates x observed activity (null = demo PROJECTS). */
   realCost?: import('@/lib/costs').CostCurve | null
+  /** Real per-zone cost from history (null = demo estimates in zone popups). */
+  realZoneCosts?: Record<string, import('@/lib/costs').ZoneCost> | null
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
@@ -128,7 +139,7 @@ interface MapViewProps {
   onSaveWeatherDefault?: (place: string) => Promise<void>
 }
 
-export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, realZoneCosts = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -140,7 +151,9 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   const [showZones, setShowZones] = useState(true)
-  const [showDevices, setShowDevices] = useState(true)
+  const [showDevices, setShowDevices] = useState(isMock)
+  const realZoneCostsRef = useRef(realZoneCosts)
+  realZoneCostsRef.current = realZoneCosts
   const [isDrawing, setIsDrawing] = useState(false)
   const drawCoords = useRef<[number, number][]>([])
   const drawPreviewSource = useRef<string>('draw-preview')
@@ -194,7 +207,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     if (!m) return
     const pts: [number, number][] = []
     for (const a of assetsRef.current) if (a.location) pts.push([a.location.lng, a.location.lat])
-    for (const d of MOCK_SITE_DEVICES) pts.push([d.lng, d.lat])
+    for (const d of SITE_DEVICES) pts.push([d.lng, d.lat])
     for (const g of geofencesRef.current) {
       const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
       if (ring) for (const c of ring) pts.push([c[0], c[1]])
@@ -426,7 +439,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: MOCK_SITE_DEVICES.map((d) => ({
+          features: SITE_DEVICES.map((d) => ({
             type: 'Feature',
             geometry: { type: 'Point', coordinates: [d.lng, d.lat] },
             properties: { id: d.id, color: DEVICE_META[d.type].color, emoji: DEVICE_META[d.type].emoji },
@@ -500,7 +513,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
       // Device pin → themed popover
       m.on('click', 'device-bg', (e) => {
         const id = e.features?.[0]?.properties?.id
-        const device = MOCK_SITE_DEVICES.find((d) => d.id === id)
+        const device = SITE_DEVICES.find((d) => d.id === id)
         if (!device) return
         showPopup([device.lng, device.lat], devicePopupHTML(device))
       })
@@ -521,7 +534,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         if (!fence) return
         const r = rangeRef.current
         const t = r === 'live' ? 1 : tRef.current
-        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
+        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, realZoneCostsRef.current?.[fence.id] ?? (realZoneCostsRef.current ? { total: 0, activeHours: 0 } : undefined)))
         openFenceRef.current = fence
       })
 
@@ -533,7 +546,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
       // Always frame the jobsite — fit to asset + device bounds
       const pts: [number, number][] = [
         ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
-        ...MOCK_SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
+        ...SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
       ]
       if (pts.length > 0) {
         const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
@@ -735,7 +748,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     if (!mapReady || !fence || !popup) return
     const r = rangeRef.current
     const t = r === 'live' ? 1 : displayT
-    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t))
+    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, realZoneCostsRef.current?.[fence.id] ?? (realZoneCostsRef.current ? { total: 0, activeHours: 0 } : undefined)))
   }, [mapReady, displayT, range])
 
   // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
@@ -914,7 +927,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={() => setShowDevices((v) => !v)} />}
+      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined} />}
 
       <WeatherControl
         base={base}

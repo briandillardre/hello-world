@@ -5,11 +5,13 @@ import { Plus, Trash2, ShieldAlert, X } from 'lucide-react'
 import type { AlertRule, AlertTrigger, Geofence, AssetWithLocation } from '@/lib/types'
 import { createAlertRuleAction, toggleAlertRuleAction, deleteAlertRuleAction } from '@/lib/actions/alerts'
 
-const TRIGGERS: { key: AlertTrigger; label: string; hint: string }[] = [
+const TRIGGERS: { key: AlertTrigger; label: string; hint: string; retired?: boolean }[] = [
   { key: 'after_hours_movement', label: 'After-hours movement', hint: 'Theft alert — moves outside work hours' },
-  { key: 'left_site', label: 'Left site', hint: 'Asset leaves the zone' },
-  { key: 'exit', label: 'Exit zone', hint: 'Crosses out of the zone' },
-  { key: 'enter', label: 'Enter zone', hint: 'Crosses into the zone' },
+  { key: 'left_site', label: 'Left site', hint: 'Drives out of the zone — critical' },
+  // 'exit' read as a duplicate of left_site in the picker; kept only so
+  // existing rules still display a label.
+  { key: 'exit', label: 'Exit zone', hint: 'Is outside the zone', retired: true },
+  { key: 'enter', label: 'Arrived on site', hint: 'Shows up inside the zone' },
   { key: 'idle', label: 'Idle too long', hint: 'Sits idle past N minutes' },
 ]
 const TRIGGER_LABEL = Object.fromEntries(TRIGGERS.map((t) => [t.key, t.label])) as Record<AlertTrigger, string>
@@ -115,7 +117,7 @@ function NewRuleForm({ geofences, assets, onDone }: { geofences: Geofence[]; ass
       <div>
         <label className="font-mono text-[10px] uppercase tracking-wide text-faint">Trigger</label>
         <select value={trigger} onChange={(e) => setTrigger(e.target.value as AlertTrigger)} className={sel}>
-          {TRIGGERS.map((t) => <option key={t.key} value={t.key}>{t.label} — {t.hint}</option>)}
+          {TRIGGERS.filter((t) => !t.retired).map((t) => <option key={t.key} value={t.key}>{t.label} — {t.hint}</option>)}
         </select>
       </div>
       {trigger === 'idle' && (
