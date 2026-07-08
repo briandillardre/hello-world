@@ -15,8 +15,9 @@ interface WeatherControlProps {
   frameTime: string | null
   place?: string
   onPlaceChange?: (name: string, lat?: number, lng?: number) => void
-  /** Admin only: persist the current place as the company-wide default. */
-  onSaveDefault?: (place: string) => Promise<void>
+  /** Admin only: persist the current place as the company-wide default.
+   *  Resolve false when the write failed (e.g. migration 008 not applied). */
+  onSaveDefault?: (place: string) => Promise<boolean | void>
   /** Tax-parcel overlay toggle — rendered only when a parcel service is configured. */
   parcelsOn?: boolean
   onParcels?: (v: boolean) => void
@@ -75,10 +76,16 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
   const saveDefault = async () => {
     if (!onSaveDefault || !place) return
     try {
-      await onSaveDefault(place)
+      const ok = await onSaveDefault(place)
+      if (ok === false) {
+        alert('Could not save the default location — run migration 008 (weather_place) in the Supabase SQL Editor, then try again.')
+        return
+      }
       setSavedDefault(true)
       setTimeout(() => setSavedDefault(false), 2000)
-    } catch { /* keep quiet; the star simply doesn't confirm */ }
+    } catch {
+      alert('Could not save the default location. Please try again.')
+    }
   }
 
   const submitPlace = (e: React.FormEvent) => {

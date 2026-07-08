@@ -28,9 +28,15 @@ export async function setWeatherDefaultAction(place: string) {
   if (!isAdmin) return
 
   const service = createServiceClient()
-  await service.from('companies').update({ weather_place: trimmed }).eq('id', companyId)
+  const { error } = await service.from('companies').update({ weather_place: trimmed }).eq('id', companyId)
+  if (error) {
+    // Most likely cause: migration 008 (weather_place column) not applied yet.
+    console.error('weather default save failed', error)
+    return false
+  }
   revalidatePath('/map')
   revalidatePath('/command')
+  return true
 }
 
 export async function clearWeatherDefaultAction() {

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { DashboardShell } from '@/components/layout/DashboardShell'
+import { TzCookie } from '@/components/TzCookie'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompany } from '@/lib/db/company'
 
@@ -28,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // h-[100dvh]: dynamic viewport height — plain 100vh over-measures on iPad/
     // mobile browsers (URL bar chrome), leaving a white band + scrollable page.
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
+      <TzCookie />
       <DashboardShell alertCount={unreadAlerts} companyName={company.name} userName={company.userName}>
         {children}
       </DashboardShell>

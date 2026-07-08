@@ -138,10 +138,12 @@ interface MapViewProps {
   /** Company-wide default weather location (admin-set); null = follow the fleet. */
   defaultWeatherPlace?: string | null
   /** Show the admin-only "save as company default" control in the weather panel. */
-  onSaveWeatherDefault?: (place: string) => Promise<void>
+  onSaveWeatherDefault?: (place: string) => Promise<boolean | void>
+  /** Per-calendar-day datasets (viewer TZ). Today/Yesterday swap everything. */
+  rangeData?: { today: import('./MapPageClient').RangeDataset; yesterday: import('./MapPageClient').RangeDataset } | null
 }
 
-export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, realZoneCosts = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, realZoneCosts = null, rangeData = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -155,9 +157,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [showZones, setShowZones] = useState(true)
   const [showDevices, setShowDevices] = useState(isMock)
   const realZoneCostsRef = useRef(realZoneCosts)
-  realZoneCostsRef.current = realZoneCosts
   const realWindowRef = useRef(realWindow)
-  realWindowRef.current = realWindow
 
   // Zone popup cost AT the scrub position (mirrors the hard-hat chip) with an
   // "as of <time>" stamp so the number visibly follows the timeline.
@@ -191,16 +191,27 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [pbSpeed, setPbSpeed] = useState(500)
   // How much of the window is revealed: full when live, scrubbed when replaying
   const displayT = pbActive ? pbT : 1
+
+  // Today/Yesterday are true LOCAL calendar days: picking a range swaps the
+  // whole dataset (tracks, window, cost + zone curves) for that day. Other
+  // ranges fall back to today's dataset until range-deep fetching exists.
+  const dayData = rangeData ? (range === 'yesterday' ? rangeData.yesterday : rangeData.today) : null
+  const tracksEff = dayData?.tracks ?? tracks
+  const realWindowEff = dayData?.window ?? realWindow
+  const realCostEff = dayData?.cost ?? realCost
+  const realZoneCostsEff = dayData?.zones ?? realZoneCosts
+  realZoneCostsRef.current = realZoneCostsEff
+  realWindowRef.current = realWindowEff
   // Cost shown inside the timeline. Real accounts: cumulative curve built from
   // per-asset rates x observed activity over the loaded (last-24h) window --
   // the scrub position reads the honest ledger, never demo PROJECT rates.
-  const costTotal = realCost
-    ? realCost.curve[Math.min(realCost.curve.length - 1, Math.max(0, Math.floor(displayT * (realCost.curve.length - 1))))] ?? 0
+  const costTotal = realCostEff
+    ? realCostEff.curve[Math.min(realCostEff.curve.length - 1, Math.max(0, Math.floor(displayT * (realCostEff.curve.length - 1))))] ?? 0
     : PROJECTS.reduce((s, p) => s + periodCost(p, range, pbT, customDays).total, 0)
-  const costLabel = realCost
-    ? (realCost.hasRates ? 'last 24h \u00b7 from asset rates' : 'set cost rates on assets')
+  const costLabel = realCostEff
+    ? (realCostEff.hasRates ? (range === 'yesterday' ? 'yesterday \u00b7 from asset rates' : 'today \u00b7 from asset rates') : 'set cost rates on assets')
     : range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
-  const tracksRef = useRef(tracks)
+  const tracksRef = useRef(tracksEff)
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
   const tRef = useRef(pbT)
@@ -210,7 +221,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   // they see live data instead of the first render's array.
   const assetsRef = useRef(assets)
   const geofencesRef = useRef(geofences)
-  tracksRef.current = tracks
+  tracksRef.current = tracksEff
   filterRef.current = filter
   speedRef.current = pbSpeed
   tRef.current = pbT
@@ -633,7 +644,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   useEffect(() => {
     if (!mapReady) return
     updateMovementSources(displayT)
-  }, [mapReady, trailMode, displayT, filter, tracks, updateMovementSources])
+  }, [mapReady, trailMode, displayT, filter, tracksEff, updateMovementSources])
 
   // Fetch weather frames + conditions once. Location priority: the company's
   // admin-set default place, else wherever the fleet last reported (the weather
@@ -996,7 +1007,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         />
       )}
 
-      {!kiosk && tracks.length > 0 && (
+      {!kiosk && tracksEff.length > 0 && (
         <TimelinePlayback
           range={range}
           onRange={handleRange}
@@ -1013,7 +1024,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
           onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to) }}
           costTotal={costTotal}
           costLabel={costLabel}
-          realWindow={realWindow}
+          realWindow={realWindowEff}
         />
       )}
 

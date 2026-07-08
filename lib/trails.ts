@@ -118,7 +118,9 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
  */
 export function tracksFromHistory(
   assets: AssetWithLocation[],
-  rows: { asset_id: string; lat: number; lng: number; timestamp: string }[]
+  rows: { asset_id: string; lat: number; lng: number; timestamp: string }[],
+  windowFromMs?: number,
+  windowToMs?: number
 ): AssetTrack[] {
   const MAX_POINTS_PER_ASSET = 400
 
@@ -134,7 +136,10 @@ export function tracksFromHistory(
     if (!list) byAsset.set(r.asset_id, (list = []))
     list.push({ lng: r.lng, lat: r.lat, ms })
   }
-  const span = Math.max(1, maxTs - minTs) // avoid /0 when all points share one ts
+  // Explicit window (e.g. a local calendar day) wins over the data extent so
+  // the scrubber axis runs midnight → midnight, not first-ping → last-ping.
+  if (windowFromMs != null) minTs = windowFromMs
+  const span = Math.max(1, (windowToMs ?? maxTs) - minTs) // avoid /0 on single ts
 
   const GAP_MS = 15 * 60_000
 

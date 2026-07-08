@@ -2,10 +2,12 @@ import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs } from '@/lib/db/company'
-import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
+import { generateTracks, tracksFromHistory } from '@/lib/trails'
 import { buildCostCurve, zoneCostsFromHistory, type CostCurve, type ZoneCostCurve } from '@/lib/costs'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
+import { zonedDayWindow, DEFAULT_TZ } from '@/lib/dates'
+import { cookies } from 'next/headers'
 
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
@@ -24,20 +26,32 @@ export default async function MapPage() {
   // (truck/equipment) that currently detects them over Bluetooth.
   const assets = resolveToolLocations(rawAssets, toolAssociations)
 
-  // Time-series tracks for the Equipment Trails + Timeline Playback view.
-  // Real mode: last 24h of actual asset_locations (assets with no history get
-  // no trail). Demo mode (history === null): synthetic walks for the demo.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const history = await getLocationHistory(companyId, since)
-  const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
-  // Real window → scrubber shows true timestamps instead of the demo clock.
-  const trackWindow = history ? historyWindow(history) : null
-  // Real cost curve from per-asset rates × observed activity (null = demo).
-  const realCost: CostCurve | null =
-    history && trackWindow ? buildCostCurve(assets, history, trackWindow.from, trackWindow.to) : null
-  // Per-zone accrual — the zone popup's meter stops when assets leave.
-  const zoneCosts: Record<string, ZoneCostCurve> | null =
-    history && trackWindow ? zoneCostsFromHistory(geofences, assets, history, trackWindow.from, trackWindow.to) : null
+  // Calendar-day windows in the VIEWER's timezone (ht_tz cookie from TzCookie;
+  // server is UTC). Today/Yesterday run local midnight → midnight, per request.
+  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const todayW = zonedDayWindow(tz, 0)
+  const yestW = zonedDayWindow(tz, 1)
+
+  // Real mode: fetch since yesterday's local midnight; build a dataset per day
+  // so switching Today/Yesterday swaps tracks + cost + zone curves together.
+  const history = await getLocationHistory(companyId, new Date(yestW.from).toISOString())
+  const dataset = (w: { from: number; to: number }) => {
+    const rows = (history ?? []).filter((r) => {
+      const ms = new Date(r.timestamp).getTime()
+      return ms >= w.from && ms < w.to
+    })
+    return {
+      tracks: tracksFromHistory(assets, rows, w.from, w.to),
+      window: w,
+      cost: buildCostCurve(assets, rows, w.from, w.to),
+      zones: zoneCostsFromHistory(geofences, assets, rows, w.from, w.to),
+    }
+  }
+  const rangeData = history ? { today: dataset(todayW), yesterday: dataset(yestW) } : null
+  const tracks = rangeData ? rangeData.today.tracks : generateTracks(assets)
+  const trackWindow = rangeData ? rangeData.today.window : null
+  const realCost: CostCurve | null = rangeData ? rangeData.today.cost : null
+  const zoneCosts: Record<string, ZoneCostCurve> | null = rangeData ? rangeData.today.zones : null
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
@@ -50,7 +64,7 @@ export default async function MapPage() {
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
-        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} realZoneCosts={zoneCosts} toolGateways={toolGateways} defaultWeatherPlace={prefs.weatherPlace} canSetWeatherDefault={prefs.isAdmin} />
+        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} realZoneCosts={zoneCosts} rangeData={rangeData} toolGateways={toolGateways} defaultWeatherPlace={prefs.weatherPlace} canSetWeatherDefault={prefs.isAdmin} />
       </div>
     </div>
   )
