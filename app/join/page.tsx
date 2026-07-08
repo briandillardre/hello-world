@@ -7,6 +7,7 @@ import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SocialAuth } from '@/components/auth/SocialAuth'
 import { getInviteInfoAction, acceptInviteAction, type InviteInfo } from '@/lib/actions/team'
 
 function JoinInner() {
@@ -105,6 +106,7 @@ function JoinInner() {
                 <Button type="submit" className="w-full" disabled={busy || !info?.valid}>
                   {busy ? 'Joining…' : mode === 'signup' ? 'Create account & join' : 'Sign in & join'}
                 </Button>
+                {token && <SocialAuth next={`/join?token=${encodeURIComponent(token)}`} />}
                 <p className="text-center text-xs text-muted">
                   {mode === 'signup' ? 'Already have an account? ' : 'Need an account? '}
                   <button type="button" onClick={() => setMode(mode === 'signup' ? 'signin' : 'signup')} className="text-amber font-medium hover:underline">

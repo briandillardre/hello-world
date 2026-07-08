@@ -53,6 +53,34 @@ export function frameLabel(time: number): string {
   return new Date(time * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+// ── Animated radar (Iowa Environmental Mesonet NEXRAD composite) ──────────────
+// Free + keyless US composite reflectivity (N0Q), served as XYZ tiles keyed by
+// a UTC timestamp so we can loop the last hour. Zooms far deeper than the old
+// RainViewer overlay (which capped at z8 and only showed a single frame).
+export interface IemFrame { ts: string; label: string }
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** Build the last `count` radar frames at `stepMin`-minute spacing, aligned to
+ *  IEM's 5-minute cadence and backed off one step so the newest tile exists. */
+export function buildRadarFrames(count = 10, stepMin = 5): IemFrame[] {
+  const step = stepMin * 60_000
+  const latest = Math.floor(Date.now() / step) * step - step
+  const frames: IemFrame[] = []
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(latest - i * step)
+    const ts = `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
+    frames.push({ ts, label: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
+  }
+  return frames
+}
+
+/** XYZ tile template for a given IEM composite timestamp (empty ts = live). */
+export function iemRadarUrl(ts?: string): string {
+  const layer = ts ? `ridge::USCOMP-N0Q-${ts}` : 'nexrad-n0q-900913'
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layer}/{z}/{x}/{y}.png`
+}
+
 // ── Current conditions (Open-Meteo) ──────────────────────────────────────────
 export interface Conditions {
   tempF: number

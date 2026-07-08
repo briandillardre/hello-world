@@ -7,6 +7,7 @@ import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SocialAuth } from '@/components/auth/SocialAuth'
 import { generateApiKey } from '@/lib/utils'
 
 export default function RegisterPage() {
@@ -119,6 +120,8 @@ export default function RegisterPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Creating account…' : 'Get started free'}
           </Button>
+
+          <SocialAuth next="/welcome" />
 
           <p className="text-center text-sm text-muted">
             Already have an account?{' '}

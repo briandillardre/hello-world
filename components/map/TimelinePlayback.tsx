@@ -1,7 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation } from 'lucide-react'
+
+export type FollowMode = 'orbit' | 'overhead' | 'chase'
+const CAMERA_MODES: { key: FollowMode; label: string; icon: typeof Orbit; note: string }[] = [
+  { key: 'orbit', label: 'Orbit', icon: Orbit, note: 'Smoothly circles the asset' },
+  { key: 'overhead', label: 'Overhead', icon: MapIcon, note: 'Top-down, follows along' },
+  { key: 'chase', label: 'Chase', icon: Navigation, note: 'Rides behind, faces travel' },
+]
 import {
   type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
   speedsForRange, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
@@ -48,6 +55,9 @@ interface TimelinePlaybackProps {
   /** Cinematic camera-follow: the asset the camera is chasing (null = off). */
   followId: string | null
   onFollow: (id: string | null) => void
+  /** Camera style while following. */
+  followMode: FollowMode
+  onFollowMode: (m: FollowMode) => void
   /** Assets with a trail in the current window, offered as follow targets. */
   followAssets: FollowAsset[]
 }
@@ -55,7 +65,7 @@ interface TimelinePlaybackProps {
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, realWindow,
-  followId, onFollow, followAssets,
+  followId, onFollow, followMode, onFollowMode, followAssets,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -95,8 +105,9 @@ export function TimelinePlayback({
 
   return (
     <div ref={rootRef} className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10">
-      {/* Follow picker — sibling of the bar so it escapes the overflow-hidden clip
-          (rendering it inside the rounded bar made it invisible on iPad). */}
+      {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
+          (rendering it inside the rounded bar made it invisible on iPad). When not
+          following it's the asset picker; while following it's the camera styles. */}
       {showFollow && !followed && (
         <div className="absolute bottom-full mb-2 right-0 z-30 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2">
           <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink flex items-center gap-1.5">
@@ -115,8 +126,37 @@ export function TimelinePlayback({
             ))}
           </div>
           <p className="px-2 pt-1.5 pb-0.5 text-[10px] text-faint leading-snug">
-            Tilts into 3D and chases the asset along its route. Tap the ✕ on the Follow button to stop.
+            Locks the camera onto the asset. Pick a camera style once it&rsquo;s following.
           </p>
+        </div>
+      )}
+      {showFollow && followed && (
+        <div className="absolute bottom-full mb-2 right-0 z-30 w-[220px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2">
+          <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink flex items-center gap-1.5 truncate">
+            <Video className="h-3.5 w-3.5 text-amber" /> Camera · {followed.name}
+          </p>
+          {CAMERA_MODES.map(({ key, label, icon: Icon, note }) => (
+            <button
+              key={key}
+              onClick={() => onFollowMode(key)}
+              className={
+                'w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-colors ' +
+                (followMode === key ? 'bg-amber/15 text-amber' : 'text-muted hover:bg-navy-900 hover:text-ink')
+              }
+            >
+              <Icon className="h-4 w-4 flex-none" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13px] font-semibold leading-tight">{label}</span>
+                <span className="block text-[10px] text-faint leading-tight">{note}</span>
+              </span>
+            </button>
+          ))}
+          <button
+            onClick={() => { onFollow(null); setShowFollow(false) }}
+            className="w-full mt-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[12px] font-semibold text-faint hover:text-alert hover:bg-alert/10 transition-colors border-t border-navy-800"
+          >
+            <X className="h-3.5 w-3.5" /> Stop following
+          </button>
         </div>
       )}
       {/* Custom From/To panel — sibling of the bar so it escapes the overflow clip */}
@@ -190,8 +230,8 @@ export function TimelinePlayback({
         {/* Cinematic camera-follow (menu itself renders above the bar — see top) */}
         {followAssets.length > 0 && (
           <button
-            onClick={() => (followed ? onFollow(null) : setShowFollow((s) => !s))}
-            title={followed ? `Following ${followed.name} — click to release` : 'Cinematic follow'}
+            onClick={() => setShowFollow((s) => !s)}
+            title={followed ? `Following ${followed.name} — camera settings` : 'Cinematic follow'}
             className={
               'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
               (followed
@@ -202,8 +242,9 @@ export function TimelinePlayback({
             }
           >
             <Video className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline max-w-[90px] truncate">{followed ? followed.name : 'Follow'}</span>
-            {followed && <X className="h-3 w-3" />}
+            <span className="hidden sm:inline max-w-[90px] truncate">
+              {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following' : 'Follow'}
+            </span>
           </button>
         )}
       </div>

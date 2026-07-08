@@ -11,8 +11,8 @@ import {
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
 import {
-  type WeatherFrames, type Conditions, type RadarFrame,
-  fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
+  type Conditions, type IemFrame,
+  fetchConditions, buildRadarFrames, iemRadarUrl,
 } from '@/lib/weather'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
@@ -47,11 +47,12 @@ const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclust
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
-const FOLLOW_PITCH = 62      // 3D tilt while chasing an asset
+export type FollowMode = 'orbit' | 'overhead' | 'chase'
 const FOLLOW_ZOOM = 16.2     // zoom the entrance reveal settles at
-const ORBIT_STEP = 0.18      // deg/frame the camera pans around a parked asset
-const HEADING_LERP = 0.1     // how fast bearing swings toward the travel direction
-const MOVE_EPS = 1.5e-5      // deg of travel below which the asset counts as parked
+const ORBIT_STEP = 0.14      // deg/frame the camera revolves in Orbit mode
+const HEADING_LERP = 0.06    // how fast bearing swings toward travel dir (Chase)
+const MOVE_EPS = 2e-5        // deg of travel below which the asset counts as parked
+const FOLLOW_PITCH: Record<FollowMode, number> = { orbit: 60, overhead: 8, chase: 58 }
 
 // Compass bearing (deg) from point a to point b.
 function bearingBetween(a: [number, number], b: [number, number]): number {
@@ -216,14 +217,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const displayT = pbActive ? pbT : 1
 
   // ── Cinematic camera-follow ───────────────────────────────────────────────
-  // The camera chases one asset along its trail with a 3D tilt, banking into
-  // turns and slowly orbiting when the asset is parked.
+  // The camera locks onto one asset. Three styles: Orbit (slow revolve — the
+  // default, buttery), Overhead (top-down chase), Chase (rides behind it).
   const [followId, setFollowId] = useState<string | null>(null)
+  const [followMode, setFollowMode] = useState<FollowMode>('orbit')
   const followIdRef = useRef<string | null>(null)
+  const followModeRef = useRef<FollowMode>('orbit')
   const bearingRef = useRef(0)   // smoothed camera bearing
   const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
   const entranceRef = useRef(1)  // 0→1 "pan up + zoom in" reveal progress
   followIdRef.current = followId
+  followModeRef.current = followMode
+
+  // 3D is now an independent toggle layered on ANY basemap (not its own base).
+  const [threeD, setThreeD] = useState(false)
+  const threeDRef = useRef(threeD)
+  threeDRef.current = threeD
 
   // Real mode: build the dataset for the SELECTED range from raw history \u2014
   // tracks, window, cost curve, and per-zone curves, all for the same window.
@@ -305,19 +314,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [parcelsOn, setParcelsOn] = useState(false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
   const parcelAbort = useRef<AbortController | null>(null)
-  const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
   const [wxPlace, setWxPlace] = useState('Nashville, TN')
   const wxAdded = useRef(false)
 
-  const activeFrames: RadarFrame[] = useMemo(() => weatherFrames?.radar ?? [], [weatherFrames])
-
-  // Radar is a live overlay only — free RainViewer keeps just ~2h of history,
-  // so we always show the latest real frame rather than faking the past.
-  const currentFrame: RadarFrame | null = useMemo(() => {
-    if (activeFrames.length === 0) return null
-    return activeFrames[liveFrameIndex(activeFrames)]
-  }, [activeFrames])
+  // Animated radar (Iowa Environmental Mesonet). Frames rebuilt when radar turns
+  // on; an interval steps through them so the loop plays and zooms deep.
+  const [radarFrames, setRadarFrames] = useState<IemFrame[]>([])
+  const [radarIdx, setRadarIdx] = useState(0)
+  // radarIdx may run 2 past the end (loop pause) — clamp so the newest frame
+  // holds instead of the layer blinking off.
+  const currentFrame = radarFrames.length ? radarFrames[Math.min(radarIdx, radarFrames.length - 1)] : null
 
   // Free, no-key basemap: CARTO dark raster. (Satellite + 3D buildings are added
   // on load from free sources — no paid MapTiler key required.)
@@ -692,35 +699,53 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [])
 
-  // Drive the cinematic camera to the followed asset at scrub position t. Called
-  // every frame from the RAF loop (smooth chase) and on discrete seeks. Banks
-  // the bearing into the direction of travel, orbits when parked, and eases the
-  // pitch/zoom up on the first frames for the "pan-up reveal".
+  // Drive the follow camera to the asset at scrub position t. Called every frame
+  // from the RAF loop and on discrete seeks. The bearing behaviour depends on
+  // the mode — Orbit revolves at a constant rate (smooth, never jerks), Overhead
+  // holds north-up top-down, Chase eases in behind the direction of travel.
   const focusFollow = useCallback((t: number) => {
     const m = map.current
     const id = followIdRef.current
     if (!m || !id) return
     const tr = tracksRef.current.find((x) => x.assetId === id)
     if (!tr || tr.points.length === 0) return
+    const mode = followModeRef.current
     const here = positionAt(tr, t)
-    const prev = positionAt(tr, Math.max(0, t - 0.004))
-    const moved = Math.hypot(here[0] - prev[0], here[1] - prev[1])
-    if (moved > MOVE_EPS) {
-      bearingRef.current = lerpAngle(bearingRef.current, bearingBetween(prev, here), HEADING_LERP)
-    } else {
-      // Parked — drift the camera around the asset for the hero fly-around.
+
+    if (mode === 'orbit') {
+      // Pure constant revolution around the asset — independent of its motion,
+      // so it glides smoothly whether the truck is parked or driving.
       bearingRef.current = (bearingRef.current + ORBIT_STEP) % 360
+    } else if (mode === 'overhead') {
+      // Top-down: settle bearing to north so the map reads like a paper map.
+      bearingRef.current = lerpAngle(bearingRef.current, 0, 0.08)
+    } else {
+      // Chase: face the direction of travel, but hold heading when nearly still
+      // (an undefined heading was the source of the old jerk).
+      const prev = positionAt(tr, Math.max(0, t - 0.006))
+      if (Math.hypot(here[0] - prev[0], here[1] - prev[1]) > MOVE_EPS) {
+        bearingRef.current = lerpAngle(bearingRef.current, bearingBetween(prev, here), HEADING_LERP)
+      }
     }
-    pitchRef.current += (FOLLOW_PITCH - pitchRef.current) * 0.06
+
+    const targetPitch = FOLLOW_PITCH[mode]
+    pitchRef.current += (targetPitch - pitchRef.current) * 0.06
     if (entranceRef.current < 1) {
       entranceRef.current = Math.min(1, entranceRef.current + 0.02)
       const z = m.getZoom()
-      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (FOLLOW_ZOOM - z) * 0.07 })
+      const targetZoom = mode === 'overhead' ? 17 : FOLLOW_ZOOM
+      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (targetZoom - z) * 0.07 })
     } else {
       // Entrance done — leave zoom alone so the user can pinch in/out mid-flight.
       m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current })
     }
   }, [])
+
+  // Re-arm the entrance ease whenever the camera mode changes mid-follow, so the
+  // pitch/zoom glide to the new style instead of snapping.
+  useEffect(() => {
+    if (followIdRef.current) entranceRef.current = 0
+  }, [followMode])
 
   // Push trail/heat/head geometry on discrete changes (seek, filter, mode)
   useEffect(() => {
@@ -735,19 +760,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     focusFollow(displayT)
   }, [mapReady, followId, pbPlaying, displayT, focusFollow])
 
-  // Fetch weather frames + conditions once. Location priority: the company's
-  // admin-set default place, else wherever the fleet last reported (the weather
-  // that actually matters), else the demo center.
+  // Fetch conditions once. Location priority: the company's admin-set default
+  // place (DB), else a device-local saved default (localStorage — survives even
+  // if migration 008 hasn't run), else wherever the fleet last reported, else
+  // the demo center.
   useEffect(() => {
     let cancelled = false
-    fetchWeatherFrames().then((f) => { if (!cancelled) setWeatherFrames(f) })
+
+    const localDefault = typeof window !== 'undefined' ? localStorage.getItem('ht_weather_place') : null
+    const savedPlace = defaultWeatherPlace || localDefault
 
     const newest = assets
       .filter((a) => a.location)
       .sort((a, b) => new Date(b.location!.timestamp).getTime() - new Date(a.location!.timestamp).getTime())[0]
 
-    if (defaultWeatherPlace) {
-      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(defaultWeatherPlace)}`)
+    if (savedPlace) {
+      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(savedPlace.split(',')[0].trim())}`)
         .then((r) => r.json())
         .then((j) => {
           if (cancelled) return
@@ -755,6 +783,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           if (hit) {
             setWxPlace([hit.name, hit.admin1].filter(Boolean).join(', '))
             fetchConditions(hit.latitude, hit.longitude).then((c) => { if (!cancelled) setConditions(c) })
+            map.current?.flyTo({ center: [hit.longitude, hit.latitude], zoom: 12, duration: 0 })
           }
         })
         .catch(() => {})
@@ -796,7 +825,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [])
 
-  // Switch basemap layers (dark / streets / satellite / hybrid / 3D) + camera tilt
+  // Switch basemap layers (dark / streets / satellite / hybrid)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('sat-base')) return
@@ -807,10 +836,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     set('sat-base', base === 'satellite' || base === 'hybrid')
     set('roads-overlay', base === 'hybrid')
     set('labels-overlay', base === 'hybrid')
-    set('buildings-3d', base === '3d')
-    // Tilt for 3D, flatten otherwise.
-    m.easeTo({ pitch: base === '3d' ? 55 : 0, duration: 600 })
   }, [mapReady, base])
+
+  // 3D is an independent toggle now — buildings + camera tilt, layerable on any
+  // basemap. While following, the follow camera owns the pitch, so don't fight it.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m?.getLayer('buildings-3d')) return
+    m.setLayoutProperty('buildings-3d', 'visibility', threeD ? 'visible' : 'none')
+    if (!followIdRef.current) m.easeTo({ pitch: threeD ? 55 : 0, duration: 600 })
+  }, [mapReady, threeD])
 
   // Toggle visibility of all geofence layers at once
   useEffect(() => {
@@ -939,32 +974,47 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [mapReady, parcelsOn])
 
-  // Add / update / toggle the rain-radar raster layer
+  // Build fresh radar frames whenever radar is switched on (keeps the loop live).
+  useEffect(() => {
+    if (!radarOn) return
+    setRadarFrames(buildRadarFrames(10, 5))
+    setRadarIdx(0)
+  }, [radarOn])
+
+  // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
+  // beat longer so the loop "lands" on now.
+  useEffect(() => {
+    if (!radarOn || radarFrames.length === 0) return
+    const id = setInterval(() => {
+      setRadarIdx((i) => (i + 1) % (radarFrames.length + 2)) // +2 = pause on last
+    }, 700)
+    return () => clearInterval(id)
+  }, [radarOn, radarFrames])
+
+  // Add / update / toggle the animated radar raster layer (IEM NEXRAD composite).
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
 
-    if (!radarOn || !currentFrame || !weatherFrames) {
+    if (!radarOn || !currentFrame) {
       if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
       return
     }
 
-    const url = weatherTileUrl(weatherFrames.host, currentFrame)
+    // maxzoom 10: NEXRAD composite is ~1km resolution, so let MapLibre over-scale
+    // beyond z10 rather than request tiles that don't add detail. Zooms far past
+    // the old RainViewer z8 cap without the "Zoom Level Not Supported" tiles.
+    const url = iemRadarUrl(currentFrame.ts)
     if (!wxAdded.current) {
-      // maxzoom 8: RainViewer's free radar tiles stop there — beyond it they
-      // return "Zoom Level Not Supported" placeholder images. Capping the
-      // source makes MapLibre over-scale z8 tiles instead (radar is coarse
-      // anyway, so this looks right at street zoom).
-      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 8 })
-      // Draw radar above the basemap but beneath geofences/assets
+      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': 0.7 } }, beforeId)
+      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': 0.72 } }, beforeId)
       wxAdded.current = true
     } else {
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
       m.setLayoutProperty('wx-layer', 'visibility', 'visible')
     }
-  }, [mapReady, radarOn, currentFrame, weatherFrames])
+  }, [mapReady, radarOn, currentFrame])
 
   // Animation loop: map sources update every frame (smooth movement), but
   // React state — scrubber, labels, cost panel — only ~10Hz, so the whole
@@ -1029,7 +1079,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     if (!id) {
       // Release: glide back to the flat (or 3D-base) overview.
-      m?.easeTo({ pitch: baseRef.current === '3d' ? 55 : 0, bearing: 0, duration: 800 })
+      m?.easeTo({ pitch: threeDRef.current ? 55 : 0, bearing: 0, duration: 800 })
       return
     }
     setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
@@ -1104,10 +1154,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       <WeatherControl
         base={base}
         onBase={setBase}
+        threeD={threeD}
+        onThreeD={setThreeD}
         radarOn={radarOn}
         onRadar={setRadarOn}
         conditions={conditions}
-        frameTime={currentFrame ? frameLabel(currentFrame.time) : null}
+        frameTime={currentFrame ? currentFrame.label : null}
         place={wxPlace}
         onPlaceChange={handlePlaceChange}
         onSaveDefault={onSaveWeatherDefault}
@@ -1149,6 +1201,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           realWindow={realWindowEff}
           followId={followId}
           onFollow={handleFollow}
+          followMode={followMode}
+          onFollowMode={setFollowMode}
           followAssets={tracksEff
             .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
             .map((tr) => ({ id: tr.assetId, name: tr.name, type: tr.type, color: tr.color }))}

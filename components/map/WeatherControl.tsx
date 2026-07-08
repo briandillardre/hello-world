@@ -4,11 +4,14 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, SunDim } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
-export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid' | '3d'
+export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid'
 
 interface WeatherControlProps {
   base: BaseStyle
   onBase: (b: BaseStyle) => void
+  /** 3D buildings + tilt — an independent toggle layerable on any basemap. */
+  threeD: boolean
+  onThreeD: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
   conditions: Conditions | null
@@ -41,7 +44,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
@@ -74,17 +77,15 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
 
   const [savedDefault, setSavedDefault] = useState(false)
   const saveDefault = async () => {
-    if (!onSaveDefault || !place) return
-    try {
-      const ok = await onSaveDefault(place)
-      if (ok === false) {
-        alert('Could not save the default location — run migration 008 (weather_place) in the Supabase SQL Editor, then try again.')
-        return
-      }
-      setSavedDefault(true)
-      setTimeout(() => setSavedDefault(false), 2000)
-    } catch {
-      alert('Could not save the default location. Please try again.')
+    if (!place) return
+    // Always persist on THIS device immediately — survives redeploys and works
+    // even before migration 008 adds the company-wide column. The server write
+    // (if it succeeds) additionally shares it across the whole team.
+    try { localStorage.setItem('ht_weather_place', place) } catch { /* private mode */ }
+    setSavedDefault(true)
+    setTimeout(() => setSavedDefault(false), 2000)
+    if (onSaveDefault) {
+      try { await onSaveDefault(place) } catch { /* device save already stuck */ }
     }
   }
 
@@ -186,13 +187,22 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
       </button>
 
       {/* basemap segmented */}
-      <div className="grid grid-cols-3 gap-1 p-1 border-b border-navy-800">
+      <div className="grid grid-cols-2 gap-1 p-1 border-b border-navy-800">
         <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
         <Seg active={base === 'streets'} onClick={() => onBase('streets')}><Signpost className="h-3.5 w-3.5" />Streets</Seg>
         <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
         <Seg active={base === 'hybrid'} onClick={() => onBase('hybrid')}><Globe2 className="h-3.5 w-3.5" />Hybrid</Seg>
-        <Seg active={base === '3d'} onClick={() => onBase('3d')}><Box className="h-3.5 w-3.5" />3D</Seg>
       </div>
+
+      {/* 3D buildings + tilt — independent toggle, works on any basemap above */}
+      <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 border-b border-navy-800 hover:bg-navy-900 transition-colors">
+        <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+          <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
+        </span>
+        <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (threeD ? 'bg-teal/40' : 'bg-navy-700')}>
+          <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (threeD ? 'left-[18px]' : 'left-0.5')} />
+        </span>
+      </button>
 
       {/* radar toggle */}
       <button onClick={() => onRadar(!radarOn)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
@@ -206,7 +216,7 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
       {radarOn && (
         <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
-          live radar{frameTime ? ` · ${frameTime}` : ''}
+          radar loop{frameTime ? ` · ${frameTime}` : ''}
         </div>
       )}
 

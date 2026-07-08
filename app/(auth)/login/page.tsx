@@ -7,6 +7,7 @@ import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SocialAuth } from '@/components/auth/SocialAuth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -86,6 +87,8 @@ export default function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
+
+          <SocialAuth next="/map" />
 
           <div className="flex items-center justify-between text-sm">
             <Link href="/forgot" className="text-faint hover:text-amber hover:underline">

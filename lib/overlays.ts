@@ -46,7 +46,7 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     key: 'wetlands',
     label: 'Wetlands',
     note: 'USFWS National Wetlands Inventory',
-    tiles: exportTemplate('https://fwsprimary.wim.usgs.gov/server/rest/services/Wetlands/MapServer'),
+    tiles: exportTemplate('https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer'),
     minzoom: 11,
     maxzoom: 16,
     opacity: 0.6,
