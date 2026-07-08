@@ -17,11 +17,12 @@ export async function saveGeofenceAction(
   id: string,
   name: string,
   color: string,
-  parentId: string | null
+  parentId: string | null,
+  geometry?: GeoJSON.Polygon
 ) {
   const g = await getGeofence(id)
   if (!g) return
-  await updateGeofence(id, { name, color, geometry: g.geometry, parent_id: parentId })
+  await updateGeofence(id, { name, color, geometry: geometry ?? g.geometry, parent_id: parentId })
   revalidatePath('/geofences')
   revalidatePath(`/geofences/${id}`)
   revalidatePath('/map')

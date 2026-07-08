@@ -9,6 +9,7 @@ import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
 import { CostCard } from '@/components/assets/CostCard'
+import { AssetActions } from '@/components/assets/AssetActions'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -55,9 +56,12 @@ export default async function AssetDetailPage({ params }: { params: { id: string
               {asset.category && <Badge variant="outline">{asset.category}</Badge>}
             </div>
           </div>
-          <Link href="/map" className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
-            <MapPin className="h-4 w-4" /> View on map
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <AssetActions asset={asset} />
+            <Link href="/map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
+              <MapPin className="h-4 w-4" /> View on map
+            </Link>
+          </div>
         </div>
       </div>
 

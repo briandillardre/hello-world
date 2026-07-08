@@ -96,8 +96,17 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
 
 export async function updateAssetAction(
   id: string,
-  input: Partial<CreateAssetInput> & { active?: boolean }
+  input: Partial<CreateAssetInput> & { active?: boolean },
+  photoForm?: FormData
 ) {
+  // New photo (FormData) wins; photo_url '' clears the existing one.
+  let photoOverride: string | null | undefined =
+    input.photo_url !== undefined ? orNull(input.photo_url) : undefined
+  const file = photoForm?.get('photo')
+  if (file instanceof File && file.size > 0) {
+    const companyId = await getCurrentCompanyId()
+    photoOverride = (await uploadAssetPhoto(companyId, file)) ?? photoOverride
+  }
   const asset = await updateAsset(id, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.type !== undefined ? { type: input.type } : {}),
@@ -110,10 +119,30 @@ export async function updateAssetAction(
     ...(input.mileage_rate !== undefined ? { mileage_rate: numOrNull(input.mileage_rate) } : {}),
     ...(input.daily_cost !== undefined ? { daily_cost: numOrNull(input.daily_cost) } : {}),
     ...(input.purchase_value !== undefined ? { purchase_value: numOrNull(input.purchase_value) } : {}),
+    ...(photoOverride !== undefined ? { photo_url: photoOverride } : {}),
   })
 
   revalidatePath('/assets')
   revalidatePath(`/assets/${id}`)
   revalidatePath('/map')
   return asset
+}
+
+
+export async function deleteAssetAction(id: string) {
+  if (isMock) return
+  // Hard delete — locations, tool associations, maintenance, and alert events
+  // cascade via FK. Service client: RLS delete policy exists, but this also
+  // needs to work for the company owner regardless of role nuances.
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single()
+  const companyId = profile?.company_id ?? user.id
+
+  const service = createServiceClient()
+  await service.from('assets').delete().eq('id', id).eq('company_id', companyId)
+  revalidatePath('/assets')
+  revalidatePath('/map')
 }

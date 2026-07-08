@@ -119,6 +119,18 @@ export interface ZoneCost {
   activeHours: number
 }
 
+/** Cumulative per-zone curves so the zone popup can read cost AT the scrub
+ *  position, exactly like the timeline's hard-hat chip. */
+export interface ZoneCostCurve {
+  cost: number[]  // cumulative $ per bucket (t = i / (BUCKETS-1))
+  hours: number[] // cumulative active hours inside the zone
+}
+
+export function zoneCostAt(curve: ZoneCostCurve, t: number): ZoneCost {
+  const idx = Math.min(curve.cost.length - 1, Math.max(0, Math.floor(t * (curve.cost.length - 1))))
+  return { total: curve.cost[idx] ?? 0, activeHours: curve.hours[idx] ?? 0 }
+}
+
 import { pointInPolygon } from './alerts-engine'
 
 /**
@@ -131,14 +143,20 @@ import { pointInPolygon } from './alerts-engine'
 export function zoneCostsFromHistory(
   geofences: { id: string; geometry: { coordinates: unknown[] } }[],
   assets: (Asset | CostInput)[],
-  rows: HistoryPoint[]
-): Record<string, ZoneCost> {
-  const out: Record<string, ZoneCost> = {}
+  rows: HistoryPoint[],
+  windowFromMs?: number,
+  windowToMs?: number
+): Record<string, ZoneCostCurve> {
+  const from = windowFromMs ?? (rows.length ? new Date(rows[0].timestamp).getTime() : 0)
+  const to = windowToMs ?? (rows.length ? new Date(rows[rows.length - 1].timestamp).getTime() : 1)
+  const span = Math.max(1, to - from)
+  const out: Record<string, ZoneCostCurve> = {}
+  const perBucket: Record<string, { cost: number[]; hours: number[] }> = {}
   const rings = geofences.map((g) => ({
     id: g.id,
     ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][],
   })).filter((g) => g.ring.length >= 3)
-  for (const g of rings) out[g.id] = { total: 0, activeHours: 0 }
+  for (const g of rings) perBucket[g.id] = { cost: new Array(BUCKETS).fill(0), hours: new Array(BUCKETS).fill(0) }
   if (!rings.length) return out
 
   const rates = new Map(assets.map((a) => [a.id, a]))
@@ -162,12 +180,25 @@ export function zoneCostsFromHistory(
     if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
     if ((a.mileage_rate ?? 0) > 0) cost += a.mileage_rate! * (dist / 1609.34)
 
+    const bucket = Math.min(BUCKETS - 1, Math.max(0, Math.floor(((ms - from) / span) * BUCKETS)))
     for (const g of rings) {
       if (!pointInPolygon([r.lng, r.lat], g.ring)) continue
-      out[g.id].total += cost
-      out[g.id].activeHours += dt / 3_600_000
+      perBucket[g.id].cost[bucket] += cost
+      perBucket[g.id].hours[bucket] += dt / 3_600_000
       break // zones rarely overlap; attribute to the first hit
     }
+  }
+  for (const g of rings) {
+    const c: number[] = new Array(BUCKETS)
+    const h: number[] = new Array(BUCKETS)
+    let ca = 0, ha = 0
+    for (let i = 0; i < BUCKETS; i++) {
+      ca += perBucket[g.id].cost[i]
+      ha += perBucket[g.id].hours[i]
+      c[i] = ca
+      h[i] = ha
+    }
+    out[g.id] = { cost: c, hours: h }
   }
   return out
 }

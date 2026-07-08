@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { MOCK_COMPANY } from '@/lib/mock-data'
-import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
+import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
@@ -25,11 +25,15 @@ export async function POST(request: NextRequest) {
   }
   if (!question.trim()) return NextResponse.json({ error: 'Empty question' }, { status: 422 })
 
-  const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
-    getAssetsWithLocations(MOCK_COMPANY.id),
-    getGeofences(MOCK_COMPANY.id),
-    getAlertEvents(MOCK_COMPANY.id),
-    getToolAssociations(MOCK_COMPANY.id),
+  // The bug that made this bot useless on live accounts: it queried with the
+  // demo company id, so RLS returned zero rows ("0 of 0 assets").
+  const companyId = await getCurrentCompanyId()
+  const [rawAssets, geofences, alerts, toolAssociations, history] = await Promise.all([
+    getAssetsWithLocations(companyId),
+    getGeofences(companyId),
+    getAlertEvents(companyId),
+    getToolAssociations(companyId),
+    getLocationHistory(companyId, new Date(Date.now() - 24 * 3_600_000).toISOString()),
   ])
   const ctx: AssistantContext = {
     assets: resolveToolLocations(rawAssets, toolAssociations),
@@ -39,6 +43,48 @@ export async function POST(request: NextRequest) {
   }
 
   const grounded = answerQuestion(question, ctx)
+
+  // Enrich the facts with real last-24h movement per asset so questions like
+  // "where did the truck go today" are answerable from telemetry.
+  if (history?.length) {
+    const R = 6_371_000
+    const toRad = (d: number) => (d * Math.PI) / 180
+    const byAsset = new Map<string, typeof history>()
+    for (const r of history) {
+      if (!byAsset.has(r.asset_id)) byAsset.set(r.asset_id, [])
+      byAsset.get(r.asset_id)!.push(r)
+    }
+    const movement: Record<string, unknown> = {}
+    for (const [assetId, rowsRaw] of Array.from(byAsset.entries())) {
+      const rows = rowsRaw.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      let miles = 0
+      let activeMs = 0
+      let firstMove: string | null = null
+      let lastMove: string | null = null
+      for (let i = 1; i < rows.length; i++) {
+        const a = rows[i - 1], b = rows[i]
+        const dt = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        if (dt <= 0 || dt > 10 * 60_000) continue
+        const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng)
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+        const meters = 2 * R * Math.asin(Math.sqrt(h))
+        if ((b.speed ?? 0) > 1 || meters > 25) {
+          miles += meters / 1609.34
+          activeMs += dt
+          if (!firstMove) firstMove = b.timestamp
+          lastMove = b.timestamp
+        }
+      }
+      const name = ctx.assets.find((a) => a.id === assetId)?.name ?? assetId
+      movement[name] = {
+        milesLast24h: Math.round(miles * 10) / 10,
+        activeHours: Math.round((activeMs / 3_600_000) * 10) / 10,
+        firstMovement: firstMove,
+        lastMovement: lastMove,
+      }
+    }
+    ;(grounded.facts as Record<string, unknown>).movementLast24h = movement
+  }
 
   // No API key → return the deterministic grounded answer (instant, free).
   const apiKey = process.env.ANTHROPIC_API_KEY

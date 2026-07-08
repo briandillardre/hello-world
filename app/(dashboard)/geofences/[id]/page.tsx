@@ -6,6 +6,7 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import type { AssetType } from '@/lib/types'
+import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
@@ -48,6 +49,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       </div>
 
       <div className="p-4 max-w-3xl space-y-6">
+        {ring && ring.length >= 3 && (
+          <GeofenceEditor id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null} ring={ring} />
+        )}
+
         <section>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Assets inside ({inside.length})</h2>
           {inside.length === 0 ? (

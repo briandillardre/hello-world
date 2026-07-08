@@ -15,6 +15,7 @@ import {
 } from '@/lib/weather'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
+import { zoneCostAt } from '@/lib/costs'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -136,8 +137,8 @@ interface MapViewProps {
   realWindow?: import('@/lib/trails').TrackWindow | null
   /** Real cost curve from asset rates x observed activity (null = demo PROJECTS). */
   realCost?: import('@/lib/costs').CostCurve | null
-  /** Real per-zone cost from history (null = demo estimates in zone popups). */
-  realZoneCosts?: Record<string, import('@/lib/costs').ZoneCost> | null
+  /** Real per-zone cost curves from history (null = demo estimates in zone popups). */
+  realZoneCosts?: Record<string, import('@/lib/costs').ZoneCostCurve> | null
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
@@ -162,6 +163,22 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [showDevices, setShowDevices] = useState(isMock)
   const realZoneCostsRef = useRef(realZoneCosts)
   realZoneCostsRef.current = realZoneCosts
+  const realWindowRef = useRef(realWindow)
+  realWindowRef.current = realWindow
+
+  // Zone popup cost AT the scrub position (mirrors the hard-hat chip) with an
+  // "as of <time>" stamp so the number visibly follows the timeline.
+  const zoneRealAt = useCallback((fenceId: string, t: number) => {
+    const curves = realZoneCostsRef.current
+    if (!curves) return undefined
+    const curve = curves[fenceId]
+    const zc = curve ? zoneCostAt(curve, t) : { total: 0, activeHours: 0 }
+    const w = realWindowRef.current
+    const asOf = w
+      ? new Date(w.from + t * (w.to - w.from)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : undefined
+    return { ...zc, asOf }
+  }, [])
   const [isDrawing, setIsDrawing] = useState(false)
   const drawCoords = useRef<[number, number][]>([])
   const drawPreviewSource = useRef<string>('draw-preview')
@@ -543,7 +560,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         if (!fence) return
         const r = rangeRef.current
         const t = r === 'live' ? 1 : tRef.current
-        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, realZoneCostsRef.current?.[fence.id] ?? (realZoneCostsRef.current ? { total: 0, activeHours: 0 } : undefined)))
+        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, zoneRealAt(fence.id, t)))
         openFenceRef.current = fence
       })
 
@@ -757,7 +774,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     if (!mapReady || !fence || !popup) return
     const r = rangeRef.current
     const t = r === 'live' ? 1 : displayT
-    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, realZoneCostsRef.current?.[fence.id] ?? (realZoneCostsRef.current ? { total: 0, activeHours: 0 } : undefined)))
+    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, zoneRealAt(fence.id, t)))
   }, [mapReady, displayT, range])
 
   // ── USGS topo contour overlay ─────────────────────────────────────────────

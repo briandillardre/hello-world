@@ -47,17 +47,17 @@ export function presencePopupHTML(
   p: SitePresence,
   range: TimeRange = 'live',
   t = 1,
-  real?: { total: number; activeHours: number } | null
+  real?: { total: number; activeHours: number; asOf?: string } | null
 ): string {
   let costBlock: string
   if (real !== undefined && real !== null) {
     costBlock = real.total > 0
       ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #14506f">
-          <div style="font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f88a0">Cost on site &middot; last 24h &middot; from asset rates</div>
+          <div style="font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f88a0">Cost on site &middot; from asset rates${real.asOf ? ` &middot; as of ${esc(real.asOf)}` : ''}</div>
           <div style="font-family:Archivo,sans-serif;font-weight:900;font-size:20px;color:#ff9e16">${esc(moneyFull(real.total))}</div>
           <div style="font-family:monospace;font-size:10px;color:#6f88a0">${real.activeHours.toFixed(1)}h active inside this zone</div>
         </div>`
-      : `<div style="margin-top:8px;font-family:monospace;font-size:10px;color:#6f88a0">No rated activity in this zone in the last 24h</div>`
+      : `<div style="margin-top:8px;font-family:monospace;font-size:10px;color:#6f88a0">No rated activity in this zone yet${real.asOf ? ` (as of ${esc(real.asOf)})` : ''}</div>`
   } else {
     // Demo path: named projects use their own rates; any other zone gets a
     // live estimate from the assets currently inside it.

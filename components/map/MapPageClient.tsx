@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack, TrackWindow } from '@/lib/trails'
-import type { CostCurve, ZoneCost } from '@/lib/costs'
+import type { CostCurve, ZoneCostCurve } from '@/lib/costs'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction } from '@/lib/actions/geofences'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
@@ -33,7 +33,7 @@ interface MapPageClientProps {
   tracks: AssetTrack[]
   realWindow?: TrackWindow | null
   realCost?: CostCurve | null
-  realZoneCosts?: Record<string, ZoneCost> | null
+  realZoneCosts?: Record<string, ZoneCostCurve> | null
   toolGateways: Record<string, { name: string; lastSeen: string }>
   defaultWeatherPlace?: string | null
   canSetWeatherDefault?: boolean

@@ -56,7 +56,8 @@ interface AssetFormProps {
   onClose: () => void
   onSubmit: (data: AssetFormData, photo?: Blob | null) => void
   saving?: boolean
-  initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string }
+  initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string;
+    hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_value?: number | null }
 }
 
 /**
@@ -95,7 +96,12 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
   const [photoBusy, setPhotoBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Cost inputs kept as strings while typing; parsed on submit.
-  const [costs, setCosts] = useState<Record<string, string>>({})
+  const [costs, setCosts] = useState<Record<string, string>>(() => ({
+    hourly_rate: initial?.hourly_rate != null ? String(initial.hourly_rate) : '',
+    mileage_rate: initial?.mileage_rate != null ? String(initial.mileage_rate) : '',
+    daily_cost: initial?.daily_cost != null ? String(initial.daily_cost) : '',
+    purchase_value: initial?.purchase_value != null ? String(initial.purchase_value) : '',
+  }))
 
   const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -199,15 +205,15 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
               className="hidden"
               onChange={handlePhotoPick}
             />
-            {photoPreview ? (
+            {photoPreview || photoUrl ? (
               <div className="flex items-center gap-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photoPreview} alt="Asset photo preview" className="h-16 w-16 rounded-lg object-cover border border-navy-700" />
+                <img src={photoPreview ?? photoUrl} alt="Asset photo preview" className="h-16 w-16 rounded-lg object-cover border border-navy-700" />
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                     Change
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={clearPhoto}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { clearPhoto(); setPhotoUrl('') }}>
                     Remove
                   </Button>
                 </div>
@@ -223,7 +229,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
                 {photoBusy ? 'Processing…' : '📷 Take photo or choose from library'}
               </Button>
             )}
-            {!photo && (
+            {!photo && !photoUrl && (
               <Input
                 id="asset-photo"
                 placeholder="…or paste a photo URL"

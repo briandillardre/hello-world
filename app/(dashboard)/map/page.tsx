@@ -3,7 +3,7 @@ import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs } from '@/lib/db/company'
 import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
-import { buildCostCurve, zoneCostsFromHistory, type CostCurve, type ZoneCost } from '@/lib/costs'
+import { buildCostCurve, zoneCostsFromHistory, type CostCurve, type ZoneCostCurve } from '@/lib/costs'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
 
@@ -36,7 +36,8 @@ export default async function MapPage() {
   const realCost: CostCurve | null =
     history && trackWindow ? buildCostCurve(assets, history, trackWindow.from, trackWindow.to) : null
   // Per-zone accrual — the zone popup's meter stops when assets leave.
-  const zoneCosts: Record<string, ZoneCost> | null = history ? zoneCostsFromHistory(geofences, assets, history) : null
+  const zoneCosts: Record<string, ZoneCostCurve> | null =
+    history && trackWindow ? zoneCostsFromHistory(geofences, assets, history, trackWindow.from, trackWindow.to) : null
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
