@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
-import { getCurrentCompanyId } from '@/lib/db/company'
+import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -22,6 +22,7 @@ const M_STATUS = {
 
 export default async function AssetDetailPage({ params }: { params: { id: string } }) {
   const companyId = await getCurrentCompanyId()
+  const canEdit = (await getMyRole()) !== 'viewer'
   const [rawAssets, toolAssociations] = await Promise.all([
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
@@ -57,7 +58,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <AssetActions asset={asset} />
+            {canEdit && <AssetActions asset={asset} />}
             <Link href="/map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
               <MapPin className="h-4 w-4" /> View on map
             </Link>

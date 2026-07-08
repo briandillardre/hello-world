@@ -3,7 +3,7 @@
 ## What This Is
 Mobile-first asset tracking SaaS for construction companies. Competes with Tenna at lower price.
 Tracks vehicles (OBD2), heavy equipment (GPS), personnel, small tools (Bluetooth) on a live map.
-Owner: Brian Dillard / Dillard Construction Group (Nashville, TN area).
+Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 
 ## Live Site (updated Jul 2026 — app moved to Vercel)
 - **Live app:** https://hammertrackjune28.vercel.app (Vercel — auto-deploys `master`)

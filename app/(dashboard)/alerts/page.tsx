@@ -2,13 +2,12 @@ import { AlertsView } from '@/components/alerts/AlertsView'
 import { getAlertEvents, getAlertRules } from '@/lib/db/alerts'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { getCurrentCompanyId } from '@/lib/db/company'
-
-const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
 
 export default async function AlertsPage() {
   const companyId = await getCurrentCompanyId()
+  const role = await getMyRole()
+  const canEdit = role !== 'viewer'
   const [alerts, rules, geofences, assets] = await Promise.all([
     getAlertEvents(companyId),
     getAlertRules(companyId),
@@ -17,6 +16,6 @@ export default async function AlertsPage() {
   ])
 
   return (
-    <AlertsView alerts={alerts} rules={rules} geofences={geofences} assets={assets} editable={!isMock} />
+    <AlertsView alerts={alerts} rules={rules} geofences={geofences} assets={assets} editable={canEdit} />
   )
 }

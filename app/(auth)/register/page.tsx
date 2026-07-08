@@ -53,9 +53,11 @@ export default function RegisterPage() {
       company_id: authData.user.id,
       role: 'admin',
       name: email.split('@')[0],
+      email,
     })
 
-    router.push('/map')
+    // New company → onboarding wizard, not a bare empty map.
+    router.push('/welcome')
     router.refresh()
   }
 
