@@ -1,4 +1,4 @@
-import type { Asset } from './types'
+import type { Asset, AssetType } from './types'
 
 /**
  * Real job-cost accrual from observed telemetry + per-asset rates.
@@ -12,9 +12,28 @@ import type { Asset } from './types'
 
 export interface CostInput {
   id: string
+  type?: AssetType
   hourly_rate?: number | null
   mileage_rate?: number | null
   daily_cost?: number | null
+}
+
+/**
+ * How each asset type accrues cost INSIDE a zone:
+ *   vehicle   — operating only (hourly while moving + $/mile). Pickups come and
+ *               go; a parked truck isn't a site cost.
+ *   equipment — operating (hourly while moving) + ownership prorated across ALL
+ *               time on site. An idle excavator on a job still costs you.
+ *   personnel — labor: hourly_rate × ALL time present (a worker is paid whether
+ *               moving or not). No mileage, no ownership.
+ *   tool      — no time-based cost (value is theft/replacement, not job hours).
+ */
+interface ZonePolicy { operatingWhileMoving: boolean; laborAllPresent: boolean; mileage: boolean; ownership: boolean }
+const ZONE_POLICY: Record<AssetType, ZonePolicy> = {
+  vehicle:   { operatingWhileMoving: true,  laborAllPresent: false, mileage: true,  ownership: false },
+  equipment: { operatingWhileMoving: true,  laborAllPresent: false, mileage: false, ownership: true },
+  personnel: { operatingWhileMoving: false, laborAllPresent: true,  mileage: false, ownership: false },
+  tool:      { operatingWhileMoving: false, laborAllPresent: false, mileage: false, ownership: false },
 }
 
 export interface HistoryPoint {
@@ -183,21 +202,25 @@ export function zoneCostsFromHistory(
     const dist = haversineMeters(prev.lat, prev.lng, r.lat, r.lng)
     const moving = (r.speed ?? 0) > MIN_ACTIVE_SPEED || dist > MIN_MOVE_METERS
     const billable = moving && dt <= MAX_ACTIVE_GAP_MS
+    const pol = ZONE_POLICY[a.type ?? 'vehicle']
 
-    // Operating cost: only for time actually working (moving, tight gap).
-    let operating = 0
-    if (billable) {
-      if ((a.hourly_rate ?? 0) > 0) operating += (a.hourly_rate! * dt) / 3_600_000
-      if ((a.mileage_rate ?? 0) > 0) operating += a.mileage_rate! * (dist / 1609.34)
+    let cost = 0
+    if (pol.laborAllPresent) {
+      // Personnel: pay the loaded hourly rate for all time present on site.
+      if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
+    } else if (billable && pol.operatingWhileMoving) {
+      if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
+      if (pol.mileage && (a.mileage_rate ?? 0) > 0) cost += a.mileage_rate! * (dist / 1609.34)
     }
-    // Ownership cost: prorated across ALL time present (moving or idle).
-    const ownership = (a.daily_cost ?? 0) > 0 ? (a.daily_cost! * dt) / 86_400_000 : 0
+    if (pol.ownership && (a.daily_cost ?? 0) > 0) cost += (a.daily_cost! * dt) / 86_400_000
 
     const bucket = Math.min(BUCKETS - 1, Math.max(0, Math.floor(((ms - from) / span) * BUCKETS)))
     for (const g of rings) {
       if (!pointInPolygon([r.lng, r.lat], g.ring)) continue
-      perBucket[g.id].cost[bucket] += operating + ownership
-      if (billable) perBucket[g.id].hours[bucket] += dt / 3_600_000
+      perBucket[g.id].cost[bucket] += cost
+      // Personnel count all present time as "active" (they're working/paid);
+      // vehicles/equipment split active (moving) vs idle (parked).
+      if (pol.laborAllPresent || billable) perBucket[g.id].hours[bucket] += dt / 3_600_000
       else if (!moving) perBucket[g.id].idle[bucket] += dt / 3_600_000
       break // zones rarely overlap; attribute to the first hit
     }
