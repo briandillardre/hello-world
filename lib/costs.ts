@@ -138,10 +138,12 @@ import { pointInPolygon } from './alerts-engine'
 
 /**
  * Real cost accrued INSIDE each geofence over the window: walks consecutive
- * point pairs per asset and only bills pairs whose current fix is inside the
- * zone — so the meter stops the moment an asset leaves. Same rate rules as
- * buildCostCurve (hourly while moving, $/mile driven); ownership daily_cost is
- * deliberately excluded (it isn't attributable to a site).
+ * point pairs per asset and only counts pairs whose current fix is inside the
+ * zone — so the meter stops the moment an asset leaves. Two components:
+ *   - operating: hourly rate while actually MOVING + $/mile driven (work done)
+ *   - ownership: daily_cost prorated across ALL time present in the zone
+ *     (moving OR idle) — an asset tied up on a site costs its ownership share.
+ * So a truck parked on a job all day accrues ownership even at 0 mph.
  */
 export function zoneCostsFromHistory(
   geofences: { id: string; geometry: { coordinates: unknown[] } }[],
@@ -182,21 +184,21 @@ export function zoneCostsFromHistory(
     const moving = (r.speed ?? 0) > MIN_ACTIVE_SPEED || dist > MIN_MOVE_METERS
     const billable = moving && dt <= MAX_ACTIVE_GAP_MS
 
-    let cost = 0
+    // Operating cost: only for time actually working (moving, tight gap).
+    let operating = 0
     if (billable) {
-      if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
-      if ((a.mileage_rate ?? 0) > 0) cost += a.mileage_rate! * (dist / 1609.34)
+      if ((a.hourly_rate ?? 0) > 0) operating += (a.hourly_rate! * dt) / 3_600_000
+      if ((a.mileage_rate ?? 0) > 0) operating += a.mileage_rate! * (dist / 1609.34)
     }
+    // Ownership cost: prorated across ALL time present (moving or idle).
+    const ownership = (a.daily_cost ?? 0) > 0 ? (a.daily_cost! * dt) / 86_400_000 : 0
 
     const bucket = Math.min(BUCKETS - 1, Math.max(0, Math.floor(((ms - from) / span) * BUCKETS)))
     for (const g of rings) {
       if (!pointInPolygon([r.lng, r.lat], g.ring)) continue
-      if (billable) {
-        perBucket[g.id].cost[bucket] += cost
-        perBucket[g.id].hours[bucket] += dt / 3_600_000
-      } else if (!moving) {
-        perBucket[g.id].idle[bucket] += dt / 3_600_000
-      }
+      perBucket[g.id].cost[bucket] += operating + ownership
+      if (billable) perBucket[g.id].hours[bucket] += dt / 3_600_000
+      else if (!moving) perBucket[g.id].idle[bucket] += dt / 3_600_000
       break // zones rarely overlap; attribute to the first hit
     }
   }
