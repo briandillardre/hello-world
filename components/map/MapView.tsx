@@ -32,6 +32,14 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 const SITE_DEVICES = isMock ? MOCK_SITE_DEVICES : []
 
+// USGS national contour lines (public domain, keyless). Consumed as dynamic
+// export tiles via MapLibre's {bbox-epsg-3857} token; transparent PNG overlays
+// cleanly on any basemap. Contours are 1:24k-scale data — gate to street zoom.
+const TOPO_TILES =
+  'https://carto.nationalmap.gov/arcgis/rest/services/contours/MapServer/export' +
+  '?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image'
+const TOPO_MIN_ZOOM = 12
+
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
   equipment: '#60a5fa',
@@ -222,6 +230,7 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [base, setBase] = useState<BaseStyle>('satellite')
   const [radarOn, setRadarOn] = useState(false)
   const [parcelsOn, setParcelsOn] = useState(false)
+  const [topoOn, setTopoOn] = useState(false)
   const parcelAbort = useRef<AbortController | null>(null)
   const [weatherFrames, setWeatherFrames] = useState<WeatherFrames | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
@@ -751,6 +760,21 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, realZoneCostsRef.current?.[fence.id] ?? (realZoneCostsRef.current ? { total: 0, activeHours: 0 } : undefined)))
   }, [mapReady, displayT, range])
 
+  // ── USGS topo contour overlay ─────────────────────────────────────────────
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (topoOn && !m.getSource('topo')) {
+      m.addSource('topo', { type: 'raster', tiles: [TOPO_TILES], tileSize: 256, maxzoom: 16 })
+      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer(
+        { id: 'topo-overlay', type: 'raster', source: 'topo', minzoom: TOPO_MIN_ZOOM, paint: { 'raster-opacity': 0.8 } },
+        beforeId
+      )
+    }
+    if (m.getLayer('topo-overlay')) m.setLayoutProperty('topo-overlay', 'visibility', topoOn ? 'visible' : 'none')
+  }, [mapReady, topoOn])
+
   // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
   useEffect(() => {
     const m = map.current
@@ -941,6 +965,8 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
         onSaveDefault={onSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
+        topoOn={topoOn}
+        onTopo={setTopoOn}
         top={kiosk ? 70 : 58}
       />
 
