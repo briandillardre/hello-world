@@ -57,7 +57,8 @@ export interface LocationHistoryRow {
  */
 export async function getLocationHistory(
   companyId: string,
-  sinceIso: string
+  sinceIso: string,
+  limit = 5000
 ): Promise<LocationHistoryRow[] | null> {
   if (isMock) return null
 
@@ -69,8 +70,25 @@ export async function getLocationHistory(
     .eq('company_id', companyId)
     .gte('timestamp', sinceIso)
     .order('timestamp', { ascending: false })
-    .limit(5000)
+    .limit(limit)
   return (data ?? []).reverse()
+}
+
+/** Earliest recorded location timestamp (ms) for the company, for "All time".
+ *  Null in demo mode or when there's no history yet. */
+export async function getEarliestLocationTime(companyId: string): Promise<number | null> {
+  if (isMock) return null
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('asset_locations')
+    .select('timestamp')
+    .eq('company_id', companyId)
+    .order('timestamp', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  const ms = data?.timestamp ? new Date(data.timestamp).getTime() : NaN
+  return Number.isFinite(ms) ? ms : null
 }
 
 export async function createAsset(

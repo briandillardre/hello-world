@@ -30,4 +30,38 @@ export function zonedDayWindow(tz: string, daysAgo: number): { from: number; to:
   return { from: startOf(daysAgo), to: startOf(daysAgo - 1) }
 }
 
+/** Local Jan 1 00:00:00 (this year) in `tz`, epoch ms. */
+export function startOfYear(tz: string): number {
+  const yr = Number(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric' }).format(new Date()))
+  const guess = Date.UTC(yr, 0, 1)
+  return guess - tzOffsetMs(tz, guess - tzOffsetMs(tz, guess))
+}
+
+export type TimeRangeKey = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all' | 'custom'
+
+/**
+ * Epoch-ms window for a timeline range, in the viewer's timezone. Multi-day
+ * ranges start at local midnight N days ago and end at end-of-today, so every
+ * tick is a clean day boundary. `earliestMs` is the first-ever data point (for
+ * "All time"); custom uses the picker's from/to.
+ */
+export function rangeWindow(
+  tz: string,
+  range: TimeRangeKey,
+  opts?: { earliestMs?: number | null; customFrom?: number; customTo?: number }
+): { from: number; to: number } {
+  const today = zonedDayWindow(tz, 0)
+  const endToday = today.to
+  switch (range) {
+    case 'live':
+    case 'today': return today
+    case 'yesterday': return zonedDayWindow(tz, 1)
+    case '7d': return { from: zonedDayWindow(tz, 7).from, to: endToday }
+    case '30d': return { from: zonedDayWindow(tz, 30).from, to: endToday }
+    case 'ytd': return { from: startOfYear(tz), to: endToday }
+    case 'all': return { from: opts?.earliestMs ?? zonedDayWindow(tz, 30).from, to: endToday }
+    case 'custom': return { from: opts?.customFrom ?? zonedDayWindow(tz, 7).from, to: opts?.customTo ?? endToday }
+  }
+}
+
 export const DEFAULT_TZ = 'America/New_York'

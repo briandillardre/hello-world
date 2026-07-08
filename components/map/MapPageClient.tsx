@@ -3,15 +3,8 @@
 import { useCallback, useState } from 'react'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
-import type { AssetTrack, TrackWindow } from '@/lib/trails'
-import type { CostCurve, ZoneCostCurve } from '@/lib/costs'
-
-export interface RangeDataset {
-  tracks: AssetTrack[]
-  window: TrackWindow
-  cost: CostCurve
-  zones: Record<string, ZoneCostCurve>
-}
+import type { AssetTrack } from '@/lib/trails'
+import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction } from '@/lib/actions/geofences'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
@@ -38,16 +31,16 @@ interface MapPageClientProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   tracks: AssetTrack[]
-  realWindow?: TrackWindow | null
-  realCost?: CostCurve | null
-  realZoneCosts?: Record<string, ZoneCostCurve> | null
-  rangeData?: { today: RangeDataset; yesterday: RangeDataset } | null
+  /** Raw location history (real mode). MapView builds per-range datasets from it. */
+  historyRows?: LocationHistoryRow[] | null
+  earliestMs?: number | null
+  tz?: string
   toolGateways: Record<string, { name: string; lastSeen: string }>
   defaultWeatherPlace?: string | null
   canSetWeatherDefault?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, realWindow = null, realCost = null, realZoneCosts = null, rangeData = null, toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
@@ -82,10 +75,9 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, rea
         assets={assets}
         geofences={geofences}
         tracks={tracks}
-        realWindow={realWindow}
-        realCost={realCost}
-        realZoneCosts={realZoneCosts}
-        rangeData={rangeData}
+        historyRows={historyRows}
+        earliestMs={earliestMs}
+        tz={tz}
         toolGateways={toolGateways}
         onGeofenceSave={handleGeofenceSave}
         defaultWeatherPlace={defaultWeatherPlace}

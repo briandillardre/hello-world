@@ -1,12 +1,11 @@
-import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
+import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs } from '@/lib/db/company'
-import { generateTracks, tracksFromHistory } from '@/lib/trails'
-import { buildCostCurve, zoneCostsFromHistory, type CostCurve, type ZoneCostCurve } from '@/lib/costs'
+import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
-import { zonedDayWindow, DEFAULT_TZ } from '@/lib/dates'
+import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
 
 // Demo mode renders mock data, so this is statically prerendered (deploys
@@ -16,42 +15,37 @@ export default async function MapPage() {
   const company = await getCurrentCompany()
   const companyId = company.id
   const prefs = await getCompanyPrefs()
-  const [rawAssets, geofences, toolAssociations] = await Promise.all([
+  const [rawAssets, geofences, toolAssociations, earliestMs] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getToolAssociations(companyId),
+    getEarliestLocationTime(companyId),
   ])
 
   // Tools have no GPS of their own — resolve their position from the gateway
   // (truck/equipment) that currently detects them over Bluetooth.
   const assets = resolveToolLocations(rawAssets, toolAssociations)
 
-  // Calendar-day windows in the VIEWER's timezone (ht_tz cookie from TzCookie;
-  // server is UTC). Today/Yesterday run local midnight → midnight, per request.
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
-  const todayW = zonedDayWindow(tz, 0)
-  const yestW = zonedDayWindow(tz, 1)
 
-  // Real mode: fetch since yesterday's local midnight; build a dataset per day
-  // so switching Today/Yesterday swaps tracks + cost + zone curves together.
-  const history = await getLocationHistory(companyId, new Date(yestW.from).toISOString())
-  const dataset = (w: { from: number; to: number }) => {
-    const rows = (history ?? []).filter((r) => {
-      const ms = new Date(r.timestamp).getTime()
-      return ms >= w.from && ms < w.to
-    })
-    return {
-      tracks: tracksFromHistory(assets, rows, w.from, w.to),
-      window: w,
-      cost: buildCostCurve(assets, rows, w.from, w.to),
-      zones: zoneCostsFromHistory(geofences, assets, rows, w.from, w.to),
-    }
-  }
-  const rangeData = history ? { today: dataset(todayW), yesterday: dataset(yestW) } : null
-  const tracks = rangeData ? rangeData.today.tracks : generateTracks(assets)
-  const trackWindow = rangeData ? rangeData.today.window : null
-  const realCost: CostCurve | null = rangeData ? rangeData.today.cost : null
-  const zoneCosts: Record<string, ZoneCostCurve> | null = rangeData ? rangeData.today.zones : null
+  // Real mode: fetch ALL history (from the first-ever fix, capped) once and
+  // hand the raw rows to the client, which builds tracks + cost + zone curves
+  // per selected range (Today … All time … Custom). MapView is client-only
+  // (ssr:false) so this computation naturally lives there, keyed on the range.
+  const sinceMs = earliestMs ?? Date.now() - 30 * 86_400_000
+  const history = earliestMs !== null
+    ? await getLocationHistory(companyId, new Date(sinceMs).toISOString(), 12000)
+    : await getLocationHistory(companyId, new Date(Date.now() - 2 * 86_400_000).toISOString())
+
+  // Thin the shipped payload: OBD units report every few seconds, so cap at a
+  // few thousand evenly-strided rows. tracksFromHistory thins further per range.
+  const MAX_SHIP = 6000
+  const rows = history ?? []
+  const stride = Math.max(1, Math.ceil(rows.length / MAX_SHIP))
+  const historyRows = stride > 1 ? rows.filter((_, i) => i % stride === 0 || i === rows.length - 1) : rows
+
+  // Demo mode keeps the synthetic cinematic trails.
+  const demoTracks = history ? [] : generateTracks(assets)
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
@@ -64,7 +58,17 @@ export default async function MapPage() {
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
-        <MapPageClient assets={assets} geofences={geofences} tracks={tracks} realWindow={trackWindow} realCost={realCost} realZoneCosts={zoneCosts} rangeData={rangeData} toolGateways={toolGateways} defaultWeatherPlace={prefs.weatherPlace} canSetWeatherDefault={prefs.isAdmin} />
+        <MapPageClient
+          assets={assets}
+          geofences={geofences}
+          tracks={demoTracks}
+          historyRows={history ? historyRows : null}
+          earliestMs={earliestMs}
+          tz={tz}
+          toolGateways={toolGateways}
+          defaultWeatherPlace={prefs.weatherPlace}
+          canSetWeatherDefault={prefs.isAdmin}
+        />
       </div>
     </div>
   )

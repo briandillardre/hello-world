@@ -7,15 +7,16 @@ import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
-  rangeWindowSeconds, defaultSpeed,
+  defaultSpeed, tracksFromHistory, rangeWindowSeconds,
 } from '@/lib/trails'
+import { rangeWindow } from '@/lib/dates'
 import {
   type WeatherFrames, type Conditions, type RadarFrame,
   fetchWeatherFrames, fetchConditions, weatherTileUrl, liveFrameIndex, frameLabel,
 } from '@/lib/weather'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
-import { zoneCostAt } from '@/lib/costs'
+import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
 import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
 import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
@@ -125,13 +126,14 @@ function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
 interface MapViewProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
+  /** Synthetic demo tracks (demo mode only). Real mode uses historyRows. */
   tracks?: AssetTrack[]
-  /** Real-history window the tracks span (null/undefined = synthetic demo tracks). */
-  realWindow?: import('@/lib/trails').TrackWindow | null
-  /** Real cost curve from asset rates x observed activity (null = demo PROJECTS). */
-  realCost?: import('@/lib/costs').CostCurve | null
-  /** Real per-zone cost curves from history (null = demo estimates in zone popups). */
-  realZoneCosts?: Record<string, import('@/lib/costs').ZoneCostCurve> | null
+  /** Raw location history (real mode). Per-range tracks/cost/zones built here. */
+  historyRows?: import('@/lib/db/assets').LocationHistoryRow[] | null
+  /** First-ever fix (ms), for the "All time" window. */
+  earliestMs?: number | null
+  /** Viewer IANA timezone for local-calendar-day range windows. */
+  tz?: string
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
   kiosk?: boolean
@@ -139,11 +141,9 @@ interface MapViewProps {
   defaultWeatherPlace?: string | null
   /** Show the admin-only "save as company default" control in the weather panel. */
   onSaveWeatherDefault?: (place: string) => Promise<boolean | void>
-  /** Per-calendar-day datasets (viewer TZ). Today/Yesterday swap everything. */
-  rangeData?: { today: import('./MapPageClient').RangeDataset; yesterday: import('./MapPageClient').RangeDataset } | null
 }
 
-export function MapView({ assets, geofences, tracks = [], realWindow = null, realCost = null, realZoneCosts = null, rangeData = null, toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -156,8 +156,8 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   const [showZones, setShowZones] = useState(true)
   const [showDevices, setShowDevices] = useState(isMock)
-  const realZoneCostsRef = useRef(realZoneCosts)
-  const realWindowRef = useRef(realWindow)
+  const realZoneCostsRef = useRef<Record<string, import('@/lib/costs').ZoneCostCurve> | null>(null)
+  const realWindowRef = useRef<import('@/lib/trails').TrackWindow | null>(null)
 
   // Zone popup cost AT the scrub position (mirrors the hard-hat chip) with an
   // "as of <time>" stamp so the number visibly follows the timeline.
@@ -192,24 +192,39 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   // How much of the window is revealed: full when live, scrubbed when replaying
   const displayT = pbActive ? pbT : 1
 
-  // Today/Yesterday are true LOCAL calendar days: picking a range swaps the
-  // whole dataset (tracks, window, cost + zone curves) for that day. Other
-  // ranges fall back to today's dataset until range-deep fetching exists.
-  const dayData = rangeData ? (range === 'yesterday' ? rangeData.yesterday : rangeData.today) : null
+  // Real mode: build the dataset for the SELECTED range from raw history \u2014
+  // tracks, window, cost curve, and per-zone curves, all for the same window.
+  // Every range (Today \u2026 All time \u2026 Custom) gets correct data + axis, and the
+  // truck's trail appears in each because tracks span that range's window.
+  const dayData = useMemo(() => {
+    if (!historyRows) return null
+    const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
+    const rows = historyRows.filter((r) => {
+      const ms = Date.parse(r.timestamp)
+      return ms >= w.from && ms < w.to
+    })
+    return {
+      tracks: tracksFromHistory(assets, rows, w.from, w.to),
+      window: w,
+      cost: buildCostCurve(assets, rows, w.from, w.to),
+      zones: zoneCostsFromHistory(geofences, assets, rows, w.from, w.to),
+    }
+  }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences])
+
   const tracksEff = dayData?.tracks ?? tracks
-  const realWindowEff = dayData?.window ?? realWindow
-  const realCostEff = dayData?.cost ?? realCost
-  const realZoneCostsEff = dayData?.zones ?? realZoneCosts
+  const realWindowEff = dayData?.window ?? null
+  const realCostEff = dayData?.cost ?? null
+  const realZoneCostsEff = dayData?.zones ?? null
   realZoneCostsRef.current = realZoneCostsEff
   realWindowRef.current = realWindowEff
   // Cost shown inside the timeline. Real accounts: cumulative curve built from
-  // per-asset rates x observed activity over the loaded (last-24h) window --
-  // the scrub position reads the honest ledger, never demo PROJECT rates.
+  // per-asset rates x observed activity over the SELECTED range \u2014 the scrub
+  // position reads the honest ledger, never demo PROJECT rates.
   const costTotal = realCostEff
     ? realCostEff.curve[Math.min(realCostEff.curve.length - 1, Math.max(0, Math.floor(displayT * (realCostEff.curve.length - 1))))] ?? 0
     : PROJECTS.reduce((s, p) => s + periodCost(p, range, pbT, customDays).total, 0)
   const costLabel = realCostEff
-    ? (realCostEff.hasRates ? (range === 'yesterday' ? 'yesterday \u00b7 from asset rates' : 'today \u00b7 from asset rates') : 'set cost rates on assets')
+    ? (realCostEff.hasRates ? `${RANGE_COST_LABEL[range]} \u00b7 from asset rates` : 'set cost rates on assets')
     : range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
   const tracksRef = useRef(tracksEff)
   const filterRef = useRef(filter)
@@ -226,7 +241,9 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
   speedRef.current = pbSpeed
   tRef.current = pbT
   rangeRef.current = range
-  windowRef.current = rangeWindowSeconds(range)
+  // Playback duration = the real selected-range window (else demo fallback), so
+  // a 30-day replay actually spans 30 days of wall-clock at the chosen speed.
+  windowRef.current = realWindowEff ? (realWindowEff.to - realWindowEff.from) / 1000 : rangeWindowSeconds(range)
   assetsRef.current = assets
   geofencesRef.current = geofences
 
@@ -907,11 +924,14 @@ export function MapView({ assets, geofences, tracks = [], realWindow = null, rea
     if (r === 'live') {
       setPbPlaying(false)
     } else {
-      tRef.current = 0
-      setPbT(0)
+      // Show the FULL trail for the range immediately (t=1). Play replays from
+      // the start. (Previously auto-played from t=0, so the trail looked empty
+      // until the animation caught up — which read as "no truck".)
+      tRef.current = 1
+      setPbT(1)
       setPbSpeed(defaultSpeed(r)) // sensible multiplier for this range
-      setPbPlaying(true) // auto-play the replay
-      // give immediate visual feedback if no movement layer is on yet
+      setPbPlaying(false)
+      // turn a movement layer on so the trail is actually visible
       setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     }
   }, [])
