@@ -4,6 +4,7 @@ import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, 
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { MapConsole } from '@/components/marketing/MapConsole'
+import { FollowCinema } from '@/components/marketing/FollowCinema'
 import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
 
 export const metadata: Metadata = {
@@ -96,8 +97,13 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Map console hero */}
-        <section className="max-w-6xl mx-auto px-6">
+        {/* Follow-mode cinematic hero — self-contained 3D dark-topo flythrough */}
+        <section className="max-w-5xl mx-auto px-6">
+          <FollowCinema />
+        </section>
+
+        {/* Live activity console */}
+        <section className="max-w-6xl mx-auto px-6 mt-6">
           <MapConsole />
           <p className="text-center font-mono text-[12.5px] text-faint mt-6 max-w-3xl mx-auto">
             We ship the trackers — Teltonika GPS, OBD2 plug-ins &amp; BlueCharm Bluetooth tags. Built in South Carolina by a working contractor.
