@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, SunDim } from 'lucide-react'
 import { type Conditions, weatherEmoji } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid' | '3d'
@@ -20,9 +20,9 @@ interface WeatherControlProps {
   /** Tax-parcel overlay toggle — rendered only when a parcel service is configured. */
   parcelsOn?: boolean
   onParcels?: (v: boolean) => void
-  /** USGS contour-lines overlay (national, free) — always available. */
-  topoOn?: boolean
-  onTopo?: (v: boolean) => void
+  /** Free national overlays (topo, hillshade, wetlands, streams). */
+  overlays?: { key: string; label: string; note: string; on: boolean }[]
+  onOverlay?: (key: string, on: boolean) => void
   top?: number
 }
 
@@ -40,7 +40,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, topoOn = false, onTopo, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
@@ -203,24 +203,25 @@ export function WeatherControl({ base, onBase, radarOn, onRadar, conditions, fra
         </div>
       )}
 
-      {/* USGS topo contour lines — free national overlay, street zoom */}
-      {onTopo && (
-        <>
-          <button onClick={() => onTopo(!topoOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <Mountain className={'h-4 w-4 ' + (topoOn ? 'text-teal' : 'text-faint')} /> Topo lines
-            </span>
-            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (topoOn ? 'bg-teal/40' : 'bg-navy-700')}>
-              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (topoOn ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-          </button>
-          {topoOn && (
-            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-              USGS contours &middot; zoom in to see lines
-            </div>
-          )}
-        </>
-      )}
+      {/* free national overlays: topo, hillshade, wetlands, streams */}
+      {overlays && onOverlay && overlays.map((o) => {
+        const Icon = o.key === 'topo' ? Mountain : o.key === 'hillshade' ? SunDim : o.key === 'wetlands' ? Droplets : Waves
+        return (
+          <div key={o.key}>
+            <button onClick={() => onOverlay(o.key, !o.on)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
+              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <Icon className={'h-4 w-4 ' + (o.on ? 'text-teal' : 'text-faint')} /> {o.label}
+              </span>
+              <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (o.on ? 'bg-teal/40' : 'bg-navy-700')}>
+                <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (o.on ? 'left-[18px]' : 'left-0.5')} />
+              </span>
+            </button>
+            {o.on && (
+              <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">{o.note}</div>
+            )}
+          </div>
+        )
+      })}
 
       {/* tax parcel lines — county GIS overlay, appears at street zoom */}
       {onParcels && (
