@@ -41,6 +41,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - `app/pricing/page.tsx` — public pricing page (Tenna comparison)
 - `marketing/lead-funnel-infographic.html` — GTM funnel infographic
 - `marketing/ad-variants.md` — Google Search, dealer, cold email ad copy
+- `docs/BUSINESS-PLAN.md` — full operating plan: pricing, phases, hires, cash curve, exit scenarios (update at phase gates)
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
 
