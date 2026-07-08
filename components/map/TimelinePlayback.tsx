@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X } from 'lucide-react'
 import {
   type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
   speedsForRange, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
 } from '@/lib/trails'
+import type { AssetType } from '@/lib/types'
 import { money } from '@/lib/projects'
+
+export interface FollowAsset { id: string; name: string; type: AssetType; color: string }
 
 // epoch ms <-> <input type="datetime-local"> value (local time, no seconds)
 function toLocalInput(ms: number): string {
@@ -42,15 +45,34 @@ interface TimelinePlaybackProps {
   /** When tracks come from REAL history, the epoch window they span — labels
    *  then show true timestamps instead of the demo's 6AM-6PM pretend clock. */
   realWindow?: TrackWindow | null
+  /** Cinematic camera-follow: the asset the camera is chasing (null = off). */
+  followId: string | null
+  onFollow: (id: string | null) => void
+  /** Assets with a trail in the current window, offered as follow targets. */
+  followAssets: FollowAsset[]
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, realWindow,
+  followId, onFollow, followAssets,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
   const [showCustom, setShowCustom] = useState(false)
+  const [showFollow, setShowFollow] = useState(false)
+  const followWrap = useRef<HTMLDivElement>(null)
+  const followed = followAssets.find((a) => a.id === followId) ?? null
+
+  // Close the follow menu on any outside click.
+  useEffect(() => {
+    if (!showFollow) return
+    const onDoc = (e: MouseEvent) => {
+      if (followWrap.current && !followWrap.current.contains(e.target as Node)) setShowFollow(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [showFollow])
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
     custom ? customTickLabel(customFrom, customTo, f)
     : realWindow ? windowTickLabel(realWindow, f)
@@ -136,6 +158,49 @@ export function TimelinePlayback({
             </button>
           ))}
         </div>
+
+        {/* Cinematic camera-follow */}
+        {followAssets.length > 0 && (
+          <div ref={followWrap} className="flex-none relative">
+            <button
+              onClick={() => (followed ? onFollow(null) : setShowFollow((s) => !s))}
+              title={followed ? `Following ${followed.name} — click to release` : 'Cinematic follow'}
+              className={
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+                (followed
+                  ? 'bg-amber/20 text-amber border-amber/40'
+                  : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+              }
+            >
+              <Video className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline max-w-[90px] truncate">{followed ? followed.name : 'Follow'}</span>
+              {followed && <X className="h-3 w-3" />}
+            </button>
+
+            {showFollow && !followed && (
+              <div className="absolute bottom-full mb-2 right-0 z-30 w-[220px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2">
+                <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink flex items-center gap-1.5">
+                  <Video className="h-3.5 w-3.5 text-amber" /> Fly the camera with…
+                </p>
+                <div className="max-h-[200px] overflow-y-auto no-scrollbar">
+                  {followAssets.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => { onFollow(a.id); setShowFollow(false) }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[13px] text-muted hover:bg-navy-900 hover:text-ink transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: a.color }} />
+                      <span className="truncate">{a.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="px-2 pt-1.5 pb-0.5 text-[10px] text-faint leading-snug">
+                  Tilts into 3D and chases the asset along its route. Turn off any time.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {live ? (

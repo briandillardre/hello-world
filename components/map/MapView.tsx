@@ -46,6 +46,29 @@ const ASSET_COLORS: Record<AssetType, string> = {
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclustered-label']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
+// ── Cinematic camera-follow tuning ──────────────────────────────────────────
+const FOLLOW_PITCH = 62      // 3D tilt while chasing an asset
+const FOLLOW_ZOOM = 16.2     // zoom the entrance reveal settles at
+const ORBIT_STEP = 0.18      // deg/frame the camera pans around a parked asset
+const HEADING_LERP = 0.1     // how fast bearing swings toward the travel direction
+const MOVE_EPS = 1.5e-5      // deg of travel below which the asset counts as parked
+
+// Compass bearing (deg) from point a to point b.
+function bearingBetween(a: [number, number], b: [number, number]): number {
+  const φ1 = (a[1] * Math.PI) / 180
+  const φ2 = (b[1] * Math.PI) / 180
+  const Δλ = ((b[0] - a[0]) * Math.PI) / 180
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360
+}
+
+// Interpolate between two bearings along the SHORT arc (handles 359°→1° wrap).
+function lerpAngle(from: number, to: number, f: number): number {
+  const diff = (((to - from) % 360) + 540) % 360 - 180
+  return (from + diff * f + 360) % 360
+}
+
 function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -192,6 +215,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // How much of the window is revealed: full when live, scrubbed when replaying
   const displayT = pbActive ? pbT : 1
 
+  // ── Cinematic camera-follow ───────────────────────────────────────────────
+  // The camera chases one asset along its trail with a 3D tilt, banking into
+  // turns and slowly orbiting when the asset is parked.
+  const [followId, setFollowId] = useState<string | null>(null)
+  const followIdRef = useRef<string | null>(null)
+  const bearingRef = useRef(0)   // smoothed camera bearing
+  const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
+  const entranceRef = useRef(1)  // 0→1 "pan up + zoom in" reveal progress
+  followIdRef.current = followId
+
   // Real mode: build the dataset for the SELECTED range from raw history \u2014
   // tracks, window, cost curve, and per-zone curves, all for the same window.
   // Every range (Today \u2026 All time \u2026 Custom) gets correct data + axis, and the
@@ -266,6 +299,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // ── Basemap + weather layer state ─────────────────────────────────────────
   // Default to satellite — real aerial imagery reads as "the actual jobsite"
   const [base, setBase] = useState<BaseStyle>('satellite')
+  const baseRef = useRef(base)
+  baseRef.current = base
   const [radarOn, setRadarOn] = useState(false)
   const [parcelsOn, setParcelsOn] = useState(false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
@@ -657,11 +692,48 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [])
 
+  // Drive the cinematic camera to the followed asset at scrub position t. Called
+  // every frame from the RAF loop (smooth chase) and on discrete seeks. Banks
+  // the bearing into the direction of travel, orbits when parked, and eases the
+  // pitch/zoom up on the first frames for the "pan-up reveal".
+  const focusFollow = useCallback((t: number) => {
+    const m = map.current
+    const id = followIdRef.current
+    if (!m || !id) return
+    const tr = tracksRef.current.find((x) => x.assetId === id)
+    if (!tr || tr.points.length === 0) return
+    const here = positionAt(tr, t)
+    const prev = positionAt(tr, Math.max(0, t - 0.004))
+    const moved = Math.hypot(here[0] - prev[0], here[1] - prev[1])
+    if (moved > MOVE_EPS) {
+      bearingRef.current = lerpAngle(bearingRef.current, bearingBetween(prev, here), HEADING_LERP)
+    } else {
+      // Parked — drift the camera around the asset for the hero fly-around.
+      bearingRef.current = (bearingRef.current + ORBIT_STEP) % 360
+    }
+    pitchRef.current += (FOLLOW_PITCH - pitchRef.current) * 0.06
+    if (entranceRef.current < 1) {
+      entranceRef.current = Math.min(1, entranceRef.current + 0.02)
+      const z = m.getZoom()
+      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (FOLLOW_ZOOM - z) * 0.07 })
+    } else {
+      // Entrance done — leave zoom alone so the user can pinch in/out mid-flight.
+      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current })
+    }
+  }, [])
+
   // Push trail/heat/head geometry on discrete changes (seek, filter, mode)
   useEffect(() => {
     if (!mapReady) return
     updateMovementSources(displayT)
   }, [mapReady, trailMode, displayT, filter, tracksEff, updateMovementSources])
+
+  // When paused (scrubbing), keep the camera pinned to the followed asset. During
+  // playback the RAF loop drives it every frame, so skip to avoid double work.
+  useEffect(() => {
+    if (!mapReady || !followId || pbPlaying) return
+    focusFollow(displayT)
+  }, [mapReady, followId, pbPlaying, displayT, focusFollow])
 
   // Fetch weather frames + conditions once. Location priority: the company's
   // admin-set default place, else wherever the fleet last reported (the weather
@@ -909,6 +981,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (next >= 1) { next = 1; setPbPlaying(false) }
       tRef.current = next
       updateMovementSources(next)
+      focusFollow(next)
       if (next >= 1 || now - lastReact > 100) {
         lastReact = now
         setPbT(next)
@@ -917,7 +990,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [pbPlaying, updateMovementSources])
+  }, [pbPlaying, updateMovementSources, focusFollow])
 
   const handleRange = useCallback((r: TimeRange) => {
     setRange(r)
@@ -948,6 +1021,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     tRef.current = v
     setPbT(v)
   }, [])
+
+  // Toggle cinematic follow. Picking an asset arms a 3D chase: switch to a replay
+  // range if we're live, tilt/zoom the camera up, and play the route from the top.
+  const handleFollow = useCallback((id: string | null) => {
+    setFollowId(id)
+    const m = map.current
+    if (!id) {
+      // Release: glide back to the flat (or 3D-base) overview.
+      m?.easeTo({ pitch: baseRef.current === '3d' ? 55 : 0, bearing: 0, duration: 800 })
+      return
+    }
+    setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
+    if (m) { bearingRef.current = m.getBearing(); pitchRef.current = m.getPitch() }
+    entranceRef.current = 0
+    // Live has no scrubber — drop into Today so the route can actually replay.
+    const wasLive = rangeRef.current === 'live'
+    if (wasLive) handleRange('today')
+    setPbSpeed(defaultSpeed(wasLive ? 'today' : rangeRef.current))
+    tRef.current = 0
+    setPbT(0)
+    setPbPlaying(true)
+  }, [handleRange])
+
+  // If the followed asset is filtered out or vanishes, release the camera.
+  useEffect(() => {
+    if (followId && !tracksEff.some((tr) => tr.assetId === followId && filter.has(tr.type))) {
+      handleFollow(null)
+    }
+  }, [followId, tracksEff, filter, handleFollow])
 
   // ── Geofence drawing ──
   const handleDrawClick = useCallback((e: maplibregl.MapMouseEvent) => {
@@ -1045,6 +1147,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           costTotal={costTotal}
           costLabel={costLabel}
           realWindow={realWindowEff}
+          followId={followId}
+          onFollow={handleFollow}
+          followAssets={tracksEff
+            .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
+            .map((tr) => ({ id: tr.assetId, name: tr.name, type: tr.type, color: tr.color }))}
         />
       )}
 
