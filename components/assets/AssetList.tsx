@@ -114,10 +114,27 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
 
       <div className="flex-1 overflow-y-auto divide-y divide-navy-800 pb-32 md:pb-28">
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-faint">
-            <p className="text-4xl mb-2">📦</p>
-            <p>No assets found</p>
-          </div>
+          assets.length === 0 ? (
+            <div className="p-8 max-w-sm mx-auto text-center">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/10 border border-amber/25 grid place-items-center mb-3 text-2xl">🚛</div>
+              <p className="text-ink font-display font-bold">Put your first machine on the map</p>
+              <p className="text-sm text-faint mt-1.5 leading-relaxed">
+                Add a truck, machine, or tagged tool with its tracker ID — it appears on the live map
+                the moment the tracker reports.
+              </p>
+              <button
+                onClick={() => setShowForm(true)}
+                className="mt-4 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-sm px-5 py-2.5 hover:bg-amber-600 transition-colors"
+              >
+                + Add your first asset
+              </button>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-faint">
+              <p className="text-4xl mb-2">🔍</p>
+              <p className="text-sm">Nothing matches that search or filter.</p>
+            </div>
+          )
         ) : (
           filtered.map(asset => (
             <AssetRow key={asset.id} asset={asset} />

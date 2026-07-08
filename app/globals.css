@@ -143,6 +143,66 @@ body {
   to   { transform: translateX(-50%); }
 }
 
+/* ── Motion polish ──────────────────────────────────────────────────────── */
+
+/* Scroll-reveal: elements fade-up when they enter the viewport (Reveal.tsx) */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* Loading shimmer for skeleton screens */
+.skeleton-shimmer {
+  background: linear-gradient(100deg, #04121d 40%, #0a2438 50%, #04121d 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer { animation: none; }
+}
+
+/* ── Cinematic demo theater (/demo hero) ────────────────────────────────── */
+.demo-cinema-dot {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  background: rgba(0, 21, 35, 0.85);
+  border: 2px solid #ff9e16;
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(255, 158, 22, 0.55), 0 0 44px rgba(255, 158, 22, 0.25);
+}
+.demo-card {
+  animation: cardIn 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.demo-sms {
+  animation: smsIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) 0.7s both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes smsIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-card, .demo-sms { animation: none; }
+}
+
 /* Word-by-word dramatic reveal for the rotating hero headline */
 .anim-word {
   opacity: 0;

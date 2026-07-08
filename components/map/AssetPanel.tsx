@@ -93,6 +93,14 @@ function AssetDetails({
 }) {
   return (
     <div className="space-y-3">
+      {asset.photo_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={asset.photo_url}
+          alt={asset.name}
+          className="w-full h-36 object-cover rounded-xl border border-navy-800"
+        />
+      )}
       {asset.type === 'tool' && gateway && (
         <div className="bg-[#60a5fa]/15 border border-[#60a5fa]/30 rounded-lg p-3 flex items-center gap-2">
           <Wifi className="h-4 w-4 text-[#60a5fa] flex-shrink-0" />

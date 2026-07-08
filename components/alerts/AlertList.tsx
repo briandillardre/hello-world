@@ -64,10 +64,27 @@ export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
 
       <div className="flex-1 overflow-y-auto divide-y divide-navy-800">
         {visible.length === 0 ? (
-          <div className="p-8 text-center text-faint">
-            <Bell className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p className="text-sm">{filter === 'unread' ? 'No unread alerts' : 'No alerts yet'}</p>
-          </div>
+          filter === 'unread' ? (
+            <div className="p-8 text-center text-faint">
+              <CheckCheck className="h-10 w-10 mx-auto mb-2 text-[#34d399] opacity-70" />
+              <p className="text-sm text-ink font-medium">All caught up</p>
+              <p className="text-xs mt-1">Every alert has been acknowledged.</p>
+            </div>
+          ) : (
+            <div className="p-8 max-w-sm mx-auto text-center">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-[#34d399]/10 border border-[#34d399]/25 grid place-items-center mb-3">
+                <Bell className="h-6 w-6 text-[#34d399]" />
+              </div>
+              <p className="text-ink font-display font-bold">Quiet night. That&rsquo;s the goal.</p>
+              <p className="text-sm text-faint mt-1.5 leading-relaxed">
+                The second a machine moves after hours or leaves a job-site zone, the alert lands here —
+                and texts your phone if SMS is set up.
+              </p>
+              <a href="/map" className="inline-block mt-4 text-sm font-semibold text-amber hover:underline">
+                Draw a zone to guard →
+              </a>
+            </div>
+          )
         ) : (
           visible.map(alert => (
             <AlertRow key={alert.id} alert={alert} onAcknowledge={onAcknowledge} />
@@ -109,7 +126,9 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
           <MapPin className="h-3 w-3" />
           {zoneName}
         </div>
-        <p className="text-xs text-faint mt-0.5">{formatRelativeTime(alert.triggered_at)}</p>
+        {/* suppressHydrationWarning: "Xm ago" drifts between server render and
+            client hydration — cosmetic, not worth a mismatch error. */}
+        <p className="text-xs text-faint mt-0.5" suppressHydrationWarning>{formatRelativeTime(alert.triggered_at)}</p>
       </div>
 
       {isUnread && onAcknowledge && (

@@ -7,6 +7,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getUtilization } from '@/lib/db/reports'
 import type { AssetType, AssetUtilization } from '@/lib/types'
 import { ReportsExport } from '@/components/reports/ReportsExport'
+import { CountUp } from '@/components/ui/count-up'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
@@ -62,7 +63,7 @@ export default async function ReportsPage() {
           <div className="relative">
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable value · last 30 days</p>
             <p className="font-display font-black text-[2.1rem] text-amber leading-tight">
-              ${billableValue.toLocaleString()}
+              <CountUp value={billableValue} prefix="$" />
             </p>
             <p className="text-xs text-faint">{totalEngineHours.toLocaleString()} active hours at your asset rates{real ? '' : ' — demo figures'}. {real && billableValue === 0 ? 'Set hourly rates on your assets to see billable value.' : 'Job-costed automatically.'}</p>
           </div>

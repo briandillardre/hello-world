@@ -44,6 +44,18 @@ export default async function MaintenancePage() {
       <div className="p-4 space-y-6 max-w-2xl">
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Service Schedule</h2>
+          {statuses.length === 0 && (
+            <div className="rounded-2xl border border-navy-800 bg-navy-900 p-6 max-w-sm mx-auto text-center">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/10 border border-amber/25 grid place-items-center mb-3">
+                <Wrench className="h-6 w-6 text-amber" />
+              </div>
+              <p className="text-ink font-display font-bold">No blown engines on your watch</p>
+              <p className="text-sm text-faint mt-1.5 leading-relaxed">
+                Set a service interval by engine hours, miles, or days and HammerTrack counts down
+                from real tracker data — overdue machines turn red before they turn expensive.
+              </p>
+            </div>
+          )}
           {statuses.map(s => {
             const meta = STATUS_META[s.status]
             const Icon = meta.icon

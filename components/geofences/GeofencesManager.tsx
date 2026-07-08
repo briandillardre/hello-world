@@ -21,9 +21,20 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
   return (
     <div className="p-4 space-y-3">
       {geofences.length === 0 && (
-        <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
-          No zones yet. Go to the Map and tap the hexagon button to draw one.
-        </p>
+        <div className="rounded-2xl border border-navy-800 bg-navy-900 p-6 max-w-sm mx-auto text-center">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/10 border border-amber/25 grid place-items-center mb-3 text-2xl">⬡</div>
+          <p className="text-ink font-display font-bold">Zones are your tripwires</p>
+          <p className="text-sm text-faint mt-1.5 leading-relaxed">
+            Outline your yard or a jobsite on the map. Anything that leaves after hours fires a theft
+            alert, and every hour inside gets job-costed to that site automatically.
+          </p>
+          <Link
+            href="/map"
+            className="inline-block mt-4 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-sm px-5 py-2.5 hover:bg-amber-600 transition-colors"
+          >
+            Draw your first zone
+          </Link>
+        </div>
       )}
       {parents.map((g) => (
         <div key={g.id} className="space-y-2">
