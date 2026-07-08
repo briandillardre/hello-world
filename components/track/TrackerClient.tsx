@@ -2,8 +2,13 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle, Navigation, RotateCcw } from 'lucide-react'
+import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle, Navigation, RotateCcw, Radio } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
+import { pushPhoneLocation, stopPhoneShare } from '@/lib/actions/tracker'
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+const SHARE_INTERVAL_MS = 8000
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const DARK_STYLE: any = {
@@ -60,9 +65,30 @@ export function TrackerClient() {
   const [summary, setSummary] = useState<{ duration: number; miles: string; topSpeed: number } | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
+  // ── Share to fleet map (authenticated) ──
+  const [share, setShare] = useState(false)
+  const [signedIn, setSignedIn] = useState<boolean | null>(null)
+  const [liveConfirmed, setLiveConfirmed] = useState(false)
+  const shareRef = useRef(false); shareRef.current = share
+  const signedInRef = useRef<boolean | null>(null); signedInRef.current = signedIn
+  const lastPush = useRef(0)
+
   useEffect(() => {
     const n = typeof window !== 'undefined' ? localStorage.getItem('ht-emp-name') : null
     if (n) setName(n)
+  }, [])
+
+  // Can this device broadcast to the fleet map? Only when signed in on a real
+  // (non-demo) deployment — sharing writes to the company's database.
+  useEffect(() => {
+    if (isMock) { setSignedIn(false); return }
+    ;(async () => {
+      try {
+        const { createClient } = await import('@/lib/supabase')
+        const { data } = await createClient().auth.getUser()
+        setSignedIn(!!data.user)
+      } catch { setSignedIn(false) }
+    })()
   }, [])
 
   // Init map (maplibre loaded client-side only)
@@ -134,6 +160,21 @@ export function TrackerClient() {
     setPos({ speed, accuracy })
     setTopSpeed((t) => Math.max(t, speed))
     setFirstFix(true)
+
+    // Broadcast to the fleet map (throttled) when sharing is on + signed in.
+    if (shareRef.current && signedInRef.current) {
+      const now = Date.now()
+      if (now - lastPush.current >= SHARE_INTERVAL_MS) {
+        lastPush.current = now
+        pushPhoneLocation({ lat, lng, speed, accuracy, heading: p.coords.heading ?? null })
+          .then((r) => {
+            if (r.ok) setLiveConfirmed(true)
+            else if (r.reason === 'auth') { setSignedIn(false); setShare(false); setLiveConfirmed(false) }
+          })
+          .catch(() => { /* transient network — next fix retries */ })
+      }
+    }
+
     const m = map.current
     if (m && ready.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,6 +202,7 @@ export function TrackerClient() {
     setStart(Date.now())
     setElapsed(0)
     setTracking(true)
+    lastPush.current = 0 // push the first fix to the fleet map immediately
     acquireWake()
     watchId.current = navigator.geolocation.watchPosition(
       onPos,
@@ -174,9 +216,20 @@ export function TrackerClient() {
     watchId.current = null
     wakeLock.current?.release?.()
     wakeLock.current = null
+    if (shareRef.current) { stopPhoneShare().catch(() => {}); setLiveConfirmed(false) }
     setSummary({ duration: elapsed, miles: (dist / 1609.34).toFixed(2), topSpeed })
     setTracking(false)
   }, [elapsed, dist, topSpeed])
+
+  // Toggle broadcasting to the fleet map. Turning off drops the pin right away.
+  const toggleShare = useCallback(() => {
+    setShare((s) => {
+      const next = !s
+      if (next) { lastPush.current = 0 } // push on the next fix
+      else { stopPhoneShare().catch(() => {}); setLiveConfirmed(false) }
+      return next
+    })
+  }, [])
 
   const recenter = useCallback(() => {
     if (lastPos.current && map.current) map.current.easeTo({ center: lastPos.current, zoom: 16, duration: 500 })
@@ -234,6 +287,7 @@ export function TrackerClient() {
               <Stat icon={<Gauge className="h-3.5 w-3.5" />} label="Speed" value={`${pos?.speed ?? 0}`} unit="mph" />
               <Stat icon={<Crosshair className="h-3.5 w-3.5" />} label="GPS ±" value={`${pos?.accuracy ?? '—'}`} unit="m" />
             </div>
+            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
             <button onClick={clockOut} className="w-full flex items-center justify-center gap-2 rounded-xl bg-alert text-white font-display font-bold py-3.5 hover:brightness-110 transition">
               <Square className="h-5 w-5" /> Clock Out
             </button>
@@ -260,6 +314,7 @@ export function TrackerClient() {
               placeholder="Your name"
               className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-ink placeholder:text-faint outline-none focus:border-amber/50"
             />
+            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
             <button onClick={clockIn} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
               <Play className="h-5 w-5" /> Clock In & Track
             </button>
@@ -268,6 +323,39 @@ export function TrackerClient() {
         )}
       </div>
     </div>
+  )
+}
+
+/** "Show me on the fleet map" toggle. Only actionable when signed in — a field
+ *  worker who isn't gets a sign-in link instead of a dead switch. */
+function ShareRow({ signedIn, share, onToggle, live }: { signedIn: boolean | null; share: boolean; onToggle: () => void; live: boolean }) {
+  if (signedIn === false) {
+    return (
+      <a
+        href="/login?next=/track"
+        className="flex items-center justify-center gap-2 rounded-xl border border-navy-700 bg-navy-900 px-3 py-2.5 text-[12.5px] text-faint hover:text-ink hover:border-teal/40 transition-colors"
+      >
+        <Radio className="h-4 w-4" /> Sign in to show yourself on the fleet map →
+      </a>
+    )
+  }
+  if (signedIn === null) return null
+  return (
+    <button
+      onClick={onToggle}
+      className={
+        'w-full flex items-center justify-between rounded-xl border px-3.5 py-2.5 transition-colors ' +
+        (share ? 'border-teal/50 bg-teal/[0.08]' : 'border-navy-700 bg-navy-900 hover:border-navy-600')
+      }
+    >
+      <span className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+        <Radio className={'h-4 w-4 ' + (share ? 'text-teal' : 'text-faint')} />
+        {share ? (live ? 'Live on the fleet map' : 'Sharing — waiting for GPS…') : 'Show me on the fleet map'}
+      </span>
+      <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (share ? 'bg-teal/40' : 'bg-navy-700')}>
+        <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (share ? 'left-[18px]' : 'left-0.5')} />
+      </span>
+    </button>
   )
 }
 

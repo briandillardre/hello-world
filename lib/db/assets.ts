@@ -20,6 +20,12 @@ export async function getAssetsWithLocations(companyId: string): Promise<AssetWi
     .eq('company_id', companyId)
     .eq('active', true)
     .order('created_at', { ascending: false })
+    // Embedded locations must be newest-first + capped to 1, or `.location[0]`
+    // below returns an arbitrary historical fix (asset_locations PK is a random
+    // UUID, so unordered embeds don't come back latest-first). This makes each
+    // asset show where it ACTUALLY is right now.
+    .order('timestamp', { ascending: false, referencedTable: 'asset_locations' })
+    .limit(1, { referencedTable: 'asset_locations' })
 
   type AssetRow = Asset & { location: AssetWithLocation['location'][] | AssetWithLocation['location'] | null }
   return (data ?? []).map((a: AssetRow) => ({

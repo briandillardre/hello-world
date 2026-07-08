@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
@@ -42,6 +43,23 @@ interface MapPageClientProps {
 
 export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
+  const router = useRouter()
+
+  // Keep the fleet map live: re-pull server data on an interval so trackers (and
+  // a teammate's shared phone) visibly move without a manual refresh. The map
+  // page reads cookies → renders dynamically, so router.refresh() refetches
+  // fresh positions; MapView stays mounted (zoom/follow/timeline preserved) and
+  // just receives new asset props. Paused while the tab is hidden.
+  useEffect(() => {
+    if (isMock) return
+    let timer: ReturnType<typeof setInterval> | null = null
+    const start = () => { if (!timer) timer = setInterval(() => router.refresh(), 20_000) }
+    const stop = () => { if (timer) { clearInterval(timer); timer = null } }
+    const onVis = () => (document.visibilityState === 'visible' ? start() : stop())
+    start()
+    document.addEventListener('visibilitychange', onVis)
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis) }
+  }, [router])
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
