@@ -87,20 +87,18 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
 
-          <p className="text-center text-sm text-muted">
-            No account?{' '}
-            <Link href="/register" className="text-amber font-medium hover:underline">
-              Sign up free
+          <div className="flex items-center justify-between text-sm">
+            <Link href="/forgot" className="text-faint hover:text-amber hover:underline">
+              Forgot password?
             </Link>
-          </p>
+            <span className="text-muted">
+              No account?{' '}
+              <Link href="/register" className="text-amber font-medium hover:underline">
+                Sign up free
+              </Link>
+            </span>
+          </div>
         </form>
-
-        <p className="text-center text-xs text-muted">
-          Demo mode active — Supabase not connected.{' '}
-          <Link href="/map" className="text-amber hover:underline">
-            View demo →
-          </Link>
-        </p>
 
         <p className="text-center text-xs text-muted">
           <Link href="/pricing" className="text-faint hover:text-amber hover:underline">

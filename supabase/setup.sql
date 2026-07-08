@@ -1,23 +1,10 @@
 -- ============================================================================
 -- HammerTrack — one-time database setup
 -- ============================================================================
--- Paste this WHOLE file into the Supabase SQL Editor (Dashboard → SQL Editor →
--- New query → paste → Run) on a FRESH project, then press Run once.
---
--- It is the 8 migrations in supabase/migrations/ concatenated in order:
---   001_initial.sql         core schema (companies, assets, locations, RLS)
---   002_v2.sql              tools, maintenance, QuickBooks, theft-alert fields
---   003_signup_policies.sql lets a new signup create its own company/profile
---   004_asset_fields.sql    assets.category / serial / photo_url  <-- Add Asset form needs this
---   005_geofence_edit.sql   editable geofences + GeoJSON view
---   006_asset_photos.sql    public storage bucket for asset photos
---   007_asset_costs.sql     per-asset cost structure (hourly/mileage/daily/value)
---   008_company_prefs.sql   company weather default + admin update policy
---
--- Supabase already provides PostGIS, the auth schema, auth.uid(), the storage
--- schema, and the supabase_realtime publication, so no shims are needed here.
--- Run ONCE on a new project (it is not re-runnable — CREATE POLICY/TABLE will
--- error on a second run; that error just means it is already set up).
+-- Paste this WHOLE file into the Supabase SQL Editor on a FRESH project → Run.
+-- It is the 9 migrations in supabase/migrations/ concatenated in order.
+-- Supabase already provides PostGIS, auth, auth.uid(), storage, and the
+-- supabase_realtime publication, so no shims are needed. Run ONCE.
 -- ============================================================================
 
 
@@ -384,4 +371,12 @@ CREATE POLICY "admins update own company" ON companies
     id = current_company_id()
     AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
   );
+
+
+-- ==================== 009_company_contacts.sql ====================
+
+-- Where theft / geofence alerts get delivered. Both optional; if unset the
+-- notifier falls back to the ALERT_SMS_TO / ALERT_EMAIL_TO env vars (pilot use).
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS alert_phone TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS alert_email TEXT;
 

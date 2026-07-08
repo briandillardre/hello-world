@@ -103,3 +103,45 @@ export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; 
     return { weatherPlace: null, isAdmin: false }
   }
 }
+
+/**
+ * Full company settings for the Settings page: name, plan, working hours, and
+ * whether the caller may edit. Demo mode returns the mock company (read-only).
+ */
+export async function getCompanySettings(): Promise<{
+  name: string; plan: string; work_start: string; work_end: string; work_days: number[];
+  alert_phone: string; alert_email: string; isAdmin: boolean
+}> {
+  const fallback = {
+    name: MOCK_COMPANY.name, plan: MOCK_COMPANY.plan,
+    work_start: MOCK_COMPANY.work_start, work_end: MOCK_COMPANY.work_end,
+    work_days: MOCK_COMPANY.work_days, alert_phone: '', alert_email: '', isAdmin: false,
+  }
+  if (isMock) return fallback
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return fallback
+    const { data: profile } = await supabase.from('profiles').select('company_id, role').eq('id', user.id).single()
+    const companyId = profile?.company_id ?? user.id
+    const { data: c } = await supabase
+      .from('companies')
+      .select('name, plan, work_start, work_end, work_days, alert_phone, alert_email')
+      .eq('id', companyId)
+      .single()
+    if (!c) return fallback
+    return {
+      name: c.name ?? 'HammerTrack',
+      plan: c.plan ?? 'starter',
+      work_start: c.work_start ?? '07:00',
+      work_end: c.work_end ?? '17:00',
+      work_days: c.work_days ?? [1, 2, 3, 4, 5, 6],
+      alert_phone: c.alert_phone ?? '',
+      alert_email: c.alert_email ?? '',
+      isAdmin: profile?.role === 'admin' || user.id === companyId,
+    }
+  } catch {
+    return fallback
+  }
+}

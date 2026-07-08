@@ -1,49 +1,81 @@
 import type { ReactNode } from 'react'
 import { Activity, Clock, Gauge, MapPin } from 'lucide-react'
 import { MOCK_UTILIZATION, MOCK_EQUIPMENT_RATES } from '@/lib/mock-data'
-import type { AssetType } from '@/lib/types'
+import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getGeofences } from '@/lib/db/geofences'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { getUtilization } from '@/lib/db/reports'
+import type { AssetType, AssetUtilization } from '@/lib/types'
+import { ReportsExport } from '@/components/reports/ReportsExport'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
 }
 
-export default function ReportsPage() {
-  const util = MOCK_UTILIZATION
-  const totalEngineHours = util.reduce((s, u) => s + u.engine_hours, 0)
-  const totalIdle = util.reduce((s, u) => s + u.idle_hours, 0)
-  const totalDistance = util.reduce((s, u) => s + u.distance_miles, 0)
+export default async function ReportsPage() {
+  const companyId = await getCurrentCompanyId()
+  const [assets, geofences] = await Promise.all([
+    getAssetsWithLocations(companyId),
+    getGeofences(companyId),
+  ])
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const real = await getUtilization(companyId, since, assets, geofences)
+
+  // Real mode: measured utilization + each asset's own hourly rate. Demo: mock.
+  const util: AssetUtilization[] = real ?? MOCK_UTILIZATION
+  const rateFor = (assetId: string): number =>
+    real
+      ? (assets.find((a) => a.id === assetId)?.hourly_rate ?? 0)
+      : (MOCK_EQUIPMENT_RATES[assetId] ?? 0)
+
+  const totalEngineHours = Math.round(util.reduce((s, u) => s + u.engine_hours, 0) * 10) / 10
+  const totalIdle = Math.round(util.reduce((s, u) => s + u.idle_hours, 0) * 10) / 10
+  const totalDistance = Math.round(util.reduce((s, u) => s + u.distance_miles, 0) * 10) / 10
   const maxEngine = Math.max(...util.map(u => u.engine_hours), 1)
-  const idlePct = totalEngineHours > 0 ? Math.round((totalIdle / (totalEngineHours + totalIdle)) * 100) : 0
-  const billableValue = util.reduce((s, u) => s + u.engine_hours * (MOCK_EQUIPMENT_RATES[u.asset_id] ?? 0), 0)
+  const idlePct = totalEngineHours + totalIdle > 0 ? Math.round((totalIdle / (totalEngineHours + totalIdle)) * 100) : 0
+  const billableValue = Math.round(util.reduce((s, u) => s + u.engine_hours * rateFor(u.asset_id), 0))
+
+  const empty = real !== null && util.length === 0
 
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
-      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
-        <h1 className="text-xl font-bold text-ink">Utilization Reports</h1>
-        <p className="text-xs text-faint mt-0.5">Last 30 days</p>
+      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Utilization Reports</h1>
+          <p className="text-xs text-faint mt-0.5">Last 30 days{real ? ' · measured from tracker data' : ' · demo data'}</p>
+        </div>
+        {util.length > 0 && <div className="ml-auto"><ReportsExport util={util} rates={util.map(u => rateFor(u.asset_id))} /></div>}
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl">
+        {empty ? (
+          <section className="rounded-2xl border border-navy-800 bg-navy-900 p-6 text-center">
+            <p className="text-4xl mb-2">📊</p>
+            <p className="text-ink font-medium">No utilization yet</p>
+            <p className="text-sm text-faint mt-1">Once your trackers report a few days of movement, active hours, idle %, miles, and hours-per-site fill in here automatically.</p>
+          </section>
+        ) : (
+        <>
         {/* Hero: what the tracked hours are worth — the reason this page exists */}
         <section className="rounded-2xl border border-navy-800 bg-gradient-to-br from-navy-900 to-navy-950 p-5 relative overflow-hidden">
           <div className="absolute inset-0 brand-glow" />
           <div className="relative">
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable equipment value · last 30 days</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable value · last 30 days</p>
             <p className="font-display font-black text-[2.1rem] text-amber leading-tight">
               ${billableValue.toLocaleString()}
             </p>
-            <p className="text-xs text-faint">{totalEngineHours.toLocaleString()} tracked engine hours at your billing rates — job-costed automatically.</p>
+            <p className="text-xs text-faint">{totalEngineHours.toLocaleString()} active hours at your asset rates{real ? '' : ' — demo figures'}. {real && billableValue === 0 ? 'Set hourly rates on your assets to see billable value.' : 'Job-costed automatically.'}</p>
           </div>
         </section>
 
         <section className="grid grid-cols-3 gap-3">
-          <SummaryCard icon={<Activity className="h-4 w-4 text-amber" />} label="Engine hours" value={`${totalEngineHours}`} />
+          <SummaryCard icon={<Activity className="h-4 w-4 text-amber" />} label="Active hrs" value={`${totalEngineHours}`} />
           <SummaryCard icon={<Clock className="h-4 w-4 text-alert" />} label="Idle %" value={`${idlePct}%`} />
           <SummaryCard icon={<Gauge className="h-4 w-4 text-[#60a5fa]" />} label="Miles" value={totalDistance.toLocaleString()} />
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Engine Hours by Asset</h2>
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Active Hours by Asset</h2>
           <div className="bg-navy-900 rounded-xl border border-navy-800 p-4 space-y-3">
             {util.map(u => (
               <div key={u.asset_id}>
@@ -54,7 +86,7 @@ export default function ReportsPage() {
                 <div className="h-2.5 bg-navy-800 rounded-full overflow-hidden">
                   <div className="h-full bg-amber rounded-full" style={{ width: `${(u.engine_hours / maxEngine) * 100}%` }} />
                 </div>
-                <p className="text-xs text-faint mt-0.5">{u.idle_hours} hrs idle</p>
+                <p className="text-xs text-faint mt-0.5">{u.idle_hours} hrs idle · {u.distance_miles} mi</p>
               </div>
             ))}
           </div>
@@ -63,7 +95,7 @@ export default function ReportsPage() {
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Hours by Job Site</h2>
           <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
-            {util.map(u => (
+            {util.filter(u => u.job_site_hours.length > 0).map(u => (
               <div key={u.asset_id} className="p-4">
                 <p className="font-medium text-ink text-sm mb-1">{u.asset_name}</p>
                 {u.job_site_hours.map(s => (
@@ -75,11 +107,16 @@ export default function ReportsPage() {
                 ))}
               </div>
             ))}
+            {util.every(u => u.job_site_hours.length === 0) && (
+              <div className="p-4 text-xs text-faint">Draw job-site zones on the map to see hours attributed per site.</div>
+            )}
           </div>
           <p className="text-xs text-faint text-center">
             Job-site hours drive equipment-usage billing → see Accounting.
           </p>
         </section>
+        </>
+        )}
       </div>
     </div>
   )

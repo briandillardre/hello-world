@@ -152,10 +152,10 @@ export default function HomePage() {
 
         {/* Site IoT */}
         <section className="max-w-6xl mx-auto px-6 mt-16">
-          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking</p>
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking · <span className="text-amber">on the roadmap</span></p>
           <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center max-w-[26ch] mx-auto">Your whole jobsite on one map — not just what moves</h2>
           <p className="text-faint text-center mt-2 max-w-[54ch] mx-auto text-[14px]">
-            Cameras, fuel tanks, generators, pumps, and an on-site weather station — live on the same map as your fleet. One pane of glass for the entire site.
+            Where we&rsquo;re headed: cameras, fuel tanks, generators, pumps, and an on-site weather station — live on the same map as your fleet. One pane of glass for the entire site. <span className="text-muted">(Live weather is shipping today; the rest is coming.)</span>
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-7">
             {[

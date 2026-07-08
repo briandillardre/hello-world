@@ -41,6 +41,7 @@ const TIERS = [
     unit: '',
     blurb: 'For large fleets & multi-site.',
     cta: 'Contact us',
+    href: '/contact',
     highlight: false,
     features: [
       'Everything in Pro', 'Dedicated onboarding', 'Custom integrations',
@@ -128,7 +129,7 @@ export default function PricingPage() {
                 ))}
               </ul>
               <Link
-                href="/register"
+                href={(tier as { href?: string }).href ?? '/register'}
                 className={`mt-6 text-center font-display font-bold rounded-xl py-3 transition-colors ${
                   tier.highlight
                     ? 'bg-amber text-[#1a1100] hover:bg-amber-600'

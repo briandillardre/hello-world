@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { Key, Map, Package, Wifi, Calculator } from 'lucide-react'
+import { Key, Map, Wifi, Calculator } from 'lucide-react'
 import { MOCK_COMPANY } from '@/lib/mock-data'
+import { getCompanySettings } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { CompanySettings } from '@/components/settings/CompanySettings'
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const co = await getCompanySettings()
   return (
     <div className="h-full overflow-auto pb-[70px] md:pb-0">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
@@ -13,18 +15,13 @@ export default function SettingsPage() {
       </div>
 
       <div className="p-4 space-y-4 max-w-xl">
-        {/* Company info */}
-        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
-            <Package className="h-4 w-4 text-faint" />
-            <h2 className="font-semibold text-sm text-muted">Company</h2>
-          </div>
-          <div className="p-4 space-y-3">
-            <Row label="Company Name" value={MOCK_COMPANY.name} />
-            <Separator />
-            <Row label="Plan" value={<Badge>{MOCK_COMPANY.plan}</Badge>} />
-          </div>
-        </section>
+        {/* Company info — editable */}
+        <CompanySettings
+          name={co.name} plan={co.plan}
+          work_start={co.work_start} work_end={co.work_end} work_days={co.work_days}
+          alert_phone={co.alert_phone} alert_email={co.alert_email}
+          editable={co.isAdmin}
+        />
 
         {/* API Key */}
         <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">

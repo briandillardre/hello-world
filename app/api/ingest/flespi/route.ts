@@ -139,10 +139,11 @@ export async function POST(request: NextRequest) {
       const [{ data: rules }, { data: fences }, { data: companyRow }, { data: assetRows }] = await Promise.all([
         supabase.from('alert_rules').select('*').eq('company_id', companyId).eq('active', true),
         supabase.from('geofences_json').select('*').eq('company_id', companyId),
-        supabase.from('companies').select('work_start, work_end, work_days').eq('id', companyId).single(),
+        supabase.from('companies').select('name, work_start, work_end, work_days, alert_phone, alert_email').eq('id', companyId).single(),
         supabase.from('assets').select('*').eq('company_id', companyId).eq('active', true),
       ])
       if (!rules?.length || !companyRow || !assetRows?.length) continue
+      const notifyBatch: { reason: string; severity: 'critical' | 'warning' | 'info' }[] = []
 
       const targets = (assetRows as Asset[]).filter((a) => byAsset.has(a.id))
       const locations: Record<string, AssetLocation> = {}
@@ -188,6 +189,19 @@ export async function POST(request: NextRequest) {
           company_id: companyId, rule_id: f.rule_id, asset_id: f.asset_id,
         })
         alertsFired++
+        notifyBatch.push({ reason: f.reason, severity: f.severity })
+      }
+
+      // Text/webhook the owner for freshly-fired alerts (no-op unless Twilio /
+      // webhook env vars are set). Never let delivery break ingestion.
+      if (notifyBatch.length) {
+        try {
+          const { dispatchAlerts } = await import('@/lib/notify')
+          const co = companyRow as { name?: string; alert_phone?: string; alert_email?: string }
+          await dispatchAlerts(co.name ?? 'Your fleet', { phone: co.alert_phone, email: co.alert_email }, notifyBatch)
+        } catch (err) {
+          console.error('alert dispatch failed', err)
+        }
       }
     }
   } catch (err) {
