@@ -77,16 +77,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
 
   const [savedDefault, setSavedDefault] = useState(false)
   const saveDefault = async () => {
-    if (!place) return
-    // Always persist on THIS device immediately — survives redeploys and works
-    // even before migration 008 adds the company-wide column. The server write
-    // (if it succeeds) additionally shares it across the whole team.
-    try { localStorage.setItem('ht_weather_place', place) } catch { /* private mode */ }
+    if (!place || !onSaveDefault) return
+    // MapView persists the exact coords (device) + company name (admins); we just
+    // fire it and flash the check.
+    try { await onSaveDefault(place) } catch { /* handled upstream */ }
     setSavedDefault(true)
     setTimeout(() => setSavedDefault(false), 2000)
-    if (onSaveDefault) {
-      try { await onSaveDefault(place) } catch { /* device save already stuck */ }
-    }
   }
 
   const submitPlace = (e: React.FormEvent) => {

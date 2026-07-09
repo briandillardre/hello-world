@@ -316,6 +316,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const parcelAbort = useRef<AbortController | null>(null)
   const [conditions, setConditions] = useState<Conditions | null>(null)
   const [wxPlace, setWxPlace] = useState('Nashville, TN')
+  // Current weather coords [lng, lat] — saved with the default so reopening
+  // uses the exact point, not a name re-geocode (which picked the wrong
+  // "Greenville" — NC outranks SC by population).
+  const wxCoordsRef = useRef<[number, number] | null>(null)
   const wxAdded = useRef(false)
 
   // Animated radar (Iowa Environmental Mesonet). Frames rebuilt when radar turns
@@ -632,11 +636,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
 
-      // Always frame the jobsite — fit to asset + device bounds
+      // Always frame everything on open — assets, zones, and devices (same as
+      // the zoom-to-all button), so the map lands showing the whole fleet.
       const pts: [number, number][] = [
         ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
         ...SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
       ]
+      for (const g of geofences) {
+        const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+        if (ring) for (const c of ring) pts.push([c[0], c[1]])
+      }
       if (pts.length > 0) {
         const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
         m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
@@ -760,35 +769,45 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     focusFollow(displayT)
   }, [mapReady, followId, pbPlaying, displayT, focusFollow])
 
-  // Fetch conditions once. Location priority: the company's admin-set default
-  // place (DB), else a device-local saved default (localStorage — survives even
-  // if migration 008 hasn't run), else wherever the fleet last reported, else
-  // the demo center.
+  // Fetch conditions once. Location priority: a device-saved default (with exact
+  // coords — no ambiguous re-geocode), else the company's admin-set place (DB),
+  // else wherever the fleet last reported, else the demo center. Note: this sets
+  // the weather panel only — it must NOT move the map camera, or it fights the
+  // fit-to-all-assets on open.
   useEffect(() => {
     let cancelled = false
 
-    const localDefault = typeof window !== 'undefined' ? localStorage.getItem('ht_weather_place') : null
-    const savedPlace = defaultWeatherPlace || localDefault
+    let saved: { name: string; lat: number; lng: number } | null = null
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('ht_weather_default') : null
+      if (raw) saved = JSON.parse(raw)
+    } catch { /* corrupt value — ignore */ }
 
     const newest = assets
       .filter((a) => a.location)
       .sort((a, b) => new Date(b.location!.timestamp).getTime() - new Date(a.location!.timestamp).getTime())[0]
 
-    if (savedPlace) {
-      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(savedPlace.split(',')[0].trim())}`)
+    if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number') {
+      // Exact saved point — this is the fix for "Greenville keeps coming back NC".
+      setWxPlace(saved.name)
+      wxCoordsRef.current = [saved.lng, saved.lat]
+      fetchConditions(saved.lat, saved.lng).then((c) => { if (!cancelled) setConditions(c) })
+    } else if (defaultWeatherPlace) {
+      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(defaultWeatherPlace.split(',')[0].trim())}`)
         .then((r) => r.json())
         .then((j) => {
           if (cancelled) return
           const hit = j?.results?.[0]
           if (hit) {
             setWxPlace([hit.name, hit.admin1].filter(Boolean).join(', '))
+            wxCoordsRef.current = [hit.longitude, hit.latitude]
             fetchConditions(hit.latitude, hit.longitude).then((c) => { if (!cancelled) setConditions(c) })
-            map.current?.flyTo({ center: [hit.longitude, hit.latitude], zoom: 12, duration: 0 })
           }
         })
         .catch(() => {})
     } else if (newest?.location) {
       setWxPlace(`near ${newest.name}`)
+      wxCoordsRef.current = [newest.location.lng, newest.location.lat]
       fetchConditions(newest.location.lat, newest.location.lng).then((c) => { if (!cancelled) setConditions(c) })
     } else {
       fetchConditions(DEMO_MAP_CENTER[1], DEMO_MAP_CENTER[0]).then((c) => { if (!cancelled) setConditions(c) })
@@ -796,6 +815,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultWeatherPlace])
+
+  // Save the current weather location as the default. Persists the exact coords
+  // on THIS device (survives redeploys + avoids the wrong-Greenville re-geocode),
+  // and — for admins — the name to the company row so the whole team inherits it.
+  const handleSaveWeatherDefault = useCallback(async (place: string): Promise<boolean> => {
+    const c = wxCoordsRef.current
+    try {
+      if (c) localStorage.setItem('ht_weather_default', JSON.stringify({ name: place, lng: c[0], lat: c[1] }))
+    } catch { /* private mode */ }
+    if (onSaveWeatherDefault) {
+      try { await onSaveWeatherDefault(place) } catch { /* device save already stuck */ }
+    }
+    return true
+  }, [onSaveWeatherDefault])
 
   // Change the weather location: geocode the name (free Open-Meteo geocoder),
   // refetch conditions for it, and fly the map there.
@@ -818,6 +851,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       }
       if (lat == null || lng == null) return
       setWxPlace(name)
+      wxCoordsRef.current = [lng, lat]
       fetchConditions(lat, lng).then((c) => setConditions(c))
       map.current?.flyTo({ center: [lng, lat], zoom: 12, duration: 1200 })
     } catch {
@@ -1162,7 +1196,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         frameTime={currentFrame ? currentFrame.label : null}
         place={wxPlace}
         onPlaceChange={handlePlaceChange}
-        onSaveDefault={onSaveWeatherDefault}
+        onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
         overlays={MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] }))}
