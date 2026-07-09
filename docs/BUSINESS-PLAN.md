@@ -172,7 +172,8 @@ Five people max before exit. Headcount discipline **is** the margin, and the mar
 ## 6. The Sale: Buyers, Multiples, Scenarios
 
 ### Who buys a business like this
-1. **Strategics** — Tenna, Samsara (SMB gap), EquipmentShare, GPS Insight/similar rollups, dealer-management software cos (DIS, e-Emphasys), or a large equipment dealer group building a service moat. They pay for: install base, the QuickBooks integration depth, per-site cost data, and a Southeast dealer channel. **Highest multiple.**
+1. **Strategics** — **John Deere (now owns Tenna — see below)**, Caterpillar, Komatsu, Samsara (SMB gap), EquipmentShare, GPS Insight/similar rollups, dealer-management software cos (DIS, e-Emphasys), or a large equipment dealer group building a service moat. They pay for: install base, the QuickBooks integration depth, per-site cost data, and a Southeast dealer channel. **Highest multiple.**
+   - **Exit comp / signal (Dec 2025):** John Deere acquired **Tenna** — a construction-operator-founded, mixed-fleet tracker (~$15M revenue, Inc. 5000 four years running) — from The Conti Group. Terms undisclosed (a widely-repeated "$400M" figure is **unconfirmed**; treat as rumor). This is HammerTrack's playbook proven by a check: it validates the category, and Deere pulling Tenna upmarket leaves the SMB beachhead more open. Full analysis: `docs/TENNA-JOHN-DEERE-ANALYSIS.md`.
 2. **PE / SaaS rollups** — vertical-SaaS aggregators hunting sticky SMB revenue with hardware attach. Pay on ARR × growth × churn.
 3. **Micro-PE / marketplaces** (Quiet Light, FE International, SureSwift) — reliable exits at $1–5M enterprise value; faster, lower multiple.
 
@@ -231,7 +232,7 @@ Even the grind case beats a decade of margins in construction. The base case is 
 | Hardware flakiness → churn | The #1 killer in this category | Pre-provision + test every unit; 48h-silent internal alert; spares in the truck; DOA rate on the weekly scoreboard |
 | Founder time split (construction vs. HammerTrack) | Real and permanent until Hire #2 | Hard calendar split; hires #1–2 exist to buy time back; construction business = funding, not identity |
 | Selling to contractors is slow, relationship-driven | Ads alone will NOT build this | Dealer channel is the actual growth engine; ads only feed the funnel |
-| Tenna/Samsara cut prices downmarket | Possible at scale | Your moat is service + QBO depth + tool tracking + local trust, not just price |
+| Tenna (now Deere-backed) / Samsara push downmarket | More resources behind Tenna post-acquisition; but Deere's pull is upmarket/dealer, not the 5-truck GC. Note: Tenna's real pricing (~$3–8) and its BLE tool tags mean "half the price / no Bluetooth" is a weak pitch | Moat is QBO-native billing + 2 AM theft-SMS + tools-included + local hands-on service + SMB simplicity, not price alone |
 | Single founder, single region | Buyers will flag it | CS lead with profit interest; documented ops; Southeast spread by 2028 |
 | SMS/carrier compliance (A2P 10DLC) | Blocks the headline feature if ignored | Register now (Phase 0 critical path) |
 

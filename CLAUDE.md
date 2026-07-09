@@ -137,10 +137,11 @@ ANTHROPIC_API_KEY=            # optional: natural-language AI dispatcher (Haiku)
 - Ad variants ready in marketing/ad-variants.md
 
 ## Competitors
-- Tenna: $15-25/asset + $500 setup, enterprise, no Bluetooth tools, no QuickBooks
-- Samsara: $20-40, built for trucking, overkill for GCs
+- Tenna: construction-specific mixed-fleet tracker, own GPS/BLE/RFID hardware. **Acquired by John Deere — announced Dec 22 2025, closed ~Feb 18 2026, price undisclosed (the "$400M" figure is an unconfirmed rumor).** HQ New Hope PA; founded 2015 as BuildSourced by Austin Conti & Jose Cueva; backed/sold by The Conti Group. Real street pricing ~$3-8/asset/mo (custom quote), and it DOES offer BLE tool tags — so don't pitch purely on price or "no Bluetooth." Our wedge: QuickBooks-native, 2 AM theft-SMS, tools included at a low flat rate, local service, SMB focus. Deere ownership pushes Tenna upmarket → leaves the SMB beachhead open. Full write-up: `docs/TENNA-JOHN-DEERE-ANALYSIS.md`.
+- Samsara: $27-45/veh/mo, ~3-yr contracts, built for trucking, overkill for GCs
 - Verizon Connect: $20-35, sticky contracts, dated UX
 - GPS Trackit: $15-25, vehicle-centric, weak on tools/equipment
+- Also in category: Fleetio (maintenance-first, ~$4/veh), HCSS Equipment360 (heavy-civil enterprise, $10-50k+/yr), Trimble/Geotab
 
 ## Notes
 - All HMAC secrets use `hammertrack-*` prefix (previously trackflow-*)
