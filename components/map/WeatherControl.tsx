@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, SunDim } from 'lucide-react'
-import { type Conditions, weatherEmoji } from '@/lib/weather'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, SunDim, CloudRainWind, Maximize2, History } from 'lucide-react'
+import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid'
 
@@ -14,6 +14,14 @@ interface WeatherControlProps {
   onThreeD: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
+  /** Rain totals (MRMS accumulation) + selected period (1h/24h/48h/72h). */
+  precipOn?: boolean
+  onPrecip?: (v: boolean) => void
+  precipPeriod?: string
+  onPrecipPeriod?: (k: string) => void
+  /** What the map shows on open: fit the whole fleet, or the last camera. */
+  openView?: 'fit' | 'last'
+  onOpenView?: (v: 'fit' | 'last') => void
   conditions: Conditions | null
   frameTime: string | null
   place?: string
@@ -44,7 +52,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
@@ -98,6 +106,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       <button
         style={{ top }}
         onClick={() => setOpen(true)}
+        aria-label="Map layers and weather"
         className="absolute left-3 z-10 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
         {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
@@ -117,7 +126,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   }
 
   return (
-    <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+    <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
         <div className="relative">
@@ -216,6 +225,37 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </div>
       )}
 
+      {/* rain totals — MRMS accumulated precipitation, pick the period */}
+      {onPrecip && (
+        <>
+          <button onClick={() => onPrecip(!precipOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <CloudRainWind className={'h-4 w-4 ' + (precipOn ? 'text-teal' : 'text-faint')} /> Rain totals
+            </span>
+            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (precipOn ? 'bg-teal/40' : 'bg-navy-700')}>
+              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (precipOn ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+          </button>
+          {precipOn && (
+            <div className="px-3 pb-2 space-y-1.5">
+              <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+                {PRECIP_PERIODS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => onPrecipPeriod?.(p.key)}
+                    className={
+                      'flex-1 py-1 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                      (precipPeriod === p.key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+                    }
+                  >{p.label}</button>
+                ))}
+              </div>
+              <div className="font-mono text-[10px] text-teal">accumulated rainfall · MRMS</div>
+            </div>
+          )}
+        </>
+      )}
+
       {/* free national overlays: topo, hillshade, wetlands, streams */}
       {overlays && onOverlay && overlays.map((o) => {
         const Icon = o.key === 'topo' ? Mountain : o.key === 'hillshade' ? SunDim : o.key === 'wetlands' ? Droplets : Waves
@@ -253,6 +293,27 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             </div>
           )}
         </>
+      )}
+
+      {/* map opens to — whole fleet (zoom extents) or wherever you left off */}
+      {onOpenView && (
+        <div className="px-3 py-2 border-t border-navy-800">
+          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-1.5">Map opens to</div>
+          <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+            <button
+              onClick={() => onOpenView('fit')}
+              className={'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' + (openView === 'fit' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
+            >
+              <Maximize2 className="h-3.5 w-3.5" /> Whole fleet
+            </button>
+            <button
+              onClick={() => onOpenView('last')}
+              className={'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' + (openView === 'last' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
+            >
+              <History className="h-3.5 w-3.5" /> Last view
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

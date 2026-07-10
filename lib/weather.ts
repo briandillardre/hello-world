@@ -81,6 +81,23 @@ export function iemRadarUrl(ts?: string): string {
   return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layer}/{z}/{x}/{y}.png`
 }
 
+// ── Rain totals (IEM MRMS precipitation accumulation) ────────────────────────
+// Free + keyless national rain-accumulation rasters from the same IEM tile
+// service as the radar loop. Each layer is the CURRENT running total for its
+// period (MRMS Q3 QPE), refreshed every few minutes upstream.
+export interface PrecipPeriod { key: string; label: string; layer: string }
+
+export const PRECIP_PERIODS: PrecipPeriod[] = [
+  { key: '1h', label: '1 hr', layer: 'q2-n1p-900913' },
+  { key: '24h', label: '24 hr', layer: 'q2-p24h-900913' },
+  { key: '48h', label: '48 hr', layer: 'q2-p48h-900913' },
+  { key: '72h', label: '72 hr', layer: 'q2-p72h-900913' },
+]
+
+export function iemPrecipUrl(layer: string): string {
+  return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layer}/{z}/{x}/{y}.png`
+}
+
 // ── Current conditions (Open-Meteo) ──────────────────────────────────────────
 export interface Conditions {
   tempF: number

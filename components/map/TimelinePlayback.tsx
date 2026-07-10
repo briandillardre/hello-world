@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart } from 'lucide-react'
+import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
 const CAMERA_MODES: { key: FollowMode; label: string; icon: typeof Orbit; note: string }[] = [
@@ -52,6 +53,12 @@ interface TimelinePlaybackProps {
   /** When tracks come from REAL history, the epoch window they span — labels
    *  then show true timestamps instead of the demo's 6AM-6PM pretend clock. */
   realWindow?: TrackWindow | null
+  /** Per-bucket count of assets moving across the window (heat slider + chart). */
+  activity?: number[]
+  /** Cumulative $ curve across the window ($ chart mode). Null = unavailable. */
+  costCurve?: number[] | null
+  /** Real-world seconds the window spans (labels the $-per-interval unit). */
+  windowSeconds?: number
   /** Cinematic camera-follow: the asset the camera is chasing (null = off). */
   followId: string | null
   onFollow: (id: string | null) => void
@@ -65,12 +72,15 @@ interface TimelinePlaybackProps {
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, realWindow,
+  activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
+  const [showChart, setShowChart] = useState(false)
+  const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
   const rootRef = useRef<HTMLDivElement>(null)
   const followed = followAssets.find((a) => a.id === followId) ?? null
 
@@ -102,6 +112,32 @@ export function TimelinePlayback({
     return () => clearInterval(id)
   }, [live])
   const ago = tick === 0 ? 'updated just now' : `updated ${tick}s ago`
+
+  // ── Fleet activity: heat-mapped slider track + pull-up chart ──────────────
+  const activityMax = useMemo(() => Math.max(0, ...activity), [activity])
+  const heatGradient = useMemo(
+    () => (activity.length ? activityGradient(activity, Math.max(1, activityMax)) : null),
+    [activity, activityMax]
+  )
+  const costPer = useMemo(() => (costCurve ? deltas(costCurve) : null), [costCurve])
+  const series = chartMode === 'cost' && costPer ? costPer : activity
+  const seriesMax = Math.max(0, ...series)
+  const spanLabel = bucketSpanLabel(windowSeconds, activity.length || ACTIVITY_BUCKETS)
+
+  const chartRef = useRef<HTMLDivElement>(null)
+  const seekFromPointer = useCallback((clientX: number) => {
+    const el = chartRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    onSeek(Math.min(1, Math.max(0, (clientX - r.left) / r.width)))
+  }, [onSeek])
+
+  // Chart geometry (viewBox space — stretches to fill, labels stay HTML)
+  const CW = 960
+  const CH = 110
+  const linePath = seriesMax > 0 ? areaPath(series, seriesMax, CW, CH, 6) : ''
+  const bucketIdx = Math.min(series.length - 1, Math.max(0, Math.floor(t * series.length)))
+  const headY = seriesMax > 0 ? CH - 6 - (Math.min(series[bucketIdx] ?? 0, seriesMax) / seriesMax) * (CH - 12) : CH - 6
 
   return (
     <div ref={rootRef} className="absolute bottom-[80px] md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10">
@@ -159,6 +195,76 @@ export function TimelinePlayback({
           </button>
         </div>
       )}
+      {/* Pull-up activity chart — rises out of the timeline; tap/drag = seek */}
+      {showChart && !live && (
+        <div className="mb-2 rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+          <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
+            <AreaChart className="h-3.5 w-3.5 text-teal flex-none" />
+            <span className="font-display font-bold text-[12px] text-ink flex-1 truncate">
+              {chartMode === 'cost' ? `Cost per ${spanLabel}` : 'Assets moving'}
+            </span>
+            {costPer && (
+              <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+                <button
+                  onClick={() => setChartMode('assets')}
+                  className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' + (chartMode === 'assets' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
+                >Moving</button>
+                <button
+                  onClick={() => setChartMode('cost')}
+                  className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' + (chartMode === 'cost' ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}
+                >$ / {spanLabel}</button>
+              </div>
+            )}
+            <button onClick={() => setShowChart(false)} className="grid place-items-center w-6 h-6 rounded-md text-faint hover:text-ink flex-none" aria-label="Close chart">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div
+            ref={chartRef}
+            className="relative h-[110px] mx-3 mb-2 touch-none cursor-crosshair select-none"
+            onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); seekFromPointer(e.clientX) }}
+            onPointerMove={(e) => { if (e.buttons) seekFromPointer(e.clientX) }}
+          >
+            {seriesMax > 0 ? (
+              <>
+                <svg viewBox={`0 0 ${CW} ${CH}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                  <defs>
+                    <linearGradient id="ht-heat-line" x1="0" y1="0" x2="1" y2="0">
+                      {series.map((v, i) => (
+                        <stop key={i} offset={`${((i + 0.5) / series.length) * 100}%`} stopColor={activityColor(chartMode === 'cost' ? (v > 0 ? 1 + (v / seriesMax) * (Math.max(1, activityMax) - 1) : 0) : v, Math.max(1, activityMax))} />
+                      ))}
+                    </linearGradient>
+                    <linearGradient id="ht-heat-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#ff9e16" stopOpacity="0.28" />
+                      <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0.02" />
+                    </linearGradient>
+                  </defs>
+                  {[0.25, 0.5, 0.75].map((f) => (
+                    <line key={f} x1="0" x2={CW} y1={CH * f} y2={CH * f} stroke="#14364f" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                  ))}
+                  <path d={`${linePath} L ${CW} ${CH} L 0 ${CH} Z`} fill="url(#ht-heat-fill)" stroke="none" />
+                  <path d={linePath} fill="none" stroke="url(#ht-heat-line)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+                  {/* playhead */}
+                  <line x1={t * CW} x2={t * CW} y1="0" y2={CH} stroke="#e8f0f7" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" opacity="0.7" />
+                  <circle cx={t * CW} cy={headY} r="4.5" fill="#e8f0f7" stroke="#ff9e16" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+                </svg>
+                <span className="absolute top-1 left-1.5 font-mono text-[9.5px] text-faint bg-navy-950/70 rounded px-1">
+                  peak {chartMode === 'cost' ? money(seriesMax) : `${seriesMax} moving`}
+                </span>
+                <span className="absolute bottom-0.5 right-1.5 font-mono text-[9.5px] text-amber bg-navy-950/70 rounded px-1 tabular-nums">
+                  {chartMode === 'cost'
+                    ? `${money(series[bucketIdx] ?? 0)} this ${spanLabel}`
+                    : `${series[bucketIdx] ?? 0} moving now`}
+                </span>
+              </>
+            ) : (
+              <p className="absolute inset-0 grid place-items-center text-[12px] text-faint">
+                No movement recorded in this window.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
       {/* Custom From/To panel — sibling of the bar so it escapes the overflow clip */}
       {custom && showCustom && (
         <div className="absolute bottom-full mb-2 right-0 z-30 w-[260px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-3 space-y-2">
@@ -175,9 +281,11 @@ export function TimelinePlayback({
         </div>
       )}
       <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* range pills + movement-display control */}
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-navy-800">
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
+      {/* range pills + movement-display control. On phones the pills get their
+          own full-width scrollable row — sharing one row squeezed them into a
+          useless 10px sliver next to all the flex-none controls. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pt-2.5 pb-2 border-b border-navy-800">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0">
           {RANGES.map((r) => (
             <button
               key={r.key}
@@ -210,6 +318,19 @@ export function TimelinePlayback({
           {money(costTotal)}
           <span className="hidden md:inline text-faint">· {costLabel}</span>
         </div>
+        {/* Pull-up activity chart toggle (replay modes only) */}
+        {!live && (
+          <button
+            onClick={() => setShowChart((s) => !s)}
+            title="Activity chart"
+            className={
+              'flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors ' +
+              (showChart ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            <AreaChart className="h-3.5 w-3.5" />
+          </button>
+        )}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
           {MODES.map(({ key, label, icon: Icon }) => (
             <button
@@ -278,11 +399,20 @@ export function TimelinePlayback({
           </button>
 
           <div className="flex-1 min-w-0">
-            <input
-              type="range" min={0} max={1000} value={Math.round(t * 1000)}
-              onChange={(e) => onSeek(Number(e.target.value) / 1000)}
-              className="w-full accent-amber cursor-pointer h-1.5"
-            />
+            {/* Heat-mapped track: color = # assets moving at that moment
+                (blue = nobody moving, teal→amber→red = busier). */}
+            <div className="relative h-[17px] flex items-center">
+              <div
+                className="absolute inset-x-0 h-[9px] top-1/2 -translate-y-1/2 rounded-full border border-navy-700/60"
+                style={{ background: heatGradient ?? 'rgba(20,80,111,0.5)' }}
+              />
+              <input
+                type="range" min={0} max={1000} value={Math.round(t * 1000)}
+                onChange={(e) => onSeek(Number(e.target.value) / 1000)}
+                className="slider-heat relative w-full h-[17px] cursor-pointer"
+                aria-label="Timeline position"
+              />
+            </div>
             <div className="flex justify-between mt-1 font-mono text-[10px] text-faint">
               {ticks.map((label, i) => <span key={i}>{label}</span>)}
             </div>

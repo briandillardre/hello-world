@@ -13,7 +13,9 @@ import { rangeWindow } from '@/lib/dates'
 import {
   type Conditions, type IemFrame,
   fetchConditions, buildRadarFrames, iemRadarUrl,
+  PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
+import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
@@ -194,7 +196,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const asOf = w
       ? new Date(w.from + t * (w.to - w.from)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
       : undefined
-    return { ...zc, asOf }
+    // Per-interval series for the popup's mini charts (hours + $ over the
+    // window, heat-colored, aligned with the timeline slider).
+    const windowSec = w ? (w.to - w.from) / 1000 : undefined
+    return {
+      ...zc,
+      asOf,
+      hoursSeries: curve ? deltas(curve.hours) : undefined,
+      costSeries: curve ? deltas(curve.cost) : undefined,
+      windowSec,
+    }
   }, [])
   const [isDrawing, setIsDrawing] = useState(false)
   const drawCoords = useRef<[number, number][]>([])
@@ -234,6 +245,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const threeDRef = useRef(threeD)
   threeDRef.current = threeD
 
+  // On-demand full-resolution history for the selected window. The shipped
+  // snapshot is capped + newest-biased (older days were getting silently
+  // truncated \u2014 "yesterday's track lost data"), so once a replay range is
+  // picked we fetch EXACTLY that window from /api/history and swap it in.
+  const [fetchedRows, setFetchedRows] = useState<Record<string, import('@/lib/db/assets').LocationHistoryRow[]>>({})
+  useEffect(() => {
+    if (!historyRows || range === 'live') return
+    const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
+    const key = `${w.from}-${w.to}`
+    if (fetchedRows[key]) return
+    const ctrl = new AbortController()
+    fetch(`/api/history?from=${new Date(w.from).toISOString()}&to=${new Date(w.to).toISOString()}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && Array.isArray(j.rows)) setFetchedRows((prev) => ({ ...prev, [key]: j.rows }))
+      })
+      .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
+    return () => ctrl.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyRows, range, customFrom, customTo, earliestMs, tz])
+
   // Real mode: build the dataset for the SELECTED range from raw history \u2014
   // tracks, window, cost curve, and per-zone curves, all for the same window.
   // Every range (Today \u2026 All time \u2026 Custom) gets correct data + axis, and the
@@ -241,7 +273,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const dayData = useMemo(() => {
     if (!historyRows) return null
     const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
-    const rows = historyRows.filter((r) => {
+    const fetched = fetchedRows[`${w.from}-${w.to}`]
+    const rows = fetched ?? historyRows.filter((r) => {
       const ms = Date.parse(r.timestamp)
       return ms >= w.from && ms < w.to
     })
@@ -251,7 +284,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       cost: buildCostCurve(assets, rows, w.from, w.to),
       zones: zoneCostsFromHistory(geofences, assets, rows, w.from, w.to),
     }
-  }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences])
+  }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows])
 
   const tracksEff = dayData?.tracks ?? tracks
   const realWindowEff = dayData?.window ?? null
@@ -268,6 +301,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const costLabel = realCostEff
     ? (realCostEff.hasRates ? `${RANGE_COST_LABEL[range]} \u00b7 from asset rates` : 'set cost rates on assets')
     : range === 'custom' ? `${customDays}-day window` : RANGE_COST_LABEL[range]
+
+  // Fleet activity across the window: heat-colored slider + pull-up chart +
+  // "play starts at first movement, not midnight".
+  const activity = useMemo(() => buildActivityCurve(tracksEff), [tracksEff])
+  const firstMoveT = useMemo(() => firstMovementT(activity), [activity])
+  const firstMoveTRef = useRef(0)
+  firstMoveTRef.current = firstMoveT
+  const windowSecondsEff = realWindowEff
+    ? (realWindowEff.to - realWindowEff.from) / 1000
+    : rangeWindowSeconds(range)
+  // $ curve for the chart. Real accounts: the honest ledger. Demo: a blended
+  // fleet rate applied to observed movement, so the toggle demos meaningfully.
+  const chartCostCurve = useMemo(() => {
+    if (realCostEff) return realCostEff.hasRates ? realCostEff.curve : null
+    const perBucketHours = windowSecondsEff / activity.length / 3600
+    const DEMO_BLENDED_RATE = 95 // $/hr per moving asset (demo only)
+    let acc = 0
+    return activity.map((n) => (acc += n * DEMO_BLENDED_RATE * perBucketHours))
+  }, [realCostEff, activity, windowSecondsEff])
   const tracksRef = useRef(tracksEff)
   const filterRef = useRef(filter)
   const speedRef = useRef(pbSpeed)
@@ -311,6 +363,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const baseRef = useRef(base)
   baseRef.current = base
   const [radarOn, setRadarOn] = useState(false)
+  // Rain totals (MRMS accumulation) — separate from the radar loop.
+  const [precipOn, setPrecipOn] = useState(false)
+  const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
+  const precipAdded = useRef(false)
+  // What the map opens showing: fit the whole fleet, or wherever you left it.
+  const [openView, setOpenView] = useState<'fit' | 'last'>(() => {
+    try {
+      return (typeof window !== 'undefined' && localStorage.getItem('ht_map_open_view') === 'last') ? 'last' : 'fit'
+    } catch { return 'fit' }
+  })
+  const handleOpenView = useCallback((v: 'fit' | 'last') => {
+    setOpenView(v)
+    try { localStorage.setItem('ht_map_open_view', v) } catch { /* private mode */ }
+  }, [])
   const [parcelsOn, setParcelsOn] = useState(false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
   const parcelAbort = useRef<AbortController | null>(null)
@@ -636,20 +702,43 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
 
-      // Always frame everything on open — assets, zones, and devices (same as
-      // the zoom-to-all button), so the map lands showing the whole fleet.
-      const pts: [number, number][] = [
-        ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
-        ...SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
-      ]
-      for (const g of geofences) {
-        const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
-        if (ring) for (const c of ring) pts.push([c[0], c[1]])
+      // Opening view — user-selectable in the map layers menu:
+      //   fit  (default) — frame everything: assets, zones, devices
+      //   last           — restore exactly where you left the camera
+      let openedFromSaved = false
+      try {
+        if (localStorage.getItem('ht_map_open_view') === 'last') {
+          const saved = JSON.parse(localStorage.getItem('ht_map_last_camera') ?? 'null')
+          if (saved && Array.isArray(saved.center)) {
+            m.jumpTo({ center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0, pitch: saved.pitch ?? 0 })
+            openedFromSaved = true
+          }
+        }
+      } catch { /* corrupt value — fall through to fit */ }
+      if (!openedFromSaved) {
+        const pts: [number, number][] = [
+          ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
+          ...SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
+        ]
+        for (const g of geofences) {
+          const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+          if (ring) for (const c of ring) pts.push([c[0], c[1]])
+        }
+        if (pts.length > 0) {
+          const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
+          m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
+        }
       }
-      if (pts.length > 0) {
-        const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
-        m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
-      }
+
+      // Remember the camera (throttled via moveend) for the "last view" option.
+      m.on('moveend', () => {
+        try {
+          const c = m.getCenter()
+          localStorage.setItem('ht_map_last_camera', JSON.stringify({
+            center: [c.lng, c.lat], zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch(),
+          }))
+        } catch { /* private mode */ }
+      })
 
       setMapReady(true)
     })
@@ -1050,6 +1139,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [mapReady, radarOn, currentFrame])
 
+  // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
+  // Same free tile service as the radar loop; maxzoom 10 (~1 km data).
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!precipOn) {
+      if (precipAdded.current && m.getLayer('precip-layer')) m.setLayoutProperty('precip-layer', 'visibility', 'none')
+      return
+    }
+    const period = PRECIP_PERIODS.find((p) => p.key === precipPeriod) ?? PRECIP_PERIODS[1]
+    const url = iemPrecipUrl(period.layer)
+    if (!precipAdded.current) {
+      m.addSource('precip', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
+      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.62 } }, beforeId)
+      precipAdded.current = true
+    } else {
+      ;(m.getSource('precip') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      m.setLayoutProperty('precip-layer', 'visibility', 'visible')
+    }
+  }, [mapReady, precipOn, precipPeriod])
+
   // Animation loop: map sources update every frame (smooth movement), but
   // React state — scrubber, labels, cost panel — only ~10Hz, so the whole
   // overlay tree isn't re-rendered 60 times a second.
@@ -1095,7 +1206,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
   const handlePlayPause = useCallback(() => {
     setPbPlaying((p) => {
-      if (!p && tRef.current >= 1) { tRef.current = 0; setPbT(0) }
+      // Replay-from-start begins at the first recorded movement, not midnight —
+      // no more watching the playhead crawl through 6 empty hours of night.
+      if (!p && tRef.current >= 1) { const s = firstMoveTRef.current; tRef.current = s; setPbT(s) }
       return !p
     })
   }, [])
@@ -1123,8 +1236,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const wasLive = rangeRef.current === 'live'
     if (wasLive) handleRange('today')
     setPbSpeed(defaultSpeed(wasLive ? 'today' : rangeRef.current))
-    tRef.current = 0
-    setPbT(0)
+    // Start the chase where the day's driving actually starts.
+    tRef.current = firstMoveTRef.current
+    setPbT(firstMoveTRef.current)
     setPbPlaying(true)
   }, [handleRange])
 
@@ -1192,6 +1306,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onThreeD={setThreeD}
         radarOn={radarOn}
         onRadar={setRadarOn}
+        precipOn={precipOn}
+        onPrecip={setPrecipOn}
+        precipPeriod={precipPeriod}
+        onPrecipPeriod={setPrecipPeriod}
+        openView={openView}
+        onOpenView={handleOpenView}
         conditions={conditions}
         frameTime={currentFrame ? currentFrame.label : null}
         place={wxPlace}
@@ -1233,6 +1353,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           costTotal={costTotal}
           costLabel={costLabel}
           realWindow={realWindowEff}
+          activity={activity}
+          costCurve={chartCostCurve}
+          windowSeconds={windowSecondsEff}
           followId={followId}
           onFollow={handleFollow}
           followMode={followMode}

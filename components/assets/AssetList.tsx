@@ -169,7 +169,7 @@ function AssetRow({ asset }: { asset: AssetWithLocation }) {
         <div className="flex items-center gap-3 mt-0.5 text-xs text-faint">
           {asset.tracker_id && <span className="truncate">ID: {asset.tracker_id}</span>}
           {asset.location?.timestamp && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-0.5" suppressHydrationWarning>
               <Clock className="h-3 w-3" />
               {formatRelativeTime(asset.location.timestamp)}
             </span>

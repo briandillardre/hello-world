@@ -50,7 +50,7 @@ export function AccountingView({ connection, demo, assets, geofences, invoicesBy
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-ink">{connection.company_name}</p>
-              <p className="text-xs text-faint">
+              <p className="text-xs text-faint" suppressHydrationWarning>
                 Realm {connection.realm_id} · connected {formatRelativeTime(connection.connected_at)}
               </p>
             </div>

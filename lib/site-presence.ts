@@ -6,6 +6,7 @@ import type { AssetWithLocation, AssetType, Geofence } from './types'
 import type { TimeRange } from './trails'
 import { pointInPolygon } from './alerts-engine'
 import { PROJECTS, periodCost, presenceCost, moneyFull, RANGE_COST_LABEL } from './projects'
+import { sparkBarsSVG, bucketSpanLabel } from './activity'
 
 export interface SitePresence {
   total: number
@@ -47,7 +48,12 @@ export function presencePopupHTML(
   p: SitePresence,
   range: TimeRange = 'live',
   t = 1,
-  real?: { total: number; activeHours: number; idleHours?: number; asOf?: string } | null
+  real?: {
+    total: number; activeHours: number; idleHours?: number; asOf?: string
+    /** Per-interval activity series over the window — renders the zone's mini
+     *  hours + $ charts, heat-colored and aligned with the timeline slider. */
+    hoursSeries?: number[]; costSeries?: number[]; windowSec?: number
+  } | null
 ): string {
   let costBlock: string
   if (real !== undefined && real !== null) {
@@ -60,6 +66,20 @@ export function presencePopupHTML(
       : (real.idleHours ?? 0) > 0.05
         ? `<div style="margin-top:8px;font-family:monospace;font-size:10px;color:#6f88a0">${(real.idleHours ?? 0).toFixed(1)}h idle inside this zone &middot; no billed activity${real.asOf ? ` (as of ${esc(real.asOf)})` : ''}</div>`
         : `<div style="margin-top:8px;font-family:monospace;font-size:10px;color:#6f88a0">No activity in this zone yet${real.asOf ? ` (as of ${esc(real.asOf)})` : ''}</div>`
+
+    // Mini per-interval charts: hours on site + $ accrued across the window,
+    // heat-colored to match the timeline slider. Rendered only when there's
+    // something to show — an empty chart is just clutter.
+    const span = real.windowSec ? bucketSpanLabel(real.windowSec, real.hoursSeries?.length ?? 96) : 'interval'
+    const chart = (label: string, series?: number[]) =>
+      series && series.some((v) => v > 0)
+        ? `<div style="margin-top:7px">
+            <div style="font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#6f88a0;margin-bottom:2px">${label}</div>
+            ${sparkBarsSVG(series)}
+          </div>`
+        : ''
+    costBlock += chart(`Hours on site &middot; per ${span}`, real.hoursSeries)
+      + chart(`Cost &middot; per ${span}`, real.costSeries)
   } else {
     // Demo path: named projects use their own rates; any other zone gets a
     // live estimate from the assets currently inside it.

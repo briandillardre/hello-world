@@ -132,6 +132,43 @@ body {
   }
 }
 
+/* Timeline heat slider: the gradient div behind it is the track, so the input
+   itself is invisible except for the thumb (kept native for a11y + touch). */
+input[type='range'].slider-heat {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  outline: none;
+}
+input[type='range'].slider-heat::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+input[type='range'].slider-heat::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  background: #e8f0f7;
+  border: 3px solid #ff9e16;
+  box-shadow: 0 0 10px rgba(255, 158, 22, 0.55);
+  cursor: pointer;
+}
+input[type='range'].slider-heat::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+input[type='range'].slider-heat::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  background: #e8f0f7;
+  border: 3px solid #ff9e16;
+  box-shadow: 0 0 10px rgba(255, 158, 22, 0.55);
+  cursor: pointer;
+}
+
 /* Command Center event ticker — seamless marquee (content is duplicated once,
    so -50% loops cleanly) */
 .ticker-track {
