@@ -48,6 +48,8 @@ interface Bubble {
   eaten: boolean
   /** 1→0 pop animation after being eaten */
   pop: number
+  /** being vacuumed into the ball (board-clear after a correct answer) */
+  sucked: boolean
   wrongFlash: number
   isCorrect: boolean
 }
@@ -196,6 +198,20 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     tone(294, 0.24, 0.1, 'sine', 0.12)
     tone(196, 0.33, 0.18, 'sine', 0.12)
   }, [tone])
+  /** short "nom" per vacuumed bubble */
+  const playNom = useCallback(() => {
+    tone(392, 0, 0.06, 'sine', 0.08)
+    tone(262, 0.07, 0.1, 'sine', 0.09)
+  }, [tone])
+
+  /** after the right answer is eaten, vacuum the rest of the board in too */
+  const suckRemaining = useCallback(() => {
+    window.setTimeout(() => {
+      world.current.bubbles.forEach((b) => {
+        if (!b.eaten) b.sucked = true
+      })
+    }, 350)
+  }, [])
 
   /** bubble → crumbs that spiral into the ball's mouth */
   const spawnEat = useCallback((b: Bubble) => {
@@ -236,6 +252,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       text,
       eaten: false,
       pop: 0,
+      sucked: false,
       wrongFlash: 0,
       isCorrect: i === q.answer,
     }))
@@ -337,6 +354,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         const b = w.bubbles[bubbleIndex]
         spawnEat(b)
         playGulp()
+        suckRemaining() // then hoover up the rest of the board
         const burst = 34 + Math.min(w.streak, 6) * 6 + (bonusRef.current ? 20 : 0)
         for (let i = 0; i < burst; i++) {
           w.particles.push({
@@ -388,7 +406,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       setResults((r) => [...r, correct])
       onAnswer({ skill: q.skill, difficulty: q.difficulty, correct, coins: coinsDelta, xp: correct ? 1 : 0, newTheta, ms: elapsed })
 
-      scheduleAdvance(correct ? 900 : 3200)
+      scheduleAdvance(correct ? 1350 : 3200)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [onAnswer, nextQuestion, playCorrect, playWrong, skill, dailyDouble]
@@ -544,6 +562,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
             ball.target = null
             spawnEat(b)
             playGulp()
+            suckRemaining()
             w.shake = 6
             for (let i = 0; i < 20; i++) {
               w.particles.push({
@@ -614,6 +633,32 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
 
       // ---------- bubbles
       w.bubbles.forEach((b, i) => {
+        // vacuum: sucked bubbles spiral into the ball, shrinking as they go
+        if (b.sucked && !b.eaten) {
+          const dx = ball.x - b.x
+          const dy = ball.y - ball.r * 0.2 - b.y
+          const dist = Math.hypot(dx, dy) || 1
+          const pull = Math.max(7, dist * 0.17)
+          b.x += (dx / dist) * pull - dy * 0.02
+          b.y += (dy / dist) * pull + dx * 0.02
+          b.r = Math.max(6, b.r * 0.955)
+          w.eating = 1
+          if (dist < ball.r * 0.9) {
+            b.eaten = true
+            ball.sy = 0.78
+            ball.sx = 1.2
+            w.grow += 0.4 // clearing the board makes you bigger too
+            for (let k = 0; k < 6; k++) {
+              w.particles.push({
+                x: b.x, y: b.y,
+                vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.8) * 6,
+                life: 0.8, color: '#dbeafe', size: 3 + Math.random() * 4,
+              })
+            }
+            playNom()
+            return
+          }
+        }
         if (b.eaten) {
           // pop: scale up + fade out
           if (b.pop > 0) {
