@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
+import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -101,6 +102,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             <Stat icon={<Clock className="h-4 w-4 text-faint" />} label="Last seen" value={loc?.timestamp ? formatRelativeTime(loc.timestamp) : '—'} />
             <Stat icon={<MapPin className="h-4 w-4 text-teal" />} label="Location" value={loc ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : 'Off-grid'} />
           </div>
+        </section>
+
+        {/* full raw telemetry — collapsed, one tap from the glance stats above */}
+        <section>
+          <AssetDiagnostics raw={loc?.raw} timestamp={loc?.timestamp} />
         </section>
 
         {/* maintenance */}
