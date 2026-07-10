@@ -2,8 +2,10 @@ import { Wrench, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'
 import { getMaintenanceSchedules, getServiceRecords, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import { getAssets } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { getConnectionStatus } from '@/lib/qbo'
 import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
+import { ExpenseToQbo } from '@/components/maintenance/ExpenseToQbo'
 
 const STATUS_META = {
   overdue: { label: 'Overdue', variant: 'destructive' as const, icon: AlertTriangle, bar: 'bg-alert' },
@@ -15,12 +17,15 @@ const UNIT = { engine_hours: 'hrs', mileage: 'mi', days: 'days' }
 
 export default async function MaintenancePage() {
   const companyId = await getCurrentCompanyId()
-  const [schedules, assets, readings, services] = await Promise.all([
+  const [schedules, assets, readings, services, qbo] = await Promise.all([
     getMaintenanceSchedules(companyId),
     getAssets(companyId),
     getCurrentReadings(),
     getServiceRecords(companyId),
+    getConnectionStatus(companyId),
   ])
+  // Real connected QBO → each service record gets a one-tap expense push.
+  const qboLive = qbo.connected && !qbo.demo
 
   const assetName = (id: string) => assets.find(a => a.id === id)?.name ?? 'Unknown asset'
 
@@ -107,6 +112,7 @@ export default async function MaintenancePage() {
                 <span className="font-semibold text-muted text-sm flex-shrink-0">
                   ${r.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
+                {qboLive && r.cost > 0 && <ExpenseToQbo recordId={r.id} />}
               </div>
             ))}
           </div>

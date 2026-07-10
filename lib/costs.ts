@@ -164,6 +164,80 @@ import { pointInPolygon } from './alerts-engine'
  *     (moving OR idle) — an asset tied up on a site costs its ownership share.
  * So a truck parked on a job all day accrues ownership even at 0 mph.
  */
+// ── Per-asset usage inside ONE zone (invoice lines) ─────────────────────────
+
+export interface ZoneAssetUsage {
+  assetId: string
+  name: string
+  type: AssetType
+  activeHours: number
+  presentHours: number
+  miles: number
+  amount: number
+}
+
+/**
+ * Same accrual policy as zoneCostsFromHistory, but broken out PER ASSET for a
+ * single zone — each row becomes one invoice line a client can read and agree
+ * with ("F-350 — 6.2 hrs active @ $85/hr + 14.3 mi @ $0.67").
+ */
+export function zoneAssetUsage(
+  ring: [number, number][],
+  assets: (Asset | CostInput | { id: string; name?: string; type?: AssetType })[],
+  rows: HistoryPoint[],
+  windowFromMs: number,
+  windowToMs: number
+): ZoneAssetUsage[] {
+  if (ring.length < 3) return []
+  const meta = new Map(assets.map((a) => [a.id, a as Asset]))
+  const acc = new Map<string, ZoneAssetUsage>()
+  const last = new Map<string, HistoryPoint & { ms: number }>()
+  const IDLE_GAP_MS = 2 * 3_600_000
+
+  for (const r of rows) {
+    const ms = new Date(r.timestamp).getTime()
+    if (!Number.isFinite(ms) || ms < windowFromMs || ms >= windowToMs) continue
+    const prev = last.get(r.asset_id)
+    last.set(r.asset_id, { ...r, ms })
+    if (!prev) continue
+    const a = meta.get(r.asset_id)
+    if (!a) continue
+    const dt = ms - prev.ms
+    if (dt <= 0 || dt > IDLE_GAP_MS) continue
+    if (!pointInPolygon([r.lng, r.lat], ring)) continue
+
+    const dist = haversineMeters(prev.lat, prev.lng, r.lat, r.lng)
+    const moving = (r.speed ?? 0) > MIN_ACTIVE_SPEED || dist > MIN_MOVE_METERS
+    const billable = moving && dt <= MAX_ACTIVE_GAP_MS
+    const pol = ZONE_POLICY[a.type ?? 'vehicle']
+
+    let cost = 0
+    let activeH = 0
+    if (pol.laborAllPresent) {
+      if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
+      activeH = dt / 3_600_000
+    } else if (billable && pol.operatingWhileMoving) {
+      if ((a.hourly_rate ?? 0) > 0) cost += (a.hourly_rate! * dt) / 3_600_000
+      if (pol.mileage && (a.mileage_rate ?? 0) > 0) cost += a.mileage_rate! * (dist / 1609.34)
+      activeH = dt / 3_600_000
+    }
+    if (pol.ownership && (a.daily_cost ?? 0) > 0) cost += (a.daily_cost! * dt) / 86_400_000
+
+    let u = acc.get(r.asset_id)
+    if (!u) acc.set(r.asset_id, (u = {
+      assetId: r.asset_id, name: a.name ?? 'Asset', type: (a.type ?? 'vehicle') as AssetType,
+      activeHours: 0, presentHours: 0, miles: 0, amount: 0,
+    }))
+    u.presentHours += dt / 3_600_000
+    u.activeHours += activeH
+    if (billable) u.miles += dist / 1609.34
+    u.amount += cost
+  }
+  return Array.from(acc.values())
+    .map((u) => ({ ...u, amount: Math.round(u.amount * 100) / 100 }))
+    .sort((x, y) => y.amount - x.amount)
+}
+
 export function zoneCostsFromHistory(
   geofences: { id: string; geometry: { coordinates: unknown[] } }[],
   assets: (Asset | CostInput)[],

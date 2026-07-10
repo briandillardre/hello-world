@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isQboConfigured, exchangeCodeForTokens } from '@/lib/qbo'
+import { isQboConfigured, exchangeCodeForTokens, fetchCompanyName } from '@/lib/qbo'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   const baseUrl = new URL('/accounting', request.url)
@@ -29,16 +31,31 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
     if (!isMock) {
+      // The connection belongs to the SIGNED-IN user's company — resolve it
+      // from the session, never from anything in the redirect.
+      const { getCurrentCompanyId } = await import('@/lib/db/company')
+      const companyId = await getCurrentCompanyId().catch(() => null)
+      if (!companyId) {
+        baseUrl.searchParams.set('error', 'not_signed_in')
+        return NextResponse.redirect(baseUrl)
+      }
+
+      const companyName = await fetchCompanyName({
+        companyId, realmId, accessToken: tokens.access_token,
+      })
+
       const { createServiceClient } = await import('@/lib/supabase-server')
       const supabase = createServiceClient()
-      // NOTE: in a full build, resolve company_id from the authenticated session.
-      await supabase.from('qbo_connections').upsert({
+      const { error } = await supabase.from('qbo_connections').upsert({
+        company_id: companyId,
         realm_id: realmId,
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+        company_name: companyName,
         connected_at: new Date().toISOString(),
       })
+      if (error) throw error
     }
 
     baseUrl.searchParams.set('connected', '1')
