@@ -131,6 +131,27 @@ export default function DemoLandingPage() {
           </div>
         </section>
 
+        {/* Founding 25 offer — mirrors the printed sales sheet */}
+        <section className="max-w-3xl mx-auto px-6 py-8">
+          <Reveal>
+            <div className="relative rounded-3xl border-2 border-amber bg-gradient-to-br from-amber/[0.12] to-transparent p-7 sm:p-9">
+              <span className="absolute -top-3 left-7 bg-amber text-[#3a2200] font-mono text-[11px] font-bold uppercase tracking-[0.08em] px-3 py-1 rounded-full">Founding 25 · limited</span>
+              <h2 className="font-display font-black text-2xl sm:text-3xl text-ink mt-2">
+                $99/mo flat — up to 25 assets, <span className="text-amber">price locked 2 years</span>
+              </h2>
+              <p className="text-muted mt-2">Be one of our first 25 fleets. Lock this rate while we grow — it never goes up on you.</p>
+              <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
+                {['Free 30-day pilot', 'We ship & pre-set the trackers', 'Live on your map in a day', 'Cancel anytime'].map((t) => (
+                  <span key={t} className="flex items-center gap-2 text-sm text-ink"><Check className="h-4 w-4 text-teal" /> {t}</span>
+                ))}
+              </div>
+              <Link href="/register" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
+                Claim a founding spot <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </Reveal>
+        </section>
+
         {/* Final CTA */}
         <section className="max-w-5xl mx-auto px-6 py-16 text-center">
           <Reveal>
