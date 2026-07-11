@@ -26,7 +26,7 @@ const FEED = [
 export function MapConsole() {
   return (
     <Link
-      href="/map"
+      href="/live"
       className="group block rounded-2xl bg-gradient-to-b from-navy-900 to-navy-950 border border-navy-800 shadow-panel overflow-hidden ring-1 ring-teal/5 hover:ring-teal/30 hover:border-teal/30 transition-all"
     >
       <div className="flex items-center justify-between px-5 py-3 border-b border-navy-800">

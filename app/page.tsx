@@ -80,7 +80,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
-              href="/map"
+              href="/live"
               className="font-display font-bold text-[17px] rounded-xl px-7 py-4 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors inline-flex items-center justify-center gap-2"
             >
               <span className="w-2.5 h-2.5 rounded-full bg-[#1a1100]/70 animate-blink" /> See the live map <ArrowRight className="h-4 w-4" />

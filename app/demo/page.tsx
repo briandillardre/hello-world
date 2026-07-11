@@ -60,7 +60,7 @@ export default function DemoLandingPage() {
                 Start free pilot <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="/map"
+                href="/live"
                 className="bg-white/[0.03] hover:bg-white/[0.06] text-ink font-display font-bold rounded-xl px-6 py-3.5 text-center border border-navy-700 transition-colors"
               >
                 See the live demo →
