@@ -61,26 +61,25 @@ interface RangeStat {
   movingMin: number; idleMin: number; parkedMin: number; starts: number; fuelGalEst: number
 }
 
-// Compact duration for narrow table cells: 19m · 1h13 · 3d
-const hmShort = (min: number) =>
+const dur = (min: number) =>
   min <= 0 ? '—'
-  : min >= 2880 ? `${Math.round(min / 1440)}d`
-  : min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`
+  : min >= 2880 ? `${Math.floor(min / 1440)}d ${Math.round((min % 1440) / 60)}h`
+  : min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m`
   : `${min}m`
 
 const RANGE_SHORT: Record<string, string> = {
-  today: 'Today', yesterday: 'Yesterday', '7d': '7 days', '30d': '30 days', ytd: 'YTD', all: 'All time',
+  today: 'Today', yesterday: 'Yest', '7d': '7 days', '30d': '30 days', ytd: 'YTD', all: 'All',
 }
 
-// Metrics as ROWS, ranges as vertical-header COLUMNS — all six ranges fit
-// the panel without sideways scrolling.
-const METRIC_ROWS: { label: string; fmt: (r: RangeStat) => string }[] = [
-  { label: 'Miles', fmt: (r) => (r.miles ? r.miles.toLocaleString() : '—') },
-  { label: 'Top mph', fmt: (r) => (r.maxMph ? String(r.maxMph) : '—') },
-  { label: 'Moving', fmt: (r) => hmShort(r.movingMin) },
-  { label: 'Idle', fmt: (r) => hmShort(r.idleMin) },
-  { label: 'Parked', fmt: (r) => hmShort(r.parkedMin) },
-  { label: 'Fuel gal*', fmt: (r) => (r.fuelGalEst ? String(r.fuelGalEst) : '—') },
+// One range at a time, picked by chip — six columns of numbers could never
+// breathe in a 250px panel, and this reads like a dashboard instead.
+const METRICS: { label: string; fmt: (r: RangeStat) => string; accent?: boolean }[] = [
+  { label: 'Distance', fmt: (r) => (r.miles ? `${r.miles.toLocaleString()} mi` : '—'), accent: true },
+  { label: 'Top speed', fmt: (r) => (r.maxMph ? `${r.maxMph} mph` : '—') },
+  { label: 'Moving', fmt: (r) => dur(r.movingMin) },
+  { label: 'Idle', fmt: (r) => dur(r.idleMin) },
+  { label: 'Parked', fmt: (r) => dur(r.parkedMin) },
+  { label: 'Fuel est.*', fmt: (r) => (r.fuelGalEst ? `${r.fuelGalEst} gal` : '—') },
   { label: 'Starts', fmt: (r) => (r.starts ? String(r.starts) : '—') },
 ]
 
@@ -206,38 +205,7 @@ function AssetDetails({
 
       <EngineWidget asset={asset} />
 
-      {stats && (
-        <div className="bg-navy-800 rounded-lg p-3">
-          <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1">Activity</p>
-          <table className="w-full table-fixed text-[10px]">
-            <thead>
-              <tr>
-                <th className="w-[54px]" />
-                {stats.map((r) => (
-                  <th key={r.key} className="pb-1 align-bottom text-center">
-                    <span className="inline-block [writing-mode:vertical-rl] rotate-180 font-mono text-[9px] uppercase tracking-[0.08em] text-faint whitespace-nowrap">
-                      {RANGE_SHORT[r.key] ?? r.label}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {METRIC_ROWS.map((m) => (
-                <tr key={m.label} className="border-t border-navy-700/50">
-                  <td className="py-1 pr-1 text-muted">{m.label}</td>
-                  {stats.map((r) => (
-                    <td key={r.key} className="py-1 text-center font-mono tabular-nums text-ink">{m.fmt(r)}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-1.5 text-[10px] text-faint">
-            *fuel estimated from distance + idle time until OBD fuel data is wired
-          </p>
-        </div>
-      )}
+      {stats && <ActivityCard stats={stats} />}
 
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
@@ -265,6 +233,46 @@ function AssetDetails({
       >
         View full details <ArrowRight className="h-4 w-4" />
       </Link>
+    </div>
+  )
+}
+
+/** Activity dashboard: pick a range with a chip, read big legible stats.
+ *  Distance leads (the number a contractor asks for first). */
+function ActivityCard({ stats }: { stats: RangeStat[] }) {
+  const [rangeKey, setRangeKey] = useState(stats[0]?.key ?? 'today')
+  const r = stats.find((s) => s.key === rangeKey) ?? stats[0]
+  if (!r) return null
+  return (
+    <div className="bg-navy-800 rounded-lg p-3">
+      <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Activity</p>
+      <div className="flex gap-1 mb-3 overflow-x-auto no-scrollbar -mx-0.5 px-0.5">
+        {stats.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setRangeKey(s.key)}
+            className={
+              'flex-none px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ' +
+              (s.key === r.key ? 'bg-amber/20 text-amber' : 'bg-navy-900 text-faint hover:text-ink')
+            }
+          >
+            {RANGE_SHORT[s.key] ?? s.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+        {METRICS.map((m) => (
+          <div key={m.label}>
+            <p className={'font-display font-bold text-[15px] tabular-nums leading-tight ' + (m.accent ? 'text-amber' : 'text-ink')}>
+              {m.fmt(r)}
+            </p>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-faint mt-0.5">{m.label}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2.5 text-[10px] text-faint border-t border-navy-700/50 pt-2">
+        *fuel estimated from distance + idle time until OBD fuel data is wired
+      </p>
     </div>
   )
 }
