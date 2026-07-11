@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -82,6 +82,19 @@ export function TimelinePlayback({
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
   const [showChart, setShowChart] = useState(false)
+  const [shared, setShared] = useState(false)
+
+  // Shareable replay link: current range + scrub position (+ follow target),
+  // so "watch this trip" is a text message, not a screen-share.
+  const shareReplay = async () => {
+    const p = new URLSearchParams({ range, t: t.toFixed(3) })
+    if (followId) p.set('follow', followId)
+    if (range === 'custom') { p.set('from', String(customFrom)); p.set('to', String(customTo)) }
+    const url = `${window.location.origin}${window.location.pathname}?${p.toString()}`
+    try { await navigator.clipboard.writeText(url) } catch { /* clipboard blocked */ }
+    setShared(true)
+    setTimeout(() => setShared(false), 1800)
+  }
   const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
   const rootRef = useRef<HTMLDivElement>(null)
   const followed = followAssets.find((a) => a.id === followId) ?? null
@@ -335,6 +348,18 @@ export function TimelinePlayback({
             }
           >
             <AreaChart className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {!live && (
+          <button
+            onClick={shareReplay}
+            title="Copy replay link"
+            className={
+              'flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors ' +
+              (shared ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            {shared ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
           </button>
         )}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">

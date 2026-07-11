@@ -69,6 +69,7 @@ export default async function MapPage() {
           tz={tz}
           toolGateways={toolGateways}
           defaultWeatherPlace={prefs.weatherPlace}
+          defaultWeatherCoords={prefs.weatherCoords}
           canSetWeatherDefault={prefs.isAdmin}
           canViewCosts={perms.canViewCosts}
         />

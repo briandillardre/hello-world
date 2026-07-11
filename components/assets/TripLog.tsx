@@ -1,5 +1,6 @@
 import { Route, MoveRight } from 'lucide-react'
 import type { Trip } from '@/lib/trips'
+import { ExportCsv } from '@/components/ui/ExportCsv'
 
 /**
  * The drive history a contractor actually reads: when it left, where it went,
@@ -17,8 +18,19 @@ export function TripLog({ trips, days }: { trips: Trip[]; days: number }) {
           Trips · last {days} days
         </h2>
         {trips.length > 0 && (
-          <span className="font-mono text-[11px] text-faint tabular-nums">
-            {trips.length} trips · {totalMiles.toLocaleString()} mi · {Math.floor(totalMin / 60)}h {totalMin % 60}m
+          <span className="flex items-center gap-2">
+            <span className="font-mono text-[11px] text-faint tabular-nums">
+              {trips.length} trips · {totalMiles.toLocaleString()} mi · {Math.floor(totalMin / 60)}h {totalMin % 60}m
+            </span>
+            <ExportCsv
+              filename="trips.csv"
+              headers={['Start', 'End', 'From zone', 'To zone', 'Minutes', 'Miles', 'Max mph']}
+              rows={trips.map((t) => [
+                new Date(t.startMs).toLocaleString(),
+                new Date(t.endMs).toLocaleString(),
+                t.startZone ?? '', t.endZone ?? '', t.minutes, t.miles, t.maxMph,
+              ])}
+            />
           </span>
         )}
       </div>

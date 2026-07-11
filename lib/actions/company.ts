@@ -55,7 +55,7 @@ export async function updateCompanySettingsAction(input: {
  * companies no UPDATE policy for the anon role (008 adds one, but service
  * write keeps this working even before that migration runs).
  */
-export async function setWeatherDefaultAction(place: string) {
+export async function setWeatherDefaultAction(place: string, lat?: number, lng?: number) {
   const trimmed = place.trim().slice(0, 120)
   if (!trimmed) return
 
@@ -73,8 +73,15 @@ export async function setWeatherDefaultAction(place: string) {
   const isAdmin = profile?.role === 'admin' || user.id === companyId
   if (!isAdmin) return
 
+  // Store exact coords alongside the name (JSON in the same TEXT column) so
+  // every device resolves the SAME point — re-geocoding just the name picked
+  // the wrong Greenville (NC outranks SC by population).
+  const value = typeof lat === 'number' && typeof lng === 'number'
+    ? JSON.stringify({ name: trimmed, lat, lng })
+    : trimmed
+
   const service = createServiceClient()
-  const { error } = await service.from('companies').update({ weather_place: trimmed }).eq('id', companyId)
+  const { error } = await service.from('companies').update({ weather_place: value }).eq('id', companyId)
   if (error) {
     // Most likely cause: migration 008 (weather_place column) not applied yet.
     console.error('weather default save failed', error)

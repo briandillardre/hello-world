@@ -73,14 +73,14 @@ export async function getCurrentCompany(): Promise<{ id: string; name: string; u
  * Company preferences + the caller's role, for the map's weather panel.
  * weatherPlace null = follow the fleet. isAdmin gates the "save default" star.
  */
-export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; isAdmin: boolean }> {
-  if (isMock) return { weatherPlace: null, isAdmin: false }
+export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; weatherCoords: { lat: number; lng: number } | null; isAdmin: boolean }> {
+  if (isMock) return { weatherPlace: null, weatherCoords: null, isAdmin: false }
 
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { weatherPlace: null, isAdmin: false }
+    if (!user) return { weatherPlace: null, weatherCoords: null, isAdmin: false }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -95,12 +95,27 @@ export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; 
       .eq('id', companyId)
       .single()
 
+    // Newer saves are JSON {name, lat, lng} — exact point, no re-geocode.
+    // Older saves are the bare place name (coords unknown).
+    let weatherPlace: string | null = company?.weather_place ?? null
+    let weatherCoords: { lat: number; lng: number } | null = null
+    if (weatherPlace?.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(weatherPlace)
+        if (typeof parsed?.name === 'string') weatherPlace = parsed.name
+        if (typeof parsed?.lat === 'number' && typeof parsed?.lng === 'number') {
+          weatherCoords = { lat: parsed.lat, lng: parsed.lng }
+        }
+      } catch { /* not JSON after all — treat as a plain name */ }
+    }
+
     return {
-      weatherPlace: company?.weather_place ?? null,
+      weatherPlace,
+      weatherCoords,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {
-    return { weatherPlace: null, isAdmin: false }
+    return { weatherPlace: null, weatherCoords: null, isAdmin: false }
   }
 }
 

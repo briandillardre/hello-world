@@ -171,13 +171,16 @@ interface MapViewProps {
   kiosk?: boolean
   /** Company-wide default weather location (admin-set); null = follow the fleet. */
   defaultWeatherPlace?: string | null
+  /** Exact coords for the company default — set by newer star-saves. When
+   *  present they win everywhere (no re-geocode, no per-device drift). */
+  defaultWeatherCoords?: { lat: number; lng: number } | null
   /** Show the admin-only "save as company default" control in the weather panel. */
-  onSaveWeatherDefault?: (place: string) => Promise<boolean | void>
+  onSaveWeatherDefault?: (place: string, lat?: number, lng?: number) => Promise<boolean | void>
   /** False hides every dollar figure (timeline chip, $ chart mode, zone $). */
   canViewCosts?: boolean
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault, canViewCosts = true }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -268,15 +271,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!historyRows || range === 'live') return
     const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
     const key = `${w.from}-${w.to}`
-    if (fetchedRows[key]) return
+    // A window that includes NOW keeps growing \u2014 and trackers buffer offline
+    // and backfill with original timestamps (start of a drive after days
+    // parked shows up minutes late). Caching that window forever froze the
+    // trail at first fetch, so live windows re-pull every minute; windows
+    // entirely in the past stay cached.
+    const windowIsLive = w.to > Date.now()
+    if (fetchedRows[key] && !windowIsLive) return
     const ctrl = new AbortController()
-    fetch(`/api/history?from=${new Date(w.from).toISOString()}&to=${new Date(w.to).toISOString()}`, { signal: ctrl.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (j && Array.isArray(j.rows)) setFetchedRows((prev) => ({ ...prev, [key]: j.rows }))
-      })
-      .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
-    return () => ctrl.abort()
+    const load = () => {
+      fetch(`/api/history?from=${new Date(w.from).toISOString()}&to=${new Date(w.to).toISOString()}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (j && Array.isArray(j.rows)) setFetchedRows((prev) => ({ ...prev, [key]: j.rows }))
+        })
+        .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
+    }
+    load()
+    const iv = windowIsLive ? setInterval(load, 60_000) : null
+    return () => { ctrl.abort(); if (iv) clearInterval(iv) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyRows, range, customFrom, customTo, earliestMs, tz])
 
@@ -913,9 +926,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     focusFollow(displayT)
   }, [mapReady, followId, pbPlaying, displayT, focusFollow])
 
-  // Fetch conditions once. Location priority: a device-saved default (with exact
-  // coords — no ambiguous re-geocode), else the company's admin-set place (DB),
-  // else wherever the fleet last reported, else the demo center. Note: this sets
+  // Fetch conditions once. Location priority: the company default WITH exact
+  // coords (the last star pressed, on any device — wins everywhere), else a
+  // device-saved default (older star on this device), else the company's
+  // name-only place (legacy save — geocode, then pick the candidate nearest
+  // the fleet so "Greenville" resolves to SC, not the bigger NC one), else
+  // wherever the fleet last reported, else the demo center. Note: this sets
   // the weather panel only — it must NOT move the map camera, or it fights the
   // fit-to-all-assets on open.
   useEffect(() => {
@@ -931,22 +947,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       .filter((a) => a.location)
       .sort((a, b) => new Date(b.location!.timestamp).getTime() - new Date(a.location!.timestamp).getTime())[0]
 
-    if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number') {
+    if (defaultWeatherCoords && defaultWeatherPlace) {
+      // Company star with exact point — same weather on every device/domain.
+      setWxPlace(defaultWeatherPlace)
+      wxCoordsRef.current = [defaultWeatherCoords.lng, defaultWeatherCoords.lat]
+      fetchConditions(defaultWeatherCoords.lat, defaultWeatherCoords.lng).then((c) => { if (!cancelled) setConditions(c) })
+    } else if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number') {
       // Exact saved point — this is the fix for "Greenville keeps coming back NC".
       setWxPlace(saved.name)
       wxCoordsRef.current = [saved.lng, saved.lat]
       fetchConditions(saved.lat, saved.lng).then((c) => { if (!cancelled) setConditions(c) })
     } else if (defaultWeatherPlace) {
-      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(defaultWeatherPlace.split(',')[0].trim())}`)
+      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=10&name=${encodeURIComponent(defaultWeatherPlace.split(',')[0].trim())}`)
         .then((r) => r.json())
         .then((j) => {
           if (cancelled) return
-          const hit = j?.results?.[0]
-          if (hit) {
-            setWxPlace([hit.name, hit.admin1].filter(Boolean).join(', '))
-            wxCoordsRef.current = [hit.longitude, hit.latitude]
-            fetchConditions(hit.latitude, hit.longitude).then((c) => { if (!cancelled) setConditions(c) })
-          }
+          const results: { name: string; admin1?: string; latitude: number; longitude: number }[] =
+            Array.isArray(j?.results) ? j.results : []
+          if (!results.length) return
+          // Legacy name-only default is ambiguous — pick the match closest to
+          // the fleet's last known position instead of the most-populous one.
+          const anchor = newest?.location
+          const hit = !anchor ? results[0] : results.reduce((best, r) => {
+            const d = (r.latitude - anchor.lat) ** 2 + (r.longitude - anchor.lng) ** 2
+            const bd = (best.latitude - anchor.lat) ** 2 + (best.longitude - anchor.lng) ** 2
+            return d < bd ? r : best
+          })
+          setWxPlace([hit.name, hit.admin1].filter(Boolean).join(', '))
+          wxCoordsRef.current = [hit.longitude, hit.latitude]
+          fetchConditions(hit.latitude, hit.longitude).then((c) => { if (!cancelled) setConditions(c) })
         })
         .catch(() => {})
     } else if (newest?.location) {
@@ -958,7 +987,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultWeatherPlace])
+  }, [defaultWeatherPlace, defaultWeatherCoords])
 
   // Save the current weather location as the default. Persists the exact coords
   // on THIS device (survives redeploys + avoids the wrong-Greenville re-geocode),
@@ -969,7 +998,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (c) localStorage.setItem('ht_weather_default', JSON.stringify({ name: place, lng: c[0], lat: c[1] }))
     } catch { /* private mode */ }
     if (onSaveWeatherDefault) {
-      try { await onSaveWeatherDefault(place) } catch { /* device save already stuck */ }
+      // Ship the exact coords to the company row too, so every other device
+      // (and every domain — localStorage is per-origin) lands on this point.
+      try { await onSaveWeatherDefault(place, c?.[1], c?.[0]) } catch { /* device save already stuck */ }
     }
     return true
   }, [onSaveWeatherDefault])
@@ -1308,6 +1339,40 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       handleFollow(null)
     }
   }, [followId, tracksEff, filter, handleFollow])
+
+  // Restore a shared replay link (?range=yesterday&t=0.42&follow=<id>): apply
+  // once when the map is ready, paused at the shared moment — the recipient
+  // sees exactly what the sender saw, then presses play themselves.
+  const shareAppliedRef = useRef(false)
+  useEffect(() => {
+    if (!mapReady || shareAppliedRef.current || typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const r = q.get('range') as TimeRange | null
+    if (!r || r === 'live' || !['today', 'yesterday', '7d', '30d', 'ytd', 'all', 'custom'].includes(r)) return
+    shareAppliedRef.current = true
+    if (r === 'custom') {
+      const from = Number(q.get('from'))
+      const to = Number(q.get('to'))
+      if (Number.isFinite(from) && Number.isFinite(to) && to > from) {
+        setCustomFrom(from)
+        setCustomTo(to)
+      }
+    }
+    handleRange(r)
+    const t = Math.min(1, Math.max(0, Number(q.get('t'))))
+    if (Number.isFinite(t)) {
+      tRef.current = t
+      setPbT(t)
+    }
+    const follow = q.get('follow')
+    if (follow) {
+      // Pin the camera without auto-playing (handleFollow would start playback).
+      bearingRef.current = map.current?.getBearing() ?? 0
+      pitchRef.current = map.current?.getPitch() ?? 0
+      entranceRef.current = 0
+      setFollowId(follow)
+    }
+  }, [mapReady, handleRange])
 
   // ── Geofence drawing ──
   const handleDrawClick = useCallback((e: maplibregl.MapMouseEvent) => {

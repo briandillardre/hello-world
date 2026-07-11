@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { FileText } from 'lucide-react'
 import type { ZoneAssetUsage } from '@/lib/costs'
 import type { AssetType } from '@/lib/types'
+import { ExportCsv } from '@/components/ui/ExportCsv'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -32,11 +33,20 @@ export function ZoneUsage({
         <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">
           Tracked usage · last {days} days
         </h2>
-        {canInvoice && usage.length > 0 && (
-          <Link href="/accounting" className="inline-flex items-center gap-1 text-xs text-teal hover:underline">
-            <FileText className="h-3.5 w-3.5" /> Invoice this zone →
-          </Link>
-        )}
+        <span className="flex items-center gap-2.5">
+          <ExportCsv
+            filename="zone-usage.csv"
+            headers={showCosts ? ['Asset', 'Type', 'Active hrs', 'On-site hrs', 'Miles', 'Cost'] : ['Asset', 'Type', 'Active hrs', 'On-site hrs', 'Miles']}
+            rows={usage.map((u) => showCosts
+              ? [u.name, u.type, u.activeHours.toFixed(1), u.presentHours.toFixed(1), u.miles.toFixed(1), u.amount.toFixed(2)]
+              : [u.name, u.type, u.activeHours.toFixed(1), u.presentHours.toFixed(1), u.miles.toFixed(1)])}
+          />
+          {canInvoice && usage.length > 0 && (
+            <Link href="/accounting" className="inline-flex items-center gap-1 text-xs text-teal hover:underline">
+              <FileText className="h-3.5 w-3.5" /> Invoice this zone →
+            </Link>
+          )}
+        </span>
       </div>
 
       {usage.length === 0 ? (

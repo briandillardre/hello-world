@@ -10,6 +10,8 @@ import { zoneAssetUsage, type ZoneAssetUsage } from '@/lib/costs'
 import type { AssetType } from '@/lib/types'
 import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
 import { ZoneUsage } from '@/components/geofences/ZoneUsage'
+import { ZoneVisits } from '@/components/geofences/ZoneVisits'
+import { segmentVisits, type Visit } from '@/lib/visits'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
@@ -36,6 +38,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   // Job cockpit: what happened inside this zone over the window — same accrual
   // engine that prices QBO invoices, so the table IS the invoice preview.
   let usage: ZoneAssetUsage[] | null = null
+  let visits: Visit[] | null = null
   if (!isMock && ring && ring.length >= 3) {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
@@ -48,7 +51,9 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       .order('timestamp', { ascending: true })
       .limit(40_000)
     usage = zoneAssetUsage(ring, assets, rows ?? [], from, Date.now())
+    visits = segmentVisits(rows ?? [], ring)
   }
+  const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
@@ -86,6 +91,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             showCosts={perms.canViewCosts}
             canInvoice={perms.canManageBilling}
           />
+        )}
+
+        {visits !== null && (
+          <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} />
         )}
 
         <section>

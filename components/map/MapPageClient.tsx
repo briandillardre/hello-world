@@ -38,12 +38,13 @@ interface MapPageClientProps {
   tz?: string
   toolGateways: Record<string, { name: string; lastSeen: string }>
   defaultWeatherPlace?: string | null
+  defaultWeatherCoords?: { lat: number; lng: number } | null
   canSetWeatherDefault?: boolean
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
   canViewCosts?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, canSetWeatherDefault = false, canViewCosts = true }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -133,6 +134,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         onGeofenceEdit={handleGeofenceEdit}
         onGeofenceDelete={handleGeofenceDelete}
         defaultWeatherPlace={defaultWeatherPlace}
+        defaultWeatherCoords={defaultWeatherCoords}
         onSaveWeatherDefault={canSetWeatherDefault ? setWeatherDefaultAction : undefined}
         canViewCosts={canViewCosts}
       />
