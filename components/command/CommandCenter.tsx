@@ -8,6 +8,7 @@ import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
+import { TacticalHud } from './TacticalHud'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
 const MapView = dynamic(() => import('@/components/map/MapView').then((m) => ({ default: m.MapView })), {
@@ -100,6 +101,15 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
       <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
+      {/* tactical instrument — bottom-right, above the ticker */}
+      <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40">
+        <TacticalHud
+          assets={assets}
+          geofences={geofences}
+          alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+        />
+      </div>
+
       {/* top HUD bar */}
       <div className="absolute top-0 left-0 right-0 z-40 h-[56px] flex items-center justify-between px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
         <div className="flex items-center gap-3 pointer-events-none">
@@ -142,7 +152,9 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
         <div className="absolute bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
           <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[12px]">
             {[...ticker, ...ticker].map((item, i) => (
-              <span key={i} className={'flex items-center gap-2 ' + (item.alert ? 'text-alert font-bold' : 'text-faint')}>
+              // suppressHydrationWarning: items carry relative times ("53m ago")
+              // that drift between server render and client hydration.
+              <span key={i} suppressHydrationWarning className={'flex items-center gap-2 ' + (item.alert ? 'text-alert font-bold' : 'text-faint')}>
                 <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (item.alert ? 'bg-alert animate-blink' : 'bg-teal/60')} />
                 {item.text}
               </span>
