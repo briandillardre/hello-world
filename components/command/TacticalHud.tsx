@@ -37,19 +37,23 @@ function useClock(): string {
   return now
 }
 
-export function TacticalHud({ assets, geofences, alertCount = 0 }: {
+export function TacticalHud({ assets, geofences, alertCount = 0, center = null }: {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   alertCount?: number
+  /** Radar origin — the map camera's crosshair. Null = fleet centroid. */
+  center?: { lng: number; lat: number } | null
 }) {
   const clock = useClock()
 
-  const { blips, moving, onSitePct, avgSpeed, topSpeed, topName, lowBatt, newestMs, typeLine } = useMemo(() => {
+  const { blips, moving, onSitePct, avgSpeed, topSpeed, topName, lowBatt, newestMs, typeLine, rangeMi } = useMemo(() => {
     const located = assets.filter((a) => a.location)
-    if (located.length === 0) return { blips: [] as Blip[], moving: 0, onSitePct: 0, avgSpeed: 0, topSpeed: 0, topName: '', lowBatt: 0, newestMs: 0, typeLine: '' }
+    if (located.length === 0) return { blips: [] as Blip[], moving: 0, onSitePct: 0, avgSpeed: 0, topSpeed: 0, topName: '', lowBatt: 0, newestMs: 0, typeLine: '', rangeMi: 0 }
 
-    const cx = located.reduce((s, a) => s + a.location!.lng, 0) / located.length
-    const cy = located.reduce((s, a) => s + a.location!.lat, 0) / located.length
+    // Origin: the map's crosshair when provided (pan the wall display and the
+    // scope re-aims), else the fleet centroid.
+    const cx = center?.lng ?? located.reduce((s, a) => s + a.location!.lng, 0) / located.length
+    const cy = center?.lat ?? located.reduce((s, a) => s + a.location!.lat, 0) / located.length
     // Compensate longitude shrink so bearings stay true-ish at this latitude.
     const lngScale = Math.cos((cy * Math.PI) / 180)
     let maxR = 0
@@ -104,8 +108,10 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
       onSitePct: Math.round((onSite / located.length) * 100),
       avgSpeed: spdN ? spdSum / spdN : 0,
       topSpeed, topName, lowBatt, newestMs, typeLine,
+      // Outer ring radius in miles (≈69 mi per degree after lng correction).
+      rangeMi: maxR * 69,
     }
-  }, [assets, geofences])
+  }, [assets, geofences, center])
 
   const ticks = useMemo(() => Array.from({ length: 36 }, (_, i) => i * 10), [])
 
@@ -174,6 +180,14 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
       <div className="absolute inset-x-0 top-[13%] text-center leading-none">
         <span className="text-teal text-[clamp(9px,1.2vw,13px)] tracking-[0.18em] tabular-nums">{clock}</span>
       </div>
+      {/* scope range: distance from center to the outer ring */}
+      {rangeMi > 0 && (
+        <div className="hidden sm:block absolute inset-x-0 top-[36%] text-center leading-none">
+          <span className="text-faint/80 text-[clamp(7px,0.85vw,10px)] tracking-[0.14em] tabular-nums">
+            RNG {rangeMi >= 10 ? Math.round(rangeMi) : rangeMi.toFixed(1)} MI
+          </span>
+        </div>
+      )}
       <div className="absolute inset-x-0 bottom-[24%] text-center leading-tight">
         <p className="text-ink font-bold text-[clamp(12px,1.7vw,20px)] tabular-nums">
           {moving}<span className="text-faint text-[0.62em]">/{assets.filter(a => a.location).length} MOVING</span>

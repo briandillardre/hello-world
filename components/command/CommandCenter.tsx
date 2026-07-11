@@ -61,6 +61,13 @@ function Chip({ label, value, tone = 'ink' }: { label: string; value: string; to
 
 export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts = [] }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
+  // Radar center follows the map camera (MapView broadcasts on moveend).
+  const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
+  useEffect(() => {
+    const onCam = (e: Event) => setCamCenter((e as CustomEvent<{ lng: number; lat: number }>).detail)
+    window.addEventListener('ht:camera', onCam)
+    return () => window.removeEventListener('ht:camera', onCam)
+  }, [])
   useEffect(() => {
     setNow(new Date())
     const id = setInterval(() => setNow(new Date()), 1000)
@@ -119,6 +126,7 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
           assets={assets}
           geofences={geofences}
           alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+          center={camCenter}
         />
       </div>
 

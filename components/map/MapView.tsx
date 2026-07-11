@@ -1097,6 +1097,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => clearInterval(id)
   }, [mapReady, pbPlaying, followId])
 
+  // Kiosk: broadcast the camera center so the TacticalHud radar re-aims to
+  // wherever the wall display is looking (its center = the map's crosshair).
+  useEffect(() => {
+    if (!kiosk || !mapReady) return
+    const m = map.current
+    if (!m) return
+    const emit = () => {
+      const c = m.getCenter()
+      window.dispatchEvent(new CustomEvent('ht:camera', { detail: { lng: c.lng, lat: c.lat } }))
+    }
+    emit()
+    m.on('moveend', emit)
+    return () => { m.off('moveend', emit) }
+  }, [kiosk, mapReady])
+
   // Drive the follow camera to the asset at scrub position t. Called every frame
   // from the RAF loop and on discrete seeks. The bearing behaviour depends on
   // the mode — Orbit revolves at a constant rate (smooth, never jerks), Overhead
