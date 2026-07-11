@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight } from 'lucide-react'
+import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Search } from 'lucide-react'
 import type { Geofence } from '@/lib/types'
 import { saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
+import { Input } from '@/components/ui/input'
 
 const PALETTE = ['#ff9e16', '#2dd4bf', '#60a5fa', '#a78bfa', '#f87171', '#34d399', '#fbbf24', '#f472b6']
 
@@ -14,12 +15,56 @@ interface Props {
   editable: boolean
 }
 
+type SortKey = 'name' | 'assets'
+
 export function GeofencesManager({ geofences, counts, editable }: Props) {
-  const parents = geofences.filter((g) => !g.parent_id)
+  // Search + sort mirror the Assets page, so the two lists feel like one app.
+  // "Subcategories" are the existing parent/sub-zone nesting: a match on either
+  // a parent or any of its children keeps the whole family visible.
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortKey>('name')
+
   const childrenOf = (id: string) => geofences.filter((g) => g.parent_id === id)
+  const parents = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const matches = (g: Geofence) => g.name.toLowerCase().includes(q)
+    const tops = geofences.filter((g) => !g.parent_id)
+    const visible = q
+      ? tops.filter((p) => matches(p) || geofences.some((c) => c.parent_id === p.id && matches(c)))
+      : tops
+    return [...visible].sort((a, b) =>
+      sort === 'assets' ? (counts[b.id] ?? 0) - (counts[a.id] ?? 0) : a.name.localeCompare(b.name)
+    )
+  }, [geofences, counts, query, sort])
 
   return (
     <div className="p-4 space-y-3">
+      {geofences.length > 0 && (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
+            <Input
+              placeholder="Search zones…"
+              className="pl-9"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            {([['name', 'A → Z'], ['assets', 'Most assets']] as [SortKey, string][]).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setSort(k)}
+                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  sort === k ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted hover:bg-navy-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {geofences.length === 0 && (
         <div className="rounded-2xl border border-navy-800 bg-navy-900 p-6 max-w-sm mx-auto text-center">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/10 border border-amber/25 grid place-items-center mb-3 text-2xl">⬡</div>
@@ -49,6 +94,10 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
           ))}
         </div>
       ))}
+
+      {geofences.length > 0 && parents.length === 0 && (
+        <p className="text-sm text-faint text-center py-6">No zones match “{query}”.</p>
+      )}
 
       {!editable && (
         <div className="bg-amber/15 border border-amber/30 rounded-xl p-4 text-xs text-amber">
