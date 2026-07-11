@@ -38,10 +38,29 @@ async function sendSms(to: string, body: string): Promise<void> {
   }
 }
 
-async function postWebhook(payload: unknown): Promise<void> {
+async function postWebhook(payload: { company: string; alerts: AlertMessage[]; at: string }): Promise<void> {
   const url = process.env.NOTIFY_WEBHOOK_URL
   if (!url) return
   try {
+    // ntfy topics get real push notifications (title, priority, tap-through
+    // to the live map) instead of a raw JSON blob. Anything else gets JSON.
+    if (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/')) {
+      const { BRAND_URL } = await import('./brand')
+      for (const a of payload.alerts) {
+        const critical = a.severity === 'critical'
+        await fetch(url, {
+          method: 'POST',
+          headers: {
+            Title: critical ? '🚨 THEFT ALERT' : a.severity === 'warning' ? '⚠️ Alert' : 'Update',
+            Priority: critical ? 'urgent' : 'default',
+            Tags: critical ? 'rotating_light' : 'construction',
+            Click: `${BRAND_URL}/map`,
+          },
+          body: `${a.reason}\n${payload.company}`,
+        })
+      }
+      return
+    }
     await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
   } catch (err) {
     console.error('Notify webhook error', err)
