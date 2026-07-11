@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request an Estimate | Dillard Construction Group, Greenville SC</title>
+<meta name="description" content="Request a free sitework or paving estimate from Dillard Construction Group in Greenville, SC. GCs and developers: invite us to bid — plans link, bid date, and scope in one form.">
+<link rel="canonical" href="https://www.dillardconstructiongroup.com/contact">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="logo" href="index.html" aria-label="Dillard Construction Group home">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span class="logo-text">DILLARD<small>CONSTRUCTION GROUP</small></span>
+    </a>
+    <button class="nav-toggle" aria-expanded="false" aria-label="Menu">&#9776;</button>
+    <nav class="nav" aria-label="Primary">
+      <a href="index.html">Home</a>
+      <a href="services.html">Services</a>
+      <a href="projects.html">Projects</a>
+      <a href="safety.html">Safety &amp; Systems</a>
+      <a href="about.html">About</a>
+      <a href="careers.html">Careers</a>
+      <a class="btn btn-amber" href="contact.html" aria-current="page">Request an Estimate</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<div class="page-hero">
+  <div class="wrap">
+    <div class="crumbs"><a href="index.html">Home</a> / Contact</div>
+    <h1>Tell us about the site. We'll bring real numbers.</h1>
+    <p class="lede">Free estimates. Same-day callback on weekdays. If it's easier, just call — you'll get a partner, not a phone tree.</p>
+  </div>
+</div>
+
+<section>
+  <div class="wrap split" style="align-items:start">
+    <div>
+      <span class="kicker">Request an Estimate</span>
+      <h2>Project details</h2>
+      <!-- Netlify Forms: the data-netlify attribute makes this form work with zero backend
+           when deployed on Netlify. On Vercel, swap to a Formspree/Basin action URL. -->
+      <form class="mt-2" name="estimate" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+        <input type="hidden" name="form-name" value="estimate">
+        <p style="display:none"><label>Don't fill this out: <input name="bot-field"></label></p>
+        <div class="form-grid">
+          <div class="field"><label for="name">Name</label><input id="name" name="name" required autocomplete="name"></div>
+          <div class="field"><label for="company">Company (if any)</label><input id="company" name="company" autocomplete="organization"></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" type="tel" required autocomplete="tel"></div>
+          <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" required autocomplete="email"></div>
+          <div class="field"><label for="type">I am a…</label>
+            <select id="type" name="contact_type">
+              <option>Property / business owner</option>
+              <option>General contractor</option>
+              <option>Developer</option>
+              <option>Property manager / HOA</option>
+              <option>Homeowner</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label for="service">Service needed</label>
+            <select id="service" name="service">
+              <option>Full sitework package</option>
+              <option>Grading / clearing</option>
+              <option>Asphalt paving — new</option>
+              <option>Asphalt repair / sealcoat / striping</option>
+              <option>Stormwater / utilities</option>
+              <option>Site concrete / curb &amp; gutter</option>
+              <option>Pavement maintenance program</option>
+              <option>Stormwater maintenance agreement</option>
+              <option>Not sure — need a site walk</option>
+            </select>
+          </div>
+          <div class="field"><label for="location">Project location (city / county)</label><input id="location" name="location" required></div>
+          <div class="field"><label for="timeline">Timeline</label>
+            <select id="timeline" name="timeline">
+              <option>ASAP</option>
+              <option>1–3 months</option>
+              <option>3–6 months</option>
+              <option>Planning / budgeting stage</option>
+            </select>
+          </div>
+          <div class="field full"><label for="details">Project details</label><textarea id="details" name="details" rows="5" placeholder="Size (acres / sq ft), current condition, plans available?"></textarea></div>
+          <div class="field full"><button class="btn btn-amber" type="submit">Send Estimate Request</button></div>
+        </div>
+      </form>
+
+      <div class="mt-3">
+        <span class="kicker">GCs &amp; Developers</span>
+        <h2>Invite us to bid</h2>
+        <p class="mt-1">Bidding a project with sitework or paving scope? Send the invitation and plans link — we turn around commercial bids fast.</p>
+        <form class="mt-2" name="bid-invite" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+          <input type="hidden" name="form-name" value="bid-invite">
+          <p style="display:none"><label>Don't fill this out: <input name="bot-field"></label></p>
+          <div class="form-grid">
+            <div class="field"><label for="b-name">Name</label><input id="b-name" name="name" required></div>
+            <div class="field"><label for="b-company">Company</label><input id="b-company" name="company" required></div>
+            <div class="field"><label for="b-email">Email</label><input id="b-email" name="email" type="email" required></div>
+            <div class="field"><label for="b-date">Bid due date</label><input id="b-date" name="bid_date" type="date"></div>
+            <div class="field full"><label for="b-project">Project name &amp; location</label><input id="b-project" name="project" required></div>
+            <div class="field full"><label for="b-plans">Plans / ITB link (Procore, Building Connected, Dropbox…)</label><input id="b-plans" name="plans_link" type="url"></div>
+            <div class="field full"><label for="b-scope">Scope needed</label><textarea id="b-scope" name="scope" rows="3" placeholder="e.g., full site package; paving only; utilities + curb"></textarea></div>
+            <div class="field full"><button class="btn btn-amber" type="submit">Send Bid Invitation</button></div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3>Talk to a partner directly</h3>
+        <p><strong>Brian Dillard</strong> — Founder &amp; Partner<br>
+        <a href="tel:+18649152351">(864) 915-2351</a><br>
+        <a href="mailto:brian@dillardconstructiongroup.com">brian@dillardconstructiongroup.com</a></p>
+        <p class="mt-1"><strong>Nate Dillard</strong> — Partner<br>
+        <a href="tel:+18644204360">(864) 420-4360</a><br>
+        <a href="mailto:nate@dillardconstructiongroup.com">nate@dillardconstructiongroup.com</a></p>
+      </div>
+      <div class="card mt-2">
+        <h3>Office</h3>
+        <p>185 Hawkins Road, Suite B<br>Greenville, SC 29615</p>
+        <p class="mt-1">Serving Greenville, Spartanburg, Anderson, Pickens, Oconee, Cherokee, Union, Abbeville, and Laurens counties.</p>
+      </div>
+      <div class="card mt-2">
+        <h3>Prequalification packet</h3>
+        <p>GCs and owners: insurance certificates, bonding, license verification, EMR, and references available on request — usually same day.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="cta-band">
+  <div class="wrap">
+    <div>
+      <h2>Prefer to just talk it through?</h2>
+      <p class="sub">Call Brian: (864) 915-2351 — weekdays.</p>
+    </div>
+    <a class="btn" href="tel:+18649152351">Call Now</a>
+  </div>
+</div>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <a class="logo" href="index.html" aria-label="Dillard Construction Group home">
+          <span class="logo-mark" aria-hidden="true"></span>
+          <span class="logo-text">DILLARD<small>CONSTRUCTION GROUP</small></span>
+        </a>
+        <p class="mt-1">Veteran-owned sitework and asphalt paving contractor. Licensed, bonded, and insured — unlimited Group 5, South Carolina.</p>
+        <span class="vet-flag"><span class="star">&#9733;</span> Veteran-Owned Business</span>
+      </div>
+      <div>
+        <h4>Services</h4>
+        <ul>
+          <li><a href="sitework-grading.html">Sitework &amp; Grading</a></li>
+          <li><a href="asphalt-paving.html">Asphalt Paving</a></li>
+          <li><a href="stormwater-utilities.html">Stormwater &amp; Utilities</a></li>
+          <li><a href="services.html#concrete">Site Concrete</a></li>
+          <li><a href="services.html#gc">General Contracting</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="about.html">About &amp; Team</a></li>
+          <li><a href="projects.html">Projects</a></li>
+          <li><a href="safety.html">Safety &amp; Systems</a></li>
+          <li><a href="careers.html">Careers</a></li>
+          <li><a href="contact.html">Contact</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contact</h4>
+        <ul>
+          <li>185 Hawkins Road, Suite B<br>Greenville, SC 29615</li>
+          <li><a href="tel:+18649152351">(864) 915-2351</a></li>
+          <li><a href="mailto:brian@dillardconstructiongroup.com">brian@dillardconstructiongroup.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="legal">
+      <span>&copy; <span data-year>2026</span> Dillard Construction Group LLC. All rights reserved.</span>
+      <span>SC Unlimited Group 5 Sitework &amp; Paving Contractor &middot; USDOT 4392256</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/site.js"></script>
+</body>
+</html>
