@@ -12,6 +12,8 @@ import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
 import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 import { ZoneVisits } from '@/components/geofences/ZoneVisits'
 import { segmentVisits, type Visit } from '@/lib/visits'
+import { DEFAULT_TZ } from '@/lib/dates'
+import { cookies } from 'next/headers'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
@@ -54,6 +56,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     visits = segmentVisits(rows ?? [], ring)
   }
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
+  // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
+  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
@@ -94,7 +98,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         )}
 
         {visits !== null && (
-          <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} />
+          <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
         )}
 
         <section>

@@ -15,6 +15,8 @@ import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 import { TripLog } from '@/components/assets/TripLog'
 import { getGeofences } from '@/lib/db/geofences'
 import { segmentTrips, type Trip } from '@/lib/trips'
+import { DEFAULT_TZ } from '@/lib/dates'
+import { cookies } from 'next/headers'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -43,6 +45,8 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     .map((s) => ({ ...computeStatus(s, readings[s.asset_id] ?? s.last_service_value), name: s.description }))
 
   const loc = asset.location
+  // Vercel renders in UTC — trip times format in the viewer's zone.
+  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin'].includes(k))
@@ -138,7 +142,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         </section>
 
         {/* drive history (real cellular assets only) */}
-        {trips !== null && <TripLog trips={trips} days={TRIP_DAYS} />}
+        {trips !== null && <TripLog trips={trips} days={TRIP_DAYS} tz={tz} />}
 
         {/* maintenance */}
         <section>

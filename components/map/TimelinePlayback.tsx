@@ -69,13 +69,16 @@ interface TimelinePlaybackProps {
   onFollowMode: (m: FollowMode) => void
   /** Assets with a trail in the current window, offered as follow targets. */
   followAssets: FollowAsset[]
+  /** IANA timezone for clock/date labels (kiosk walls + shared replays render
+   *  somewhere else — labels must still read in the crew's local time). */
+  tz?: string
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
-  followId, onFollow, followMode, onFollowMode, followAssets,
+  followId, onFollow, followMode, onFollowMode, followAssets, tz,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -113,8 +116,8 @@ export function TimelinePlayback({
     }
   }, [showFollow])
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
-    custom ? customTickLabel(customFrom, customTo, f)
-    : realWindow ? windowTickLabel(realWindow, f)
+    custom ? customTickLabel(customFrom, customTo, f, tz)
+    : realWindow ? windowTickLabel(realWindow, f, tz)
     : rangeLabel(range, f)
   )
   const speeds = speedsForRange(range)
@@ -415,8 +418,8 @@ export function TimelinePlayback({
         <div className="px-4 pt-2.5 flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-amber flex-none" />
           <span className="font-display font-bold text-amber text-[15px] tabular-nums">
-            {custom ? customScrubLabel(customFrom, customTo, t)
-              : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t)
+            {custom ? customScrubLabel(customFrom, customTo, t, tz)
+              : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t, tz)
               : scrubLabel(range, t)}
           </span>
         </div>

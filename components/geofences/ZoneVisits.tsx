@@ -1,10 +1,10 @@
 import type { Visit } from '@/lib/visits'
 import type { AssetType } from '@/lib/types'
 import { ExportCsv } from '@/components/ui/ExportCsv'
+import { fmtTime, fmtDayLong, fmtDateTime, dayKey } from '@/lib/dates'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
-const t = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 const dur = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`)
 
 interface DayLine {
@@ -25,11 +25,12 @@ interface DayGroup {
 
 /** Roll raw visits up into a daily crew log: one line per asset per day —
  *  first arrival, last departure, total time on site. The timesheet view. */
-function rollUpByDay(visits: Visit[]): DayGroup[] {
+function rollUpByDay(visits: Visit[], tz: string): DayGroup[] {
   const days = new Map<string, Map<string, DayLine>>()
   for (const v of visits) {
-    const d = new Date(v.enterMs)
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+    // Bucket by the crew's LOCAL day — the server renders in UTC, where a
+    // 9 PM arrival would otherwise land on tomorrow's card.
+    const key = dayKey(v.enterMs, tz)
     let assets = days.get(key)
     if (!assets) days.set(key, (assets = new Map()))
     const line = assets.get(v.assetId)
@@ -57,7 +58,7 @@ function rollUpByDay(visits: Visit[]): DayGroup[] {
     )
     groups.push({
       key,
-      label: new Date(lines[0].firstIn).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }),
+      label: fmtDayLong(lines[0].firstIn, tz),
       lines,
       totalMin: lines.reduce((s, l) => s + l.totalMin, 0),
       onSiteNow: lines.filter((l) => l.lastOut === null).length,
@@ -69,22 +70,23 @@ function rollUpByDay(visits: Visit[]): DayGroup[] {
 /** The site log: who showed up, when, and for how long — one line per asset
  *  per day, with a crew-day total. The pre-timesheet a GC actually wants. */
 export function ZoneVisits({
-  visits, assetMeta, days, zoneName,
+  visits, assetMeta, days, zoneName, tz,
 }: {
   visits: Visit[]
   assetMeta: Record<string, { name: string; type: AssetType }>
   days: number
   zoneName: string
+  tz: string
 }) {
-  const groups = rollUpByDay(visits)
+  const groups = rollUpByDay(visits, tz)
 
   const csvRows = groups.flatMap((g) =>
     g.lines.map((l) => [
-      new Date(l.firstIn).toLocaleDateString(),
+      fmtDateTime(l.firstIn, tz).split(',')[0],
       assetMeta[l.assetId]?.name ?? l.assetId,
       assetMeta[l.assetId]?.type ?? '',
-      t(l.firstIn),
-      l.lastOut === null ? 'still on site' : t(l.lastOut),
+      fmtTime(l.firstIn, tz),
+      l.lastOut === null ? 'still on site' : fmtTime(l.lastOut, tz),
       (l.totalMin / 60).toFixed(2),
       String(l.trips),
     ])
@@ -127,9 +129,9 @@ export function ZoneVisits({
                       <div className="min-w-0 flex-1">
                         <p className="text-sm text-ink truncate">{meta?.name ?? 'Unknown asset'}</p>
                         <p className="font-mono text-[11px] text-faint tabular-nums">
-                          in {t(l.firstIn)} · {l.lastOut === null
+                          in {fmtTime(l.firstIn, tz)} · {l.lastOut === null
                             ? <span className="text-[#34d399]">on site now</span>
-                            : <>out {t(l.lastOut)}</>}
+                            : <>out {fmtTime(l.lastOut, tz)}</>}
                           {l.trips > 1 && <span className="text-faint/70"> · {l.trips} trips</span>}
                         </p>
                       </div>

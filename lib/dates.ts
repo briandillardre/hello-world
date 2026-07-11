@@ -65,3 +65,28 @@ export function rangeWindow(
 }
 
 export const DEFAULT_TZ = 'America/New_York'
+
+// ── Timezone-explicit formatters ─────────────────────────────────────────────
+// Server components render on Vercel in UTC, so bare toLocaleTimeString()
+// shows times 4-5 hours off for an East-coast crew. Every server-rendered
+// timestamp goes through these with the viewer's ht_tz cookie.
+
+/** "6:58 AM" in tz. */
+export const fmtTime = (ms: number, tz: string) =>
+  new Date(ms).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+
+/** "Fri, Jul 11" in tz. */
+export const fmtDay = (ms: number, tz: string) =>
+  new Date(ms).toLocaleDateString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric' })
+
+/** "Friday, Jul 11" in tz. */
+export const fmtDayLong = (ms: number, tz: string) =>
+  new Date(ms).toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'short', day: 'numeric' })
+
+/** "7/11/2026, 6:58 AM" in tz (CSV-friendly). */
+export const fmtDateTime = (ms: number, tz: string) =>
+  new Date(ms).toLocaleString('en-US', { timeZone: tz, month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+/** "2026-07-11" — calendar-day bucket key in tz (groups by LOCAL day, not UTC). */
+export const dayKey = (ms: number, tz: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms))

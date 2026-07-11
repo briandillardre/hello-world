@@ -197,6 +197,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [showDevices, setShowDevices] = useState(isMock)
   const realZoneCostsRef = useRef<Record<string, import('@/lib/costs').ZoneCostCurve> | null>(null)
   const realWindowRef = useRef<import('@/lib/trails').TrackWindow | null>(null)
+  // tz via ref so the zoneRealAt callback (deliberately dep-free) stays fresh.
+  const tzRef = useRef(tz)
+  tzRef.current = tz
 
   // Zone popup cost AT the scrub position (mirrors the hard-hat chip) with an
   // "as of <time>" stamp so the number visibly follows the timeline.
@@ -207,7 +210,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const zc = curve ? zoneCostAt(curve, t) : { total: 0, activeHours: 0 }
     const w = realWindowRef.current
     const asOf = w
-      ? new Date(w.from + t * (w.to - w.from)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      ? new Date(w.from + t * (w.to - w.from)).toLocaleTimeString([], { timeZone: tzRef.current, hour: 'numeric', minute: '2-digit' })
       : undefined
     // Per-interval series for the popup's mini charts (hours + $ over the
     // window, heat-colored, aligned with the timeline slider).
@@ -1464,6 +1467,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         <TimelinePlayback
           range={range}
           onRange={handleRange}
+          tz={tz}
           trailMode={trailMode}
           onTrailMode={setTrailMode}
           t={pbT}

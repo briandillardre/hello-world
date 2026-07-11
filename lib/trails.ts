@@ -224,12 +224,12 @@ export function historyWindow(rows: { timestamp: string }[]): TrackWindow | null
 }
 
 /** Short tick label inside a real window: clock time for ≤36h spans, else date. */
-export function windowTickLabel(w: TrackWindow, f: number): string {
+export function windowTickLabel(w: TrackWindow, f: number, tz?: string): string {
   const ms = w.from + f * (w.to - w.from)
   const d = new Date(ms)
   return w.to - w.from <= 36 * 3_600_000
-    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    ? d.toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString([], { timeZone: tz, month: 'short', day: 'numeric' })
 }
 
 // How movement over the window is drawn — user-selectable on any time range.
@@ -292,15 +292,15 @@ export function customSpanDays(fromMs: number, toMs: number): number {
 }
 
 /** Date/time at scrub position t within a custom From/To window. */
-export function customScrubLabel(fromMs: number, toMs: number, t: number): string {
+export function customScrubLabel(fromMs: number, toMs: number, t: number, tz?: string): string {
   const ms = fromMs + t * (toMs - fromMs)
-  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(ms).toLocaleString([], { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 /** Short tick label at scrub position t within a custom window. */
-export function customTickLabel(fromMs: number, toMs: number, t: number): string {
+export function customTickLabel(fromMs: number, toMs: number, t: number, tz?: string): string {
   const ms = fromMs + t * (toMs - fromMs)
-  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return new Date(ms).toLocaleDateString([], { timeZone: tz, month: 'short', day: 'numeric' })
 }
 
 export function defaultSpeed(range: TimeRange): number {
