@@ -9,6 +9,7 @@ import type { AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { TacticalHud } from './TacticalHud'
+import { CommandRail } from './CommandRail'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
 const MapView = dynamic(() => import('@/components/map/MapView').then((m) => ({ default: m.MapView })), {
@@ -100,6 +101,11 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
       <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
+
+      {/* left instrument rail — the mission-control frame (wide screens) */}
+      <div className="absolute left-4 top-[68px] bottom-14 z-40 hidden xl:flex items-start">
+        <CommandRail assets={assets} geofences={geofences} tracks={tracks} />
+      </div>
 
       {/* tactical instrument — bottom-right, above the ticker */}
       <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40">
