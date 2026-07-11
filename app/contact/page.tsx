@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { BRAND_EMAIL_SALES } from '@/lib/brand'
 import { Logo } from '@/components/brand/Logo'
 
 export const metadata: Metadata = {
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
   description: 'Fleet pricing, multi-site rollouts, and hardware for large contractors.',
 }
 
-const SALES_EMAIL = 'sales@hammertrack.ai'
+const SALES_EMAIL = BRAND_EMAIL_SALES
 const SALES_PHONE = '864-915-2351'
 const SALES_TEL = 'tel:+18649152351'
 

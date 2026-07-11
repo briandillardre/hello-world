@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BRAND_NAME, BRAND_DOMAIN, BRAND_EMAIL_HELLO } from '@/lib/brand'
 import { Logo } from '@/components/brand/Logo'
 
 export function SiteFooter() {
@@ -26,14 +27,14 @@ export function SiteFooter() {
             </div>
             <div className="flex flex-col gap-2">
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1">Company</span>
-              <a href="mailto:hello@hammertrack.ai" className="text-muted hover:text-ink transition-colors">hello@hammertrack.ai</a>
+              <a href={`mailto:${BRAND_EMAIL_HELLO}`} className="text-muted hover:text-ink transition-colors">{BRAND_EMAIL_HELLO}</a>
               <Link href="/privacy" className="text-muted hover:text-ink transition-colors">Privacy policy</Link>
               <Link href="/terms" className="text-muted hover:text-ink transition-colors">Terms of service</Link>
             </div>
           </div>
         </div>
         <p className="text-[12px] text-faint mt-10 pt-6 border-t border-navy-800/60">
-          © {new Date().getFullYear()} HammerTrack · hammertrack.ai
+          © {new Date().getFullYear()} {BRAND_NAME} · {BRAND_DOMAIN}
         </p>
       </div>
     </footer>

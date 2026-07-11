@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Archivo, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import { BRAND_NAME, BRAND_URL } from '@/lib/brand'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const archivo = Archivo({
@@ -17,28 +18,28 @@ const mono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://hammertrack.ai'),
-  title: 'HammerTrack — AI asset tracking for contractors & field fleets',
+  metadataBase: new URL(BRAND_URL),
+  title: `${BRAND_NAME} — AI asset tracking for contractors & field fleets`,
   description:
     'Every truck, machine, crew, and Bluetooth-tagged tool on one live map. AI texts you the second something moves when it shouldn\'t. Half the price of the big telematics platforms.',
   manifest: '/manifest.json',
-  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'HammerTrack' },
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: BRAND_NAME },
   icons: {
     icon: '/icons/icon-192.png',
     apple: '/icons/icon-192.png',
   },
   openGraph: {
-    title: 'HammerTrack — your whole fleet on one live map',
+    title: `${BRAND_NAME} — your whole fleet on one live map`,
     description:
       'AI-watched GPS tracking for trucks, equipment, crews, and tools. After-hours theft texts, live job cost, QuickBooks built in.',
-    url: 'https://hammertrack.ai',
-    siteName: 'HammerTrack',
-    images: [{ url: '/brand/hammertrack-lockup.png', width: 1200, height: 630, alt: 'HammerTrack' }],
+    url: BRAND_URL,
+    siteName: BRAND_NAME,
+    images: [{ url: '/brand/hammertrack-lockup.png', width: 1200, height: 630, alt: BRAND_NAME }],
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'HammerTrack — your whole fleet on one live map',
+    title: `${BRAND_NAME} — your whole fleet on one live map`,
     description: 'AI-watched GPS tracking for trucks, equipment, crews, and tools.',
     images: ['/brand/hammertrack-lockup.png'],
   },
