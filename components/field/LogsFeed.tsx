@@ -1,0 +1,183 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock } from 'lucide-react'
+import type { TimeEntry, DailyLog } from '@/lib/field-types'
+
+/**
+ * The office's morning read: every crew day grouped date → project, with the
+ * writeup, photos, safety issues in red, fuel answers, and an hours table.
+ * "Still clocked in" is rendered as a shame badge on purpose.
+ */
+
+interface Props {
+  entries: TimeEntry[]
+  logs: DailyLog[]
+  zoneNames: Record<string, string>
+  tz: string
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  project: 'Project', shop: 'Shop', overhead: 'Overhead', maintenance: 'Maintenance',
+}
+
+function dayKey(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
+}
+function dayLabel(key: string, tz: string): string {
+  const d = new Date(`${key}T12:00:00`)
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', month: 'short', day: 'numeric' }).format(d)
+}
+function timeLabel(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+}
+function hoursOf(e: TimeEntry, now: number): number {
+  const end = e.clock_out_at ? new Date(e.clock_out_at).getTime() : now
+  return Math.max(0, (end - new Date(e.clock_in_at).getTime()) / 3_600_000)
+}
+
+export function LogsFeed({ entries, logs, zoneNames, tz }: Props) {
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  const now = Date.now()
+
+  const days = useMemo(() => {
+    const logByEntry = new Map(logs.filter((l) => l.time_entry_id).map((l) => [l.time_entry_id as string, l]))
+    const byDay = new Map<string, { entry: TimeEntry; log: DailyLog | null }[]>()
+    for (const e of entries) {
+      const k = dayKey(e.clock_in_at, tz)
+      if (!byDay.has(k)) byDay.set(k, [])
+      byDay.get(k)!.push({ entry: e, log: logByEntry.get(e.id) ?? null })
+    }
+    return Array.from(byDay.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, rows]) => {
+        // Group the day's rows by where the time went.
+        const byPlace = new Map<string, typeof rows>()
+        for (const r of rows) {
+          const place = r.entry.category === 'project'
+            ? (zoneNames[r.entry.project_geofence_id ?? ''] ?? 'Project (zone deleted)')
+            : CATEGORY_LABEL[r.entry.category] ?? r.entry.category
+          if (!byPlace.has(place)) byPlace.set(place, [])
+          byPlace.get(place)!.push(r)
+        }
+        return { key, places: Array.from(byPlace.entries()), rows }
+      })
+  }, [entries, logs, zoneNames, tz])
+
+  if (!days.length) {
+    return (
+      <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
+        <ClipboardList className="h-8 w-8 text-faint mx-auto mb-2" />
+        <p className="text-sm text-muted">No clock-ins yet. The crew clocks in at <span className="font-mono text-teal">/clock</span> — their daily logs land here.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {days.map(({ key, places, rows }) => (
+        <section key={key}>
+          <div className="flex items-baseline justify-between mb-2">
+            <h2 className="font-display font-bold text-ink">{dayLabel(key, tz)}</h2>
+            <span className="font-mono text-[11px] text-faint tabular-nums">
+              {rows.length} {rows.length === 1 ? 'entry' : 'entries'} · {rows.reduce((s, r) => s + hoursOf(r.entry, now), 0).toFixed(1)} h
+            </span>
+          </div>
+
+          {/* hours table — who, where, in/out, hours */}
+          <div className="rounded-xl border border-navy-800 overflow-hidden mb-3">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="bg-navy-900 text-faint font-mono text-[10px] uppercase tracking-[0.1em]">
+                  <th className="text-left px-3 py-1.5">Who</th>
+                  <th className="text-left px-3 py-1.5">Where</th>
+                  <th className="text-right px-3 py-1.5">In</th>
+                  <th className="text-right px-3 py-1.5">Out</th>
+                  <th className="text-right px-3 py-1.5">Hrs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ entry }) => (
+                  <tr key={entry.id} className="border-t border-navy-800/60">
+                    <td className="px-3 py-1.5 text-ink font-medium">{entry.person_name}</td>
+                    <td className="px-3 py-1.5 text-muted">
+                      {entry.category === 'project'
+                        ? zoneNames[entry.project_geofence_id ?? ''] ?? 'Project'
+                        : CATEGORY_LABEL[entry.category]}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-muted tabular-nums">{timeLabel(entry.clock_in_at, tz)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">
+                      {entry.clock_out_at
+                        ? <span className="text-muted">{timeLabel(entry.clock_out_at, tz)}</span>
+                        : <span className="text-alert font-semibold inline-flex items-center gap-1"><AlarmClock className="h-3 w-3" /> STILL ON</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-ink font-semibold tabular-nums">{hoursOf(entry, now).toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* per-project log cards */}
+          {places.map(([place, list]) => (
+            <div key={place} className="mb-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-1.5">{place}</p>
+              <div className="space-y-2">
+                {list.map(({ entry, log }) => (
+                  <article key={entry.id} className="rounded-xl border border-navy-800 bg-navy-950 p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[13px] font-semibold text-ink">{entry.person_name}</span>
+                      <span className="font-mono text-[10.5px] text-faint tabular-nums">{hoursOf(entry, now).toFixed(1)} h</span>
+                    </div>
+                    {entry.plan && <p className="text-[12px] text-faint mb-1">Plan: {entry.plan}</p>}
+                    {log ? (
+                      <>
+                        <p className="text-[13px] text-muted whitespace-pre-line">{log.writeup}</p>
+                        {log.safety && (
+                          <p className="mt-1.5 text-[12.5px] text-alert flex items-start gap-1.5">
+                            <ShieldAlert className="h-3.5 w-3.5 mt-0.5 flex-none" /> {log.safety}
+                          </p>
+                        )}
+                        {(log.trucks_fueled !== null || log.equipment_fueled !== null) && (
+                          <p className="mt-1.5 text-[11.5px] text-faint flex items-center gap-2">
+                            <Fuel className="h-3 w-3" />
+                            {log.trucks_fueled !== null && <span className={log.trucks_fueled ? '' : 'text-amber'}>trucks {log.trucks_fueled ? 'fueled' : 'NOT fueled'}</span>}
+                            {log.equipment_fueled !== null && <span className={log.equipment_fueled ? '' : 'text-amber'}>equipment {log.equipment_fueled ? 'fueled' : 'NOT fueled'}</span>}
+                          </p>
+                        )}
+                        {log.photos.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {log.photos.map((p, i) => (
+                              <button key={i} onClick={() => setLightbox(p.url)} className="relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={p.url} alt={p.kind} className="h-16 w-16 object-cover rounded-md border border-navy-700" />
+                                {p.kind === 'receipt' && (
+                                  <span className="absolute bottom-0 inset-x-0 bg-amber/90 text-[#1a1100] text-[8.5px] font-bold text-center rounded-b-md flex items-center justify-center gap-0.5">
+                                    <Receipt className="h-2.5 w-2.5" /> RECEIPT
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[12.5px] text-amber">No daily log{entry.clock_out_at ? '' : ' yet — still clocked in'}.</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+      ))}
+
+      {lightbox && (
+        <button className="fixed inset-0 z-[70] bg-black/85 grid place-items-center p-4" onClick={() => setLightbox(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="log photo" className="max-h-[90vh] max-w-full rounded-lg" />
+        </button>
+      )}
+    </div>
+  )
+}

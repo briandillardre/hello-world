@@ -1,0 +1,32 @@
+import { getMyClockState } from '@/lib/db/fieldops'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { getGeofences } from '@/lib/db/geofences'
+import { ClockCard } from '@/components/field/ClockCard'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * The crew page: clock in to a project, see the plan, clock out through the
+ * daily log. Deliberately sparse — this is a gloves-on phone screen.
+ */
+export default async function ClockPage() {
+  const [{ openEntry, available, personName }, companyId] = await Promise.all([
+    getMyClockState(),
+    getCurrentCompanyId(),
+  ])
+  const geofences = await getGeofences(companyId)
+  // Job sites only — boundary outlines aren't chargeable places.
+  const zones = geofences
+    .filter((g) => g.kind !== 'boundary')
+    .map((g) => ({ id: g.id, name: g.name }))
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-6 space-y-4">
+      <div>
+        <h1 className="font-display font-bold text-xl text-ink">Time clock</h1>
+        <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
+      </div>
+      <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} />
+    </div>
+  )
+}
