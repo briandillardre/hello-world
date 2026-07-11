@@ -48,16 +48,20 @@ async function postWebhook(payload: { company: string; alerts: AlertMessage[]; a
       const { BRAND_URL } = await import('./brand')
       for (const a of payload.alerts) {
         const critical = a.severity === 'critical'
-        await fetch(url, {
+        // Header values must be ASCII — an emoji in Title makes fetch THROW
+        // and the push silently never sends. ntfy renders the emoji from
+        // Tags instead (rotating_light → 🚨 on the notification).
+        const res = await fetch(url, {
           method: 'POST',
           headers: {
-            Title: critical ? '🚨 THEFT ALERT' : a.severity === 'warning' ? '⚠️ Alert' : 'Update',
+            Title: critical ? 'THEFT ALERT' : a.severity === 'warning' ? 'Alert' : 'Update',
             Priority: critical ? 'urgent' : 'default',
             Tags: critical ? 'rotating_light' : 'construction',
             Click: `${BRAND_URL}/map`,
           },
           body: `${a.reason}\n${payload.company}`,
         })
+        if (!res.ok) console.error('ntfy push failed', res.status, await res.text().catch(() => ''))
       }
       return
     }
