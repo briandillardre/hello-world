@@ -1,4 +1,10 @@
 import { redirect } from 'next/navigation'
+
+// Every dashboard page is per-user (auth cookies). Without this, pages whose
+// only cookie access happens inside try/catch data helpers get STATICALLY
+// prerendered with the demo fallback baked in — a signed-in user then sees
+// "Blue Ridge Sitework Co." served from the build cache.
+export const dynamic = 'force-dynamic'
 import { DashboardShell } from '@/components/layout/DashboardShell'
 import { TzCookie } from '@/components/TzCookie'
 import { getAlertEvents } from '@/lib/db/alerts'

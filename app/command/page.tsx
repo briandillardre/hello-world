@@ -15,8 +15,9 @@ export const metadata: Metadata = {
   description: 'Live fleet command center for the lobby TV.',
 }
 
-// Demo mode renders mock data → statically prerendered for clean atomic deploys.
-// Re-add `force-dynamic` (+ a no-cache header) when Supabase provides live data.
+// Supabase is live — render per-request so the wall shows THIS company's
+// fleet, not the demo baked in at build time.
+export const dynamic = 'force-dynamic'
 
 export default async function CommandPage() {
   const company = await getCurrentCompany()
