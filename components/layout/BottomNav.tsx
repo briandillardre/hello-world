@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const primaryItems = [
@@ -22,7 +22,12 @@ const moreItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
-export function BottomNav({ alertCount = 0 }: { alertCount?: number }) {
+export function BottomNav({ alertCount = 0, companyName, userName, onSignOut }: {
+  alertCount?: number
+  companyName?: string
+  userName?: string | null
+  onSignOut?: () => void
+}) {
   const pathname = usePathname()
   const [moreOpen, setMoreOpen] = useState(false)
   const moreActive = moreItems.some(i => pathname.startsWith(i.href))
@@ -56,6 +61,34 @@ export function BottomNav({ alertCount = 0 }: { alertCount?: number }) {
                   {label}
                 </Link>
               ))}
+            </div>
+
+            {/* Account — who's signed in + sign out */}
+            <div className="mt-4 pt-3 border-t border-navy-800">
+              <div className="flex items-center gap-2.5 px-1 mb-3">
+                <UserCircle className="h-8 w-8 text-faint flex-none" />
+                <div className="min-w-0">
+                  {userName && <p className="text-sm font-semibold text-ink truncate">{userName}</p>}
+                  {companyName && <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint truncate">{companyName}</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Link
+                  href="/settings"
+                  onClick={() => setMoreOpen(false)}
+                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-ink"
+                >
+                  <Settings className="h-4 w-4" /> Account
+                </Link>
+                {onSignOut && (
+                  <button
+                    onClick={() => { setMoreOpen(false); onSignOut() }}
+                    className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-alert"
+                  >
+                    <LogOut className="h-4 w-4" /> Sign out
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

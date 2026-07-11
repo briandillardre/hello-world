@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
+import { signOutAction } from '@/lib/actions/auth'
 
 /**
  * Client shell for the dashboard: owns the collapsible-sidebar state so the
@@ -34,11 +35,11 @@ export function DashboardShell({
 
   return (
     <>
-      <Sidebar alertCount={alertCount} companyName={companyName} userName={userName} collapsed={collapsed} onToggle={toggle} />
+      <Sidebar alertCount={alertCount} companyName={companyName} userName={userName} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} />
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200'}>
         {children}
       </main>
-      <BottomNav alertCount={alertCount} />
+      <BottomNav alertCount={alertCount} companyName={companyName} userName={userName} onSignOut={signOutAction} />
       <AssistantWidget />
     </>
   )
