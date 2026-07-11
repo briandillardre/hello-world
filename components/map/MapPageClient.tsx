@@ -7,7 +7,7 @@ import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
-import { createGeofenceAction } from '@/lib/actions/geofences'
+import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -87,6 +87,36 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
     }
   }, [])
 
+  // Rename / recolor a zone from its map sheet — optimistic, persisted in real
+  // mode (demo just updates locally, which is enough to feel real).
+  const handleGeofenceEdit = useCallback(async (id: string, name: string, color: string) => {
+    const existing = geofences.find((g) => g.id === id)
+    setGeofences((prev) => prev.map((g) => (g.id === id ? { ...g, name, color } : g)))
+    if (!isMock) {
+      try {
+        await saveGeofenceAction(id, name, color, existing?.parent_id ?? null)
+      } catch (err) {
+        console.error('Zone edit failed', err)
+        if (existing) setGeofences((prev) => prev.map((g) => (g.id === id ? existing : g)))
+        alert('That zone change could not be saved. Please try again.')
+      }
+    }
+  }, [geofences])
+
+  const handleGeofenceDelete = useCallback(async (id: string) => {
+    const snapshot = geofences
+    setGeofences((prev) => prev.filter((g) => g.id !== id))
+    if (!isMock) {
+      try {
+        await deleteGeofenceAction(id)
+      } catch (err) {
+        console.error('Zone delete failed', err)
+        setGeofences(snapshot)
+        alert('That zone could not be deleted. Please try again.')
+      }
+    }
+  }, [geofences])
+
   return (
     <>
       <MapView
@@ -98,6 +128,8 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         tz={tz}
         toolGateways={toolGateways}
         onGeofenceSave={handleGeofenceSave}
+        onGeofenceEdit={handleGeofenceEdit}
+        onGeofenceDelete={handleGeofenceDelete}
         defaultWeatherPlace={defaultWeatherPlace}
         onSaveWeatherDefault={canSetWeatherDefault ? setWeatherDefaultAction : undefined}
       />

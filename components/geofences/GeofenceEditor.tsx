@@ -12,7 +12,9 @@ import { Label } from '@/components/ui/label'
 
 const SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
-const COLORS = ['#ff9e16', '#2dd4bf', '#a78bfa', '#f87171', '#34d399', '#60a5fa', '#fbbf24', '#f472b6']
+// Last two are outline-only "boundary" colors (near-black / gray) — no fill,
+// for a large perimeter around the whole work area.
+const COLORS = ['#ff9e16', '#2dd4bf', '#a78bfa', '#f87171', '#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#0a0a0a', '#9ca3af']
 
 interface GeofenceEditorProps {
   id: string

@@ -20,9 +20,11 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
-import { MOCK_SITE_DEVICES, DEVICE_META, devicePopupHTML } from '@/lib/site-devices'
-import { geofencePresence, presencePopupHTML } from '@/lib/site-presence'
+import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
+import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
+import { DevicePanel } from './DevicePanel'
+import { ZonePanel } from './ZonePanel'
 import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
@@ -162,6 +164,10 @@ interface MapViewProps {
   tz?: string
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
+  /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
+  onGeofenceEdit?: (id: string, name: string, color: string) => void
+  /** Delete a zone from its map sheet. */
+  onGeofenceDelete?: (id: string) => void
   kiosk?: boolean
   /** Company-wide default weather location (admin-set); null = follow the fleet. */
   defaultWeatherPlace?: string | null
@@ -169,16 +175,18 @@ interface MapViewProps {
   onSaveWeatherDefault?: (place: string) => Promise<boolean | void>
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
-  const popupRef = useRef<maplibregl.Popup | null>(null)
-  // The zone whose popup is currently open, so its cost can live-update on scrub.
-  const openFenceRef = useRef<Geofence | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
   // too early re-apply instead of silently dropping the change.
   const [mapReady, setMapReady] = useState(false)
+  // One selection at a time — asset, zone, or device — all shown in the shared
+  // MapSheet (bottom sheet on mobile, right panel on desktop). Zone/device used
+  // to be tiny anchored map popups; now every tap opens the same surface.
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
+  const [selectedZone, setSelectedZone] = useState<Geofence | null>(null)
+  const [selectedDevice, setSelectedDevice] = useState<SiteDevice | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   const [showZones, setShowZones] = useState(true)
   const [showDevices, setShowDevices] = useState(isMock)
@@ -513,7 +521,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           })),
         },
       })
-      m.addLayer({ id: 'geofence-fill', type: 'fill', source: 'geofences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.14 } })
+      // Boundary colors (near-black / gray) render OUTLINE-ONLY — no fill — so a
+      // large perimeter around the whole yard doesn't tint the map.
+      m.addLayer({
+        id: 'geofence-fill', type: 'fill', source: 'geofences',
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'color'], '#0a0a0a', 0, '#9ca3af', 0, 0.14] },
+      })
       m.addLayer({ id: 'geofence-outline', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [3, 2] } })
       // Labels anchored to the top edge of each zone (added last so they sit above pins)
       m.addSource('geofence-label-pts', { type: 'geojson', data: geofenceLabelPoints(geofences) })
@@ -633,18 +646,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addLayer({ id: 'draw-fill', type: 'fill', source: drawPreviewSource.current, paint: { 'fill-color': '#ff9e16', 'fill-opacity': 0.15 } })
       m.addLayer({ id: 'draw-line', type: 'line', source: drawPreviewSource.current, paint: { 'line-color': '#ff9e16', 'line-width': 2 } })
 
-      // Only one popover on the map at a time — clears any open popup + asset panel
-      const showPopup = (lngLat: maplibregl.LngLatLike, html: string) => {
-        popupRef.current?.remove()
-        setSelectedAsset(null)
-        openFenceRef.current = null
-        popupRef.current = new maplibregl.Popup({ offset: 16, closeButton: true, closeOnClick: true, maxWidth: '240px' })
-          .setLngLat(lngLat)
-          .setHTML(html)
-          .addTo(m)
-        popupRef.current.on('close', () => { openFenceRef.current = null })
-      }
-
       // Click handlers — bind to both the pin and its glow so the whole dot is a
       // hit target (assets always win over the zone underneath).
       const selectAsset = (e: maplibregl.MapLayerMouseEvent) => {
@@ -652,8 +653,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         if (!props) return
         const asset = assetsRef.current.find((a) => a.id === props.id)
         if (asset) {
-          popupRef.current?.remove() // close any zone/device popover first
-          openFenceRef.current = null
+          setSelectedZone(null)
+          setSelectedDevice(null)
           setSelectedAsset(asset)
         }
       }
@@ -669,15 +670,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           m.easeTo({ center: coords, zoom: zoom ?? m.getZoom() + 2 })
         })
       })
-      // Device pin → themed popover
+      // Device pin → device sheet
       m.on('click', 'device-bg', (e) => {
         const id = e.features?.[0]?.properties?.id
         const device = SITE_DEVICES.find((d) => d.id === id)
         if (!device) return
-        showPopup([device.lng, device.lat], devicePopupHTML(device))
+        setSelectedAsset(null)
+        setSelectedZone(null)
+        setSelectedDevice(device)
       })
 
-      // Geofence zone → live presence + cost popover (cost matches the timeline)
+      // Geofence zone → zone sheet (presence + cost, live-synced to the timeline)
       m.on('click', 'geofence-fill', (e) => {
         // Don't hijack clicks landing on/near any asset, cluster, or device — the
         // pin always wins. Query a small box so the whole dot (incl. its glow) is
@@ -689,12 +692,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         ]
         if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-glow', 'clusters', 'device-bg'] }).length) return
         const id = e.features?.[0]?.properties?.id
-        const fence = geofences.find((g) => g.id === id)
+        const fence = geofencesRef.current.find((g) => g.id === id)
         if (!fence) return
-        const r = rangeRef.current
-        const t = r === 'live' ? 1 : tRef.current
-        showPopup(e.lngLat, presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, zoneRealAt(fence.id, t)))
-        openFenceRef.current = fence
+        setSelectedAsset(null)
+        setSelectedDevice(null)
+        setSelectedZone(fence)
       })
 
       for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {
@@ -1017,16 +1019,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showDevices ? 'visible' : 'none')
     }
   }, [mapReady, showDevices])
-
-  // Keep an open zone popup's cost in sync with the timeline scrub/range
-  useEffect(() => {
-    const fence = openFenceRef.current
-    const popup = popupRef.current
-    if (!mapReady || !fence || !popup) return
-    const r = rangeRef.current
-    const t = r === 'live' ? 1 : displayT
-    popup.setHTML(presencePopupHTML(fence, geofencePresence(fence, assetsRef.current), r, t, zoneRealAt(fence.id, t)))
-  }, [mapReady, displayT, range])
 
   // ── Free national overlays (topo, hillshade, wetlands, streams) ───────────
   useEffect(() => {
@@ -1372,6 +1364,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           gateway={toolGateways?.[selectedAsset.id]}
           onClose={() => setSelectedAsset(null)}
         />
+      )}
+
+      {selectedZone && (
+        <ZonePanel
+          fence={selectedZone}
+          presence={geofencePresence(selectedZone, assets)}
+          range={range}
+          t={pbActive ? displayT : 1}
+          real={zoneRealAt(selectedZone.id, pbActive ? displayT : 1)}
+          onClose={() => setSelectedZone(null)}
+          canEdit={!!onGeofenceEdit}
+          onEdit={onGeofenceEdit ? (id, name, color) => {
+            onGeofenceEdit(id, name, color)
+            setSelectedZone((z) => (z && z.id === id ? { ...z, name, color } : z))
+          } : undefined}
+          onDelete={onGeofenceDelete ? (id) => { onGeofenceDelete(id); setSelectedZone(null) } : undefined}
+        />
+      )}
+
+      {selectedDevice && (
+        <DevicePanel device={selectedDevice} onClose={() => setSelectedDevice(null)} />
       )}
     </div>
   )

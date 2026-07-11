@@ -7,7 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899']
+// Last two are "boundary" colors — they render outline-only (no fill), for a
+// large perimeter around the whole yard/work area (anti-theft) that shouldn't
+// tint the map. Keep these in sync with OUTLINE_ONLY in MapView + ZonePanel.
+const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#0a0a0a', '#9ca3af']
 
 interface GeofenceDrawerProps {
   isDrawing: boolean
@@ -110,8 +113,9 @@ export function GeofenceDrawer({
                     className="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110"
                     style={{
                       backgroundColor: c,
-                      borderColor: color === c ? '#0F172A' : 'transparent',
+                      borderColor: color === c ? '#e8f0f7' : 'rgba(255,255,255,0.18)',
                     }}
+                    title={c === '#0a0a0a' ? 'Black outline (no fill)' : c === '#9ca3af' ? 'Gray outline (no fill)' : undefined}
                   />
                 ))}
               </div>

@@ -2,10 +2,11 @@
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { X, Battery, Zap, Clock, Wifi, ArrowRight } from 'lucide-react'
+import { Battery, Zap, Clock, Wifi, ArrowRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { MapSheet } from './MapSheet'
 
 const TYPE_LABELS: Record<AssetType, string> = {
   vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool',
@@ -33,50 +34,14 @@ export function AssetPanel({ asset, gateway, onClose }: AssetPanelProps) {
   const meta = asset.metadata ?? {}
 
   return (
-    <>
-      {/* Mobile: tap-away backdrop + slide-up sheet (above the Ask button) */}
-      <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />
-      <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
-        <div className="bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-2.5 pb-6 mx-2 border border-navy-800">
-          {/* grab handle */}
-          <div className="w-9 h-1 rounded-full bg-navy-700 mx-auto mb-3" />
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>
-                <h2 className="text-base font-bold text-ink">{asset.name}</h2>
-              </div>
-              <Badge variant="secondary" className="mt-1">{TYPE_LABELS[asset.type]}</Badge>
-            </div>
-            <button onClick={onClose} aria-label="Close" className="grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
-        </div>
-      </div>
-
-      {/* Desktop: right sidebar panel */}
-      <div className="absolute top-0 right-0 bottom-0 z-20 hidden md:block w-72">
-        <div className="bg-navy-900 h-full shadow-2xl border-l border-navy-800 flex flex-col">
-          <div className="flex items-start justify-between p-5 border-b border-navy-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>
-                <h2 className="text-base font-bold text-ink">{asset.name}</h2>
-              </div>
-              <Badge variant="secondary" className="mt-1">{TYPE_LABELS[asset.type]}</Badge>
-            </div>
-            <button onClick={onClose} aria-label="Close" className="grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="p-5 flex-1 overflow-y-auto">
-            <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
-          </div>
-        </div>
-      </div>
-    </>
+    <MapSheet
+      icon={<span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>}
+      title={asset.name}
+      badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
+      onClose={onClose}
+    >
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} />
+    </MapSheet>
   )
 }
 

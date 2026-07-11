@@ -63,7 +63,21 @@ function mulberry32(seed: number) {
 // Roam amplitude varies by asset class (trucks range wide; tools barely move).
 const AMP: Record<AssetType, number> = { vehicle: 0.012, equipment: 0.004, personnel: 0.0024, tool: 0.0016 }
 
+// How busy each class is across a work day — scales the odds an asset is moving
+// (vs. parked) at any moment. Tools mostly sit; trucks run all day. This is what
+// gives the activity chart real texture instead of "everything always moving".
+const DUTY: Record<AssetType, number> = { vehicle: 1, equipment: 0.72, personnel: 0.85, tool: 0.28 }
+
 const N_POINTS = 96
+
+// A jobsite's daily rhythm over the 6AM–6PM window (u = 0→1): quiet at open,
+// ramp through mid-morning, a midday lull (lunch), busy afternoon, wind-down.
+function daytimeActivity(u: number): number {
+  const ramp = Math.min(1, u / 0.14)              // 6:00 → ~7:40 warm-up
+  const taper = Math.min(1, (1 - u) / 0.12)       // ~4:35 → 6:00 wind-down
+  const lunch = 1 - 0.55 * Math.exp(-((u - 0.46) ** 2) / (2 * 0.055 ** 2)) // ~11:30 dip
+  return Math.max(0, ramp * taper * lunch)
+}
 
 // FNV-1a — tracks stay stable when the asset list reorders or grows
 function hashId(id: string): number {
@@ -81,10 +95,24 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
     const endLng = a.location?.lng ?? DEMO_MAP_CENTER[0]
     const endLat = a.location?.lat ?? DEMO_MAP_CENTER[1]
     const amp = AMP[a.type]
+    const duty = DUTY[a.type]
+
+    // Per-bucket moving/parked schedule (forward pass) with hysteresis so blocks
+    // are contiguous — an asset drives for a stretch, parks for a stretch — and
+    // biased by the jobsite's daily rhythm, so mornings/lunch/evenings go quiet.
+    const active = new Array<boolean>(N_POINTS)
+    let on = false
+    for (let i = 0; i < N_POINTS; i++) {
+      const p = daytimeActivity(i / (N_POINTS - 1)) * duty
+      if (on) { if (rng() < 0.05 + (1 - p) * 0.13) on = false }
+      else { if (rng() < 0.02 + p * 0.17) on = true }
+      active[i] = on
+    }
 
     // Smooth random walk backward from the live position: velocity has momentum
     // (gentle curves, not jagged steps) and is softly pulled back toward the
-    // anchor so the asset roams its own area.
+    // anchor. While PARKED the position is held exactly, so the asset reads as
+    // "not moving" on the activity chart and its trail simply pauses.
     const pts: TrackPoint[] = new Array(N_POINTS)
     let lng = endLng
     let lat = endLat
@@ -92,12 +120,17 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
     let vLat = 0
     for (let i = N_POINTS - 1; i >= 0; i--) {
       pts[i] = { lng, lat, t: i / (N_POINTS - 1) }
-      vLng = vLng * 0.82 + (rng() - 0.5) * amp * 0.45
-      vLat = vLat * 0.82 + (rng() - 0.5) * amp * 0.45
-      lng -= vLng
-      lat -= vLat
-      lng += (endLng - lng) * 0.02
-      lat += (endLat - lat) * 0.02
+      if (active[i]) {
+        vLng = vLng * 0.82 + (rng() - 0.5) * amp * 0.45
+        vLat = vLat * 0.82 + (rng() - 0.5) * amp * 0.45
+        lng -= vLng
+        lat -= vLat
+        lng += (endLng - lng) * 0.02
+        lat += (endLat - lat) * 0.02
+      } else {
+        vLng = 0
+        vLat = 0
+      }
     }
 
     return {
