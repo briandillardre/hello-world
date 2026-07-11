@@ -173,9 +173,11 @@ interface MapViewProps {
   defaultWeatherPlace?: string | null
   /** Show the admin-only "save as company default" control in the weather panel. */
   onSaveWeatherDefault?: (place: string) => Promise<boolean | void>
+  /** False hides every dollar figure (timeline chip, $ chart mode, zone $). */
+  canViewCosts?: boolean
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, onSaveWeatherDefault, canViewCosts = true }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -1344,9 +1346,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           onCustom={(from, to) => { setCustomFrom(from); setCustomTo(to) }}
           costTotal={costTotal}
           costLabel={costLabel}
+          showCost={canViewCosts}
           realWindow={realWindowEff}
           activity={activity}
-          costCurve={chartCostCurve}
+          costCurve={canViewCosts ? chartCostCurve : null}
           windowSeconds={windowSecondsEff}
           followId={followId}
           onFollow={handleFollow}
@@ -1373,6 +1376,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           range={range}
           t={pbActive ? displayT : 1}
           real={zoneRealAt(selectedZone.id, pbActive ? displayT : 1)}
+          showCosts={canViewCosts}
           onClose={() => setSelectedZone(null)}
           canEdit={!!onGeofenceEdit}
           onEdit={onGeofenceEdit ? (id, name, color) => {

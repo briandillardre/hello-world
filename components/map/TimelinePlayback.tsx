@@ -50,6 +50,8 @@ interface TimelinePlaybackProps {
   onCustom: (fromMs: number, toMs: number) => void
   costTotal: number
   costLabel: string
+  /** False = viewer lacks the $-costs permission; hide the cost chip. */
+  showCost?: boolean
   /** When tracks come from REAL history, the epoch window they span — labels
    *  then show true timestamps instead of the demo's 6AM-6PM pretend clock. */
   realWindow?: TrackWindow | null
@@ -71,7 +73,7 @@ interface TimelinePlaybackProps {
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
-  customFrom, customTo, onCustom, costTotal, costLabel, realWindow,
+  customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets,
 }: TimelinePlaybackProps) {
@@ -312,12 +314,14 @@ export function TimelinePlayback({
         >
           <SlidersHorizontal className="h-3 w-3" /> Custom
         </button>
-        {/* Live project cost — moved here from the floating panel */}
-        <div className="flex-none flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap" title={`Project cost · ${costLabel}`}>
-          <HardHat className="h-3.5 w-3.5" />
-          {money(costTotal)}
-          <span className="hidden md:inline text-faint">· {costLabel}</span>
-        </div>
+        {/* Live project cost — permission-gated ($ hidden for e.g. foremen) */}
+        {showCost && (
+          <div className="flex-none flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap" title={`Project cost · ${costLabel}`}>
+            <HardHat className="h-3.5 w-3.5" />
+            {money(costTotal)}
+            <span className="hidden md:inline text-faint">· {costLabel}</span>
+          </div>
+        )}
         {/* Pull-up activity chart toggle (replay modes only) */}
         {!live && (
           <button

@@ -1,6 +1,7 @@
 'use server'
 
-import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { getLiveConnection, createUsageInvoice, createServiceExpense, qboTxnUrl } from '@/lib/qbo'
 import { zoneAssetUsage, type ZoneAssetUsage } from '@/lib/costs'
 
@@ -46,7 +47,7 @@ function usageToLines(usage: ZoneAssetUsage[]): { description: string; amount: n
 async function buildDraft(fenceId: string, days: number): Promise<ZoneInvoiceDraft | { error: string }> {
   if (isMock) return { error: 'Demo mode — connect Supabase + QuickBooks first.' }
   const companyId = await getCurrentCompanyId()
-  if ((await getMyRole()) === 'viewer') return { error: 'Viewers can’t create invoices.' }
+  if (!(await getMyPermissions()).canManageBilling) return { error: 'You need the Billing & QBO permission (Team page) to create invoices.' }
 
   const { createClient } = await import('@/lib/supabase-server')
   const supabase = createClient()
@@ -124,7 +125,7 @@ export async function pushServiceExpenseAction(
   try {
     if (isMock) return { error: 'Demo mode — connect Supabase + QuickBooks first.' }
     const companyId = await getCurrentCompanyId()
-    if ((await getMyRole()) === 'viewer') return { error: 'Viewers can’t record expenses.' }
+    if (!(await getMyPermissions()).canManageBilling) return { error: 'You need the Billing & QBO permission (Team page) to record expenses.' }
     const conn = await getLiveConnection(companyId)
     if (!conn) return { error: 'QuickBooks isn’t connected — see the Accounting page.' }
 

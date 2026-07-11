@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
-import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -23,7 +24,8 @@ const M_STATUS = {
 
 export default async function AssetDetailPage({ params }: { params: { id: string } }) {
   const companyId = await getCurrentCompanyId()
-  const canEdit = (await getMyRole()) !== 'viewer'
+  const perms = await getMyPermissions()
+  const canEdit = perms.canEdit
   const [rawAssets, toolAssociations] = await Promise.all([
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
@@ -90,8 +92,8 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           </div>
         </section>
 
-        {/* cost structure */}
-        <CostCard asset={asset} />
+        {/* cost structure — dollar figures are permission-gated */}
+        {perms.canViewCosts && <CostCard asset={asset} />}
 
         {/* live telemetry */}
         <section>

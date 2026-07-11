@@ -2,6 +2,7 @@ import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } f
 import { getGeofences } from '@/lib/db/geofences'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs } from '@/lib/db/company'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
@@ -15,6 +16,7 @@ export default async function MapPage() {
   const company = await getCurrentCompany()
   const companyId = company.id
   const prefs = await getCompanyPrefs()
+  const perms = await getMyPermissions()
   const [rawAssets, geofences, toolAssociations, earliestMs] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
@@ -68,6 +70,7 @@ export default async function MapPage() {
           toolGateways={toolGateways}
           defaultWeatherPlace={prefs.weatherPlace}
           canSetWeatherDefault={prefs.isAdmin}
+          canViewCosts={perms.canViewCosts}
         />
       </div>
     </div>

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
 import type { Role } from '@/lib/db/team'
 
-const ROLES: Role[] = ['admin', 'foreman', 'viewer']
+const ROLES: Role[] = ['admin', 'manager', 'foreman', 'viewer']
 
 /** Resolve caller → { userId, companyId, isAdmin } using the anon client. */
 async function ctx() {
@@ -116,6 +116,31 @@ export async function removeMemberAction(memberId: string): Promise<boolean> {
   if (memberId === c.userId) return false // can't remove yourself here
   const { createServiceClient } = await import('@/lib/supabase-server')
   await createServiceClient().from('profiles').delete().eq('id', memberId).eq('company_id', c.companyId)
+  revalidatePath('/team')
+  return true
+}
+
+/** Admin: set a member's sensitive-info overrides (null = inherit role
+ *  default). Admins' own row is left alone — the resolver ignores overrides
+ *  for admins anyway, so there's no way to half-demote one here. */
+export async function updateMemberOverridesAction(
+  memberId: string,
+  overrides: { can_view_costs?: boolean | null; can_manage_billing?: boolean | null; can_manage_team?: boolean | null }
+): Promise<boolean> {
+  const c = await ctx()
+  if (!c?.isAdmin) return false
+  const patch: Record<string, boolean | null> = {}
+  for (const k of ['can_view_costs', 'can_manage_billing', 'can_manage_team'] as const) {
+    if (k in overrides) patch[k] = overrides[k] ?? null
+  }
+  if (Object.keys(patch).length === 0) return true
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const { error } = await createServiceClient()
+    .from('profiles')
+    .update(patch)
+    .eq('id', memberId)
+    .eq('company_id', c.companyId)
+  if (error) { console.error('override update failed (is migration 011 applied?)', error); return false }
   revalidatePath('/team')
   return true
 }

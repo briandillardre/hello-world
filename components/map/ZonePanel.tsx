@@ -34,7 +34,7 @@ const STAT = [
  *  live-synced to the timeline (cost + charts update as you scrub). Editable
  *  inline — rename, recolor, or delete right from the map. */
 export function ZonePanel({
-  fence, presence, range, t, real, onClose, canEdit = false, onEdit, onDelete,
+  fence, presence, range, t, real, onClose, canEdit = false, onEdit, onDelete, showCosts = true,
 }: {
   fence: Geofence
   presence: SitePresence
@@ -45,6 +45,8 @@ export function ZonePanel({
   canEdit?: boolean
   onEdit?: (id: string, name: string, color: string) => void
   onDelete?: (id: string) => void
+  /** False = viewer lacks the $-costs permission; show presence/hours only. */
+  showCosts?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(fence.name)
@@ -131,7 +133,16 @@ export function ZonePanel({
             ))}
           </div>
 
-          {real ? <RealCost real={real} /> : <DemoCost fence={fence} presence={presence} range={range} t={t} />}
+          {showCosts
+            ? (real ? <RealCost real={real} /> : <DemoCost fence={fence} presence={presence} range={range} t={t} />)
+            : real?.hoursSeries?.some((v) => v > 0) && (
+                <div className="mt-4 pt-3 border-t border-navy-800">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint mb-1">
+                    Hours on site · per {real.windowSec ? bucketSpanLabel(real.windowSec, real.hoursSeries.length) : 'interval'}
+                  </p>
+                  <SparkBars series={real.hoursSeries} color="#2dd4bf" />
+                </div>
+              )}
 
           {canEdit && (
             <button

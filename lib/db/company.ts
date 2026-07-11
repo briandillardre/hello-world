@@ -148,7 +148,7 @@ export async function getCompanySettings(): Promise<{
 
 /** The caller's role in their company, for gating edit actions. Demo = viewer
  *  (read-only); a logged-out or errored lookup defaults to viewer. */
-export async function getMyRole(): Promise<'admin' | 'foreman' | 'viewer'> {
+export async function getMyRole(): Promise<'admin' | 'manager' | 'foreman' | 'viewer'> {
   if (isMock) return 'admin' // demo is a full-featured showcase (nothing persists)
   try {
     const { createClient } = await import('../supabase-server')
@@ -157,6 +157,6 @@ export async function getMyRole(): Promise<'admin' | 'foreman' | 'viewer'> {
     if (!user) return 'viewer'
     const { data } = await supabase.from('profiles').select('company_id, role').eq('id', user.id).single()
     if (data?.role === 'admin' || user.id === (data?.company_id ?? user.id)) return 'admin'
-    return (data?.role as 'admin' | 'foreman' | 'viewer') ?? 'viewer'
+    return (data?.role as 'admin' | 'manager' | 'foreman' | 'viewer') ?? 'viewer'
   } catch { return 'viewer' }
 }
