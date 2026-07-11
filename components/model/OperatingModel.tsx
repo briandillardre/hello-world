@@ -1,0 +1,259 @@
+'use client'
+
+import { useEffect, useRef, useState, useCallback } from 'react'
+
+/**
+ * Interactive operating model — same formulas as docs/OPERATING-MODEL.md.
+ * Revenue vs total cost with hire step-jumps marked, cumulative cash below,
+ * three growth scenarios. Lives behind login: these are the company's books.
+ *
+ * The flywheel discipline, encoded: every customer is unit-profitable from
+ * day one (ARPU $92 vs ~$2-4 COGS/asset); the P&L hovers near zero later
+ * ON PURPOSE because surplus gets reinvested (hires, ads). Hires wait for
+ * customer-count triggers so a jump never outruns the revenue that pays it.
+ */
+
+const ARPU = 92
+const MACHINES = 8
+
+function addsFor(y: number, m: number): number {
+  if (y === 2026) return m >= 8 ? 1 : 0
+  if (y === 2027) return m <= 6 ? 3 : 4
+  return m <= 6 ? 6 : 8
+}
+
+interface Row { y: number; m: number; cust: number; mrr: number; cogs: number; payroll: number; total: number; net: number; cash: number }
+interface Ev { i: number; label: string; teal?: boolean }
+
+function run(k: number): { rows: Row[]; events: Ev[] } {
+  const rows: Row[] = []
+  const events: Ev[] = []
+  let cust = 0, cash = 0, carry = 0
+  let h1 = false, h2 = false, h3 = false, be = false
+  for (let i = 0; i < 30; i++) {
+    const y = 2026 + Math.floor((6 + i) / 12)
+    const m = ((6 + i) % 12) + 1
+    carry += addsFor(y, m) * k
+    const add = Math.floor(carry)
+    carry -= add
+    cust += add
+    const mrr = cust * ARPU
+    const sims = cust * MACHINES
+    const cogs = sims * 1.75 + (sims > 10 ? 140 : 0) + 25 + (sims > 500 ? 60 : sims > 200 ? 25 : 10)
+      + 20 + (sims > 500 ? 40 : sims > 200 ? 10 : 0) + (cust > 0 ? 25 + (sims > 800 ? 70 : 0) : 0) + 10 + sims * 0.02
+    const software = 120 + cust * 1.5
+    const insurance = cust > 0 ? 175 + Math.max(0, mrr - 2000) * 0.02 : 0
+    const professional = 150 + (mrr > 5000 ? 250 : 100)
+    const marketing = y === 2026 ? (m >= 10 ? 300 : 0) : y === 2027 ? 750 : 1500
+    let payroll = 0, wc = 0
+    if (cust >= 30 && cust < 90) { payroll += 1800; wc += 150; if (!h1) { h1 = true; events.push({ i, label: 'H1 installer (PT)' }) } }
+    if (cust >= 90) { payroll += 5200; wc += 200; if (!h2) { h2 = true; events.push({ i, label: 'H2 ops tech (FT)' }) } }
+    if (cust >= 110) { payroll += 1200; if (!h3) { h3 = true; events.push({ i, label: 'H3 admin (PT)' }) } }
+    const total = cogs + software + insurance + professional + marketing + payroll + wc
+    const net = mrr - total
+    cash += net
+    if (!be && net > 0 && cust > 5) { be = true; events.push({ i, label: 'breakeven', teal: true }) }
+    rows.push({ y, m, cust, mrr, cogs, payroll: payroll + wc, total, net, cash })
+  }
+  return { rows, events }
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const AMBER = '#ff9e16', TEAL = '#2dd4bf', RED = '#ff6b6b', FAINT = '#6f88a0', GRID = 'rgba(20,80,111,.45)'
+const fmt = (n: number) => (n < 0 ? '−$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-US')
+
+function setup(cv: HTMLCanvasElement) {
+  const dpr = window.devicePixelRatio || 1
+  const w = cv.clientWidth, h = cv.clientHeight
+  cv.width = w * dpr
+  cv.height = h * dpr
+  const ctx = cv.getContext('2d')!
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.font = '10.5px ui-monospace, Menlo, monospace'
+  return { ctx, w, h }
+}
+
+function grid(ctx: CanvasRenderingContext2D, w: number, h: number, pad: { l: number; r: number; t: number; b: number }, maxV: number, minV: number, step: number) {
+  ctx.clearRect(0, 0, w, h)
+  const span = maxV - minV
+  const yOf = (v: number) => pad.t + (h - pad.t - pad.b) * (1 - (v - minV) / span)
+  ctx.strokeStyle = GRID
+  ctx.fillStyle = FAINT
+  ctx.lineWidth = 1
+  for (let v = Math.ceil(minV / step) * step; v <= maxV; v += step) {
+    const y = yOf(v)
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke()
+    ctx.textAlign = 'right'
+    ctx.fillText('$' + (Math.abs(v) >= 1000 ? v / 1000 + 'k' : String(v)), pad.l - 6, y + 3.5)
+  }
+  return yOf
+}
+
+export function OperatingModel() {
+  const [k, setK] = useState(1)
+  const mainRef = useRef<HTMLCanvasElement>(null)
+  const cashRef = useRef<HTMLCanvasElement>(null)
+
+  const draw = useCallback(() => {
+    const { rows, events } = run(k)
+    const pad = { l: 46, r: 10, t: 14, b: 26 }
+
+    const cvM = mainRef.current
+    if (cvM) {
+      const { ctx, w, h } = setup(cvM)
+      const maxV = Math.max(...rows.map((r) => Math.max(r.mrr, r.total))) * 1.12 || 1000
+      const step = maxV > 12000 ? 4000 : maxV > 6000 ? 2000 : 1000
+      const yOf = grid(ctx, w, h, pad, maxV, 0, step)
+      const xOf = (i: number) => pad.l + (w - pad.l - pad.r) * (i / (rows.length - 1))
+      ctx.textAlign = 'center'
+      rows.forEach((r, i) => { if (r.m === 1 || i === 0) ctx.fillText(MONTHS[r.m - 1] + ' ' + String(r.y).slice(2), xOf(i), h - 8) })
+      // payroll area
+      ctx.beginPath(); ctx.moveTo(xOf(0), yOf(0))
+      rows.forEach((r, i) => ctx.lineTo(xOf(i), yOf(r.payroll)))
+      ctx.lineTo(xOf(rows.length - 1), yOf(0)); ctx.closePath()
+      ctx.fillStyle = 'rgba(159,182,204,.18)'; ctx.fill()
+      // markers
+      for (const e of events) {
+        const x = xOf(e.i)
+        ctx.strokeStyle = e.teal ? TEAL : 'rgba(45,212,191,.5)'
+        ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h - pad.b); ctx.stroke(); ctx.setLineDash([])
+        ctx.save(); ctx.translate(x + 4, pad.t + 4); ctx.rotate(Math.PI / 2)
+        ctx.fillStyle = e.teal ? TEAL : '#9fb6cc'; ctx.textAlign = 'left'
+        ctx.fillText(e.label, 0, 0); ctx.restore()
+      }
+      const line = (key: 'mrr' | 'total', color: string) => {
+        ctx.beginPath()
+        rows.forEach((r, i) => { const x = xOf(i), y = yOf(r[key]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) })
+        ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.stroke()
+      }
+      line('total', RED)
+      line('mrr', AMBER)
+    }
+
+    const cvC = cashRef.current
+    if (cvC) {
+      const { ctx, w, h } = setup(cvC)
+      const vals = rows.map((r) => r.cash)
+      const maxV = Math.max(0, ...vals) * 1.15 + 500
+      const minV = Math.min(0, ...vals) * 1.15 - 500
+      const yOf = grid(ctx, w, h, { ...pad, t: 10, b: 22 }, maxV, minV, Math.max(2000, Math.round((maxV - minV) / 5 / 1000) * 1000))
+      const xOf = (i: number) => pad.l + (w - pad.l - pad.r) * (i / (rows.length - 1))
+      ctx.strokeStyle = 'rgba(159,182,204,.5)'
+      ctx.beginPath(); ctx.moveTo(pad.l, yOf(0)); ctx.lineTo(w - pad.r, yOf(0)); ctx.stroke()
+      ctx.beginPath()
+      rows.forEach((r, i) => { const x = xOf(i), y = yOf(r.cash); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y) })
+      ctx.strokeStyle = TEAL; ctx.lineWidth = 2.2; ctx.stroke()
+      ctx.textAlign = 'center'; ctx.fillStyle = FAINT
+      rows.forEach((r, i) => { if (r.m === 1 || i === 0) ctx.fillText(MONTHS[r.m - 1] + ' ' + String(r.y).slice(2), xOf(i), h - 6) })
+    }
+  }, [k])
+
+  useEffect(() => {
+    draw()
+    window.addEventListener('resize', draw)
+    return () => window.removeEventListener('resize', draw)
+  }, [draw])
+
+  const { rows } = run(k)
+  const last = rows[rows.length - 1]
+  const be = rows.find((r) => r.net > 0 && r.cust > 5)
+  const minCash = Math.min(...rows.map((r) => r.cash))
+  const quarters = rows.filter((r) => r.m % 3 === 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap">
+        {[[0.5, 'Conservative (½×)'], [1, 'Base case'], [1.75, 'Aggressive (1¾×)']].map(([v, label]) => (
+          <button
+            key={String(v)}
+            onClick={() => setK(v as number)}
+            className={
+              'rounded-full border px-4 py-1.5 text-[12.5px] font-semibold transition ' +
+              (k === v ? 'bg-amber/15 text-amber border-amber/40' : 'bg-navy-900 text-muted border-navy-700 hover:text-ink')
+            }
+          >
+            {label as string}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {[
+          [`$${Math.round(last.mrr / 100) / 10}k`, 'MRR end 2028'],
+          [String(last.cust), 'customers end 2028'],
+          [be ? `${MONTHS[be.m - 1]} ${be.y}` : '—', 'first breakeven'],
+          [fmt(minCash), 'max drawdown'],
+          [fmt(last.cash), 'cum. cash end 2028'],
+        ].map(([b, s]) => (
+          <div key={s} className="rounded-xl border border-navy-700 bg-navy-950 px-3.5 py-2.5">
+            <p className="font-display font-bold text-lg text-ink tabular-nums">{b}</p>
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-faint">{s}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-navy-700 bg-navy-950 p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Revenue vs total cost — hires are the jumps</p>
+        <canvas ref={mainRef} className="w-full h-[320px]" />
+        <div className="flex gap-4 flex-wrap text-[11.5px] text-muted pt-2">
+          <span><i className="inline-block w-3.5 h-[3px] rounded align-middle mr-1.5" style={{ background: AMBER }} />MRR</span>
+          <span><i className="inline-block w-3.5 h-[3px] rounded align-middle mr-1.5" style={{ background: RED }} />Total monthly cost</span>
+          <span><i className="inline-block w-3.5 h-[3px] rounded align-middle mr-1.5" style={{ background: 'rgba(159,182,204,.55)' }} />Payroll portion</span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-navy-700 bg-navy-950 p-4">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Cumulative cash (founder pay $0 · hardware billed at cost up front)</p>
+        <canvas ref={cashRef} className="w-full h-[200px]" />
+      </div>
+
+      <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 overflow-x-auto">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Quarter by quarter</p>
+        <table className="w-full text-[12.5px] tabular-nums">
+          <thead>
+            <tr className="text-faint font-mono text-[9.5px] uppercase tracking-[0.08em]">
+              <th className="text-left py-1.5 pr-2">Quarter</th>
+              <th className="text-right py-1.5 px-2">Cust</th>
+              <th className="text-right py-1.5 px-2">MRR</th>
+              <th className="text-right py-1.5 px-2">COGS</th>
+              <th className="text-right py-1.5 px-2">Payroll</th>
+              <th className="text-right py-1.5 px-2">Total cost</th>
+              <th className="text-right py-1.5 px-2">Net/mo</th>
+              <th className="text-right py-1.5 pl-2">Cum. cash</th>
+            </tr>
+          </thead>
+          <tbody>
+            {quarters.map((r) => (
+              <tr key={`${r.y}-${r.m}`} className="border-t border-navy-800/60">
+                <td className="py-1.5 pr-2 text-ink">{r.y} Q{r.m / 3}</td>
+                <td className="text-right py-1.5 px-2 text-muted">{r.cust}</td>
+                <td className="text-right py-1.5 px-2 text-ink">{fmt(r.mrr)}</td>
+                <td className="text-right py-1.5 px-2 text-muted">{fmt(r.cogs)}</td>
+                <td className="text-right py-1.5 px-2 text-muted">{fmt(r.payroll)}</td>
+                <td className="text-right py-1.5 px-2 text-muted">{fmt(r.total)}</td>
+                <td className={'text-right py-1.5 px-2 font-semibold ' + (r.net >= 0 ? 'text-teal' : 'text-alert')}>{fmt(r.net)}</td>
+                <td className={'text-right py-1.5 pl-2 ' + (r.cash >= 0 ? 'text-teal' : 'text-alert')}>{fmt(r.cash)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-xl border border-amber/30 bg-amber/[0.06] p-4 text-[13px] text-muted space-y-2">
+        <p className="font-display font-bold text-amber">You are never selling at a loss.</p>
+        <p>
+          Every customer is unit-profitable from day one: $92/mo revenue against roughly $16–35/mo of
+          direct cost (SIMs + their share of the stack) — a 60–80% gross margin. The red months early are
+          fixed overhead spread over a handful of customers; each new customer erases more of it.
+        </p>
+        <p>
+          The flywheel is why the net line hugs zero later <em>by choice</em>: surplus goes back into ads and
+          hires, and every hire waits for its customer-count trigger so the jump never outruns the revenue
+          paying for it. Want monthly cash-positive instead? Three levers, in order: price at $8/machine
+          instead of $7, charge $150 per install, and cut ad spend — the chart goes green a year earlier and
+          grows slower. That trade is yours to pick, not the model&apos;s.
+        </p>
+      </div>
+    </div>
+  )
+}

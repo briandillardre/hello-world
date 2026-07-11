@@ -149,6 +149,13 @@ ANTHROPIC_API_KEY=            # optional: natural-language AI dispatcher (Haiku)
 - Verizon Connect: $20-35, sticky contracts, dated UX
 - GPS Trackit: $15-25, vehicle-centric, weak on tools/equipment
 
+## Testing rule (Brian, Jul 2026)
+Any change touching the timeline, radar, or history data: click through EVERY
+time range (Live / Today / Yesterday / 7d / 30d / YTD / All) on BOTH /map and
+/command before shipping. Weather layers must obey the scrubber — nothing on
+the map may animate on its own while the timeline is stopped (radar loops only
+on Live; manual pause wins everywhere).
+
 ## Notes
 - All HMAC secrets use `hammertrack-*` prefix (previously trackflow-*)
 - flespi normalizer handles both Teltonika Codec 8/8E and Digital Matter field conventions

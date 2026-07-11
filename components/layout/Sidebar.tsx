@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
@@ -17,6 +17,7 @@ const navItems = [
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', icon: Calculator },
+  { href: '/model', label: 'Op model', icon: TrendingUp },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
   // Was only reachable once, right after registration — now it's a real page.

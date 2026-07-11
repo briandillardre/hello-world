@@ -441,9 +441,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const baseRef = useRef(base)
   baseRef.current = base
   const [radarOn, setRadarOn] = useState(kiosk)
+  // Manual freeze for the live radar loop (map stays put, sky stops moving).
+  const [radarPaused, setRadarPaused] = useState(false)
   // GOES-East GeoColor clouds (NASA GIBS WMTS, keyless, ~10-min cadence).
   const [cloudsOn, setCloudsOn] = useState(false)
+  // Storm tops — GOES Band 13 clean IR (cold = high tops). The ForeFlight view.
+  const [stormTopsOn, setStormTopsOn] = useState(false)
   const cloudsAdded = useRef(false)
+  const stormAdded = useRef(false)
   // Rain totals (MRMS accumulation) — separate from the radar loop.
   const [precipOn, setPrecipOn] = useState(false)
   const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
@@ -1442,15 +1447,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [radarOn])
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
-  // beat longer so the loop "lands" on now. Paused during replay: there the
-  // radar time-travels with the scrubber instead (see below).
+  // beat longer so the loop "lands" on now. The loop runs ONLY on the Live
+  // range: any historical range means the radar obeys the scrubber (or holds
+  // the newest frame while that range's history is still loading) — a sky
+  // that animates under a stopped timeline reads as data. Manual pause wins
+  // everywhere.
   useEffect(() => {
-    if (!radarOn || radarFrames.length === 0 || (pbActive && realWindowEff)) return
+    if (!radarOn || radarFrames.length === 0 || pbActive || radarPaused) {
+      // Freeze on the newest observation rather than mid-loop.
+      if (radarFrames.length) setRadarIdx(radarFrames.length - 1)
+      return
+    }
     const id = setInterval(() => {
       setRadarIdx((i) => (i + 1) % (radarFrames.length + 2)) // +2 = pause on last
     }, 700)
     return () => clearInterval(id)
-  }, [radarOn, radarFrames, pbActive, realWindowEff])
+  }, [radarOn, radarFrames, pbActive, radarPaused])
 
   // Replay mode: the radar frame FOLLOWS THE SCRUBBER — IEM's archive serves
   // any past 5-min composite, so "it rained on the site at 2 PM Tuesday" is
@@ -1514,7 +1526,45 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     } else {
       m.setLayoutProperty('clouds-layer', 'visibility', 'visible')
     }
+    // GOES publishes a new frame ~every 10 min, but a raster source caches by
+    // URL — without this the "clouds" are a screenshot of whenever the layer
+    // first loaded. Cache-bust on the same cadence so the sky stays real.
+    const id = setInterval(() => {
+      const src = m.getSource('clouds') as maplibregl.RasterTileSource | undefined
+      src?.setTiles([
+        `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?v=${Math.floor(Date.now() / 600_000)}`,
+      ])
+    }, 600_000)
+    return () => clearInterval(id)
   }, [mapReady, cloudsOn])
+
+  // Storm tops — GOES-East Band 13 clean-window IR from the same GIBS service.
+  // Cold (bright) = high convective tops; the classic aviation read on which
+  // cells punch. ~2 km pixels, refreshed on GOES's ~10-min cadence.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!stormTopsOn) {
+      if (stormAdded.current && m.getLayer('stormtops-layer')) m.setLayoutProperty('stormtops-layer', 'visibility', 'none')
+      return
+    }
+    const tileUrl = () =>
+      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?v=${Math.floor(Date.now() / 600_000)}`
+    if (!stormAdded.current) {
+      m.addSource('stormtops', { type: 'raster', tiles: [tileUrl()], tileSize: 256, maxzoom: 7, attribution: 'NASA GIBS · NOAA GOES-East' })
+      const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
+        : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.62 } }, beforeId)
+      stormAdded.current = true
+    } else {
+      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl()])
+      m.setLayoutProperty('stormtops-layer', 'visibility', 'visible')
+    }
+    const id = setInterval(() => {
+      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl()])
+    }, 600_000)
+    return () => clearInterval(id)
+  }, [mapReady, stormTopsOn])
 
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
   // Same free tile service as the radar loop; maxzoom 10 (~1 km data).
@@ -1757,6 +1807,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         threeD={threeD}
         onThreeD={setThreeD}
         radarOn={radarOn}
+        radarPaused={radarPaused}
+        onRadarPause={setRadarPaused}
+        stormTopsOn={stormTopsOn}
+        onStormTops={setStormTopsOn}
         onRadar={setRadarOn}
         cloudsOn={cloudsOn}
         onClouds={setCloudsOn}

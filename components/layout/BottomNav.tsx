@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const primaryItems = [
@@ -21,6 +21,7 @@ const moreItems = [
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', icon: Calculator },
+  { href: '/model', label: 'Op model', icon: TrendingUp },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', icon: Rocket },
 ]

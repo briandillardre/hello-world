@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2, Home } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2, Home, Pause, Play } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -16,9 +16,15 @@ interface WeatherControlProps {
   onThreeD: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
+  /** Freeze the live radar loop on the newest frame. */
+  radarPaused?: boolean
+  onRadarPause?: (v: boolean) => void
   /** GOES-East GeoColor satellite clouds (NASA GIBS, ~10-min refresh). */
   cloudsOn?: boolean
   onClouds?: (v: boolean) => void
+  /** GOES Band-13 IR storm tops (cold = high convection). */
+  stormTopsOn?: boolean
+  onStormTops?: (v: boolean) => void
   /** Rain totals (MRMS accumulation) + selected period (1h/24h/48h/72h). */
   precipOn?: boolean
   onPrecip?: (v: boolean) => void
@@ -77,7 +83,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, cloudsOn = false, onClouds, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // "Save current as…" inline name input for map views.
   const [savingView, setSavingView] = useState(false)
@@ -363,8 +369,17 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       </button>
       {radarOn && (
         <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
-          radar{frameTime ? ` · ${frameTime}` : ' loop'}
+          <span className={'w-1.5 h-1.5 rounded-full bg-teal ' + (radarPaused ? '' : 'animate-blink')} />
+          {radarPaused ? 'paused' : 'radar'}{frameTime ? ` · ${frameTime}` : radarPaused ? '' : ' loop'}
+          {onRadarPause && (
+            <button
+              onClick={() => onRadarPause(!radarPaused)}
+              title={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
+              className="ml-auto grid place-items-center w-5 h-5 rounded text-faint hover:text-teal"
+            >
+              {radarPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+            </button>
+          )}
         </div>
       )}
 
@@ -382,6 +397,25 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           {cloudsOn && (
             <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
               GOES-East satellite · NASA · ~10 min
+            </div>
+          )}
+        </>
+      )}
+
+      {/* storm tops — GOES Band-13 IR: bright/cold = tall convection */}
+      {onStormTops && (
+        <>
+          <button onClick={() => onStormTops(!stormTopsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Zap className={'h-4 w-4 ' + (stormTopsOn ? 'text-teal' : 'text-faint')} /> Storm tops (IR)
+            </span>
+            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (stormTopsOn ? 'bg-teal/40' : 'bg-navy-700')}>
+              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (stormTopsOn ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+          </button>
+          {stormTopsOn && (
+            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+              bright = tall/violent cells · GOES IR · ~10 min
             </div>
           )}
         </>
