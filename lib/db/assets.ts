@@ -58,8 +58,9 @@ export interface LocationHistoryRow {
 /**
  * Location history since `sinceIso`, oldest-first, for drawing real movement
  * trails. Returns null in demo mode so callers can fall back to synthetic
- * tracks. Fetches newest-first (PostgREST caps result sets, so bias recent)
- * then reverses to chronological order.
+ * tracks. Pages newest-first in 1000-row chunks: Supabase's API "Max Rows"
+ * setting silently caps a single .limit() to as little as 1000 — which
+ * quietly starved trails, reports, and the stats table until paging.
  */
 export async function getLocationHistory(
   companyId: string,
@@ -70,14 +71,20 @@ export async function getLocationHistory(
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { data } = await supabase
-    .from('asset_locations')
-    .select('asset_id, lat, lng, speed, timestamp')
-    .eq('company_id', companyId)
-    .gte('timestamp', sinceIso)
-    .order('timestamp', { ascending: false })
-    .limit(limit)
-  return (data ?? []).reverse()
+  const PAGE = 1000
+  const rows: LocationHistoryRow[] = []
+  while (rows.length < limit) {
+    const { data } = await supabase
+      .from('asset_locations')
+      .select('asset_id, lat, lng, speed, timestamp')
+      .eq('company_id', companyId)
+      .gte('timestamp', sinceIso)
+      .order('timestamp', { ascending: false })
+      .range(rows.length, Math.min(rows.length + PAGE, limit) - 1)
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE || rows.length >= limit) break
+  }
+  return rows.reverse()
 }
 
 /** Earliest recorded location timestamp (ms) for the company, for "All time".

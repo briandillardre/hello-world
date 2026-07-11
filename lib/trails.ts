@@ -233,7 +233,8 @@ export function windowTickLabel(w: TrackWindow, f: number, tz?: string): string 
 }
 
 // How movement over the window is drawn — user-selectable on any time range.
-export type TrailMode = 'off' | 'trails' | 'heatmap'
+// '3d' = hex activity terrain: prisms extruded by time-spent-per-cell.
+export type TrailMode = 'off' | 'trails' | 'heatmap' | '3d'
 
 // ── Timeline ranges ──────────────────────────────────────────────────────────
 export type TimeRange = 'live' | 'today' | 'yesterday' | '7d' | '30d' | 'ytd' | 'all' | 'custom'

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -32,6 +32,7 @@ const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
   { key: 'trails', label: 'Trails', icon: Route },
   { key: 'heatmap', label: 'Heatmap', icon: Flame },
+  { key: '3d', label: '3D', icon: Box },
 ]
 
 interface TimelinePlaybackProps {

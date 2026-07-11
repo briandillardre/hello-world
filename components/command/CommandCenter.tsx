@@ -10,6 +10,7 @@ import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { TacticalHud } from './TacticalHud'
 import { CommandRail } from './CommandRail'
+import { EventRail } from './EventRail'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
 const MapView = dynamic(() => import('@/components/map/MapView').then((m) => ({ default: m.MapView })), {
@@ -105,6 +106,11 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
       {/* left instrument rail — the mission-control frame (wide screens) */}
       <div className="absolute left-4 top-[68px] bottom-14 z-40 hidden xl:flex items-start">
         <CommandRail assets={assets} geofences={geofences} tracks={tracks} />
+      </div>
+
+      {/* right instrument rail — event log + fleet board, above the HUD dial */}
+      <div className="absolute right-4 top-[68px] bottom-[400px] z-40 hidden xl:flex justify-end min-h-[180px]">
+        <EventRail assets={assets} alerts={alerts} />
       </div>
 
       {/* tactical instrument — bottom-right, above the ticker */}

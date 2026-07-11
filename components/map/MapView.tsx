@@ -21,6 +21,7 @@ import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcel
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
+import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -373,6 +374,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const windowSecondsEff = realWindowEff
     ? (realWindowEff.to - realWindowEff.from) / 1000
     : rangeWindowSeconds(range)
+  const windowSecRef = useRef(windowSecondsEff)
+  windowSecRef.current = windowSecondsEff
   // $ curve for the chart. Real accounts: the honest ledger. Demo: a blended
   // fleet rate applied to observed movement, so the toggle demos meaningfully.
   const chartCostCurve = useMemo(() => {
@@ -693,6 +696,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           ],
         },
       })
+      // 3D activity terrain — hex prisms extruded by time-spent-per-cell.
+      m.addSource('heat3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'heat3d-layer', type: 'fill-extrusion', source: 'heat3d',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': [
+            'interpolate', ['linear'], ['get', 'ratio'],
+            0, '#14506f',
+            0.25, '#2dd4bf',
+            0.55, '#ff9e16',
+            0.85, '#fb5d5d',
+            1, '#ffe8e8',
+          ],
+          'fill-extrusion-height': ['get', 'h'],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.82,
+        },
+      })
+
       m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0) })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
@@ -960,7 +983,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     LIVE_LAYERS.forEach((l) => set(l, trailMode === 'off'))
     set('trails-line', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
+    set('heat3d-layer', trailMode === '3d')
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
+    // The terrain reads flat from straight overhead — tilt in on entry.
+    if (trailMode === '3d' && m.getPitch() < 25 && !followIdRef.current) {
+      m.easeTo({ pitch: 55, duration: 800 })
+    }
   }, [mapReady, trailMode])
 
   // Write movement geometry straight into the map sources. Called from the
@@ -978,6 +1006,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel))
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel))
+    } else if (mode === '3d') {
+      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current))
     } else {
       ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel))
     }
