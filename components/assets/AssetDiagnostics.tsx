@@ -39,6 +39,31 @@ function humanize(key: string): string {
   return label.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+// Units for known telemetry keys. flespi normalizes Teltonika CAN/OBD fields
+// to METRIC (km, km/h, °C, liters) — display imperial first for a US crew,
+// with the reported metric value alongside so nothing looks doctored.
+const n0 = (x: number) => Math.round(x).toLocaleString()
+const n1 = (x: number) => (Math.round(x * 10) / 10).toLocaleString()
+const UNIT_RULES: { test: RegExp; fmt: (v: number) => string }[] = [
+  { test: /vehicle\.mileage|total\.mileage|odometer/, fmt: (v) => `${n0(v * 0.621371)} mi (${n0(v)} km)` },
+  { test: /mil\.mileage/, fmt: (v) => `${n0(v * 0.621371)} mi` },
+  { test: /vehicle\.speed|wheel\.speed|\bspeed$/, fmt: (v) => `${n0(v * 0.621371)} mph (${n0(v)} km/h)` },
+  { test: /coolant\.temperature|engine\.temperature|ambient\.temperature|intake\.temperature/, fmt: (v) => `${n0(v * 9 / 5 + 32)}°F (${n0(v)}°C)` },
+  { test: /fuel\.volume/, fmt: (v) => `${n1(v * 0.264172)} gal (${n1(v)} L)` },
+  { test: /fuel\.consumed/, fmt: (v) => `${n1(v * 0.264172)} gal` },
+  { test: /fuel\.rate/, fmt: (v) => `${n1(v * 0.264172)} gal/h` },
+  { test: /fuel\.level|battery\.level|\.load$|throttle/, fmt: (v) => `${n0(v)}%` },
+  { test: /engine\.rpm/, fmt: (v) => `${n0(v)} rpm` },
+  { test: /engine\.hours|\.hours$/, fmt: (v) => `${n1(v)} hrs` },
+  // Teltonika raw voltages arrive in millivolts; flespi-normalized ones in volts.
+  { test: /voltage/, fmt: (v) => (v > 1000 ? `${n1(v / 1000)} V` : `${n1(v)} V`) },
+  { test: /position\.altitude/, fmt: (v) => `${n0(v * 3.28084)} ft (${n0(v)} m)` },
+  { test: /position\.direction|heading/, fmt: (v) => `${n0(v)}°` },
+  { test: /gsm\.signal/, fmt: (v) => `${n0(v)} / 5` },
+  { test: /idle\.time|sleep\.timeout/, fmt: (v) => `${n0(v)} min` },
+  { test: /position\.satellites/, fmt: (v) => `${n0(v)} sats` },
+]
+
 function fmtVal(key: string, v: unknown): string {
   if (typeof v === 'boolean') {
     if (/ignition/.test(key)) return v ? 'On' : 'Off'
@@ -46,6 +71,8 @@ function fmtVal(key: string, v: unknown): string {
     return v ? 'Yes' : 'No'
   }
   if (typeof v === 'number') {
+    const rule = UNIT_RULES.find((r) => r.test.test(key))
+    if (rule) return rule.fmt(v)
     return Number.isInteger(v) ? v.toLocaleString() : String(Math.round(v * 1e5) / 1e5)
   }
   if (v == null) return '—'

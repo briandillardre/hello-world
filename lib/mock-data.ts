@@ -36,7 +36,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
         'obd.engine.rpm': 780,
         'engine.coolant.temperature': 91,
         'obd.fuel.level': 64,
-        'obd.vehicle.mileage': 84213,
+        'obd.vehicle.mileage': 135538, // km, as flespi reports (≈84,220 mi)
         'obd.dtc.number': 0,
         'gsm.signal.level': 4,
         'position.altitude': 187,

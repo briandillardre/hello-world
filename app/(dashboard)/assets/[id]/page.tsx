@@ -52,9 +52,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           <ArrowLeft className="h-4 w-4" /> All assets
         </Link>
         <div className="flex items-center gap-3">
-          <div className="text-3xl w-12 h-12 grid place-items-center bg-navy-800 rounded-xl">{TYPE_EMOJI[asset.type]}</div>
-          <div>
-            <h1 className="text-xl font-bold text-ink">{asset.name}</h1>
+          <div className="text-3xl w-12 h-12 grid place-items-center bg-navy-800 rounded-xl flex-none">{TYPE_EMOJI[asset.type]}</div>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold text-ink leading-snug">{asset.name}</h1>
             <div className="flex items-center gap-1.5 mt-1">
               <Badge variant="secondary">{TYPE_LABEL[asset.type]}</Badge>
               {asset.category && <Badge variant="outline">{asset.category}</Badge>}
@@ -62,8 +62,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           </div>
           <div className="ml-auto flex items-center gap-2">
             {canEdit && <AssetActions asset={asset} />}
-            <Link href="/map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
-              <MapPin className="h-4 w-4" /> View on map
+            {/* phones: icon-only (the text version wrapped to 3 ugly lines) */}
+            <Link href="/map" aria-label="View on map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm p-2.5 sm:px-3.5 sm:py-2 hover:bg-amber-600 transition-colors whitespace-nowrap">
+              <MapPin className="h-4 w-4" /> <span className="hidden sm:inline">View on map</span>
             </Link>
           </div>
         </div>
