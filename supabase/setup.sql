@@ -430,3 +430,8 @@ CREATE INDEX IF NOT EXISTS invites_company_idx ON invites(company_id);
 CREATE POLICY "company invites" ON invites
   FOR ALL USING (company_id = current_company_id());
 
+
+-- ── 012: named, saveable map views per user ─────────────────────────────────
+-- { views: [{id, name, cfg}], defaultId } — layer/style snapshots; defaultId
+-- applies on map open. App tolerates the column being absent.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS map_views JSONB;

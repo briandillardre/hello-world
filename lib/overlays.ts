@@ -34,15 +34,6 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     opacity: 0.8,
   },
   {
-    key: 'hillshade',
-    label: 'Hillshade',
-    note: 'terrain relief shading',
-    tiles: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
-    minzoom: 0,
-    maxzoom: 16,
-    opacity: 0.35,
-  },
-  {
     key: 'wetlands',
     label: 'Wetlands',
     note: 'USFWS National Wetlands Inventory',

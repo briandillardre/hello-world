@@ -175,3 +175,28 @@ export async function getMyRole(): Promise<'admin' | 'manager' | 'foreman' | 'vi
     return (data?.role as 'admin' | 'manager' | 'foreman' | 'viewer') ?? 'viewer'
   } catch { return 'viewer' }
 }
+
+/**
+ * The current user's saved map views ({views, defaultId}) from their profile.
+ * Null in demo mode, when logged out, or before migration 012 — the client
+ * falls back to device-local saves.
+ */
+export async function getMyMapViews(): Promise<{ views: unknown[]; defaultId: string | null } | null> {
+  if (isMock) return null
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return null
+    const { data } = await supabase
+      .from('profiles')
+      .select('map_views')
+      .eq('id', user.id)
+      .single()
+    const mv = data?.map_views
+    if (mv && Array.isArray(mv.views)) return { views: mv.views, defaultId: mv.defaultId ?? null }
+    return null
+  } catch {
+    return null
+  }
+}

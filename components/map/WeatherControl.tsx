@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, SunDim, CloudRainWind, Maximize2, History } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2 } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
+import type { SavedMapView } from '@/lib/map-views'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid'
 
@@ -32,9 +33,17 @@ interface WeatherControlProps {
   /** Tax-parcel overlay toggle — rendered only when a parcel service is configured. */
   parcelsOn?: boolean
   onParcels?: (v: boolean) => void
-  /** Free national overlays (topo, hillshade, wetlands, streams). */
+  /** Free national overlays (topo, wetlands, streams). */
   overlays?: { key: string; label: string; note: string; on: boolean }[]
   onOverlay?: (key: string, on: boolean) => void
+  /** Named saveable views: presets + the user's saves; one may be default. */
+  views?: SavedMapView[]
+  activeViewId?: string | null
+  defaultViewId?: string | null
+  onApplyView?: (id: string) => void
+  onSaveView?: (name: string) => void
+  onDeleteView?: (id: string) => void
+  onSetDefaultView?: (id: string) => void
   top?: number
 }
 
@@ -52,8 +61,18 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
+  // "Save current as…" inline name input for map views.
+  const [savingView, setSavingView] = useState(false)
+  const [viewName, setViewName] = useState('')
+  const activeView = views?.find((v) => v.id === activeViewId) ?? null
+  const submitSaveView = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSaveView?.(viewName)
+    setViewName('')
+    setSavingView(false)
+  }
   const [placeInput, setPlaceInput] = useState(place ?? '')
   // Keep the input in sync with the resolved location after a search.
   useEffect(() => { setPlaceInput(place ?? '') }, [place])
@@ -191,6 +210,72 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </span>
       </button>
 
+      {/* named saveable views — one tap to a whole look; star = opens with it */}
+      {views && onApplyView && (
+        <div className="px-2 py-2 border-b border-navy-800">
+          <div className="px-1 flex items-center justify-between mb-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Views</span>
+            {onSaveView && !savingView && (
+              <button onClick={() => setSavingView(true)} className="flex items-center gap-1 text-[10.5px] font-semibold text-teal hover:text-ink">
+                <Plus className="h-3 w-3" /> Save current
+              </button>
+            )}
+          </div>
+          {savingView && (
+            <form onSubmit={submitSaveView} className="flex items-center gap-1 mb-1.5 px-1">
+              <input
+                autoFocus
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                placeholder="Name this view…"
+                className="flex-1 min-w-0 bg-navy-900 border border-navy-700 rounded-md px-2 py-1 text-[11px] text-ink placeholder:text-faint outline-none"
+              />
+              <button type="submit" title="Save view" className="grid place-items-center w-6 h-6 rounded-md bg-teal/20 text-teal flex-none">
+                <Check className="h-3 w-3" />
+              </button>
+            </form>
+          )}
+          <div className="flex flex-wrap gap-1 px-1">
+            {views.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => onApplyView(v.id)}
+                className={
+                  'flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-semibold transition-colors border ' +
+                  (activeViewId === v.id
+                    ? 'bg-teal/20 text-teal border-teal/40'
+                    : 'text-faint border-navy-700 hover:text-ink hover:border-navy-600')
+                }
+              >
+                {defaultViewId === v.id && <Star className="h-2.5 w-2.5 fill-current text-amber" />}
+                {v.name}
+              </button>
+            ))}
+          </div>
+          {activeView && (
+            <div className="flex items-center gap-2 mt-1.5 px-1">
+              {onSetDefaultView && (
+                <button
+                  onClick={() => onSetDefaultView(activeView.id)}
+                  className={
+                    'flex items-center gap-1 text-[10.5px] font-semibold transition-colors ' +
+                    (defaultViewId === activeView.id ? 'text-amber' : 'text-faint hover:text-amber')
+                  }
+                >
+                  <Star className={'h-3 w-3' + (defaultViewId === activeView.id ? ' fill-current' : '')} />
+                  {defaultViewId === activeView.id ? 'Opens with this view' : 'Use on open'}
+                </button>
+              )}
+              {!activeView.preset && onDeleteView && (
+                <button onClick={() => onDeleteView(activeView.id)} className="ml-auto flex items-center gap-1 text-[10.5px] text-faint hover:text-alert">
+                  <Trash2 className="h-3 w-3" /> Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* basemap segmented */}
       <div className="grid grid-cols-2 gap-1 p-1 border-b border-navy-800">
         <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
@@ -200,14 +285,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       </div>
 
       {/* 3D buildings + tilt — independent toggle, works on any basemap above */}
-      <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 border-b border-navy-800 hover:bg-navy-900 transition-colors">
-        <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-          <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
-        </span>
-        <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (threeD ? 'bg-teal/40' : 'bg-navy-700')}>
-          <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (threeD ? 'left-[18px]' : 'left-0.5')} />
-        </span>
-      </button>
+      <div className="border-b border-navy-800">
+        <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+          <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+            <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
+          </span>
+          <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (threeD ? 'bg-teal/40' : 'bg-navy-700')}>
+            <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (threeD ? 'left-[18px]' : 'left-0.5')} />
+          </span>
+        </button>
+        {threeD && (
+          <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+            tilt: right-click + drag on PC · two-finger drag on mobile
+          </div>
+        )}
+      </div>
 
       {/* radar toggle */}
       <button onClick={() => onRadar(!radarOn)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
@@ -258,7 +350,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
 
       {/* free national overlays: topo, hillshade, wetlands, streams */}
       {overlays && onOverlay && overlays.map((o) => {
-        const Icon = o.key === 'topo' ? Mountain : o.key === 'hillshade' ? SunDim : o.key === 'wetlands' ? Droplets : Waves
+        const Icon = o.key === 'topo' ? Mountain : o.key === 'wetlands' ? Droplets : Waves
         return (
           <div key={o.key}>
             <button onClick={() => onOverlay(o.key, !o.on)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">

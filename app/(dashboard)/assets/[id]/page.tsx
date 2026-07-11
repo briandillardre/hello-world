@@ -17,6 +17,7 @@ import { getGeofences } from '@/lib/db/geofences'
 import { segmentTrips, type Trip } from '@/lib/trips'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
+import { vehiclePower } from '@/lib/vehicle-power'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -133,6 +134,27 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             <Stat icon={<Zap className="h-4 w-4 text-amber" />} label="Speed" value={loc?.speed != null ? `${loc.speed} mph` : '—'} />
             <Stat icon={<Clock className="h-4 w-4 text-faint" />} label="Last seen" value={loc?.timestamp ? formatRelativeTime(loc.timestamp) : '—'} />
             <Stat icon={<MapPin className="h-4 w-4 text-teal" />} label="Location" value={loc ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : 'Off-grid'} />
+            {(() => {
+              // Engine + 12V health from OBD voltage — the free dead-battery
+              // early warning (docs/TRACKER-DATA.md). Vehicles only.
+              if (asset.type !== 'vehicle') return null
+              const p = vehiclePower(loc?.raw)
+              if (p.volts == null && p.engineOn == null) return null
+              return (
+                <>
+                  <Stat
+                    icon={<Zap className={'h-4 w-4 ' + (p.engineOn ? 'text-[#34d399]' : 'text-faint')} />}
+                    label="Engine"
+                    value={p.engineOn == null ? '—' : p.engineOn ? 'Running' : 'Off'}
+                  />
+                  <Stat
+                    icon={<Battery className={'h-4 w-4 ' + (p.health === 'low' ? 'text-alert' : p.health === 'weak' ? 'text-amber' : 'text-[#34d399]')} />}
+                    label={p.health === 'low' ? '12V battery · charge soon' : p.health === 'weak' ? '12V battery · getting weak' : '12V battery'}
+                    value={p.volts != null ? `${p.volts.toFixed(1)} V` : '—'}
+                  />
+                </>
+              )
+            })()}
           </div>
         </section>
 

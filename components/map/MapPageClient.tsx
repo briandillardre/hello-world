@@ -9,6 +9,7 @@ import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
+import { saveMapViewsAction } from '@/lib/actions/profile'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -40,11 +41,13 @@ interface MapPageClientProps {
   defaultWeatherPlace?: string | null
   defaultWeatherCoords?: { lat: number; lng: number } | null
   canSetWeatherDefault?: boolean
+  /** User's saved map views from their profile (null = none / demo). */
+  savedMapViews?: { views: unknown[]; defaultId: string | null } | null
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
   canViewCosts?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -136,6 +139,8 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         defaultWeatherPlace={defaultWeatherPlace}
         defaultWeatherCoords={defaultWeatherCoords}
         onSaveWeatherDefault={canSetWeatherDefault ? setWeatherDefaultAction : undefined}
+        savedMapViews={savedMapViews as import('@/lib/map-views').MapViewsState | null}
+        onSaveMapViews={isMock ? undefined : saveMapViewsAction}
         canViewCosts={canViewCosts}
       />
       {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}

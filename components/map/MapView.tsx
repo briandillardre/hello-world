@@ -20,6 +20,7 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
+import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -178,9 +179,13 @@ interface MapViewProps {
   onSaveWeatherDefault?: (place: string, lat?: number, lng?: number) => Promise<boolean | void>
   /** False hides every dollar figure (timeline chip, $ chart mode, zone $). */
   canViewCosts?: boolean
+  /** User's saved map views from their profile (DB copy wins over device). */
+  savedMapViews?: MapViewsState | null
+  /** Persist saved views to the user's profile (absent in demo mode). */
+  onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -410,6 +415,68 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [parcelsOn, setParcelsOn] = useState(false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
   const parcelAbort = useRef<AbortController | null>(null)
+
+  // ── Named, saveable map views ─────────────────────────────────────────────
+  // A view = every layer/style toggle in one snapshot. DB copy (profile) wins
+  // over the device-local copy; the default view applies on open.
+  const [mapViews, setMapViews] = useState<MapViewsState>(() => savedMapViews ?? loadLocalViews())
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
+
+  const applyView = useCallback((v: SavedMapView) => {
+    const c = v.cfg
+    setBase(c.base)
+    setThreeD(c.threeD)
+    setRadarOn(c.radar)
+    setPrecipOn(c.precip)
+    if (c.precipPeriod) setPrecipPeriod(c.precipPeriod)
+    setOverlaysOn({ ...c.overlays })
+    setParcelsOn(PARCEL_SERVICE_URL ? c.parcels : false)
+    setTrailMode(c.trailMode)
+    setShowZones(c.zones)
+    setActiveViewId(v.id)
+  }, [])
+
+  // Apply the default view once on open (not in kiosk — the wall display
+  // configures itself).
+  const defaultAppliedRef = useRef(false)
+  useEffect(() => {
+    if (kiosk || defaultAppliedRef.current) return
+    defaultAppliedRef.current = true
+    const def = mapViews.defaultId ? allViews(mapViews).find((v) => v.id === mapViews.defaultId) : null
+    if (def) applyView(def)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const persistViews = useCallback((s: MapViewsState) => {
+    setMapViews(s)
+    saveLocalViews(s)
+    onSaveMapViews?.(s)
+  }, [onSaveMapViews])
+
+  const handleSaveView = useCallback((name: string) => {
+    const v: SavedMapView = {
+      id: `v-${Date.now().toString(36)}`,
+      name: name.trim().slice(0, 40) || 'My view',
+      cfg: {
+        base, threeD, radar: radarOn, precip: precipOn, precipPeriod,
+        overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones,
+      },
+    }
+    persistViews({ views: [v, ...mapViews.views].slice(0, 20), defaultId: mapViews.defaultId })
+    setActiveViewId(v.id)
+  }, [base, threeD, radarOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, mapViews, persistViews])
+
+  const handleDeleteView = useCallback((id: string) => {
+    persistViews({
+      views: mapViews.views.filter((v) => v.id !== id),
+      defaultId: mapViews.defaultId === id ? null : mapViews.defaultId,
+    })
+    setActiveViewId((cur) => (cur === id ? null : cur))
+  }, [mapViews, persistViews])
+
+  const handleDefaultView = useCallback((id: string) => {
+    persistViews({ views: mapViews.views, defaultId: mapViews.defaultId === id ? null : id })
+  }, [mapViews, persistViews])
   const [conditions, setConditions] = useState<Conditions | null>(null)
   const [wxPlace, setWxPlace] = useState('Nashville, TN')
   // Current weather coords [lng, lat] — saved with the default so reopening
@@ -1046,9 +1113,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     set('streets-base', base === 'streets')
     set('sat-base', base === 'satellite' || base === 'hybrid')
-    set('roads-overlay', base === 'hybrid')
-    set('labels-overlay', base === 'hybrid')
-  }, [mapReady, base])
+    // Roads + place labels also ride ABOVE the rain-totals wash — without
+    // them the accumulation layer is a colorful map of nowhere.
+    set('roads-overlay', base === 'hybrid' || precipOn)
+    set('labels-overlay', base === 'hybrid' || precipOn)
+  }, [mapReady, base, precipOn])
 
   // 3D is an independent toggle now — buildings + camera tilt, layerable on any
   // basemap. While following, the follow camera owns the pitch, so don't fight it.
@@ -1246,8 +1315,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const url = iemPrecipUrl(period.layer)
     if (!precipAdded.current) {
       m.addSource('precip', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
-      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.62 } }, beforeId)
+      // Slide UNDER the road/label reference overlays — the MRMS wash is
+      // near-solid where rain fell, and with nothing above it you can't tell
+      // what you're looking at (roads + city names stay readable on top).
+      const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
+        : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.45 } }, beforeId)
       precipAdded.current = true
     } else {
       ;(m.getSource('precip') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
@@ -1449,6 +1522,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
         overlays={MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
+        views={allViews(mapViews)}
+        activeViewId={activeViewId}
+        defaultViewId={mapViews.defaultId}
+        onApplyView={(id) => { const v = allViews(mapViews).find((x) => x.id === id); if (v) applyView(v) }}
+        onSaveView={handleSaveView}
+        onDeleteView={handleDeleteView}
+        onSetDefaultView={handleDefaultView}
         top={kiosk ? 70 : 58}
       />
 
