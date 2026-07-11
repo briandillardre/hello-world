@@ -38,7 +38,7 @@ Every page of the new site maps to a diligence question:
 - **Positioning line (replaces "strives to be a top…"):** *"From raw ground to final striping. Self-performed."* — states the combined sitework+paving scope no local competitor's site owns, and says it with confidence.
 - **Voice:** confident, specific, lightly dry. Real numbers over adjectives ("$55M projects," "nine counties," "4.7★"), and honest-contractor lines ("photos without scope are just pictures of dirt"). No stock-photo corporate-speak.
 - **Palette (locked to the real brand):** DCG brand green `#92FE48` (sampled from the 2024 logo) / asphalt charcoal `#16181A` / white. High-vis green + black reads jobsite-authentic. Darker green `#37800C` handles text-on-light for accessibility.
-- **Logo:** the real 2024 mark (black wordmark + green corner brackets, transparent PNG) is front and center in a white header on every page, and on a white chip in the dark footer. Web-optimized to 28KB (`img/logo.png` + `@2x`) from the 330KB master.
+- **Logo:** the real 2024 mark, front and center on every page. Two web-optimized variants live in `img/`: `logo.png` (black letters, for light grounds) and `logo-white.png` (white letters, generated from the master — used in the dark header and footer). ~30KB each + `@2x` retina versions.
 - **Credential badging system:** Veteran-Owned ★ · Unlimited Group 5 · Licensed/Bonded/Insured · USDOT 4392256 · 4.7★ — repeated in a trust bar and footer on every page.
 - **Photography plan (the single biggest visual upgrade available):** half-day professional shoot — crew group shot with iron, drone footage of an active grading site, paver laying mat, and a HammerTrack map screenshot. Every placeholder block in the site is labeled with exactly which shot goes where.
 

@@ -13,7 +13,7 @@
 <header class="site-header">
   <div class="wrap bar">
     <a class="logo" href="index.html" aria-label="Dillard Construction Group home">
-      <img src="img/logo.png" srcset="img/logo@2x.png 2x" alt="Dillard Construction Group">
+      <img src="img/logo-white.png" srcset="img/logo-white@2x.png 2x" alt="Dillard Construction Group">
     </a>
     <button class="nav-toggle" aria-expanded="false" aria-label="Menu">&#9776;</button>
     <nav class="nav" aria-label="Primary">
@@ -39,71 +39,74 @@
 </div>
 
 <!--
-  TEMPLATE NOTE FOR BRIAN:
-  Each project card below is a fill-in template. For every real project, replace:
-    - [Project name], [City], [Year]
-    - the scope line with real quantities (CY of grading, tons of asphalt, LF of pipe)
-    - the tag with the primary category
-    - the .project-media background with a real photo: style="background-image:url('img/projects/NAME.jpg')"
-  Aim for 6-12 projects. Quantities + client type (named GC/owner if they allow it) are what
-  make this page work for both customers AND an eventual buyer doing diligence.
+  NOTE FOR BRIAN: these six cards are built from your real estimates/records in
+  Google Drive (job numbers in comments). Quantities are from the bid sheets —
+  adjust to as-built numbers where they changed. CONFIRM you're comfortable
+  naming client GCs (Thompson Turner, Saje, Ganaway) before launch — it's
+  standard portfolio practice, but it's your call. No dollar amounts are shown.
+  Each card still needs its photo: replace the .project-media div background
+  with style="background-image:url('img/projects/NAME.jpg');background-size:cover".
 -->
 
 <section>
   <div class="wrap">
     <div class="grid cols-3">
 
+      <!-- 25-034 -->
+      <article class="project reveal">
+        <div class="project-media"><span class="tag">Institutional</span></div>
+        <div class="project-body">
+          <h3>Whitehall Elementary School</h3>
+          <div class="meta">Anderson, SC &middot; 2025 &middot; for Thompson Turner Construction</div>
+          <p class="scope">Campus site improvements: 18,000+ SF of asphalt milling and replacement, walk and curb demolition, erosion control, onsite cut/fill grading, sediment trap, and stormwater modifications on an active school campus.</p>
+        </div>
+      </article>
+
+      <!-- 25-017 -->
+      <article class="project reveal">
+        <div class="project-media"><span class="tag">Full Sitework</span></div>
+        <div class="project-body">
+          <h3>White Horse Road Retail</h3>
+          <div class="meta">Greenville, SC &middot; 2026 &middot; for Saje General Contractors</div>
+          <p class="scope">Full site package for a retail development: demolition, erosion control, grading with 1,000+ CY of import fill, sanitary sewer service, directional-bored water service, curb and gutter backfill, and asphalt paving.</p>
+        </div>
+      </article>
+
+      <!-- Ganaway job 05124 -->
+      <article class="project reveal">
+        <div class="project-media"><span class="tag">Commercial</span></div>
+        <div class="project-body">
+          <h3>Bojangles &mdash; Locust Hill Road</h3>
+          <div class="meta">Taylors, SC &middot; for Ganaway Contracting Co.</div>
+          <p class="scope">Grading scope for a new quick-service restaurant site — pad and parking grades cut to spec under an active GC schedule.</p>
+        </div>
+      </article>
+
       <article class="project reveal">
         <div class="project-media"><span class="tag">Roadway Paving</span></div>
         <div class="project-body">
           <h3>Paris Mountain Paving</h3>
-          <div class="meta">Greenville, SC &middot; [Year]</div>
-          <p class="scope">Roadway resurfacing on mountain grades: [X] tons of binder and surface course, full traffic control on live residential roads. [Add: length paved, duration.]</p>
+          <div class="meta">Greenville, SC</div>
+          <p class="scope">Roadway resurfacing on mountain grades — binder and surface course with full traffic control on live residential roads. [Add: tons placed, length, year.]</p>
         </div>
       </article>
 
+      <!-- 24-037 -->
       <article class="project reveal">
-        <div class="project-media"><span class="tag">Full Sitework</span></div>
+        <div class="project-media"><span class="tag">Roadway Paving</span></div>
         <div class="project-body">
-          <h3>[Commercial Development Name]</h3>
-          <div class="meta">[City], SC &middot; [Year]</div>
-          <p class="scope">Turnkey site package: [X] acres cleared, [X] CY mass grading, [X] LF storm drainage, sewer and water, curb and gutter, [X] tons asphalt. [Duration], delivered on schedule for [GC/owner if permitted].</p>
-        </div>
-      </article>
-
-      <article class="project reveal">
-        <div class="project-media"><span class="tag">Industrial</span></div>
-        <div class="project-body">
-          <h3>[Industrial Expansion Name]</h3>
-          <div class="meta">[City], SC &middot; [Year]</div>
-          <p class="scope">Heavy-duty truck court and yard expansion: [X] SY full-depth pavement section, dock aprons, drainage rework around an operating facility.</p>
-        </div>
-      </article>
-
-      <article class="project reveal">
-        <div class="project-media"><span class="tag">Residential Development</span></div>
-        <div class="project-body">
-          <h3>[Subdivision Name]</h3>
-          <div class="meta">[City], SC &middot; [Year]</div>
-          <p class="scope">Subdivision infrastructure: [X] lots graded, [X] LF of road built and paved, complete storm, sewer, and water systems.</p>
-        </div>
-      </article>
-
-      <article class="project reveal">
-        <div class="project-media"><span class="tag">Stormwater</span></div>
-        <div class="project-body">
-          <h3>[Stormwater Project Name]</h3>
-          <div class="meta">[City], SC &middot; [Year]</div>
-          <p class="scope">Detention pond construction and outfall structure, plus ongoing annual maintenance agreement — [X] years running.</p>
+          <h3>White Horse Road Extension</h3>
+          <div class="meta">Greenville, SC &middot; 2024</div>
+          <p class="scope">Roadway extension paving: 60 tons of new asphalt surface over 4,650 SF, coordinated with adjacent-property construction to share mobilization.</p>
         </div>
       </article>
 
       <article class="project reveal">
         <div class="project-media"><span class="tag">Pavement Maintenance</span></div>
         <div class="project-body">
-          <h3>[Commercial Lot Program Name]</h3>
-          <div class="meta">[City], SC &middot; [Year]</div>
-          <p class="scope">Multi-year pavement management program: crack fill, sealcoat, and restripe across [X] SY of retail parking, phased to keep the business open throughout.</p>
+          <h3>Crackfill &amp; Sealcoat Programs</h3>
+          <div class="meta">Greenville metro &middot; ongoing</div>
+          <p class="scope">Recurring maintenance work across the metro: clean and prep, hot rubberized crack sealing, and polymer-modified sealcoat — the program that doubles a lot's life for a fraction of replacement cost.</p>
         </div>
       </article>
 
@@ -133,7 +136,7 @@
     <div class="top">
       <div>
         <a class="logo" href="index.html" aria-label="Dillard Construction Group home">
-          <img class="logo-chip" src="img/logo.png" alt="Dillard Construction Group">
+          <img class="logo-footer" src="img/logo-white.png" alt="Dillard Construction Group">
         </a>
         <p class="mt-1">Veteran-owned sitework and asphalt paving contractor. SC General Contractor #122431 — Group 5 (unlimited) in building, grading, asphalt paving, water &amp; sewer lines, and highway incidental work.</p>
         <span class="vet-flag"><span class="star">&#9733;</span> Veteran-Owned Business</span>

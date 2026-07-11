@@ -79,14 +79,14 @@ section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; }
 }
 
 /* ---------- Header / nav ---------- */
-/* Light header: the DCG logo is black letters on transparent — it needs
-   a white ground, and it stays front and center. */
+/* Dark header, white-letters logo (generated from the 2024 master) —
+   green brackets + white wordmark on asphalt charcoal. */
 .site-header {
   position: sticky; top: 0; z-index: 50;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(22, 24, 26, 0.97);
   backdrop-filter: blur(8px);
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
+  color: var(--paper);
+  border-bottom: 1px solid var(--ink-3);
 }
 .site-header .bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -94,21 +94,22 @@ section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; }
 }
 .logo { display: flex; align-items: center; text-decoration: none; }
 .logo img { height: 52px; width: auto; display: block; }
-/* Footer logo sits on a white chip so the black letters read on dark */
-.logo-chip { background: #fff; border-radius: var(--radius); padding: 0.5rem 0.8rem; height: 60px; width: auto; }
+.logo-footer { height: 58px; width: auto; }
 
 .nav { display: flex; align-items: center; gap: 1.6rem; }
 .nav a {
   text-decoration: none; font-size: 0.92rem; font-weight: 600;
-  color: #4a5058; padding: 0.3rem 0;
+  color: #d6d3cd; padding: 0.3rem 0;
   border-bottom: 2px solid transparent;
 }
-.nav a:hover { color: var(--ink); }
-.nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+.nav a:hover { color: #fff; }
+.nav a[aria-current="page"] { color: #fff; border-bottom-color: var(--accent); }
 .nav .btn { border-bottom: none; }
+.nav a.btn-accent, .nav a.btn-accent:hover,
+.nav a.btn-accent[aria-current="page"] { color: #101403; border-bottom: none; }
 
 .nav-toggle {
-  display: none; background: none; border: 0; color: var(--ink);
+  display: none; background: none; border: 0; color: var(--paper);
   font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0.4rem;
 }
 @media (max-width: 860px) {
@@ -117,12 +118,11 @@ section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; }
   .nav {
     position: absolute; top: 74px; left: 0; right: 0;
     flex-direction: column; align-items: stretch; gap: 0;
-    background: #fff; border-bottom: 1px solid var(--line);
+    background: var(--ink); border-bottom: 1px solid var(--ink-3);
     display: none; padding: 0.6rem 1.2rem 1.2rem;
-    box-shadow: 0 12px 24px rgba(22,24,26,0.08);
   }
   .nav.open { display: flex; }
-  .nav a { padding: 0.8rem 0.2rem; border-bottom: 1px solid var(--paper-2); }
+  .nav a { padding: 0.8rem 0.2rem; border-bottom: 1px solid var(--ink-2); }
   .nav .btn { margin-top: 0.9rem; text-align: center; }
 }
 
