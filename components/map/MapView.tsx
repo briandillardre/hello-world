@@ -91,7 +91,9 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
   }
 }
 
-function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): GeoJSON.FeatureCollection {
+// selId marks the selected asset's features (sel) and everyone else's (dim)
+// so the paint expressions can spotlight one track without touching layers.
+function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: tracks
@@ -101,24 +103,25 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number):
         // MultiLineString: segments break at data gaps (device asleep) so the
         // trail never draws a straight chord across town.
         geometry: { type: 'MultiLineString' as const, coordinates: trailSegmentsUpTo(tr, t) },
-        properties: { id: tr.assetId, color: tr.color },
+        properties: { id: tr.assetId, color: tr.color, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
       })),
   }
 }
 
-function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): GeoJSON.FeatureCollection {
+function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = []
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
+    const sel = selId === tr.assetId ? 1 : 0
     for (const p of tr.points) {
       if (p.t > t) break
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: {} })
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel } })
     }
   }
   return { type: 'FeatureCollection', features }
 }
 
-function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): GeoJSON.FeatureCollection {
+function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: tracks
@@ -126,7 +129,7 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number): 
       .map((tr) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: positionAt(tr, t) },
-        properties: { id: tr.assetId, name: tr.name, color: tr.color },
+        properties: { id: tr.assetId, name: tr.name, color: tr.color, sel: selId === tr.assetId ? 1 : 0 },
       })),
   }
 }
@@ -195,6 +198,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // MapSheet (bottom sheet on mobile, right panel on desktop). Zone/device used
   // to be tiny anchored map popups; now every tap opens the same surface.
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
+  // Isolate: show ONLY this asset's dot + trails (timeline still drives it).
+  // Cleared when the panel closes or a different asset is selected.
+  const [isolateId, setIsolateId] = useState<string | null>(null)
+  const isolateIdRef = useRef<string | null>(null)
+  isolateIdRef.current = isolateId
+  // Selected asset's id, for spotlighting its trail/heat without isolating.
+  const selectedIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (isolateId && selectedAsset?.id !== isolateId) setIsolateId(null)
+  }, [selectedAsset, isolateId])
   const [selectedZone, setSelectedZone] = useState<Geofence | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<SiteDevice | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
@@ -291,7 +304,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       fetch(`/api/history?from=${new Date(w.from).toISOString()}&to=${new Date(w.to).toISOString()}`, { signal: ctrl.signal })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
-          if (j && Array.isArray(j.rows)) setFetchedRows((prev) => ({ ...prev, [key]: j.rows }))
+          if (!j || !Array.isArray(j.rows)) return
+          let rows = j.rows as typeof historyRows
+          // Capped fetch is newest-biased \u2014 splice the older tail back in
+          // from the evenly-strided shipped snapshot so early days still draw.
+          if (j.truncated && rows && rows.length && historyRows) {
+            const oldestMs = Date.parse(rows[0].timestamp)
+            const older = historyRows.filter((r) => {
+              const ms = Date.parse(r.timestamp)
+              return ms >= w.from && ms < oldestMs
+            })
+            if (older.length) rows = [...older, ...rows]
+          }
+          setFetchedRows((prev) => ({ ...prev, [key]: rows as NonNullable<typeof historyRows> }))
         })
         .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
     }
@@ -518,6 +543,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       center: DEMO_MAP_CENTER,
       zoom: DEMO_MAP_ZOOM,
       attributionControl: false,
+      // Follow mode drags the camera across town — keep far more tiles in
+      // memory than the default so revisited areas render instantly.
+      maxTileCacheSize: 4096,
     })
 
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right')
@@ -626,10 +654,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         id: 'trails-line', type: 'line', source: 'trails',
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
         // Kiosk shows every asset's full history at once — fade the lines so the
-        // wall display reads as ambiance, not spaghetti.
+        // wall display reads as ambiance, not spaghetti. A selected asset's
+        // track brightens + widens; everyone else dims out of the way.
         paint: kiosk
-          ? { 'line-color': ['get', 'color'], 'line-width': 1.6, 'line-opacity': 0.3, 'line-blur': 0.4 }
-          : { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.85, 'line-blur': 0.3 },
+          ? {
+              'line-color': ['get', 'color'],
+              'line-width': ['case', ['==', ['get', 'sel'], 1], 3.5, 1.6],
+              'line-opacity': ['case', ['==', ['get', 'sel'], 1], 0.9, ['==', ['get', 'dim'], 1], 0.15, 0.3],
+              'line-blur': 0.4,
+            }
+          : {
+              'line-color': ['get', 'color'],
+              'line-width': ['case', ['==', ['get', 'sel'], 1], 5.5, ['==', ['get', 'dim'], 1], 2, 3],
+              'line-opacity': ['case', ['==', ['get', 'sel'], 1], 1, ['==', ['get', 'dim'], 1], 0.3, 0.85],
+              'line-blur': 0.3,
+            },
       })
       // Heatmap of movement density (alternative to trails)
       m.addSource('trail-points', { type: 'geojson', data: pointsGeoJSON(tracksRef.current, filterRef.current, 0) })
@@ -637,7 +676,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         id: 'trails-heat', type: 'heatmap', source: 'trail-points',
         layout: { visibility: 'none' },
         paint: {
-          'heatmap-weight': 1,
+          // Selected asset's pings run hotter so its footprint stands out.
+          'heatmap-weight': ['case', ['==', ['get', 'sel'], 1], 1.6, 0.8],
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 1, 16, 3],
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 34],
           'heatmap-opacity': 0.85,
@@ -655,7 +695,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
         layout: { visibility: 'none' },
-        paint: { 'circle-color': ['get', 'color'], 'circle-radius': 7, 'circle-stroke-width': 2, 'circle-stroke-color': '#001523' },
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 10, 7],
+          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#001523'],
+        },
       })
       m.addLayer({
         id: 'trail-head-labels', type: 'symbol', source: 'trail-heads',
@@ -884,12 +929,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [])
 
-  // Update live asset source when assets or filter change
+  // Update live asset source when assets, filter, or isolate change
   useEffect(() => {
     if (!mapReady) return
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
-    source?.setData(buildGeoJSON(assets, filter))
-  }, [mapReady, assets, filter])
+    const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
+    source?.setData(buildGeoJSON(visible, filter))
+  }, [mapReady, assets, filter, isolateId])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {
@@ -924,13 +970,54 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     const mode = trailModeRef.current
     if (mode === 'off' || !m) return
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(tracksRef.current, filterRef.current, t))
+    const iso = isolateIdRef.current
+    const sel = selectedIdRef.current
+    const trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel))
     if (mode === 'trails') {
-      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(tracksRef.current, filterRef.current, t))
+      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel))
     } else {
-      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(tracksRef.current, filterRef.current, t))
+      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel))
     }
   }, [])
+
+  // ── Route-ahead tile warming ──────────────────────────────────────────────
+  // While the camera follows a moving asset, its future path is KNOWN (the
+  // track). Fetch upcoming basemap tiles into the browser HTTP cache before
+  // the camera gets there, so follow mode stops showing blank tiles mid-chase.
+  const warmedTiles = useRef(new Set<string>())
+  useEffect(() => {
+    if (!mapReady || !pbPlaying || !followId) return
+    const id = setInterval(() => {
+      const m = map.current
+      const tr = tracksRef.current.find((x) => x.assetId === followIdRef.current)
+      if (!m || !tr || tr.points.length === 0) return
+      const z = Math.min(18, Math.max(3, Math.floor(m.getZoom())))
+      const base = baseRef.current
+      const tpl = base === 'satellite' || base === 'hybrid' ? SAT_TILES
+        : base === 'streets' ? 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+        : 'https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'
+      let n = 0
+      // Sample the next few playhead positions and warm a 3×3 tile block
+      // around each — bounded so a fast scrub doesn't stampede the CDN.
+      for (let k = 1; k <= 10 && n < 24; k++) {
+        const [lng, lat] = positionAt(tr, Math.min(1, tRef.current + k * 0.004))
+        const tx = Math.floor(((lng + 180) / 360) * 2 ** z)
+        const ty = Math.floor(((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * 2 ** z)
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const url = tpl.replace('{z}', String(z)).replace('{x}', String(tx + dx)).replace('{y}', String(ty + dy))
+            if (warmedTiles.current.has(url)) continue
+            if (warmedTiles.current.size > 4000) warmedTiles.current.clear()
+            warmedTiles.current.add(url)
+            n++
+            fetch(url, { mode: 'no-cors' }).catch(() => { /* warm-up only */ })
+          }
+        }
+      }
+    }, 900)
+    return () => clearInterval(id)
+  }, [mapReady, pbPlaying, followId])
 
   // Drive the follow camera to the asset at scrub position t. Called every frame
   // from the RAF loop and on discrete seeks. The bearing behaviour depends on
@@ -983,11 +1070,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (followIdRef.current) entranceRef.current = 0
   }, [followMode])
 
-  // Push trail/heat/head geometry on discrete changes (seek, filter, mode)
+  // Push trail/heat/head geometry on discrete changes (seek, filter, mode,
+  // isolate, selection spotlight)
+  selectedIdRef.current = selectedAsset?.id ?? null
   useEffect(() => {
     if (!mapReady) return
     updateMovementSources(displayT)
-  }, [mapReady, trailMode, displayT, filter, tracksEff, updateMovementSources])
+  }, [mapReady, trailMode, displayT, filter, tracksEff, isolateId, selectedAsset, updateMovementSources])
 
   // When paused (scrubbing), keep the camera pinned to the followed asset. During
   // playback the RAF loop drives it every frame, so skip to avoid double work.
@@ -1543,11 +1632,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         />
       )}
 
-      {!kiosk && tracksEff.length > 0 && (
+      {tracksEff.length > 0 && (
         <TimelinePlayback
           range={range}
           onRange={handleRange}
           tz={tz}
+          kiosk={kiosk}
           trailMode={trailMode}
           onTrailMode={setTrailMode}
           t={pbT}
@@ -1580,6 +1670,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         <AssetPanel
           asset={selectedAsset}
           gateway={toolGateways?.[selectedAsset.id]}
+          isolated={isolateId === selectedAsset.id}
+          onToggleIsolate={() => setIsolateId((cur) => (cur === selectedAsset.id ? null : selectedAsset.id))}
           onClose={() => setSelectedAsset(null)}
         />
       )}

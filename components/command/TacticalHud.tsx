@@ -44,9 +44,9 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
 }) {
   const clock = useClock()
 
-  const { blips, moving, onSitePct, avgSpeed } = useMemo(() => {
+  const { blips, moving, onSitePct, avgSpeed, topSpeed, topName, lowBatt, newestMs, typeLine } = useMemo(() => {
     const located = assets.filter((a) => a.location)
-    if (located.length === 0) return { blips: [] as Blip[], moving: 0, onSitePct: 0, avgSpeed: 0 }
+    if (located.length === 0) return { blips: [] as Blip[], moving: 0, onSitePct: 0, avgSpeed: 0, topSpeed: 0, topName: '', lowBatt: 0, newestMs: 0, typeLine: '' }
 
     const cx = located.reduce((s, a) => s + a.location!.lng, 0) / located.length
     const cy = located.reduce((s, a) => s + a.location!.lat, 0) / located.length
@@ -78,11 +78,32 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
         big: a.type !== 'tool' && f >= 0,
       }
     })
+    // Extra readouts: fastest asset right now, weak batteries, data
+    // freshness, and the fleet mix — every line is real state.
+    let topSpeed = 0
+    let topName = ''
+    let lowBatt = 0
+    let newestMs = 0
+    const typeCounts: Partial<Record<AssetType, number>> = {}
+    for (const a of located) {
+      const spd = a.location!.speed ?? 0
+      if (spd > topSpeed) { topSpeed = spd; topName = a.name }
+      if (a.location!.battery != null && a.location!.battery < 20) lowBatt++
+      const ms = new Date(a.location!.timestamp).getTime()
+      if (ms > newestMs) newestMs = ms
+      typeCounts[a.type] = (typeCounts[a.type] ?? 0) + 1
+    }
+    const typeLine = (['vehicle', 'equipment', 'personnel', 'tool'] as AssetType[])
+      .filter((t) => typeCounts[t])
+      .map((t) => `${t[0].toUpperCase()}${typeCounts[t]}`)
+      .join(' ')
+
     return {
       blips,
       moving: movingN,
       onSitePct: Math.round((onSite / located.length) * 100),
       avgSpeed: spdN ? spdSum / spdN : 0,
+      topSpeed, topName, lowBatt, newestMs, typeLine,
     }
   }, [assets, geofences])
 
@@ -163,6 +184,22 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
           ON-SITE {onSitePct}% · {avgSpeed.toFixed(0)} MPH
         </span>
       </div>
+      {/* fleet mix · sync age · weak batteries — the wall display's vitals line */}
+      <div className="hidden sm:block absolute inset-x-0 bottom-[9%] text-center leading-none">
+        <span className="text-faint/80 text-[clamp(7px,0.85vw,10px)] tracking-[0.14em] tabular-nums">
+          {typeLine}
+          {newestMs > 0 && ` · SYNC ${Math.max(0, Math.round((Date.now() - newestMs) / 1000))}S`}
+          {lowBatt > 0 && <span className="text-amber"> · ▲ {lowBatt} LOW BATT</span>}
+        </span>
+      </div>
+      {/* fastest mover right now — the eye-catcher stat */}
+      {topSpeed > 2 && (
+        <div className="hidden sm:block absolute inset-x-0 top-[29%] text-center leading-none">
+          <span className="text-amber text-[clamp(8px,1vw,11px)] tracking-[0.16em] tabular-nums">
+            TOP {Math.round(topSpeed)} MPH · {topName.toUpperCase().slice(0, 14)}
+          </span>
+        </div>
+      )}
       {alertCount > 0 && (
         <div className="absolute inset-x-0 top-[22%] text-center leading-none">
           <span className="text-alert text-[clamp(8px,1.1vw,12px)] tracking-[0.2em] animate-blink">▲ {alertCount} ALERT{alertCount === 1 ? '' : 'S'}</span>

@@ -45,6 +45,14 @@ body {
 .kiosk-map .maplibregl-ctrl-top-right {
   margin-top: 60px;
 }
+/* Kiosk: the desktop selection sheet must clear the 56px HUD bar (its close
+   button was buried underneath — "can't get out of the asset popup") and the
+   bottom ticker, and sit above the z-40 tactical instrument. */
+.kiosk-map .map-sheet-desktop {
+  top: 56px;
+  bottom: 36px;
+  z-index: 50;
+}
 
 /* Dark-themed map popovers (override MapLibre's default white) */
 .maplibregl-popup-content {

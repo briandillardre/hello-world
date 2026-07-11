@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -72,16 +72,21 @@ interface TimelinePlaybackProps {
   /** IANA timezone for clock/date labels (kiosk walls + shared replays render
    *  somewhere else — labels must still read in the crew's local time). */
   tz?: string
+  /** Command Center wall display: starts minimized as a pill above the
+   *  ticker; expandable/collapsible so the map stays the star. */
+  kiosk?: boolean
 }
 
 export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
-  followId, onFollow, followMode, onFollowMode, followAssets, tz,
+  followId, onFollow, followMode, onFollowMode, followAssets, tz, kiosk = false,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
+  // Kiosk starts as a pill — the wall display leads with the map.
+  const [minimized, setMinimized] = useState(kiosk)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
   const [showChart, setShowChart] = useState(false)
@@ -157,10 +162,24 @@ export function TimelinePlayback({
   const bucketIdx = Math.min(series.length - 1, Math.max(0, Math.floor(t * series.length)))
   const headY = seriesMax > 0 ? CH - 6 - (Math.min(series[bucketIdx] ?? 0, seriesMax) / seriesMax) * (CH - 12) : CH - 6
 
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors"
+      >
+        <History className="h-3.5 w-3.5" /> TIMELINE
+        {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
+        <ChevronUp className="h-3.5 w-3.5" />
+      </button>
+    )
+  }
+
   return (
     // Hug the bottom edge — the page already pads for the mobile tab bar, so
-    // the old 80px offset left a dead strip of map under the controls.
-    <div ref={rootRef} className="absolute bottom-2 md:bottom-4 left-3 right-3 md:left-4 md:right-4 z-10">
+    // the old 80px offset left a dead strip of map under the controls. Kiosk
+    // rides above the event ticker.
+    <div ref={rootRef} className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
       {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}
@@ -304,8 +323,8 @@ export function TimelinePlayback({
       {/* range pills + movement-display control. On phones the pills get their
           own full-width scrollable row — sharing one row squeezed them into a
           useless 10px sliver next to all the flex-none controls. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pt-2.5 pb-2 border-b border-navy-800">
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0">
+      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pt-2 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0">
           {RANGES.map((r) => (
             <button
               key={r.key}
@@ -321,6 +340,14 @@ export function TimelinePlayback({
               {r.label}
             </button>
           ))}
+          {/* Live status rides the same row — its own row wasted a strip of map */}
+          {live && (
+            <span className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap flex-none pl-2 min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
+              <span className="text-teal">{ago}</span>
+              <span className="text-faint truncate">· {trailMode === 'off' ? 'pick a range to replay, or turn on Trails' : 'showing all of today'}</span>
+            </span>
+          )}
         </div>
         {/* Custom pill — pinned outside the scroll area so its panel isn't clipped */}
         <button
@@ -402,34 +429,44 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
+        {kiosk && (
+          <button
+            onClick={() => setMinimized(true)}
+            title="Minimize timeline"
+            className="flex-none grid place-items-center w-7 h-7 rounded-lg border bg-navy-900 text-faint border-navy-800 hover:text-ink transition-colors"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {live ? (
-        <div className="flex items-center gap-2 px-4 py-3 min-w-0 flex-nowrap overflow-hidden">
+        /* phones only — desktop shows the status inline in the pill row */
+        <div className="sm:hidden flex items-center gap-2 px-4 pb-2 min-w-0 flex-nowrap overflow-hidden">
           <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
           <span className="font-mono text-[12px] text-teal whitespace-nowrap flex-none">Live · {ago}</span>
           <span className="font-mono text-[12px] text-faint truncate whitespace-nowrap min-w-0">
-            · {trailMode === 'off' ? 'pick a range to replay, or turn on Trails / Heatmap' : 'showing all of today'}
+            · {trailMode === 'off' ? 'replay or turn on Trails' : 'showing all of today'}
           </span>
         </div>
       ) : (
         <>
-        {/* prominent date/time readout (visible on mobile too) */}
-        <div className="px-4 pt-2.5 flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-amber flex-none" />
-          <span className="font-display font-bold text-amber text-[15px] tabular-nums">
+        {/* date/time readout — tight against the slider row */}
+        <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-1.5">
+          <CalendarClock className="h-3.5 w-3.5 text-amber flex-none" />
+          <span className="font-display font-bold text-amber text-[13px] tabular-nums">
             {custom ? customScrubLabel(customFrom, customTo, t, tz)
               : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t, tz)
               : scrubLabel(range, t)}
           </span>
         </div>
-        <div className="flex items-center gap-3 px-4 pt-2 pb-3">
+        <div className="flex items-center gap-3 px-4 pt-1 pb-2">
           <button
             onClick={onPlayPause}
-            className="flex-none grid place-items-center w-10 h-10 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
+            className="flex-none grid place-items-center w-9 h-9 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
             aria-label={playing ? 'Pause' : 'Play'}
           >
-            {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </button>
 
           <div className="flex-1 min-w-0">

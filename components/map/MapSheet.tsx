@@ -57,8 +57,8 @@ export function MapSheet({
         </div>
       </div>
 
-      {/* Desktop: right sidebar panel */}
-      <div className="absolute top-0 right-0 bottom-0 z-20 hidden md:block w-72">
+      {/* Desktop: right sidebar panel (kiosk offsets via .map-sheet-desktop) */}
+      <div className="map-sheet-desktop absolute top-0 right-0 bottom-0 z-20 hidden md:block w-72">
         <div className="bg-navy-900 h-full shadow-2xl border-l border-navy-800 flex flex-col">
           <div className="p-5 border-b border-navy-800">{header}</div>
           <div className="p-5 flex-1 overflow-y-auto">{children}</div>

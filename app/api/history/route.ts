@@ -34,16 +34,21 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
+  // Fetch NEWEST-first: when a window holds more than the cap, losing the
+  // oldest hours beats silently dropping the newest tracker's whole history
+  // (a freshly installed unit's data is always at the recent end — "7 days
+  // not showing the Atlas at all"). The client backfills the older tail from
+  // its evenly-strided snapshot when `truncated` is set.
   const { data, error } = await supabase
     .from('asset_locations')
     .select('asset_id, lat, lng, speed, timestamp')
     .gte('timestamp', new Date(fromMs).toISOString())
     .lt('timestamp', new Date(toMs).toISOString())
-    .order('timestamp', { ascending: true })
+    .order('timestamp', { ascending: false })
     .limit(FETCH_CAP)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const rows = data ?? []
+  const rows = (data ?? []).reverse()
   // Even stride ACROSS the window (not newest-biased) keeps every hour of the
   // day equally represented when we're over the ship cap.
   const stride = Math.max(1, Math.ceil(rows.length / SHIP_CAP))
