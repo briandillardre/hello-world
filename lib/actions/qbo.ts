@@ -112,6 +112,7 @@ export async function pushZoneInvoiceAction(
       customerName: draft.zone,
       memo: `HammerTrack tracked usage · ${draft.zone} · ${period}`,
       lines: draft.lines,
+      serviceDateIso: draft.toIso,
     })
     return { ok: true, docNumber: inv.docNumber, total: inv.total, url: qboTxnUrl('invoice', inv.id) }
   } catch (e) {

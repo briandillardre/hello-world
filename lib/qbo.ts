@@ -235,26 +235,43 @@ export async function findOrCreateServiceItem(conn: LiveConnection, name = 'Hamm
 export interface UsageLine {
   description: string
   amount: number
+  /** Hours (Qty) and $/hr (UnitPrice) — posted when Qty × Rate matches the
+   *  amount to the cent, so the books show the real math, not a lump sum. */
+  quantity?: number
+  rate?: number
 }
 
 /** Create a draft invoice: customer = job/zone name, one line per asset.
- *  Lines carry Qty 1 × Amount (usage often mixes hourly + mileage + ownership,
- *  so the description holds the math and the amount stays honest). */
+ *  Pure hourly lines post as Qty (hours) × UnitPrice (rate) for a clean audit
+ *  trail; blended lines (hourly + mileage + ownership) fall back to Qty 1 with
+ *  the math spelled out in the description. */
 export async function createUsageInvoice(
   conn: LiveConnection,
-  args: { customerName: string; memo: string; lines: UsageLine[] }
+  args: { customerName: string; memo: string; lines: UsageLine[]; serviceDateIso?: string }
 ): Promise<{ id: string; docNumber: string; total: number }> {
   const customerId = await findOrCreateCustomer(conn, args.customerName)
   const itemId = await findOrCreateServiceItem(conn)
+  const serviceDate = args.serviceDateIso?.slice(0, 10)
   const body = {
     CustomerRef: { value: customerId },
     PrivateNote: args.memo.slice(0, 4000),
-    Line: args.lines.map((l) => ({
-      Amount: Math.round(l.amount * 100) / 100,
-      Description: l.description.slice(0, 4000),
-      DetailType: 'SalesItemLineDetail',
-      SalesItemLineDetail: { ItemRef: { value: itemId }, Qty: 1, UnitPrice: Math.round(l.amount * 100) / 100 },
-    })),
+    Line: args.lines.map((l) => {
+      const amount = Math.round(l.amount * 100) / 100
+      // QBO validates Amount === Qty × UnitPrice; only split when it's exact.
+      const exact = l.quantity != null && l.rate != null &&
+        Math.abs(l.quantity * l.rate - amount) < 0.005
+      return {
+        Amount: amount,
+        Description: l.description.slice(0, 4000),
+        DetailType: 'SalesItemLineDetail',
+        SalesItemLineDetail: {
+          ItemRef: { value: itemId },
+          Qty: exact ? l.quantity : 1,
+          UnitPrice: exact ? l.rate : amount,
+          ...(serviceDate ? { ServiceDate: serviceDate } : {}),
+        },
+      }
+    }),
   }
   const created = await qboFetch(conn, '/invoice', { method: 'POST', body: JSON.stringify(body) })
   const inv = created.Invoice as { Id: string; DocNumber?: string; TotalAmt?: number }
