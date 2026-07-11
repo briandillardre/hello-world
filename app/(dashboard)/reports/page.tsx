@@ -39,7 +39,7 @@ export default async function ReportsPage() {
   const empty = real !== null && util.length === 0
 
   return (
-    <div className="h-full overflow-auto pb-[70px] md:pb-0">
+    <div className="h-full overflow-auto pb-[70px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">Utilization Reports</h1>

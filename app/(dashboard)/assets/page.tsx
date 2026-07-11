@@ -12,7 +12,7 @@ export default async function AssetsPage() {
   const assets = resolveToolLocations(rawAssets, toolAssociations)
 
   return (
-    <div className="h-full overflow-hidden flex flex-col pb-[70px] md:pb-0">
+    <div className="h-full overflow-hidden flex flex-col pb-[70px] md:pb-20">
       <AssetList assets={assets} />
     </div>
   )
