@@ -22,6 +22,10 @@ device #11).
 
 ---
 
+> **Scope note:** this doc is per-device infrastructure COGS only. Email,
+> insurance, CPA, marketing, and employees — the full P&L with hire triggers
+> and the growth chart — live in **docs/OPERATING-MODEL.md**.
+
 ## 1 · Where every dollar goes (the full cost stack)
 
 | Layer | Vendor | What we pay for | Scales with |
