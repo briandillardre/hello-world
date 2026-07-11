@@ -247,6 +247,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const bearingRef = useRef(0)   // smoothed camera bearing
   const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
   const entranceRef = useRef(1)  // 0→1 "pan up + zoom in" reveal progress
+  // True while the USER's fingers own the camera (pinch/scroll/drag) — the
+  // follow loop yields instead of stomping the gesture every frame, so you
+  // can zoom in/out mid-chase. Tracking resumes the moment fingers lift.
+  const userGestureRef = useRef(false)
   followIdRef.current = followId
   followModeRef.current = followMode
 
@@ -706,6 +710,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
 
+      // Fat-finger fallback: layer click handlers need the tap to land ON the
+      // feature — a thumb on a phone often misses by a few px and hit nothing.
+      // This map-level handler runs AFTER the layer handlers (registration
+      // order); if none of them consumed the tap, search a padded box around
+      // the finger and select the nearest pin (live or replay head).
+      m.on('click', (e) => {
+        const pad = 24
+        const box: [maplibregl.PointLike, maplibregl.PointLike] = [
+          [e.point.x - pad, e.point.y - pad],
+          [e.point.x + pad, e.point.y + pad],
+        ]
+        const layers = ['unclustered-circle', 'asset-glow', 'trail-heads'].filter((l) => m.getLayer(l))
+        const hits = m.queryRenderedFeatures(box, { layers })
+        // Direct hits already handled by the layer handlers — this only fires
+        // usefully when the tap landed NEAR a pin but on none. A direct hit in
+        // the box means selectAsset already ran with the same asset; setting
+        // state again with the same object is a harmless no-op.
+        const id = hits[0]?.properties?.id
+        if (!id) return
+        const asset = assetsRef.current.find((a) => a.id === id)
+        if (asset) {
+          setSelectedZone(null)
+          setSelectedDevice(null)
+          setSelectedAsset(asset)
+        }
+      })
+
       // Opening view — user-selectable in the map layers menu:
       //   fit  (default) — frame everything: assets, zones, devices
       //   last           — restore exactly where you left the camera
@@ -733,6 +764,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
         }
       }
+
+      // Gesture ownership for camera-follow: while fingers/wheel are active the
+      // follow loop yields (see focusFollow), so pinch-zoom works mid-chase.
+      let wheelTimer: ReturnType<typeof setTimeout> | null = null
+      const canvas = m.getCanvas()
+      const gestureOn = () => { userGestureRef.current = true }
+      const gestureOff = () => { userGestureRef.current = false }
+      canvas.addEventListener('touchstart', gestureOn, { passive: true })
+      canvas.addEventListener('touchend', gestureOff, { passive: true })
+      canvas.addEventListener('touchcancel', gestureOff, { passive: true })
+      canvas.addEventListener('wheel', () => {
+        userGestureRef.current = true
+        if (wheelTimer) clearTimeout(wheelTimer)
+        wheelTimer = setTimeout(gestureOff, 250)
+      }, { passive: true })
+      m.on('dragstart', gestureOn)
+      m.on('dragend', gestureOff)
 
       // Remember the camera (throttled via moveend) for the "last view" option.
       m.on('moveend', () => {
@@ -809,6 +857,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     const id = followIdRef.current
     if (!m || !id) return
+    // The user's fingers own the camera right now (pinch/scroll/drag) —
+    // yield this frame instead of stomping the gesture. Resumes on release.
+    if (userGestureRef.current) return
     const tr = tracksRef.current.find((x) => x.assetId === id)
     if (!tr || tr.points.length === 0) return
     const mode = followModeRef.current

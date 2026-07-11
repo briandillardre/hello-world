@@ -90,7 +90,10 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
     tracker_id,
     lat,
     lng,
-    speed: typeof msg['position.speed'] === 'number' ? msg['position.speed'] : null,
+    // flespi/Teltonika report position.speed in KM/H; the app standard is MPH
+    // (phone tracking already converts). 97 km/h displayed as "97 mph" made a
+    // VW Atlas look like a felony — convert at the door.
+    speed: typeof msg['position.speed'] === 'number' ? Math.round(msg['position.speed'] * 0.621371) : null,
     heading: typeof msg['position.direction'] === 'number' ? msg['position.direction'] : null,
     battery,
     timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString(),
