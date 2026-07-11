@@ -15,6 +15,7 @@ import {
   fetchConditions, buildRadarFrames, iemRadarUrl, iemTsForMs,
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
+import { fetchPws, type PwsConditions } from '@/lib/pws'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
@@ -524,6 +525,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     persistViews({ views: mapViews.views, defaultId: mapViews.defaultId === id ? null : id })
   }, [mapViews, persistViews])
   const [conditions, setConditions] = useState<Conditions | null>(null)
+  // Home weather station (owner's PWS) — polled every 5 min; null when not set up.
+  const [pws, setPws] = useState<PwsConditions | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const load = () => fetchPws().then((p) => { if (!cancelled) setPws(p) })
+    load()
+    const id = setInterval(load, 5 * 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
   const [wxPlace, setWxPlace] = useState('Nashville, TN')
   // Current weather coords [lng, lat] — saved with the default so reopening
   // uses the exact point, not a name re-geocode (which picked the wrong
@@ -1757,6 +1767,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         openView={openView}
         onOpenView={handleOpenView}
         conditions={conditions}
+        pws={pws}
         frameTime={radarLabel}
         place={wxPlace}
         onPlaceChange={handlePlaceChange}

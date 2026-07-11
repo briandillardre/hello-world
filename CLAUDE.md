@@ -114,6 +114,13 @@ TWILIO_AUTH_TOKEN=
 TWILIO_FROM=                   # your Twilio number, E.164
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
+# ── Home weather station (optional; unset = hidden) ──
+PWS_PROVIDER=                  # ambient | tempest | wunderground (inferred from keys if unset)
+PWS_API_KEY=                   # ambient + wunderground
+PWS_APP_KEY=                   # ambient only (application key)
+PWS_TOKEN=                     # tempest only
+PWS_STATION_ID=                # tempest + wunderground
+PWS_MAC=                       # ambient only, optional: pick one of several stations
 ANTHROPIC_API_KEY=            # optional: natural-language AI dispatcher (Haiku)
 ```
 

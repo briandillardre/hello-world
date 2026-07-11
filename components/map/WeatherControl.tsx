@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2 } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2, Home } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
+import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
 
 export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid'
@@ -27,6 +28,8 @@ interface WeatherControlProps {
   openView?: 'fit' | 'last'
   onOpenView?: (v: 'fit' | 'last') => void
   conditions: Conditions | null
+  /** Live reading from the owner's home weather station (null = not set up). */
+  pws?: PwsConditions | null
   frameTime: string | null
   place?: string
   onPlaceChange?: (name: string, lat?: number, lng?: number) => void
@@ -52,6 +55,14 @@ interface WeatherControlProps {
   z?: number
 }
 
+/** "2m ago" style age for the station reading — stations report every 16s–5min. */
+function pwsAge(iso: string): string {
+  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000))
+  if (mins < 1) return 'live'
+  if (mins < 60) return `${mins}m ago`
+  return `${Math.round(mins / 60)}h ago`
+}
+
 function Seg({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
@@ -66,7 +77,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, cloudsOn = false, onClouds, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, cloudsOn = false, onClouds, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // "Save current as…" inline name input for map views.
   const [savingView, setSavingView] = useState(false)
@@ -134,6 +145,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         className="absolute left-3 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
         {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
+        {pws && (
+          <span className="flex items-center gap-1 font-mono text-[11px] text-amber" title={`${pws.station} — home station`}>
+            <Home className="h-3 w-3" />{pws.tempF}°
+          </span>
+        )}
         {(radarOn || base === 'satellite' || base === 'hybrid') && (
           <span className="flex items-center gap-1">
             {radarOn && <CloudRain className="h-3.5 w-3.5 text-teal" />}
@@ -214,6 +230,36 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <ChevronUp className="h-3.5 w-3.5" />
         </span>
       </button>
+
+      {/* home weather station — live hyper-local reading from the owner's PWS */}
+      {pws && (
+        <div className="px-3 py-2 border-b border-navy-800 bg-amber/[0.04]">
+          <div className="flex items-center justify-between mb-1">
+            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-amber">
+              <Home className="h-3 w-3" /> Home station
+            </span>
+            <span className="font-mono text-[9.5px] text-faint">{pwsAge(pws.at)}</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="font-display font-bold text-[18px] text-ink">{pws.tempF}°</span>
+            {pws.feelsF != null && Math.abs(pws.feelsF - pws.tempF) >= 2 && (
+              <span className="font-mono text-[10px] text-muted">feels {Math.round(pws.feelsF)}°</span>
+            )}
+            <span className="ml-auto font-mono text-[10.5px] text-muted flex items-center gap-1">
+              <Wind className="h-3 w-3" />
+              {pws.windDir ? `${pws.windDir} ` : ''}{pws.windMph}
+              {pws.gustMph != null && pws.gustMph > pws.windMph + 2 ? ` g${Math.round(pws.gustMph)}` : ''}
+            </span>
+          </div>
+          <div className="mt-1 font-mono text-[10px] text-faint flex items-center gap-3">
+            {pws.humidity != null && <span>{Math.round(pws.humidity)}% rh</span>}
+            {pws.rainTodayIn != null && (
+              <span className={pws.rainTodayIn > 0 ? 'text-teal' : ''}>{pws.rainTodayIn}&quot; today</span>
+            )}
+            {pws.pressureInHg != null && <span>{pws.pressureInHg} inHg</span>}
+          </div>
+        </div>
+      )}
 
       {/* named saveable views — one tap to a whole look; star = opens with it */}
       {views && onApplyView && (
