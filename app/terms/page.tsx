@@ -91,8 +91,8 @@ export default function TermsPage() {
             <h2>Governing law &amp; contact</h2>
             <p className="mt-2">
               These terms are governed by the laws of the State of South Carolina. Questions:{' '}
-              <a href="mailto:hello@hammertrackai.com" className="text-amber hover:underline">
-                hello@hammertrackai.com
+              <a href="mailto:hello@hammertrack.ai" className="text-amber hover:underline">
+                hello@hammertrack.ai
               </a>
               .
             </p>

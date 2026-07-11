@@ -1,8 +1,11 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { Check } from 'lucide-react'
+import { Check, Phone } from 'lucide-react'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
+
+const SALES_PHONE = '864-915-2351'
+const SALES_TEL = 'tel:+18649152351'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
@@ -151,9 +154,14 @@ export default function PricingPage() {
               Yours to keep. Free pilots ship with loaner trackers.
             </p>
           </div>
-          <Link href="/register" className="flex-none font-display font-bold text-sm rounded-xl px-4 py-2.5 bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07] transition-colors">
-            Start free pilot
-          </Link>
+          <div className="flex-none flex flex-col items-start sm:items-end gap-2">
+            <Link href="/register" className="font-display font-bold text-sm rounded-xl px-4 py-2.5 bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07] transition-colors">
+              Start free pilot
+            </Link>
+            <a href={SALES_TEL} className="inline-flex items-center gap-1.5 text-xs text-faint hover:text-teal transition-colors">
+              <Phone className="h-3 w-3" /> or call {SALES_PHONE}
+            </a>
+          </div>
         </section>
 
         <section className="mt-12 bg-navy-900 border border-navy-800 rounded-2xl p-7">

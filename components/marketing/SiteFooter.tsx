@@ -26,7 +26,7 @@ export function SiteFooter() {
             </div>
             <div className="flex flex-col gap-2">
               <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1">Company</span>
-              <a href="mailto:hello@hammertrackai.com" className="text-muted hover:text-ink transition-colors">hello@hammertrackai.com</a>
+              <a href="mailto:hello@hammertrack.ai" className="text-muted hover:text-ink transition-colors">hello@hammertrack.ai</a>
               <Link href="/privacy" className="text-muted hover:text-ink transition-colors">Privacy policy</Link>
               <Link href="/terms" className="text-muted hover:text-ink transition-colors">Terms of service</Link>
             </div>

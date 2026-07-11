@@ -27,6 +27,9 @@ const VS_TENNA = [
   ['~$3–8 / asset / mo', 'Tenna: $15–25 / asset / mo'],
 ]
 
+const SALES_PHONE = '864-915-2351'
+const SALES_TEL = 'tel:+18649152351'
+
 export default function DemoLandingPage() {
   return (
     <div className="relative min-h-screen bg-navy-950 text-ink font-sans">
@@ -64,6 +67,9 @@ export default function DemoLandingPage() {
               </Link>
             </div>
             <p className="font-mono text-xs text-faint mt-3">No credit card. We ship the trackers. Cancel anytime.</p>
+            <p className="text-sm text-muted mt-3">
+              Rather talk it through? Call/text <a href={SALES_TEL} className="text-amber font-semibold hover:underline">{SALES_PHONE}</a>.
+            </p>
           </div>
 
           {/* Cinematic theater: satellite fly-around + the 2:14 AM story, on loop */}
@@ -167,6 +173,9 @@ export default function DemoLandingPage() {
               >
                 Start free pilot <ArrowRight className="h-4 w-4" />
               </Link>
+              <p className="text-sm mt-4 opacity-80">
+                Or call/text <a href={SALES_TEL} className="font-semibold underline">{SALES_PHONE}</a> — real person, no call center.
+              </p>
             </div>
           </Reveal>
         </section>

@@ -93,8 +93,8 @@ export default function PrivacyPage() {
             <h2>Contact</h2>
             <p className="mt-2">
               Questions or data requests:{' '}
-              <a href="mailto:hello@hammertrackai.com" className="text-amber hover:underline">
-                hello@hammertrackai.com
+              <a href="mailto:hello@hammertrack.ai" className="text-amber hover:underline">
+                hello@hammertrack.ai
               </a>
               .
             </p>
