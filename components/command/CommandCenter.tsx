@@ -104,7 +104,7 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
       <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
       {/* left instrument rail — the mission-control frame (wide screens) */}
-      <div className="absolute left-4 top-[68px] bottom-14 z-40 hidden xl:flex items-start">
+      <div className="absolute left-4 top-[118px] bottom-14 z-40 hidden xl:flex items-start">
         <CommandRail assets={assets} geofences={geofences} tracks={tracks} />
       </div>
 

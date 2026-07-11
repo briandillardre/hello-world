@@ -423,11 +423,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [])
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
-  // Default to satellite — real aerial imagery reads as "the actual jobsite"
-  const [base, setBase] = useState<BaseStyle>('satellite')
+  // Default to satellite — real aerial imagery reads as "the actual jobsite".
+  // Kiosk wall opens on Dark with the radar sweep — the mission-control look.
+  const [base, setBase] = useState<BaseStyle>(kiosk ? 'dark' : 'satellite')
   const baseRef = useRef(base)
   baseRef.current = base
-  const [radarOn, setRadarOn] = useState(false)
+  const [radarOn, setRadarOn] = useState(kiosk)
   // Rain totals (MRMS accumulation) — separate from the radar loop.
   const [precipOn, setPrecipOn] = useState(false)
   const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
@@ -1234,11 +1235,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     set('streets-base', base === 'streets')
     set('sat-base', base === 'satellite' || base === 'hybrid')
-    // Roads + place labels also ride ABOVE the rain-totals wash — without
-    // them the accumulation layer is a colorful map of nowhere.
-    set('roads-overlay', base === 'hybrid' || precipOn)
-    set('labels-overlay', base === 'hybrid' || precipOn)
-  }, [mapReady, base, precipOn])
+    set('roads-overlay', base === 'hybrid')
+    set('labels-overlay', base === 'hybrid')
+  }, [mapReady, base])
 
   // 3D is an independent toggle now — buildings + camera tilt, layerable on any
   // basemap. While following, the follow camera owns the pitch, so don't fight it.
@@ -1688,6 +1687,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
         top={kiosk ? 70 : 102}
+        z={kiosk ? 45 : 10}
       />
 
 

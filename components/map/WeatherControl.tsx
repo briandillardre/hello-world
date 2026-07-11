@@ -45,6 +45,8 @@ interface WeatherControlProps {
   onDeleteView?: (id: string) => void
   onSetDefaultView?: (id: string) => void
   top?: number
+  /** Stack order — kiosk raises the panel above the instrument rails. */
+  z?: number
 }
 
 function Seg({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
@@ -61,7 +63,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // "Save current as…" inline name input for map views.
   const [savingView, setSavingView] = useState(false)
@@ -123,10 +125,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   if (!open) {
     return (
       <button
-        style={{ top }}
+        style={{ top, zIndex: z }}
         onClick={() => setOpen(true)}
         aria-label="Map layers and weather"
-        className="absolute left-3 z-10 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
+        className="absolute left-3 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
         {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
         {(radarOn || base === 'satellite' || base === 'hybrid') && (
@@ -145,7 +147,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   }
 
   return (
-    <div style={{ top }} className="absolute left-3 z-10 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
+    <div style={{ top, zIndex: z }} className="absolute left-3 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
         <div className="relative">
