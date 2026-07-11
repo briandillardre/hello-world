@@ -98,3 +98,38 @@ export async function clearWeatherDefaultAction() {
   await service.from('companies').update({ weather_place: null }).eq('id', companyId)
   revalidatePath('/map')
 }
+
+/**
+ * Fire a TEST theft alert through the REAL delivery pipeline (Twilio SMS +
+ * webhook) so the wiring can be proven any time — not at 2 AM when a truck
+ * actually moves. Returns an honest report of what was and wasn't configured.
+ */
+export async function sendTestAlertAction(): Promise<{
+  ok: boolean
+  smsAttempted: boolean
+  smsTo: string | null
+  twilioConfigured: boolean
+  webhookConfigured: boolean
+  error?: string
+}> {
+  const twilioConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM)
+  const webhookConfigured = !!process.env.NOTIFY_WEBHOOK_URL
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, smsAttempted: false, smsTo: null, twilioConfigured, webhookConfigured, error: 'Admins only.' }
+
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data: co } = await createClient()
+      .from('companies').select('name, alert_phone').eq('id', companyId).maybeSingle()
+
+    const { dispatchAlerts } = await import('@/lib/notify')
+    const smsTo = co?.alert_phone || process.env.ALERT_SMS_TO || null
+    const sent = await dispatchAlerts(co?.name ?? 'HammerTrack', { phone: co?.alert_phone }, [{
+      severity: 'critical',
+      reason: `TEST ALERT — this is what an after-hours theft alert looks like. Reply STOP never; reply nothing; it's just ${co?.name ?? 'your'} HammerTrack test. ✅`,
+    }])
+    return { ok: true, smsAttempted: sent > 0, smsTo, twilioConfigured, webhookConfigured }
+  } catch (e) {
+    return { ok: false, smsAttempted: false, smsTo: null, twilioConfigured, webhookConfigured, error: e instanceof Error ? e.message : 'Failed.' }
+  }
+}

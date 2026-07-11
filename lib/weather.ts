@@ -81,6 +81,14 @@ export function iemRadarUrl(ts?: string): string {
   return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layer}/{z}/{x}/{y}.png`
 }
 
+/** IEM archive timestamp (UTC, floored to the 5-min radar cadence) for any
+ *  epoch ms — lets the radar layer time-travel with the playback scrubber. */
+export function iemTsForMs(ms: number): string {
+  const step = 5 * 60_000
+  const d = new Date(Math.floor(ms / step) * step)
+  return `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
+}
+
 // ── Rain totals (IEM MRMS precipitation accumulation) ────────────────────────
 // Free + keyless national rain-accumulation rasters from the same IEM tile
 // service as the radar loop. Each layer is the CURRENT running total for its

@@ -221,7 +221,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       {radarOn && (
         <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
-          radar loop{frameTime ? ` · ${frameTime}` : ''}
+          radar{frameTime ? ` · ${frameTime}` : ' loop'}
         </div>
       )}
 

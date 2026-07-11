@@ -12,7 +12,7 @@ import {
 import { rangeWindow } from '@/lib/dates'
 import {
   type Conditions, type IemFrame,
-  fetchConditions, buildRadarFrames, iemRadarUrl,
+  fetchConditions, buildRadarFrames, iemRadarUrl, iemTsForMs,
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
@@ -1099,21 +1099,36 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [radarOn])
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
-  // beat longer so the loop "lands" on now.
+  // beat longer so the loop "lands" on now. Paused during replay: there the
+  // radar time-travels with the scrubber instead (see below).
   useEffect(() => {
-    if (!radarOn || radarFrames.length === 0) return
+    if (!radarOn || radarFrames.length === 0 || (pbActive && realWindowEff)) return
     const id = setInterval(() => {
       setRadarIdx((i) => (i + 1) % (radarFrames.length + 2)) // +2 = pause on last
     }, 700)
     return () => clearInterval(id)
-  }, [radarOn, radarFrames])
+  }, [radarOn, radarFrames, pbActive, realWindowEff])
 
-  // Add / update / toggle the animated radar raster layer (IEM NEXRAD composite).
+  // Replay mode: the radar frame FOLLOWS THE SCRUBBER — IEM's archive serves
+  // any past 5-min composite, so "it rained on the site at 2 PM Tuesday" is
+  // visible in the same replay as the trucks. Floored to the 5-min cadence so
+  // scrubbing doesn't spam tile requests.
+  const scrubRadarTs = radarOn && pbActive && realWindowEff
+    ? iemTsForMs(realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from))
+    : null
+  const radarLabel = scrubRadarTs && realWindowEff
+    ? new Date(realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from))
+        .toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : currentFrame?.label ?? null
+
+  // Add / update / toggle the radar raster layer (IEM NEXRAD composite):
+  // live loop frames normally, archive frame at the scrub position in replay.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
 
-    if (!radarOn || !currentFrame) {
+    const ts = scrubRadarTs ?? currentFrame?.ts
+    if (!radarOn || !ts) {
       if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
       return
     }
@@ -1121,7 +1136,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // maxzoom 10: NEXRAD composite is ~1km resolution, so let MapLibre over-scale
     // beyond z10 rather than request tiles that don't add detail. Zooms far past
     // the old RainViewer z8 cap without the "Zoom Level Not Supported" tiles.
-    const url = iemRadarUrl(currentFrame.ts)
+    const url = iemRadarUrl(ts)
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
@@ -1131,7 +1146,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
       m.setLayoutProperty('wx-layer', 'visibility', 'visible')
     }
-  }, [mapReady, radarOn, currentFrame])
+  }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
   // Same free tile service as the radar loop; maxzoom 10 (~1 km data).
@@ -1307,7 +1322,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         openView={openView}
         onOpenView={handleOpenView}
         conditions={conditions}
-        frameTime={currentFrame ? currentFrame.label : null}
+        frameTime={radarLabel}
         place={wxPlace}
         onPlaceChange={handlePlaceChange}
         onSaveDefault={handleSaveWeatherDefault}

@@ -4,18 +4,27 @@ import { ArrowLeft, Hexagon, MapPin, CornerDownRight } from 'lucide-react'
 import { getGeofence, getGeofences } from '@/lib/db/geofences'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
+import { zoneAssetUsage, type ZoneAssetUsage } from '@/lib/costs'
 import type { AssetType } from '@/lib/types'
 import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
+import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
+const USAGE_DAYS = 30
+
 export default async function GeofenceDetailPage({ params }: { params: { id: string } }) {
   const companyId = await getCurrentCompanyId()
-  const [fence, allFences, assets] = await Promise.all([
+  const [fence, allFences, assets, perms] = await Promise.all([
     getGeofence(params.id),
     getGeofences(companyId),
     getAssetsWithLocations(companyId),
+    getMyPermissions(),
   ])
   if (!fence) notFound()
 
@@ -23,6 +32,23 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   const inside = !ring ? [] : assets.filter((a) => a.location && pointInPolygon([a.location.lng, a.location.lat], ring))
   const parent = fence.parent_id ? allFences.find((g) => g.id === fence.parent_id) : null
   const subZones = allFences.filter((g) => g.parent_id === fence.id)
+
+  // Job cockpit: what happened inside this zone over the window — same accrual
+  // engine that prices QBO invoices, so the table IS the invoice preview.
+  let usage: ZoneAssetUsage[] | null = null
+  if (!isMock && ring && ring.length >= 3) {
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const from = Date.now() - USAGE_DAYS * 86_400_000
+    const { data: rows } = await supabase
+      .from('asset_locations')
+      .select('asset_id, lat, lng, speed, timestamp')
+      .eq('company_id', companyId)
+      .gte('timestamp', new Date(from).toISOString())
+      .order('timestamp', { ascending: true })
+      .limit(40_000)
+    usage = zoneAssetUsage(ring, assets, rows ?? [], from, Date.now())
+  }
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
@@ -51,6 +77,15 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       <div className="p-4 max-w-3xl space-y-6">
         {ring && ring.length >= 3 && (
           <GeofenceEditor id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null} ring={ring} />
+        )}
+
+        {usage !== null && (
+          <ZoneUsage
+            usage={usage}
+            days={USAGE_DAYS}
+            showCosts={perms.canViewCosts}
+            canInvoice={perms.canManageBilling}
+          />
         )}
 
         <section>

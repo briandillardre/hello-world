@@ -5,6 +5,7 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
+import { TestAlertButton } from '@/components/settings/TestAlertButton'
 
 export default async function SettingsPage() {
   const co = await getCompanySettings()
@@ -22,6 +23,18 @@ export default async function SettingsPage() {
           alert_phone={co.alert_phone} alert_email={co.alert_email}
           editable={co.isAdmin}
         />
+
+        {/* Prove the alert pipeline any time — not at 2 AM */}
+        {co.isAdmin && (
+          <section className="bg-navy-900 rounded-xl border border-navy-800 p-4">
+            <h2 className="font-semibold text-sm text-muted mb-1">Alert delivery test</h2>
+            <p className="text-xs text-faint mb-3">
+              Fires a clearly-labeled test through the real pipeline — SMS to the alert phone above
+              (needs Twilio env vars) and the webhook if configured.
+            </p>
+            <TestAlertButton />
+          </section>
+        )}
 
         {/* API Key */}
         <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
