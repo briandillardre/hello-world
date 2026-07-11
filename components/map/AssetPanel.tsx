@@ -29,6 +29,36 @@ const BATTERY_COLOR = (pct: number | null) => {
 
 // Reverse-geocode cache — one lookup per ~100m cell, shared across opens.
 const placeCache = new Map<string, string>()
+// Nearest-POI cache (stopped assets): "Sherwin-Williams · paint" beats coords.
+const poiCache = new Map<string, string>()
+
+/** What named place is this parked asset AT? Free Photon (OSM) reverse
+ *  lookup — supplier, restaurant, DMV… the "2-hour lunch vs. parts run"
+ *  context. Only queried while stopped; skips unnamed/residential hits. */
+function usePoiName(lat?: number, lng?: number, stopped?: boolean): string | null {
+  const [poi, setPoi] = useState<string | null>(null)
+  useEffect(() => {
+    if (lat == null || lng == null || !stopped) { setPoi(null); return }
+    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
+    if (poiCache.has(key)) { setPoi(poiCache.get(key) ?? null); return }
+    let cancelled = false
+    fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled) return
+        const p = j?.features?.[0]?.properties
+        const boring = ['house', 'residential', 'yes', 'detached', 'apartments']
+        const label = p?.name && !boring.includes(p?.osm_value)
+          ? `${p.name}${p.osm_value && !['company', 'office'].includes(p.osm_value) ? ` · ${String(p.osm_value).replace(/_/g, ' ')}` : ''}`
+          : ''
+        poiCache.set(key, label)
+        setPoi(label || null)
+      })
+      .catch(() => { /* offline */ })
+    return () => { cancelled = true }
+  }, [lat, lng, stopped])
+  return poi
+}
 
 function usePlaceName(lat?: number, lng?: number): string | null {
   const [place, setPlace] = useState<string | null>(null)
@@ -139,6 +169,7 @@ function AssetDetails({
   onToggleIsolate?: () => void
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
+  const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
   // Range mileage table only makes sense for assets that actually move.
   const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment')
 
@@ -220,10 +251,13 @@ function AssetDetails({
       )}
 
       {loc && (
-        <div className="text-xs text-faint text-center">
-          {place && <span className="text-muted font-medium">{place} · </span>}
-          {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
-          {loc.accuracy && ` ±${loc.accuracy}m`}
+        <div className="text-xs text-faint text-center space-y-0.5">
+          {poi && <p className="text-teal font-medium">📍 at {poi}</p>}
+          <p>
+            {place && <span className="text-muted font-medium">{place} · </span>}
+            {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
+            {loc.accuracy && ` ±${loc.accuracy}m`}
+          </p>
         </div>
       )}
 

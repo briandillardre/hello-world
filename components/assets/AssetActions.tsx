@@ -73,6 +73,7 @@ export function AssetActions({ asset }: { asset: Asset }) {
             category: asset.category ?? undefined,
             serial: asset.serial ?? undefined,
             photo_url: asset.photo_url ?? undefined,
+            metadata: (asset.metadata ?? {}) as Record<string, unknown>,
             hourly_rate: asset.hourly_rate,
             mileage_rate: asset.mileage_rate,
             daily_cost: asset.daily_cost,

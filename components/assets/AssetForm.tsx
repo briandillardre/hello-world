@@ -57,6 +57,7 @@ interface AssetFormProps {
   onSubmit: (data: AssetFormData, photo?: Blob | null) => void
   saving?: boolean
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string;
+    metadata?: Record<string, unknown>;
     hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_value?: number | null }
 }
 
@@ -92,6 +93,28 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
   const [photoUrl, setPhotoUrl] = useState(initial?.photo_url ?? '')
   const [trackerId, setTrackerId] = useState(initial?.tracker_id ?? '')
   const [photo, setPhoto] = useState<Blob | null>(null)
+  // Specs (year/make/model/engine…) — hand-entered on edit or filled by the
+  // free NHTSA VIN decoder. Rendered as Details rows on the asset page.
+  const [specs, setSpecs] = useState<Record<string, unknown>>(initial?.metadata ?? {})
+  const [decoding, setDecoding] = useState(false)
+  const [decodeMsg, setDecodeMsg] = useState<string | null>(null)
+
+  const decodeVin = async () => {
+    setDecoding(true)
+    setDecodeMsg(null)
+    try {
+      const r = await fetch(`/api/vin-decode?vin=${encodeURIComponent(serial.trim())}`)
+      const j = await r.json()
+      if (!r.ok) { setDecodeMsg(j.error ?? 'Decode failed.'); return }
+      setSpecs((prev) => ({ ...prev, ...j.specs }))
+      if (!name.trim() && j.suggestedName) setName(j.suggestedName)
+      setDecodeMsg(`✓ ${Object.keys(j.specs).length} specs added`)
+    } catch {
+      setDecodeMsg('Decoder unreachable.')
+    } finally {
+      setDecoding(false)
+    }
+  }
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -130,7 +153,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
     onSubmit({
       name: name.trim(), type,
       category: category.trim(), serial: serial.trim(), photo_url: photoUrl.trim(),
-      tracker_id: trackerId.trim(), metadata: {},
+      tracker_id: trackerId.trim(), metadata: specs,
       hourly_rate: parseCost(costs.hourly_rate ?? ''),
       mileage_rate: parseCost(costs.mileage_rate ?? ''),
       daily_cost: parseCost(costs.daily_cost ?? ''),
@@ -192,8 +215,35 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
                 value={serial}
                 onChange={e => setSerial(e.target.value)}
               />
+              {type === 'vehicle' && serial.trim().length >= 11 && (
+                <button
+                  type="button"
+                  onClick={decodeVin}
+                  disabled={decoding}
+                  className="text-[12px] font-semibold text-teal hover:underline disabled:opacity-50"
+                >
+                  {decoding ? 'Decoding…' : 'Decode VIN → fill specs'}
+                </button>
+              )}
+              {decodeMsg && <p className="text-[11px] text-faint">{decodeMsg}</p>}
             </div>
           </div>
+
+          {Object.keys(specs).length > 0 && (
+            <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Specs</p>
+                <button type="button" onClick={() => setSpecs({})} className="text-[11px] text-faint hover:text-alert">clear</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(specs).map(([k, v]) => (
+                  <span key={k} className="px-2 py-0.5 rounded-md bg-navy-800 text-[11px] text-muted">
+                    <span className="text-faint">{k.replace(/_/g, ' ')}:</span> <span className="text-ink">{String(v)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="asset-photo-file">Photo</Label>
