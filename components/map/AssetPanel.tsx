@@ -61,7 +61,28 @@ interface RangeStat {
   movingMin: number; idleMin: number; parkedMin: number; starts: number; fuelGalEst: number
 }
 
-const hm = (min: number) => (min <= 0 ? '—' : min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`)
+// Compact duration for narrow table cells: 19m · 1h13 · 3d
+const hmShort = (min: number) =>
+  min <= 0 ? '—'
+  : min >= 2880 ? `${Math.round(min / 1440)}d`
+  : min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`
+  : `${min}m`
+
+const RANGE_SHORT: Record<string, string> = {
+  today: 'Today', yesterday: 'Yesterday', '7d': '7 days', '30d': '30 days', ytd: 'YTD', all: 'All time',
+}
+
+// Metrics as ROWS, ranges as vertical-header COLUMNS — all six ranges fit
+// the panel without sideways scrolling.
+const METRIC_ROWS: { label: string; fmt: (r: RangeStat) => string }[] = [
+  { label: 'Miles', fmt: (r) => (r.miles ? r.miles.toLocaleString() : '—') },
+  { label: 'Top mph', fmt: (r) => (r.maxMph ? String(r.maxMph) : '—') },
+  { label: 'Moving', fmt: (r) => hmShort(r.movingMin) },
+  { label: 'Idle', fmt: (r) => hmShort(r.idleMin) },
+  { label: 'Parked', fmt: (r) => hmShort(r.parkedMin) },
+  { label: 'Fuel gal*', fmt: (r) => (r.fuelGalEst ? String(r.fuelGalEst) : '—') },
+  { label: 'Starts', fmt: (r) => (r.starts ? String(r.starts) : '—') },
+]
 
 function useAssetStats(assetId: string, enabled: boolean): RangeStat[] | null {
   const [stats, setStats] = useState<RangeStat[] | null>(null)
@@ -187,39 +208,33 @@ function AssetDetails({
 
       {stats && (
         <div className="bg-navy-800 rounded-lg p-3">
-          <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Activity</p>
-          <div className="overflow-x-auto -mx-1 px-1">
-            <table className="w-full text-[11px] whitespace-nowrap">
-              <thead>
-                <tr className="text-faint">
-                  <th className="text-left font-medium pb-1 pr-2">Range</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Distance</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Top</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Moving</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Idle</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Parked</th>
-                  <th className="text-right font-medium pb-1 px-1.5">Fuel*</th>
-                  <th className="text-right font-medium pb-1 pl-1.5">Starts</th>
-                </tr>
-              </thead>
-              <tbody className="font-mono tabular-nums">
+          <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1">Activity</p>
+          <table className="w-full table-fixed text-[10px]">
+            <thead>
+              <tr>
+                <th className="w-[54px]" />
                 {stats.map((r) => (
-                  <tr key={r.key} className="border-t border-navy-700/50">
-                    <td className="py-1 pr-2 text-muted font-sans">{r.label}</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{r.miles.toLocaleString()} mi</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{r.maxMph ? `${r.maxMph}` : '—'}</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{hm(r.movingMin)}</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{hm(r.idleMin)}</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{hm(r.parkedMin)}</td>
-                    <td className="py-1 px-1.5 text-right text-ink">{r.fuelGalEst ? `${r.fuelGalEst} gal` : '—'}</td>
-                    <td className="py-1 pl-1.5 text-right text-ink">{r.starts || '—'}</td>
-                  </tr>
+                  <th key={r.key} className="pb-1 align-bottom text-center">
+                    <span className="inline-block [writing-mode:vertical-rl] rotate-180 font-mono text-[9px] uppercase tracking-[0.08em] text-faint whitespace-nowrap">
+                      {RANGE_SHORT[r.key] ?? r.label}
+                    </span>
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {METRIC_ROWS.map((m) => (
+                <tr key={m.label} className="border-t border-navy-700/50">
+                  <td className="py-1 pr-1 text-muted">{m.label}</td>
+                  {stats.map((r) => (
+                    <td key={r.key} className="py-1 text-center font-mono tabular-nums text-ink">{m.fmt(r)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <p className="mt-1.5 text-[10px] text-faint">
-            Top speed in mph · *fuel estimated from distance + idle time until OBD fuel data is wired
+            *fuel estimated from distance + idle time until OBD fuel data is wired
           </p>
         </div>
       )}

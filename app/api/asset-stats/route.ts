@@ -55,15 +55,24 @@ export async function GET(req: NextRequest) {
 
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
 
-  const { data, error } = await supabase
-    .from('asset_locations')
-    .select('lat, lng, speed, timestamp')
-    .eq('asset_id', assetId)
-    .order('timestamp', { ascending: true })
-    .limit(FETCH_CAP)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Page past Supabase's API Max-Rows cap (a bare .limit(40000) can silently
+  // return 1000). Newest-first so an over-cap asset keeps its recent history.
+  const PAGE = 1000
+  const fetched: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+  while (fetched.length < FETCH_CAP) {
+    const { data, error } = await supabase
+      .from('asset_locations')
+      .select('lat, lng, speed, timestamp')
+      .eq('asset_id', assetId)
+      .order('timestamp', { ascending: false })
+      .range(fetched.length, fetched.length + PAGE - 1)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    fetched.push(...(data ?? []))
+    if (!data || data.length < PAGE) break
+  }
 
-  const pts = (data ?? [])
+  const pts = fetched
+    .reverse()
     .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed as number | null, ms: Date.parse(r.timestamp) }))
     .filter((p) => Number.isFinite(p.ms))
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Hexagon, Cctv } from 'lucide-react'
+import { Hexagon, Cctv, Plus } from 'lucide-react'
 import type { AssetType } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -19,9 +19,11 @@ interface FilterBarProps {
   showDevices: boolean
   /** Omit to hide the Site IoT chip entirely (real accounts have no IoT yet). */
   onToggleDevices?: () => void
+  /** Start drawing a new zone — renders a "+ New zone" chip beside Zones. */
+  onDrawZone?: () => void
 }
 
-export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevices, onToggleDevices }: FilterBarProps) {
+export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevices, onToggleDevices, onDrawZone }: FilterBarProps) {
   const toggle = (type: AssetType) => {
     const next = new Set(filter)
     if (next.has(type)) { next.delete(type) } else { next.add(type) }
@@ -55,6 +57,16 @@ export function FilterBar({ filter, onChange, showZones, onToggleZones, showDevi
           <Hexagon className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Zones</span>
         </button>
+        {onDrawZone && (
+          <button
+            onClick={onDrawZone}
+            title="Draw a new zone"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border border-dashed border-teal/60 text-teal bg-navy-950/70 backdrop-blur transition-all active:scale-95 hover:bg-teal/10"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">New zone</span>
+          </button>
+        )}
         {onToggleDevices && (
           <button
             onClick={onToggleDevices}

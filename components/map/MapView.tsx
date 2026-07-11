@@ -24,6 +24,8 @@ import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type Save
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
+import { MapSearch, type SearchItem } from './MapSearch'
+import { formatRelativeTime } from '@/lib/utils'
 import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
 import { FilterBar } from './FilterBar'
@@ -1587,7 +1589,44 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined} />}
+      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined} onDrawZone={!pbActive && onGeofenceSave ? startDrawing : undefined} />}
+
+      {/* find-anything: type or talk, jump to an asset or zone */}
+      {!kiosk && (
+        <MapSearch
+          top={58}
+          items={[
+            ...assets.map((a): SearchItem => ({
+              kind: 'asset', id: a.id, name: a.name, type: a.type,
+              sub: a.location ? `last seen ${formatRelativeTime(a.location.timestamp)}` : 'no signal yet',
+            })),
+            ...geofences.map((g): SearchItem => ({ kind: 'zone', id: g.id, name: g.name, color: g.color })),
+          ]}
+          onPick={(it) => {
+            if (it.kind === 'asset') {
+              const a = assets.find((x) => x.id === it.id)
+              if (!a) return
+              setSelectedAsset(a)
+              setSelectedZone(null)
+              if (a.location) map.current?.flyTo({ center: [a.location.lng, a.location.lat], zoom: 15.5, duration: 1200 })
+            } else {
+              const g = geofences.find((x) => x.id === it.id)
+              const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
+              if (!g || !ring?.length) return
+              setSelectedZone(g)
+              setSelectedAsset(null)
+              let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+              for (const [lng, lat] of ring) {
+                if (lng < minLng) minLng = lng
+                if (lng > maxLng) maxLng = lng
+                if (lat < minLat) minLat = lat
+                if (lat > maxLat) maxLat = lat
+              }
+              map.current?.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, duration: 1200 })
+            }
+          }}
+        />
+      )}
 
       <WeatherControl
         base={base}
@@ -1618,14 +1657,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveView={handleSaveView}
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
-        top={kiosk ? 70 : 58}
+        top={kiosk ? 70 : 102}
       />
 
 
       {!kiosk && !pbActive && (
         <GeofenceDrawer
           isDrawing={isDrawing}
-          onStartDraw={startDrawing}
           onFinishDraw={finishDrawing}
           onCancelDraw={cancelDrawing}
           onSave={onGeofenceSave}

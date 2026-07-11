@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Logo } from '@/components/brand/Logo'
@@ -13,8 +13,18 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // The auth cookie adapters (lib/supabase + lib/supabase-server) read this
+  // pref to shape session lifetime — written on change so the social-login
+  // buttons honor the checkbox too, not just the password form.
+  useEffect(() => {
+    document.cookie = remember
+      ? `ht_session_pref=30d; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`
+      : 'ht_session_pref=session; Path=/; SameSite=Lax'
+  }, [remember])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -83,6 +93,16 @@ export default function LoginPage() {
               required
             />
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 rounded border-navy-700 bg-navy-800 accent-[#ff9e16]"
+            />
+            <span className="text-sm text-muted">Stay signed in for 30 days</span>
+          </label>
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}

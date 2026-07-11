@@ -1,6 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// Mirrors lib/supabase.ts: the library pins auth cookies to 400 days, so both
+// sides shape lifetime from the login form's "stay signed in" choice.
+const SESSION_PREF_COOKIE = 'ht_session_pref'
+const SESSION_MAX_AGE = 30 * 24 * 60 * 60
+
 export function createClient() {
   const cookieStore = cookies()
   return createServerClient(
@@ -19,9 +24,21 @@ export function createClient() {
           // this guard the throw bubbles up and the page falls back to an empty
           // company — no fleet, no zones, no timeline.)
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
+            const pref = cookieStore.get(SESSION_PREF_COOKIE)?.value
+            cookiesToSet.forEach(({ name, value, options }) => {
+              const o = { ...options }
+              if (o.maxAge != null && o.maxAge > 0) {
+                if (pref === 'session') {
+                  // Browser-session cookie: no Max-Age/Expires at all.
+                  delete o.maxAge
+                  delete o.expires
+                } else {
+                  o.maxAge = Math.min(o.maxAge, SESSION_MAX_AGE)
+                  delete o.expires
+                }
+              }
+              cookieStore.set(name, value, o)
+            })
           } catch {
             /* called from a Server Component — safe to ignore */
           }
