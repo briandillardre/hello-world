@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
-import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
+import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
+import { DEFAULT_TZ } from '@/lib/dates'
+import { cookies } from 'next/headers'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
@@ -34,6 +36,20 @@ export default async function CommandPage() {
   const history = await getLocationHistory(companyId, since)
   const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
 
+  // SAME history feed as the live map page, so the kiosk timeline shows
+  // identical data (ranges, scrubber, /api/history refetches) — it was
+  // running on a private 24h snapshot and disagreed with /map.
+  const earliestMs = await getEarliestLocationTime(companyId)
+  const fullSince = earliestMs ?? Date.now() - 30 * 86_400_000
+  const fullHistory = earliestMs !== null
+    ? await getLocationHistory(companyId, new Date(fullSince).toISOString(), 12000)
+    : null
+  const MAX_SHIP = 6000
+  const rows = fullHistory ?? []
+  const stride = Math.max(1, Math.ceil(rows.length / MAX_SHIP))
+  const historyRows = fullHistory ? (stride > 1 ? rows.filter((_, i) => i % stride === 0 || i === rows.length - 1) : rows) : null
+  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+
   // Real accounts: cost from per-asset rates × observed activity; demo: PROJECTS.
   const trackWindow = history ? historyWindow(history) : null
   const costToday = history && trackWindow
@@ -64,6 +80,9 @@ export default async function CommandPage() {
       assets={assets}
       geofences={geofences}
       tracks={tracks}
+      historyRows={historyRows}
+      earliestMs={earliestMs}
+      tz={tz}
       kpis={kpis}
       company={company.name}
       alerts={alerts}

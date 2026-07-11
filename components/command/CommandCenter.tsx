@@ -36,6 +36,10 @@ interface CommandCenterProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   tracks: AssetTrack[]
+  /** Same capped/thinned history feed as /map — kiosk timeline parity. */
+  historyRows?: import('@/lib/db/assets').LocationHistoryRow[] | null
+  earliestMs?: number | null
+  tz?: string
   kpis: CommandKpis
   company: string
   alerts?: AlertEvent[]
@@ -59,7 +63,7 @@ function Chip({ label, value, tone = 'ink' }: { label: string; value: string; to
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts = [] }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [] }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
@@ -95,7 +99,7 @@ export function CommandCenter({ assets, geofences, tracks, kpis, company, alerts
     <div className="fixed inset-0 bg-navy-950 text-ink overflow-hidden">
       {/* live map */}
       <div className="absolute inset-0">
-        <MapView assets={assets} geofences={geofences} tracks={tracks} kiosk />
+        <MapView assets={assets} geofences={geofences} tracks={tracks} historyRows={historyRows} earliestMs={earliestMs} tz={tz} kiosk />
       </div>
 
       {/* HUD overlays */}

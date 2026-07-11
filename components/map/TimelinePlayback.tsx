@@ -167,7 +167,7 @@ export function TimelinePlayback({
     return (
       <button
         onClick={() => setMinimized(false)}
-        className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors"
+        className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
         {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
@@ -430,15 +430,13 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
-        {kiosk && (
-          <button
-            onClick={() => setMinimized(true)}
-            title="Minimize timeline"
-            className="flex-none grid place-items-center w-7 h-7 rounded-lg border bg-navy-900 text-faint border-navy-800 hover:text-ink transition-colors"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <button
+          onClick={() => setMinimized(true)}
+          title="Minimize timeline"
+          className="flex-none grid place-items-center w-7 h-7 rounded-lg border bg-navy-900 text-faint border-navy-800 hover:text-ink transition-colors"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {live ? (
