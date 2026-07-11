@@ -69,7 +69,7 @@ export default async function SettingsPage() {
             />
             <IntegrationCard
               title="GPS Equipment Trackers"
-              description="Calamp, SkyBell, Teltonika, or similar fleet trackers. Use the standard location endpoint."
+              description="Works with most commercial GPS fleet trackers. Use the standard location endpoint."
               endpoint="POST /api/ingest/location"
               payload='{ "tracker_id": "gps-002", "lat": 36.16, "lng": -86.78, "battery": 85 }'
             />

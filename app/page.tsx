@@ -106,7 +106,7 @@ export default function HomePage() {
         <section className="max-w-6xl mx-auto px-6 mt-6">
           <MapConsole />
           <p className="text-center font-mono text-[12.5px] text-faint mt-6 max-w-3xl mx-auto">
-            We ship the trackers — Teltonika GPS, OBD2 plug-ins &amp; BlueCharm Bluetooth tags. Built in South Carolina by a working contractor.
+            We ship the trackers — plug-in OBD units for trucks, rugged GPS units for equipment &amp; Bluetooth tool tags. Built in South Carolina by a working contractor.
           </p>
         </section>
 
