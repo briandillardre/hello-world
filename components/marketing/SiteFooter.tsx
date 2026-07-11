@@ -33,7 +33,7 @@ export function SiteFooter() {
           </div>
         </div>
         <p className="text-[12px] text-faint mt-10 pt-6 border-t border-navy-800/60">
-          © {new Date().getFullYear()} HammerTrack · hammertrackai.com
+          © {new Date().getFullYear()} HammerTrack · hammertrack.ai
         </p>
       </div>
     </footer>

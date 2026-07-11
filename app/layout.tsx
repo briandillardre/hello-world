@@ -17,7 +17,7 @@ const mono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://hammertrackai.com'),
+  metadataBase: new URL('https://hammertrack.ai'),
   title: 'HammerTrack — AI asset tracking for contractors & field fleets',
   description:
     'Every truck, machine, crew, and Bluetooth-tagged tool on one live map. AI texts you the second something moves when it shouldn\'t. Half the price of the big telematics platforms.',
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     title: 'HammerTrack — your whole fleet on one live map',
     description:
       'AI-watched GPS tracking for trucks, equipment, crews, and tools. After-hours theft texts, live job cost, QuickBooks built in.',
-    url: 'https://hammertrackai.com',
+    url: 'https://hammertrack.ai',
     siteName: 'HammerTrack',
     images: [{ url: '/brand/hammertrack-lockup.png', width: 1200, height: 630, alt: 'HammerTrack' }],
     type: 'website',
