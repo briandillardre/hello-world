@@ -88,6 +88,8 @@ are single SQL jobs; neither loses anything the UI shows today.
 Fixed platform costs spread across the fleet + per-SIM cost. "Devices" =
 SIM-carrying units (trucks + equipment); tool tags add revenue with ~$0 COGS.
 
+**Monthly platform bills** (absolute $):
+
 | | 100 devices | 250 | 1,000 | 10,000 | 100,000 |
 |---|---|---|---|---|---|
 | flespi | $140 | $140 | $140 | ~$340 (or Ent. $1,080) | Ultimate ~$3,240 |
@@ -97,9 +99,33 @@ SIM-carrying units (trucks + equipment); tool tags add revenue with ~$0 COGS.
 | Map tiles | $25 | $30 | $95 | $295 | self-host + CDN ~$750 |
 | SMS / AI / misc | $15 | $30 | $60 | $300 | $2,000 |
 | **Fixed subtotal** | **$235** | **$280** | **$440** | **~$1,700** | **~$10,200** |
-| Fixed per device | $2.35 | $1.12 | $0.44 | $0.17 | $0.10 |
-| SIM per device | $1.75 | $1.75 | $1.50 | $1.20 | $1.10 |
+
+**Per device · share of all-in COGS** (each cell: $/device/mo · % of total):
+
+| | 100 devices | 250 | 1,000 | 10,000 | 100,000 |
+|---|---|---|---|---|---|
+| flespi | $1.40 · **34%** | $0.56 · 20% | $0.14 · 7% | $0.03 · 2% | $0.03 · 3% |
+| Supabase / telemetry DB | $0.35 · 9% | $0.20 · 7% | $0.09 · 4% | $0.05 · 4% | $0.04 · 3% |
+| Vercel + ingest | $0.20 · 5% | $0.12 · 4% | $0.06 · 3% | $0.02 · 2% | $0.01 · 1% |
+| Map tiles | $0.25 · 6% | $0.12 · 4% | $0.10 · 5% | $0.03 · 2% | $0.01 · 1% |
+| SMS / AI / misc | $0.15 · 4% | $0.12 · 4% | $0.06 · 3% | $0.03 · 2% | $0.02 · 2% |
+| **SIM (cellular)** | $1.75 · **43%** | $1.75 · **61%** | $1.50 · **77%** | $1.20 · **88%** | $1.10 · **92%** |
 | **COGS / device / mo** | **$4.10** | **$2.87** | **$1.94** | **$1.37** | **$1.20** |
+
+**Is flespi a problem? No — it's a step-function, not a scaling cost.** The
+$140 looks ugly at 100 devices (34% of COGS) only because you're prepaying
+for 1,000 devices of headroom on day one. It never goes up until device
+1,001, so it dilutes to 7% at 1,000 and ~2% beyond — the *best*-scaling line
+on the sheet. At 100 devices, $140/mo ≈ the revenue from ~23 machines at $6:
+one mid-size customer covers the entire pipe. (Replacing it with our own
+TCP-parser service is possible — the normalizer already speaks Codec 8E —
+but trading a $140 bill for an on-call ingest server + lost device console
+is a bad trade below thousands of devices.)
+
+**The line that actually owns your COGS is the SIM: 43% at 100 devices,
+92% at 100k.** That's why the Kore negotiation is the only vendor
+conversation that materially moves margin — every other line rounds to
+noise at scale.
 
 **Gross margin at price points** (SIM-carrying assets):
 
