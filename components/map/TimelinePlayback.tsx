@@ -12,7 +12,7 @@ const CAMERA_MODES: { key: FollowMode; label: string; icon: typeof Orbit; note: 
 ]
 import {
   type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
-  speedsForRange, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
+  speedsForWindow, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
 } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { money } from '@/lib/projects'
@@ -126,7 +126,7 @@ export function TimelinePlayback({
     : realWindow ? windowTickLabel(realWindow, f, tz)
     : rangeLabel(range, f)
   )
-  const speeds = speedsForRange(range)
+  const speeds = speedsForWindow(windowSeconds)
 
   // ticking "updated Ns ago" while live (cycles to feel real-time)
   const [tick, setTick] = useState(0)

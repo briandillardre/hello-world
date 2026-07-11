@@ -273,6 +273,33 @@ export function rangeWindowSeconds(range: TimeRange): number {
   return rangeSpanDays(range) * 86_400
 }
 
+/** Round to a "nice" 1/2/5×10ⁿ multiplier so the speed menu reads clean. */
+const niceSpeed = (x: number) => {
+  const p = Math.pow(10, Math.floor(Math.log10(Math.max(1, x))))
+  const m = x / p
+  return Math.max(1, (m >= 7.5 ? 10 : m >= 3.5 ? 5 : m >= 1.5 ? 2 : 1) * p)
+}
+
+/** Speeds derived from the ACTUAL window length: four options that sweep the
+ *  whole window in ~2 min / 45 s / 15 s / 5 s of wall-clock time. YTD stops
+ *  crawling minute-by-minute, custom ranges scale automatically, and "All
+ *  time" adapts to however much history really exists. */
+export function speedsForWindow(windowSeconds: number): number[] {
+  const targets = [120, 45, 15, 5]
+  const out: number[] = []
+  for (const t of targets) {
+    const v = niceSpeed(windowSeconds / t)
+    if (!out.includes(v)) out.push(v)
+  }
+  return out
+}
+
+/** Default = the ~45-second full sweep. */
+export function defaultSpeedForWindow(windowSeconds: number): number {
+  const s = speedsForWindow(windowSeconds)
+  return s[Math.min(1, s.length - 1)]
+}
+
 /** Speed options scale with the range — long windows need much bigger multipliers. */
 export function speedsForRange(range: TimeRange): number[] {
   switch (range) {

@@ -45,6 +45,7 @@ export function CommandRail({ assets, geofences, tracks }: {
   const sites = useMemo(() => {
     const located = assets.filter((a) => a.location)
     return geofences
+      .filter((g) => g.kind !== 'boundary')
       .map((g) => {
         const ring = (g.geometry?.coordinates?.[0] ?? []) as [number, number][]
         const inside = ring.length >= 3

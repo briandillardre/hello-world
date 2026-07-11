@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Check } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Check, Search, MapPin, Hexagon, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,19 +16,52 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary') => void
+  /** Fly the map to an address hit so the user can draw around it. */
+  onLocate?: (lng: number, lat: number) => void
 }
+
+interface AddressHit { label: string; lng: number; lat: number }
 
 export function GeofenceDrawer({
   isDrawing,
   onFinishDraw,
   onCancelDraw,
   onSave,
+  onLocate,
 }: GeofenceDrawerProps) {
   const [showDialog, setShowDialog] = useState(false)
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0])
+  const [kind, setKind] = useState<'site' | 'boundary'>('site')
+
+  // Address search while drawing — type a street address, jump there, click
+  // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
+  const [addr, setAddr] = useState('')
+  const [hits, setHits] = useState<AddressHit[]>([])
+  useEffect(() => {
+    if (!isDrawing) { setAddr(''); setHits([]); return }
+  }, [isDrawing])
+  useEffect(() => {
+    const q = addr.trim()
+    if (q.length < 4) { setHits([]); return }
+    const id = setTimeout(() => {
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=4&lang=en`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!j?.features) { setHits([]); return }
+          setHits(j.features.map((f: { geometry: { coordinates: [number, number] }; properties: Record<string, string> }) => ({
+            label: [f.properties.name ?? f.properties.street, f.properties.housenumber, f.properties.city, f.properties.state]
+              .filter(Boolean).join(' ').slice(0, 64),
+            lng: f.geometry.coordinates[0],
+            lat: f.geometry.coordinates[1],
+          })))
+        })
+        .catch(() => setHits([]))
+    }, 300)
+    return () => clearTimeout(id)
+  }, [addr])
 
   const handleFinish = () => {
     const geom = onFinishDraw()
@@ -42,9 +75,10 @@ export function GeofenceDrawer({
 
   const handleSave = () => {
     if (!pendingGeom || !name.trim()) return
-    onSave?.(name.trim(), pendingGeom, color)
+    onSave?.(name.trim(), pendingGeom, color, kind)
     setShowDialog(false)
     setName('')
+    setKind('site')
     setPendingGeom(null)
   }
 
@@ -72,8 +106,36 @@ export function GeofenceDrawer({
       )}
 
       {isDrawing && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 bg-navy-950/90 backdrop-blur border border-navy-700 text-ink text-sm px-4 py-2 rounded-full shadow-panel pointer-events-none">
-          Click to add points • ✓ to finish • ✕ to cancel
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 w-[300px] flex flex-col items-center gap-1.5">
+          <div className="bg-navy-950/90 backdrop-blur border border-navy-700 text-ink text-sm px-4 py-2 rounded-full shadow-panel pointer-events-none whitespace-nowrap">
+            Click to add points • ✓ to finish • ✕ to cancel
+          </div>
+          {/* jump to an address, then click out the corners around it */}
+          <div className="w-full bg-navy-950/90 backdrop-blur border border-navy-700 rounded-xl shadow-panel overflow-hidden">
+            <div className="flex items-center gap-1.5 px-3 py-2">
+              <Search className="h-3.5 w-3.5 text-teal flex-none" />
+              <input
+                value={addr}
+                onChange={(e) => setAddr(e.target.value)}
+                placeholder="Jump to address…"
+                className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
+              />
+            </div>
+            {hits.length > 0 && (
+              <div className="border-t border-navy-800">
+                {hits.map((h, i) => (
+                  <button
+                    key={i}
+                    onMouseDown={(e) => { e.preventDefault(); onLocate?.(h.lng, h.lat); setAddr(''); setHits([]) }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] text-muted hover:bg-navy-900 hover:text-ink"
+                  >
+                    <MapPin className="h-3 w-3 text-faint flex-none" />
+                    <span className="truncate">{h.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -92,6 +154,27 @@ export function GeofenceDrawer({
                 onChange={e => setName(e.target.value)}
                 autoFocus
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Zone type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setKind('site')}
+                  className={'rounded-lg border p-2.5 text-left transition-colors ' + (kind === 'site' ? 'border-amber bg-amber/10' : 'border-navy-700 hover:border-navy-600')}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Hexagon className="h-3.5 w-3.5 text-amber" /> Job site</span>
+                  <span className="block mt-0.5 text-[10.5px] text-faint leading-snug">Site log, usage hours, invoicing</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKind('boundary')}
+                  className={'rounded-lg border p-2.5 text-left transition-colors ' + (kind === 'boundary' ? 'border-teal bg-teal/10' : 'border-navy-700 hover:border-navy-600')}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Shield className="h-3.5 w-3.5 text-teal" /> Boundary</span>
+                  <span className="block mt-0.5 text-[10.5px] text-faint leading-snug">Outline only — exit &amp; after-hours alerts</span>
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Color</Label>

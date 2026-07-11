@@ -11,6 +11,8 @@ export interface MapViewCfg {
   base: 'dark' | 'streets' | 'satellite' | 'hybrid'
   threeD: boolean
   radar: boolean
+  /** GOES satellite clouds overlay. */
+  clouds?: boolean
   precip: boolean
   precipPeriod: string
   /** Overlay keys → on (topo / wetlands / streams). */

@@ -41,38 +41,45 @@ export async function getGeofence(id: string): Promise<Geofence | null> {
 
 export async function createGeofence(
   _companyId: string,
-  payload: Pick<Geofence, 'name' | 'geometry' | 'color'> & { parent_id?: string | null }
+  payload: Pick<Geofence, 'name' | 'geometry' | 'color'> & { parent_id?: string | null; kind?: 'site' | 'boundary' }
 ): Promise<string | null> {
   if (isMock) return null
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
   // upsert_geofence converts GeoJSON -> PostGIS and applies the caller's RLS.
-  const { data } = await supabase.rpc('upsert_geofence', {
+  // Try the migration-013 signature (with kind) first; older DBs fall back.
+  const base = {
     p_id: null,
     p_name: payload.name,
     p_color: payload.color,
     p_geometry: payload.geometry,
     p_parent_id: payload.parent_id ?? null,
-  })
+  }
+  const withKind = await supabase.rpc('upsert_geofence', { ...base, p_kind: payload.kind ?? 'site' })
+  if (!withKind.error) return (withKind.data as string) ?? null
+  const { data } = await supabase.rpc('upsert_geofence', base)
   return (data as string) ?? null
 }
 
 export async function updateGeofence(
   id: string,
-  payload: { name: string; color: string; geometry: GeoJSON.Polygon; parent_id?: string | null }
+  payload: { name: string; color: string; geometry: GeoJSON.Polygon; parent_id?: string | null; kind?: 'site' | 'boundary' }
 ): Promise<void> {
   if (isMock) return
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  await supabase.rpc('upsert_geofence', {
+  const base = {
     p_id: id,
     p_name: payload.name,
     p_color: payload.color,
     p_geometry: payload.geometry,
     p_parent_id: payload.parent_id ?? null,
-  })
+  }
+  // p_kind null keeps the stored kind; older DBs fall back to the 005 signature.
+  const withKind = await supabase.rpc('upsert_geofence', { ...base, p_kind: payload.kind ?? null })
+  if (withKind.error) await supabase.rpc('upsert_geofence', base)
 }
 
 export async function deleteGeofence(id: string): Promise<void> {

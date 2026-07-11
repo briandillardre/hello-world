@@ -40,6 +40,7 @@ export async function getUtilization(
   if (!history) return null
 
   const rings = geofences
+    .filter((g) => g.kind !== 'boundary')
     .map((g) => ({ id: g.id, name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
     .filter((g) => g.ring.length >= 3)
 

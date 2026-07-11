@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { getGeofence, createGeofence, updateGeofence, deleteGeofence } from '@/lib/db/geofences'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
-export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string) {
+export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' = 'site') {
   const companyId = await getCurrentCompanyId()
-  const id = await createGeofence(companyId, { name, geometry, color })
+  const id = await createGeofence(companyId, { name, geometry, color, kind })
   revalidatePath('/geofences')
   revalidatePath('/map')
   // Null = the insert didn't happen (RPC error / RLS) — callers surface it.
@@ -18,11 +18,12 @@ export async function saveGeofenceAction(
   name: string,
   color: string,
   parentId: string | null,
-  geometry?: GeoJSON.Polygon
+  geometry?: GeoJSON.Polygon,
+  kind?: 'site' | 'boundary'
 ) {
   const g = await getGeofence(id)
   if (!g) return
-  await updateGeofence(id, { name, color, geometry: geometry ?? g.geometry, parent_id: parentId })
+  await updateGeofence(id, { name, color, geometry: geometry ?? g.geometry, parent_id: parentId, kind })
   revalidatePath('/geofences')
   revalidatePath(`/geofences/${id}`)
   revalidatePath('/map')

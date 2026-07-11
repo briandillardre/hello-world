@@ -21,6 +21,7 @@ interface GeofenceEditorProps {
   name: string
   color: string
   parentId: string | null
+  kind?: 'site' | 'boundary'
   /** Closed ring [[lng,lat],…] (first == last). */
   ring: [number, number][]
 }
@@ -30,7 +31,7 @@ interface GeofenceEditorProps {
  * move — works with touch for iPad. Midpoints (hollow dots) tap to add a
  * vertex. Tap a vertex to select it, then "Delete vertex" removes it (min 3).
  */
-export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, ring: initialRing }: GeofenceEditorProps) {
+export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ring: initialRing }: GeofenceEditorProps) {
   const router = useRouter()
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -47,6 +48,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   selectedRef.current = selected
   const [name, setName] = useState(initialName)
   const [color, setColor] = useState(initialColor)
+  const [kind, setKind] = useState<'site' | 'boundary'>(initialKind)
   const colorRef = useRef(color)
   colorRef.current = color
   const [saving, setSaving] = useState(false)
@@ -212,7 +214,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
       await saveGeofenceAction(id, name.trim() || initialName, color, parentId, {
         type: 'Polygon',
         coordinates: [closed],
-      })
+      }, kind)
       setDirty(false)
       router.refresh()
     } catch (err) {
@@ -250,6 +252,20 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
               <Label htmlFor="zone-name" className="text-xs">Zone name</Label>
               <Input id="zone-name" value={name} onChange={(e) => { setName(e.target.value); setDirty(true) }} />
             </div>
+          <div className="space-y-1.5">
+            <Label>Zone type</Label>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => { setKind('site'); setDirty(true) }}
+                className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (kind === 'site' ? 'border-amber bg-amber/10 text-amber' : 'border-navy-700 text-faint hover:text-ink')}>
+                Job site
+              </button>
+              <button type="button" onClick={() => { setKind('boundary'); setDirty(true) }}
+                className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (kind === 'boundary' ? 'border-teal bg-teal/10 text-teal' : 'border-navy-700 text-faint hover:text-ink')}>
+                Boundary
+              </button>
+            </div>
+            <p className="text-[10.5px] text-faint leading-snug">Boundaries draw outline-only and skip usage/invoicing — use for theft perimeters.</p>
+          </div>
             <div className="space-y-1">
               <Label className="text-xs">Color</Label>
               <div className="flex gap-1.5">

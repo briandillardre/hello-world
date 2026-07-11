@@ -69,13 +69,14 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
-  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string) => {
+  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' = 'site') => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
       company_id: MOCK_COMPANY.id,
       name,
       geometry,
       color,
+      kind,
       created_at: new Date().toISOString(),
     }
     setGeofences((prev) => [...prev, fence])
@@ -83,7 +84,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       // Await + surface failure — this used to be fire-and-forget, so a failed
       // insert looked saved until the next page load quietly dropped it.
       try {
-        const id = await createGeofenceAction(name, geometry, color)
+        const id = await createGeofenceAction(name, geometry, color, kind)
         if (!id) throw new Error('no id returned')
       } catch (err) {
         console.error('Geofence save failed', err)

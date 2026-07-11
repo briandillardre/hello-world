@@ -60,7 +60,7 @@ export function TacticalHud({ assets, geofences, alertCount = 0 }: {
       if (r > maxR) maxR = r
       return { a, dx, dy, r }
     })
-    const rings = geofences.map((g) => (g.geometry?.coordinates?.[0] ?? []) as [number, number][])
+    const rings = geofences.filter((g) => g.kind !== 'boundary').map((g) => (g.geometry?.coordinates?.[0] ?? []) as [number, number][])
     let movingN = 0
     let onSite = 0
     let spdSum = 0

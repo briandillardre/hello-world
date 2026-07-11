@@ -15,6 +15,9 @@ interface WeatherControlProps {
   onThreeD: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
+  /** GOES-East GeoColor satellite clouds (NASA GIBS, ~10-min refresh). */
+  cloudsOn?: boolean
+  onClouds?: (v: boolean) => void
   /** Rain totals (MRMS accumulation) + selected period (1h/24h/48h/72h). */
   precipOn?: boolean
   onPrecip?: (v: boolean) => void
@@ -63,7 +66,7 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, cloudsOn = false, onClouds, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // "Save current as…" inline name input for map views.
   const [savingView, setSavingView] = useState(false)
@@ -306,7 +309,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       {/* radar toggle */}
       <button onClick={() => onRadar(!radarOn)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
         <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-          <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Rain radar
+          <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Radar
         </span>
         <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (radarOn ? 'bg-teal/40' : 'bg-navy-700')}>
           <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (radarOn ? 'left-[18px]' : 'left-0.5')} />
@@ -317,6 +320,25 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" />
           radar{frameTime ? ` · ${frameTime}` : ' loop'}
         </div>
+      )}
+
+      {/* satellite clouds — GOES-East GeoColor via NASA GIBS */}
+      {onClouds && (
+        <>
+          <button onClick={() => onClouds(!cloudsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Globe2 className={'h-4 w-4 ' + (cloudsOn ? 'text-teal' : 'text-faint')} /> Clouds
+            </span>
+            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (cloudsOn ? 'bg-teal/40' : 'bg-navy-700')}>
+              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (cloudsOn ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+          </button>
+          {cloudsOn && (
+            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+              GOES-East satellite · NASA · ~10 min
+            </div>
+          )}
+        </>
       )}
 
       {/* rain totals — MRMS accumulated precipitation, pick the period */}

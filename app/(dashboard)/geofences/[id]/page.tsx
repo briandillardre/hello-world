@@ -39,9 +39,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
   // Job cockpit: what happened inside this zone over the window — same accrual
   // engine that prices QBO invoices, so the table IS the invoice preview.
+  const isBoundary = (fence.kind ?? (fence.color === '#0a0a0a' || fence.color === '#9ca3af' ? 'boundary' : 'site')) === 'boundary'
   let usage: ZoneAssetUsage[] | null = null
   let visits: Visit[] | null = null
-  if (!isMock && ring && ring.length >= 3) {
+  if (!isMock && !isBoundary && ring && ring.length >= 3) {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
     const from = Date.now() - USAGE_DAYS * 86_400_000
@@ -85,7 +86,14 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
       <div className="p-4 max-w-3xl space-y-6">
         {ring && ring.length >= 3 && (
-          <GeofenceEditor id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null} ring={ring} />
+          <GeofenceEditor id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null} kind={isBoundary ? 'boundary' : 'site'} ring={ring} />
+        )}
+
+        {isBoundary && (
+          <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
+            This is a <span className="text-teal font-semibold">boundary</span> — an outline-only perimeter for
+            exit and after-hours alerts. Usage hours, invoicing, and the site log are tracked on job-site zones.
+          </p>
         )}
 
         {usage !== null && (

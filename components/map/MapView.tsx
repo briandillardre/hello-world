@@ -7,7 +7,7 @@ import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
-  defaultSpeed, tracksFromHistory, rangeWindowSeconds,
+  defaultSpeedForWindow, tracksFromHistory, rangeWindowSeconds,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
 import {
@@ -39,6 +39,11 @@ const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Im
 // Demo mode renders the mock Site-IoT devices (cameras, fuel, generators…).
 // Real accounts must never see them: they're fake pins at the demo site, and
 // including them in fit-to-content dragged the camera toward Tennessee.
+// Zone kind with legacy fallback: pre-013 rows had no kind column, and the
+// old convention was "near-black/gray = outline-only boundary".
+const fenceKind = (g: { kind?: string | null; color: string }) =>
+  g.kind ?? (g.color === '#0a0a0a' || g.color === '#9ca3af' ? 'boundary' : 'site')
+
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 const SITE_DEVICES = isMock ? MOCK_SITE_DEVICES : []
@@ -51,7 +56,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclustered-label']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclustered-label', 'unclustered-name']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -170,7 +175,7 @@ interface MapViewProps {
   /** Viewer IANA timezone for local-calendar-day range windows. */
   tz?: string
   toolGateways?: Record<string, { name: string; lastSeen: string }>
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string) => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary') => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
@@ -345,7 +350,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       tracks: tracksFromHistory(assets, rows, w.from, w.to),
       window: w,
       cost: buildCostCurve(assets, rows, w.from, w.to),
-      zones: zoneCostsFromHistory(geofences, assets, rows, w.from, w.to),
+      zones: zoneCostsFromHistory(geofences.filter((g) => fenceKind(g) !== 'boundary'), assets, rows, w.from, w.to),
     }
   }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows])
 
@@ -376,6 +381,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     : rangeWindowSeconds(range)
   const windowSecRef = useRef(windowSecondsEff)
   windowSecRef.current = windowSecondsEff
+  // Whenever the replay window's real length changes (range pick, custom
+  // From/To edit, all-time data growing) re-snap to the ~45 s-sweep speed.
+  useEffect(() => {
+    if (range === 'live') return
+    setPbSpeed(defaultSpeedForWindow(windowSecondsEff))
+  }, [range, windowSecondsEff])
   // $ curve for the chart. Real accounts: the honest ledger. Demo: a blended
   // fleet rate applied to observed movement, so the toggle demos meaningfully.
   const chartCostCurve = useMemo(() => {
@@ -429,6 +440,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const baseRef = useRef(base)
   baseRef.current = base
   const [radarOn, setRadarOn] = useState(kiosk)
+  // GOES-East GeoColor clouds (NASA GIBS WMTS, keyless, ~10-min cadence).
+  const [cloudsOn, setCloudsOn] = useState(false)
+  const cloudsAdded = useRef(false)
   // Rain totals (MRMS accumulation) — separate from the radar loop.
   const [precipOn, setPrecipOn] = useState(false)
   const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
@@ -458,6 +472,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setBase(c.base)
     setThreeD(c.threeD)
     setRadarOn(c.radar)
+    setCloudsOn(c.clouds ?? false)
     setPrecipOn(c.precip)
     if (c.precipPeriod) setPrecipPeriod(c.precipPeriod)
     setOverlaysOn({ ...c.overlays })
@@ -489,7 +504,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       id: `v-${Date.now().toString(36)}`,
       name: name.trim().slice(0, 40) || 'My view',
       cfg: {
-        base, threeD, radar: radarOn, precip: precipOn, precipPeriod,
+        base, threeD, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
         overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones,
       },
     }
@@ -596,25 +611,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, maxzoom: 19, attribution: 'Esri, Maxar' })
       m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
-      // Reference labels (roads / places) — transparent overlay for Hybrid
+      // Hybrid labels — CARTO's retina label-only tiles (place + road names
+      // with dark halos, crisp on hi-DPI). Replaced Esri's dated reference
+      // rasters: non-retina text and salmon road lines read blurry over
+      // imagery, and the photo already shows the roads themselves.
       m.addSource('labels-overlay', {
         type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_only_labels/{z}/{x}/{y}@2x.png'],
         tileSize: 256,
-        maxzoom: 16,
+        maxzoom: 20,
+        attribution: '© OpenStreetMap contributors © CARTO',
       })
       m.addLayer({ id: 'labels-overlay', type: 'raster', source: 'labels-overlay', layout: { visibility: 'none' } })
-
-      // Road lines + road names for Hybrid (Boundaries_and_Places is cities
-      // only). Esri's transportation reference layer completes the classic
-      // imagery + roads + labels hybrid stack.
-      m.addSource('roads-overlay', {
-        type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'],
-        tileSize: 256,
-        maxzoom: 19,
-      })
-      m.addLayer({ id: 'roads-overlay', type: 'raster', source: 'roads-overlay', layout: { visibility: 'none' } })
 
       // 3D building extrusions from OpenFreeMap (free vector tiles, no key).
       // OpenMapTiles schema: 'building' layer with render_height / render_min_height.
@@ -640,17 +648,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         data: {
           type: 'FeatureCollection',
           features: geofences.map((g) => ({
-            type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color },
+            type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color, kind: fenceKind(g) },
           })),
         },
       })
-      // Boundary colors (near-black / gray) render OUTLINE-ONLY — no fill — so a
-      // large perimeter around the whole yard doesn't tint the map.
+      // Boundary zones render OUTLINE-ONLY — no fill — so a large perimeter
+      // around the whole yard doesn't black out the map underneath it.
       m.addLayer({
         id: 'geofence-fill', type: 'fill', source: 'geofences',
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'color'], '#0a0a0a', 0, '#9ca3af', 0, 0.14] },
+        paint: {
+          'fill-color': ['get', 'color'],
+          'fill-opacity': ['case', ['==', ['get', 'kind'], 'boundary'], 0, 0.14],
+        },
       })
-      m.addLayer({ id: 'geofence-outline', type: 'line', source: 'geofences', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [3, 2] } })
+      m.addLayer({
+        id: 'geofence-outline', type: 'line', source: 'geofences',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['==', ['get', 'kind'], 'boundary'], 3.5, 2.5],
+          'line-dasharray': [3, 2],
+        },
+      })
       // Labels anchored to the top edge of each zone (added last so they sit above pins)
       m.addSource('geofence-label-pts', { type: 'geojson', data: geofenceLabelPoints(geofences) })
 
@@ -730,8 +748,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       m.addLayer({
         id: 'trail-head-labels', type: 'symbol', source: 'trail-heads',
-        layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', visibility: 'none' },
-        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 1.5 },
+        layout: {
+          'text-field': ['get', 'name'], 'text-size': 10.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-max-width': 30, // one line — names never wrap mid-word
+          'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+          'text-radial-offset': 1.15,
+          'text-justify': 'auto',
+          visibility: 'none',
+        },
+        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
       })
 
       // ── Live asset cluster source ──
@@ -765,6 +791,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           'text-size': 14, 'text-allow-overlap': true,
         },
       })
+      // Name beside the dot (live mode) — same POI treatment as trail heads.
+      m.addLayer({
+        id: 'unclustered-name', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        minzoom: 9,
+        layout: {
+          'text-field': ['get', 'name'], 'text-size': 10.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-max-width': 30,
+          'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+          'text-radial-offset': 1.5,
+          'text-justify': 'auto',
+          'text-optional': true,
+        },
+        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+      })
 
       // ── Site devices (cameras + sensors) ──
       m.addSource('devices', {
@@ -792,13 +833,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addLayer({
         id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
         layout: {
-          'text-field': ['get', 'name'], 'text-size': 13,
+          'text-field': ['get', 'name'], 'text-size': 11,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-transform': 'uppercase', 'text-letter-spacing': 0.12,
+          'text-max-width': 12,
           'text-anchor': 'bottom', 'text-offset': [0, -0.5],
           'text-allow-overlap': false, 'text-ignore-placement': false,
           'text-padding': 6, 'symbol-sort-key': ['get', 'pri'],
         },
-        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001016', 'text-halo-width': 2.4 },
+        // Tinted to the zone's own color — the label reads as part of the
+        // zone, not a floating GIS caption.
+        paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#001016', 'text-halo-width': 2.2, 'text-opacity': 0.95 },
       })
 
       // Draw preview
@@ -970,7 +1015,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     source?.setData({
       type: 'FeatureCollection',
       features: geofences.map((g) => ({
-        type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color },
+        type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color, kind: fenceKind(g) },
       })),
     })
     ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences))
@@ -1235,7 +1280,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     set('streets-base', base === 'streets')
     set('sat-base', base === 'satellite' || base === 'hybrid')
-    set('roads-overlay', base === 'hybrid')
     set('labels-overlay', base === 'hybrid')
   }, [mapReady, base])
 
@@ -1422,6 +1466,31 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
+  // Satellite clouds — coarse (max native zoom 7) but the real sky.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!cloudsOn) {
+      if (cloudsAdded.current && m.getLayer('clouds-layer')) m.setLayoutProperty('clouds-layer', 'visibility', 'none')
+      return
+    }
+    if (!cloudsAdded.current) {
+      m.addSource('clouds', {
+        type: 'raster',
+        tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png'],
+        tileSize: 256,
+        maxzoom: 7,
+        attribution: 'NASA GIBS · NOAA GOES-East',
+      })
+      const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
+        : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      m.addLayer({ id: 'clouds-layer', type: 'raster', source: 'clouds', paint: { 'raster-opacity': 0.6 } }, beforeId)
+      cloudsAdded.current = true
+    } else {
+      m.setLayoutProperty('clouds-layer', 'visibility', 'visible')
+    }
+  }, [mapReady, cloudsOn])
+
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
   // Same free tile service as the radar loop; maxzoom 10 (~1 km data).
   useEffect(() => {
@@ -1484,7 +1553,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // until the animation caught up — which read as "no truck".)
       tRef.current = 1
       setPbT(1)
-      setPbSpeed(defaultSpeed(r)) // sensible multiplier for this range
+      // speed snaps via the windowSecondsEff effect below
       setPbPlaying(false)
       // turn a movement layer on so the trail is actually visible
       setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
@@ -1522,7 +1591,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // Live has no scrubber — drop into Today so the route can actually replay.
     const wasLive = rangeRef.current === 'live'
     if (wasLive) handleRange('today')
-    setPbSpeed(defaultSpeed(wasLive ? 'today' : rangeRef.current))
+    setPbSpeed(defaultSpeedForWindow(windowSecRef.current))
     // Start the chase where the day's driving actually starts.
     tRef.current = firstMoveTRef.current
     setPbT(firstMoveTRef.current)
@@ -1664,6 +1733,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onThreeD={setThreeD}
         radarOn={radarOn}
         onRadar={setRadarOn}
+        cloudsOn={cloudsOn}
+        onClouds={setCloudsOn}
         precipOn={precipOn}
         onPrecip={setPrecipOn}
         precipPeriod={precipPeriod}
@@ -1697,6 +1768,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           onFinishDraw={finishDrawing}
           onCancelDraw={cancelDrawing}
           onSave={onGeofenceSave}
+          onLocate={(lng, lat) => map.current?.flyTo({ center: [lng, lat], zoom: 17, duration: 1100 })}
         />
       )}
 

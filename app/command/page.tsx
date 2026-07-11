@@ -42,7 +42,7 @@ export default async function CommandPage() {
   // Measure what the chips claim: "moving" = telemetry speed > 0,
   // "on site" = position inside one of the job-site geofences.
   const onAnySite = (lng: number, lat: number) =>
-    geofences.some((g) => pointInPolygon([lng, lat], g.geometry.coordinates[0] as [number, number][]))
+    geofences.some((g) => g.kind !== 'boundary' && pointInPolygon([lng, lat], g.geometry.coordinates[0] as [number, number][]))
 
   const kpis: CommandKpis = {
     assetsOnline: assets.filter((a) => a.location).length,
