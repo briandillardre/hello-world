@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const primaryItems = [
@@ -20,6 +20,7 @@ const moreItems = [
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', icon: Calculator },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/welcome', label: 'Getting started', icon: Rocket },
 ]
 
 export function BottomNav({ alertCount = 0, companyName, userName, onSignOut }: {

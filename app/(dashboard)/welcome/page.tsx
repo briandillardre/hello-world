@@ -1,27 +1,30 @@
 import Link from 'next/link'
-import { Check, Plus, Hexagon, UserPlus, Radio, ArrowRight } from 'lucide-react'
+import { Check, Plus, Hexagon, UserPlus, Radio, ArrowRight, BellRing } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
-import { getCurrentCompany } from '@/lib/db/company'
+import { getCurrentCompany, getCompanySettings } from '@/lib/db/company'
 import { getTeam } from '@/lib/db/team'
 
 export default async function WelcomePage() {
   const company = await getCurrentCompany()
-  const [assets, geofences, team] = await Promise.all([
+  const [assets, geofences, team, settings] = await Promise.all([
     getAssetsWithLocations(company.id),
     getGeofences(company.id),
     getTeam(),
+    getCompanySettings(),
   ])
 
   const hasAsset = assets.length > 0
   const reporting = assets.some((a) => a.location)
   const hasZone = geofences.length > 0
   const hasTeam = team.members.length > 1
+  const hasAlertPhone = !!settings.alert_phone
 
   const steps = [
     { key: 'asset', done: hasAsset, icon: Plus, title: 'Add your first asset', body: 'A truck, machine, or Bluetooth-tagged tool — with its tracker ID.', href: '/assets', cta: 'Add an asset' },
     { key: 'tracker', done: reporting, icon: Radio, title: 'Plug in a tracker', body: 'The OBD or GPS unit goes live the moment it reports — your asset appears on the map.', href: '/settings', cta: 'Integration guide' },
     { key: 'zone', done: hasZone, icon: Hexagon, title: 'Draw a job-site zone', body: 'Outline your yard or a jobsite so theft alerts and cost-per-site kick in.', href: '/map', cta: 'Open the map' },
+    { key: 'phone', done: hasAlertPhone, icon: BellRing, title: 'Set your alert phone', body: 'Where the 2 AM theft text goes. Without it, alerts only live in the app.', href: '/settings', cta: 'Open settings' },
     { key: 'team', done: hasTeam, icon: UserPlus, title: 'Invite your crew', body: 'Add a foreman or office admin — set exactly what each person can do.', href: '/team', cta: 'Invite teammates' },
   ]
   const doneCount = steps.filter((s) => s.done).length
@@ -39,7 +42,7 @@ export default async function WelcomePage() {
           <p className="text-muted mt-2 text-[15px]">
             {doneCount === steps.length
               ? 'Your fleet is set up. Everything below is done — head to the map.'
-              : 'Four quick steps. You can do them in any order, and come back anytime.'}
+              : 'Five quick steps. Any order — come back anytime from “Getting started” in the menu.'}
           </p>
         </div>
 

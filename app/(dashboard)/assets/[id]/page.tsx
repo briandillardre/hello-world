@@ -12,6 +12,9 @@ import { formatRelativeTime } from '@/lib/utils'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
+import { TripLog } from '@/components/assets/TripLog'
+import { getGeofences } from '@/lib/db/geofences'
+import { segmentTrips, type Trip } from '@/lib/trips'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -43,6 +46,28 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin'].includes(k))
+
+  // Trip log: segment this asset's last 7 days of pings into drives, with
+  // zone names anchoring each end ("Yard → Riverfront Tower").
+  const isMockEnv = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+  const TRIP_DAYS = 7
+  let trips: Trip[] | null = null
+  if (!isMockEnv && (asset.type === 'vehicle' || asset.type === 'equipment')) {
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const [fences, { data: rows }] = await Promise.all([
+      getGeofences(companyId),
+      supabase
+        .from('asset_locations')
+        .select('lat, lng, speed, timestamp')
+        .eq('asset_id', asset.id)
+        .gte('timestamp', new Date(Date.now() - TRIP_DAYS * 86_400_000).toISOString())
+        .order('timestamp', { ascending: true })
+        .limit(30_000),
+    ])
+    trips = segmentTrips(rows ?? [], fences)
+  }
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
@@ -111,6 +136,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <section>
           <AssetDiagnostics raw={loc?.raw} timestamp={loc?.timestamp} />
         </section>
+
+        {/* drive history (real cellular assets only) */}
+        {trips !== null && <TripLog trips={trips} days={TRIP_DAYS} />}
 
         {/* maintenance */}
         <section>

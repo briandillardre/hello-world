@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
@@ -17,6 +17,8 @@ const navItems = [
   { href: '/accounting', label: 'Accounting', icon: Calculator },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },
+  // Was only reachable once, right after registration — now it's a real page.
+  { href: '/welcome', label: 'Getting started', icon: Rocket },
 ]
 
 interface SidebarProps {

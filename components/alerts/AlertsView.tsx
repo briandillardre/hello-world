@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { AlertList } from './AlertList'
 import { AlertRulesManager } from './AlertRulesManager'
-import { acknowledgeAlertAction } from '@/lib/actions/alerts'
+import { acknowledgeAlertAction, acknowledgeAllAlertsAction } from '@/lib/actions/alerts'
 import type { AlertEvent, AlertRule, Geofence, AssetWithLocation } from '@/lib/types'
 
 interface Props {
@@ -23,6 +23,12 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     if (editable) acknowledgeAlertAction(id)
   }
 
+  const acknowledgeAll = () => {
+    const now = new Date().toISOString()
+    setAlerts((prev) => prev.map((a) => (a.acknowledged_at ? a : { ...a, acknowledged_at: now })))
+    if (editable) acknowledgeAllAlertsAction()
+  }
+
   const unread = alerts.filter((a) => !a.acknowledged_at).length
 
   return (
@@ -35,7 +41,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
       </div>
       <div className="flex-1 overflow-y-auto">
         {tab === 'activity' ? (
-          <AlertList alerts={alerts} onAcknowledge={acknowledge} />
+          <AlertList alerts={alerts} onAcknowledge={acknowledge} onAcknowledgeAll={acknowledgeAll} />
         ) : (
           <AlertRulesManager rules={rules} geofences={geofences} assets={assets} editable={editable} />
         )}

@@ -27,9 +27,10 @@ const CRITICAL_TRIGGERS: AlertRule['trigger'][] = ['after_hours_movement', 'left
 interface AlertListProps {
   alerts: AlertEvent[]
   onAcknowledge?: (id: string) => void
+  onAcknowledgeAll?: () => void
 }
 
-export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
+export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertListProps) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length
@@ -46,7 +47,7 @@ export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
             </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium ${filter === 'all' ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted'}`}
@@ -59,6 +60,14 @@ export function AlertList({ alerts, onAcknowledge }: AlertListProps) {
           >
             Unread ({unreadCount})
           </button>
+          {unreadCount > 1 && onAcknowledgeAll && (
+            <button
+              onClick={onAcknowledgeAll}
+              className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors"
+            >
+              ✓ Acknowledge all
+            </button>
+          )}
         </div>
       </div>
 

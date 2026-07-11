@@ -33,6 +33,19 @@ export async function acknowledgeAlert(id: string): Promise<void> {
     .eq('id', id)
 }
 
+/** Clear the whole backlog in one tap — nobody acknowledges 47 rows by hand. */
+export async function acknowledgeAllAlerts(companyId: string): Promise<void> {
+  if (isMock) return
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await supabase
+    .from('alert_events')
+    .update({ acknowledged_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .is('acknowledged_at', null)
+}
+
 export async function getAlertRules(companyId: string): Promise<AlertRule[]> {
   if (isMock) return MOCK_ALERT_RULES
 

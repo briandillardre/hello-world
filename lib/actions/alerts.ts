@@ -2,11 +2,17 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { acknowledgeAlert, createAlertRule, updateAlertRule, deleteAlertRule } from '@/lib/db/alerts'
+import { acknowledgeAlert, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule } from '@/lib/db/alerts'
 import type { AlertTrigger } from '@/lib/types'
 
 export async function acknowledgeAlertAction(id: string) {
   await acknowledgeAlert(id)
+  revalidatePath('/alerts')
+}
+
+export async function acknowledgeAllAlertsAction() {
+  const companyId = await getCurrentCompanyId()
+  await acknowledgeAllAlerts(companyId)
   revalidatePath('/alerts')
 }
 
