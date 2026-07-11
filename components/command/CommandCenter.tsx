@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { X, Sparkles } from 'lucide-react'
+import { X, Sparkles, ChevronRight, Radar, Map, Package, Hexagon, Bell, Wrench, BarChart3, Calculator, Users, Settings, MonitorPlay } from 'lucide-react'
 import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
@@ -53,6 +53,60 @@ const TRIGGER_LABEL: Record<string, string> = {
   idle: 'idle too long',
 }
 
+const NAV_LINKS = [
+  { href: '/command', label: 'Command Center', icon: MonitorPlay },
+  { href: '/map', label: 'Live Map', icon: Map },
+  { href: '/assets', label: 'Assets', icon: Package },
+  { href: '/geofences', label: 'Zones', icon: Hexagon },
+  { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+  { href: '/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/accounting', label: 'Accounting', icon: Calculator },
+  { href: '/team', label: 'Team', icon: Users },
+  { href: '/settings', label: 'Settings', icon: Settings },
+]
+
+/** Hidden left-edge nav: nothing but a slim arrow tab until tapped, then a
+ *  slide-out with the whole app one tap away — the wall display stays clean
+ *  but you're never trapped on it. */
+function NavFlyout() {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Open navigation"
+        className="fixed left-0 top-1/2 -translate-y-1/2 z-50 grid place-items-center w-5 h-16 rounded-r-lg bg-navy-950/80 backdrop-blur border border-l-0 border-teal/25 text-teal/70 hover:text-teal hover:w-6 transition-all"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    )
+  }
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-navy-950/40" onClick={() => setOpen(false)} />
+      <nav className="fixed left-0 inset-y-0 z-50 w-60 bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel flex flex-col py-4">
+        <div className="px-4 pb-3 mb-2 border-b border-navy-800 flex items-center justify-between">
+          <Logo size={22} href={null} />
+          <button onClick={() => setOpen(false)} aria-label="Close navigation" className="grid place-items-center w-7 h-7 rounded-lg text-faint hover:text-ink">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {NAV_LINKS.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={() => setOpen(false)}
+            className={'flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium transition-colors ' + (href === '/command' ? 'text-amber' : 'text-muted hover:text-ink hover:bg-navy-900')}
+          >
+            <Icon className="h-4 w-4 flex-none" /> {label}
+          </Link>
+        ))}
+      </nav>
+    </>
+  )
+}
+
 function Chip({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'amber' | 'teal' | 'alert' }) {
   const color = tone === 'amber' ? 'text-amber' : tone === 'teal' ? 'text-teal' : tone === 'alert' ? 'text-alert' : 'text-ink'
   return (
@@ -67,6 +121,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   const [now, setNow] = useState<Date | null>(null)
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
+  // Every instrument on the wall collapses; the dial included.
+  const [hudOpen, setHudOpen] = useState(true)
   useEffect(() => {
     const onCam = (e: Event) => setCamCenter((e as CustomEvent<{ lng: number; lat: number }>).detail)
     window.addEventListener('ht:camera', onCam)
@@ -114,8 +170,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
-      {/* left instrument rail — the mission-control frame (wide screens) */}
-      <div className="absolute left-4 top-[118px] bottom-14 z-40 hidden xl:flex items-start">
+      {/* hidden left-edge nav — a slim arrow until tapped */}
+      <NavFlyout />
+
+      {/* left instrument rail — aligned to the layers pill above it */}
+      <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start">
         <CommandRail assets={assets} geofences={geofences} tracks={tracks} />
       </div>
 
@@ -124,14 +183,23 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <EventRail assets={assets} alerts={alerts} />
       </div>
 
-      {/* tactical instrument — bottom-right, above the ticker */}
-      <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40">
-        <TacticalHud
-          assets={assets}
-          geofences={geofences}
-          alertCount={alerts.filter((a) => !a.acknowledged_at).length}
-          center={camCenter}
-        />
+      {/* tactical instrument — bottom-right, above the ticker; collapsible */}
+      <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
+        {hudOpen && (
+          <TacticalHud
+            assets={assets}
+            geofences={geofences}
+            alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+            center={camCenter}
+          />
+        )}
+        <button
+          onClick={() => setHudOpen((v) => !v)}
+          aria-label={hudOpen ? 'Hide radar' : 'Show radar'}
+          className="flex items-center gap-1.5 rounded-full bg-navy-950/80 backdrop-blur border border-teal/20 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors"
+        >
+          <Radar className="h-3 w-3" /> {hudOpen ? 'hide' : 'radar'}
+        </button>
       </div>
 
       {/* top HUD bar */}

@@ -1772,7 +1772,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveView={handleSaveView}
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
-        top={kiosk ? 70 : 102}
+        top={kiosk ? 68 : 102}
         z={kiosk ? 45 : 10}
       />
 
