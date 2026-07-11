@@ -140,9 +140,13 @@ export async function getCompanySettings(): Promise<{
     if (!user) return fallback
     const { data: profile } = await supabase.from('profiles').select('company_id, role').eq('id', user.id).single()
     const companyId = profile?.company_id ?? user.id
+    // select('*') — naming a column that a pending migration hasn't added yet
+    // (alert_phone/alert_email, migration 009) errors the WHOLE query, and the
+    // page then demo-fallbacked for a signed-in admin. Star-select degrades to
+    // undefined fields instead.
     const { data: c } = await supabase
       .from('companies')
-      .select('name, plan, work_start, work_end, work_days, alert_phone, alert_email')
+      .select('*')
       .eq('id', companyId)
       .single()
     if (!c) return fallback

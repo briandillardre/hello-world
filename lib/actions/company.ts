@@ -127,7 +127,7 @@ export async function sendTestAlertAction(): Promise<{
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const { data: co } = await createClient()
-      .from('companies').select('name, alert_phone').eq('id', companyId).maybeSingle()
+      .from('companies').select('*').eq('id', companyId).maybeSingle() // star: survives pre-009 DBs
 
     const { dispatchAlerts } = await import('@/lib/notify')
     const smsTo = co?.alert_phone || process.env.ALERT_SMS_TO || null
