@@ -89,6 +89,10 @@ section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; }
   height: 68px;
 }
 .logo { display: flex; align-items: center; gap: 0.65rem; text-decoration: none; }
+/* Real logo drop-in: replace the .logo-mark/.logo-text spans with
+   <img src="img/logo.png" alt="Dillard Construction Group"> — these rules size it. */
+.logo img { height: 42px; width: auto; display: block; }
+.site-footer .logo img { height: 38px; }
 .logo-mark {
   width: 34px; height: 34px; flex: none;
   background: var(--amber);

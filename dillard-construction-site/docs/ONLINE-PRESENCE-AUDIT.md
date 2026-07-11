@@ -86,7 +86,7 @@ Observed SERPs, July 2026:
 | FMCSA SAFER (USDOT 4392256) | Active carrier; **number issued Apr 2025** | Buyers will ask why a 2018 company got DOT authority in 2025. Have the answer ready (fleet growth crossing CMV threshold). ⚠️ Pull power-unit/driver counts manually. |
 | ZoomInfo | HQ listed as **504 Anderson St, 29601** | Stale address |
 | ConstructConnect | Active bidding profile #2386089 | Geo-tagged to **29601** — stale |
-| SC LLR license lookup | Marketing claims: building, grading, asphalt, water & sewer, highway incidental | ⚠️ VERIFY license number/status at verify.llronline.com — a buyer will |
+| SC LLR license lookup | **VERIFIED (Jul 11, 2026):** License #122431, GENERAL CONTRACTOR, ACTIVE, first issued 10/03/2019, expires 10/31/2026. Group 5 classifications: Building (BD5), Grading (GD5), Asphalt Paving (AP5), Water & Sewer Lines (WL5), Highway Incidental (HI5). Qualified by financial statement. **No board actions.** Qualifying parties: Brian Dillard (CQG), Christopher Dillard (CQG). | ✅ Clean — now published on the site. Note: renewal due 10/31/2026 (this year) — don't let it lapse mid-redesign. |
 | SAM.gov / SCBO | No registrations, no government awards | Untapped: veteran-owned status + SDVOSB federal set-asides (if Nate's service qualifies the entity) |
 | D&B | No profile surfaced | No credit file a lender/buyer can pull |
 

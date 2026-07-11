@@ -64,15 +64,15 @@ Old /photos and /request-an-estimate 301-redirect to /projects and /contact (con
 ## 4. Technical Approach
 
 - **Pure static HTML/CSS/JS** — no build step, no framework, no Wix. Loads in milliseconds, scores ~100 on Core Web Vitals, editable by any human or AI, portable to any host forever. This is deliberate: a contractor site doesn't need React; it needs to be fast, indexable, and never break.
-- **Hosting: Netlify free tier** (you already have a Netlify account from HammerTrack's old site). Forms work with zero backend via Netlify Forms (already wired: `estimate` and `bid-invite` forms with honeypots). Alternative: Vercel + Formspree — swap one attribute.
+- **Hosting: Vercel** (same account/dashboard as HammerTrack — one place for everything). `vercel.json` provides clean URLs, old-Wix-path redirects, and cache/security headers. Forms post to **Web3Forms** (free, no backend — one access key pasted into `contact.html`, submissions arrive by email, `thanks.html` success page wired).
 - **SEO plumbing shipped:** consistent `Title | Dillard Construction Group` pattern, unique meta descriptions, canonicals, Open Graph, JSON-LD (`GeneralContractor` with `aggregateRating`, per-service `Service` schema), sitemap.xml, robots.txt, clean-URL redirects.
 - **Accessibility:** semantic HTML, aria labels, reduced-motion support, high-contrast palette.
 
 ## 5. Migration Workflow (Wix → new site)
 
 1. **Content fill (Brian, ~2 evenings):** replace every `[bracketed]` placeholder — project names/quantities, EMR, fleet table, pay ranges, 2 more review quotes (pull from Birdeye), real photos into `/img`.
-2. **Deploy to Netlify** on a temp URL (`dcg-new.netlify.app`), review on phone + desktop, test both forms.
-3. **DNS cutover at Namecheap:** point dillardconstructiongroup.com A/CNAME to Netlify (same 5-minute process as HammerTrack's domain move). Keep Wix live until DNS propagates, then cancel the Wix plan (~$200+/yr saved).
+2. **Deploy to Vercel** on a temp URL (new project, root directory `dillard-construction-site`), review on phone + desktop, test both forms.
+3. **DNS cutover at Namecheap:** add the domain in the Vercel project, update DNS (same 5-minute process as hammertrackai.com). Keep Wix live until DNS propagates, then cancel the Wix plan (~$200+/yr saved).
 4. **Post-launch (same week):** Google Search Console — submit sitemap, request indexing; update GBP website link; update Facebook/Instagram/LinkedIn links.
 5. **Redirect map is already in `netlify.toml`** — old Wix paths (/photos, /request-an-estimate) land correctly, preserving any existing link equity.
 
@@ -105,7 +105,7 @@ Old /photos and /request-an-estimate 301-redirect to /projects and /contact (con
 | `careers.html` | 4 role cards + culture pitch |
 | `contact.html` | Estimate form + **GC bid-invite form** + direct partner contacts |
 | `css/site.css`, `js/site.js` | Design system + progressive enhancement (no dependencies) |
-| `netlify.toml`, `sitemap.xml`, `robots.txt` | Deploy, redirects, SEO plumbing |
+| `vercel.json`, `sitemap.xml`, `robots.txt`, `thanks.html` | Deploy config, redirects, SEO plumbing, form success page |
 | `docs/` | This strategy + the audit |
 
 Every `[bracketed]` item in the HTML is a decision or fact only Brian can supply. Nothing else blocks launch.

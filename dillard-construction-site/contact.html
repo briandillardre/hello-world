@@ -44,11 +44,15 @@
     <div>
       <span class="kicker">Request an Estimate</span>
       <h2>Project details</h2>
-      <!-- Netlify Forms: the data-netlify attribute makes this form work with zero backend
-           when deployed on Netlify. On Vercel, swap to a Formspree/Basin action URL. -->
-      <form class="mt-2" name="estimate" method="POST" data-netlify="true" netlify-honeypot="bot-field">
-        <input type="hidden" name="form-name" value="estimate">
-        <p style="display:none"><label>Don't fill this out: <input name="bot-field"></label></p>
+      <!-- Web3Forms: works from any static host (Vercel). Get the access key at
+           web3forms.com using brian@dillardconstructiongroup.com and paste it into
+           BOTH forms below (search for YOUR-WEB3FORMS-ACCESS-KEY). Submissions arrive by email. -->
+      <form class="mt-2" action="https://api.web3forms.com/submit" method="POST">
+        <input type="hidden" name="access_key" value="YOUR-WEB3FORMS-ACCESS-KEY">
+        <input type="hidden" name="subject" value="New estimate request — dillardconstructiongroup.com">
+        <input type="hidden" name="from_name" value="DCG Website">
+        <input type="hidden" name="redirect" value="https://www.dillardconstructiongroup.com/thanks">
+        <input type="checkbox" name="botcheck" style="display:none" tabindex="-1" aria-hidden="true">
         <div class="form-grid">
           <div class="field"><label for="name">Name</label><input id="name" name="name" required autocomplete="name"></div>
           <div class="field"><label for="company">Company (if any)</label><input id="company" name="company" autocomplete="organization"></div>
@@ -95,9 +99,12 @@
         <span class="kicker">GCs &amp; Developers</span>
         <h2>Invite us to bid</h2>
         <p class="mt-1">Bidding a project with sitework or paving scope? Send the invitation and plans link — we turn around commercial bids fast.</p>
-        <form class="mt-2" name="bid-invite" method="POST" data-netlify="true" netlify-honeypot="bot-field">
-          <input type="hidden" name="form-name" value="bid-invite">
-          <p style="display:none"><label>Don't fill this out: <input name="bot-field"></label></p>
+        <form class="mt-2" action="https://api.web3forms.com/submit" method="POST">
+          <input type="hidden" name="access_key" value="YOUR-WEB3FORMS-ACCESS-KEY">
+          <input type="hidden" name="subject" value="Bid invitation — dillardconstructiongroup.com">
+          <input type="hidden" name="from_name" value="DCG Website">
+          <input type="hidden" name="redirect" value="https://www.dillardconstructiongroup.com/thanks">
+          <input type="checkbox" name="botcheck" style="display:none" tabindex="-1" aria-hidden="true">
           <div class="form-grid">
             <div class="field"><label for="b-name">Name</label><input id="b-name" name="name" required></div>
             <div class="field"><label for="b-company">Company</label><input id="b-company" name="company" required></div>
@@ -155,7 +162,7 @@
           <span class="logo-mark" aria-hidden="true"></span>
           <span class="logo-text">DILLARD<small>CONSTRUCTION GROUP</small></span>
         </a>
-        <p class="mt-1">Veteran-owned sitework and asphalt paving contractor. Licensed, bonded, and insured — unlimited Group 5, South Carolina.</p>
+        <p class="mt-1">Veteran-owned sitework and asphalt paving contractor. SC General Contractor #122431 — Group 5 (unlimited) in building, grading, asphalt paving, water &amp; sewer lines, and highway incidental work.</p>
         <span class="vet-flag"><span class="star">&#9733;</span> Veteran-Owned Business</span>
       </div>
       <div>
@@ -189,7 +196,7 @@
     </div>
     <div class="legal">
       <span>&copy; <span data-year>2026</span> Dillard Construction Group LLC. All rights reserved.</span>
-      <span>SC Unlimited Group 5 Sitework &amp; Paving Contractor &middot; USDOT 4392256</span>
+      <span>SC GC License #122431 (Group 5, Unlimited) &middot; USDOT 4392256</span>
     </div>
   </div>
 </footer>
