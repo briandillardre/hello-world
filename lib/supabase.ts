@@ -20,7 +20,12 @@ function readCookies(): { name: string; value: string }[] {
     .filter(Boolean)
     .map((pair) => {
       const i = pair.indexOf('=')
-      return { name: pair.slice(0, i), value: decodeURIComponent(pair.slice(i + 1)) }
+      const raw = pair.slice(i + 1)
+      // A malformed %-sequence in any unrelated cookie must not take down the
+      // whole auth cookie read (that presents as a surprise logout).
+      let value = raw
+      try { value = decodeURIComponent(raw) } catch { /* keep raw */ }
+      return { name: pair.slice(0, i), value }
     })
 }
 
