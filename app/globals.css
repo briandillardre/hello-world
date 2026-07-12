@@ -45,6 +45,18 @@ body {
 .kiosk-map .maplibregl-ctrl-top-right {
   margin-top: 60px;
 }
+/* Kiosk: zoom/locate/fit controls mount bottom-left — clear the ticker below
+   and the slim nav arrow at the left edge. */
+.kiosk-map .maplibregl-ctrl-bottom-left {
+  margin-bottom: 44px;
+  margin-left: 30px;
+}
+/* Screen menu "Map zoom buttons" off → hide the whole control cluster
+   (attribution stays — it lives bottom-right). */
+.ht-hide-zoom .maplibregl-ctrl-bottom-left,
+.ht-hide-zoom .maplibregl-ctrl-top-right {
+  display: none;
+}
 /* Kiosk: the desktop selection sheet must clear the 56px HUD bar (its close
    button was buried underneath — "can't get out of the asset popup") and the
    bottom ticker, and sit above the z-40 tactical instrument. */

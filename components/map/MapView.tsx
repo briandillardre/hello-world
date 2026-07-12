@@ -21,6 +21,7 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
+import { nightPolygon } from '@/lib/terminator'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -186,6 +187,11 @@ interface MapViewProps {
   /** Delete a zone from its map sheet. */
   onGeofenceDelete?: (id: string) => void
   kiosk?: boolean
+  /** Kiosk auto-tour (asset → asset camera glide). Off = the wall stays put. */
+  tourOn?: boolean
+  /** Fired when a manual drag interrupts the tour, so the owner of the toggle
+   *  can flip it off visibly instead of the tour just silently dying. */
+  onTourInterrupt?: () => void
   /** Company-wide default weather location (admin-set); null = follow the fleet. */
   defaultWeatherPlace?: string | null
   /** Exact coords for the company default — set by newer star-saves. When
@@ -201,7 +207,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -593,8 +599,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       maxTileCacheSize: 4096,
     })
 
-    map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right')
-    map.current.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right')
+    // Kiosk: zoom/locate/fit ride bottom-left — top-right belongs to the event
+    // rail on the wall display, and the two were stacked on top of each other.
+    const ctrlCorner = kiosk ? 'bottom-left' : 'top-right'
+    map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), ctrlCorner)
+    map.current.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), ctrlCorner)
 
     // Zoom-to-all control (sits below the geolocate button)
     const fitAllControl: maplibregl.IControl = {
@@ -612,11 +621,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       },
       onRemove() {},
     }
-    map.current.addControl(fitAllControl, 'top-right')
+    map.current.addControl(fitAllControl, ctrlCorner)
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     map.current.on('load', () => {
       const m = map.current!
+
+      // Zoomed way out, Earth is a globe — MapLibre v5 renders it as one and
+      // seamlessly flattens back to the normal map by street zooms.
+      m.setProjection({ type: 'globe' })
 
       // ── Free basemap layers stacked over the CARTO dark base ──
       // Streets (labeled, no imagery) — CARTO Voyager
@@ -1132,6 +1145,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => clearInterval(id)
   }, [mapReady, pbPlaying, followId])
 
+  // Radar-dial blips (TacticalHud) tap through to the map: fly to the asset
+  // and open its panel, same as tapping its marker.
+  useEffect(() => {
+    const onFocus = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      const a = assetsRef.current.find((x) => x.id === id)
+      if (!a?.location) return
+      setSelectedAsset(a)
+      map.current?.flyTo({ center: [a.location.lng, a.location.lat], zoom: 16, duration: 1400 })
+    }
+    window.addEventListener('ht:focus-asset', onFocus)
+    return () => window.removeEventListener('ht:focus-asset', onFocus)
+  }, [])
+
   // Kiosk: broadcast the camera center so the TacticalHud radar re-aims to
   // wherever the wall display is looking (its center = the map's crosshair).
   useEffect(() => {
@@ -1158,6 +1185,40 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // The user's fingers own the camera right now (pinch/scroll/drag) —
     // yield this frame instead of stomping the gesture. Resumes on release.
     if (userGestureRef.current) return
+
+    // Zone follow: the camera circles the SITE, not a moving dot. Zones have
+    // no heading, so Chase degrades to Orbit; zoom fits the ring once and the
+    // user's pinch wins after the entrance (same contract as asset follow).
+    if (id.startsWith('zone:')) {
+      const g = geofencesRef.current.find((z) => `zone:${z.id}` === id)
+      const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
+      if (!ring || ring.length < 3) return
+      let cx = 0, cy = 0, minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      for (const p of ring) {
+        cx += p[0]; cy += p[1]
+        if (p[0] < minX) minX = p[0]
+        if (p[0] > maxX) maxX = p[0]
+        if (p[1] < minY) minY = p[1]
+        if (p[1] > maxY) maxY = p[1]
+      }
+      cx /= ring.length; cy /= ring.length
+      const zmode = followModeRef.current === 'overhead' ? 'overhead' : 'orbit'
+      if (zmode === 'orbit') bearingRef.current = (bearingRef.current + ORBIT_STEP * 0.7) % 360
+      else bearingRef.current = lerpAngle(bearingRef.current, 0, 0.08)
+      const targetPitch = zmode === 'overhead' ? 8 : 55
+      pitchRef.current += (targetPitch - pitchRef.current) * 0.06
+      const span = Math.max(maxY - minY, (maxX - minX) * Math.cos((cy * Math.PI) / 180), 0.0008)
+      const fitZoom = Math.max(12.5, Math.min(17.2, Math.log2(360 / (span * 3.4))))
+      if (entranceRef.current < 1) {
+        entranceRef.current = Math.min(1, entranceRef.current + 0.02)
+        const z = m.getZoom()
+        m.jumpTo({ center: [cx, cy], bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (fitZoom - z) * 0.07 })
+      } else {
+        m.jumpTo({ center: [cx, cy], bearing: bearingRef.current, pitch: pitchRef.current })
+      }
+      return
+    }
+
     const tr = tracksRef.current.find((x) => x.assetId === id)
     if (!tr || tr.points.length === 0) return
     const mode = followModeRef.current
@@ -1351,35 +1412,40 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [mapReady, showZones])
 
-  // Kiosk auto-tour: slow cinematic cycle overview → each zone → overview.
-  // Any manual drag cancels it (someone walked up to the TV and took over).
+  // Kiosk auto-tour: glide ASSET → asset (flyTo arcs out and back in — "zoom
+  // out smoothly, then over"), with a pull-back to the whole fleet each lap.
+  // Toggleable from the Screen menu; a manual drag flips the toggle OFF so the
+  // wall stays exactly where someone put it instead of silently dying.
+  const onTourInterruptRef = useRef(onTourInterrupt)
+  onTourInterruptRef.current = onTourInterrupt
   useEffect(() => {
-    if (!kiosk || !mapReady) return
+    if (!kiosk || !mapReady || !tourOn) return
     const m = map.current
     if (!m) return
     let stopped = false
     let i = -1
     const step = () => {
-      if (stopped) return
-      const zones = geofencesRef.current
-      i = (i + 1) % (zones.length + 1)
-      if (i === zones.length || zones.length === 0) {
-        fitAll()
-      } else {
-        const ring = zones[i].geometry?.coordinates?.[0] as [number, number][] | undefined
-        if (!ring?.length) return
-        const c: [number, number] = [
-          ring.reduce((s, p) => s + p[0], 0) / ring.length,
-          ring.reduce((s, p) => s + p[1], 0) / ring.length,
-        ]
-        m.easeTo({ center: c, zoom: 15.4, duration: 2600 })
-      }
+      if (stopped || userGestureRef.current) return
+      // Someone is replaying or following on the wall — don't fight that camera.
+      if (followIdRef.current || rangeRef.current !== 'live') return
+      const stops = assetsRef.current.filter((a) => a.location)
+      if (stops.length === 0) { fitAll(); return }
+      i += 1
+      const k = i % (stops.length + 1)
+      if (k === stops.length) { fitAll(); return }
+      const a = stops[k]
+      m.flyTo({ center: [a.location!.lng, a.location!.lat], zoom: 15.6, duration: 6000 })
     }
+    const first = setTimeout(step, 1500)
     const id = setInterval(step, 18000)
-    const cancel = () => { stopped = true; clearInterval(id) }
+    const cancel = () => {
+      if (stopped) return
+      stopped = true
+      onTourInterruptRef.current?.()
+    }
     m.on('dragstart', cancel)
-    return () => { cancel(); m.off('dragstart', cancel) }
-  }, [kiosk, mapReady, fitAll])
+    return () => { stopped = true; clearTimeout(first); clearInterval(id); m.off('dragstart', cancel) }
+  }, [kiosk, mapReady, tourOn, fitAll])
 
   // Toggle the site-device markers (cameras, fuel, generators, weather station…)
   useEffect(() => {
@@ -1472,9 +1538,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.on('click', 'gauge-dots', (e) => {
         const p = e.features?.[0]?.properties
         if (!p) return
-        new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+        // Global popup CSS is dark with zero padding — this HTML must bring its
+        // own padding and LIGHT text or it renders black-on-black and clipped.
+        new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
           .setLngLat(e.lngLat)
-          .setHTML(`<div style="font:12px/1.45 sans-serif;color:#001523"><b>${p.name}</b><br/>Gage height: <b>${p.stage} ft</b><br/><span style="opacity:.65">${p.at}</span></div>`)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc;white-space:normal;overflow-wrap:break-word">${p.name}</div><div style="margin-top:3px">Gage height <b style="color:#ff9e16">${p.stage} ft</b></div><div style="color:#9fb6cc;font-size:10.5px;margin-top:2px">${p.at}</div></div>`)
           .addTo(m)
       })
       m.on('mouseenter', 'gauge-dots', () => { m.getCanvas().style.cursor = 'pointer' })
@@ -1524,6 +1592,38 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     m.on('moveend', onMove)
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.gauges])
+
+  // ── Day/night terminator: shade the half of Earth in darkness right now.
+  // Pure solar math (lib/terminator) — no service, no key; re-derives every
+  // minute so the line creeps west like it should. Pairs with "City lights".
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.daynight
+    for (const lid of ['daynight-fill', 'daynight-line']) {
+      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+    }
+    if (!on) return
+    const src = m.getSource('daynight') as maplibregl.GeoJSONSource | undefined
+    if (!src) {
+      m.addSource('daynight', { type: 'geojson', data: nightPolygon() })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'daynight-fill', type: 'fill', source: 'daynight',
+        paint: { 'fill-color': '#020b18', 'fill-opacity': 0.45 },
+      }, beforeId)
+      m.addLayer({
+        id: 'daynight-line', type: 'line', source: 'daynight',
+        paint: { 'line-color': '#7dd3fc', 'line-width': 1.2, 'line-opacity': 0.35, 'line-blur': 2 },
+      }, beforeId)
+    } else {
+      src.setData(nightPolygon())
+    }
+    const id = setInterval(() => {
+      ;(m.getSource('daynight') as maplibregl.GeoJSONSource | undefined)?.setData(nightPolygon())
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [mapReady, overlaysOn.daynight])
 
   // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
   useEffect(() => {
@@ -1788,6 +1888,42 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setPbT(v)
   }, [])
 
+  // "360" — one slow, smooth revolution of whatever the screen is showing.
+  // Pure bearing spin: center/zoom/pitch untouched, lands exactly where it
+  // started. A touch/drag mid-spin hands the camera back instantly.
+  const [spinning, setSpinning] = useState(false)
+  const spinningRef = useRef(false)
+  spinningRef.current = spinning
+  const spinRaf = useRef(0)
+  const stopSpin = useCallback(() => {
+    cancelAnimationFrame(spinRaf.current)
+    setSpinning(false)
+  }, [])
+  const handleSpin = useCallback(() => {
+    const m = map.current
+    if (!m) return
+    if (spinningRef.current) { stopSpin(); return }
+    setSpinning(true)
+    const SPIN_MS = 24_000
+    const start = performance.now()
+    const b0 = m.getBearing()
+    const frame = (now: number) => {
+      if (userGestureRef.current) { setSpinning(false); return }
+      const f = (now - start) / SPIN_MS
+      if (f >= 1) {
+        m.rotateTo(b0, { duration: 0 })
+        setSpinning(false)
+        return
+      }
+      // ease in/out over the first & last 8% so it starts and lands gently
+      const g = f < 0.08 ? f * f / 0.08 : f > 0.92 ? 1 - (1 - f) * (1 - f) / 0.08 : f
+      m.rotateTo((b0 + g * 360) % 360, { duration: 0 })
+      spinRaf.current = requestAnimationFrame(frame)
+    }
+    spinRaf.current = requestAnimationFrame(frame)
+  }, [stopSpin])
+  useEffect(() => () => cancelAnimationFrame(spinRaf.current), [])
+
   // Toggle cinematic follow. Picking an asset arms a 3D chase: switch to a replay
   // range if we're live, tilt/zoom the camera up, and play the route from the top.
   useEffect(() => {
@@ -1827,6 +1963,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m?.easeTo({ pitch: threeDRef.current ? 55 : 0, bearing: 0, duration: 800 })
       return
     }
+    stopSpin() // follow owns the camera — a running 360 would fight it
+    // Zones have no direction of travel, so Chase silently becomes Orbit.
+    if (id.startsWith('zone:') && followModeRef.current === 'chase') setFollowMode('orbit')
     setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     if (m) { bearingRef.current = m.getBearing(); pitchRef.current = m.getPitch() }
     entranceRef.current = 0
@@ -1840,14 +1979,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     tRef.current = firstMoveTRef.current
     setPbT(firstMoveTRef.current)
     setPbPlaying(true)
-  }, [handleRange])
+  }, [handleRange, stopSpin])
 
   // If the followed asset is filtered out or vanishes, release the camera.
+  // Zone targets only release if the zone itself was deleted.
   useEffect(() => {
-    if (followId && !tracksEff.some((tr) => tr.assetId === followId && filter.has(tr.type))) {
+    if (!followId) return
+    if (followId.startsWith('zone:')) {
+      if (!geofences.some((g) => `zone:${g.id}` === followId)) handleFollow(null)
+      return
+    }
+    if (!tracksEff.some((tr) => tr.assetId === followId && filter.has(tr.type))) {
       handleFollow(null)
     }
-  }, [followId, tracksEff, filter, handleFollow])
+  }, [followId, tracksEff, filter, geofences, handleFollow])
 
   // Restore a shared replay link (?range=yesterday&t=0.42&follow=<id>): apply
   // once when the map is ready, paused at the shared moment — the recipient
@@ -2008,6 +2153,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           ...MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] })),
           { key: 'nwswarn', label: 'Storm warnings', note: 'NWS severe/extreme polygons · 3-min refresh', on: !!overlaysOn.nwswarn },
           { key: 'gauges', label: 'Stream gauges', note: 'USGS live gage height · zoom in, tap a dot', on: !!overlaysOn.gauges },
+          { key: 'daynight', label: 'Day / night', note: 'live terminator · night side shaded · pairs with City lights', on: !!overlaysOn.daynight },
         ]}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         views={allViews(mapViews)}
@@ -2063,6 +2209,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           followAssets={tracksEff
             .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
             .map((tr) => ({ id: tr.assetId, name: tr.name, type: tr.type, color: tr.color }))}
+          followZones={geofences.map((g) => ({ id: `zone:${g.id}`, name: g.name, color: g.color }))}
+          spinning={spinning}
+          onSpin={handleSpin}
         />
       )}
 

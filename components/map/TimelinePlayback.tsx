@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box, Hexagon, Search, RotateCw } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -19,13 +19,18 @@ import { money } from '@/lib/projects'
 
 export interface FollowAsset { id: string; name: string; type: AssetType; color: string }
 
-// epoch ms <-> <input type="datetime-local"> value (local time, no seconds)
-function toLocalInput(ms: number): string {
-  const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000)
-  return d.toISOString().slice(0, 16)
+// epoch ms <-> <input type="date"> value. Whole days only — From snaps to
+// 12:00:00 AM, To snaps to 11:59:59 PM, so "Jul 3 to Jul 5" means all three
+// days without anyone fighting an hour picker on a phone.
+function toDateInput(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-function fromLocalInput(v: string): number {
-  return new Date(v).getTime()
+function dayStartMs(v: string): number {
+  return new Date(`${v}T00:00:00`).getTime()
+}
+function dayEndMs(v: string): number {
+  return new Date(`${v}T23:59:59.999`).getTime()
 }
 
 const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
@@ -70,6 +75,12 @@ interface TimelinePlaybackProps {
   onFollowMode: (m: FollowMode) => void
   /** Assets with a trail in the current window, offered as follow targets. */
   followAssets: FollowAsset[]
+  /** Zones offered as follow targets — the camera circles the site itself.
+   *  Ids arrive prefixed "zone:" so one followId field serves both kinds. */
+  followZones?: { id: string; name: string; color: string }[]
+  /** "360" — slow full rotation of the current view (disabled while following). */
+  spinning?: boolean
+  onSpin?: () => void
   /** IANA timezone for clock/date labels (kiosk walls + shared replays render
    *  somewhere else — labels must still read in the crew's local time). */
   tz?: string
@@ -82,7 +93,8 @@ export function TimelinePlayback({
   range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
-  followId, onFollow, followMode, onFollowMode, followAssets, tz, kiosk = false,
+  followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
+  spinning = false, onSpin, tz, kiosk = false,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -92,21 +104,43 @@ export function TimelinePlayback({
   const [showFollow, setShowFollow] = useState(false)
   const [showChart, setShowChart] = useState(false)
   const [shared, setShared] = useState(false)
+  const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
+  const rootRef = useRef<HTMLDivElement>(null)
+  const followed = followAssets.find((a) => a.id === followId)
+    ?? followZones.find((z) => z.id === followId)
+    ?? null
+  const followedIsZone = !!followId?.startsWith('zone:')
+  // Quick filter for big fleets — type a few letters, list narrows live.
+  const [followQ, setFollowQ] = useState('')
+  const q = followQ.trim().toLowerCase()
+  const pickAssets = q ? followAssets.filter((a) => a.name.toLowerCase().includes(q)) : followAssets
+  const pickZones = q ? followZones.filter((z) => z.name.toLowerCase().includes(q)) : followZones
 
-  // Shareable replay link: current range + scrub position (+ follow target),
-  // so "watch this trip" is a text message, not a screen-share.
+  // Share replay. Following ONE asset → mint a PUBLIC link (no login, dies in
+  // 7 days) so "watch this trip" can go to anyone by text. Any other view
+  // copies the private link (teammates sign in and land on the same replay).
   const shareReplay = async () => {
-    const p = new URLSearchParams({ range, t: t.toFixed(3) })
-    if (followId) p.set('follow', followId)
-    if (range === 'custom') { p.set('from', String(customFrom)); p.set('to', String(customTo)) }
-    const url = `${window.location.origin}${window.location.pathname}?${p.toString()}`
+    let url: string | null = null
+    if (followed && !followedIsZone && !live && realWindow) {
+      try {
+        const r = await fetch('/api/share/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ assetId: followed.id, fromMs: Math.round(realWindow.from), toMs: Math.round(realWindow.to), t }),
+        })
+        if (r.ok) url = ((await r.json()) as { url?: string }).url ?? null
+      } catch { /* demo mode or offline — fall through to the private link */ }
+    }
+    if (!url) {
+      const p = new URLSearchParams({ range, t: t.toFixed(3) })
+      if (followId) p.set('follow', followId)
+      if (range === 'custom') { p.set('from', String(customFrom)); p.set('to', String(customTo)) }
+      url = `${window.location.origin}${window.location.pathname}?${p.toString()}`
+    }
     try { await navigator.clipboard.writeText(url) } catch { /* clipboard blocked */ }
     setShared(true)
     setTimeout(() => setShared(false), 1800)
   }
-  const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
-  const rootRef = useRef<HTMLDivElement>(null)
-  const followed = followAssets.find((a) => a.id === followId) ?? null
 
   // Close the follow menu on any tap/click outside the playback bar.
   useEffect(() => {
@@ -185,24 +219,50 @@ export function TimelinePlayback({
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}
       {showFollow && !followed && (
-        <div className="absolute bottom-full mb-2 right-0 z-30 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2">
+        <div className="absolute bottom-full mb-2 right-0 z-30 w-[250px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2">
           <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink flex items-center gap-1.5">
             <Video className="h-3.5 w-3.5 text-amber" /> Fly the camera with…
           </p>
-          <div className="max-h-[220px] overflow-y-auto no-scrollbar">
-            {followAssets.map((a) => (
+          <div className="relative mx-1 mb-1.5">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-faint pointer-events-none" />
+            <input
+              value={followQ}
+              onChange={(e) => setFollowQ(e.target.value)}
+              placeholder="Search assets & zones…"
+              autoFocus
+              className="w-full bg-navy-900 border border-navy-700 rounded-lg text-ink text-[12.5px] pl-8 pr-2 py-1.5 outline-none focus:border-amber placeholder:text-faint"
+            />
+          </div>
+          <div className="max-h-[240px] overflow-y-auto no-scrollbar">
+            {pickAssets.map((a) => (
               <button
                 key={a.id}
-                onClick={() => { onFollow(a.id); setShowFollow(false) }}
+                onClick={() => { onFollow(a.id); setFollowQ(''); setShowFollow(false) }}
                 className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-[13px] text-muted hover:bg-navy-900 hover:text-ink transition-colors"
               >
                 <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: a.color }} />
                 <span className="truncate">{a.name}</span>
               </button>
             ))}
+            {pickZones.length > 0 && (
+              <p className="px-2 pt-2 pb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Zones</p>
+            )}
+            {pickZones.map((z) => (
+              <button
+                key={z.id}
+                onClick={() => { onFollow(z.id); setFollowQ(''); setShowFollow(false) }}
+                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-[13px] text-muted hover:bg-navy-900 hover:text-ink transition-colors"
+              >
+                <Hexagon className="h-3.5 w-3.5 flex-none" style={{ color: z.color }} />
+                <span className="truncate">{z.name}</span>
+              </button>
+            ))}
+            {pickAssets.length + pickZones.length === 0 && (
+              <p className="px-2 py-3 text-[12px] text-faint text-center">Nothing matches &ldquo;{followQ}&rdquo;</p>
+            )}
           </div>
           <p className="px-2 pt-1.5 pb-0.5 text-[10px] text-faint leading-snug">
-            Locks the camera onto the asset. Pick a camera style once it&rsquo;s following.
+            Locks the camera on. Assets replay their route; zones get a slow aerial of the site.
           </p>
         </div>
       )}
@@ -211,7 +271,7 @@ export function TimelinePlayback({
           <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink flex items-center gap-1.5 truncate">
             <Video className="h-3.5 w-3.5 text-amber" /> Camera · {followed.name}
           </p>
-          {CAMERA_MODES.map(({ key, label, icon: Icon, note }) => (
+          {CAMERA_MODES.filter(({ key }) => !followedIsZone || key !== 'chase').map(({ key, label, icon: Icon, note }) => (
             <button
               key={key}
               onClick={() => onFollowMode(key)}
@@ -310,12 +370,12 @@ export function TimelinePlayback({
         <div className="absolute bottom-full mb-2 right-0 z-30 w-[260px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-3 space-y-2">
           <p className="font-display font-bold text-[13px] text-ink">Custom range</p>
           <label className="block">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">From</span>
-            <input type="datetime-local" value={toLocalInput(customFrom)} max={toLocalInput(customTo)} onChange={(e) => onCustom(fromLocalInput(e.target.value), customTo)} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
+            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">From day · starts 12:00 AM</span>
+            <input type="date" value={toDateInput(customFrom)} max={toDateInput(customTo)} onChange={(e) => { if (e.target.value) onCustom(dayStartMs(e.target.value), customTo) }} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
           </label>
           <label className="block">
-            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">To</span>
-            <input type="datetime-local" value={toLocalInput(customTo)} min={toLocalInput(customFrom)} onChange={(e) => onCustom(customFrom, fromLocalInput(e.target.value))} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
+            <span className="font-mono text-[10px] uppercase tracking-wide text-faint">To day · ends 11:59 PM</span>
+            <input type="date" value={toDateInput(customTo)} min={toDateInput(customFrom)} onChange={(e) => { if (e.target.value) onCustom(customFrom, dayEndMs(e.target.value)) }} className="w-full mt-0.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs px-2 py-1.5 outline-none focus:border-amber" />
           </label>
           <button onClick={() => setShowCustom(false)} className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors">Done</button>
         </div>
@@ -384,13 +444,30 @@ export function TimelinePlayback({
         {!live && (
           <button
             onClick={shareReplay}
-            title="Copy replay link"
+            title={followed && !followedIsZone
+              ? 'Copy PUBLIC replay link — anyone with it can watch this trip for 7 days, no login'
+              : 'Copy replay link (teammates sign in and see this view)'}
             className={
               'flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors ' +
               (shared ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
             }
           >
             {shared ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+          </button>
+        )}
+        {/* 360 — slow full spin of the current view (map + command center).
+            Hidden while following: the follow camera owns bearing. */}
+        {onSpin && !followed && (
+          <button
+            onClick={onSpin}
+            title={spinning ? 'Stop the 360 spin' : 'Slow 360° spin of the current view'}
+            className={
+              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+              (spinning ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">360</span>
           </button>
         )}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
@@ -411,7 +488,7 @@ export function TimelinePlayback({
         </div>
 
         {/* Cinematic camera-follow (menu itself renders above the bar — see top) */}
-        {followAssets.length > 0 && (
+        {(followAssets.length > 0 || followZones.length > 0) && (
           <button
             onClick={() => setShowFollow((s) => !s)}
             title={followed ? `Following ${followed.name} — camera settings` : 'Cinematic follow'}

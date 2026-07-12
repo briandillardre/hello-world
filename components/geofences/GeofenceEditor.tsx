@@ -94,10 +94,18 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     ]
     const m = new maplibregl.Map({
       container: mapContainer.current,
+      // Hybrid by default: imagery + street/place labels, so you can read
+      // WHICH road you're dragging the corner to.
       style: {
         version: 8,
-        sources: { sat: { type: 'raster', tiles: [SAT], tileSize: 256, maxzoom: 19 } },
-        layers: [{ id: 'sat', type: 'raster', source: 'sat' }],
+        sources: {
+          sat: { type: 'raster', tiles: [SAT], tileSize: 256, maxzoom: 19 },
+          labels: { type: 'raster', tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_only_labels/{z}/{x}/{y}@2x.png'], tileSize: 256, maxzoom: 19 },
+        },
+        layers: [
+          { id: 'sat', type: 'raster', source: 'sat' },
+          { id: 'labels', type: 'raster', source: 'labels' },
+        ],
       },
       bounds,
       fitBoundsOptions: { padding: 60 },

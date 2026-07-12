@@ -110,12 +110,15 @@ export async function POST(request: NextRequest) {
     // (the same value the gateway reports in ble.beacons[].id). Register tools
     // with their beacon UUID as the tracker_id for this lookup to match.
     for (const beacon of r.beacons) {
+      // ilike (no wildcards) = case-insensitive equality: a MAC pasted as
+      // "7C:D9:F4…" still matches a tracker reporting "7c:d9:f4…".
       const { data: tool } = await supabase
         .from('assets')
         .select('id')
         .eq('company_id', asset.company_id)
-        .eq('tracker_id', beacon.id)
-        .single()
+        .ilike('tracker_id', beacon.id)
+        .limit(1)
+        .maybeSingle()
       if (!tool) continue
       await supabase.from('tool_associations').upsert(
         {

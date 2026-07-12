@@ -64,6 +64,16 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     opacity: 0.55,
   },
   {
+    key: 'nightlights',
+    label: 'City lights',
+    note: 'NASA Black Marble · Earth at night · zoom out',
+    // Static VIIRS composite via GIBS — no query params (strict server).
+    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
+    minzoom: 0,
+    maxzoom: 8,
+    opacity: 0.9,
+  },
+  {
     key: 'streams',
     label: 'Streams',
     note: 'USGS National Hydrography',

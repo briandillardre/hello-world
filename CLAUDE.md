@@ -115,6 +115,7 @@ TWILIO_FROM=                   # your Twilio number, E.164
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
 CRON_SECRET=                   # optional: locks /api/cron/digest (Vercel cron sends it automatically)
+SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
 # ── Home weather station (optional; unset = hidden) ──
 PWS_PROVIDER=                  # ambient | tempest | wunderground (inferred from keys if unset)
 PWS_API_KEY=                   # ambient + wunderground

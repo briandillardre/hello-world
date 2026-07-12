@@ -30,6 +30,12 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'image',
   },
   {
+    key: 'nightlights',
+    label: 'City lights (VIIRS Black Marble)',
+    url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/5/12/8.png',
+    kind: 'image',
+  },
+  {
     key: 'radar',
     label: 'Radar (IEM NEXRAD)',
     url: 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/5/8/12.png',

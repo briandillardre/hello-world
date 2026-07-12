@@ -92,6 +92,12 @@ function hashId(id: string): number {
   return h >>> 0
 }
 
+/** THE color for an asset, everywhere — trails, radar blips, follow picker.
+ *  Deterministic from the id so every surface agrees. */
+export function trailColor(id: string): string {
+  return TRAIL_PALETTE[hashId(id) % TRAIL_PALETTE.length]
+}
+
 export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   return assets.map((a) => {
     const rng = mulberry32(hashId(a.id))

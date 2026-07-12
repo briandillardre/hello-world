@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { X, Sparkles, ChevronRight, Radar, Map, Package, Hexagon, Bell, Wrench, BarChart3, Calculator, Users, Settings, MonitorPlay } from 'lucide-react'
+import { X, Sparkles, ChevronRight, ChevronLeft, Radar, Map, Package, Hexagon, Bell, Wrench, BarChart3, Calculator, Users, Settings, MonitorPlay, LayoutGrid, Check, Route } from 'lucide-react'
 import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
@@ -31,6 +31,20 @@ export interface CommandKpis {
   costToday: string
   sites: number
 }
+
+/** Every window on the wall display: open, minimized to its title, or gone.
+ *  Arranged once, remembered per device — the TV comes back how you left it. */
+export type PanelState = 'open' | 'min' | 'hidden'
+export type PanelKey = 'activity' | 'sites' | 'status' | 'weather' | 'events' | 'fleet' | 'hud' | 'chips' | 'ticker' | 'zoom'
+
+const LEFT_KEYS: PanelKey[] = ['activity', 'sites', 'status', 'weather']
+const RIGHT_KEYS: PanelKey[] = ['events', 'fleet']
+const DEFAULT_PANELS: Record<PanelKey, PanelState> = {
+  activity: 'open', sites: 'open', status: 'open', weather: 'open',
+  events: 'open', fleet: 'open', hud: 'open', chips: 'open', ticker: 'open', zoom: 'open',
+}
+const PANELS_LS = 'ht_cc_panels_v2'
+const TOUR_LS = 'ht_cc_tour'
 
 interface CommandCenterProps {
   assets: AssetWithLocation[]
@@ -68,7 +82,8 @@ const NAV_LINKS = [
 
 /** Hidden left-edge nav: nothing but a slim arrow tab until tapped, then a
  *  slide-out with the whole app one tap away — the wall display stays clean
- *  but you're never trapped on it. */
+ *  but you're never trapped on it. Lives near the bottom corner so the layers
+ *  panel and instrument rail never cover it. */
 function NavFlyout() {
   const [open, setOpen] = useState(false)
   if (!open) {
@@ -76,7 +91,7 @@ function NavFlyout() {
       <button
         onClick={() => setOpen(true)}
         aria-label="Open navigation"
-        className="fixed left-0 top-1/2 -translate-y-1/2 z-50 grid place-items-center w-5 h-16 rounded-r-lg bg-navy-950/80 backdrop-blur border border-l-0 border-teal/25 text-teal/70 hover:text-teal hover:w-6 transition-all"
+        className="fixed left-0 bottom-24 z-50 grid place-items-center w-5 h-16 rounded-r-lg bg-navy-950/80 backdrop-blur border border-l-0 border-teal/25 text-teal/70 hover:text-teal hover:w-6 transition-all"
       >
         <ChevronRight className="h-4 w-4" />
       </button>
@@ -117,12 +132,133 @@ function Chip({ label, value, tone = 'ink' }: { label: string; value: string; to
   )
 }
 
+/** "Screen" menu — build the wall you want, then clear the rest. Every row is
+ *  a window on the display; Clear screen leaves nothing but the map. */
+function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
+  panels: Record<PanelKey, PanelState>
+  onPanel: (k: PanelKey, s: PanelState) => void
+  tourOn: boolean
+  onTour: (v: boolean) => void
+  onClear: () => void
+  onShowAll: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+    }
+  }, [open])
+
+  const ROWS: { k: PanelKey; label: string }[] = [
+    { k: 'activity', label: 'Fleet activity' },
+    { k: 'sites', label: 'Site presence' },
+    { k: 'status', label: 'Fleet status' },
+    { k: 'weather', label: 'On-site weather' },
+    { k: 'events', label: 'Event log' },
+    { k: 'fleet', label: 'Fleet board' },
+    { k: 'hud', label: 'Radar dial' },
+    { k: 'chips', label: 'Stats bar' },
+    { k: 'ticker', label: 'Bottom ticker' },
+    { k: 'zoom', label: 'Map zoom buttons' },
+  ]
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Screen setup — choose which windows show"
+        className={'grid place-items-center w-8 h-8 rounded-lg border transition-colors ' + (open ? 'bg-navy-800 text-ink border-navy-600' : 'bg-navy-900 border-navy-700 text-faint hover:text-ink')}
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2 z-50">
+          <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink">Screen setup</p>
+          {ROWS.map(({ k, label }) => {
+            const on = panels[k] !== 'hidden'
+            return (
+              <button
+                key={k}
+                onClick={() => onPanel(k, on ? 'hidden' : 'open')}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[12.5px] text-muted hover:bg-navy-900 hover:text-ink transition-colors"
+              >
+                <span className={'grid place-items-center w-4 h-4 rounded border flex-none ' + (on ? 'bg-teal/20 border-teal/50 text-teal' : 'border-navy-600 text-transparent')}>
+                  <Check className="h-3 w-3" />
+                </span>
+                {label}
+              </button>
+            )
+          })}
+          <div className="my-1.5 border-t border-navy-800" />
+          <button
+            onClick={() => onTour(!tourOn)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-[12.5px] text-muted hover:bg-navy-900 hover:text-ink transition-colors"
+          >
+            <span className={'grid place-items-center w-4 h-4 rounded border flex-none ' + (tourOn ? 'bg-amber/20 border-amber/50 text-amber' : 'border-navy-600 text-transparent')}>
+              <Check className="h-3 w-3" />
+            </span>
+            <span className="flex-1">
+              <span className="flex items-center gap-1.5"><Route className="h-3.5 w-3.5" /> Auto-tour assets</span>
+              <span className="block text-[10px] text-faint leading-tight mt-0.5">Camera glides asset to asset. Drag the map to stop it; off = stays where you leave it.</span>
+            </span>
+          </button>
+          <div className="my-1.5 border-t border-navy-800" />
+          <div className="flex gap-1.5 px-1 pb-0.5">
+            <button onClick={onClear} className="flex-1 rounded-lg bg-navy-900 border border-navy-700 text-[11.5px] font-semibold text-muted hover:text-ink py-1.5 transition-colors">
+              Clear screen
+            </button>
+            <button onClick={onShowAll} className="flex-1 rounded-lg bg-teal/15 border border-teal/40 text-[11.5px] font-semibold text-teal py-1.5 hover:bg-teal/25 transition-colors">
+              Show all
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [] }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
-  // Every instrument on the wall collapses; the dial included.
-  const [hudOpen, setHudOpen] = useState(true)
+
+  // ── the wall's arrangement: every window's state + the auto-tour, persisted ──
+  const [panels, setPanels] = useState<Record<PanelKey, PanelState>>(DEFAULT_PANELS)
+  const [tourOn, setTourOn] = useState(true)
+  const loaded = useRef(false)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PANELS_LS)
+      if (raw) setPanels({ ...DEFAULT_PANELS, ...(JSON.parse(raw) as Partial<Record<PanelKey, PanelState>>) })
+      const t = localStorage.getItem(TOUR_LS)
+      if (t != null) setTourOn(t === '1')
+    } catch { /* fresh device */ }
+    loaded.current = true
+  }, [])
+  useEffect(() => {
+    if (loaded.current) try { localStorage.setItem(PANELS_LS, JSON.stringify(panels)) } catch { /* full */ }
+  }, [panels])
+  useEffect(() => {
+    if (loaded.current) try { localStorage.setItem(TOUR_LS, tourOn ? '1' : '0') } catch { /* full */ }
+  }, [tourOn])
+
+  const onPanel = (k: PanelKey, s: PanelState) => setPanels((p) => ({ ...p, [k]: s }))
+  const setMany = (keys: PanelKey[], s: PanelState) =>
+    setPanels((p) => keys.reduce((acc, k) => ({ ...acc, [k]: s }), { ...p }))
+  const clearScreen = () => setMany(Object.keys(DEFAULT_PANELS) as PanelKey[], 'hidden')
+  const showAll = () => setMany(Object.keys(DEFAULT_PANELS) as PanelKey[], 'open')
+
+  const leftVisible = LEFT_KEYS.some((k) => panels[k] !== 'hidden')
+  const rightVisible = RIGHT_KEYS.some((k) => panels[k] !== 'hidden')
+
   useEffect(() => {
     const onCam = (e: Event) => setCamCenter((e as CustomEvent<{ lng: number; lat: number }>).detail)
     window.addEventListener('ht:camera', onCam)
@@ -150,12 +286,23 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         text: `${a.name} · ${a.location!.speed && a.location!.speed > 2 ? `moving · ${Math.round(a.location!.speed!)} mph` : 'on site'} · ${formatRelativeTime(a.location!.timestamp)}`,
       })),
   ]
+  const showTicker = panels.ticker !== 'hidden' && ticker.length > 0
 
   return (
     <div className="fixed inset-0 bg-navy-950 text-ink overflow-hidden">
-      {/* live map */}
-      <div className="absolute inset-0">
-        <MapView assets={assets} geofences={geofences} tracks={tracks} historyRows={historyRows} earliestMs={earliestMs} tz={tz} kiosk />
+      {/* live map — zoom buttons hide via CSS when that window is off */}
+      <div className={'absolute inset-0' + (panels.zoom === 'hidden' ? ' ht-hide-zoom' : '')}>
+        <MapView
+          assets={assets}
+          geofences={geofences}
+          tracks={tracks}
+          historyRows={historyRows}
+          earliestMs={earliestMs}
+          tz={tz}
+          kiosk
+          tourOn={tourOn}
+          onTourInterrupt={() => setTourOn(false)}
+        />
       </div>
 
       {/* HUD overlays */}
@@ -173,38 +320,59 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {/* hidden left-edge nav — a slim arrow until tapped */}
       <NavFlyout />
 
-      {/* left instrument rail — aligned to the layers pill above it */}
-      <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start">
-        <CommandRail assets={assets} geofences={geofences} tracks={tracks} />
-      </div>
-
-      {/* right instrument rail — event log + fleet board, above the HUD dial */}
-      {/* Bottom edge clears the radar dial at ANY viewport width — the dial is
-          clamp(150px,26vw,320px) tall plus its pill and margins, so a fixed
-          400px offset overlapped on wide screens ("still have some overlap",
-          Jul 12). Overflow scrolls inside the rail instead of over the dial. */}
-      <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden">
-        <EventRail assets={assets} alerts={alerts} />
-      </div>
-
-      {/* tactical instrument — bottom-right, above the ticker; collapsible */}
-      <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
-        {hudOpen && (
-          <TacticalHud
-            assets={assets}
-            geofences={geofences}
-            alertCount={alerts.filter((a) => !a.acknowledged_at).length}
-            center={camCenter}
-          />
-        )}
+      {/* left instrument rail — below the layers pill; slim edge tab when hidden */}
+      {leftVisible ? (
+        <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start">
+          <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
+        </div>
+      ) : (
         <button
-          onClick={() => setHudOpen((v) => !v)}
-          aria-label={hudOpen ? 'Hide radar' : 'Show radar'}
-          className="flex items-center gap-1.5 rounded-full bg-navy-950/80 backdrop-blur border border-teal/20 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors"
+          onClick={() => setMany(LEFT_KEYS, 'open')}
+          aria-label="Show instrument rail"
+          className="absolute left-0 top-[120px] z-[46] hidden xl:grid place-items-center w-6 h-14 rounded-r-lg bg-navy-950/75 backdrop-blur border border-l-0 border-teal/20 text-teal/70 hover:text-teal transition-colors"
         >
-          <Radar className="h-3 w-3" /> {hudOpen ? 'hide' : 'radar'}
+          <ChevronRight className="h-4 w-4" />
         </button>
-      </div>
+      )}
+
+      {/* right instrument rail — event log + fleet board, above the HUD dial.
+          Bottom edge clears the radar dial at ANY viewport width (dial is
+          clamp(150px,26vw,320px) tall + pill + margins). Overflow scrolls
+          inside the rail instead of over the dial. */}
+      {rightVisible ? (
+        <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden">
+          <EventRail assets={assets} alerts={alerts} panels={panels} onPanel={onPanel} />
+        </div>
+      ) : (
+        <button
+          onClick={() => setMany(RIGHT_KEYS, 'open')}
+          aria-label="Show event rail"
+          className="absolute right-0 top-[120px] z-[46] hidden xl:grid place-items-center w-6 h-14 rounded-l-lg bg-navy-950/75 backdrop-blur border border-r-0 border-teal/20 text-teal/70 hover:text-teal transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+
+      {/* tactical instrument — bottom-right, above the ticker; open ⇄ pill ⇄ gone */}
+      {panels.hud !== 'hidden' && (
+        <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
+          {panels.hud === 'open' && (
+            <TacticalHud
+              assets={assets}
+              geofences={geofences}
+              alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+              center={camCenter}
+            />
+          )}
+          <button
+            onClick={() => onPanel('hud', panels.hud === 'open' ? 'min' : 'open')}
+            aria-label={panels.hud === 'open' ? 'Hide radar' : 'Show radar'}
+            className="flex items-center gap-1.5 rounded-full bg-navy-950/80 backdrop-blur border border-teal/20 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors"
+          >
+            <Radar className="h-3 w-3" /> {panels.hud === 'open' ? 'hide' : 'radar'}
+          </button>
+        </div>
+      )}
 
       {/* top HUD bar */}
       <div className="absolute top-0 left-0 right-0 z-40 h-[56px] flex items-center justify-between px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
@@ -214,14 +382,16 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           <span className="hidden md:block font-mono text-[11px] text-faint tracking-wide">{company.toUpperCase()}</span>
         </div>
 
-        <div className="hidden sm:flex items-center">
-          <Chip label="Assets" value={`${kpis.assetsOnline}/${kpis.assetsTotal}`} />
-          <Chip label="Moving" value={`${kpis.equipmentRunning}`} tone="amber" />
-          <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" />
-          <Chip label="Sites" value={`${kpis.sites}`} />
-          <Chip label="Alerts" value={`${kpis.activeAlerts}`} tone={kpis.activeAlerts > 0 ? 'alert' : 'ink'} />
-          <Chip label="Cost today" value={kpis.costToday} tone="amber" />
-        </div>
+        {panels.chips !== 'hidden' && (
+          <div className="hidden sm:flex items-center">
+            <Chip label="Assets" value={`${kpis.assetsOnline}/${kpis.assetsTotal}`} />
+            <Chip label="Moving" value={`${kpis.equipmentRunning}`} tone="amber" />
+            <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" />
+            <Chip label="Sites" value={`${kpis.sites}`} />
+            <Chip label="Alerts" value={`${kpis.activeAlerts}`} tone={kpis.activeAlerts > 0 ? 'alert' : 'ink'} />
+            <Chip label="Cost today" value={kpis.costToday} tone="amber" />
+          </div>
+        )}
 
         <div className="flex items-center gap-4">
           <button
@@ -230,6 +400,14 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           >
             <Sparkles className="h-4 w-4" /> Ask
           </button>
+          <ScreenMenu
+            panels={panels}
+            onPanel={onPanel}
+            tourOn={tourOn}
+            onTour={setTourOn}
+            onClear={clearScreen}
+            onShowAll={showAll}
+          />
           <div className="text-right pointer-events-none">
             <div className="font-display font-black text-[18px] leading-none tabular-nums">{time}</div>
             <div className="font-mono text-[10px] text-faint">{date}</div>
@@ -243,8 +421,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         </div>
       </div>
 
-      {/* live event ticker — the wall display's heartbeat */}
-      {ticker.length > 0 && (
+      {/* live event ticker — the wall display's heartbeat (Screen menu turns it off) */}
+      {showTicker && (
         <div className="absolute bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
           <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[12px]">
             {[...ticker, ...ticker].map((item, i) => (

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
 import { pointInPolygon } from '@/lib/alerts-engine'
+import { trailColor } from '@/lib/trails'
 
 /**
  * Tactical HUD — a round aviation/Garmin-style instrument for the Command
@@ -17,14 +18,7 @@ import { pointInPolygon } from '@/lib/alerts-engine'
  * Scales from phone (compact — ring + clock + moving) to wall TV (full).
  */
 
-const BLIP_COLORS: Record<AssetType, string> = {
-  vehicle: '#ff9e16',
-  equipment: '#60a5fa',
-  personnel: '#34d399',
-  tool: '#a78bfa',
-}
-
-interface Blip { x: number; y: number; color: string; moving: boolean; big: boolean }
+interface Blip { id: string; name: string; x: number; y: number; color: string; moving: boolean; big: boolean }
 
 function useClock(): string {
   const [now, setNow] = useState('--:--:--')
@@ -75,9 +69,12 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
       if (rings.some((ring) => ring.length >= 3 && pointInPolygon([a.location!.lng, a.location!.lat], ring))) onSite++
       const f = maxR > 0 ? (r / maxR) * 0.82 : 0 // keep inside the ring
       return {
+        id: a.id,
+        name: a.name,
         x: 50 + (maxR > 0 ? (dx / maxR) * 0.82 * 50 : 0),
         y: 50 - (maxR > 0 ? (dy / maxR) * 0.82 * 50 : 0),
-        color: BLIP_COLORS[a.type],
+        // Same deterministic color the asset's trail wears on the map.
+        color: trailColor(a.id),
         moving: isMoving,
         big: a.type !== 'tool' && f >= 0,
       }
@@ -157,19 +154,26 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
         />
       </div>
 
-      {/* asset blips at true bearings */}
+      {/* asset blips at true bearings — tap one and the map flies to it */}
       <div className="absolute inset-0">
-        {blips.map((b, i) => (
-          <span
-            key={i}
-            className={'absolute rounded-full -translate-x-1/2 -translate-y-1/2 ' + (b.moving ? 'animate-blink' : '')}
-            style={{
-              left: `${b.x}%`, top: `${b.y}%`,
-              width: b.big ? 6 : 4, height: b.big ? 6 : 4,
-              background: b.color,
-              boxShadow: `0 0 ${b.moving ? 9 : 4}px ${b.color}`,
-            }}
-          />
+        {blips.map((b) => (
+          <button
+            key={b.id}
+            title={b.name}
+            aria-label={`Go to ${b.name}`}
+            onClick={() => window.dispatchEvent(new CustomEvent('ht:focus-asset', { detail: { id: b.id } }))}
+            className="absolute -translate-x-1/2 -translate-y-1/2 grid place-items-center w-4 h-4 pointer-events-auto cursor-pointer"
+            style={{ left: `${b.x}%`, top: `${b.y}%` }}
+          >
+            <span
+              className={'rounded-full ' + (b.moving ? 'animate-blink' : '')}
+              style={{
+                width: b.big ? 6 : 4, height: b.big ? 6 : 4,
+                background: b.color,
+                boxShadow: `0 0 ${b.moving ? 9 : 4}px ${b.color}`,
+              }}
+            />
+          </button>
         ))}
       </div>
 

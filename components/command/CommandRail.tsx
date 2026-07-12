@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { buildActivityCurve, areaPath } from '@/lib/activity'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { fetchConditions, weatherEmoji, type Conditions } from '@/lib/weather'
+import type { PanelKey, PanelState } from './CommandCenter'
 
 /**
  * Left instrument rail for the Command Center — the mission-control frame
@@ -15,27 +16,45 @@ import { fetchConditions, weatherEmoji, type Conditions } from '@/lib/weather'
  *   · site presence (who's inside which zone right now)
  *   · fleet status counters + weakest batteries
  *   · on-site weather (fleet centroid)
- * Collapsible so the wall display can go full-map.
+ * Every module minimizes to its title row or hides entirely — the state
+ * lives in CommandCenter and persists per device, so the wall display
+ * comes back exactly how it was arranged.
  */
 
 const STALE_MS = 2 * 3_600_000
 
-function Module({ title, children }: { title: string; children: React.ReactNode }) {
+export function Module({ k, title, state, onPanel, children }: {
+  k: PanelKey
+  title: string
+  state: PanelState
+  onPanel: (k: PanelKey, s: PanelState) => void
+  children: React.ReactNode
+}) {
+  if (state === 'hidden') return null
   return (
     <div className="rounded-lg bg-navy-950/75 backdrop-blur border border-teal/15 px-3 py-2.5">
-      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal/80 mb-1.5">{title}</p>
-      {children}
+      <div className="flex items-center justify-between gap-2">
+        <p className={'font-mono text-[9px] uppercase tracking-[0.16em] text-teal/80 ' + (state === 'open' ? 'mb-1.5' : '')}>{title}</p>
+        <button
+          onClick={() => onPanel(k, state === 'min' ? 'open' : 'min')}
+          aria-label={state === 'min' ? `Expand ${title}` : `Minimize ${title}`}
+          className={'grid place-items-center w-5 h-5 -mr-1 rounded text-faint hover:text-teal transition-colors flex-none ' + (state === 'open' ? '-mt-1' : '')}
+        >
+          {state === 'min' ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+        </button>
+      </div>
+      {state === 'open' && children}
     </div>
   )
 }
 
-export function CommandRail({ assets, geofences, tracks }: {
+export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   tracks: AssetTrack[]
+  panels: Record<PanelKey, PanelState>
+  onPanel: (k: PanelKey, s: PanelState) => void
 }) {
-  const [open, setOpen] = useState(true)
-
   // ── fleet activity waveform (24h of movement) ──
   const activity = useMemo(() => buildActivityCurve(tracks, 48), [tracks])
   const activityMax = Math.max(1, ...activity)
@@ -89,21 +108,9 @@ export function CommandRail({ assets, geofences, tracks }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets.length])
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Show instrument rail"
-        className="grid place-items-center w-7 h-14 rounded-r-lg bg-navy-950/75 backdrop-blur border border-l-0 border-teal/20 text-teal/70 hover:text-teal transition-colors"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </button>
-    )
-  }
-
   return (
     <div className="w-52 flex flex-col gap-2.5 overflow-y-auto no-scrollbar">
-      <Module title="Fleet activity · 24h">
+      <Module k="activity" title="Fleet activity · 24h" state={panels.activity} onPanel={onPanel}>
         <svg viewBox="0 0 200 40" preserveAspectRatio="none" className="w-full h-[40px]">
           <defs>
             <linearGradient id="rail-wave" x1="0" y1="0" x2="0" y2="1">
@@ -124,7 +131,7 @@ export function CommandRail({ assets, geofences, tracks }: {
         <p className="font-mono text-[9px] text-faint mt-1 tabular-nums">peak {activityMax} moving</p>
       </Module>
 
-      <Module title="Site presence">
+      <Module k="sites" title="Site presence" state={panels.sites} onPanel={onPanel}>
         {sites.length === 0 ? (
           <p className="font-mono text-[10px] text-faint">no zones drawn yet</p>
         ) : (
@@ -143,7 +150,7 @@ export function CommandRail({ assets, geofences, tracks }: {
         )}
       </Module>
 
-      <Module title="Fleet status">
+      <Module k="status" title="Fleet status" state={panels.status} onPanel={onPanel}>
         <div className="grid grid-cols-3 text-center mb-1.5">
           <div>
             <p className="font-display font-black text-[17px] text-amber tabular-nums">{status.moving}</p>
@@ -177,7 +184,7 @@ export function CommandRail({ assets, geofences, tracks }: {
       </Module>
 
       {wx && (
-        <Module title="On-site weather">
+        <Module k="weather" title="On-site weather" state={panels.weather} onPanel={onPanel}>
           <div className="flex items-center gap-3">
             <span className="text-2xl leading-none">{weatherEmoji(wx.code)}</span>
             <div className="flex-1">
@@ -192,7 +199,7 @@ export function CommandRail({ assets, geofences, tracks }: {
       )}
 
       <button
-        onClick={() => setOpen(false)}
+        onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}
         aria-label="Hide instrument rail"
         className="self-start flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors px-1"
       >

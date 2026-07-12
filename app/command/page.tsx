@@ -72,7 +72,9 @@ export default async function CommandPage() {
     ).length,
     activeAlerts: alerts.filter((a) => !a.acknowledged_at).length,
     costToday: moneyFull(costToday),
-    sites: PROJECTS.length,
+    // Live accounts: real zones (job sites + yards; boundaries are perimeters,
+    // not places). Demo keeps the seeded project count.
+    sites: history ? geofences.filter((g) => g.kind !== 'boundary').length : PROJECTS.length,
   }
 
   return (

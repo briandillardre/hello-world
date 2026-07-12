@@ -1,7 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 
 /**
  * One responsive shell for every map selection — asset, zone, or device.
@@ -25,6 +25,8 @@ export function MapSheet({
   onClose: () => void
   children: ReactNode
 }) {
+  // Mobile only: peek (map visible + interactive) vs expanded (full detail).
+  const [expanded, setExpanded] = useState(false)
   const header = (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
@@ -47,11 +49,21 @@ export function MapSheet({
 
   return (
     <>
-      {/* Mobile: tap-away backdrop + slide-up sheet (above the tab bar) */}
-      <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />
+      {/* Mobile: half-sheet first — the MAP stays visible and interactive
+          (isolate/highlight is pointless behind a full-screen panel). The
+          handle/chevron expands to nearly full; collapse drops it back. Only
+          the expanded state dims the map and closes on tap-away. */}
+      {expanded && <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />}
       <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
-        <div className="bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-2.5 pb-6 mx-2 border border-navy-800 max-h-[68vh] overflow-y-auto">
-          <div className="w-9 h-1 rounded-full bg-navy-700 mx-auto mb-3" />
+        <div className={'bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-1.5 pb-6 mx-2 border border-navy-800 overflow-y-auto transition-[max-height] duration-200 ' + (expanded ? 'max-h-[85dvh]' : 'max-h-[40dvh]')}>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? 'Collapse panel' : 'Expand panel'}
+            className="w-full grid place-items-center py-1 mb-1.5 text-faint active:text-ink"
+          >
+            <span className="w-9 h-1 rounded-full bg-navy-700 mb-0.5" />
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
           {header}
           <div className="mt-4">{children}</div>
         </div>
