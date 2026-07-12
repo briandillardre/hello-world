@@ -388,8 +388,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   windowSecRef.current = windowSecondsEff
   // Whenever the replay window's real length changes (range pick, custom
   // From/To edit, all-time data growing) re-snap to the ~45 s-sweep speed.
+  // Never while following — Follow pins 2x wall-clock so tiles keep up, and
+  // this effect fires right after Follow flips Live -> Today.
   useEffect(() => {
-    if (range === 'live') return
+    if (range === 'live' || followIdRef.current) return
     setPbSpeed(defaultSpeedForWindow(windowSecondsEff))
   }, [range, windowSecondsEff])
   // $ curve for the chart. Real accounts: the honest ledger. Demo: a blended
@@ -1799,7 +1801,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // Live has no scrubber — drop into Today so the route can actually replay.
     const wasLive = rangeRef.current === 'live'
     if (wasLive) handleRange('today')
-    setPbSpeed(defaultSpeedForWindow(windowSecRef.current))
+    // Follow rides at 2x wall-clock: slow enough that tiles stream in ahead
+    // of the camera instead of the chase outrunning the map.
+    setPbSpeed(2)
     // Start the chase where the day's driving actually starts.
     tRef.current = firstMoveTRef.current
     setPbT(firstMoveTRef.current)

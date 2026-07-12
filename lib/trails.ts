@@ -285,8 +285,11 @@ const niceSpeed = (x: number) => {
  *  crawling minute-by-minute, custom ranges scale automatically, and "All
  *  time" adapts to however much history really exists. */
 export function speedsForWindow(windowSeconds: number): number[] {
+  // True real-time crawl speeds first — 1x/2x/4x wall-clock. They exist for
+  // Follow mode: the camera moves at road speed, so tiles stream in ahead of
+  // it instead of the map chasing a blur (Brian's follow-loading fix, Jul 12).
+  const out: number[] = [1, 2, 4]
   const targets = [120, 45, 15, 5]
-  const out: number[] = []
   for (const t of targets) {
     const v = niceSpeed(windowSeconds / t)
     if (!out.includes(v)) out.push(v)
