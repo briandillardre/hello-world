@@ -280,6 +280,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [followId, setFollowId] = useState<string | null>(null)
   const [followMode, setFollowMode] = useState<FollowMode>('orbit')
   const followIdRef = useRef<string | null>(null)
+  // Follow HUD: replay telemetry projected while the camera rides the asset —
+  // speed at the scrub position, time of day, miles covered so far.
+  const [followHud, setFollowHud] = useState<{ mph: number | null; clock: string; milesIn: number } | null>(null)
   const followModeRef = useRef<FollowMode>('orbit')
   const bearingRef = useRef(0)   // smoothed camera bearing
   const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
@@ -1787,6 +1790,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
   // Toggle cinematic follow. Picking an asset arms a 3D chase: switch to a replay
   // range if we're live, tilt/zoom the camera up, and play the route from the top.
+  useEffect(() => {
+    if (!followId || range === 'live' || !realWindowEff) { setFollowHud(null); return }
+    const tr = tracksEff.find((t) => t.assetId === followId)
+    if (!tr || tr.points.length < 2) { setFollowHud(null); return }
+    // Cumulative miles along the track, once per track change.
+    const R = 3958.8
+    const cum: number[] = [0]
+    for (let i = 1; i < tr.points.length; i++) {
+      const a = tr.points[i - 1], b = tr.points[i]
+      const dLat = ((b.lat - a.lat) * Math.PI) / 180
+      const dLng = ((b.lng - a.lng) * Math.PI) / 180
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+      cum.push(cum[i - 1] + (b.gap ? 0 : 2 * R * Math.asin(Math.sqrt(h))))
+    }
+    const win = realWindowEff
+    const id = setInterval(() => {
+      const t = tRef.current
+      let lo = 0, hi = tr.points.length - 1
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (tr.points[mid].t <= t) lo = mid; else hi = mid - 1 }
+      const ms = win.from + t * (win.to - win.from)
+      setFollowHud({
+        mph: tr.points[lo].mph ?? null,
+        clock: new Intl.DateTimeFormat('en-US', { timeZone: tzRef.current, hour: 'numeric', minute: '2-digit' }).format(new Date(ms)),
+        milesIn: cum[lo],
+      })
+    }, 500)
+    return () => clearInterval(id)
+  }, [followId, range, realWindowEff, tracksEff])
+
   const handleFollow = useCallback((id: string | null) => {
     setFollowId(id)
     const m = map.current
@@ -1938,6 +1970,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         />
       )}
 
+      {followHud && followId && (
+        <div className="absolute top-[104px] left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-center gap-3 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-1.5 font-mono text-[12px] tabular-nums">
+          <span className="text-amber font-bold">{followHud.mph != null ? `${Math.round(followHud.mph)} MPH` : '— MPH'}</span>
+          <span className="text-teal">{followHud.clock}</span>
+          <span className="text-muted">{followHud.milesIn.toFixed(1)} mi in</span>
+        </div>
+      )}
       <WeatherControl
         base={base}
         onBase={setBase}

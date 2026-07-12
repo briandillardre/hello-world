@@ -113,15 +113,17 @@ const METRICS: { label: string; fmt: (r: RangeStat) => string; accent?: boolean 
   { label: 'Starts', fmt: (r) => (r.starts ? String(r.starts) : '—') },
 ]
 
-function useAssetStats(assetId: string, enabled: boolean): { ranges: RangeStat[]; mpg: number } | null {
-  const [stats, setStats] = useState<{ ranges: RangeStat[]; mpg: number } | null>(null)
+interface StatsPayload { ranges: RangeStat[]; mpg: number; lastMovedIso: string | null; movingNow: boolean }
+
+function useAssetStats(assetId: string, enabled: boolean): StatsPayload | null {
+  const [stats, setStats] = useState<StatsPayload | null>(null)
   useEffect(() => {
     setStats(null)
     if (!enabled || isMock) return
     const ctrl = new AbortController()
     fetch(`/api/asset-stats?asset=${assetId}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j && Array.isArray(j.ranges) && j.ranges.length) setStats({ ranges: j.ranges, mpg: j.mpg ?? 15 }) })
+      .then((j) => { if (j && Array.isArray(j.ranges) && j.ranges.length) setStats({ ranges: j.ranges, mpg: j.mpg ?? 15, lastMovedIso: j.lastMovedIso ?? null, movingNow: !!j.movingNow }) })
       .catch(() => { /* aborted / offline */ })
     return () => ctrl.abort()
   }, [assetId, enabled])
@@ -236,7 +238,7 @@ function AssetDetails({
 
       <EngineWidget asset={asset} />
 
-      {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} />}
+      {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
 
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
@@ -273,7 +275,14 @@ function AssetDetails({
 
 /** Activity dashboard: pick a range with a chip, read big legible stats.
  *  Distance leads (the number a contractor asks for first). */
-function ActivityCard({ stats, mpg }: { stats: RangeStat[]; mpg: number }) {
+function ActivityCard({ stats, mpg, lastMovedIso, movingNow }: {
+  stats: RangeStat[]; mpg: number; lastMovedIso: string | null; movingNow: boolean
+}) {
+  const parkedLabel = movingNow
+    ? 'Moving right now'
+    : lastMovedIso
+      ? 'Parked since ' + new Date(lastMovedIso).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })
+      : null
   const [rangeKey, setRangeKey] = useState(stats[0]?.key ?? 'today')
   const r = stats.find((s) => s.key === rangeKey) ?? stats[0]
   if (!r) return null
@@ -305,6 +314,7 @@ function ActivityCard({ stats, mpg }: { stats: RangeStat[]; mpg: number }) {
         ))}
       </div>
       <p className="mt-2.5 text-[10px] text-faint border-t border-navy-700/50 pt-2">
+        {parkedLabel && <span className={'block mb-1 font-mono text-[11px] tracking-wide ' + (movingNow ? 'text-teal' : 'text-muted')}>{parkedLabel}</span>}
         *fuel estimated at {mpg} mpg + idle burn until OBD fuel data is wired
       </p>
     </div>

@@ -90,6 +90,13 @@ export function computeRangeStats(
         const nb = [prev?.speed ?? 0, win[i + 1]?.speed ?? 0]
         if (nb.some((s) => s >= mph * 0.6)) trusted = true
       }
+      // Teleport guard: when position AND speed glitch together the distance
+      // test passes — so implausibly fast samples (95+) also need a neighbor
+      // reporting similar speed. A real 95 run has many consecutive samples.
+      if (trusted && mph >= 95) {
+        const nb = [prev?.speed ?? 0, win[i + 1]?.speed ?? 0]
+        if (!nb.some((s) => s >= mph * 0.6)) trusted = false
+      }
       if (trusted) maxMph = mph
     }
     if (prev && dt <= MAX_SEG_GAP_MS) {

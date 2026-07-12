@@ -9,6 +9,57 @@
  * zero visible change.
  */
 
+/** DP-simplify one chronological [lat,lng] point list. Used client-side by
+ *  tracksFromHistory so per-asset thinning also keeps curves, not strides. */
+export function simplifyPoints<T extends { lat: number; lng: number }>(pts: T[], toleranceM = 12, cap = 3000): T[] {
+  if (pts.length <= 2) return pts
+  let tol = toleranceM
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const keep = dpKeepGeneric(pts, tol)
+    const out = pts.filter((_, i) => keep[i])
+    if (out.length <= cap) return out
+    tol *= 2
+  }
+  const stride = Math.max(1, Math.ceil(pts.length / cap))
+  return pts.filter((_, i) => i % stride === 0 || i === pts.length - 1)
+}
+
+function dpKeepGeneric(track: { lat: number; lng: number }[], toleranceM: number): boolean[] {
+  const n = track.length
+  const keep = new Array<boolean>(n).fill(false)
+  if (n <= 2) return keep.fill(true)
+  keep[0] = keep[n - 1] = true
+  const stack: [number, number][] = [[0, n - 1]]
+  while (stack.length) {
+    const [s, e] = stack.pop()!
+    if (e - s < 2) continue
+    let maxD = -1
+    let maxI = -1
+    for (let i = s + 1; i < e; i++) {
+      const d = perpMetersGeneric(track[i], track[s], track[e])
+      if (d > maxD) { maxD = d; maxI = i }
+    }
+    if (maxD > toleranceM) {
+      keep[maxI] = true
+      stack.push([s, maxI], [maxI, e])
+    }
+  }
+  return keep
+}
+
+function perpMetersGeneric(p: { lat: number; lng: number }, a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const kx = 111_320 * Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180))
+  const ky = 110_540
+  const ax = a.lng * kx, ay = a.lat * ky
+  const bx = b.lng * kx, by = b.lat * ky
+  const px = p.lng * kx, py = p.lat * ky
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return Math.hypot(px - ax, py - ay)
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
 interface RowLike {
   asset_id: string
   lat: number

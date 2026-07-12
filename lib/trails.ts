@@ -1,4 +1,5 @@
 import type { AssetWithLocation, AssetType } from './types'
+import { simplifyPoints } from './simplify'
 import { DEMO_MAP_CENTER } from './mock-data'
 
 /**
@@ -18,6 +19,8 @@ export interface TrackPoint {
    *  coverage). Interpolation must SNAP across it, not glide, and trails
    *  break the line here instead of drawing a chord across town. */
   gap?: boolean
+  /** Reported speed at this fix (real history only) — the Follow HUD reads it. */
+  mph?: number
 }
 
 export interface AssetTrack {
@@ -151,15 +154,15 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
  */
 export function tracksFromHistory(
   assets: AssetWithLocation[],
-  rows: { asset_id: string; lat: number; lng: number; timestamp: string }[],
+  rows: { asset_id: string; lat: number; lng: number; speed?: number | null; timestamp: string }[],
   windowFromMs?: number,
   windowToMs?: number
 ): AssetTrack[] {
-  const MAX_POINTS_PER_ASSET = 400
+  const MAX_POINTS_PER_ASSET = 3000
 
   let minTs = Infinity
   let maxTs = -Infinity
-  const byAsset = new Map<string, { lng: number; lat: number; ms: number }[]>()
+  const byAsset = new Map<string, { lng: number; lat: number; ms: number; mph?: number }[]>()
   for (const r of rows) {
     const ms = new Date(r.timestamp).getTime()
     if (!Number.isFinite(ms)) continue
@@ -167,7 +170,7 @@ export function tracksFromHistory(
     if (ms > maxTs) maxTs = ms
     let list = byAsset.get(r.asset_id)
     if (!list) byAsset.set(r.asset_id, (list = []))
-    list.push({ lng: r.lng, lat: r.lat, ms })
+    list.push({ lng: r.lng, lat: r.lat, ms, mph: typeof r.speed === 'number' ? r.speed : undefined })
   }
   // Explicit window (e.g. a local calendar day) wins over the data extent so
   // the scrubber axis runs midnight → midnight, not first-ping → last-ping.
@@ -178,9 +181,10 @@ export function tracksFromHistory(
 
   return assets.map((a) => {
     const raw = (byAsset.get(a.id) ?? []).sort((x, y) => x.ms - y.ms)
-    // Thin dense pings (OBD units report every few seconds) to a drawable count.
-    const step = Math.max(1, Math.ceil(raw.length / MAX_POINTS_PER_ASSET))
-    const thinned = raw.filter((_, i) => i % step === 0 || i === raw.length - 1)
+    // Curve-preserving thinning (DP) — the old every-Nth stride here was the
+    // second half of the corner-cutting trails bug (server thinning was the
+    // first). Straightaways compress, bends survive.
+    const thinned = raw.length > MAX_POINTS_PER_ASSET ? simplifyPoints(raw, 10, MAX_POINTS_PER_ASSET) : raw
     const points: TrackPoint[] =
       thinned.length === 1
         ? [ // single fix: pin the head there across the whole playback window
@@ -192,6 +196,7 @@ export function tracksFromHistory(
             lat: p.lat,
             t: (p.ms - minTs) / span,
             gap: i > 0 && p.ms - thinned[i - 1].ms > GAP_MS ? true : undefined,
+            mph: p.mph,
           }))
 
     return {

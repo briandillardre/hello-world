@@ -69,8 +69,16 @@ export async function GET(req: NextRequest) {
     return { key, label, ...computeRangeStats(pts, w.from, w.to, earliestMs, nowMs, estMpg) }
   })
 
+  // "Parked since": the newest fix that was actually moving. Global, not
+  // range-scoped — the panel shows it under the activity grid.
+  let lastMovedMs: number | null = null
+  for (let i = pts.length - 1; i >= 0; i--) {
+    if ((pts[i].speed ?? 0) >= 2) { lastMovedMs = pts[i].ms; break }
+  }
+  const movingNow = pts.length > 0 && (pts[pts.length - 1].speed ?? 0) >= 2
+
   return NextResponse.json(
-    { ranges, mpg: estMpg, truncated: pts.length >= FETCH_CAP },
+    { ranges, mpg: estMpg, lastMovedIso: lastMovedMs ? new Date(lastMovedMs).toISOString() : null, movingNow, truncated: pts.length >= FETCH_CAP },
     { headers: { 'Cache-Control': 'private, max-age=60' } }
   )
 }
