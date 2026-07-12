@@ -179,7 +179,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       </div>
 
       {/* right instrument rail — event log + fleet board, above the HUD dial */}
-      <div className="absolute right-4 top-[68px] bottom-[400px] z-40 hidden xl:flex justify-end min-h-[180px]">
+      {/* Bottom edge clears the radar dial at ANY viewport width — the dial is
+          clamp(150px,26vw,320px) tall plus its pill and margins, so a fixed
+          400px offset overlapped on wide screens ("still have some overlap",
+          Jul 12). Overflow scrolls inside the rail instead of over the dial. */}
+      <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden">
         <EventRail assets={assets} alerts={alerts} />
       </div>
 

@@ -63,13 +63,13 @@ export function EventRail({ assets, alerts }: {
   }
 
   return (
-    <div className="w-56 h-full flex flex-col gap-2.5">
+    <div className="w-56 h-full max-h-full flex flex-col gap-2.5 overflow-hidden">
       <div className="rounded-lg bg-navy-950/75 backdrop-blur border border-teal/15 px-3 py-2.5 flex-none">
         <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal/80 mb-1.5">Event log</p>
         {events.length === 0 ? (
           <p className="font-mono text-[10px] text-faint">no events · all quiet</p>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 max-h-[34vh] overflow-y-auto no-scrollbar">
             {events.map((e) => {
               const loud = e.rule?.trigger === 'after_hours_movement' || e.rule?.trigger === 'left_site'
               const acked = !!e.acknowledged_at
