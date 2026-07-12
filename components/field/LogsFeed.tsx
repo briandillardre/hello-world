@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download } from 'lucide-react'
 import type { TimeEntry, DailyLog } from '@/lib/field-types'
+import type { PairSegment } from '@/lib/pairing'
 
 /**
  * The office's morning read: every crew day grouped date → project, with the
@@ -15,6 +16,8 @@ interface Props {
   logs: DailyLog[]
   zoneNames: Record<string, string>
   tz: string
+  /** Who-ran-what beta: GPS co-movement segments (empty until phones track). */
+  pairs?: PairSegment[]
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -36,7 +39,7 @@ function hoursOf(e: TimeEntry, now: number): number {
   return Math.max(0, (end - new Date(e.clock_in_at).getTime()) / 3_600_000)
 }
 
-export function LogsFeed({ entries, logs, zoneNames, tz }: Props) {
+export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [] }: Props) {
   const [lightbox, setLightbox] = useState<string | null>(null)
   const now = Date.now()
 
@@ -167,6 +170,28 @@ export function LogsFeed({ entries, logs, zoneNames, tz }: Props) {
               </tbody>
             </table>
           </div>
+
+          {/* who ran what (beta) — GPS co-movement evidence */}
+          {(() => {
+            const dayPairs = pairs.filter((pr) => dayKey(new Date(pr.fromMs).toISOString(), tz) === key)
+            if (!dayPairs.length) return null
+            return (
+              <div className="rounded-xl border border-navy-800 bg-navy-950 px-3 py-2.5 mb-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">Who ran what · beta</p>
+                <ul className="space-y-1">
+                  {dayPairs.map((pr, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                      <span className="text-ink font-medium">{pr.personName}</span>
+                      <span className="text-faint">↔</span>
+                      <span className="text-ink font-medium truncate flex-1">{pr.machineName}</span>
+                      <span className="font-mono text-muted tabular-nums">{timeLabel(new Date(pr.fromMs).toISOString(), tz)}–{timeLabel(new Date(pr.toMs).toISOString(), tz)}</span>
+                      <span className="font-mono text-faint tabular-nums">{Math.round(pr.confidence * 100)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
 
           {/* per-project log cards */}
           {places.map(([place, list]) => (

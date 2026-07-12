@@ -4,6 +4,8 @@ import { QrCode } from 'lucide-react'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/geofences'
 import { getRecentFieldDays } from '@/lib/db/fieldops'
+import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
+import { pairOperators, type PairSegment } from '@/lib/pairing'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { LogsFeed } from '@/components/field/LogsFeed'
 
@@ -15,10 +17,18 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 /** The office's morning read: daily logs by day → project, plus the hours table. */
 export default async function LogsPage() {
   const companyId = await getCurrentCompanyId()
-  const [{ entries, logs, available }, geofences] = await Promise.all([
+  const [{ entries, logs, available }, geofences, assets] = await Promise.all([
     getRecentFieldDays(companyId, 7),
     getGeofences(companyId),
+    getAssetsWithLocations(companyId),
   ])
+  // Who-ran-what (beta): correlate phone tracks with machine tracks. Empty
+  // until the crew's phones are tracking — the section hides itself.
+  let pairs: PairSegment[] = []
+  if (available && assets.some((a) => a.type === 'personnel')) {
+    const history = await getLocationHistory(companyId, new Date(Date.now() - 7 * 86_400_000).toISOString(), 30_000)
+    if (history?.length) pairs = pairOperators(history, assets)
+  }
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
@@ -55,7 +65,7 @@ export default async function LogsPage() {
           )}
         </div>
       ) : (
-        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} />
+        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} />
       )}
     </div>
   )
