@@ -53,7 +53,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'parcels', label: 'Parcel lines', group: 'site', status: 'live', minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels & numbers' },
 
   // ── Weather ───────────────────────────────────────────────────────────────
-  { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hint: 'precipitation · loops on Live, scrubs with replays' },
+  { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays' },
   { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min' },
   { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hint: 'bright = tall, violent cells · ~10 min' },
   { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'severe & extreme warning areas · 3-min refresh' },

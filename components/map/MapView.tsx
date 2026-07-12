@@ -1591,7 +1591,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, overlaysOn])
 
-  // Panel opacity sliders → live raster opacity.
+  // Panel opacity sliders → live raster opacity (overlays + special rasters).
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -1600,7 +1600,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const layerId = `ovl-${o.key}-layer`
       if (v != null && m.getLayer(layerId)) m.setPaintProperty(layerId, 'raster-opacity', v)
     }
-  }, [mapReady, overlayOpacity, overlaysOn])
+    // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
+    const rv = overlayOpacity.radar
+    if (rv != null && m.getLayer('wx-layer')) m.setPaintProperty('wx-layer', 'raster-opacity', rv)
+  }, [mapReady, overlayOpacity, overlaysOn, radarOn])
 
   // Track zoom for the layers panel's "zoom in/out to see this" rows.
   useEffect(() => {
@@ -2095,7 +2098,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': 0.72 } }, beforeId)
+      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': overlayOpacity.radar ?? 0.72 } }, beforeId)
       wxAdded.current = true
     } else {
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
