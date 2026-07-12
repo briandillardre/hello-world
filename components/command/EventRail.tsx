@@ -1,10 +1,11 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import type { AssetWithLocation, AssetType, AlertEvent, Geofence } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { pointInPolygon } from '@/lib/alerts-engine'
+import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import type { PanelKey, PanelState } from './CommandCenter'
 
 /**
@@ -77,6 +78,36 @@ export function EventRail({ assets, alerts, geofences = [], historyRows = null, 
 }) {
   const events = alerts.slice(0, 8)
 
+  // Movement story for the log — where each vehicle actually WENT today
+  // ("Atlas · St Paul United Methodist · 50 min"), from the same classified
+  // stops feed as the asset panel. Live accounts only; refreshes every 5 min.
+  interface MoveEvent { asset: string; place: string; kind: PoiKind; fromMs: number; minutes: number }
+  const [moves, setMoves] = useState<MoveEvent[]>([])
+  useEffect(() => {
+    if (panels.events !== 'open') return
+    const targets = assets.filter((a) => (a.type === 'vehicle' || a.type === 'equipment') && a.location).slice(0, 6)
+    if (!targets.length) return
+    let cancelled = false
+    const load = async () => {
+      const all: MoveEvent[] = []
+      for (const a of targets) {
+        try {
+          const r = await fetch(`/api/stops?asset=${a.id}&range=today`)
+          if (!r.ok) continue
+          const j = await r.json() as { stops?: { name: string; kind: PoiKind; fromMs: number; minutes: number }[] }
+          for (const s of j.stops ?? []) {
+            all.push({ asset: a.name, place: s.name, kind: s.kind, fromMs: s.fromMs, minutes: s.minutes })
+          }
+        } catch { /* one asset failing shouldn't blank the log */ }
+      }
+      if (!cancelled) setMoves(all.sort((x, y) => y.fromMs - x.fromMs).slice(0, 8))
+    }
+    load()
+    const id = setInterval(load, 5 * 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panels.events, assets.length])
+
   const strips = useMemo(() => {
     const now = Date.now()
     const zones = geofences
@@ -134,27 +165,52 @@ export function EventRail({ assets, alerts, geofences = [], historyRows = null, 
       {panels.events !== 'hidden' && (
         <div className={'rounded-lg bg-navy-950/75 backdrop-blur border border-teal/15 px-3 py-2.5 flex flex-col ' + (panels.events === 'open' ? 'flex-1 min-h-0' : 'flex-none')}>
           <CardHeader k="events" title="Event log" state={panels.events} onPanel={onPanel} />
-          {panels.events === 'open' && (events.length === 0 ? (
+          {panels.events === 'open' && (events.length === 0 && moves.length === 0 ? (
             <p className="font-mono text-[10px] text-faint">no events · all quiet</p>
           ) : (
             <div className="space-y-1.5 overflow-y-auto no-scrollbar min-h-0">
-              {events.map((e) => {
-                const loud = e.rule?.trigger === 'after_hours_movement' || e.rule?.trigger === 'left_site'
-                const acked = !!e.acknowledged_at
-                return (
-                  <div key={e.id} className={'flex items-start gap-1.5 ' + (acked ? 'opacity-45' : '')}>
-                    <span className={'mt-1 w-1.5 h-1.5 rounded-full flex-none ' + (loud && !acked ? 'bg-alert animate-blink' : 'bg-teal/60')} />
-                    <div className="min-w-0">
-                      <p className={'text-[10.5px] leading-tight truncate ' + (loud && !acked ? 'text-alert font-bold' : 'text-muted')}>
-                        {e.asset?.name ?? 'Asset'} · {TRIGGER_LABEL[e.rule?.trigger ?? ''] ?? 'alert'}
-                      </p>
-                      <p className="font-mono text-[9px] text-faint leading-tight" suppressHydrationWarning>
-                        {e.rule?.geofence ? `${e.rule.geofence.name} · ` : ''}{formatRelativeTime(e.triggered_at)}
-                      </p>
+              {[
+                ...events.map((e) => ({ t: new Date(e.triggered_at).getTime(), e, mv: null as MoveEvent | null })),
+                ...moves.map((mv) => ({ t: mv.fromMs, e: null as AlertEvent | null, mv })),
+              ]
+                .sort((a, b) => b.t - a.t)
+                .slice(0, 14)
+                .map((row, i) => {
+                  if (row.e) {
+                    const e = row.e
+                    const loud = e.rule?.trigger === 'after_hours_movement' || e.rule?.trigger === 'left_site'
+                    const acked = !!e.acknowledged_at
+                    return (
+                      <div key={e.id} className={'flex items-start gap-1.5 ' + (acked ? 'opacity-45' : '')}>
+                        <span className={'mt-1 w-1.5 h-1.5 rounded-full flex-none ' + (loud && !acked ? 'bg-alert animate-blink' : 'bg-teal/60')} />
+                        <div className="min-w-0">
+                          <p className={'text-[10.5px] leading-tight truncate ' + (loud && !acked ? 'text-alert font-bold' : 'text-muted')}>
+                            {e.asset?.name ?? 'Asset'} · {TRIGGER_LABEL[e.rule?.trigger ?? ''] ?? 'alert'}
+                          </p>
+                          <p className="font-mono text-[9px] text-faint leading-tight" suppressHydrationWarning>
+                            {e.rule?.geofence ? `${e.rule.geofence.name} · ` : ''}{formatRelativeTime(e.triggered_at)}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  }
+                  const mv = row.mv!
+                  return (
+                    // Movement story: where it went and for how long — same
+                    // classified stops the asset panel and AI read.
+                    <div key={`mv-${i}-${mv.fromMs}`} className="flex items-start gap-1.5">
+                      <span className="mt-1 w-1.5 h-1.5 rounded-full flex-none bg-[#a78bfa]/70" />
+                      <div className="min-w-0">
+                        <p className="text-[10.5px] leading-tight truncate text-muted">
+                          {mv.asset} · {mv.place}
+                        </p>
+                        <p className="font-mono text-[9px] text-faint leading-tight" suppressHydrationWarning>
+                          {POI_KIND_META[mv.kind]?.label ?? 'stop'} · {new Date(mv.fromMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {mv.minutes}m
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
             </div>
           ))}
         </div>

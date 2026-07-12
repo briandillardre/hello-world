@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair } from 'lucide-react'
+import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
@@ -193,6 +193,17 @@ function AssetDetails({
             <span className="text-[#93c5fd]">Currently with </span>
             <span className="font-semibold text-[#93c5fd]">{gateway.name}</span>
             <span className="text-[#60a5fa] text-xs"> · {formatRelativeTime(gateway.lastSeen)}</span>
+          </div>
+        </div>
+      )}
+      {/* Where it IS, up top — city/state, plus the named place when parked
+          somewhere recognizable. (The coordinates stay in the footer.) */}
+      {(place || poi) && (
+        <div className="bg-navy-800 rounded-lg px-3 py-2 flex items-start gap-2">
+          <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
+          <div className="min-w-0 text-[13px] leading-snug">
+            {place && <span className="text-ink font-semibold">{place}</span>}
+            {poi && <span className="block text-teal text-[12px] truncate">at {poi}</span>}
           </div>
         </div>
       )}
