@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getGeofence, createGeofence, updateGeofence, deleteGeofence } from '@/lib/db/geofences'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
-export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' = 'site') {
+export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site') {
   const companyId = await getCurrentCompanyId()
   const id = await createGeofence(companyId, { name, geometry, color, kind })
   revalidatePath('/geofences')
@@ -19,7 +19,7 @@ export async function saveGeofenceAction(
   color: string,
   parentId: string | null,
   geometry?: GeoJSON.Polygon,
-  kind?: 'site' | 'boundary'
+  kind?: 'site' | 'boundary' | 'yard'
 ) {
   const g = await getGeofence(id)
   if (!g) return

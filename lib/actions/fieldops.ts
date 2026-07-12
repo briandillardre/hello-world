@@ -81,7 +81,7 @@ async function uploadFieldPhoto(companyId: string, file: File): Promise<string |
 export async function clockOutAction(form: FormData): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock out.' }
   try {
-    const { supabase, userId, companyId } = await requireUser()
+    const { supabase, userId, companyId, personName } = await requireUser()
     const writeup = String(form.get('writeup') ?? '').trim().slice(0, 4000)
     if (writeup.length < 10) return { ok: false, error: 'Write up the day first — a couple of sentences minimum.' }
 
@@ -100,12 +100,14 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       }
     }
 
+    const safety = String(form.get('safety') ?? '').trim().slice(0, 2000)
+
     const { error: logErr } = await supabase.from('daily_logs').insert({
       company_id: companyId,
       user_id: userId,
       time_entry_id: entryId,
       writeup,
-      safety: String(form.get('safety') ?? '').trim().slice(0, 2000),
+      safety,
       trucks_fueled: form.get('trucksFueled') === null ? null : form.get('trucksFueled') === 'yes',
       equipment_fueled: form.get('equipmentFueled') === null ? null : form.get('equipmentFueled') === 'yes',
       photos,
@@ -118,6 +120,19 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       .eq('id', entryId)
       .eq('user_id', userId)
     if (outErr) return { ok: false, error: outErr.message }
+
+    // Safety triage (stage 3 of the AI ladder): anything written in the
+    // safety field goes to the owner's phone NOW, not in tonight's digest.
+    if (safety) {
+      const url = process.env.NOTIFY_WEBHOOK_URL
+      if (url && (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/'))) {
+        fetch(url, {
+          method: 'POST',
+          headers: { Title: 'Safety report', Priority: 'high', Tags: 'warning', Click: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hammertrackjune28.vercel.app'}/logs` },
+          body: `${personName}: ${safety}`,
+        }).catch((err) => console.error('Safety push failed', err))
+      }
+    }
 
     revalidatePath('/clock')
     revalidatePath('/logs')

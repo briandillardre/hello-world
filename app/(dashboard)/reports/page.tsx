@@ -13,13 +13,24 @@ const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
 }
 
-export default async function ReportsPage() {
+const RANGES: { key: string; label: string; days: number }[] = [
+  { key: '7d', label: '7 days', days: 7 },
+  { key: '30d', label: '30 days', days: 30 },
+  { key: '90d', label: '90 days', days: 90 },
+  { key: 'ytd', label: 'YTD', days: 366 },
+]
+
+export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
   const companyId = await getCurrentCompanyId()
   const [assets, geofences] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
   ])
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const picked = RANGES.find((r) => r.key === searchParams?.range) ?? RANGES[1]
+  const sinceMs = picked.key === 'ytd'
+    ? new Date(new Date().getFullYear(), 0, 1).getTime()
+    : Date.now() - picked.days * 24 * 60 * 60 * 1000
+  const since = new Date(sinceMs).toISOString()
   const real = await getUtilization(companyId, since, assets, geofences)
 
   // Real mode: measured utilization + each asset's own hourly rate. Demo: mock.
@@ -43,7 +54,15 @@ export default async function ReportsPage() {
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">Utilization Reports</h1>
-          <p className="text-xs text-faint mt-0.5">Last 30 days{real ? ' · measured from tracker data' : ' · demo data'}</p>
+          <p className="text-xs text-faint mt-0.5">{picked.key === 'ytd' ? 'Year to date' : `Last ${picked.label}`}{real ? ' · measured from tracker data' : ' · demo data'}</p>
+        </div>
+        <div className="flex gap-1 ml-2">
+          {RANGES.map((r) => (
+            <a key={r.key} href={`/reports?range=${r.key}`}
+              className={'px-2.5 py-1 rounded-full text-[11.5px] font-semibold transition-colors ' + (picked.key === r.key ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}>
+              {r.label}
+            </a>
+          ))}
         </div>
         {util.length > 0 && <div className="ml-auto"><ReportsExport util={util} rates={util.map(u => rateFor(u.asset_id))} /></div>}
       </div>
@@ -61,7 +80,7 @@ export default async function ReportsPage() {
         <section className="rounded-2xl border border-navy-800 bg-gradient-to-br from-navy-900 to-navy-950 p-5 relative overflow-hidden lg:max-w-2xl">
           <div className="absolute inset-0 brand-glow" />
           <div className="relative">
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable value · last 30 days</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable value · {picked.key === 'ytd' ? 'year to date' : `last ${picked.label}`}</p>
             <p className="font-display font-black text-[2.1rem] text-amber leading-tight">
               <CountUp value={billableValue} prefix="$" />
             </p>

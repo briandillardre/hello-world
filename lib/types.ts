@@ -129,7 +129,7 @@ export interface Geofence {
   parent_id?: string | null   // nest a sub-zone under a parent site
   /** 'site' = job site (usage, invoicing, site log); 'boundary' = perimeter
    *  (outline-only, exit/after-hours alerts, excluded from usage metrics). */
-  kind?: 'site' | 'boundary'
+  kind?: 'site' | 'boundary' | 'yard'
   created_at: string
 }
 

@@ -21,7 +21,7 @@ interface GeofenceEditorProps {
   name: string
   color: string
   parentId: string | null
-  kind?: 'site' | 'boundary'
+  kind?: 'site' | 'boundary' | 'yard'
   /** Closed ring [[lng,lat],…] (first == last). */
   ring: [number, number][]
 }
@@ -48,7 +48,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   selectedRef.current = selected
   const [name, setName] = useState(initialName)
   const [color, setColor] = useState(initialColor)
-  const [kind, setKind] = useState<'site' | 'boundary'>(initialKind)
+  const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>(initialKind)
   const colorRef = useRef(color)
   colorRef.current = color
   const [saving, setSaving] = useState(false)
@@ -263,6 +263,13 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
                 className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (kind === 'boundary' ? 'border-teal bg-teal/10 text-teal' : 'border-navy-700 text-faint hover:text-ink')}>
                 Boundary
               </button>
+          <button
+            type="button"
+            onClick={() => setKind('yard')}
+            className={'px-2.5 py-1.5 rounded-lg border text-[11.5px] font-semibold transition-colors ' + (kind === 'yard' ? 'border-[#60a5fa] bg-[#60a5fa]/10 text-[#60a5fa]' : 'border-navy-700 text-faint hover:text-ink')}
+          >
+            Yard
+          </button>
             </div>
             <p className="text-[10.5px] text-faint leading-snug">Boundaries draw outline-only and skip usage/invoicing — use for theft perimeters.</p>
           </div>

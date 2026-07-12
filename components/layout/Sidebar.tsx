@@ -6,22 +6,31 @@ import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calcu
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 
-const navItems = [
-  { href: '/command', label: 'Command Center', icon: MonitorPlay },
-  { href: '/map', label: 'Live Map', icon: Map },
-  { href: '/assets', label: 'Assets', icon: Package },
-  { href: '/geofences', label: 'Zones', icon: Hexagon },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/clock', label: 'Time clock', icon: Clock },
-  { href: '/logs', label: 'Daily logs', icon: ClipboardList },
-  { href: '/maintenance', label: 'Maintenance', icon: Wrench },
-  { href: '/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/accounting', label: 'Accounting', icon: Calculator },
-  { href: '/model', label: 'Op model', icon: TrendingUp },
-  { href: '/team', label: 'Team', icon: Users },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  // Was only reachable once, right after registration — now it's a real page.
-  { href: '/welcome', label: 'Getting started', icon: Rocket },
+// Grouped by the job being done, not by when features shipped: Watch (live
+// awareness), Field (the crew's day), Office (money + people), Setup.
+const navSections: { title: string | null; items: { href: string; label: string; icon: typeof Map }[] }[] = [
+  { title: null, items: [
+    { href: '/command', label: 'Command Center', icon: MonitorPlay },
+    { href: '/map', label: 'Live Map', icon: Map },
+    { href: '/alerts', label: 'Alerts', icon: Bell },
+  ]},
+  { title: 'Field', items: [
+    { href: '/clock', label: 'Time clock', icon: Clock },
+    { href: '/logs', label: 'Daily logs', icon: ClipboardList },
+    { href: '/assets', label: 'Assets', icon: Package },
+    { href: '/geofences', label: 'Zones', icon: Hexagon },
+    { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+  ]},
+  { title: 'Office', items: [
+    { href: '/reports', label: 'Reports', icon: BarChart3 },
+    { href: '/accounting', label: 'Accounting', icon: Calculator },
+    { href: '/model', label: 'Op model', icon: TrendingUp },
+    { href: '/team', label: 'Team', icon: Users },
+  ]},
+  { title: 'Setup', items: [
+    { href: '/settings', label: 'Settings', icon: Settings },
+    { href: '/welcome', label: 'Getting started', icon: Rocket },
+  ]},
 ]
 
 interface SidebarProps {
@@ -67,8 +76,15 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
         </button>
       )}
 
-      <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon }) => {
+      <nav className="flex-1 p-2 overflow-y-auto">
+        {navSections.map((section, si) => (
+        <div key={si} className={si > 0 ? 'mt-2' : ''}>
+        {section.title && !collapsed && (
+          <p className="px-3 pt-1.5 pb-1 font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint/70">{section.title}</p>
+        )}
+        {section.title && collapsed && <div className="mx-3 my-2 border-t border-navy-800" />}
+        <div className="space-y-1">
+        {section.items.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
           const isAlerts = href === '/alerts'
           return (
@@ -98,6 +114,9 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
             </Link>
           )
         })}
+        </div>
+        </div>
+        ))}
       </nav>
 
       {onSignOut && (

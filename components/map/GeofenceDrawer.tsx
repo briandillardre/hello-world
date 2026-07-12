@@ -16,7 +16,7 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary') => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
   /** Fly the map to an address hit so the user can draw around it. */
   onLocate?: (lng: number, lat: number) => void
 }
@@ -34,7 +34,7 @@ export function GeofenceDrawer({
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0])
-  const [kind, setKind] = useState<'site' | 'boundary'>('site')
+  const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>('site')
 
   // Address search while drawing — type a street address, jump there, click
   // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
@@ -173,6 +173,14 @@ export function GeofenceDrawer({
                 >
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Shield className="h-3.5 w-3.5 text-teal" /> Boundary</span>
                   <span className="block mt-0.5 text-[10.5px] text-faint leading-snug">Outline only — exit &amp; after-hours alerts</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKind('yard')}
+                  className={'rounded-lg border p-2.5 text-left transition-colors ' + (kind === 'yard' ? 'border-[#60a5fa] bg-[#60a5fa]/10' : 'border-navy-700 hover:border-navy-600')}
+                >
+                  <span className="block text-[12.5px] font-semibold text-ink">Yard / storage</span>
+                  <span className="block text-[10.5px] text-faint mt-0.5">Where iron sleeps — presence &amp; alerts, no job costs</span>
                 </button>
               </div>
             </div>

@@ -69,7 +69,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
-  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' = 'site') => {
+  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site') => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
       company_id: MOCK_COMPANY.id,

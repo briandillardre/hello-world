@@ -180,7 +180,7 @@ interface MapViewProps {
   /** Viewer IANA timezone for local-calendar-day range windows. */
   tz?: string
   toolGateways?: Record<string, { name: string; lastSeen: string }>
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary') => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
@@ -358,7 +358,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       tracks: tracksFromHistory(assets, rows, w.from, w.to),
       window: w,
       cost: buildCostCurve(assets, rows, w.from, w.to),
-      zones: zoneCostsFromHistory(geofences.filter((g) => fenceKind(g) !== 'boundary'), assets, rows, w.from, w.to),
+      zones: zoneCostsFromHistory(geofences.filter((g) => fenceKind(g) === 'site'), assets, rows, w.from, w.to),
     }
   }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows])
 
@@ -682,7 +682,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         id: 'geofence-fill', type: 'fill', source: 'geofences',
         paint: {
           'fill-color': ['get', 'color'],
-          'fill-opacity': ['case', ['==', ['get', 'kind'], 'boundary'], 0, 0.14],
+          'fill-opacity': ['case', ['==', ['get', 'kind'], 'boundary'], 0, ['==', ['get', 'kind'], 'yard'], 0.06, 0.14],
         },
       })
       m.addLayer({
