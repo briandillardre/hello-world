@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- HammerTrack catch-up script: migrations 013 + 014 + 015 in one paste.
--- Safe to re-run (everything is IF NOT EXISTS / OR REPLACE).
+-- Safe to re-run (everything is IF NOT EXISTS / OR REPLACE / DROP-recreate).
 -- Paste the WHOLE file into the Supabase SQL Editor and hit Run once.
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -39,7 +39,10 @@ BEGIN
   RETURN v_id;
 END $$;
 
-CREATE OR REPLACE VIEW geofences_json
+-- The pre-013 view has no `kind` column; REPLACE can't insert one mid-list
+-- (42P16), so drop and recreate. Views hold no data — this is safe.
+DROP VIEW IF EXISTS geofences_json;
+CREATE VIEW geofences_json
 WITH (security_invoker = true) AS
 SELECT
   id,

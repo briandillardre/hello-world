@@ -280,7 +280,10 @@ ALTER TABLE geofences ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES geofenc
 
 CREATE INDEX IF NOT EXISTS geofences_parent_idx ON geofences(parent_id) WHERE parent_id IS NOT NULL;
 
-CREATE OR REPLACE VIEW geofences_json
+-- The pre-013 view has no `kind` column; REPLACE can't insert one mid-list
+-- (42P16), so drop and recreate. Views hold no data — this is safe.
+DROP VIEW IF EXISTS geofences_json;
+CREATE VIEW geofences_json
 WITH (security_invoker = true) AS
 SELECT
   id,
@@ -470,7 +473,10 @@ BEGIN
   RETURN v_id;
 END $$;
 
-CREATE OR REPLACE VIEW geofences_json
+-- The pre-013 view has no `kind` column; REPLACE can't insert one mid-list
+-- (42P16), so drop and recreate. Views hold no data — this is safe.
+DROP VIEW IF EXISTS geofences_json;
+CREATE VIEW geofences_json
 WITH (security_invoker = true) AS
 SELECT
   id,
