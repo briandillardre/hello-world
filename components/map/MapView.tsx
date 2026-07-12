@@ -297,6 +297,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [followId, setFollowId] = useState<string | null>(null)
   const [followMode, setFollowMode] = useState<FollowMode>('orbit')
   const followIdRef = useRef<string | null>(null)
+  // Set by the Flyover block below; declared early so Follow/spin can cancel it.
+  const stopFlyoverRef = useRef<(() => void) | null>(null)
+  // Set once handleFollow exists; Flyover (declared earlier) releases via this.
+  const handleFollowRef = useRef<(id: string | null) => void>(() => {})
   // Follow HUD: replay telemetry projected while the camera rides the asset —
   // speed at the scrub position, time of day, miles covered so far.
   const [followHud, setFollowHud] = useState<{ mph: number | null; clock: string; milesIn: number } | null>(null)
@@ -2219,9 +2223,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setPbT(v)
   }, [])
 
-  // "360" — one slow, smooth revolution of whatever the screen is showing.
-  // Pure bearing spin: center/zoom/pitch untouched, lands exactly where it
-  // started. A touch/drag mid-spin hands the camera back instantly.
+  // "360" — a slow continuous rotation of whatever the screen is showing.
+  // Loops until pressed again (or a drag takes over). Constant angular speed
+  // driven by real frame time with a smoothstep ramp-in — the old version
+  // eased in fixed per-frame steps, which snapped speed at the seams and
+  // read as jerks ("a little jerky at a couple of points", Jul 12).
   const [spinning, setSpinning] = useState(false)
   const spinningRef = useRef(false)
   spinningRef.current = spinning
@@ -2234,26 +2240,114 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     if (!m) return
     if (spinningRef.current) { stopSpin(); return }
+    stopFlyoverRef.current?.()
     setSpinning(true)
-    const SPIN_MS = 24_000
+    const DEG_PER_SEC = 360 / 26 // one lap every ~26s
     const start = performance.now()
-    const b0 = m.getBearing()
+    let last = start
     const frame = (now: number) => {
       if (userGestureRef.current) { setSpinning(false); return }
-      const f = (now - start) / SPIN_MS
-      if (f >= 1) {
-        m.rotateTo(b0, { duration: 0 })
-        setSpinning(false)
-        return
-      }
-      // ease in/out over the first & last 8% so it starts and lands gently
-      const g = f < 0.08 ? f * f / 0.08 : f > 0.92 ? 1 - (1 - f) * (1 - f) / 0.08 : f
-      m.rotateTo((b0 + g * 360) % 360, { duration: 0 })
+      const dt = Math.min(0.1, (now - last) / 1000) // clamp: a hitched frame must not lurch
+      last = now
+      const t = Math.min(1, (now - start) / 2000)
+      const ramp = t * t * (3 - 2 * t) // smoothstep — velocity stays continuous
+      m.jumpTo({ bearing: (m.getBearing() + DEG_PER_SEC * ramp * dt) % 360 })
       spinRaf.current = requestAnimationFrame(frame)
     }
     spinRaf.current = requestAnimationFrame(frame)
   }, [stopSpin])
   useEffect(() => () => cancelAnimationFrame(spinRaf.current), [])
+
+  // "Flyover" — the slow-plane pass: visit every located asset in
+  // nearest-neighbor order at altitude, bank around each for a few seconds,
+  // glide to the next, loop until stopped. Drag, Follow, or 360 cancels.
+  // flySpeed: 0.5 = lazy Cub, 1 = cruise, 2 = quick pass.
+  const [flying, setFlying] = useState(false)
+  const flyingRef = useRef(false)
+  flyingRef.current = flying
+  const [flySpeed, setFlySpeed] = useState(1)
+  const flySpeedRef = useRef(1)
+  flySpeedRef.current = flySpeed
+  const flyRaf = useRef(0)
+  const stopFlyover = useCallback(() => {
+    cancelAnimationFrame(flyRaf.current)
+    flyingRef.current = false
+    setFlying(false)
+    map.current?.easeTo({ pitch: threeDRef.current ? 55 : 0, duration: 600 })
+  }, [])
+  stopFlyoverRef.current = stopFlyover
+  const handleFlyover = useCallback(() => {
+    const m = map.current
+    if (!m) return
+    if (flyingRef.current) { stopFlyover(); return }
+    stopSpin()
+    if (followIdRef.current) handleFollowRef.current(null)
+    const pts = assetsRef.current
+      .filter((a) => a.location)
+      .map((a) => ({ lng: a.location!.lng, lat: a.location!.lat }))
+    if (!pts.length) return
+    // Nearest-neighbor route from where the camera is — a flight plan,
+    // not a random zigzag across the county.
+    const cosLat = Math.cos((m.getCenter().lat * Math.PI) / 180) ** 2
+    const remaining = [...pts]
+    const order: typeof pts = []
+    let cur = { lng: m.getCenter().lng, lat: m.getCenter().lat }
+    while (remaining.length) {
+      let bi = 0
+      let bd = Infinity
+      remaining.forEach((p, idx) => {
+        const d = (p.lng - cur.lng) ** 2 * cosLat + (p.lat - cur.lat) ** 2
+        if (d < bd) { bd = d; bi = idx }
+      })
+      cur = remaining.splice(bi, 1)[0]
+      order.push(cur)
+    }
+    flyingRef.current = true
+    setFlying(true)
+    let i = -1
+    const nextLeg = () => {
+      if (!flyingRef.current) return
+      i = (i + 1) % order.length
+      const p = order[i]
+      m.flyTo({
+        center: [p.lng, p.lat],
+        zoom: 14.6,                          // "small plane" altitude — site-readable
+        pitch: 55,
+        bearing: m.getBearing() + 30,
+        speed: 0.35 * flySpeedRef.current,   // glide pace; tiles stream in ahead
+        curve: 1.3,
+        essential: true,
+      })
+      m.once('moveend', () => {
+        if (!flyingRef.current) return
+        // Bank around the asset before flying on.
+        const t0 = performance.now()
+        let last = t0
+        const dwellMs = 4500 / flySpeedRef.current
+        const dwell = (now: number) => {
+          if (!flyingRef.current) return
+          if (userGestureRef.current) { stopFlyover(); return }
+          const dt = Math.min(0.1, (now - last) / 1000)
+          last = now
+          m.jumpTo({ bearing: m.getBearing() + 9 * dt * flySpeedRef.current })
+          if (now - t0 < dwellMs) flyRaf.current = requestAnimationFrame(dwell)
+          else nextLeg()
+        }
+        flyRaf.current = requestAnimationFrame(dwell)
+      })
+    }
+    nextLeg()
+  }, [stopSpin, stopFlyover])
+  // Drag hands the camera back mid-flight: MapLibre aborts the glide, and
+  // this listener ends the tour instead of letting the next leg fire.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const cancel = () => { if (flyingRef.current) stopFlyover() }
+    m.on('dragstart', cancel)
+    return () => { m.off('dragstart', cancel) }
+  }, [mapReady, stopFlyover])
+  useEffect(() => () => cancelAnimationFrame(flyRaf.current), [])
 
   // Toggle cinematic follow. Picking an asset arms a 3D chase: switch to a replay
   // range if we're live, tilt/zoom the camera up, and play the route from the top.
@@ -2295,6 +2389,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       return
     }
     stopSpin() // follow owns the camera — a running 360 would fight it
+    stopFlyoverRef.current?.() // ...and so would a flyover mid-glide
     // Zones have no direction of travel, so Chase silently becomes Orbit.
     if (id.startsWith('zone:') && followModeRef.current === 'chase') setFollowMode('orbit')
     setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
@@ -2311,6 +2406,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setPbT(firstMoveTRef.current)
     setPbPlaying(true)
   }, [handleRange, stopSpin])
+  handleFollowRef.current = handleFollow
 
   // If the followed asset is filtered out or vanishes, release the camera.
   // Zone targets only release if the zone itself was deleted.
@@ -2543,6 +2639,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           followZones={geofences.map((g) => ({ id: `zone:${g.id}`, name: g.name, color: g.color }))}
           spinning={spinning}
           onSpin={handleSpin}
+          flying={flying}
+          onFlyover={handleFlyover}
+          flySpeed={flySpeed}
+          onFlySpeed={setFlySpeed}
         />
       )}
 

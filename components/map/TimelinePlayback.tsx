@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box, Hexagon, Search, RotateCw } from 'lucide-react'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -78,9 +78,14 @@ interface TimelinePlaybackProps {
   /** Zones offered as follow targets — the camera circles the site itself.
    *  Ids arrive prefixed "zone:" so one followId field serves both kinds. */
   followZones?: { id: string; name: string; color: string }[]
-  /** "360" — slow full rotation of the current view (disabled while following). */
+  /** "360" — slow continuous rotation of the current view (disabled while following). */
   spinning?: boolean
   onSpin?: () => void
+  /** Flyover — the slow-plane tour over every asset; speed = 0.5 | 1 | 2. */
+  flying?: boolean
+  onFlyover?: () => void
+  flySpeed?: number
+  onFlySpeed?: (v: number) => void
   /** IANA timezone for clock/date labels (kiosk walls + shared replays render
    *  somewhere else — labels must still read in the crew's local time). */
   tz?: string
@@ -94,7 +99,7 @@ export function TimelinePlayback({
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
-  spinning = false, onSpin, tz, kiosk = false,
+  spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed, tz, kiosk = false,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -455,20 +460,51 @@ export function TimelinePlayback({
             {shared ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
           </button>
         )}
-        {/* 360 — slow full spin of the current view (map + command center).
+        {/* 360 — slow continuous spin of the current view (map + command).
             Hidden while following: the follow camera owns bearing. */}
         {onSpin && !followed && (
           <button
             onClick={onSpin}
-            title={spinning ? 'Stop the 360 spin' : 'Slow 360° spin of the current view'}
+            title={spinning ? 'Stop the spin' : 'Slow 360° spin — loops until you stop it'}
             className={
               'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
               (spinning ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
             }
           >
-            <RotateCw className="h-3.5 w-3.5" />
+            <RotateCw className={'h-3.5 w-3.5' + (spinning ? ' animate-spin [animation-duration:3s]' : '')} />
             <span className="hidden sm:inline">360</span>
           </button>
+        )}
+        {/* Flyover — the slow-plane pass over every asset; loops until stopped */}
+        {onFlyover && !followed && (
+          <span className="flex-none flex items-center gap-0.5">
+            <button
+              onClick={onFlyover}
+              title={flying ? 'End the flyover' : 'Flyover — a slow plane over every asset; drag or tap again to stop'}
+              className={
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+                (flying ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+              }
+            >
+              <Plane className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Fly</span>
+            </button>
+            {flying && onFlySpeed && (
+              <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+                {([[0.5, '½×'], [1, '1×'], [2, '2×']] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => onFlySpeed(v)}
+                    title={v === 0.5 ? 'Lazy circle — slow glide' : v === 1 ? 'Cruise' : 'Quick pass'}
+                    className={
+                      'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                      (flySpeed === v ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
+                    }
+                  >{label}</button>
+                ))}
+              </span>
+            )}
+          </span>
         )}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
           {MODES.map(({ key, label, icon: Icon }) => (
