@@ -37,9 +37,10 @@ export const haversineMi = (lat1: number, lng1: number, lat2: number, lng2: numb
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-/** Per-vehicle fuel-burn guess from the VIN-decoded specs. Still an estimate
- *  (until OBD fuel data is wired), but "SUV at 19" beats "everything at 15". */
-export function estMpgForSpecs(specs: unknown): number {
+/** Per-vehicle fuel-burn guess. Order of trust: VIN-decoded specs, then the
+ *  asset's NAME (a "Chevy 1500" is a pickup whether or not anyone pasted the
+ *  VIN), then the work-truck default. Still an estimate until OBD fuel lands. */
+export function estMpgForSpecs(specs: unknown, assetName = ''): number {
   const sp = (specs ?? {}) as Record<string, unknown>
   const body = String(sp.body ?? '').toLowerCase()
   const fuel = String(sp.fuel ?? '').toLowerCase()
@@ -48,6 +49,15 @@ export function estMpgForSpecs(specs: unknown): number {
   if (/van/.test(body)) return 16
   if (/suv|sport utility|mpv|multi-purpose|crossover/.test(body)) return 19
   if (/sedan|coupe|hatch|wagon|convertible|car/.test(body)) return 25
+
+  // No specs — read the name like a person would.
+  const n = ` ${assetName.toLowerCase()} `
+  if (/(1500|2500|3500|f-?150|f-?250|f-?350|silverado|sierra|tundra|titan|ranger|colorado|tacoma|gladiator|ram|pickup)/.test(n)) {
+    return /diesel|duramax|cummins|powerstroke/.test(n) ? 14 : 15
+  }
+  if (/(sprinter|transit|promaster|savana|express|van)/.test(n)) return 16
+  if (/(atlas|tahoe|suburban|yukon|expedition|explorer|4runner|highlander|pilot|traverse|durango|grand cherokee|suv)/.test(n)) return 19
+  if (/(camry|accord|civic|corolla|malibu|fusion|altima|sedan)/.test(n)) return 25
   return EST_MPG
 }
 

@@ -38,8 +38,9 @@ export async function GET(req: NextRequest) {
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
 
   // Fuel-burn rate from the vehicle's own VIN-decoded specs (SUV != dump truck).
-  const { data: assetRow } = await supabase.from('assets').select('metadata').eq('id', assetId).single()
-  const estMpg = estMpgForSpecs((assetRow?.metadata as Record<string, unknown> | null)?.specs)
+  const { data: assetRow } = await supabase.from('assets').select('name, metadata').eq('id', assetId).single()
+  const md = (assetRow?.metadata ?? {}) as Record<string, unknown>
+  const estMpg = estMpgForSpecs((md.specs as Record<string, unknown> | undefined) ?? md, assetRow?.name ?? '')
 
   // Page past Supabase's API Max-Rows cap (a bare .limit(40000) can silently
   // return 1000). Newest-first so an over-cap asset keeps its recent history.

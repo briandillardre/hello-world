@@ -145,7 +145,8 @@ async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; ra
     .filter((p) => Number.isFinite(p.ms))
   const earliestMs = pts.length ? pts[0].ms : null
   const w = rangeWindow(ctx.tz, key, { earliestMs })
-  const estMpg = estMpgForSpecs((asset.metadata as Record<string, unknown> | undefined)?.specs)
+  const md = (asset.metadata ?? {}) as Record<string, unknown>
+  const estMpg = estMpgForSpecs((md.specs as Record<string, unknown> | undefined) ?? md, asset.name)
   const stats = computeRangeStats(pts, w.from, w.to, earliestMs, Date.now(), estMpg)
   return {
     asset: asset.name,

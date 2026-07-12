@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
+import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
 import { Badge } from '@/components/ui/badge'
@@ -238,12 +239,16 @@ function AssetDetails({
 
       <EngineWidget asset={asset} />
 
+      <SpecSheet meta={meta} mpg={stats?.mpg} />
+
       {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
+
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && <StopsCard assetId={asset.id} />}
 
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
           <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Details</p>
-          {Object.entries(meta).map(([k, v]) => (
+          {Object.entries(meta).filter(([k]) => !SPEC_ROWS.some(([sk]) => sk === k) && k !== 'specs').map(([k, v]) => (
             <div key={k} className="flex justify-between text-xs">
               <span className="text-muted capitalize">{k.replace(/_/g, ' ')}</span>
               <span className="text-ink font-medium">{String(v)}</span>
@@ -269,6 +274,100 @@ function AssetDetails({
       >
         View full details <ArrowRight className="h-4 w-4" />
       </Link>
+    </div>
+  )
+}
+
+/** Spec sheet — what we know about the machine, one glance. VIN-decoded
+ *  values, hand-entered service specs, AI value range, estimated economy. */
+const SPEC_ROWS: [string, string][] = [
+  ['year', 'Year'], ['make', 'Make'], ['model', 'Model'], ['trim', 'Trim'],
+  ['body', 'Body'], ['engine', 'Engine'], ['horsepower', 'Horsepower'],
+  ['fuel', 'Fuel'], ['drive', 'Drive'], ['gvwr', 'GVWR'],
+  ['oil', 'Oil'], ['oil_filter', 'Oil filter'], ['air_filter', 'Air filter'],
+  ['tires', 'Tires'], ['value_range', 'Market value*'],
+]
+function SpecSheet({ meta, mpg }: { meta: Record<string, unknown>; mpg?: number }) {
+  const src = ((meta.specs as Record<string, unknown> | undefined) ?? meta)
+  const rows = SPEC_ROWS.filter(([k]) => src[k] != null && String(src[k]).trim() !== '')
+  if (!rows.length && !mpg) return null
+  return (
+    <div className="bg-navy-800 rounded-lg p-3">
+      <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Specs</p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {rows.map(([k, label]) => (
+          <div key={k} className="flex justify-between text-xs gap-2 min-w-0">
+            <span className="text-muted flex-none">{label}</span>
+            <span className="text-ink font-medium truncate">{String(src[k])}</span>
+          </div>
+        ))}
+        {mpg != null && (
+          <div className="flex justify-between text-xs gap-2">
+            <span className="text-muted">Economy</span>
+            <span className="text-ink font-medium">~{mpg} mpg est.</span>
+          </div>
+        )}
+      </div>
+      {src.value_range != null && (
+        <p className="mt-1.5 text-[10px] text-faint">*AI-estimated range — not an appraisal.</p>
+      )}
+    </div>
+  )
+}
+
+/** Classified stop log: where it stopped, how long, what kind of place —
+ *  supplier run vs DMV morning vs two-hour lunch, at a glance. */
+function StopsCard({ assetId }: { assetId: string }) {
+  const [range, setRange] = useState<'today' | 'yesterday' | '7d'>('today')
+  const [data, setData] = useState<{ stops: { fromMs: number; toMs: number; minutes: number; name: string; kind: PoiKind }[]; tz: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => {
+    if (isMock) return
+    setLoading(true)
+    const ctrl = new AbortController()
+    fetch(`/api/stops?asset=${assetId}&range=${range}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) setData(j); setLoading(false) })
+      .catch(() => setLoading(false))
+    return () => ctrl.abort()
+  }, [assetId, range])
+  if (isMock) return null
+  const fmtT = (ms: number) =>
+    new Intl.DateTimeFormat('en-US', { timeZone: data?.tz, hour: 'numeric', minute: '2-digit' }).format(new Date(ms))
+  return (
+    <div className="bg-navy-800 rounded-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-faint uppercase tracking-wider">Stops</p>
+        <div className="flex gap-1">
+          {(['today', 'yesterday', '7d'] as const).map((r) => (
+            <button key={r} onClick={() => setRange(r)}
+              className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold ' + (range === r ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}>
+              {r === 'today' ? 'Today' : r === 'yesterday' ? 'Yest' : '7 days'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && !data ? (
+        <p className="text-xs text-faint">Reading the day…</p>
+      ) : !data?.stops.length ? (
+        <p className="text-xs text-faint">No stops of 5+ minutes in this range.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {data.stops.map((st, i) => {
+            const meta = POI_KIND_META[st.kind] ?? POI_KIND_META.other
+            return (
+              <li key={i} className="flex items-center gap-2 text-xs min-w-0">
+                <span className="font-mono text-faint tabular-nums flex-none">{fmtT(st.fromMs)}</span>
+                <span className="text-ink font-medium truncate flex-1">{st.name}</span>
+                <span className={'flex-none rounded-full border px-1.5 py-px text-[9.5px] font-semibold ' + meta.cls}>{meta.label}</span>
+                <span className="font-mono text-muted tabular-nums flex-none">
+                  {st.minutes >= 60 ? `${Math.floor(st.minutes / 60)}h ${String(st.minutes % 60).padStart(2, '0')}m` : `${st.minutes}m`}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

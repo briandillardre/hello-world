@@ -115,6 +115,27 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       setDecoding(false)
     }
   }
+  const [valuing, setValuing] = useState(false)
+  const estimateValue = async () => {
+    if (!name.trim() || valuing) return
+    setValuing(true)
+    setDecodeMsg(null)
+    try {
+      const r = await fetch('/api/value-estimate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, specs }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setDecodeMsg(j.error === 'AI key not configured' ? 'Needs the AI key in Vercel first.' : (j.error ?? 'Estimate failed.')); return }
+      setSpecs((prev) => ({ ...prev, value_range: j.range }))
+      setDecodeMsg(`✓ Market value ${j.range}${j.note ? ` — ${j.note}` : ''}`)
+    } catch {
+      setDecodeMsg('Estimator unreachable.')
+    } finally {
+      setValuing(false)
+    }
+  }
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBusy, setPhotoBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -244,6 +265,38 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
               </div>
             </div>
           )}
+
+          {/* Service specs — the numbers on the shop wall: what oil, which
+              filter, what tires. Hand-typed once; receipts can fill them later. */}
+          <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Service specs (optional)</p>
+              <button
+                type="button"
+                onClick={estimateValue}
+                disabled={valuing || !name.trim()}
+                className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40"
+              >
+                {valuing ? 'Estimating…' : specs.value_range ? `Value: ${String(specs.value_range)} ↻` : 'AI market value'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([['oil', 'Oil (e.g. 0W-30 Euro)'], ['oil_filter', 'Oil filter #'], ['air_filter', 'Air filter #'], ['tires', 'Tire size']] as const).map(([key, ph]) => (
+                <input
+                  key={key}
+                  value={String(specs[key] ?? '')}
+                  onChange={(e) => setSpecs((prev) => {
+                    const next = { ...prev }
+                    if (e.target.value.trim() === '') delete next[key]
+                    else next[key] = e.target.value
+                    return next
+                  })}
+                  placeholder={ph}
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+              ))}
+            </div>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="asset-photo-file">Photo</Label>
