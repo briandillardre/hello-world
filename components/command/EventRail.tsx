@@ -181,7 +181,7 @@ export function EventRail({ assets, alerts, geofences = [], historyRows = null, 
                     </span>
                   </div>
                   {zone && (
-                    <p className="pl-4 font-mono text-[8.5px] text-faint leading-tight truncate">
+                    <p className="pl-4 font-mono text-[8.5px] text-faint leading-tight truncate" suppressHydrationWarning>
                       {zone}{state === 'moving' && sinceMs != null ? ` · ${fmtSince(sinceMs)}` : ''}
                     </p>
                   )}
