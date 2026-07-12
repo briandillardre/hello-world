@@ -56,6 +56,16 @@ export const AI_TOOLS = [
     },
   },
   {
+    name: 'asset_telemetry',
+    description:
+      'EVERY live telemetry parameter from ONE asset\'s latest report: fuel tank level %, engine RPM, ignition, battery/12V voltages, odometer, coolant temp, trouble codes — the full OBD parameter bag. Use for "how much fuel does X have", odometer, engine-health, and any question about a specific reading.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { asset_name: { type: 'string', description: 'Asset name, may be partial' } },
+      required: ['asset_name'],
+    },
+  },
+  {
     name: 'recent_alerts',
     description:
       'Recent alert events (theft, after-hours movement, left-site, low battery) with asset, trigger, time, and whether acknowledged. Use for any alerts/theft/security question.',
@@ -90,6 +100,9 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
     const site = loc
       ? rings.find((r) => r.ring.length >= 3 && pointInPolygon([loc.lng, loc.lat], r.ring))?.name ?? null
       : null
+    const raw = (loc?.raw ?? {}) as Record<string, unknown>
+    const fuelPct = typeof raw['fuel.level'] === 'number' ? Math.round(raw['fuel.level'] as number) : null
+    const rpm = typeof raw['engine.rpm'] === 'number' ? (raw['engine.rpm'] as number) : null
     return {
       name: a.name,
       type: a.type,
@@ -97,6 +110,8 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
       speedMph: loc?.speed ?? null,
       moving: (loc?.speed ?? 0) > 2,
       batteryPct: loc?.battery ?? null,
+      fuelPct,
+      engineOn: rpm != null ? rpm > 300 : typeof raw['engine.ignition.status'] === 'boolean' ? raw['engine.ignition.status'] : null,
       lastSeen: loc ? fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz) : null,
     }
   })
@@ -166,6 +181,28 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
   }
 }
 
+async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string }) {
+  const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
+  if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
+  const loc = asset.location
+  if (!loc) return { asset: asset.name, error: 'No telemetry yet — the tracker has never reported.' }
+  // The full parameter bag from the latest fix. Keys are generic telemetry
+  // names; scalars only, and BLE noise trimmed to keep the payload tight.
+  const params: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries((loc.raw ?? {}) as Record<string, unknown>)) {
+    if (k.startsWith('ble.') || k === 'source') continue
+    if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') params[k] = v
+  }
+  return {
+    asset: asset.name,
+    reportedAt: fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz),
+    speedMph: loc.speed,
+    batteryPct: loc.battery,
+    params,
+    note: 'Odometer values are meters; fuel.level is percent of tank; battery.voltage is the 12V system.',
+  }
+}
+
 async function runRecentAlerts(ctx: AiToolCtx, input: { limit?: number }) {
   const limit = Math.min(25, Math.max(1, Math.round(Number(input.limit) || 10)))
   return ctx.alerts.slice(0, limit).map((a) => ({
@@ -184,6 +221,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
     switch (name) {
       case 'fleet_snapshot': return await runFleetSnapshot(ctx)
       case 'asset_activity': return await runAssetActivity(ctx, input as { asset_name?: string; range?: string })
+      case 'asset_telemetry': return await runAssetTelemetry(ctx, input as { asset_name?: string })
       case 'site_visits': return await runSiteVisits(ctx, input as { zone_name?: string; days?: number })
       case 'recent_alerts': return await runRecentAlerts(ctx, input as { limit?: number })
       default: return { error: `Unknown tool ${name}` }

@@ -76,17 +76,17 @@ export function computeRangeStats(
     const mph = p.speed ?? 0
     const dt = prev ? p.ms - prev.ms : Infinity
     if (mph > maxMph) {
-      // A top-speed candidate must be corroborated — GPS glitches report
-      // absurd speeds on a single sample while the fix barely moves ("129
-      // mph" in a parked driveway). Trust the sample when the distance
-      // actually covered between fixes supports it, or when an adjacent
-      // sample saw a similar speed. Below 50 mph glitches don't matter.
+      // Top-speed trust ladder. GPS glitches come in CLUSTERS (multipath
+      // bursts corroborate each other), and a km/h-as-mph unit error
+      // inflates by exactly 1.61x — so above 80 mph only physics votes:
+      // the fixes must actually be that far apart. 50–80 may also pass on
+      // a similar neighbor; under 50 nobody fakes it.
       let trusted = mph < 50
-      if (!trusted && prev && dt > 0 && dt <= MAX_SEG_GAP_MS) {
+      if (!trusted && prev && dt > 0 && dt <= 90_000) {
         const impliedMph = haversineMi(prev.lat, prev.lng, p.lat, p.lng) / (dt / 3_600_000)
-        if (mph <= impliedMph * 1.6 + 10) trusted = true
+        if (impliedMph * 1.25 + 8 >= mph) trusted = true
       }
-      if (!trusted) {
+      if (!trusted && mph < 80) {
         const nb = [prev?.speed ?? 0, win[i + 1]?.speed ?? 0]
         if (nb.some((s) => s >= mph * 0.6)) trusted = true
       }

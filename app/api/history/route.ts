@@ -8,7 +8,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 // Hard caps: enough for several days of second-by-second OBD pings after
 // thinning, small enough to stay a snappy mobile payload.
 const FETCH_CAP = 40_000
-const SHIP_CAP = 5_000
+const SHIP_CAP = 20_000
 
 /**
  * Range-scoped location history for the timeline. The map page ships a capped
@@ -59,8 +59,11 @@ export async function GET(req: NextRequest) {
   const rows = fetched.reverse()
   // Even stride ACROSS the window (not newest-biased) keeps every hour of the
   // day equally represented when we're over the ship cap.
-  const stride = Math.max(1, Math.ceil(rows.length / SHIP_CAP))
-  const thinned = stride > 1 ? rows.filter((_, i) => i % stride === 0 || i === rows.length - 1) : rows
+  // Geometry-aware thinning: keeps every curve point, drops straight-line
+  // redundancy — the uniform stride here is what made 7-day trails cut
+  // corners across the interstate ("that does not look good", Jul 12).
+  const { simplifyHistoryRows } = await import('@/lib/simplify')
+  const thinned = rows.length > SHIP_CAP ? simplifyHistoryRows(rows, 12, SHIP_CAP) : rows
 
   return NextResponse.json(
     { rows: thinned, truncated: rows.length >= FETCH_CAP },

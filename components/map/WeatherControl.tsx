@@ -511,6 +511,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           </div>
         </div>
       )}
+      {/* honest bandwidth note — radar/clouds/overlays are live streams */}
+      <p className="px-3 py-2 border-t border-navy-800 text-[10px] text-faint leading-relaxed">
+        More layers = more live data. On weak job-site signal, turn a few off
+        and the map loads noticeably faster.
+      </p>
     </div>
   )
 }

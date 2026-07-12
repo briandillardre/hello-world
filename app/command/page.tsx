@@ -44,10 +44,10 @@ export default async function CommandPage() {
   const fullHistory = earliestMs !== null
     ? await getLocationHistory(companyId, new Date(fullSince).toISOString(), 12000)
     : null
-  const MAX_SHIP = 6000
+  const MAX_SHIP = 20000
   const rows = fullHistory ?? []
-  const stride = Math.max(1, Math.ceil(rows.length / MAX_SHIP))
-  const historyRows = fullHistory ? (stride > 1 ? rows.filter((_, i) => i % stride === 0 || i === rows.length - 1) : rows) : null
+  const { simplifyHistoryRows } = await import('@/lib/simplify')
+  const historyRows = fullHistory ? (rows.length > MAX_SHIP ? simplifyHistoryRows(rows, 12, MAX_SHIP) : rows) : null
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
 
   // Real accounts: cost from per-asset rates × observed activity; demo: PROJECTS.

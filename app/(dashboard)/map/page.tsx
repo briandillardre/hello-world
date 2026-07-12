@@ -42,10 +42,10 @@ export default async function MapPage() {
 
   // Thin the shipped payload: OBD units report every few seconds, so cap at a
   // few thousand evenly-strided rows. tracksFromHistory thins further per range.
-  const MAX_SHIP = 6000
+  const MAX_SHIP = 20000
   const rows = history ?? []
-  const stride = Math.max(1, Math.ceil(rows.length / MAX_SHIP))
-  const historyRows = stride > 1 ? rows.filter((_, i) => i % stride === 0 || i === rows.length - 1) : rows
+  const { simplifyHistoryRows } = await import('@/lib/simplify')
+  const historyRows = rows.length > MAX_SHIP ? simplifyHistoryRows(rows, 12, MAX_SHIP) : rows
 
   // Demo mode keeps the synthetic cinematic trails.
   const demoTracks = history ? [] : generateTracks(assets)

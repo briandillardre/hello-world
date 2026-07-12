@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
       lng: r.lng,
       speed: r.speed,
       heading: r.heading,
+      altitude: r.altitude,
       battery: r.battery,
       accuracy: null,
       timestamp: r.timestamp,

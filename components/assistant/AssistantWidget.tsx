@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sparkles, X, Send, HardHat, Mic } from 'lucide-react'
+import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX } from 'lucide-react'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
 interface Msg { role: 'user' | 'assistant'; text: string }
@@ -31,6 +31,11 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
+  // Conversation mode: answers are spoken aloud, and when the voice finishes
+  // the mic reopens — ask, listen, ask again, hands never touch the phone.
+  const [voiceMode, setVoiceMode] = useState(false)
+  const voiceModeRef = useRef(false)
+  voiceModeRef.current = voiceMode
   const scrollRef = useRef<HTMLDivElement>(null)
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const historyLoaded = useRef(false)
@@ -67,6 +72,16 @@ export function AssistantWidget() {
       .catch(() => { /* stateless is fine */ })
   }, [open])
 
+  // Speak an answer, then (in conversation mode) reopen the mic when done.
+  const speak = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    window.speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text)
+    u.rate = 1.06
+    u.onend = () => { if (voiceModeRef.current) startVoice() }
+    window.speechSynthesis.speak(u)
+  }
+
   async function ask(q: string) {
     const question = q.trim()
     if (!question || loading) return
@@ -81,11 +96,24 @@ export function AssistantWidget() {
         body: JSON.stringify({ question }),
       })
       const data = await res.json()
-      setMsgs((m) => [...m, { role: 'assistant', text: data.answer ?? "I couldn't work that one out." }])
+      const answer = data.answer ?? "I couldn't work that one out."
+      setMsgs((m) => [...m, { role: 'assistant', text: answer }])
+      if (voiceModeRef.current) speak(answer)
     } catch {
       setMsgs((m) => [...m, { role: 'assistant', text: "I couldn't reach the fleet just now — try again in a sec." }])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const toggleVoiceMode = () => {
+    const next = !voiceMode
+    setVoiceMode(next)
+    voiceModeRef.current = next
+    if (next) startVoice()
+    else {
+      recRef.current?.stop()
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel()
     }
   }
 
@@ -131,7 +159,21 @@ export function AssistantWidget() {
               <span className="grid place-items-center w-6 h-6 rounded-md bg-amber/20"><Sparkles className="h-3.5 w-3.5 text-amber" /></span>
               HammerTrack AI
             </span>
-            <button onClick={() => setOpen(false)} className="text-faint hover:text-ink"><X className="h-5 w-5" /></button>
+            <div className="flex items-center gap-1">
+              {voiceOk && (
+                <button
+                  onClick={toggleVoiceMode}
+                  title={voiceMode ? 'Leave conversation mode' : 'Conversation mode — it talks back'}
+                  className={
+                    'grid place-items-center w-8 h-8 rounded-lg transition ' +
+                    (voiceMode ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+                  }
+                >
+                  {voiceMode ? <Volume2 className="h-4.5 w-4.5" /> : <VolumeX className="h-4.5 w-4.5" />}
+                </button>
+              )}
+              <button onClick={() => { setOpen(false); recRef.current?.stop(); if ('speechSynthesis' in window) window.speechSynthesis.cancel() }} className="text-faint hover:text-ink"><X className="h-5 w-5" /></button>
+            </div>
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

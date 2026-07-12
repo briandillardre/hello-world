@@ -6,6 +6,7 @@ export interface FlespiMessage {
   'position.longitude'?: number
   'position.speed'?: number
   'position.direction'?: number
+  'position.altitude'?: number
   'battery.level'?: number
   'battery.voltage'?: number
   'engine.ignition.status'?: boolean
@@ -22,6 +23,8 @@ export interface NormalizedReading {
   lng: number
   speed: number | null
   heading: number | null
+  /** Meters above sea level, straight from the GNSS fix. */
+  altitude: number | null
   battery: number | null
   timestamp: string
   beacons: { id: string; rssi: number | null }[]
@@ -35,7 +38,7 @@ export interface NormalizedReading {
 // kept verbatim under the tracker's own field names.
 const LIFTED = new Set([
   'ident', 'device.id', 'timestamp',
-  'position.latitude', 'position.longitude', 'position.speed', 'position.direction',
+  'position.latitude', 'position.longitude', 'position.speed', 'position.direction', 'position.altitude',
 ])
 
 function voltageToPercent(v: number): number {
@@ -95,6 +98,7 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
     // VW Atlas look like a felony — convert at the door.
     speed: typeof msg['position.speed'] === 'number' ? Math.round(msg['position.speed'] * 0.621371) : null,
     heading: typeof msg['position.direction'] === 'number' ? msg['position.direction'] : null,
+    altitude: typeof msg['position.altitude'] === 'number' ? Math.round(msg['position.altitude']) : null,
     battery,
     timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString(),
     beacons,
