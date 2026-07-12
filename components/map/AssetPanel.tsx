@@ -113,15 +113,15 @@ const METRICS: { label: string; fmt: (r: RangeStat) => string; accent?: boolean 
   { label: 'Starts', fmt: (r) => (r.starts ? String(r.starts) : '—') },
 ]
 
-function useAssetStats(assetId: string, enabled: boolean): RangeStat[] | null {
-  const [stats, setStats] = useState<RangeStat[] | null>(null)
+function useAssetStats(assetId: string, enabled: boolean): { ranges: RangeStat[]; mpg: number } | null {
+  const [stats, setStats] = useState<{ ranges: RangeStat[]; mpg: number } | null>(null)
   useEffect(() => {
     setStats(null)
     if (!enabled || isMock) return
     const ctrl = new AbortController()
     fetch(`/api/asset-stats?asset=${assetId}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j && Array.isArray(j.ranges) && j.ranges.length) setStats(j.ranges) })
+      .then((j) => { if (j && Array.isArray(j.ranges) && j.ranges.length) setStats({ ranges: j.ranges, mpg: j.mpg ?? 15 }) })
       .catch(() => { /* aborted / offline */ })
     return () => ctrl.abort()
   }, [assetId, enabled])
@@ -236,7 +236,7 @@ function AssetDetails({
 
       <EngineWidget asset={asset} />
 
-      {stats && <ActivityCard stats={stats} />}
+      {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} />}
 
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
@@ -273,7 +273,7 @@ function AssetDetails({
 
 /** Activity dashboard: pick a range with a chip, read big legible stats.
  *  Distance leads (the number a contractor asks for first). */
-function ActivityCard({ stats }: { stats: RangeStat[] }) {
+function ActivityCard({ stats, mpg }: { stats: RangeStat[]; mpg: number }) {
   const [rangeKey, setRangeKey] = useState(stats[0]?.key ?? 'today')
   const r = stats.find((s) => s.key === rangeKey) ?? stats[0]
   if (!r) return null
@@ -305,7 +305,7 @@ function ActivityCard({ stats }: { stats: RangeStat[] }) {
         ))}
       </div>
       <p className="mt-2.5 text-[10px] text-faint border-t border-navy-700/50 pt-2">
-        *fuel estimated from distance + idle time until OBD fuel data is wired
+        *fuel estimated at {mpg} mpg + idle burn until OBD fuel data is wired
       </p>
     </div>
   )

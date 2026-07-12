@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rangeWindow, DEFAULT_TZ, type TimeRangeKey } from '@/lib/dates'
-import { computeRangeStats } from '@/lib/asset-stats'
+import { computeRangeStats, estMpgForSpecs } from '@/lib/asset-stats'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +37,10 @@ export async function GET(req: NextRequest) {
 
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
 
+  // Fuel-burn rate from the vehicle's own VIN-decoded specs (SUV != dump truck).
+  const { data: assetRow } = await supabase.from('assets').select('metadata').eq('id', assetId).single()
+  const estMpg = estMpgForSpecs((assetRow?.metadata as Record<string, unknown> | null)?.specs)
+
   // Page past Supabase's API Max-Rows cap (a bare .limit(40000) can silently
   // return 1000). Newest-first so an over-cap asset keeps its recent history.
   const PAGE = 1000
@@ -62,11 +66,11 @@ export async function GET(req: NextRequest) {
   const nowMs = Date.now()
   const ranges = RANGES.map(({ key, label }) => {
     const w = rangeWindow(tz, key, { earliestMs })
-    return { key, label, ...computeRangeStats(pts, w.from, w.to, earliestMs, nowMs) }
+    return { key, label, ...computeRangeStats(pts, w.from, w.to, earliestMs, nowMs, estMpg) }
   })
 
   return NextResponse.json(
-    { ranges, truncated: pts.length >= FETCH_CAP },
+    { ranges, mpg: estMpg, truncated: pts.length >= FETCH_CAP },
     { headers: { 'Cache-Control': 'private, max-age=60' } }
   )
 }

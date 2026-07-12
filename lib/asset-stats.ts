@@ -37,6 +37,20 @@ export const haversineMi = (lat1: number, lng1: number, lat2: number, lng2: numb
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
+/** Per-vehicle fuel-burn guess from the VIN-decoded specs. Still an estimate
+ *  (until OBD fuel data is wired), but "SUV at 19" beats "everything at 15". */
+export function estMpgForSpecs(specs: unknown): number {
+  const sp = (specs ?? {}) as Record<string, unknown>
+  const body = String(sp.body ?? '').toLowerCase()
+  const fuel = String(sp.fuel ?? '').toLowerCase()
+  const diesel = fuel.includes('diesel')
+  if (/pickup|truck/.test(body)) return diesel ? 14 : 15
+  if (/van/.test(body)) return 16
+  if (/suv|sport utility|mpv|multi-purpose|crossover/.test(body)) return 19
+  if (/sedan|coupe|hatch|wagon|convertible|car/.test(body)) return 25
+  return EST_MPG
+}
+
 /** Stats for chronological points within [from, to). `earliestMs` bounds the
  *  "existed" span so parked time doesn't accrue before the tracker's first
  *  ever fix; `nowMs` bounds it on the live end. */
@@ -45,24 +59,43 @@ export function computeRangeStats(
   from: number,
   to: number,
   earliestMs: number | null,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  estMpg = EST_MPG
 ): RangeStats {
+  // Window slice up front so top-speed corroboration can peek at neighbors.
+  const win = pts.filter((p) => p.ms >= from && p.ms < to)
   let miles = 0
   let maxMph = 0
   let movingMs = 0
   let idleMs = 0
   let starts = 0
   let lastMovingMs: number | null = null
-  let prev: StatPoint | null = null
-  for (const p of pts) {
-    if (p.ms < from || p.ms >= to) { prev = null; continue }
+  for (let i = 0; i < win.length; i++) {
+    const p = win[i]
+    const prev = i > 0 ? win[i - 1] : null
     const mph = p.speed ?? 0
-    if (mph > maxMph) maxMph = mph
-    if (prev && p.ms - prev.ms <= MAX_SEG_GAP_MS) {
+    const dt = prev ? p.ms - prev.ms : Infinity
+    if (mph > maxMph) {
+      // A top-speed candidate must be corroborated — GPS glitches report
+      // absurd speeds on a single sample while the fix barely moves ("129
+      // mph" in a parked driveway). Trust the sample when the distance
+      // actually covered between fixes supports it, or when an adjacent
+      // sample saw a similar speed. Below 50 mph glitches don't matter.
+      let trusted = mph < 50
+      if (!trusted && prev && dt > 0 && dt <= MAX_SEG_GAP_MS) {
+        const impliedMph = haversineMi(prev.lat, prev.lng, p.lat, p.lng) / (dt / 3_600_000)
+        if (mph <= impliedMph * 1.6 + 10) trusted = true
+      }
+      if (!trusted) {
+        const nb = [prev?.speed ?? 0, win[i + 1]?.speed ?? 0]
+        if (nb.some((s) => s >= mph * 0.6)) trusted = true
+      }
+      if (trusted) maxMph = mph
+    }
+    if (prev && dt <= MAX_SEG_GAP_MS) {
       miles += haversineMi(prev.lat, prev.lng, p.lat, p.lng)
       // Awake time splits into moving vs idling; sleep gaps (>15 min
       // between pings, engine off) fall through to "parked".
-      const dt = p.ms - prev.ms
       if ((prev.speed ?? 0) >= MOVE_MPH || mph >= MOVE_MPH) movingMs += dt
       else idleMs += dt
     }
@@ -70,7 +103,6 @@ export function computeRangeStats(
       if (lastMovingMs === null || p.ms - lastMovingMs > START_GAP_MS) starts++
       lastMovingMs = p.ms
     }
-    prev = p
   }
   // Stationary = the part of the window the asset existed but wasn't
   // moving or idling (device asleep, engine off).
@@ -78,7 +110,7 @@ export function computeRangeStats(
   const spanTo = Math.min(to, nowMs)
   const spanMs = spanFrom !== null && spanTo > spanFrom ? spanTo - spanFrom : 0
   const parkedMs = Math.max(0, spanMs - movingMs - idleMs)
-  const fuelGal = miles / EST_MPG + (idleMs / 3_600_000) * IDLE_GAL_PER_H
+  const fuelGal = miles / estMpg + (idleMs / 3_600_000) * IDLE_GAL_PER_H
   return {
     miles: Math.round(miles * 10) / 10,
     maxMph: Math.round(maxMph),

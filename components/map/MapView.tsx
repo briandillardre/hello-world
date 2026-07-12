@@ -1668,6 +1668,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // Storm tops — GOES-East Band 13 clean-window IR from the same GIBS service.
   // Cold (bright) = high convective tops; the classic aviation read on which
   // cells punch. ~2 km pixels, refreshed on GOES's ~10-min cadence.
+  // GIBS publishes each layer against ONE tile-matrix set; if Level7 turns
+  // out wrong for this layer the tile requests 400 and the sky stays empty —
+  // so on the first source error we rebuild against Level6 automatically.
+  const stormLevelRef = useRef(7)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -1675,22 +1679,34 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (stormAdded.current && m.getLayer('stormtops-layer')) m.setLayoutProperty('stormtops-layer', 'visibility', 'none')
       return
     }
-    const tileUrl = () =>
-      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png'
-    if (!stormAdded.current) {
-      m.addSource('stormtops', { type: 'raster', tiles: [tileUrl()], tileSize: 256, maxzoom: 7, attribution: 'NASA GIBS · NOAA GOES-East' })
+    const tileUrl = (lvl: number) =>
+      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level${lvl}/{z}/{y}/{x}.png`
+    const addAll = (lvl: number) => {
+      m.addSource('stormtops', { type: 'raster', tiles: [tileUrl(lvl)], tileSize: 256, maxzoom: lvl, attribution: 'NASA GIBS · NOAA GOES-East' })
       const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
         : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
       m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.62 } }, beforeId)
+    }
+    if (!stormAdded.current) {
+      addAll(stormLevelRef.current)
       stormAdded.current = true
     } else {
-      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl()])
+      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl(stormLevelRef.current)])
       m.setLayoutProperty('stormtops-layer', 'visibility', 'visible')
     }
+    const onErr = (e: { sourceId?: string }) => {
+      if (e.sourceId !== 'stormtops' || stormLevelRef.current !== 7) return
+      stormLevelRef.current = 6
+      console.warn('Storm tops: Level7 tiles failing, rebuilding on Level6')
+      if (m.getLayer('stormtops-layer')) m.removeLayer('stormtops-layer')
+      if (m.getSource('stormtops')) m.removeSource('stormtops')
+      addAll(6)
+    }
+    m.on('error', onErr as (e: unknown) => void)
     const id = setInterval(() => {
-      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl()])
+      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl(stormLevelRef.current)])
     }, 600_000)
-    return () => clearInterval(id)
+    return () => { clearInterval(id); m.off('error', onErr as (e: unknown) => void) }
   }, [mapReady, stormTopsOn])
 
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.

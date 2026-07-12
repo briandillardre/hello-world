@@ -9,7 +9,7 @@
  */
 import type { AssetWithLocation, Geofence, AlertEvent } from './types'
 import { pointInPolygon } from './alerts-engine'
-import { computeRangeStats, type StatPoint } from './asset-stats'
+import { computeRangeStats, estMpgForSpecs, type StatPoint } from './asset-stats'
 import { segmentVisits, type VisitPoint } from './visits'
 import { rangeWindow, fmtDateTime, type TimeRangeKey } from './dates'
 
@@ -130,12 +130,13 @@ async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; ra
     .filter((p) => Number.isFinite(p.ms))
   const earliestMs = pts.length ? pts[0].ms : null
   const w = rangeWindow(ctx.tz, key, { earliestMs })
-  const stats = computeRangeStats(pts, w.from, w.to, earliestMs)
+  const estMpg = estMpgForSpecs((asset.metadata as Record<string, unknown> | undefined)?.specs)
+  const stats = computeRangeStats(pts, w.from, w.to, earliestMs, Date.now(), estMpg)
   return {
     asset: asset.name,
     range: key,
     ...stats,
-    fuelNote: 'fuelGalEst is an estimate (15 mpg driving + 0.6 gal/h idling)',
+    fuelNote: `fuelGalEst is an estimate (${estMpg} mpg driving + 0.6 gal/h idling)`,
     dataTruncated: rows.length >= CAP,
   }
 }
