@@ -85,6 +85,16 @@ async function resizePhoto(file: File, maxDim = 1600, quality = 0.82): Promise<B
   }
 }
 
+// Common truck makes + the equipment brands a GC actually owns. Free text
+// still works — these just save the typing.
+const MAKE_SUGGESTIONS = [
+  'Ford', 'Chevrolet', 'GMC', 'Ram', 'Toyota', 'Nissan', 'Honda', 'Jeep', 'Dodge', 'Volkswagen',
+  'Freightliner', 'International', 'Kenworth', 'Peterbilt', 'Mack', 'Isuzu', 'Hino',
+  'Caterpillar', 'John Deere', 'Bobcat', 'Kubota', 'Case', 'Komatsu', 'Volvo', 'JCB',
+  'New Holland', 'Takeuchi', 'Yanmar', 'Doosan', 'Develon', 'Hitachi', 'Link-Belt',
+  'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
+]
+
 export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
@@ -98,6 +108,34 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
   const [specs, setSpecs] = useState<Record<string, unknown>>(initial?.metadata ?? {})
   const [decoding, setDecoding] = useState(false)
   const [decodeMsg, setDecodeMsg] = useState<string | null>(null)
+
+  const setSpecField = (key: string, value: string) =>
+    setSpecs((prev) => {
+      const next = { ...prev }
+      if (value.trim() === '') delete next[key]
+      else next[key] = value
+      return next
+    })
+
+  // Model typeahead: once a make is picked, pull its model list from the
+  // federal vehicle database (vPIC — free, keyless, CORS-open). Equipment
+  // brands mostly aren't in it; the field stays free text either way.
+  const [modelOptions, setModelOptions] = useState<string[]>([])
+  const modelFetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadModels = (make: string) => {
+    if (modelFetchTimer.current) clearTimeout(modelFetchTimer.current)
+    const mk = make.trim()
+    if (mk.length < 3) { setModelOptions([]); return }
+    modelFetchTimer.current = setTimeout(() => {
+      fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(mk)}?format=json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { Results?: { Model_Name?: string }[] } | null) => {
+          const names = Array.from(new Set((j?.Results ?? []).map((x) => x.Model_Name).filter((n): n is string => !!n))).sort()
+          setModelOptions(names.slice(0, 200))
+        })
+        .catch(() => setModelOptions([]))
+    }, 350)
+  }
 
   const decodeVin = async () => {
     setDecoding(true)
@@ -263,6 +301,48 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Year / Make / Model — typeahead for vehicles & equipment. Make
+              suggests common truck + equipment brands; picking one live-loads
+              its model list from the federal vehicle database (vPIC). No VIN
+              needed — name-based entry gets real specs too. */}
+          {(type === 'vehicle' || type === 'equipment') && (
+            <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
+              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Year · Make · Model (optional)</p>
+              <div className="grid grid-cols-[70px_1fr_1fr] gap-2">
+                <input
+                  value={String(specs.year ?? '')}
+                  onChange={(e) => setSpecField('year', e.target.value)}
+                  placeholder="Year"
+                  inputMode="numeric"
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+                <input
+                  value={String(specs.make ?? '')}
+                  onChange={(e) => { setSpecField('make', e.target.value); loadModels(e.target.value) }}
+                  placeholder="Make"
+                  list="asset-make-suggestions"
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+                <input
+                  value={String(specs.model ?? '')}
+                  onChange={(e) => setSpecField('model', e.target.value)}
+                  placeholder="Model"
+                  list="asset-model-suggestions"
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+              </div>
+              <datalist id="asset-make-suggestions">
+                {MAKE_SUGGESTIONS.map((mk) => <option key={mk} value={mk} />)}
+              </datalist>
+              <datalist id="asset-model-suggestions">
+                {modelOptions.map((mo) => <option key={mo} value={mo} />)}
+              </datalist>
+              {modelOptions.length > 0 && (
+                <p className="text-[10.5px] text-faint">{modelOptions.length} known models for {String(specs.make)} — keep typing to filter.</p>
+              )}
             </div>
           )}
 

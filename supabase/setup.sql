@@ -640,3 +640,55 @@ DROP POLICY IF EXISTS "company receipts" ON receipts;
 CREATE POLICY "company receipts" ON receipts
   FOR ALL USING (company_id = current_company_id());
 
+
+-- ── 018_pair_confirmations.sql ──────────────────────────────────────────
+-- Who-ran-what confirmations: the foreman's word on top of the GPS guess.
+-- The pairing engine (lib/pairing) proposes person↔machine runs from
+-- co-movement; a human confirms or rejects each day's pair. Confirmed pairs
+-- become payroll/job-cost grade; rejected ones stop showing up.
+
+CREATE TABLE IF NOT EXISTS pair_confirmations (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id       UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  day              DATE NOT NULL,
+  person_asset_id  UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  machine_asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  status           TEXT NOT NULL CHECK (status IN ('confirmed', 'rejected')),
+  decided_by       UUID,
+  decided_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (company_id, day, person_asset_id, machine_asset_id)
+);
+ALTER TABLE pair_confirmations ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS pair_confirmations_day_idx ON pair_confirmations(company_id, day);
+
+DROP POLICY IF EXISTS "company pair confirmations" ON pair_confirmations;
+CREATE POLICY "company pair confirmations" ON pair_confirmations
+  FOR ALL USING (company_id = current_company_id());
+
+-- ── 019_site_weather.sql ────────────────────────────────────────────────
+-- Site weather receipts: one row per job-site zone per day — high/low temp,
+-- rain total, max wind. Written nightly by the weather cron (service role);
+-- read on the zone page as documentation for rain-delay claims.
+
+CREATE TABLE IF NOT EXISTS site_weather (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id  UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  geofence_id UUID NOT NULL REFERENCES geofences(id) ON DELETE CASCADE,
+  day         DATE NOT NULL,
+  temp_hi     REAL,
+  temp_lo     REAL,
+  rain_in     REAL,
+  wind_max    REAL,
+  code        INT,
+  source      TEXT NOT NULL DEFAULT 'model',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (geofence_id, day)
+);
+ALTER TABLE site_weather ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS site_weather_zone_idx ON site_weather(geofence_id, day DESC);
+
+-- Members read their company's log; the nightly cron writes with the
+-- service role (bypasses RLS), so no insert policy is needed.
+DROP POLICY IF EXISTS "company site weather" ON site_weather;
+CREATE POLICY "company site weather" ON site_weather
+  FOR SELECT USING (company_id = current_company_id());

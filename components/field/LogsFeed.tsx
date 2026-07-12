@@ -1,9 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download } from 'lucide-react'
+import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download, Check, X } from 'lucide-react'
 import type { TimeEntry, DailyLog } from '@/lib/field-types'
 import type { PairSegment } from '@/lib/pairing'
+import { decidePairAction, type PairDecision } from '@/lib/actions/pairs'
 
 /**
  * The office's morning read: every crew day grouped date → project, with the
@@ -18,6 +19,8 @@ interface Props {
   tz: string
   /** Who-ran-what beta: GPS co-movement segments (empty until phones track). */
   pairs?: PairSegment[]
+  /** Foreman decisions on pairs (confirm/reject), keyed by day+person+machine. */
+  pairDecisions?: PairDecision[]
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -39,9 +42,25 @@ function hoursOf(e: TimeEntry, now: number): number {
   return Math.max(0, (end - new Date(e.clock_in_at).getTime()) / 3_600_000)
 }
 
-export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [] }: Props) {
+export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisions = [] }: Props) {
   const [lightbox, setLightbox] = useState<string | null>(null)
   const now = Date.now()
+  // Foreman's confirm/reject on pairs — optimistic on top of the server rows.
+  const [localDecisions, setLocalDecisions] = useState<Record<string, 'confirmed' | 'rejected'>>({})
+  const decisionOf = (day: string, personId: string, machineId: string): 'confirmed' | 'rejected' | null => {
+    const k = `${day}|${personId}|${machineId}`
+    if (localDecisions[k]) return localDecisions[k]
+    return pairDecisions.find((d) => d.day === day && d.person_asset_id === personId && d.machine_asset_id === machineId)?.status ?? null
+  }
+  const decide = async (day: string, personId: string, machineId: string, status: 'confirmed' | 'rejected') => {
+    const k = `${day}|${personId}|${machineId}`
+    setLocalDecisions((p) => ({ ...p, [k]: status }))
+    const res = await decidePairAction(day, personId, machineId, status)
+    if (!res.ok) {
+      setLocalDecisions((p) => { const n = { ...p }; delete n[k]; return n })
+      alert(res.error ?? 'Could not save that decision.')
+    }
+  }
 
   // Payroll handoff: every entry in the window as a CSV the bookkeeper can
   // drop straight into payroll (or QuickBooks Time import).
@@ -177,17 +196,42 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [] }: Props) {
             if (!dayPairs.length) return null
             return (
               <div className="rounded-xl border border-navy-800 bg-navy-950 px-3 py-2.5 mb-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">Who ran what · beta</p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">Who ran what · confirm below</p>
                 <ul className="space-y-1">
-                  {dayPairs.map((pr, i) => (
-                    <li key={i} className="flex items-center gap-2 text-[12.5px]">
-                      <span className="text-ink font-medium">{pr.personName}</span>
-                      <span className="text-faint">↔</span>
-                      <span className="text-ink font-medium truncate flex-1">{pr.machineName}</span>
-                      <span className="font-mono text-muted tabular-nums">{timeLabel(new Date(pr.fromMs).toISOString(), tz)}–{timeLabel(new Date(pr.toMs).toISOString(), tz)}</span>
-                      <span className="font-mono text-faint tabular-nums">{Math.round(pr.confidence * 100)}%</span>
-                    </li>
-                  ))}
+                  {dayPairs.map((pr, i) => {
+                    const decision = decisionOf(key, pr.personId, pr.machineId)
+                    if (decision === 'rejected') {
+                      return (
+                        <li key={i} className="flex items-center gap-2 text-[11.5px] text-faint line-through opacity-50">
+                          <span>{pr.personName} ↔ {pr.machineName}</span>
+                          <button onClick={() => decide(key, pr.personId, pr.machineId, 'confirmed')} className="ml-auto no-underline font-mono text-[10px] hover:text-teal">undo</button>
+                        </li>
+                      )
+                    }
+                    return (
+                      <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                        <span className="text-ink font-medium">{pr.personName}</span>
+                        <span className="text-faint">↔</span>
+                        <span className="text-ink font-medium truncate flex-1">{pr.machineName}</span>
+                        <span className="font-mono text-muted tabular-nums">{timeLabel(new Date(pr.fromMs).toISOString(), tz)}–{timeLabel(new Date(pr.toMs).toISOString(), tz)}</span>
+                        {decision === 'confirmed' ? (
+                          <span className="flex items-center gap-1 font-mono text-[10px] text-teal flex-none"><Check className="h-3 w-3" /> confirmed</span>
+                        ) : (
+                          <>
+                            <span className="font-mono text-faint tabular-nums">{Math.round(pr.confidence * 100)}%</span>
+                            <span className="flex items-center gap-0.5 flex-none">
+                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'confirmed')} title="Confirm — yes, they ran it" className="grid place-items-center w-6 h-6 rounded-md bg-teal/15 text-teal hover:bg-teal/30 transition-colors">
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'rejected')} title="Reject — the GPS guessed wrong" className="grid place-items-center w-6 h-6 rounded-md bg-navy-800 text-faint hover:text-alert hover:bg-alert/15 transition-colors">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          </>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )

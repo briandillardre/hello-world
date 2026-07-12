@@ -6,6 +6,7 @@ import { getGeofences } from '@/lib/db/geofences'
 import { getRecentFieldDays } from '@/lib/db/fieldops'
 import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { pairOperators, type PairSegment } from '@/lib/pairing'
+import { getPairDecisions } from '@/lib/actions/pairs'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { LogsFeed } from '@/components/field/LogsFeed'
 
@@ -29,6 +30,7 @@ export default async function LogsPage() {
     const history = await getLocationHistory(companyId, new Date(Date.now() - 7 * 86_400_000).toISOString(), 30_000)
     if (history?.length) pairs = pairOperators(history, assets)
   }
+  const pairDecisions = pairs.length ? await getPairDecisions(7) : []
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
@@ -65,7 +67,7 @@ export default async function LogsPage() {
           )}
         </div>
       ) : (
-        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} />
+        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} pairDecisions={pairDecisions} />
       )}
     </div>
   )

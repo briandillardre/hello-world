@@ -11,6 +11,7 @@ import type { AssetType } from '@/lib/types'
 import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
 import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 import { ZoneVisits } from '@/components/geofences/ZoneVisits'
+import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
 import { segmentVisits, type Visit } from '@/lib/visits'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
@@ -42,6 +43,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   const isBoundary = (fence.kind ?? (fence.color === '#0a0a0a' || fence.color === '#9ca3af' ? 'boundary' : 'site')) === 'boundary'
   let usage: ZoneAssetUsage[] | null = null
   let visits: Visit[] | null = null
+  let weather: SiteWeatherRow[] = []
   if (!isMock && !isBoundary && ring && ring.length >= 3) {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
@@ -55,6 +57,14 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       .limit(40_000)
     usage = zoneAssetUsage(ring, assets, rows ?? [], from, Date.now())
     visits = segmentVisits(rows ?? [], ring)
+    // Weather log (migration 019 + nightly cron) — tolerate the table missing.
+    const { data: wx } = await supabase
+      .from('site_weather')
+      .select('day, temp_hi, temp_lo, rain_in, wind_max')
+      .eq('geofence_id', fence.id)
+      .order('day', { ascending: false })
+      .limit(14)
+    weather = (wx ?? []) as SiteWeatherRow[]
   }
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
   // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
@@ -108,6 +118,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {visits !== null && (
           <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
         )}
+
+        <ZoneWeather rows={weather} />
 
         <section>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Assets inside ({inside.length})</h2>
