@@ -158,8 +158,12 @@ function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
         if (lat > maxLat) maxLat = lat
       }
       const area = (maxLng - minLng) * (maxLat - minLat)
+      // Short display name: the part before the first "-"/","/"(" — "Shop -
+      // Nate's House Easley, SC" labels as "Shop" until you zoom in close.
+      const head = g.name.split(/[-–—,(]/)[0].trim() || g.name
+      const short = head.length > 18 ? head.slice(0, 17).trimEnd() + '…' : head
       // smaller sort key = placed first = wins collisions, so bigger zones win
-      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, color: g.color, pri: -area } }
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, short, color: g.color, pri: -area } }
     }),
   }
 }
@@ -843,22 +847,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         layout: { 'text-field': ['get', 'emoji'], 'text-size': 14, 'text-allow-overlap': true },
       })
 
-      // Zone labels — anchored above each zone, with collision avoidance so
-      // nearby labels don't overlap (the larger/billable zone wins).
+      // Zone labels — three zoom regimes so names never shout at state scale:
+      // < z8 the colored shape IS the marker (no text); z8–11.5 a short
+      // mixed-case tag ("Shop", "Matthews House"); ≥ z11.5 the full name.
+      // Collision avoidance stays: the larger/billable zone wins placement.
+      const zoneLabelLayout: NonNullable<maplibregl.SymbolLayerSpecification['layout']> = {
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-letter-spacing': 0.03,
+        'text-max-width': 10,
+        'text-anchor': 'bottom', 'text-offset': [0, -0.4],
+        'text-allow-overlap': false, 'text-ignore-placement': false,
+        'text-padding': 6, 'symbol-sort-key': ['get', 'pri'],
+      }
+      const zoneLabelPaint: NonNullable<maplibregl.SymbolLayerSpecification['paint']> = {
+        'text-color': ['get', 'color'],
+        'text-halo-color': '#001016', 'text-halo-width': 2, 'text-opacity': 0.88,
+      }
       m.addLayer({
         id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
-        layout: {
-          'text-field': ['get', 'name'], 'text-size': 11,
-          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-transform': 'uppercase', 'text-letter-spacing': 0.12,
-          'text-max-width': 12,
-          'text-anchor': 'bottom', 'text-offset': [0, -0.5],
-          'text-allow-overlap': false, 'text-ignore-placement': false,
-          'text-padding': 6, 'symbol-sort-key': ['get', 'pri'],
-        },
-        // Tinted to the zone's own color — the label reads as part of the
-        // zone, not a floating GIS caption.
-        paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#001016', 'text-halo-width': 2.2, 'text-opacity': 0.95 },
+        minzoom: 8, maxzoom: 11.5,
+        layout: { ...zoneLabelLayout, 'text-field': ['get', 'short'], 'text-size': 10 },
+        paint: zoneLabelPaint,
+      })
+      m.addLayer({
+        id: 'geofence-labels-full', type: 'symbol', source: 'geofence-label-pts',
+        minzoom: 11.5,
+        layout: { ...zoneLabelLayout, 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 11.5, 11, 15, 13] },
+        paint: zoneLabelPaint,
       })
 
       // Draw preview
@@ -1326,7 +1341,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   useEffect(() => {
     const m = map.current
     if (!mapReady) return
-    for (const id of ['geofence-fill', 'geofence-outline', 'geofence-labels']) {
+    for (const id of ['geofence-fill', 'geofence-outline', 'geofence-labels', 'geofence-labels-full']) {
       if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones ? 'visible' : 'none')
     }
   }, [mapReady, showZones])
@@ -1389,6 +1404,118 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (m.getLayer(layerId)) m.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')
     }
   }, [mapReady, overlaysOn])
+
+  // ── NWS severe-weather warning polygons (api.weather.gov, free/keyless) ───
+  // Extreme = red, Severe = orange. The stop-work signal: a Severe T-storm or
+  // Tornado warning polygon crossing a job site is visible at a glance.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.nwswarn
+    if (m.getLayer('nws-fill')) {
+      m.setLayoutProperty('nws-fill', 'visibility', on ? 'visible' : 'none')
+      m.setLayoutProperty('nws-line', 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('nws-alerts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      const sevColor = ['match', ['get', 'severity'], 'Extreme', '#ff4d4d', '#ff9e16'] as unknown as string
+      m.addLayer({ id: 'nws-fill', type: 'fill', source: 'nws-alerts', paint: { 'fill-color': sevColor, 'fill-opacity': 0.1 } }, beforeId)
+      m.addLayer({ id: 'nws-line', type: 'line', source: 'nws-alerts', paint: { 'line-color': sevColor, 'line-width': 1.8, 'line-opacity': 0.85 } }, beforeId)
+    }
+    if (!on) return
+    let cancelled = false
+    const load = () =>
+      fetch('https://api.weather.gov/alerts/active?status=actual&severity=Extreme,Severe')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (cancelled || !j?.features) return
+          const features = j.features
+            .filter((f: GeoJSON.Feature) => f.geometry)
+            .map((f: GeoJSON.Feature & { properties: { severity?: string; event?: string } }) => ({
+              type: 'Feature', geometry: f.geometry,
+              properties: { severity: f.properties?.severity ?? 'Severe', event: f.properties?.event ?? '' },
+            }))
+          ;(m.getSource('nws-alerts') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        })
+        .catch(() => { /* NWS hiccup — keep the last polygons */ })
+    load()
+    const id = setInterval(load, 3 * 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [mapReady, overlaysOn.nwswarn])
+
+  // ── USGS stream gauges (waterservices.usgs.gov, free/keyless) ─────────────
+  // Live gage height near the visible map — is the creek by the site up?
+  // Fetched per-viewport at z ≥ 9; tap a dot for the reading.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.gauges
+    if (m.getLayer('gauge-dots')) m.setLayoutProperty('gauge-dots', 'visibility', on ? 'visible' : 'none')
+    else if (on) {
+      m.addSource('gauges', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'gauge-dots', type: 'circle', source: 'gauges', minzoom: 9,
+        paint: {
+          'circle-radius': 4.5, 'circle-color': '#38bdf8',
+          'circle-stroke-color': '#001523', 'circle-stroke-width': 1.5, 'circle-opacity': 0.9,
+        },
+      }, beforeId)
+      m.on('click', 'gauge-dots', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="font:12px/1.45 sans-serif;color:#001523"><b>${p.name}</b><br/>Gage height: <b>${p.stage} ft</b><br/><span style="opacity:.65">${p.at}</span></div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'gauge-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'gauge-dots', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const load = () => {
+      if (m.getZoom() < 9) return
+      const b = m.getBounds()
+      if (b.getEast() - b.getWest() > 5 || b.getNorth() - b.getSouth() > 5) return
+      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(4)).join(',')
+      fetch(`https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${bbox}&parameterCd=00065&siteStatus=active`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (cancelled) return
+          const series = j?.value?.timeSeries
+          if (!Array.isArray(series)) return
+          const features = series.flatMap((ts: {
+            sourceInfo?: { siteName?: string; geoLocation?: { geogLocation?: { latitude?: number; longitude?: number } } }
+            values?: { value?: { value?: string; dateTime?: string }[] }[]
+          }) => {
+            const loc = ts.sourceInfo?.geoLocation?.geogLocation
+            const vals = ts.values?.[0]?.value
+            const last = Array.isArray(vals) && vals.length ? vals[vals.length - 1] : null
+            if (loc?.latitude == null || loc?.longitude == null || !last?.value) return []
+            return [{
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: [loc.longitude, loc.latitude] },
+              properties: {
+                name: ts.sourceInfo?.siteName ?? 'Gauge',
+                stage: last.value,
+                at: last.dateTime ? new Date(last.dateTime).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '',
+              },
+            }]
+          })
+          ;(m.getSource('gauges') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        })
+        .catch(() => { /* USGS hiccup — keep last dots */ })
+    }
+    const onMove = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(load, 800)
+    }
+    load()
+    m.on('moveend', onMove)
+    return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
+  }, [mapReady, overlaysOn.gauges])
 
   // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
   useEffect(() => {
@@ -1532,7 +1659,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const id = setInterval(() => {
       const src = m.getSource('clouds') as maplibregl.RasterTileSource | undefined
       src?.setTiles([
-        `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?v=${Math.floor(Date.now() / 600_000)}`,
+        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
       ])
     }, 600_000)
     return () => clearInterval(id)
@@ -1549,7 +1676,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       return
     }
     const tileUrl = () =>
-      `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png?v=${Math.floor(Date.now() / 600_000)}`
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png'
     if (!stormAdded.current) {
       m.addSource('stormtops', { type: 'raster', tiles: [tileUrl()], tileSize: 256, maxzoom: 7, attribution: 'NASA GIBS · NOAA GOES-East' })
       const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
@@ -1828,7 +1955,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] }))}
+        overlays={[
+          ...MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] })),
+          { key: 'nwswarn', label: 'Storm warnings', note: 'NWS severe/extreme polygons · 3-min refresh', on: !!overlaysOn.nwswarn },
+          { key: 'gauges', label: 'Stream gauges', note: 'USGS live gage height · zoom in, tap a dot', on: !!overlaysOn.gauges },
+        ]}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         views={allViews(mapViews)}
         activeViewId={activeViewId}

@@ -20,8 +20,8 @@ export interface OverlayDef {
   opacity: number
 }
 
-const exportTemplate = (server: string) =>
-  `${server}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`
+const exportTemplate = (server: string, extra = '') =>
+  `${server}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image${extra}`
 
 export const MAP_OVERLAYS: OverlayDef[] = [
   {
@@ -41,6 +41,27 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     minzoom: 11,
     maxzoom: 16,
     opacity: 0.6,
+  },
+  {
+    key: 'flood',
+    label: 'Flood zones',
+    note: 'FEMA flood hazard (NFHL) · bid intel',
+    // Layer 28 = flood hazard zone polygons (AE/A/X shading + floodway).
+    tiles: exportTemplate('https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer', '&layers=show:28'),
+    minzoom: 10,
+    maxzoom: 16,
+    opacity: 0.5,
+  },
+  {
+    key: 'soils',
+    label: 'Soils',
+    note: 'USDA SSURGO soil map units',
+    // Esri Living Atlas cached tiles of the USDA SSURGO survey — free public
+    // service, fast, and it scales (cached, not dynamic export).
+    tiles: 'https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/USA_Soils_Map_Units/MapServer/tile/{z}/{y}/{x}',
+    minzoom: 11,
+    maxzoom: 16,
+    opacity: 0.55,
   },
   {
     key: 'streams',
