@@ -56,10 +56,10 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     key: 'soils',
     label: 'Soils',
     note: 'USDA SSURGO soil map units',
-    // Esri Living Atlas cached tiles of the USDA SSURGO survey — free public
-    // service, fast, and it scales (cached, not dynamic export).
-    tiles: 'https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/USA_Soils_Map_Units/MapServer/tile/{z}/{y}/{x}',
-    minzoom: 11,
+    // USDA's own Soil Data Access WMS (mapunitpoly). Dynamic render — heavier
+    // than cached tiles, so gate it to street zoom where soil lines mean something.
+    tiles: 'https://SDMDataAccess.nrcs.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=mapunitpoly&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    minzoom: 12,
     maxzoom: 16,
     opacity: 0.55,
   },

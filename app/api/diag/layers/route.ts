@@ -43,14 +43,14 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   },
   {
     key: 'soils',
-    label: 'USDA soils (Living Atlas tile)',
-    url: 'https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/USA_Soils_Map_Units/MapServer/tile/12/1624/1110',
+    label: 'USDA soils (SDM WMS)',
+    url: 'https://SDMDataAccess.nrcs.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=mapunitpoly&STYLES=&SRS=EPSG:3857&BBOX=-9173000,4138000,-9172000,4139000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
     kind: 'image',
   },
   {
     key: 'nws',
     label: 'NWS storm warnings (API)',
-    url: 'https://api.weather.gov/alerts/active?status=actual&severity=Extreme,Severe&limit=1',
+    url: 'https://api.weather.gov/alerts/active?status=actual&limit=1',
     kind: 'json',
   },
   {
