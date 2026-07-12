@@ -1678,9 +1678,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'alertpins', at: Date.now() } }))
   }, [mapReady, overlaysOn.alertpins])
 
-  // ── NWS severe-weather warning polygons (api.weather.gov, free/keyless) ───
-  // Extreme = red, Severe = orange. The stop-work signal: a Severe T-storm or
-  // Tornado warning polygon crossing a job site is visible at a glance.
+  // ── Storm warning polygons — IEM storm-based warnings, colored by TYPE ────
+  // (The old NWS feed filtered to Extreme/Severe severity and capped at 500
+  //  national rows, so on most days it drew nothing — "not working", Jul 12.)
+  // IEM serves just the ACTIVE warning polygons nationwide: small payload,
+  // keyless, phenomena-coded. NWS-convention colors: tornado red, severe
+  // t-storm orange, flood green, marine purple, snow squall blue. No zoom
+  // gating — a tornado polygon should be visible from any altitude.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -1691,32 +1695,56 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     } else if (on) {
       m.addSource('nws-alerts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      const sevColor = ['match', ['get', 'severity'], 'Extreme', '#ff4d4d', '#ff9e16'] as unknown as string
-      m.addLayer({ id: 'nws-fill', type: 'fill', source: 'nws-alerts', paint: { 'fill-color': sevColor, 'fill-opacity': 0.1 } }, beforeId)
-      m.addLayer({ id: 'nws-line', type: 'line', source: 'nws-alerts', paint: { 'line-color': sevColor, 'line-width': 1.8, 'line-opacity': 0.85 } }, beforeId)
+      const phenColor = ['match', ['get', 'ph'],
+        'TO', '#ff2b2b', 'EW', '#ff2b2b',           // tornado / extreme wind
+        'SV', '#ff9e16',                             // severe thunderstorm
+        'FF', '#22c55e', 'FL', '#22c55e',            // flash flood / flood
+        'MA', '#a78bfa',                             // marine
+        'SQ', '#38bdf8',                             // snow squall
+        'DS', '#d97706',                             // dust storm
+        '#eab308'] as unknown as string              // anything else — yellow
+      m.addLayer({ id: 'nws-fill', type: 'fill', source: 'nws-alerts', paint: { 'fill-color': phenColor, 'fill-opacity': 0.16 } }, beforeId)
+      m.addLayer({ id: 'nws-line', type: 'line', source: 'nws-alerts', paint: { 'line-color': phenColor, 'line-width': 2, 'line-opacity': 0.9 } }, beforeId)
+      m.on('click', 'nws-fill', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff9e16">${p.label}</div><div style="color:#9fb6cc;font-size:10.5px;margin-top:2px">until ${p.until}</div></div>`)
+          .addTo(m)
+      })
     }
     if (!on) return
     let cancelled = false
+    const PHEN_LABEL: Record<string, string> = {
+      TO: 'Tornado Warning', SV: 'Severe Thunderstorm Warning', FF: 'Flash Flood Warning',
+      FL: 'Flood Warning', MA: 'Marine Warning', SQ: 'Snow Squall Warning',
+      DS: 'Dust Storm Warning', EW: 'Extreme Wind Warning',
+    }
     const load = () =>
-      // No severity query param — the API 400s on comma-joined lists (proved
-      // via /diag). Pull active alerts and filter severity client-side.
-      fetch('https://api.weather.gov/alerts/active?status=actual&limit=500')
+      fetch('https://mesonet.agron.iastate.edu/geojson/sbw.geojson')
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
+        .then((j: { features?: Array<GeoJSON.Feature & { properties?: { phenomena?: string; expire?: string } }> } | null) => {
           if (cancelled || !j?.features) return
           const features = j.features
-            .filter((f: GeoJSON.Feature & { properties?: { severity?: string } }) =>
-              f.geometry && (f.properties?.severity === 'Extreme' || f.properties?.severity === 'Severe'))
-            .map((f: GeoJSON.Feature & { properties: { severity?: string; event?: string } }) => ({
-              type: 'Feature', geometry: f.geometry,
-              properties: { severity: f.properties?.severity ?? 'Severe', event: f.properties?.event ?? '' },
+            .filter((f) => f.geometry)
+            .map((f) => ({
+              type: 'Feature' as const,
+              geometry: f.geometry as GeoJSON.Geometry,
+              properties: {
+                ph: f.properties?.phenomena ?? '??',
+                label: PHEN_LABEL[f.properties?.phenomena ?? ''] ?? `${f.properties?.phenomena ?? ''} warning`,
+                until: f.properties?.expire
+                  ? new Date(f.properties.expire).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                  : '—',
+              },
             }))
           ;(m.getSource('nws-alerts') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'nwswarn', at: Date.now() } }))
         })
-        .catch(() => { /* NWS hiccup — keep the last polygons */ })
+        .catch(() => { /* IEM hiccup — keep the last polygons */ })
     load()
-    const id = setInterval(load, 3 * 60_000)
+    const id = setInterval(load, 2 * 60_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [mapReady, overlaysOn.nwswarn])
 

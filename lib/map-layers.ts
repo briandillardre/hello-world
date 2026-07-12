@@ -56,7 +56,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays' },
   { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min' },
   { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hint: 'bright = tall, violent cells · ~10 min' },
-  { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'severe & extreme warning areas · 3-min refresh' },
+  { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'tornado red · t-storm orange · flood green · tap a polygon' },
   { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', hint: 'accumulated rainfall — pick the period' },
   { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', hasOpacity: true, hint: 'surface temp shading · hourly' },
   { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly' },

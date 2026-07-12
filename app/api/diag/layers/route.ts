@@ -78,9 +78,9 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'image',
   },
   {
-    key: 'nws',
-    label: 'NWS storm warnings (API)',
-    url: 'https://api.weather.gov/alerts/active?status=actual&limit=1',
+    key: 'nwswarn',
+    label: 'Storm warnings (IEM storm-based warnings)',
+    url: 'https://mesonet.agron.iastate.edu/geojson/sbw.geojson',
     kind: 'json',
   },
   {
