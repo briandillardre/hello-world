@@ -43,15 +43,12 @@
     <div>
       <span class="kicker">Request an Estimate</span>
       <h2>Project details</h2>
-      <!-- Web3Forms: works from any static host (Vercel). Get the access key at
-           web3forms.com using brian@dillardconstructiongroup.com and paste it into
-           BOTH forms below (search for YOUR-WEB3FORMS-ACCESS-KEY). Submissions arrive by email. -->
-      <form class="mt-2" action="https://api.web3forms.com/submit" method="POST">
-        <input type="hidden" name="access_key" value="YOUR-WEB3FORMS-ACCESS-KEY">
-        <input type="hidden" name="subject" value="New estimate request — dillardconstructiongroup.com">
-        <input type="hidden" name="from_name" value="DCG Website">
-        <input type="hidden" name="redirect" value="https://www.dillardconstructiongroup.com/thanks">
-        <input type="checkbox" name="botcheck" style="display:none" tabindex="-1" aria-hidden="true">
+      <!-- First-party form: posts to /api/lead (Vercel function in api/lead.js),
+           which emails Brian & Nate via DCG's own Workspace SMTP. No third parties.
+           Set SMTP_USER / SMTP_PASS in Vercel env vars — see README. -->
+      <form class="mt-2" action="/api/lead" method="POST">
+        <input type="hidden" name="form_type" value="estimate">
+        <input type="text" name="website" value="" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true">
         <div class="form-grid">
           <div class="field"><label for="name">Name</label><input id="name" name="name" required autocomplete="name"></div>
           <div class="field"><label for="company">Company (if any)</label><input id="company" name="company" autocomplete="organization"></div>
@@ -98,12 +95,9 @@
         <span class="kicker">GCs &amp; Developers</span>
         <h2>Invite us to bid</h2>
         <p class="mt-1">Bidding a project with sitework or paving scope? Send the invitation and plans link — we turn around commercial bids fast.</p>
-        <form class="mt-2" action="https://api.web3forms.com/submit" method="POST">
-          <input type="hidden" name="access_key" value="YOUR-WEB3FORMS-ACCESS-KEY">
-          <input type="hidden" name="subject" value="Bid invitation — dillardconstructiongroup.com">
-          <input type="hidden" name="from_name" value="DCG Website">
-          <input type="hidden" name="redirect" value="https://www.dillardconstructiongroup.com/thanks">
-          <input type="checkbox" name="botcheck" style="display:none" tabindex="-1" aria-hidden="true">
+        <form class="mt-2" action="/api/lead" method="POST">
+          <input type="hidden" name="form_type" value="bid-invite">
+          <input type="text" name="website" value="" style="display:none" tabindex="-1" autocomplete="off" aria-hidden="true">
           <div class="form-grid">
             <div class="field"><label for="b-name">Name</label><input id="b-name" name="name" required></div>
             <div class="field"><label for="b-company">Company</label><input id="b-company" name="company" required></div>

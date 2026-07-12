@@ -64,7 +64,7 @@ Old /photos and /request-an-estimate 301-redirect to /projects and /contact (con
 ## 4. Technical Approach
 
 - **Pure static HTML/CSS/JS** — no build step, no framework, no Wix. Loads in milliseconds, scores ~100 on Core Web Vitals, editable by any human or AI, portable to any host forever. This is deliberate: a contractor site doesn't need React; it needs to be fast, indexable, and never break.
-- **Hosting: Vercel** (same account/dashboard as HammerTrack — one place for everything). `vercel.json` provides clean URLs, old-Wix-path redirects, and cache/security headers. Forms post to **Web3Forms** (free, no backend — one access key pasted into `contact.html`, submissions arrive by email, `thanks.html` success page wired).
+- **Hosting: Vercel** (same account/dashboard as HammerTrack — one place for everything). `vercel.json` provides clean URLs, old-Wix-path redirects, and cache/security headers. Forms are **first-party**: they post to `/api/lead`, a serverless function in the same Vercel project that emails leads via DCG's own Workspace SMTP — no third-party form vendor touches the data (per Brian's call, 7/12).
 - **SEO plumbing shipped:** consistent `Title | Dillard Construction Group` pattern, unique meta descriptions, canonicals, Open Graph, JSON-LD (`GeneralContractor` with `aggregateRating`, per-service `Service` schema), sitemap.xml, robots.txt, clean-URL redirects.
 - **Accessibility:** semantic HTML, aria labels, reduced-motion support, high-contrast palette.
 

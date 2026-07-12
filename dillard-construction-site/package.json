@@ -1,0 +1,8 @@
+{
+  "name": "dillard-construction-site",
+  "private": true,
+  "description": "Dillard Construction Group website — static pages + first-party lead form (Vercel function)",
+  "dependencies": {
+    "nodemailer": "^6.9.13"
+  }
+}
