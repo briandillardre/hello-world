@@ -1836,6 +1836,69 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.pwsnet])
 
+  // ── Public webcams (Windy network via our proxy — key stays server-side) ──
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.webcams
+    if (m.getLayer('webcam-dots')) {
+      m.setLayoutProperty('webcam-dots', 'visibility', on ? 'visible' : 'none')
+      m.setLayoutProperty('webcam-mark', 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('webcams', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'webcam-dots', type: 'circle', source: 'webcams', minzoom: 8,
+        paint: { 'circle-radius': 8, 'circle-color': '#0b1523', 'circle-stroke-color': '#a78bfa', 'circle-stroke-width': 2 },
+      }, beforeId)
+      m.addLayer({
+        id: 'webcam-mark', type: 'symbol', source: 'webcams', minzoom: 8,
+        layout: { 'text-field': '◉', 'text-size': 9, 'text-allow-overlap': true },
+        paint: { 'text-color': '#a78bfa' },
+      }, beforeId)
+      m.on('click', 'webcam-dots', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        const img = p.thumb ? `<img src="${p.thumb}" alt="" style="width:100%;border-radius:8px;margin-top:6px" />` : ''
+        const link = p.page ? `<a href="${p.page}" target="_blank" rel="noopener" style="color:#2dd4bf;font-size:11px">open live view →</a>` : ''
+        new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#a78bfa;white-space:normal;overflow-wrap:break-word">${p.title}</div>${img}${link}</div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'webcam-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'webcam-dots', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const load = () => {
+      if (m.getZoom() < 8) return
+      const b = m.getBounds()
+      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(3)).join(',')
+      fetch(`/api/webcams?bbox=${bbox}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { cams?: { id: string; title: string; lat: number; lng: number; thumb: string | null; page: string | null }[] } | null) => {
+          if (cancelled || !j?.cams) return
+          const features = j.cams.map((c) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [c.lng, c.lat] },
+            properties: { title: c.title, thumb: c.thumb ?? '', page: c.page ?? '' },
+          }))
+          ;(m.getSource('webcams') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'webcams', at: Date.now() } }))
+        })
+        .catch(() => { /* no key or feed down — layer stays empty */ })
+    }
+    const onMove = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(load, 900)
+    }
+    load()
+    m.on('moveend', onMove)
+    return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
+  }, [mapReady, overlaysOn.webcams])
+
   // ── Day/night terminator: shade the half of Earth in darkness right now.
   // Pure solar math (lib/terminator) — no service, no key; re-derives every
   // minute so the line creeps west like it should. Pairs with "City lights".
@@ -2415,7 +2478,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}

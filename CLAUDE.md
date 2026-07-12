@@ -116,6 +116,8 @@ ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
 CRON_SECRET=                   # optional: locks /api/cron/digest (Vercel cron sends it automatically)
 SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
+WINDY_WEBCAMS_KEY=             # optional: Webcams map layer (free key at api.windy.com/webcams)
+NEXT_PUBLIC_TOMTOM_KEY=        # optional: Traffic map layer (free key at developer.tomtom.com, 2.5k tiles/day)
 # ── Home weather station (optional; unset = hidden) ──
 PWS_PROVIDER=                  # ambient | tempest | wunderground (inferred from keys if unset)
 PWS_API_KEY=                   # ambient + wunderground

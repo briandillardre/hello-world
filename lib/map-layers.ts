@@ -48,6 +48,8 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // ── Site: context drawn around your assets ────────────────────────────────
   { id: 'zones', label: 'Zones', group: 'site', status: 'live', hint: 'job sites, yards & boundaries' },
   { id: 'alertpins', label: 'Alert pins', group: 'site', status: 'live', isLive: true, hint: 'where alerts fired · last 7 days · pinned to the zone involved' },
+  { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
+  { id: 'webcams', label: 'Webcams', group: 'site', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see webcams', hint: 'public traffic & area cams · tap for the picture' },
   { id: 'parcels', label: 'Parcel lines', group: 'site', status: 'live', minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels & numbers' },
 
   // ── Weather ───────────────────────────────────────────────────────────────

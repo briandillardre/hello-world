@@ -23,7 +23,22 @@ export interface OverlayDef {
 const exportTemplate = (server: string, extra = '') =>
   `${server}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image${extra}`
 
+// Live traffic flow (TomTom raster) rides on a free key — the overlay only
+// exists when the key is configured, so no key = no broken tiles.
+const TOMTOM_KEY = process.env.NEXT_PUBLIC_TOMTOM_KEY
+
 export const MAP_OVERLAYS: OverlayDef[] = [
+  ...(TOMTOM_KEY
+    ? [{
+        key: 'traffic',
+        label: 'Traffic',
+        note: 'live congestion — green flows, red crawls',
+        tiles: `https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${TOMTOM_KEY}`,
+        minzoom: 6,
+        maxzoom: 18,
+        opacity: 0.8,
+      } satisfies OverlayDef]
+    : []),
   {
     key: 'topo',
     label: 'Topo lines',
