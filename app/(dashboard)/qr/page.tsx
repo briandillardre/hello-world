@@ -4,6 +4,9 @@ import { PrintButton } from '@/components/field/PrintButton'
 
 export const dynamic = 'force-dynamic'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 /**
  * Printable QR sticker sheet — one card per machine. Print on adhesive label
  * stock (or laminate paper stickers), stick at the operator's eye line.
@@ -27,10 +30,17 @@ export default async function QrSheetPage() {
 
       {assets.length === 0 ? (
         <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
-          <p className="text-sm text-muted">
-            No equipment or vehicles with QR codes yet. Run migration{' '}
-            <span className="font-mono text-teal">015_field_ops.sql</span> — it assigns a code to every asset automatically.
-          </p>
+          {isMock ? (
+            <p className="text-sm text-muted">
+              Every machine gets a QR sticker — scan it at the machine and log greased / fueled /
+              radiator / air filter with one gloved tap. Sign in to a live account to print yours.
+            </p>
+          ) : (
+            <p className="text-sm text-muted">
+              No equipment or vehicles with QR codes yet. Run migration{' '}
+              <span className="font-mono text-teal">015_field_ops.sql</span> — it assigns a code to every asset automatically.
+            </p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 print:grid-cols-3">

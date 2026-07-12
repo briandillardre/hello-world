@@ -1,17 +1,19 @@
 import Link from 'next/link'
-import { Check, Plus, Hexagon, UserPlus, Radio, ArrowRight, BellRing } from 'lucide-react'
+import { Check, Plus, Hexagon, UserPlus, Radio, ArrowRight, BellRing, Clock } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getCurrentCompany, getCompanySettings } from '@/lib/db/company'
 import { getTeam } from '@/lib/db/team'
+import { getRecentFieldDays } from '@/lib/db/fieldops'
 
 export default async function WelcomePage() {
   const company = await getCurrentCompany()
-  const [assets, geofences, team, settings] = await Promise.all([
+  const [assets, geofences, team, settings, fieldDays] = await Promise.all([
     getAssetsWithLocations(company.id),
     getGeofences(company.id),
     getTeam(),
     getCompanySettings(),
+    getRecentFieldDays(company.id, 30),
   ])
 
   const hasAsset = assets.length > 0
@@ -19,6 +21,7 @@ export default async function WelcomePage() {
   const hasZone = geofences.length > 0
   const hasTeam = team.members.length > 1
   const hasAlertPhone = !!settings.alert_phone
+  const hasClockIns = fieldDays.entries.length > 0
 
   const steps = [
     { key: 'asset', done: hasAsset, icon: Plus, title: 'Add your first asset', body: 'A truck, machine, or Bluetooth-tagged tool — with its tracker ID.', href: '/assets', cta: 'Add an asset' },
@@ -26,6 +29,7 @@ export default async function WelcomePage() {
     { key: 'zone', done: hasZone, icon: Hexagon, title: 'Draw a job-site zone', body: 'Outline your yard or a jobsite so theft alerts and cost-per-site kick in.', href: '/map', cta: 'Open the map' },
     { key: 'phone', done: hasAlertPhone, icon: BellRing, title: 'Set your alert phone', body: 'Where the 2 AM theft text goes. Without it, alerts only live in the app.', href: '/settings', cta: 'Open settings' },
     { key: 'team', done: hasTeam, icon: UserPlus, title: 'Invite your crew', body: 'Add a foreman or office admin — set exactly what each person can do.', href: '/team', cta: 'Invite teammates' },
+    { key: 'clock', done: hasClockIns, icon: Clock, title: 'Put the crew on the clock', body: 'Clock in to a project, clock out through a daily log — plus QR stickers for machine checks.', href: '/clock', cta: 'Open the time clock' },
   ]
   const doneCount = steps.filter((s) => s.done).length
   const next = steps.find((s) => !s.done)
@@ -42,7 +46,7 @@ export default async function WelcomePage() {
           <p className="text-muted mt-2 text-[15px]">
             {doneCount === steps.length
               ? 'Your fleet is set up. Everything below is done — head to the map.'
-              : 'Five quick steps. Any order — come back anytime from “Getting started” in the menu.'}
+              : 'Six quick steps. Any order — come back anytime from “Getting started” in the menu.'}
           </p>
         </div>
 

@@ -24,11 +24,13 @@ function elapsedLabel(sinceIso: string, now: number): string {
   return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
 }
 
-export function ClockCard({ openEntry, zones, available, personName }: {
+export function ClockCard({ openEntry, zones, available, personName, demo = false }: {
   openEntry: TimeEntry | null
   zones: { id: string; name: string }[]
   available: boolean
   personName: string
+  /** Demo mode: show the pitch, not internal setup instructions. */
+  demo?: boolean
 }) {
   const router = useRouter()
   const [category, setCategory] = useState<ClockCategory>('project')
@@ -51,10 +53,21 @@ export function ClockCard({ openEntry, zones, available, personName }: {
     return (
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-6 text-center">
         <Clock className="h-8 w-8 text-faint mx-auto mb-2" />
-        <p className="text-sm text-muted">
-          The time clock isn&apos;t set up yet — run migration <span className="font-mono text-teal">015_field_ops.sql</span> in
-          the Supabase SQL Editor (see docs/GO-LIVE.md), then reload.
-        </p>
+        {demo ? (
+          <>
+            <p className="font-display font-bold text-ink mb-1">The crew&apos;s day, in one card.</p>
+            <p className="text-sm text-muted">
+              Workers clock in to a job site with a plan for the day — and the only way off the
+              clock is a daily log: what got done, photos, receipts, safety issues, fuel status.
+              Sign in to a live account to use it.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted">
+            One quick database update turns the time clock on — run migration{' '}
+            <span className="font-mono text-teal">015_field_ops.sql</span> in the Supabase SQL Editor, then reload.
+          </p>
+        )}
       </div>
     )
   }

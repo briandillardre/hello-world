@@ -182,7 +182,15 @@ function GeofenceRow({
       </div>
       <Link href={`/geofences/${fence.id}`} className="flex-1 min-w-0 group">
         <p className="font-semibold text-ink group-hover:text-amber transition-colors truncate">{fence.name}</p>
-        <p className="text-xs text-faint mt-0.5">{count} asset{count !== 1 ? 's' : ''} inside</p>
+        <p className="text-xs text-faint mt-0.5 flex items-center gap-1.5">
+          {/* legacy dark/gray colors predate the kind column — treat as boundary */}
+          {(fence.kind === 'boundary' || (!fence.kind && (fence.color === '#0a0a0a' || fence.color === '#9ca3af'))) ? (
+            <span className="text-teal/80 font-mono text-[10px] uppercase tracking-[0.08em]">Boundary</span>
+          ) : (
+            <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Job site</span>
+          )}
+          <span>· {count} asset{count !== 1 ? 's' : ''} inside</span>
+        </p>
       </Link>
       {editable && (
         <>

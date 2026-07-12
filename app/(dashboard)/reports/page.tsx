@@ -48,7 +48,7 @@ export default async function ReportsPage() {
         {util.length > 0 && <div className="ml-auto"><ReportsExport util={util} rates={util.map(u => rateFor(u.asset_id))} /></div>}
       </div>
 
-      <div className="p-4 space-y-6 max-w-2xl">
+      <div className="p-4 space-y-6 max-w-2xl lg:max-w-6xl">
         {empty ? (
           <section className="rounded-2xl border border-navy-800 bg-navy-900 p-6 text-center">
             <p className="text-4xl mb-2">📊</p>
@@ -58,7 +58,7 @@ export default async function ReportsPage() {
         ) : (
         <>
         {/* Hero: what the tracked hours are worth — the reason this page exists */}
-        <section className="rounded-2xl border border-navy-800 bg-gradient-to-br from-navy-900 to-navy-950 p-5 relative overflow-hidden">
+        <section className="rounded-2xl border border-navy-800 bg-gradient-to-br from-navy-900 to-navy-950 p-5 relative overflow-hidden lg:max-w-2xl">
           <div className="absolute inset-0 brand-glow" />
           <div className="relative">
             <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Billable value · last 30 days</p>
@@ -69,12 +69,13 @@ export default async function ReportsPage() {
           </div>
         </section>
 
-        <section className="grid grid-cols-3 gap-3">
+        <section className="grid grid-cols-3 gap-3 lg:max-w-2xl">
           <SummaryCard icon={<Activity className="h-4 w-4 text-amber" />} label="Active hrs" value={`${totalEngineHours}`} />
           <SummaryCard icon={<Clock className="h-4 w-4 text-alert" />} label="Idle %" value={`${idlePct}%`} />
           <SummaryCard icon={<Gauge className="h-4 w-4 text-[#60a5fa]" />} label="Miles" value={totalDistance.toLocaleString()} />
         </section>
 
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0 lg:items-start">
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Active Hours by Asset</h2>
           <div className="bg-navy-900 rounded-xl border border-navy-800 p-4 space-y-3">
@@ -116,6 +117,7 @@ export default async function ReportsPage() {
             Job-site hours drive equipment-usage billing → see Accounting.
           </p>
         </section>
+        </div>
         </>
         )}
       </div>

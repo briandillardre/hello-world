@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock } from 'lucide-react'
+import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download } from 'lucide-react'
 import type { TimeEntry, DailyLog } from '@/lib/field-types'
 
 /**
@@ -40,6 +40,40 @@ export function LogsFeed({ entries, logs, zoneNames, tz }: Props) {
   const [lightbox, setLightbox] = useState<string | null>(null)
   const now = Date.now()
 
+  // Payroll handoff: every entry in the window as a CSV the bookkeeper can
+  // drop straight into payroll (or QuickBooks Time import).
+  const exportCsv = () => {
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`
+    const rows = entries.map((e) => {
+      const where = e.category === 'project'
+        ? zoneNames[e.project_geofence_id ?? ''] ?? 'Project'
+        : CATEGORY_LABEL[e.category]
+      return [
+        dayKey(e.clock_in_at, tz), e.person_name, where,
+        timeLabel(e.clock_in_at, tz),
+        e.clock_out_at ? timeLabel(e.clock_out_at, tz) : 'STILL ON',
+        hoursOf(e, now).toFixed(2),
+      ].map(esc).join(',')
+    })
+    const csv = ['Date,Name,Where,Clock in,Clock out,Hours', ...rows].join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    a.download = `hours-${dayKey(new Date().toISOString(), tz)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  // This week's total per person — the number the Monday meeting starts with.
+  const weekTotals = useMemo(() => {
+    const start = new Date(now - 7 * 86_400_000).toISOString()
+    const totals = new Map<string, number>()
+    for (const e of entries) {
+      if (e.clock_in_at < start) continue
+      totals.set(e.person_name, (totals.get(e.person_name) ?? 0) + hoursOf(e, now))
+    }
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+  }, [entries, now])
+
   const days = useMemo(() => {
     const logByEntry = new Map(logs.filter((l) => l.time_entry_id).map((l) => [l.time_entry_id as string, l]))
     const byDay = new Map<string, { entry: TimeEntry; log: DailyLog | null }[]>()
@@ -75,6 +109,22 @@ export function LogsFeed({ entries, logs, zoneNames, tz }: Props) {
 
   return (
     <div className="space-y-6">
+      {weekTotals.length > 0 && (
+        <div className="rounded-xl border border-navy-800 bg-navy-950 px-3 py-2.5 flex items-center gap-2 flex-wrap">
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Last 7 days</span>
+          {weekTotals.map(([name, hrs]) => (
+            <span key={name} className="rounded-full bg-navy-900 border border-navy-700 px-2.5 py-1 text-[11.5px] text-muted tabular-nums">
+              {name} <b className="text-ink">{hrs.toFixed(1)}h</b>
+            </span>
+          ))}
+          <button
+            onClick={exportCsv}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-2.5 py-1.5 text-[11.5px] font-semibold text-muted hover:text-ink hover:border-teal/50 transition"
+          >
+            <Download className="h-3.5 w-3.5 text-teal" /> Hours CSV
+          </button>
+        </div>
+      )}
       {days.map(({ key, places, rows }) => (
         <section key={key}>
           <div className="flex items-baseline justify-between mb-2">

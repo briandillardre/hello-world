@@ -46,7 +46,7 @@ export default async function MaintenancePage() {
         </span>
       </div>
 
-      <div className="p-4 space-y-6 max-w-2xl">
+      <div className="p-4 max-w-2xl lg:max-w-6xl space-y-6 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Service Schedule</h2>
           {statuses.length === 0 && (

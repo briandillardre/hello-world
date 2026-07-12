@@ -5,6 +5,9 @@ import { ClockCard } from '@/components/field/ClockCard'
 
 export const dynamic = 'force-dynamic'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 /**
  * The crew page: clock in to a project, see the plan, clock out through the
  * daily log. Deliberately sparse — this is a gloves-on phone screen.
@@ -26,7 +29,7 @@ export default async function ClockPage() {
         <h1 className="font-display font-bold text-xl text-ink">Time clock</h1>
         <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
       </div>
-      <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} />
+      <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock} />
     </div>
   )
 }

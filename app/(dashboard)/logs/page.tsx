@@ -9,6 +9,9 @@ import { LogsFeed } from '@/components/field/LogsFeed'
 
 export const dynamic = 'force-dynamic'
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 /** The office's morning read: daily logs by day → project, plus the hours table. */
 export default async function LogsPage() {
   const companyId = await getCurrentCompanyId()
@@ -37,10 +40,19 @@ export default async function LogsPage() {
 
       {!available ? (
         <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
-          <p className="text-sm text-muted">
-            Field ops isn&apos;t set up yet — run migration <span className="font-mono text-teal">015_field_ops.sql</span> in the
-            Supabase SQL Editor, then have the crew clock in at <span className="font-mono text-teal">/clock</span>.
-          </p>
+          {isMock ? (
+            <p className="text-sm text-muted">
+              This is the office&apos;s morning read: every crew day grouped by project — writeups, photos,
+              receipts, safety flags in red, and an hours table that shames whoever forgot to clock out.
+              Sign in to a live account to see your crew&apos;s logs.
+            </p>
+          ) : (
+            <p className="text-sm text-muted">
+              One quick database update turns field ops on — run migration{' '}
+              <span className="font-mono text-teal">015_field_ops.sql</span> in the Supabase SQL Editor, then
+              have the crew clock in at <span className="font-mono text-teal">/clock</span>.
+            </p>
+          )}
         </div>
       ) : (
         <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} />
