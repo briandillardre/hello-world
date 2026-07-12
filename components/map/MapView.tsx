@@ -58,7 +58,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'unclustered-circle', 'unclustered-label', 'unclustered-name']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -96,6 +96,14 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         properties: {
           id: a.id, name: a.name, type: a.type, color: ASSET_COLORS[a.type],
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
+          // Three glance-states: moving (fresh fix + speed), idle (device awake
+          // and reporting — trackers sleep minutes after ignition-off, so fresh
+          // data ≈ powered up), off (stale — asleep/parked).
+          state: (() => {
+            const age = Date.now() - new Date(a.location!.timestamp).getTime()
+            if (age < 15 * 60_000 && (a.location!.speed ?? 0) > 2) return 'moving'
+            return age < 15 * 60_000 ? 'idle' : 'off'
+          })(),
         },
       })),
   }
@@ -812,14 +820,30 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 13, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
         paint: { 'text-color': '#ff9e16' },
       })
-      // soft glow under each pin so assets pop off the satellite imagery
+      // Expanding pulse ring — MOVING assets only. The RAF effect below
+      // animates radius/opacity so who's rolling is obvious from across a room.
+      m.addLayer({
+        id: 'asset-pulse', type: 'circle', source: 'assets',
+        filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'state'], 'moving']],
+        paint: { 'circle-color': ['get', 'color'], 'circle-opacity': 0.4, 'circle-radius': 16, 'circle-stroke-width': 0 },
+      })
+      // soft glow under each pin so assets pop off the satellite imagery —
+      // brightness reads the state: moving bright, idle steady, off nearly out
       m.addLayer({
         id: 'asset-glow', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
-        paint: { 'circle-color': ['get', 'color'], 'circle-opacity': 0.22, 'circle-radius': 24, 'circle-blur': 0.7 },
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 0.06],
+          'circle-radius': 24, 'circle-blur': 0.7,
+        },
       })
       m.addLayer({
         id: 'unclustered-circle', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
-        paint: { 'circle-color': ['get', 'color'], 'circle-radius': 14, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d' },
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 14, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
+          'circle-opacity': ['match', ['get', 'state'], 'off', 0.45, 1],
+        },
       })
       m.addLayer({
         id: 'unclustered-label', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
@@ -1144,6 +1168,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }, 900)
     return () => clearInterval(id)
   }, [mapReady, pbPlaying, followId])
+
+  // Heartbeat for moving assets: the pulse ring breathes outward and fades on
+  // a 1.5s cycle. Two paint-property writes per frame — GPU noise.
+  useEffect(() => {
+    if (!mapReady) return
+    const m = map.current
+    if (!m) return
+    let raf = 0
+    const tick = () => {
+      if (m.getLayer('asset-pulse')) {
+        const ph = (performance.now() % 1500) / 1500
+        m.setPaintProperty('asset-pulse', 'circle-radius', 15 + ph * 20)
+        m.setPaintProperty('asset-pulse', 'circle-opacity', 0.45 * (1 - ph))
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [mapReady])
 
   // Radar-dial blips (TacticalHud) tap through to the map: fly to the asset
   // and open its panel, same as tapping its marker.

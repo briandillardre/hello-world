@@ -2,16 +2,19 @@
 
 import { useMemo } from 'react'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
-import type { AssetWithLocation, AssetType, AlertEvent } from '@/lib/types'
+import type { AssetWithLocation, AssetType, AlertEvent, Geofence } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
+import { pointInPolygon } from '@/lib/alerts-engine'
 import type { PanelKey, PanelState } from './CommandCenter'
 
 /**
  * Right instrument rail for the Command Center — the ops half of the frame:
  *   · event log: real alerts, loudest first (theft triggers blink red)
- *   · per-asset strips: state + battery for every unit, moving first
- * Both cards minimize to their title row or hide entirely; state lives in
- * CommandCenter and persists per device. Wide screens only.
+ *   · fleet board: per-asset strips — WHERE each unit is (zone) and for HOW
+ *     LONG, the two facts a glance actually needs (battery lives elsewhere)
+ * The two cards SHARE the rail: maximizing one can never bury the other —
+ * each scrolls inside its half. Minimize to title rows or hide entirely;
+ * state persists per device. Wide screens only.
  */
 
 const BLIP: Record<AssetType, string> = {
@@ -27,6 +30,20 @@ const TRIGGER_LABEL: Record<string, string> = {
 }
 
 const STALE_MS = 2 * 3_600_000
+
+/** "185 Hawkins Rd. - Dillard House" → "185 Hawkins Rd." (fits a strip). */
+function shortZone(name: string): string {
+  const head = name.split(/[-–—,(]/)[0].trim() || name
+  return head.length > 16 ? head.slice(0, 15).trimEnd() + '…' : head
+}
+
+function fmtSince(ms: number): string {
+  const mins = Math.max(1, Math.round(ms / 60_000))
+  if (mins < 60) return `${mins}M`
+  const h = Math.floor(mins / 60)
+  if (h < 24) return `${h}H ${mins % 60}M`
+  return `${Math.floor(h / 24)}D ${h % 24}H`
+}
 
 function CardHeader({ k, title, state, onPanel }: {
   k: PanelKey
@@ -48,9 +65,13 @@ function CardHeader({ k, title, state, onPanel }: {
   )
 }
 
-export function EventRail({ assets, alerts, panels, onPanel }: {
+export function EventRail({ assets, alerts, geofences = [], historyRows = null, panels, onPanel }: {
   assets: AssetWithLocation[]
   alerts: AlertEvent[]
+  geofences?: Geofence[]
+  /** Thinned location history (same feed as the timeline) — used to walk back
+   *  and find when each asset ENTERED its current zone. Null in demo mode. */
+  historyRows?: { asset_id: string; lat: number; lng: number; timestamp: string }[] | null
   panels: Record<PanelKey, PanelState>
   onPanel: (k: PanelKey, s: PanelState) => void
 }) {
@@ -58,29 +79,65 @@ export function EventRail({ assets, alerts, panels, onPanel }: {
 
   const strips = useMemo(() => {
     const now = Date.now()
+    const zones = geofences
+      .filter((g) => g.kind !== 'boundary')
+      .map((g) => ({ name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
+      .filter((z) => z.ring.length >= 3)
+
+    // History per asset, newest first, for the walk-back to zone entry.
+    const byAsset = new Map<string, { lat: number; lng: number; ms: number }[]>()
+    if (historyRows) {
+      for (const r of historyRows) {
+        let list = byAsset.get(r.asset_id)
+        if (!list) byAsset.set(r.asset_id, (list = []))
+        list.push({ lat: r.lat, lng: r.lng, ms: new Date(r.timestamp).getTime() })
+      }
+      for (const list of Array.from(byAsset.values())) list.sort((a, b) => b.ms - a.ms)
+    }
+
     return assets
       .map((a) => {
         const loc = a.location
         const ageMs = loc ? now - new Date(loc.timestamp).getTime() : Infinity
         const state: 'moving' | 'idle' | 'dark' =
           !loc || ageMs > STALE_MS ? 'dark' : (loc.speed ?? 0) > 2 ? 'moving' : 'idle'
-        return { a, state, speed: loc?.speed ?? 0, battery: loc?.battery ?? null }
+
+        // Which zone is it in, and since when? Walk history backwards while
+        // the pings stay inside — the first outside ping marks the arrival.
+        let zone: string | null = null
+        let sinceMs: number | null = null
+        if (loc && state !== 'dark') {
+          const z = zones.find((zz) => pointInPolygon([loc.lng, loc.lat], zz.ring))
+          if (z) {
+            zone = shortZone(z.name)
+            const hist = byAsset.get(a.id)
+            if (hist?.length) {
+              let entry: number | null = null
+              for (const p of hist) {
+                if (pointInPolygon([p.lng, p.lat], z.ring)) entry = p.ms
+                else break
+              }
+              if (entry != null) sinceMs = now - entry
+            }
+          }
+        }
+        return { a, state, speed: loc?.speed ?? 0, zone, sinceMs }
       })
       .sort((x, y) => {
         const rank = { moving: 0, idle: 1, dark: 2 }
         return rank[x.state] - rank[y.state] || x.a.name.localeCompare(y.a.name)
       })
-  }, [assets])
+  }, [assets, geofences, historyRows])
 
   return (
     <div className="w-56 h-full max-h-full flex flex-col gap-2.5 overflow-hidden">
       {panels.events !== 'hidden' && (
-        <div className="rounded-lg bg-navy-950/75 backdrop-blur border border-teal/15 px-3 py-2.5 flex-none">
+        <div className={'rounded-lg bg-navy-950/75 backdrop-blur border border-teal/15 px-3 py-2.5 flex flex-col ' + (panels.events === 'open' ? 'flex-1 min-h-0' : 'flex-none')}>
           <CardHeader k="events" title="Event log" state={panels.events} onPanel={onPanel} />
           {panels.events === 'open' && (events.length === 0 ? (
             <p className="font-mono text-[10px] text-faint">no events · all quiet</p>
           ) : (
-            <div className="space-y-1.5 max-h-[34vh] overflow-y-auto no-scrollbar">
+            <div className="space-y-1.5 overflow-y-auto no-scrollbar min-h-0">
               {events.map((e) => {
                 const loud = e.rule?.trigger === 'after_hours_movement' || e.rule?.trigger === 'left_site'
                 const acked = !!e.acknowledged_at
@@ -108,20 +165,25 @@ export function EventRail({ assets, alerts, panels, onPanel }: {
           <CardHeader k="fleet" title="Fleet board" state={panels.fleet} onPanel={onPanel} />
           {panels.fleet === 'open' && (
             <div className="space-y-1.5 overflow-y-auto no-scrollbar min-h-0">
-              {strips.map(({ a, state, speed, battery }) => (
-                <div key={a.id} className="flex items-center gap-2">
-                  <span
-                    className={'w-2 h-2 rounded-full flex-none ' + (state === 'moving' ? 'animate-blink' : '')}
-                    style={{ background: state === 'dark' ? '#3b566e' : BLIP[a.type], boxShadow: state === 'moving' ? `0 0 6px ${BLIP[a.type]}` : undefined }}
-                  />
-                  <span className="flex-1 min-w-0 truncate text-[10.5px] text-muted">{a.name}</span>
-                  <span className={'font-mono text-[9px] tabular-nums flex-none ' + (state === 'moving' ? 'text-amber' : state === 'idle' ? 'text-teal/80' : 'text-faint')}>
-                    {state === 'moving' ? `${Math.round(speed)} MPH` : state === 'idle' ? 'ON SITE' : 'DARK'}
-                  </span>
-                  {battery != null && (
-                    <span className={'font-mono text-[9px] tabular-nums w-7 text-right flex-none ' + (battery < 20 ? 'text-alert' : 'text-faint')}>
-                      {battery}%
+              {strips.map(({ a, state, speed, zone, sinceMs }) => (
+                <div key={a.id}>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={'w-2 h-2 rounded-full flex-none ' + (state === 'moving' ? 'animate-blink' : '')}
+                      style={{ background: state === 'dark' ? '#3b566e' : BLIP[a.type], boxShadow: state === 'moving' ? `0 0 6px ${BLIP[a.type]}` : undefined }}
+                    />
+                    <span className="flex-1 min-w-0 truncate text-[10.5px] text-muted">{a.name}</span>
+                    <span className={'font-mono text-[9px] tabular-nums flex-none ' + (state === 'moving' ? 'text-amber' : state === 'idle' ? 'text-teal/80' : 'text-faint')} suppressHydrationWarning>
+                      {state === 'moving' ? `${Math.round(speed)} MPH`
+                        : state === 'dark' ? 'DARK'
+                        : sinceMs != null ? fmtSince(sinceMs)
+                        : zone ? 'ON SITE' : 'OFF SITE'}
                     </span>
+                  </div>
+                  {zone && (
+                    <p className="pl-4 font-mono text-[8.5px] text-faint leading-tight truncate">
+                      {zone}{state === 'moving' && sinceMs != null ? ` · ${fmtSince(sinceMs)}` : ''}
+                    </p>
                   )}
                 </div>
               ))}

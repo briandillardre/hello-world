@@ -341,7 +341,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           inside the rail instead of over the dial. */}
       {rightVisible ? (
         <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden">
-          <EventRail assets={assets} alerts={alerts} panels={panels} onPanel={onPanel} />
+          <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={historyRows} panels={panels} onPanel={onPanel} />
         </div>
       ) : (
         <button

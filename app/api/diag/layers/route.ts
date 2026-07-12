@@ -30,6 +30,24 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'image',
   },
   {
+    key: 'rtma-temp',
+    label: 'Temperature (NOAA RTMA WMS)',
+    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    kind: 'image',
+  },
+  {
+    key: 'rtma-feels',
+    label: 'Feels like (NOAA RTMA apparent temp)',
+    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=apparent_air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    kind: 'image',
+  },
+  {
+    key: 'rtma-wind',
+    label: 'Wind speed (NOAA RTMA WMS)',
+    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=wind_speed&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    kind: 'image',
+  },
+  {
     key: 'nightlights',
     label: 'City lights (VIIRS Black Marble)',
     url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/5/12/8.png',
