@@ -22,6 +22,7 @@ import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcel
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
 import { nightPolygon } from '@/lib/terminator'
+import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -1668,6 +1669,31 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => clearInterval(id)
   }, [mapReady, overlaysOn.daynight])
 
+  // ── Wind flow: animated particles advected through model wind ─────────────
+  // Live view only — the scrubber rule says nothing animates on its own while
+  // the timeline is stopped, and yesterday's replay under today's wind would
+  // lie anyway. Field arrives once from /api/wind (server caches the model).
+  const windStopRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!overlaysOn.windanim || range !== 'live') return
+    let cancelled = false
+    fetch('/api/wind')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((f: WindField | null) => {
+        if (cancelled || !f || !Array.isArray(f.u) || !f.u.length) return
+        windStopRef.current?.()
+        windStopRef.current = startWindParticles(m, f)
+      })
+      .catch(() => { /* model down — layer just stays empty */ })
+    return () => {
+      cancelled = true
+      windStopRef.current?.()
+      windStopRef.current = null
+    }
+  }, [mapReady, overlaysOn.windanim, range])
+
   // ── Tax parcel overlay: county GIS lines + parcel numbers at street zoom ──
   useEffect(() => {
     const m = map.current
@@ -2197,6 +2223,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           { key: 'nwswarn', label: 'Storm warnings', note: 'NWS severe/extreme polygons · 3-min refresh', on: !!overlaysOn.nwswarn },
           { key: 'gauges', label: 'Stream gauges', note: 'USGS live gage height · zoom in, tap a dot', on: !!overlaysOn.gauges },
           { key: 'daynight', label: 'Day / night', note: 'live terminator · night side shaded · pairs with City lights', on: !!overlaysOn.daynight },
+          { key: 'windanim', label: 'Wind flow', note: 'animated model wind · live view only', on: !!overlaysOn.windanim },
         ]}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         views={allViews(mapViews)}
