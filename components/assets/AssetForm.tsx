@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { TRAIL_PALETTE } from '@/lib/trails'
 
 export interface AssetFormData {
   name: string
@@ -288,14 +289,25 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             </div>
           </div>
 
-          {Object.keys(specs).length > 0 && (
+          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color').length > 0 && (
             <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Specs</p>
-                <button type="button" onClick={() => setSpecs({})} className="text-[11px] text-faint hover:text-alert">clear</button>
+                <button
+                  type="button"
+                  onClick={() => setSpecs((prev) => {
+                    // Clear decoded/typed specs but keep notes + color — they
+                    // have their own inputs and aren't part of this chip strip.
+                    const kept: Record<string, unknown> = {}
+                    if (prev.notes != null) kept.notes = prev.notes
+                    if (prev.color != null) kept.color = prev.color
+                    return kept
+                  })}
+                  className="text-[11px] text-faint hover:text-alert"
+                >clear</button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {Object.entries(specs).map(([k, v]) => (
+                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color').map(([k, v]) => (
                   <span key={k} className="px-2 py-0.5 rounded-md bg-navy-800 text-[11px] text-muted">
                     <span className="text-faint">{k.replace(/_/g, ' ')}:</span> <span className="text-ink">{String(v)}</span>
                   </span>
@@ -345,6 +357,40 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
               )}
             </div>
           )}
+
+          {/* Map color — one choice drives the dot, the trail line, and the
+              Command Center radar blip. Auto = the stable per-asset palette. */}
+          <div className="space-y-1.5">
+            <Label>Dot &amp; trail color</Label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSpecField('color', '')}
+                className={
+                  'h-7 px-2.5 rounded-full border text-[11px] font-semibold transition-colors ' +
+                  (!specs.color
+                    ? 'border-teal text-teal bg-teal/10'
+                    : 'border-navy-700 text-faint hover:text-muted')
+                }
+              >
+                Auto
+              </button>
+              {TRAIL_PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={`Use color ${c}`}
+                  onClick={() => setSpecField('color', c)}
+                  className={
+                    'h-7 w-7 rounded-full border-2 transition-transform ' +
+                    (specs.color === c ? 'border-white scale-110' : 'border-transparent hover:scale-105')
+                  }
+                  style={{ background: c, boxShadow: specs.color === c ? `0 0 8px ${c}` : undefined }}
+                />
+              ))}
+            </div>
+            <p className="text-[10px] text-faint leading-tight">Used on the map dot, trail line, and radar dial. Auto assigns a stable color.</p>
+          </div>
 
           {/* Open-ended notes — the AI reads these, so "V6 engine, takes
               0W-20, spare key in office" becomes something you can ask about. */}

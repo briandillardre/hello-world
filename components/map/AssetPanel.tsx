@@ -266,7 +266,7 @@ function AssetDetails({
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
           <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Details</p>
-          {Object.entries(meta).filter(([k]) => !SPEC_ROWS.some(([sk]) => sk === k) && k !== 'specs' && k !== 'notes').map(([k, v]) => (
+          {Object.entries(meta).filter(([k]) => !SPEC_ROWS.some(([sk]) => sk === k) && k !== 'specs' && k !== 'notes' && k !== 'color').map(([k, v]) => (
             <div key={k} className="flex justify-between text-xs">
               <span className="text-muted capitalize">{k.replace(/_/g, ' ')}</span>
               <span className="text-ink font-medium">{String(v)}</span>

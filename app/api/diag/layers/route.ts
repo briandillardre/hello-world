@@ -84,6 +84,12 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'json',
   },
   {
+    key: 'spcwatch',
+    label: 'SPC watch boxes (IEM)',
+    url: 'https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson',
+    kind: 'json',
+  },
+  {
     key: 'usgs',
     label: 'USGS stream gauges (API)',
     url: 'https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=-82.5000,34.7000,-82.2000,35.0000&parameterCd=00065&siteStatus=active',

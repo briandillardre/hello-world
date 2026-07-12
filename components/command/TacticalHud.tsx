@@ -73,8 +73,8 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
         name: a.name,
         x: 50 + (maxR > 0 ? (dx / maxR) * 0.82 * 50 : 0),
         y: 50 - (maxR > 0 ? (dy / maxR) * 0.82 * 50 : 0),
-        // Same deterministic color the asset's trail wears on the map.
-        color: trailColor(a.id),
+        // The asset's chosen color, else the same deterministic trail color.
+        color: (a.metadata?.color as string | undefined) || trailColor(a.id),
         moving: isMoving,
         big: a.type !== 'tool' && f >= 0,
       }

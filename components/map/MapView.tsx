@@ -95,7 +95,7 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
-          id: a.id, name: a.name, type: a.type, color: ASSET_COLORS[a.type],
+          id: a.id, name: a.name, type: a.type, color: (a.metadata?.color as string | undefined) || ASSET_COLORS[a.type],
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
           // Three glance-states: moving (fresh fix + speed), idle (device awake
           // and reporting — trackers sleep minutes after ignition-off, so fresh
@@ -1692,9 +1692,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (m.getLayer('nws-fill')) {
       m.setLayoutProperty('nws-fill', 'visibility', on ? 'visible' : 'none')
       m.setLayoutProperty('nws-line', 'visibility', on ? 'visible' : 'none')
+      if (m.getLayer('spc-watch-line')) m.setLayoutProperty('spc-watch-line', 'visibility', on ? 'visible' : 'none')
     } else if (on) {
       m.addSource('nws-alerts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      // SPC watch boxes — the big multi-hour "conditions are ripe" outlines
+      // (what weather apps draw as a huge pink/yellow perimeter). Dashed,
+      // outline-only (no fill = no click-swallowing), drawn UNDER warnings.
+      m.addSource('spc-watches', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'spc-watch-line', type: 'line', source: 'spc-watches',
+        paint: {
+          'line-color': ['match', ['get', 'wt'], 'TOR', '#f43f5e', '#eab308'] as unknown as string,
+          'line-width': 1.6, 'line-opacity': 0.85, 'line-dasharray': [2.5, 1.8],
+        },
+      }, beforeId)
       const phenColor = ['match', ['get', 'ph'],
         'TO', '#ff2b2b', 'EW', '#ff2b2b',           // tornado / extreme wind
         'SV', '#ff9e16',                             // severe thunderstorm
@@ -1743,9 +1755,32 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'nwswarn', at: Date.now() } }))
         })
         .catch(() => { /* IEM hiccup — keep the last polygons */ })
+    // Active SPC watches (tornado / severe t-storm watch boxes). Property
+    // names read defensively — a failed fetch just means no dashed outlines.
+    const loadWatches = () =>
+      fetch('https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { features?: Array<GeoJSON.Feature & { properties?: Record<string, unknown> }> } | null) => {
+          if (cancelled || !j?.features) return
+          const features = j.features
+            .filter((f) => f.geometry)
+            .map((f) => {
+              const p = f.properties ?? {}
+              const t = String(p.type ?? p.ww_type ?? p.phenomena ?? '').toUpperCase()
+              return {
+                type: 'Feature' as const,
+                geometry: f.geometry as GeoJSON.Geometry,
+                properties: { wt: t.includes('TOR') ? 'TOR' : 'SVR' },
+              }
+            })
+          ;(m.getSource('spc-watches') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        })
+        .catch(() => { /* no watch feed — warnings still draw */ })
     load()
+    loadWatches()
     const id = setInterval(load, 2 * 60_000)
-    return () => { cancelled = true; clearInterval(id) }
+    const idW = setInterval(loadWatches, 5 * 60_000)
+    return () => { cancelled = true; clearInterval(id); clearInterval(idW) }
   }, [mapReady, overlaysOn.nwswarn])
 
   // ── USGS stream gauges (waterservices.usgs.gov, free/keyless) ─────────────

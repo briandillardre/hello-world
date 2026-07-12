@@ -146,7 +146,7 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
       assetId: a.id,
       name: a.name,
       type: a.type,
-      color: TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
+      color: (a.metadata?.color as string | undefined) || TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
       points: pts,
     }
   })
@@ -209,7 +209,7 @@ export function tracksFromHistory(
       assetId: a.id,
       name: a.name,
       type: a.type,
-      color: TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
+      color: (a.metadata?.color as string | undefined) || TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
       points,
     }
   })
