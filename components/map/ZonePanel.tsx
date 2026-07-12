@@ -133,6 +133,12 @@ export function ZonePanel({
             ))}
           </div>
 
+          {fence.notes && (
+            <p className="mt-3 rounded-lg bg-navy-800/70 px-3 py-2 text-[12px] text-muted whitespace-pre-line leading-snug">
+              📝 {fence.notes}
+            </p>
+          )}
+
           {showCosts
             ? (real ? <RealCost real={real} /> : <DemoCost fence={fence} presence={presence} range={range} t={t} />)
             : real?.hoursSeries?.some((v) => v > 0) && (

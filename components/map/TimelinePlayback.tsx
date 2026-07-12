@@ -86,6 +86,9 @@ interface TimelinePlaybackProps {
   onFlyover?: () => void
   flySpeed?: number
   onFlySpeed?: (v: number) => void
+  /** Alerts inside the current window, as fractions — red ticks on the
+   *  scrubber; tap one to jump the replay to that moment. */
+  alertMarks?: { t: number; label: string }[]
   /** IANA timezone for clock/date labels (kiosk walls + shared replays render
    *  somewhere else — labels must still read in the crew's local time). */
   tz?: string
@@ -99,7 +102,8 @@ export function TimelinePlayback({
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
-  spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed, tz, kiosk = false,
+  spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed,
+  alertMarks = [], tz, kiosk = false,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -589,6 +593,18 @@ export function TimelinePlayback({
                 className="absolute inset-x-0 h-[9px] top-1/2 -translate-y-1/2 rounded-full border border-navy-700/60"
                 style={{ background: heatGradient ?? 'rgba(20,80,111,0.5)' }}
               />
+              {/* Alert moments live ON the timeline — red diamonds at the
+                  minute they fired; tap to jump the replay there. */}
+              {alertMarks.map((mk, i) => (
+                <button
+                  key={i}
+                  title={mk.label}
+                  onClick={() => onSeek(Math.min(1, Math.max(0, mk.t)))}
+                  className="absolute -top-[7px] z-10 w-2 h-2 rotate-45 bg-alert border border-navy-950 hover:scale-150 transition-transform"
+                  style={{ left: `calc(${(mk.t * 100).toFixed(2)}% - 4px)` }}
+                  aria-label={`Jump to alert: ${mk.label}`}
+                />
+              ))}
               <input
                 type="range" min={0} max={1000} value={Math.round(t * 1000)}
                 onChange={(e) => onSeek(Number(e.target.value) / 1000)}

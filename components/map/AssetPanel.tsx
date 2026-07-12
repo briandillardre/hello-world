@@ -256,10 +256,17 @@ function AssetDetails({
 
       {(asset.type === 'vehicle' || asset.type === 'equipment') && <StopsCard assetId={asset.id} />}
 
+      {typeof meta.notes === 'string' && meta.notes.trim() !== '' && (
+        <div className="bg-navy-800 rounded-lg p-3">
+          <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-1.5">Notes</p>
+          <p className="text-[12.5px] text-muted whitespace-pre-line leading-snug">{meta.notes}</p>
+        </div>
+      )}
+
       {Object.keys(meta).length > 0 && (
         <div className="bg-navy-800 rounded-lg p-3 space-y-1">
           <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Details</p>
-          {Object.entries(meta).filter(([k]) => !SPEC_ROWS.some(([sk]) => sk === k) && k !== 'specs').map(([k, v]) => (
+          {Object.entries(meta).filter(([k]) => !SPEC_ROWS.some(([sk]) => sk === k) && k !== 'specs' && k !== 'notes').map(([k, v]) => (
             <div key={k} className="flex justify-between text-xs">
               <span className="text-muted capitalize">{k.replace(/_/g, ' ')}</span>
               <span className="text-ink font-medium">{String(v)}</span>

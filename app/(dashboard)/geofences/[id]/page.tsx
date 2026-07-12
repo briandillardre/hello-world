@@ -12,6 +12,7 @@ import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
 import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 import { ZoneVisits } from '@/components/geofences/ZoneVisits'
 import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
+import { ZoneNotes } from '@/components/geofences/ZoneNotes'
 import { segmentVisits, type Visit } from '@/lib/visits'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
@@ -118,6 +119,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {visits !== null && (
           <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
         )}
+
+        {!isMock && <ZoneNotes id={fence.id} initial={fence.notes ?? ''} />}
 
         <ZoneWeather rows={weather} />
 

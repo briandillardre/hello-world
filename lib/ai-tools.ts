@@ -141,6 +141,8 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
       fuelPct,
       engineOn: rpm != null ? rpm > 300 : typeof raw['engine.ignition.status'] === 'boolean' ? raw['engine.ignition.status'] : null,
       lastSeen: loc ? fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz) : null,
+      // Owner-written notes ("V6 engine", "spare key in office") — ground truth.
+      notes: typeof a.metadata?.notes === 'string' && a.metadata.notes ? String(a.metadata.notes).slice(0, 240) : undefined,
     }
   })
 }
@@ -200,6 +202,7 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
   const nameOf = (id: string) => ctx.assets.find((a) => a.id === id)?.name ?? 'Unknown asset'
   return {
     zone: zone.name,
+    zone_notes: zone.notes || undefined,
     days,
     visits: visits.slice(0, 40).map((v) => ({
       asset: nameOf(v.assetId),
@@ -266,6 +269,7 @@ async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string })
   }
   return {
     asset: asset.name,
+    notes: typeof asset.metadata?.notes === 'string' && asset.metadata.notes ? String(asset.metadata.notes).slice(0, 400) : undefined,
     reportedAt: fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz),
     speedMph: loc.speed,
     batteryPct: loc.battery,
@@ -306,6 +310,7 @@ async function runEtaToZone(ctx: AiToolCtx, input: { asset_name?: string; zone_n
   return {
     asset: asset.name,
     zone: zone.name,
+    zone_notes: zone.notes || undefined,
     distance_miles_approx: Math.round(roadMi * 10) / 10,
     currently: moving ? `moving at ${Math.round(speed!)} mph` : 'not moving',
     speed_basis: moving ? `current ${Math.round(speed!)} mph` : `assumed ${ASSUMED_MPH} mph if it leaves now`,

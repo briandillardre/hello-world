@@ -241,7 +241,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [selectedZone, setSelectedZone] = useState<Geofence | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<SiteDevice | null>(null)
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
-  const [showZones, setShowZones] = useState(true)
+  // Last-session snapshot (per surface: map vs command) — the screen comes
+  // back exactly how you left it: basemap, layers, 3D, trail mode, camera.
+  // Read once before the state initializers below; a starred saved view
+  // still overrides after mount (an explicit choice beats a remembered one).
+  const lastState = useRef<Partial<{
+    base: BaseStyle; threeD: boolean; radar: boolean; clouds: boolean; stormtops: boolean
+    precip: boolean; precipPeriod: string; parcels: boolean; zones: boolean
+    overlays: Record<string, boolean>; trailMode: TrailMode
+  }>>((() => {
+    try {
+      const raw = typeof window !== 'undefined'
+        ? localStorage.getItem(kiosk ? 'ht_last_state_command' : 'ht_last_state_map')
+        : null
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })()).current
+  const [showZones, setShowZones] = useState(lastState.zones ?? true)
   const [showDevices, setShowDevices] = useState(isMock)
   const realZoneCostsRef = useRef<Record<string, import('@/lib/costs').ZoneCostCurve> | null>(null)
   const realWindowRef = useRef<import('@/lib/trails').TrackWindow | null>(null)
@@ -284,7 +300,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const pbActive = range !== 'live'
   // Kiosk (Command Center) shows movement trails by default — the wall display
   // should look alive without anyone touching it.
-  const [trailMode, setTrailMode] = useState<TrailMode>(kiosk ? 'trails' : 'off')
+  const [trailMode, setTrailMode] = useState<TrailMode>(lastState.trailMode ?? (kiosk ? 'trails' : 'off'))
   const [pbPlaying, setPbPlaying] = useState(false)
   const [pbT, setPbT] = useState(0)
   const [pbSpeed, setPbSpeed] = useState(500)
@@ -316,7 +332,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   followModeRef.current = followMode
 
   // 3D is now an independent toggle layered on ANY basemap (not its own base).
-  const [threeD, setThreeD] = useState(false)
+  const [threeD, setThreeD] = useState(lastState.threeD ?? false)
   const threeDRef = useRef(threeD)
   threeDRef.current = threeD
 
@@ -467,26 +483,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // ── Basemap + weather layer state ─────────────────────────────────────────
   // Default to satellite — real aerial imagery reads as "the actual jobsite".
   // Kiosk wall opens on Dark with the radar sweep — the mission-control look.
-  const [base, setBase] = useState<BaseStyle>(kiosk ? 'dark' : 'satellite')
+  const [base, setBase] = useState<BaseStyle>(lastState.base ?? (kiosk ? 'dark' : 'satellite'))
   const baseRef = useRef(base)
   baseRef.current = base
-  const [radarOn, setRadarOn] = useState(kiosk)
+  const [radarOn, setRadarOn] = useState(lastState.radar ?? kiosk)
   // Manual freeze for the live radar loop (map stays put, sky stops moving).
   const [radarPaused, setRadarPaused] = useState(false)
   // GOES-East GeoColor clouds (NASA GIBS WMTS, keyless, ~10-min cadence).
-  const [cloudsOn, setCloudsOn] = useState(false)
+  const [cloudsOn, setCloudsOn] = useState(lastState.clouds ?? false)
   // Storm tops — GOES Band 13 clean IR (cold = high tops). The ForeFlight view.
-  const [stormTopsOn, setStormTopsOn] = useState(false)
+  const [stormTopsOn, setStormTopsOn] = useState(lastState.stormtops ?? false)
   const cloudsAdded = useRef(false)
   const stormAdded = useRef(false)
   // Rain totals (MRMS accumulation) — separate from the radar loop.
-  const [precipOn, setPrecipOn] = useState(false)
-  const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
+  const [precipOn, setPrecipOn] = useState(lastState.precip ?? false)
+  const [precipPeriod, setPrecipPeriod] = useState(lastState.precipPeriod ?? PRECIP_PERIODS[1].key)
   const precipAdded = useRef(false)
   // "Map opens to" is a preference, not a layer — its picker lives in
   // Settings now; the open-behavior effect below reads ht_map_open_view.
-  const [parcelsOn, setParcelsOn] = useState(false)
-  const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
+  const [parcelsOn, setParcelsOn] = useState(lastState.parcels ?? false)
+  const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>(lastState.overlays ?? {})
   const parcelAbort = useRef<AbortController | null>(null)
   // Current zoom feeds the layers panel's visible zoom-gating rows.
   const [mapZoom, setMapZoom] = useState(11)
@@ -502,6 +518,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   useEffect(() => {
     try { localStorage.setItem('ht_layer_opacity_v1', JSON.stringify(overlayOpacity)) } catch { /* private mode */ }
   }, [overlayOpacity])
+
+  // Remember every panel setting as it changes — next open starts here
+  // (per surface: map and command center keep separate snapshots).
+  useEffect(() => {
+    try {
+      localStorage.setItem(kiosk ? 'ht_last_state_command' : 'ht_last_state_map', JSON.stringify({
+        base, threeD, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
+        precip: precipOn, precipPeriod, parcels: parcelsOn, zones: showZones,
+        overlays: overlaysOn, trailMode,
+      }))
+    } catch { /* private mode */ }
+  }, [kiosk, base, threeD, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode])
+
   // Factory reset for the whole panel — spec rule 6.
   const resetLayers = useCallback(() => {
     setBase(kiosk ? 'dark' : 'satellite')
@@ -1049,13 +1078,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         }
       })
 
-      // Opening view — user-selectable in the map layers menu:
-      //   fit  (default) — frame everything: assets, zones, devices
-      //   last           — restore exactly where you left the camera
+      // Opening view — DEFAULT is "exactly where you left it" (camera, tilt,
+      // zoom — per surface, so map and command remember separately).
+      // "Whole fleet" stays an explicit choice in Settings → Map opens to.
+      const camKey = kiosk ? 'ht_command_last_camera' : 'ht_map_last_camera'
       let openedFromSaved = false
       try {
-        if (localStorage.getItem('ht_map_open_view') === 'last') {
-          const saved = JSON.parse(localStorage.getItem('ht_map_last_camera') ?? 'null')
+        if (localStorage.getItem('ht_map_open_view') !== 'fit') {
+          const saved = JSON.parse(localStorage.getItem(camKey) ?? 'null')
           if (saved && Array.isArray(saved.center)) {
             m.jumpTo({ center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0, pitch: saved.pitch ?? 0 })
             openedFromSaved = true
@@ -1094,11 +1124,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.on('dragstart', gestureOn)
       m.on('dragend', gestureOff)
 
-      // Remember the camera (throttled via moveend) for the "last view" option.
+      // Remember the camera (throttled via moveend) — per surface.
       m.on('moveend', () => {
         try {
           const c = m.getCenter()
-          localStorage.setItem('ht_map_last_camera', JSON.stringify({
+          localStorage.setItem(camKey, JSON.stringify({
             center: [c.lng, c.lat], zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch(),
           }))
         } catch { /* private mode */ }
@@ -2637,6 +2667,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
             .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
             .map((tr) => ({ id: tr.assetId, name: tr.name, type: tr.type, color: tr.color }))}
           followZones={geofences.map((g) => ({ id: `zone:${g.id}`, name: g.name, color: g.color }))}
+          alertMarks={(() => {
+            const win = realWindowEff
+            if (!win || range === 'live') return []
+            return alerts.flatMap((a) => {
+              const ms = new Date(a.triggered_at).getTime()
+              if (ms < win.from || ms > win.to) return []
+              return [{
+                t: (ms - win.from) / (win.to - win.from),
+                label: `${a.asset?.name ?? 'Asset'} · ${(a.rule?.trigger ?? 'alert').replace(/_/g, ' ')}`,
+              }]
+            }).slice(0, 40)
+          })()}
           spinning={spinning}
           onSpin={handleSpin}
           flying={flying}

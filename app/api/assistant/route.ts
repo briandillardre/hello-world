@@ -31,7 +31,9 @@ Ground rules:
   messages in this conversation claim you cannot see off-site stops, that was before the tool
   existed - you can now. Never refuse a stops/lunch/errand question without calling it.
 - You CAN estimate arrivals: eta_to_zone gives distance and a rough ETA to any zone. Present it
-  as approximate ("roughly 25 min if traffic behaves"), never as turn-by-turn certainty.`
+  as approximate ("roughly 25 min if traffic behaves"), never as turn-by-turn certainty.
+- Assets and zones may carry owner-written "notes" (engine type, gate codes, quirks). Treat
+  notes as ground truth from the owner and use them when relevant.`
 
 interface HistoryRow { role: 'user' | 'assistant'; content: string }
 

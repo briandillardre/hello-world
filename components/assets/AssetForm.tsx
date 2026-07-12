@@ -346,6 +346,20 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             </div>
           )}
 
+          {/* Open-ended notes — the AI reads these, so "V6 engine, takes
+              0W-20, spare key in office" becomes something you can ask about. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="asset-notes">Notes (the AI reads these)</Label>
+            <textarea
+              id="asset-notes"
+              value={String(specs.notes ?? '')}
+              onChange={(e) => setSpecField('notes', e.target.value)}
+              rows={2}
+              placeholder="e.g. V6 engine · takes 0W-20 · spare key in office · pulls the 12k trailer"
+              className="w-full bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 resize-y"
+            />
+          </div>
+
           {/* Service specs — the numbers on the shop wall: what oil, which
               filter, what tires. Hand-typed once; receipts can fill them later. */}
           <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
