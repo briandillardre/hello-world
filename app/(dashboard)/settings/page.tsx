@@ -5,6 +5,7 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
+import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
 
 export default async function SettingsPage() {
@@ -35,6 +36,15 @@ export default async function SettingsPage() {
             <TestAlertButton />
           </section>
         )}
+
+        {/* Map preferences (moved here from the map's layers panel) */}
+        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
+            <Map className="h-4 w-4 text-faint" />
+            <h2 className="font-semibold text-sm text-muted">Map opens to</h2>
+          </div>
+          <MapPrefs />
+        </section>
 
         {/* API Key */}
         <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">

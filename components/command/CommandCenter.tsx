@@ -300,6 +300,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           earliestMs={earliestMs}
           tz={tz}
           kiosk
+          alerts={alerts}
           tourOn={tourOn}
           onTourInterrupt={() => setTourOn(false)}
         />

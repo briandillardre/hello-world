@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, MapPin, Box, Signpost, Globe2, Search, Star, Check, Mountain, Droplets, Waves, CloudRainWind, Maximize2, History, Plus, Trash2, Home, Pause, Play } from 'lucide-react'
+import { useState, useEffect, useMemo, type ReactNode } from 'react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
+import { GROUPS, BASEMAPS, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
-export type BaseStyle = 'dark' | 'streets' | 'satellite' | 'hybrid'
+export type BaseStyle = BasemapId
 
 interface WeatherControlProps {
   base: BaseStyle
@@ -16,39 +17,38 @@ interface WeatherControlProps {
   onThreeD: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
-  /** Freeze the live radar loop on the newest frame. */
   radarPaused?: boolean
   onRadarPause?: (v: boolean) => void
-  /** GOES-East GeoColor satellite clouds (NASA GIBS, ~10-min refresh). */
   cloudsOn?: boolean
   onClouds?: (v: boolean) => void
-  /** GOES Band-13 IR storm tops (cold = high convection). */
   stormTopsOn?: boolean
   onStormTops?: (v: boolean) => void
-  /** Rain totals (MRMS accumulation) + selected period (1h/24h/48h/72h). */
   precipOn?: boolean
   onPrecip?: (v: boolean) => void
   precipPeriod?: string
   onPrecipPeriod?: (k: string) => void
-  /** What the map shows on open: fit the whole fleet, or the last camera. */
-  openView?: 'fit' | 'last'
-  onOpenView?: (v: 'fit' | 'last') => void
   conditions: Conditions | null
-  /** Live reading from the owner's home weather station (null = not set up). */
   pws?: PwsConditions | null
   frameTime: string | null
   place?: string
   onPlaceChange?: (name: string, lat?: number, lng?: number) => void
-  /** Admin only: persist the current place as the company-wide default.
-   *  Resolve false when the write failed (e.g. migration 008 not applied). */
   onSaveDefault?: (place: string) => Promise<boolean | void>
-  /** Tax-parcel overlay toggle — rendered only when a parcel service is configured. */
   parcelsOn?: boolean
   onParcels?: (v: boolean) => void
-  /** Free national overlays (topo, wetlands, streams). */
-  overlays?: { key: string; label: string; note: string; on: boolean }[]
+  /** On/off state for every registry overlay, keyed by persisted layer id. */
+  overlays?: { key: string; on: boolean }[]
   onOverlay?: (key: string, on: boolean) => void
-  /** Named saveable views: presets + the user's saves; one may be default. */
+  /** Zones visibility (mirrors the chip; zones are site CONTEXT, so they also
+   *  live here per the layers spec). */
+  showZones?: boolean
+  onShowZones?: (v: boolean) => void
+  /** Current map zoom — powers visible zoom-gating on rows. */
+  zoom?: number
+  /** Per-layer raster opacity (0-1), keyed by layer id. */
+  overlayOpacity?: Record<string, number>
+  onOverlayOpacity?: (key: string, v: number) => void
+  /** Put every layer back to factory defaults. */
+  onResetLayers?: () => void
   views?: SavedMapView[]
   activeViewId?: string | null
   defaultViewId?: string | null
@@ -57,7 +57,6 @@ interface WeatherControlProps {
   onDeleteView?: (id: string) => void
   onSetDefaultView?: (id: string) => void
   top?: number
-  /** Stack order — kiosk raises the panel above the instrument rails. */
   z?: number
 }
 
@@ -83,9 +82,26 @@ function Seg({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, openView = 'fit', onOpenView, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
+function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
+  return (
+    <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (on && !disabled ? 'bg-teal/40' : 'bg-navy-700') + (disabled ? ' opacity-50' : '')}>
+      <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (on && !disabled ? 'left-[18px]' : 'left-0.5')} />
+    </span>
+  )
+}
+
+const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
+  site: Hexagon,
+  weather: CloudRain,
+  water: Waves,
+  basemap: MapIcon,
+}
+
+const GROUPS_LS = 'ht_layer_groups_v1'
+const STALE_MS = 15 * 60_000
+
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
-  // "Save current as…" inline name input for map views.
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
   const activeView = views?.find((v) => v.id === activeViewId) ?? null
@@ -96,11 +112,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     setSavingView(false)
   }
   const [placeInput, setPlaceInput] = useState(place ?? '')
-  // Keep the input in sync with the resolved location after a search.
   useEffect(() => { setPlaceInput(place ?? '') }, [place])
   const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
-  // Live place autocomplete (free Open-Meteo geocoder), debounced.
+  // Live place autocomplete (free geocoder), debounced.
   type Place = { name: string; admin1?: string; country_code?: string; latitude?: number; longitude?: number }
   const [suggestions, setSuggestions] = useState<Place[]>([])
   const [sugOpen, setSugOpen] = useState(false)
@@ -119,16 +134,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   const pickPlace = (s: Place) => {
     setSugOpen(false)
     setSuggestions([])
-    // Pass the coordinates straight through — re-geocoding the full label
-    // ("Greenville, South Carolina, US") fails and left the weather stale.
     onPlaceChange?.([s.name, s.admin1].filter(Boolean).join(', '), s.latitude, s.longitude)
   }
 
   const [savedDefault, setSavedDefault] = useState(false)
   const saveDefault = async () => {
     if (!place || !onSaveDefault) return
-    // MapView persists the exact coords (device) + company name (admins); we just
-    // fire it and flash the check.
     try { await onSaveDefault(place) } catch { /* handled upstream */ }
     setSavedDefault(true)
     setTimeout(() => setSavedDefault(false), 2000)
@@ -139,6 +150,170 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     setSugOpen(false)
     const v = placeInput.trim()
     if (v && onPlaceChange) onPlaceChange(v)
+  }
+
+  // ── Collapsible groups, persisted per device ──────────────────────────────
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    for (const g of GROUPS) init[g.id] = !!g.defaultCollapsed
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(GROUPS_LS) : null
+      if (raw) Object.assign(init, JSON.parse(raw))
+    } catch { /* fresh device */ }
+    return init
+  })
+  const toggleGroup = (gid: GroupId) => {
+    setCollapsed((c) => {
+      const next = { ...c, [gid]: !c[gid] }
+      try { localStorage.setItem(GROUPS_LS, JSON.stringify(next)) } catch { /* full */ }
+      return next
+    })
+  }
+
+  // ── Feed freshness: layer effects broadcast when they fetch ───────────────
+  const [feedAt, setFeedAt] = useState<Record<string, number>>({})
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const onUpd = (e: Event) => {
+      const d = (e as CustomEvent<{ key: string; at: number }>).detail
+      if (d?.key) setFeedAt((f) => ({ ...f, [d.key]: d.at }))
+    }
+    window.addEventListener('ht:layer-updated', onUpd)
+    const id = setInterval(() => setTick((t) => t + 1), 60_000) // refresh "updated Xp" stamps
+    return () => { window.removeEventListener('ht:layer-updated', onUpd); clearInterval(id) }
+  }, [])
+  const stamp = (key: string): { text: string; stale: boolean } | null => {
+    const at = feedAt[key]
+    if (!at) return null
+    const stale = Date.now() - at > STALE_MS
+    return { text: `updated ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '')}`, stale }
+  }
+
+  // ── One resolver: registry id → current on-state + toggler ────────────────
+  const overlayOn = useMemo(() => {
+    const m: Record<string, boolean> = {}
+    for (const o of overlays ?? []) m[o.key] = o.on
+    return m
+  }, [overlays])
+  const isOn = (id: string): boolean => {
+    switch (id) {
+      case 'zones': return showZones
+      case 'radar': return radarOn
+      case 'clouds': return cloudsOn
+      case 'stormtops': return stormTopsOn
+      case 'precip': return precipOn
+      case 'parcels': return parcelsOn
+      default: return !!overlayOn[id]
+    }
+  }
+  const toggle = (id: string) => {
+    switch (id) {
+      case 'zones': return onShowZones?.(!showZones)
+      case 'radar': return onRadar(!radarOn)
+      case 'clouds': return onClouds?.(!cloudsOn)
+      case 'stormtops': return onStormTops?.(!stormTopsOn)
+      case 'precip': return onPrecip?.(!precipOn)
+      case 'parcels': return onParcels?.(!parcelsOn)
+      default: return onOverlay?.(id, !overlayOn[id])
+    }
+  }
+
+  // Extra controls that belong to specific rows (radar pause, rain periods).
+  const rowExtra = (id: string): ReactNode => {
+    if (id === 'radar' && radarOn) {
+      return (
+        <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
+          <span className={'w-1.5 h-1.5 rounded-full bg-teal ' + (radarPaused ? '' : 'animate-blink')} />
+          {radarPaused ? 'paused' : 'live'}{frameTime ? ` · ${frameTime}` : ''}
+          {onRadarPause && (
+            <button
+              onClick={() => onRadarPause(!radarPaused)}
+              title={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
+              className="ml-auto grid place-items-center w-5 h-5 rounded text-faint hover:text-teal"
+            >
+              {radarPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+            </button>
+          )}
+        </div>
+      )
+    }
+    if (id === 'precip' && precipOn) {
+      return (
+        <div className="px-3 pb-2">
+          <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+            {PRECIP_PERIODS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => onPrecipPeriod?.(p.key)}
+                className={
+                  'flex-1 py-1 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                  (precipPeriod === p.key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+                }
+              >{p.label}</button>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    return null
+  }
+
+  function LayerRow({ def }: { def: LayerRowDef }) {
+    const st = rowState(def, isOn(def.id), zoom, base)
+    const comingSoon = def.status === 'coming-soon'
+    const dim = st.disabled || (!!st.reason && !comingSoon)
+    const fresh = def.isLive && st.on ? stamp(def.id) : null
+    return (
+      <div className="border-t border-navy-800 first:border-t-0">
+        <button
+          onClick={() => { if (!st.disabled) toggle(def.id) }}
+          disabled={st.disabled}
+          className={'w-full flex items-center justify-between gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
+        >
+          <span className={'text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
+          {comingSoon
+            ? <span className="font-mono text-[9px] uppercase tracking-wide text-faint border border-navy-700 rounded px-1.5 py-0.5 flex-none">Coming soon</span>
+            : <Toggle on={st.on} disabled={st.disabled} />}
+        </button>
+        {st.reason && !comingSoon && (
+          <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber/90">{st.reason}</p>
+        )}
+        {st.on && !st.disabled && !st.reason && def.hint && (
+          <p className="px-3 pb-1.5 -mt-1 font-mono text-[10px] text-teal">
+            {def.hint}
+            {fresh && <span className={'ml-1.5 ' + (fresh.stale ? 'text-amber' : 'text-faint')}>{fresh.text}</span>}
+          </p>
+        )}
+        {st.on && !st.disabled && def.hasOpacity && onOverlayOpacity && (
+          <div className="px-3 pb-2 flex items-center gap-2">
+            <span className="font-mono text-[9px] text-faint flex-none">opacity</span>
+            <input
+              type="range" min={15} max={100}
+              value={Math.round((overlayOpacity[def.id] ?? 0.6) * 100)}
+              onChange={(e) => onOverlayOpacity(def.id, Number(e.target.value) / 100)}
+              className="flex-1 h-1 accent-teal cursor-pointer"
+            />
+          </div>
+        )}
+        {rowExtra(def.id)}
+      </div>
+    )
+  }
+
+  function Group({ gid, children }: { gid: GroupId; children: ReactNode }) {
+    const g = GROUPS.find((x) => x.id === gid)!
+    const Icon = GROUP_ICON[gid]
+    const isCollapsed = !!collapsed[gid]
+    return (
+      <div className="border-b border-navy-800">
+        <button onClick={() => toggleGroup(gid)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
+          <Icon className="h-3.5 w-3.5 text-teal flex-none" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">{g.label}</span>
+          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
+        </button>
+        {!isCollapsed && children}
+      </div>
+    )
   }
 
   // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles
@@ -162,7 +337,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             {(base === 'satellite' || base === 'hybrid') && <Satellite className="h-3.5 w-3.5 text-teal" />}
           </span>
         )}
-        {/* maximize affordance */}
         <span className="flex items-center gap-0.5 text-faint">
           <Layers className="h-3.5 w-3.5" />
           <ChevronDown className="h-3.5 w-3.5" />
@@ -171,8 +345,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     )
   }
 
+  const rowsFor = (gid: GroupId, nightFx = false) =>
+    LAYER_ROWS.filter((d) => d.group === gid && !!d.nightFx === nightFx).map((d) => <LayerRow key={d.id} def={d} />)
+
   return (
-    <div style={{ top, zIndex: z }} className="absolute left-3 w-[200px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
+    <div style={{ top, zIndex: z }} className="absolute left-3 w-[210px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
         <div className="relative">
@@ -274,7 +451,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Views</span>
             {onSaveView && !savingView && (
               <button onClick={() => setSavingView(true)} className="flex items-center gap-1 text-[10.5px] font-semibold text-teal hover:text-ink">
-                <Plus className="h-3 w-3" /> Save current
+                <Check className="h-3 w-3" /> Save current
               </button>
             )}
           </div>
@@ -325,7 +502,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
               )}
               {!activeView.preset && onDeleteView && (
                 <button onClick={() => onDeleteView(activeView.id)} className="ml-auto flex items-center gap-1 text-[10.5px] text-faint hover:text-alert">
-                  <Trash2 className="h-3 w-3" /> Delete
+                  <RotateCcw className="h-3 w-3 rotate-90" /> Delete
                 </button>
               )}
             </div>
@@ -333,183 +510,47 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </div>
       )}
 
-      {/* basemap segmented */}
-      <div className="grid grid-cols-2 gap-1 p-1 border-b border-navy-800">
-        <Seg active={base === 'dark'} onClick={() => onBase('dark')}><MapIcon className="h-3.5 w-3.5" />Dark</Seg>
-        <Seg active={base === 'streets'} onClick={() => onBase('streets')}><Signpost className="h-3.5 w-3.5" />Streets</Seg>
-        <Seg active={base === 'satellite'} onClick={() => onBase('satellite')}><Satellite className="h-3.5 w-3.5" />Satellite</Seg>
-        <Seg active={base === 'hybrid'} onClick={() => onBase('hybrid')}><Globe2 className="h-3.5 w-3.5" />Hybrid</Seg>
-      </div>
+      {/* ── Layer groups: Site · Weather · Water & Terrain · Basemap ── */}
+      <Group gid="site">{rowsFor('site')}</Group>
+      <Group gid="weather">{rowsFor('weather')}</Group>
+      <Group gid="water">{rowsFor('water')}</Group>
+      <Group gid="basemap">
+        <div className="grid grid-cols-2 gap-1 p-1">
+          {BASEMAPS.map((b) => (
+            <Seg key={b.id} active={base === b.id} onClick={() => onBase(b.id)}>
+              {b.id === 'dark' ? <MapIcon className="h-3.5 w-3.5" /> : b.id === 'streets' ? <Signpost className="h-3.5 w-3.5" /> : b.id === 'satellite' ? <Satellite className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
+              {b.label}
+            </Seg>
+          ))}
+        </div>
+        {/* 3D buildings + tilt — layerable on any basemap */}
+        <div className="border-t border-navy-800">
+          <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
+            </span>
+            <Toggle on={threeD} />
+          </button>
+          {threeD && (
+            <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+              tilt: right-click + drag on PC · two-finger drag on mobile
+            </p>
+          )}
+        </div>
+        {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
+        <div className="border-t border-navy-800">
+          <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
+          {rowsFor('basemap', true)}
+        </div>
+      </Group>
 
-      {/* 3D buildings + tilt — independent toggle, works on any basemap above */}
-      <div className="border-b border-navy-800">
-        <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
-          <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-            <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
-          </span>
-          <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (threeD ? 'bg-teal/40' : 'bg-navy-700')}>
-            <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (threeD ? 'left-[18px]' : 'left-0.5')} />
-          </span>
+      {onResetLayers && (
+        <button
+          onClick={onResetLayers}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-faint hover:text-ink transition-colors"
+        >
+          <RotateCcw className="h-3 w-3" /> Reset layers to defaults
         </button>
-        {threeD && (
-          <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-            tilt: right-click + drag on PC · two-finger drag on mobile
-          </div>
-        )}
-      </div>
-
-      {/* radar toggle */}
-      <button onClick={() => onRadar(!radarOn)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
-        <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-          <CloudRain className={'h-4 w-4 ' + (radarOn ? 'text-teal' : 'text-faint')} /> Radar
-        </span>
-        <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (radarOn ? 'bg-teal/40' : 'bg-navy-700')}>
-          <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (radarOn ? 'left-[18px]' : 'left-0.5')} />
-        </span>
-      </button>
-      {radarOn && (
-        <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal flex items-center gap-1.5">
-          <span className={'w-1.5 h-1.5 rounded-full bg-teal ' + (radarPaused ? '' : 'animate-blink')} />
-          {radarPaused ? 'paused' : 'radar'}{frameTime ? ` · ${frameTime}` : radarPaused ? '' : ' loop'}
-          {onRadarPause && (
-            <button
-              onClick={() => onRadarPause(!radarPaused)}
-              title={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
-              className="ml-auto grid place-items-center w-5 h-5 rounded text-faint hover:text-teal"
-            >
-              {radarPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* satellite clouds — GOES-East GeoColor via NASA GIBS */}
-      {onClouds && (
-        <>
-          <button onClick={() => onClouds(!cloudsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <Globe2 className={'h-4 w-4 ' + (cloudsOn ? 'text-teal' : 'text-faint')} /> Clouds
-            </span>
-            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (cloudsOn ? 'bg-teal/40' : 'bg-navy-700')}>
-              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (cloudsOn ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-          </button>
-          {cloudsOn && (
-            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-              GOES-East satellite · NASA · ~10 min
-            </div>
-          )}
-        </>
-      )}
-
-      {/* storm tops — GOES Band-13 IR: bright/cold = tall convection */}
-      {onStormTops && (
-        <>
-          <button onClick={() => onStormTops(!stormTopsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <Zap className={'h-4 w-4 ' + (stormTopsOn ? 'text-teal' : 'text-faint')} /> Storm tops (IR)
-            </span>
-            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (stormTopsOn ? 'bg-teal/40' : 'bg-navy-700')}>
-              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (stormTopsOn ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-          </button>
-          {stormTopsOn && (
-            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-              bright = tall/violent cells · GOES IR · ~10 min
-            </div>
-          )}
-        </>
-      )}
-
-      {/* rain totals — MRMS accumulated precipitation, pick the period */}
-      {onPrecip && (
-        <>
-          <button onClick={() => onPrecip(!precipOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <CloudRainWind className={'h-4 w-4 ' + (precipOn ? 'text-teal' : 'text-faint')} /> Rain totals
-            </span>
-            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (precipOn ? 'bg-teal/40' : 'bg-navy-700')}>
-              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (precipOn ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-          </button>
-          {precipOn && (
-            <div className="px-3 pb-2 space-y-1.5">
-              <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
-                {PRECIP_PERIODS.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => onPrecipPeriod?.(p.key)}
-                    className={
-                      'flex-1 py-1 rounded-md text-[10.5px] font-semibold transition-colors ' +
-                      (precipPeriod === p.key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
-                    }
-                  >{p.label}</button>
-                ))}
-              </div>
-              <div className="font-mono text-[10px] text-teal">accumulated rainfall · MRMS</div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* free national overlays: topo, hillshade, wetlands, streams */}
-      {overlays && onOverlay && overlays.map((o) => {
-        const Icon = o.key === 'topo' ? Mountain : o.key === 'wetlands' ? Droplets : Waves
-        return (
-          <div key={o.key}>
-            <button onClick={() => onOverlay(o.key, !o.on)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-                <Icon className={'h-4 w-4 ' + (o.on ? 'text-teal' : 'text-faint')} /> {o.label}
-              </span>
-              <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (o.on ? 'bg-teal/40' : 'bg-navy-700')}>
-                <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (o.on ? 'left-[18px]' : 'left-0.5')} />
-              </span>
-            </button>
-            {o.on && (
-              <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">{o.note}</div>
-            )}
-          </div>
-        )
-      })}
-
-      {/* tax parcel lines — county GIS overlay, appears at street zoom */}
-      {onParcels && (
-        <>
-          <button onClick={() => onParcels(!parcelsOn)} className="w-full flex items-center justify-between px-3 py-2 border-t border-navy-800 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <Layers className={'h-4 w-4 ' + (parcelsOn ? 'text-amber' : 'text-faint')} /> Parcel lines
-            </span>
-            <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (parcelsOn ? 'bg-amber/40' : 'bg-navy-700')}>
-              <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (parcelsOn ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-          </button>
-          {parcelsOn && (
-            <div className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-amber">
-              county tax parcels · zoom in to see lines
-            </div>
-          )}
-        </>
-      )}
-
-      {/* map opens to — whole fleet (zoom extents) or wherever you left off */}
-      {onOpenView && (
-        <div className="px-3 py-2 border-t border-navy-800">
-          <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-1.5">Map opens to</div>
-          <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
-            <button
-              onClick={() => onOpenView('fit')}
-              className={'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' + (openView === 'fit' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
-            >
-              <Maximize2 className="h-3.5 w-3.5" /> Whole fleet
-            </button>
-            <button
-              onClick={() => onOpenView('last')}
-              className={'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' + (openView === 'last' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
-            >
-              <History className="h-3.5 w-3.5" /> Last view
-            </button>
-          </div>
-        </div>
       )}
       {/* honest bandwidth note — radar/clouds/overlays are live streams */}
       <p className="px-3 py-2 border-t border-navy-800 text-[10px] text-faint leading-relaxed">

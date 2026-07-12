@@ -81,6 +81,19 @@ export const AI_TOOLS = [
     },
   },
   {
+    name: 'eta_to_zone',
+    description:
+      'Rough ETA for ONE asset to ONE zone/site: straight-line distance with a road factor, the speed it is doing right now (or a stated assumption if parked), estimated minutes, and arrival clock time. NOT turn-by-turn routing — always present it as a rough ETA. Use for "how long until X gets to Y", "when will X arrive", "how far is X from Y".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        asset_name: { type: 'string', description: 'Asset name, may be partial' },
+        zone_name: { type: 'string', description: 'Zone/site name, may be partial' },
+      },
+      required: ['asset_name', 'zone_name'],
+    },
+  },
+  {
     name: 'recent_alerts',
     description:
       'Recent alert events (theft, after-hours movement, left-site, low battery) with asset, trigger, time, and whether acknowledged. Use for any alerts/theft/security question.',
@@ -261,6 +274,47 @@ async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string })
   }
 }
 
+const ROAD_FACTOR = 1.25 // straight-line → road miles, rural/suburban typical
+const ASSUMED_MPH = 35   // parked asset: "if it left now" pace
+
+async function runEtaToZone(ctx: AiToolCtx, input: { asset_name?: string; zone_name?: string }) {
+  const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
+  if (!asset) return { error: `No asset matches. Assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
+  if (!asset.location) return { error: `${asset.name} has never reported a position.` }
+  const zone = matchByName(String(input.zone_name ?? ''), ctx.geofences)
+  if (!zone) return { error: `No zone matches. Zones: ${ctx.geofences.map((g) => g.name).join(', ')}` }
+  const ring = (zone.geometry?.coordinates?.[0] ?? []) as [number, number][]
+  if (ring.length < 3) return { error: `${zone.name} has no drawn boundary.` }
+
+  const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
+  const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
+  const { lat, lng, speed } = asset.location
+  if (pointInPolygon([lng, lat], ring)) {
+    return { asset: asset.name, zone: zone.name, status: 'already inside the zone' }
+  }
+
+  const R = 3958.8
+  const dLat = ((cy - lat) * Math.PI) / 180
+  const dLng = ((cx - lng) * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((cy * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  const straightMi = 2 * R * Math.asin(Math.sqrt(h))
+  const roadMi = straightMi * ROAD_FACTOR
+
+  const moving = (speed ?? 0) > 5
+  const mph = moving ? speed! : ASSUMED_MPH
+  const etaMin = Math.max(1, Math.round((roadMi / mph) * 60))
+  return {
+    asset: asset.name,
+    zone: zone.name,
+    distance_miles_approx: Math.round(roadMi * 10) / 10,
+    currently: moving ? `moving at ${Math.round(speed!)} mph` : 'not moving',
+    speed_basis: moving ? `current ${Math.round(speed!)} mph` : `assumed ${ASSUMED_MPH} mph if it leaves now`,
+    eta_minutes_approx: etaMin,
+    arrival_time_approx: fmtDateTime(Date.now() + etaMin * 60_000, ctx.tz),
+    caveat: 'straight-line distance × 1.25 road factor — a rough ETA, not turn-by-turn routing',
+  }
+}
+
 async function runRecentAlerts(ctx: AiToolCtx, input: { limit?: number }) {
   const limit = Math.min(25, Math.max(1, Math.round(Number(input.limit) || 10)))
   return ctx.alerts.slice(0, limit).map((a) => ({
@@ -282,6 +336,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       case 'asset_stops': return await runAssetStops(ctx, input as { asset_name?: string; range?: string })
       case 'asset_telemetry': return await runAssetTelemetry(ctx, input as { asset_name?: string })
       case 'site_visits': return await runSiteVisits(ctx, input as { zone_name?: string; days?: number })
+      case 'eta_to_zone': return await runEtaToZone(ctx, input as { asset_name?: string; zone_name?: string })
       case 'recent_alerts': return await runRecentAlerts(ctx, input as { limit?: number })
       default: return { error: `Unknown tool ${name}` }
     }

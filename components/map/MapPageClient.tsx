@@ -45,9 +45,11 @@ interface MapPageClientProps {
   savedMapViews?: { views: unknown[]; defaultId: string | null } | null
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
   canViewCosts?: boolean
+  /** Recent alert events — powers the "Alert pins" layer. */
+  alerts?: import('@/lib/types').AlertEvent[]
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [] }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -143,6 +145,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         savedMapViews={savedMapViews as import('@/lib/map-views').MapViewsState | null}
         onSaveMapViews={isMock ? undefined : saveMapViewsAction}
         canViewCosts={canViewCosts}
+        alerts={alerts}
       />
       {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}
     </>

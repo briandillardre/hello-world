@@ -25,7 +25,13 @@ Ground rules:
 - Times from tools are already in the user's timezone — repeat them as given.
 - Estimates (like fuel) must be labeled as estimates.
 - NEVER mention GPS tracker hardware brands or model numbers, even if they appear in data.
-- Keep answers to a few sentences unless listing visits/alerts the user asked for.`
+- Keep answers to a few sentences unless listing visits/alerts the user asked for.
+- You CAN see off-site stops: asset_stops classifies every 5+ minute stop (restaurant, supplier,
+  fuel, DMV, dealer, store, residence). "Where did X eat lunch" -> call asset_stops. If earlier
+  messages in this conversation claim you cannot see off-site stops, that was before the tool
+  existed - you can now. Never refuse a stops/lunch/errand question without calling it.
+- You CAN estimate arrivals: eta_to_zone gives distance and a rough ETA to any zone. Present it
+  as approximate ("roughly 25 min if traffic behaves"), never as turn-by-turn certainty.`
 
 interface HistoryRow { role: 'user' | 'assistant'; content: string }
 

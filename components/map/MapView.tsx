@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { AssetWithLocation, AssetType, Geofence } from '@/lib/types'
+import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
@@ -195,6 +195,8 @@ interface MapViewProps {
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
   onGeofenceDelete?: (id: string) => void
+  /** Recent alert events — powers the "Alert pins" site layer. */
+  alerts?: AlertEvent[]
   kiosk?: boolean
   /** Kiosk auto-tour (asset → asset camera glide). Off = the wall stays put. */
   tourOn?: boolean
@@ -216,7 +218,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -477,19 +479,39 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [precipOn, setPrecipOn] = useState(false)
   const [precipPeriod, setPrecipPeriod] = useState(PRECIP_PERIODS[1].key) // 24 hr
   const precipAdded = useRef(false)
-  // What the map opens showing: fit the whole fleet, or wherever you left it.
-  const [openView, setOpenView] = useState<'fit' | 'last'>(() => {
-    try {
-      return (typeof window !== 'undefined' && localStorage.getItem('ht_map_open_view') === 'last') ? 'last' : 'fit'
-    } catch { return 'fit' }
-  })
-  const handleOpenView = useCallback((v: 'fit' | 'last') => {
-    setOpenView(v)
-    try { localStorage.setItem('ht_map_open_view', v) } catch { /* private mode */ }
-  }, [])
+  // "Map opens to" is a preference, not a layer — its picker lives in
+  // Settings now; the open-behavior effect below reads ht_map_open_view.
   const [parcelsOn, setParcelsOn] = useState(false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>({})
   const parcelAbort = useRef<AbortController | null>(null)
+  // Current zoom feeds the layers panel's visible zoom-gating rows.
+  const [mapZoom, setMapZoom] = useState(11)
+  const alertsRef = useRef(alerts)
+  alertsRef.current = alerts
+  // Per-layer raster opacity from the panel sliders — device-local.
+  const [overlayOpacity, setOverlayOpacity] = useState<Record<string, number>>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('ht_layer_opacity_v1') : null
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ht_layer_opacity_v1', JSON.stringify(overlayOpacity)) } catch { /* private mode */ }
+  }, [overlayOpacity])
+  // Factory reset for the whole panel — spec rule 6.
+  const resetLayers = useCallback(() => {
+    setBase(kiosk ? 'dark' : 'satellite')
+    setThreeD(false)
+    setRadarOn(kiosk)
+    setRadarPaused(false)
+    setCloudsOn(false)
+    setStormTopsOn(false)
+    setPrecipOn(false)
+    setParcelsOn(false)
+    setShowZones(true)
+    setOverlaysOn({})
+    setOverlayOpacity({})
+  }, [kiosk])
 
   // ── Named, saveable map views ─────────────────────────────────────────────
   // A view = every layer/style toggle in one snapshot. DB copy (profile) wins
@@ -1512,13 +1534,98 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         m.addSource(srcId, { type: 'raster', tiles: [o.tiles], tileSize: 256, maxzoom: o.maxzoom })
         const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
         m.addLayer(
-          { id: layerId, type: 'raster', source: srcId, minzoom: o.minzoom, paint: { 'raster-opacity': o.opacity } },
+          { id: layerId, type: 'raster', source: srcId, minzoom: o.minzoom, paint: { 'raster-opacity': overlayOpacity[o.key] ?? o.opacity } },
           beforeId
         )
       }
       if (m.getLayer(layerId)) m.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, overlaysOn])
+
+  // Panel opacity sliders → live raster opacity.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    for (const o of MAP_OVERLAYS) {
+      const v = overlayOpacity[o.key]
+      const layerId = `ovl-${o.key}-layer`
+      if (v != null && m.getLayer(layerId)) m.setPaintProperty(layerId, 'raster-opacity', v)
+    }
+  }, [mapReady, overlayOpacity, overlaysOn])
+
+  // Track zoom for the layers panel's "zoom in/out to see this" rows.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const upd = () => setMapZoom(m.getZoom())
+    upd()
+    m.on('zoomend', upd)
+    return () => { m.off('zoomend', upd) }
+  }, [mapReady])
+
+  // ── Alert pins: where alerts fired (last 7 days), pinned to the zone the
+  // rule watches — alert events don't store coordinates, so the zone IS the
+  // honest location. Tap for the list of hits there.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.alertpins
+    for (const lid of ['alert-pins', 'alert-pins-mark']) {
+      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+    }
+    if (!on) return
+    const cutoff = Date.now() - 7 * 86_400_000
+    // Group by zone so five alerts at the yard become one pin with a count.
+    const byZone = new Map<string, { cx: number; cy: number; lines: string[] }>()
+    for (const a of alertsRef.current) {
+      if (new Date(a.triggered_at).getTime() < cutoff) continue
+      const g = a.rule?.geofence
+      const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
+      if (!g || !ring?.length) continue
+      let e = byZone.get(g.id)
+      if (!e) {
+        const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
+        const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
+        byZone.set(g.id, (e = { cx, cy, lines: [] }))
+      }
+      e.lines.push(`${a.asset?.name ?? 'Asset'} · ${(a.rule?.trigger ?? 'alert').replace(/_/g, ' ')}`)
+    }
+    const data: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: Array.from(byZone.values()).map((e) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [e.cx, e.cy] },
+        properties: { count: e.lines.length, list: e.lines.slice(0, 6).join('<br/>') },
+      })),
+    }
+    const src = m.getSource('alertpins') as maplibregl.GeoJSONSource | undefined
+    if (!src) {
+      m.addSource('alertpins', { type: 'geojson', data })
+      m.addLayer({
+        id: 'alert-pins', type: 'circle', source: 'alertpins',
+        paint: { 'circle-radius': 9, 'circle-color': '#ff5d5d', 'circle-opacity': 0.9, 'circle-stroke-color': '#001523', 'circle-stroke-width': 2 },
+      })
+      m.addLayer({
+        id: 'alert-pins-mark', type: 'symbol', source: 'alertpins',
+        layout: { 'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-allow-overlap': true, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
+        paint: { 'text-color': '#001523' },
+      })
+      m.on('click', 'alert-pins', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:11.5px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff5d5d">Alerts here · last 7 days</div><div style="margin-top:3px">${p.list}</div></div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'alert-pins', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'alert-pins', () => { m.getCanvas().style.cursor = '' })
+    } else {
+      src.setData(data)
+    }
+    window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'alertpins', at: Date.now() } }))
+  }, [mapReady, overlaysOn.alertpins])
 
   // ── NWS severe-weather warning polygons (api.weather.gov, free/keyless) ───
   // Extreme = red, Severe = orange. The stop-work signal: a Severe T-storm or
@@ -1554,6 +1661,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
               properties: { severity: f.properties?.severity ?? 'Severe', event: f.properties?.event ?? '' },
             }))
           ;(m.getSource('nws-alerts') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'nwswarn', at: Date.now() } }))
         })
         .catch(() => { /* NWS hiccup — keep the last polygons */ })
     load()
@@ -1625,6 +1733,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
             }]
           })
           ;(m.getSource('gauges') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'gauges', at: Date.now() } }))
         })
         .catch(() => { /* USGS hiccup — keep last dots */ })
     }
@@ -1700,6 +1809,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
             },
           }))
           ;(m.getSource('pwsnet') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'pwsnet', at: Date.now() } }))
         })
         .catch(() => { /* feed down — keep last dots */ })
     }
@@ -2283,8 +2393,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onPrecip={setPrecipOn}
         precipPeriod={precipPeriod}
         onPrecipPeriod={setPrecipPeriod}
-        openView={openView}
-        onOpenView={handleOpenView}
         conditions={conditions}
         pws={pws}
         frameTime={radarLabel}
@@ -2293,15 +2401,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={[
-          ...MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] })),
-          { key: 'nwswarn', label: 'Storm warnings', note: 'NWS severe/extreme polygons · 3-min refresh', on: !!overlaysOn.nwswarn },
-          { key: 'gauges', label: 'Stream gauges', note: 'USGS live gage height · zoom in, tap a dot', on: !!overlaysOn.gauges },
-          { key: 'pwsnet', label: 'Weather stations', note: 'community stations · tap for temp & wind · zoom in', on: !!overlaysOn.pwsnet },
-          { key: 'daynight', label: 'Day / night', note: 'live terminator · night side shaded · pairs with City lights', on: !!overlaysOn.daynight },
-          { key: 'windanim', label: 'Wind flow', note: 'animated model wind · live view only', on: !!overlaysOn.windanim },
-        ]}
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', ...MAP_OVERLAYS.map((o) => o.key)]
+          .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
+        showZones={showZones}
+        onShowZones={setShowZones}
+        zoom={mapZoom}
+        overlayOpacity={overlayOpacity}
+        onOverlayOpacity={(key, v) => setOverlayOpacity((prev) => ({ ...prev, [key]: v }))}
+        onResetLayers={resetLayers}
         views={allViews(mapViews)}
         activeViewId={activeViewId}
         defaultViewId={mapViews.defaultId}

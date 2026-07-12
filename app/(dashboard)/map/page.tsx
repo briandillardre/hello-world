@@ -1,5 +1,6 @@
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
+import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -18,11 +19,12 @@ export default async function MapPage() {
   const prefs = await getCompanyPrefs()
   const perms = await getMyPermissions()
   const savedMapViews = await getMyMapViews()
-  const [rawAssets, geofences, toolAssociations, earliestMs] = await Promise.all([
+  const [rawAssets, geofences, toolAssociations, earliestMs, alerts] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getToolAssociations(companyId),
     getEarliestLocationTime(companyId),
+    getAlertEvents(companyId),
   ])
 
   // Tools have no GPS of their own — resolve their position from the gateway
@@ -74,6 +76,7 @@ export default async function MapPage() {
           canSetWeatherDefault={prefs.isAdmin}
           canViewCosts={perms.canViewCosts}
           savedMapViews={savedMapViews}
+          alerts={alerts}
         />
       </div>
     </div>
