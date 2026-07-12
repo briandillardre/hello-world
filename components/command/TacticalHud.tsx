@@ -123,10 +123,13 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
           const major = deg % 30 === 0
           const rad = (deg * Math.PI) / 180
           const r1 = major ? 44.5 : 46.2
-          const x1 = 50 + r1 * Math.sin(rad)
-          const y1 = 50 - r1 * Math.cos(rad)
-          const x2 = 50 + 48 * Math.sin(rad)
-          const y2 = 50 - 48 * Math.cos(rad)
+          // toFixed: Node and Chromium disagree on sin/cos in the 16th digit,
+          // which serialized as different SVG attrs and tripped hydration
+          // (React 418/423 on the wall display). Two decimals is sub-pixel.
+          const x1 = (50 + r1 * Math.sin(rad)).toFixed(2)
+          const y1 = (50 - r1 * Math.cos(rad)).toFixed(2)
+          const x2 = (50 + 48 * Math.sin(rad)).toFixed(2)
+          const y2 = (50 - 48 * Math.cos(rad)).toFixed(2)
           return <line key={deg} x1={x1} y1={y1} x2={x2} y2={y2} stroke={major ? '#2dd4bf' : '#14506f'} strokeWidth={major ? 0.7 : 0.4} opacity={major ? 0.9 : 0.7} />
         })}
         {[14, 26, 38].map((r) => (
@@ -136,8 +139,8 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
         <line x1="10" y1="50" x2="90" y2="50" stroke="#14506f" strokeWidth="0.3" opacity="0.55" />
         {(['N', 'E', 'S', 'W'] as const).map((c, i) => {
           const rad = (i * 90 * Math.PI) / 180
-          const x = 50 + 41 * Math.sin(rad)
-          const y = 50 - 41 * Math.cos(rad)
+          const x = (50 + 41 * Math.sin(rad)).toFixed(2)
+          const y = (50 - 41 * Math.cos(rad)).toFixed(2)
           return (
             <text key={c} x={x} y={y} textAnchor="middle" dominantBaseline="central"
               fontSize="4.6" fontFamily="var(--font-mono, monospace)" fontWeight="700"
@@ -163,7 +166,7 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
             aria-label={`Go to ${b.name}`}
             onClick={() => window.dispatchEvent(new CustomEvent('ht:focus-asset', { detail: { id: b.id } }))}
             className="absolute -translate-x-1/2 -translate-y-1/2 grid place-items-center w-4 h-4 pointer-events-auto cursor-pointer"
-            style={{ left: `${b.x}%`, top: `${b.y}%` }}
+            style={{ left: `${b.x.toFixed(2)}%`, top: `${b.y.toFixed(2)}%` }}
           >
             <span
               className={'rounded-full ' + (b.moving ? 'animate-blink' : '')}
@@ -204,7 +207,9 @@ export function TacticalHud({ assets, geofences, alertCount = 0, center = null }
       </div>
       {/* fleet mix · sync age · weak batteries — the wall display's vitals line */}
       <div className="hidden sm:block absolute inset-x-0 bottom-[9%] text-center leading-none">
-        <span className="text-faint/80 text-[clamp(7px,0.85vw,10px)] tracking-[0.14em] tabular-nums">
+        {/* suppressHydrationWarning: SYNC age is Date.now()-based, so server
+            and client render a second or two apart — same as the ticker. */}
+        <span suppressHydrationWarning className="text-faint/80 text-[clamp(7px,0.85vw,10px)] tracking-[0.14em] tabular-nums">
           {typeLine}
           {newestMs > 0 && ` · SYNC ${Math.max(0, Math.round((Date.now() - newestMs) / 1000))}S`}
           {lowBatt > 0 && <span className="text-amber"> · ▲ {lowBatt} LOW BATT</span>}

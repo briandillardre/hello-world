@@ -30,6 +30,12 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'image',
   },
   {
+    key: 'pwsnet',
+    label: 'Weather stations (Ambient public map feed)',
+    url: 'https://lightning.ambientweather.net/devices?$publicBox[0][0]=-87.1&$publicBox[0][1]=35.9&$publicBox[1][0]=-86.4&$publicBox[1][1]=36.4&$limit=5',
+    kind: 'json',
+  },
+  {
     key: 'rtma-temp',
     label: 'Temperature (NOAA RTMA WMS)',
     url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',

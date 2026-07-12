@@ -1637,6 +1637,81 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.gauges])
 
+  // ── Community weather stations (Ambient public network via our proxy) ─────
+  // Temp-colored dots at neighborhood zoom; tap one for the full reading.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.pwsnet
+    if (m.getLayer('pws-dots')) m.setLayoutProperty('pws-dots', 'visibility', on ? 'visible' : 'none')
+    else if (on) {
+      m.addSource('pwsnet', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'pws-dots', type: 'circle', source: 'pwsnet', minzoom: 8,
+        paint: {
+          'circle-radius': 5.5,
+          'circle-color': [
+            'case', ['==', ['get', 'tempF'], -999], '#64748b',
+            ['interpolate', ['linear'], ['get', 'tempF'], 20, '#60a5fa', 50, '#2dd4bf', 75, '#ff9e16', 95, '#ff5d5d'],
+          ],
+          'circle-stroke-color': '#001523', 'circle-stroke-width': 1.5, 'circle-opacity': 0.92,
+        },
+      }, beforeId)
+      m.on('click', 'pws-dots', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        const t = p.tempF !== -999 ? `${Math.round(p.tempF)}°` : '—'
+        const feels = p.feelsF !== -999 && Math.round(p.feelsF) !== Math.round(p.tempF) ? ` · feels ${Math.round(p.feelsF)}°` : ''
+        const wind = p.windMph !== -999 ? `wind ${Math.round(p.windMph)}${p.gustMph !== -999 ? `–${Math.round(p.gustMph)}` : ''} mph` : ''
+        const hum = p.humidity !== -999 ? ` · ${Math.round(p.humidity)}%` : ''
+        const rain = p.rainInHr > 0 ? `<div style="color:#7dd3fc">rain ${p.rainInHr}"/hr</div>` : ''
+        const age = p.ageMin !== -999 ? `updated ${p.ageMin}m ago` : ''
+        // Dark popup theme has zero padding — HTML brings its own (gauge lesson).
+        new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc;white-space:normal;overflow-wrap:break-word">${p.name}</div><div style="margin-top:3px;font-size:16px;font-weight:800;color:#ff9e16">${t}<span style="font-size:11px;font-weight:600;color:#e8f0f7">${feels}</span></div><div>${wind}${hum}</div>${rain}<div style="color:#9fb6cc;font-size:10.5px;margin-top:2px">${age}</div></div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'pws-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'pws-dots', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const load = () => {
+      if (m.getZoom() < 8) return
+      const b = m.getBounds()
+      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(3)).join(',')
+      fetch(`/api/pws-stations?bbox=${bbox}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { stations?: { id: string; name: string; lat: number; lng: number; tempF: number | null; feelsF: number | null; windMph: number | null; gustMph: number | null; humidity: number | null; rainInHr: number | null; ageMin: number | null }[] } | null) => {
+          if (cancelled || !j?.stations) return
+          const features = j.stations.map((s) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+            // -999 sentinel: expressions and popup HTML can't branch on null.
+            properties: {
+              name: s.name,
+              tempF: s.tempF ?? -999, feelsF: s.feelsF ?? -999,
+              windMph: s.windMph ?? -999, gustMph: s.gustMph ?? -999,
+              humidity: s.humidity ?? -999, rainInHr: s.rainInHr ?? 0,
+              ageMin: s.ageMin ?? -999,
+            },
+          }))
+          ;(m.getSource('pwsnet') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        })
+        .catch(() => { /* feed down — keep last dots */ })
+    }
+    const onMove = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(load, 900)
+    }
+    load()
+    m.on('moveend', onMove)
+    return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
+  }, [mapReady, overlaysOn.pwsnet])
+
   // ── Day/night terminator: shade the half of Earth in darkness right now.
   // Pure solar math (lib/terminator) — no service, no key; re-derives every
   // minute so the line creeps west like it should. Pairs with "City lights".
@@ -2222,6 +2297,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           ...MAP_OVERLAYS.map((o) => ({ key: o.key, label: o.label, note: o.note, on: !!overlaysOn[o.key] })),
           { key: 'nwswarn', label: 'Storm warnings', note: 'NWS severe/extreme polygons · 3-min refresh', on: !!overlaysOn.nwswarn },
           { key: 'gauges', label: 'Stream gauges', note: 'USGS live gage height · zoom in, tap a dot', on: !!overlaysOn.gauges },
+          { key: 'pwsnet', label: 'Weather stations', note: 'community stations · tap for temp & wind · zoom in', on: !!overlaysOn.pwsnet },
           { key: 'daynight', label: 'Day / night', note: 'live terminator · night side shaded · pairs with City lights', on: !!overlaysOn.daynight },
           { key: 'windanim', label: 'Wind flow', note: 'animated model wind · live view only', on: !!overlaysOn.windanim },
         ]}
