@@ -12,6 +12,8 @@ import { pointInPolygon } from './alerts-engine'
 import { computeRangeStats, estMpgForSpecs, type StatPoint } from './asset-stats'
 import { segmentVisits, type VisitPoint } from './visits'
 import { rangeWindow, fmtDateTime, type TimeRangeKey } from './dates'
+import { segmentStops } from './poi'
+import { classifyStops } from './poi-server'
 
 export interface AiToolCtx {
   companyId: string
@@ -53,6 +55,19 @@ export const AI_TOOLS = [
         days: { type: 'number', description: 'How many days back to look (1-14, default 7)' },
       },
       required: ['zone_name'],
+    },
+  },
+  {
+    name: 'asset_stops',
+    description:
+      'Every stop (5+ min) one asset made in a range, WITH what kind of place each was: job site, supplier, fuel station, restaurant/food, government office (DMV etc.), dealer, repair shop, store, or residence — plus arrival time and duration. Use for "where did X eat lunch", "did X stop at the supplier", "what did X do between sites", and any off-site accountability question.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        asset_name: { type: 'string', description: 'Asset name, may be partial' },
+        range: { type: 'string', enum: ['today', 'yesterday', '7d'], description: 'Time range (default today)' },
+      },
+      required: ['asset_name'],
     },
   },
   {
@@ -182,6 +197,48 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
   }
 }
 
+async function runAssetStops(ctx: AiToolCtx, input: { asset_name?: string; range?: string }) {
+  const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
+  if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
+  const key = (['today', 'yesterday', '7d'].includes(String(input.range)) ? input.range : 'today') as TimeRangeKey
+  const w = rangeWindow(ctx.tz, key, {})
+
+  const { createClient } = await import('./supabase-server')
+  const supabase = createClient()
+  const PAGE = 1000
+  const rows: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+  while (rows.length < 20_000) {
+    const { data, error } = await supabase
+      .from('asset_locations')
+      .select('lat, lng, speed, timestamp')
+      .eq('asset_id', asset.id)
+      .gte('timestamp', new Date(w.from).toISOString())
+      .lt('timestamp', new Date(w.to).toISOString())
+      .order('timestamp', { ascending: false })
+      .range(rows.length, rows.length + PAGE - 1)
+    if (error) return { error: error.message }
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) break
+  }
+
+  const raw = segmentStops(rows.reverse())
+  const rings = ctx.geofences
+    .filter((g) => g.kind !== 'boundary')
+    .map((g) => ({ name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
+  const stops = await classifyStops(raw, rings, pointInPolygon)
+  return {
+    asset: asset.name,
+    range: key,
+    stops: stops.map((s) => ({
+      arrived: fmtDateTime(s.fromMs, ctx.tz),
+      left: fmtDateTime(s.toMs, ctx.tz),
+      minutes: s.minutes,
+      place: s.name,
+      kind: s.kind,
+    })),
+  }
+}
+
 async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string }) {
   const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
   if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
@@ -222,6 +279,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
     switch (name) {
       case 'fleet_snapshot': return await runFleetSnapshot(ctx)
       case 'asset_activity': return await runAssetActivity(ctx, input as { asset_name?: string; range?: string })
+      case 'asset_stops': return await runAssetStops(ctx, input as { asset_name?: string; range?: string })
       case 'asset_telemetry': return await runAssetTelemetry(ctx, input as { asset_name?: string })
       case 'site_visits': return await runSiteVisits(ctx, input as { zone_name?: string; days?: number })
       case 'recent_alerts': return await runRecentAlerts(ctx, input as { limit?: number })

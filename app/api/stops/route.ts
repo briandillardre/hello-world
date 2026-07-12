@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rangeWindow, DEFAULT_TZ, type TimeRangeKey } from '@/lib/dates'
-import { segmentStops, classifyOsm, type PoiKind } from '@/lib/poi'
+import { segmentStops } from '@/lib/poi'
+import { classifyStops } from '@/lib/poi-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
 
 export const dynamic = 'force-dynamic'
@@ -14,36 +15,6 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * the zone (no geocoding); off-site stops reverse-geocode through Photon and
  * classify by OSM category — supplier vs DMV vs lunch, automatically.
  */
-
-// Geocode cache — ~11 m buckets. Trucks revisit the same places constantly,
-// so this stays warm and keeps us polite to the free community geocoder.
-const geoCache = new Map<string, { name: string; kind: PoiKind }>()
-const CACHE_CAP = 2000
-
-async function classifyPoint(lat: number, lng: number): Promise<{ name: string; kind: PoiKind }> {
-  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`
-  const hit = geoCache.get(key)
-  if (hit) return hit
-  let out: { name: string; kind: PoiKind } = { name: 'Stop', kind: 'other' }
-  try {
-    const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`, {
-      headers: { 'user-agent': 'HammerTrack stops (briandillardre@gmail.com)' },
-      signal: AbortSignal.timeout(5000),
-    })
-    if (r.ok) {
-      const j = await r.json()
-      const p = j?.features?.[0]?.properties
-      if (p) {
-        const kind = classifyOsm(p.osm_key, p.osm_value)
-        const name = p.name || [p.street, p.city].filter(Boolean).join(', ') || 'Stop'
-        out = { name, kind }
-      }
-    }
-  } catch { /* geocoder down — 'Stop · other' is honest */ }
-  if (geoCache.size >= CACHE_CAP) geoCache.clear()
-  geoCache.set(key, out)
-  return out
-}
 
 export async function GET(req: NextRequest) {
   if (isMock) return NextResponse.json({ stops: [] })
@@ -85,19 +56,7 @@ export async function GET(req: NextRequest) {
     .filter((g) => g.kind !== 'boundary')
     .map((g) => ({ name: g.name as string, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
 
-  const stops = []
-  let geocodes = 0
-  for (const s of raw) {
-    const zone = rings.find((z) => z.ring.length >= 3 && pointInPolygon([s.lng, s.lat], z.ring))
-    if (zone) {
-      stops.push({ ...s, name: zone.name, kind: 'site' as PoiKind })
-    } else if (geocodes < 20) {
-      geocodes++
-      stops.push({ ...s, ...(await classifyPoint(s.lat, s.lng)) })
-    } else {
-      stops.push({ ...s, name: 'Stop', kind: 'other' as PoiKind })
-    }
-  }
+  const stops = await classifyStops(raw, rings, pointInPolygon)
 
   return NextResponse.json(
     { stops, tz },
