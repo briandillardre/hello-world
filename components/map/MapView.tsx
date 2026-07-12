@@ -720,14 +720,24 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           })),
         },
       })
-      // Boundary zones render OUTLINE-ONLY — no fill — so a large perimeter
-      // around the whole yard doesn't black out the map underneath it.
+      // Boundary zones render OUTLINE-ONLY — and their fill is EXCLUDED from
+      // this layer entirely, because even a fully transparent fill hit-tests:
+      // a county-sized perimeter was swallowing every map tap inside it
+      // ("it should not click on the map — only the border", Jul 12).
       m.addLayer({
         id: 'geofence-fill', type: 'fill', source: 'geofences',
+        filter: ['!=', ['get', 'kind'], 'boundary'],
         paint: {
           'fill-color': ['get', 'color'],
-          'fill-opacity': ['case', ['==', ['get', 'kind'], 'boundary'], 0, ['==', ['get', 'kind'], 'yard'], 0.06, 0.14],
+          'fill-opacity': ['case', ['==', ['get', 'kind'], 'yard'], 0.06, 0.14],
         },
+      })
+      // Boundaries stay tappable on the BORDER only: a fat, near-invisible
+      // hit line under the visible dashed outline.
+      m.addLayer({
+        id: 'geofence-hit-line', type: 'line', source: 'geofences',
+        filter: ['==', ['get', 'kind'], 'boundary'],
+        paint: { 'line-color': ['get', 'color'], 'line-width': 18, 'line-opacity': 0.04 },
       })
       m.addLayer({
         id: 'geofence-outline', type: 'line', source: 'geofences',
@@ -980,8 +990,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         setSelectedDevice(device)
       })
 
-      // Geofence zone → zone sheet (presence + cost, live-synced to the timeline)
-      m.on('click', 'geofence-fill', (e) => {
+      // Geofence zone → zone sheet (presence + cost, live-synced to the
+      // timeline). Site/yard zones open from their interior (geofence-fill);
+      // boundary zones open ONLY from their border (geofence-hit-line).
+      const selectZoneAt = (e: maplibregl.MapLayerMouseEvent) => {
         // Don't hijack clicks landing on/near any asset, cluster, or device — the
         // pin always wins. Query a small box so the whole dot (incl. its glow) is
         // protected, not just the exact pixel.
@@ -997,9 +1009,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         setSelectedAsset(null)
         setSelectedDevice(null)
         setSelectedZone(fence)
-      })
+      }
+      m.on('click', 'geofence-fill', selectZoneAt)
+      m.on('click', 'geofence-hit-line', selectZoneAt)
 
-      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill']) {
+      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill', 'geofence-hit-line']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
@@ -1473,7 +1487,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   useEffect(() => {
     const m = map.current
     if (!mapReady) return
-    for (const id of ['geofence-fill', 'geofence-outline', 'geofence-labels', 'geofence-labels-full']) {
+    for (const id of ['geofence-fill', 'geofence-hit-line', 'geofence-outline', 'geofence-labels', 'geofence-labels-full']) {
       if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones ? 'visible' : 'none')
     }
   }, [mapReady, showZones])
