@@ -1,0 +1,58 @@
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { getGeofences } from '@/lib/db/geofences'
+import { ReceiptsInbox } from '@/components/receipts/ReceiptsInbox'
+import type { ReceiptRow } from '@/lib/actions/receipts'
+
+export const dynamic = 'force-dynamic'
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
+/** Receipts inbox: field photos in, approved QuickBooks expenses out. */
+export default async function ReceiptsPage() {
+  const companyId = await getCurrentCompanyId()
+  let pending: ReceiptRow[] = []
+  let done: ReceiptRow[] = []
+  let available = false
+  if (!isMock) {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false })
+        .limit(200)
+      if (!error) {
+        available = true
+        pending = (data ?? []).filter((r) => r.status === 'pending') as ReceiptRow[]
+        done = (data ?? []).filter((r) => r.status !== 'pending').slice(0, 30) as ReceiptRow[]
+      }
+    } catch { /* table absent — setup note below */ }
+  }
+  const geofences = await getGeofences(companyId)
+  const zoneNames: Record<string, string> = {}
+  for (const g of geofences) zoneNames[g.id] = g.name
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <div>
+        <h1 className="font-display font-bold text-xl text-ink">Receipts</h1>
+        <p className="text-[12.5px] text-faint">
+          Snapped in the field → read by AI → approved by you → posted to QuickBooks. Nothing posts without the ✓.
+        </p>
+      </div>
+      {!available && !isMock ? (
+        <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
+          <p className="text-sm text-muted">
+            One quick database update turns the inbox on — run migration{' '}
+            <span className="font-mono text-teal">017_receipts.sql</span> in the Supabase SQL Editor.
+          </p>
+        </div>
+      ) : (
+        <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
+      )}
+    </div>
+  )
+}

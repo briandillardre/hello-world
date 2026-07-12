@@ -86,9 +86,10 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     if (writeup.length < 10) return { ok: false, error: 'Write up the day first — a couple of sentences minimum.' }
 
     const { data: open } = await supabase
-      .from('time_entries').select('id').eq('user_id', userId).is('clock_out_at', null)
+      .from('time_entries').select('id, project_geofence_id').eq('user_id', userId).is('clock_out_at', null)
       .order('clock_in_at', { ascending: false }).limit(1)
     const entryId = open?.[0]?.id as string | undefined
+    const entryProject = (open?.[0]?.project_geofence_id as string | null) ?? null
     if (!entryId) return { ok: false, error: "You aren't clocked in." }
 
     const photos: { url: string; kind: 'photo' | 'receipt' }[] = []
@@ -102,7 +103,7 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
 
     const safety = String(form.get('safety') ?? '').trim().slice(0, 2000)
 
-    const { error: logErr } = await supabase.from('daily_logs').insert({
+    const { data: logRow, error: logErr } = await supabase.from('daily_logs').insert({
       company_id: companyId,
       user_id: userId,
       time_entry_id: entryId,
@@ -111,8 +112,25 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       trucks_fueled: form.get('trucksFueled') === null ? null : form.get('trucksFueled') === 'yes',
       equipment_fueled: form.get('equipmentFueled') === null ? null : form.get('equipmentFueled') === 'yes',
       photos,
-    })
+    }).select('id').single()
     if (logErr) return { ok: false, error: logErr.message }
+
+    // Receipt photos also land in the receipts inbox (migration 017) so the
+    // office can extract + approve them into QuickBooks. Tolerant: absent
+    // table just means the inbox feature isn't turned on yet.
+    const receiptPhotos = photos.filter((ph) => ph.kind === 'receipt')
+    if (receiptPhotos.length) {
+      const { error: rcptErr } = await supabase.from('receipts').insert(
+        receiptPhotos.map((ph) => ({
+          company_id: companyId,
+          user_id: userId,
+          daily_log_id: logRow?.id ?? null,
+          project_geofence_id: entryProject,
+          url: ph.url,
+        }))
+      )
+      if (rcptErr) console.error('Receipt indexing skipped:', rcptErr.message)
+    }
 
     const { error: outErr } = await supabase
       .from('time_entries')
