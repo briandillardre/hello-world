@@ -61,7 +61,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', hasOpacity: true, hint: 'surface temp shading · hourly' },
   { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly' },
   { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly' },
-  { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', hint: 'animated wind — live view only' },
+  { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
   { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see weather stations', hint: 'community stations · tap for readings' },
   { id: 'lightning', label: 'Lightning', group: 'weather', status: 'coming-soon' },
 

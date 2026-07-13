@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
  * Sample tiles centered on Greenville, SC.
  */
 
-const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' }[] = [
+const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' | 'text'; expect?: string }[] = [
   {
     key: 'stormtops7',
     label: 'Storm tops IR (zoom set 7)',
@@ -84,6 +84,13 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'json',
   },
   {
+    key: 'rtma-caps',
+    label: 'RTMA layer names (nowCOAST GetCapabilities)',
+    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities',
+    kind: 'text',
+    expect: '<Name>',
+  },
+  {
     key: 'spcwatch',
     label: 'SPC watch boxes (IEM)',
     url: 'https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson',
@@ -97,9 +104,23 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   },
 ]
 
+/** GFS wind sample (the Wind-flow layer's source) — yesterday's 00z run is
+ *  always published, and one grid point keeps the request tiny. */
+function nomadsCheck(): { key: string; label: string; url: string; kind: 'text'; expect: string } {
+  const day = new Date(Date.now() - 86_400_000)
+  const d = `${day.getUTCFullYear()}${String(day.getUTCMonth() + 1).padStart(2, '0')}${String(day.getUTCDate()).padStart(2, '0')}`
+  return {
+    key: 'nomads-wind',
+    label: 'Wind flow model (NOAA NOMADS GFS)',
+    url: `https://nomads.ncep.noaa.gov/dods/gfs_0p50/gfs${d}/gfs_0p50_00z.ascii?ugrd10m[0][240][500]`,
+    kind: 'text',
+    expect: 'ugrd10m',
+  }
+}
+
 export async function GET() {
   const results = await Promise.all(
-    CHECKS.map(async (c) => {
+    [...CHECKS, nomadsCheck()].map(async (c) => {
       try {
         const res = await fetch(c.url, {
           signal: AbortSignal.timeout(8000),
@@ -110,12 +131,22 @@ export async function GET() {
         const contentType = res.headers.get('content-type') ?? ''
         // ArcGIS servers love returning a 200 with a JSON error body where an
         // image should be — that counts as a failure, not a pass.
-        const ok = res.ok && (c.kind === 'image' ? contentType.startsWith('image/') && buf.byteLength > 200 : contentType.includes('json'))
+        const ok = res.ok && (
+          c.kind === 'image' ? contentType.startsWith('image/') && buf.byteLength > 200
+          : c.kind === 'json' ? contentType.includes('json')
+          : new TextDecoder().decode(buf).includes(c.expect ?? '')
+        )
         return { key: c.key, label: c.label, url: c.url, status: res.status, contentType, bytes: buf.byteLength, ok }
       } catch (err) {
         return { key: c.key, label: c.label, url: c.url, status: 0, contentType: '', bytes: 0, ok: false, error: err instanceof Error ? err.message : 'fetch failed' }
       }
     })
+  )
+  // Key-presence rows: no fetch, just "is this configured in Vercel" — the
+  // two layers that need a free key look broken when the key is absent.
+  results.push(
+    { key: 'windy-key', label: 'Webcams key (WINDY_WEBCAMS_KEY set?)', url: 'https://api.windy.com/webcams', status: 0, contentType: '', bytes: 0, ok: !!process.env.WINDY_WEBCAMS_KEY },
+    { key: 'tomtom-key', label: 'Traffic key (NEXT_PUBLIC_TOMTOM_KEY set?)', url: 'https://developer.tomtom.com', status: 0, contentType: '', bytes: 0, ok: !!process.env.NEXT_PUBLIC_TOMTOM_KEY },
   )
   return NextResponse.json({ at: new Date().toISOString(), checks: results })
 }

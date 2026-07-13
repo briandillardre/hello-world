@@ -1570,6 +1570,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [mapReady, showDevices])
 
+  // RTMA WMS layer names are discovered from the server's capabilities, not
+  // trusted from our hardcoded guesses — a wrong/renamed LAYERS= draws
+  // nothing, silently. null = not fetched yet; {} = discovery failed, use
+  // the configured defaults.
+  const RTMA_KEYS = useMemo(() => ['temp', 'feels', 'wind'] as const, [])
+  const [rtmaNames, setRtmaNames] = useState<{ temp?: string | null; feels?: string | null; wind?: string | null } | null>(null)
+  const rtmaWanted = RTMA_KEYS.some((k) => overlaysOn[k])
+  useEffect(() => {
+    if (!rtmaWanted || rtmaNames !== null) return
+    let cancelled = false
+    fetch('/api/rtma-layers')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { temp?: string | null; feels?: string | null; wind?: string | null } | null) => {
+        if (!cancelled) setRtmaNames(j ?? {})
+      })
+      .catch(() => { if (!cancelled) setRtmaNames({}) })
+    return () => { cancelled = true }
+  }, [rtmaWanted, rtmaNames])
+
   // ── Free national overlays (topo, hillshade, wetlands, streams) ───────────
   useEffect(() => {
     const m = map.current
@@ -1578,8 +1597,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const on = !!overlaysOn[o.key]
       const srcId = `ovl-${o.key}`
       const layerId = `ovl-${o.key}-layer`
+      const isRtma = (RTMA_KEYS as readonly string[]).includes(o.key)
+      // RTMA overlays wait for name discovery so the source is created with
+      // the right LAYERS= the first time (effect re-runs when names arrive).
+      if (on && isRtma && rtmaNames === null) continue
       if (on && !m.getSource(srcId)) {
-        m.addSource(srcId, { type: 'raster', tiles: [o.tiles], tileSize: 256, maxzoom: o.maxzoom })
+        let tiles = o.tiles
+        if (isRtma) {
+          const real = rtmaNames?.[o.key as 'temp' | 'feels' | 'wind']
+          if (real) tiles = tiles.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(real)}`)
+        }
+        m.addSource(srcId, { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: o.maxzoom })
         const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
         m.addLayer(
           { id: layerId, type: 'raster', source: srcId, minzoom: o.minzoom, paint: { 'raster-opacity': overlayOpacity[o.key] ?? o.opacity } },
@@ -1589,7 +1617,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (m.getLayer(layerId)) m.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, overlaysOn])
+  }, [mapReady, overlaysOn, rtmaNames])
+
+  // Raster tiles that fail to load (moved WMS layer, dead service, blocked
+  // request) used to die in silence — the row looked on, the map drew
+  // nothing. Surface each failing overlay ONCE per session on its panel row.
+  const tileErrReported = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const onErr = (e: unknown) => {
+      const sid = (e as { sourceId?: string }).sourceId
+      if (!sid || !sid.startsWith('ovl-')) return
+      const key = sid.slice(4)
+      if (tileErrReported.current.has(key)) return
+      tileErrReported.current.add(key)
+      window.dispatchEvent(new CustomEvent('ht:layer-error', {
+        detail: { key, msg: 'feed not returning imagery — check /diag' },
+      }))
+    }
+    m.on('error', onErr)
+    return () => { m.off('error', onErr) }
+  }, [mapReady])
 
   // Panel opacity sliders → live raster opacity (overlays + special rasters).
   useEffect(() => {
@@ -1977,7 +2026,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const b = m.getBounds()
       const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(3)).join(',')
       fetch(`/api/webcams?bbox=${bbox}`)
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (r.status === 501) {
+            // No server key configured — say so on the row instead of
+            // showing an on-toggle over an empty layer.
+            window.dispatchEvent(new CustomEvent('ht:layer-error', {
+              detail: { key: 'webcams', msg: 'needs a free key — add WINDY_WEBCAMS_KEY in Vercel (api.windy.com/webcams)' },
+            }))
+            return null
+          }
+          return r.ok ? r.json() : null
+        })
         .then((j: { cams?: { id: string; title: string; lat: number; lng: number; thumb: string | null; page: string | null }[] } | null) => {
           if (cancelled || !j?.cams) return
           const features = j.cams.map((c) => ({
@@ -2042,11 +2101,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!overlaysOn.windanim || range !== 'live') return
     let cancelled = false
     fetch('/api/wind')
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) {
+          window.dispatchEvent(new CustomEvent('ht:layer-error', {
+            detail: { key: 'windanim', msg: 'wind model feed unavailable — check /diag' },
+          }))
+          return null
+        }
+        return r.json()
+      })
       .then((f: WindField | null) => {
         if (cancelled || !f || !Array.isArray(f.u) || !f.u.length) return
         windStopRef.current?.()
         windStopRef.current = startWindParticles(m, f)
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'windanim', at: Date.now() } }))
       })
       .catch(() => { /* model down — layer just stays empty */ })
     return () => {

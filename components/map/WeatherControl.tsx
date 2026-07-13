@@ -172,15 +172,35 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
 
   // ── Feed freshness: layer effects broadcast when they fetch ───────────────
   const [feedAt, setFeedAt] = useState<Record<string, number>>({})
+  // Layer effects report failures here (missing key, dead feed, tiles not
+  // rendering) — the row says WHY instead of sitting silently empty.
+  const [feedErr, setFeedErr] = useState<Record<string, string>>({})
   const [, setTick] = useState(0)
   useEffect(() => {
     const onUpd = (e: Event) => {
       const d = (e as CustomEvent<{ key: string; at: number }>).detail
-      if (d?.key) setFeedAt((f) => ({ ...f, [d.key]: d.at }))
+      if (!d?.key) return
+      setFeedAt((f) => ({ ...f, [d.key]: d.at }))
+      // A successful update clears any earlier failure note.
+      setFeedErr((f) => {
+        if (!(d.key in f)) return f
+        const next = { ...f }
+        delete next[d.key]
+        return next
+      })
+    }
+    const onErr = (e: Event) => {
+      const d = (e as CustomEvent<{ key: string; msg: string }>).detail
+      if (d?.key && d?.msg) setFeedErr((f) => ({ ...f, [d.key]: d.msg }))
     }
     window.addEventListener('ht:layer-updated', onUpd)
+    window.addEventListener('ht:layer-error', onErr)
     const id = setInterval(() => setTick((t) => t + 1), 60_000) // refresh "updated Xp" stamps
-    return () => { window.removeEventListener('ht:layer-updated', onUpd); clearInterval(id) }
+    return () => {
+      window.removeEventListener('ht:layer-updated', onUpd)
+      window.removeEventListener('ht:layer-error', onErr)
+      clearInterval(id)
+    }
   }, [])
   const stamp = (key: string): { text: string; stale: boolean } | null => {
     const at = feedAt[key]
@@ -277,6 +297,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </button>
         {st.reason && !comingSoon && (
           <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber/90">{st.reason}</p>
+        )}
+        {st.on && !st.disabled && feedErr[def.id] && (
+          <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber">⚠ {feedErr[def.id]}</p>
         )}
         {st.on && !st.disabled && !st.reason && def.hint && (
           <p className="px-3 pb-1.5 -mt-1 font-mono text-[10px] text-teal">
