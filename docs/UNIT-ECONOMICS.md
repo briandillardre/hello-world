@@ -8,10 +8,11 @@ Internal doc — vendor names live here and in CLAUDE.md only, never user-facing
 
 ## The one-paragraph answer
 
-**You are not blocked on Kore.** Hologram's current bills (~$1–2/SIM/mo on the
-pilot) are the *worst case* — a Kore quote can only lower it. At worst-case SIM
-pricing, all-in COGS for a tracked machine is **~$4/mo at Founding-25 scale,
-falling to ~$2 at 1,000 devices** — so a $6–8/tracked-asset price is
+**KORE quote landed Jul 13 (Felix — docs/HARDWARE-PRICING.md) and it beats
+the worst case:** pooled 10–25 MB plans run **$0.70–$1.56/SIM/mo** vs the
+$1.75 planning number, and hardware came in at $86 OBD / $83 battery unit /
+$20 tags. At quoted SIM pricing, all-in COGS for a tracked machine is
+**~$3.40/mo at Founding-25 scale, falling to ~$1.50 at 1,000 devices** — so a $6–8/tracked-asset price is
 margin-positive from customer #1 and a $3 tier only works for BLE tool tags
 (which have **zero recurring cost**). "100,000 devices tomorrow" physically
 can't happen (install/shipping is the throttle), and every technical gate
@@ -30,7 +31,7 @@ device #11).
 
 | Layer | Vendor | What we pay for | Scales with |
 |---|---|---|---|
-| Cellular data | Hologram today, Kore quote pending | per-SIM/mo + data | # SIM devices |
+| Cellular data | Hologram (pilot) → KORE quoted Jul 13 (docs/HARDWARE-PRICING.md) | per-SIM/mo + data | # SIM devices |
 | Telemetry pipe | flespi | plan tier by device count | # devices |
 | Database + auth | Supabase | compute instance, storage GB, egress | rows written + app traffic |
 | App hosting + ingest | Vercel | function invocations, CPU-hrs, bandwidth | # devices (ingest) + # users (app) |
@@ -57,7 +58,9 @@ device #11).
   $0.0106/GB-hr. No hard spend cap on Pro — set spend alerts.
 - **Hologram (pilot actuals)** — ~$1–2/SIM/mo at our usage profile
   (~5–10 MB/mo per truck: Codec 8E records are ~100–150 bytes on the wire).
-  Planning number: **$1.75 list / $1.10 negotiated**.
+- **KORE (quoted Jul 13, Felix)** — pooled 10 MB $0.70–1.20, 25 MB
+  $0.81–1.56, 50 MB $1.08–2.04 per SIM/mo; SIM $1.50 one-time. New
+  planning number: **$1.00/SIM/mo** (volume breaks still to ask).
 - **MapTiler** — Free tier is non-commercial. **Flex $25/mo** (+$0.10 per
   1,000 extra requests), Unlimited $295/mo.
 - **CARTO free basemaps — ⚠ licensing gap.** The free tile endpoints we use
@@ -116,6 +119,13 @@ SIM-carrying units (trucks + equipment); tool tags add revenue with ~$0 COGS.
 | **SIM (cellular)** | $1.75 · **43%** | $1.75 · **61%** | $1.50 · **77%** | $1.20 · **88%** | $1.10 · **92%** |
 | **COGS / device / mo** | **$4.10** | **$2.87** | **$1.94** | **$1.37** | **$1.20** |
 
+> **Jul 13 update — KORE quote (docs/HARDWARE-PRICING.md):** SIM line drops
+> to **~$1.00** at our 10–25 MB profile (flat quote; volume breaks TBD), so
+> the bottom row becomes **≈ $3.35 / $2.12 / $1.45 / $1.15 / $1.10**. Gross
+> margin at the $8 list rises to **~58% / 73% / 82% / 86%** across the same
+> scale points — the SIM is still the biggest line, but the Kore
+> negotiation already bought back 6–9 margin points.
+
 **Is flespi a problem? No — it's a step-function, not a scaling cost.** The
 $140 looks ugly at 100 devices (34% of COGS) only because you're prepaying
 for 1,000 devices of headroom on day one. It never goes up until device
@@ -143,8 +153,9 @@ noise at scale.
 tracker price. The pricing page's $3–8 range works if the tiers mean:
 **$3/mo per BLE tool tag** (pure margin), **$6–8/mo per tracked machine**
 (healthy from customer #1). Hardware passes through at cost ("you own it, no
-$500 setup fee" — the anti-Tenna wedge): OBD unit ~$60–80, equipment unit
-~$110–150 + solar, tags $20.
+$500 setup fee" — the anti-Tenna wedge). **Quoted (KORE, Jul 13):** OBD unit
+$86, battery equipment unit $83, wired CAN equipment unit $112 + $118
+adapter = $230, tags $20, SIM $1.50 one-time.
 
 ## 4 · "If I add 100,000 devices tomorrow, what breaks?" — the gates, in order
 
@@ -166,13 +177,13 @@ is unrecoverable — but that's why G3 gets done at ~300 devices and G4 at
 faster than you can ship and install hardware, and that throttle is measured
 in dozens per week, not thousands per day.
 
-## 5 · What to get from Felix / Kore (the actual ask list)
+## 5 · Felix / Kore ask list — status after the Jul 13 quote
 
-1. Per-SIM monthly at 100 / 1,000 / 10,000 units — pooled Cat-M1, US + Canada.
-2. Price structure: SIM/platform fee vs data, at a ~10 MB/device/mo profile.
-3. **Zero-usage months** — equipment sleeps all winter; what does a dormant SIM cost?
-4. Suspend/reactivate API (churned customers shouldn't burn SIM fees).
-5. eUICC / multi-IMSI carrier fallback (dead zones on rural job sites).
+1. ~~Price structure at ~10 MB profile~~ ✅ **$0.70–1.56/SIM/mo pooled** (docs/HARDWARE-PRICING.md)
+2. ~~Multi-IMSI fallback~~ ✅ two families quoted: SuperSIM (AT&T/T-Mo/Verizon) and Carrier+ (AT&T native + failover) — **still to confirm which column is which**
+3. Volume breaks at 100 / 1,000 / 10,000 SIMs (quote reads flat)
+4. **Zero-usage months** — dormant winter SIM cost + suspend/reactivate API
+5. Pooled-overage policy, MOQ, shipping, lead times
 6. Volume breaks and **contract minimums — do not sign a minimum before
    Founding 25 is full.** Month-to-month at 100 units even if it costs more.
 7. Form factors: nano for the OBD units, and confirm the equipment unit's SIM spec.

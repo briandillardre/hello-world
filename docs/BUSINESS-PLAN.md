@@ -50,10 +50,12 @@ Per-asset, per-month. Simple enough to quote from a truck cab.
 - **Annual prepay = 2 months free.** This is your hardware-inventory financing, from customers instead of a bank.
 - **Founding 25 program (now–Oct):** flat **$99/mo** for up to 25 assets, price locked 2 years, in exchange for a testimonial, a case study, and a monthly 15-minute call. These 25 accounts are worth more than their revenue — they're your references and your churn lab.
 
-**Reference customer economics** (typical 20-asset GC: 8 trucks, 5 machines, 7 tools):
+**Reference customer economics** (typical 20-asset GC: 8 trucks, 5 machines, 7 tools)
+*(updated Jul 13 with the KORE quote — docs/HARDWARE-PRICING.md):*
 - Revenue: $64 + $50 + $10.50 ≈ **$125/mo → $1,500/yr**
-- Connectivity COGS: 13 cellular devices × ~$1.60 (Hologram + flespi) ≈ $21/mo
-- **Software gross margin ≈ 83%** · Hardware kit ≈ $1,275 cost, sold ~$1,495 or amortized
+- Connectivity COGS: 13 cellular devices × ~$1.00 (KORE pooled 10–25 MB) + flespi share ≈ **$15/mo**
+- **Software gross margin ≈ 88%** · Hardware kit **$1,265 quoted** (8×$86 OBD + 5×$83 battery units + 7×$20 tags + SIMs), sold ~$1,495 or amortized
+- **Premium equipment tier now priced:** wired CAN unit ($112 + $118 adapter = $230/machine) reads true engine hours, fuel burn, and fault codes — supports a **$12–15/mo** machine tier and utilization-grade billing (see docs/PRICING-TIERS.md)
 - As the mix shifts to 40–80-asset fleets via dealers, average account grows to **$180–240/mo**
 
 ---

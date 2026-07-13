@@ -62,10 +62,11 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 ## Hardware Stack (Decided)
 | Role | Device | Notes |
 |------|--------|-------|
-| Trucks | Teltonika FMM003 | OBD2 plug-in, Cat-M1, BLE 4.0 gateway |
-| Equipment | Teltonika TAT141 | Cat-M1, BLE 5.2, IP68, Li-SOCl2 battery |
-| Tool tags | BlueCharm BC021 | BLE iBeacon, IP67, $20, Amazon Prime |
-| SIM cards | Hologram (hologram.io) | nano SIM, Cat-M1, ~$1-2/mo per device |
+| Trucks | Teltonika FMM003/FMM00A | OBD2 plug-in, Cat-M1, BLE gateway, $86 (KORE) |
+| Equipment | Teltonika TAT141 | Cat-M1, BLE 5.2, IP68, battery, $83 (KORE) |
+| Equipment (CAN, Phase 2) | Teltonika FMM650 + CAN adapter | wired 8-32V, J1939 true hours/fuel/faults, $112+$118 (KORE) |
+| Tool tags | BlueCharm BC021 / Feasycom / Teltonika BLE | BLE iBeacon, ~$20 (Amazon or KORE) |
+| SIM cards | Hologram (pilot) / KORE pooled | Cat-M1; KORE quoted $0.70-1.56/mo (Jul 13, Felix — docs/HARDWARE-PRICING.md, confidential) |
 
 ### Live pilot units (T1 = FMM00A OBD units, deployed Jul 2026)
 | Unit | IMEI suffix | Hologram SIM | Installed in |
