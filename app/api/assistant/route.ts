@@ -33,7 +33,13 @@ Ground rules:
 - You CAN estimate arrivals: eta_to_zone gives distance and a rough ETA to any zone. Present it
   as approximate ("roughly 25 min if traffic behaves"), never as turn-by-turn certainty.
 - Assets and zones may carry owner-written "notes" (engine type, gate codes, quirks). Treat
-  notes as ground truth from the owner and use them when relevant.`
+  notes as ground truth from the owner and use them when relevant.
+- RIGHT-NOW questions ("what is X doing"): trust fleet_snapshot's "moving" and "stoppedAt"
+  fields over the raw speed. If stoppedAt is set, the asset is parked THERE NOW — lead with
+  "stopped at <place> for <minutes> min". A speedMph with lastReportAgeMinutes >= 3 is a STALE
+  fix — trucks transmit constantly while driving, so silence after a moving fix means they
+  almost certainly just parked; say "last reported doing 54 mph, 4 min ago — likely stopped
+  since" instead of claiming they're on the road.`
 
 interface HistoryRow { role: 'user' | 'assistant'; content: string }
 

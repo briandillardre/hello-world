@@ -118,12 +118,46 @@ function matchByName<T extends { name: string }>(q: string, list: T[]): T | null
   return best
 }
 
+/** In-progress dwell: is this asset sitting still RIGHT NOW, and since when?
+ *  The stops report only knows about stops ≥5 min; this catches "pulled into
+ *  the gas station 3 minutes ago" so the AI never says "moving at 54 mph"
+ *  off a fix from before the driver parked. */
+async function currentDwell(assetId: string): Promise<{ minutes: number; lat: number; lng: number } | null> {
+  try {
+    const { createClient } = await import('./supabase-server')
+    const supabase = createClient()
+    const sinceIso = new Date(Date.now() - 30 * 60_000).toISOString()
+    const { data } = await supabase
+      .from('asset_locations')
+      .select('lat, lng, speed, timestamp')
+      .eq('asset_id', assetId)
+      .gte('timestamp', sinceIso)
+      .order('timestamp', { ascending: false })
+      .limit(200)
+    if (!data?.length) return null
+    const newest = data[0]
+    const newestMs = Date.parse(newest.timestamp)
+    // Data too stale to make a live claim either way.
+    if (Date.now() - newestMs > 15 * 60_000) return null
+    if ((newest.speed ?? 0) >= 2) return null
+    const kx = 111_320 * Math.cos((newest.lat * Math.PI) / 180)
+    let earliest = newestMs
+    for (const r of data) {
+      const dist = Math.hypot((r.lng - newest.lng) * kx, (r.lat - newest.lat) * 110_540)
+      if ((r.speed ?? 0) >= 2 || dist > 120) break
+      earliest = Date.parse(r.timestamp)
+    }
+    const minutes = Math.round((Date.now() - earliest) / 60_000)
+    return minutes >= 2 ? { minutes, lat: newest.lat, lng: newest.lng } : null
+  } catch { return null }
+}
+
 async function runFleetSnapshot(ctx: AiToolCtx) {
   const { assets, geofences } = ctx
   const rings = geofences
     .filter((g) => g.kind !== 'boundary')
     .map((g) => ({ name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
-  return assets.map((a) => {
+  return Promise.all(assets.map(async (a) => {
     const loc = a.location
     const site = loc
       ? rings.find((r) => r.ring.length >= 3 && pointInPolygon([loc.lng, loc.lat], r.ring))?.name ?? null
@@ -131,20 +165,41 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
     const raw = (loc?.raw ?? {}) as Record<string, unknown>
     const fuelPct = typeof raw['fuel.level'] === 'number' ? Math.round(raw['fuel.level'] as number) : null
     const rpm = typeof raw['engine.rpm'] === 'number' ? (raw['engine.rpm'] as number) : null
+    const ageMin = loc ? Math.max(0, Math.round((Date.now() - new Date(loc.timestamp).getTime()) / 60_000)) : null
+    // Live dwell check for powered assets that aren't clearly mid-drive on a
+    // FRESH fix — catches "parked 3 minutes ago, tracker's last packet was
+    // still doing 54 mph" (devices report on a lag around ignition-off).
+    const mightBeStopped = (a.type === 'vehicle' || a.type === 'equipment') && loc != null
+    const dwell = mightBeStopped ? await currentDwell(a.id) : null
+    let stoppedAt: { place: string; kind: string; minutes: number } | undefined
+    if (dwell) {
+      try {
+        const { classifyPoint } = await import('./poi-server')
+        const p = await classifyPoint(dwell.lat, dwell.lng)
+        stoppedAt = { place: p.name, kind: p.kind, minutes: dwell.minutes }
+      } catch { stoppedAt = { place: 'current location', kind: 'other', minutes: dwell.minutes } }
+    }
     return {
       name: a.name,
       type: a.type,
       site: site ?? (loc ? 'off-site' : 'no signal'),
       speedMph: loc?.speed ?? null,
-      moving: (loc?.speed ?? 0) > 2,
+      // Only claim movement off a FRESH fix. Vehicles stream every few
+      // seconds while driving, so a moving fix >3 min old means the truck
+      // almost certainly parked (ignition-off kills transmission mid-speed).
+      // Equipment reports ~5-min intervals, so allow 12.
+      moving: (loc?.speed ?? 0) > 2 && (ageMin ?? 99) < (a.type === 'vehicle' ? 3 : 12) && !stoppedAt,
+      // Verified sitting-still-right-now: where and for how long.
+      stoppedAt,
       batteryPct: loc?.battery ?? null,
       fuelPct,
       engineOn: rpm != null ? rpm > 300 : typeof raw['engine.ignition.status'] === 'boolean' ? raw['engine.ignition.status'] : null,
       lastSeen: loc ? fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz) : null,
+      lastReportAgeMinutes: ageMin,
       // Owner-written notes ("V6 engine", "spare key in office") — ground truth.
       notes: typeof a.metadata?.notes === 'string' && a.metadata.notes ? String(a.metadata.notes).slice(0, 240) : undefined,
     }
-  })
+  }))
 }
 
 async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; range?: string }) {
