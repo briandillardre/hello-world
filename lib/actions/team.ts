@@ -37,8 +37,13 @@ export async function getInviteInfoAction(token: string): Promise<InviteInfo> {
   }
 }
 
-/** Admin: create an invite, return its token so the client can build a link. */
-export async function createInviteAction(email: string, role: Role): Promise<{ token: string } | { error: string }> {
+/** Admin: create an invite. If an email was given and email sending is
+ *  configured (RESEND_API_KEY), the invite is emailed directly; the link is
+ *  returned either way so the copy-button fallback always works. */
+export async function createInviteAction(
+  email: string,
+  role: Role
+): Promise<{ token: string; emailed: boolean; emailError?: string } | { error: string }> {
   const c = await ctx()
   if (!c) return { error: 'Not signed in.' }
   if (!c.isAdmin) return { error: 'Only admins can invite teammates.' }
@@ -46,13 +51,69 @@ export async function createInviteAction(email: string, role: Role): Promise<{ t
   const token = randomBytes(24).toString('base64url')
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
-    const { error } = await createServiceClient().from('invites').insert({
+    const svc = createServiceClient()
+    const { error } = await svc.from('invites').insert({
       company_id: c.companyId, email: email.trim() || null, role: safeRole, token, created_by: c.userId,
     })
     if (error) { console.error('invite create failed', error); return { error: 'Could not create the invite. Is migration 010 applied?' } }
     revalidatePath('/team')
-    return { token }
+
+    let emailed = false
+    let emailError: string | undefined
+    const to = email.trim()
+    if (to) {
+      const { sendEmail, inviteEmailHtml, emailConfigured } = await import('@/lib/email')
+      if (!emailConfigured()) {
+        emailError = 'not configured'
+      } else {
+        const { data: co } = await svc.from('companies').select('name').eq('id', c.companyId).single()
+        const { BRAND_URL } = await import('@/lib/brand')
+        const res = await sendEmail(
+          to,
+          `You're invited to ${co?.name ?? 'a team'} on HammerTrack`,
+          inviteEmailHtml({
+            companyName: co?.name ?? 'the team',
+            inviterName: c.name || c.email,
+            role: safeRole,
+            link: `${BRAND_URL}/join?token=${token}`,
+          })
+        )
+        emailed = res.ok
+        if (!res.ok) emailError = res.error
+      }
+    }
+    return { token, emailed, emailError }
   } catch { return { error: 'Could not create the invite.' } }
+}
+
+/** Admin: (re)send the email for an existing pending invite. */
+export async function emailInviteAction(inviteId: string): Promise<{ ok: boolean; error?: string }> {
+  const c = await ctx()
+  if (!c?.isAdmin) return { ok: false, error: 'Only admins can send invites.' }
+  const { sendEmail, inviteEmailHtml, emailConfigured } = await import('@/lib/email')
+  if (!emailConfigured()) return { ok: false, error: 'Email sending is not set up yet (add RESEND_API_KEY in Vercel).' }
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const svc = createServiceClient()
+  const { data: inv } = await svc.from('invites')
+    .select('email, token, role, accepted_at, expires_at')
+    .eq('id', inviteId).eq('company_id', c.companyId).maybeSingle()
+  if (!inv) return { ok: false, error: 'Invite not found.' }
+  if (!inv.email) return { ok: false, error: 'This invite has no email — copy the link instead.' }
+  if (inv.accepted_at) return { ok: false, error: 'Already accepted.' }
+  if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, error: 'This invite expired — create a new one.' }
+  const { data: co } = await svc.from('companies').select('name').eq('id', c.companyId).single()
+  const { BRAND_URL } = await import('@/lib/brand')
+  const res = await sendEmail(
+    inv.email,
+    `You're invited to ${co?.name ?? 'a team'} on HammerTrack`,
+    inviteEmailHtml({
+      companyName: co?.name ?? 'the team',
+      inviterName: c.name || c.email,
+      role: inv.role as Role,
+      link: `${BRAND_URL}/join?token=${inv.token}`,
+    })
+  )
+  return res.ok ? { ok: true } : { ok: false, error: res.error ?? 'Send failed.' }
 }
 
 export async function revokeInviteAction(id: string): Promise<boolean> {

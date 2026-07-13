@@ -114,6 +114,9 @@ TWILIO_AUTH_TOKEN=
 TWILIO_FROM=                   # your Twilio number, E.164
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
+RESEND_API_KEY=                # optional: emails team invites (free at resend.com; verify hammertrack.ai domain)
+EMAIL_FROM=                    # optional sender override, default "HammerTrack <team@hammertrack.ai>"
+SUPABASE_DB_URL=               # optional: session-pooler Postgres URI — enables `npm run migrate` (auto-migrations)
 CRON_SECRET=                   # optional: locks /api/cron/digest (Vercel cron sends it automatically)
 SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
 WINDY_WEBCAMS_KEY=             # optional: Webcams map layer (free key at api.windy.com/webcams)

@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, SlidersHorizontal, DollarSign, Receipt, Users } from 'lucide-react'
+import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, SlidersHorizontal, DollarSign, Receipt, Users, Mail } from 'lucide-react'
 import type { TeamData, Role, TeamMember } from '@/lib/db/team'
-import { createInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction } from '@/lib/actions/team'
+import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction } from '@/lib/actions/team'
 import { ROLE_DEFAULTS } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,15 +34,22 @@ export function TeamManager({ data }: { data: TeamData }) {
   const [newLink, setNewLink] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [sentNote, setSentNote] = useState<string | null>(null)
+  const [emailing, setEmailing] = useState<string | null>(null)
 
   const linkFor = (token: string) => `${typeof window !== 'undefined' ? window.location.origin : ''}/join?token=${token}`
 
   const invite = async () => {
     setBusy(true); setErr(null); setNewLink(null)
     try {
+      const to = email.trim()
       const res = await createInviteAction(email, role)
       if ('error' in res) { setErr(res.error); return }
       setNewLink(linkFor(res.token))
+      if (res.emailed) setSentNote(`Invite emailed to ${to} — link below if you want to text it too.`)
+      else if (res.emailError === 'not configured' && to) setSentNote('Email sending isn\u2019t set up yet (RESEND_API_KEY) — copy the link below and send it yourself.')
+      else if (res.emailError && to) setSentNote(`Couldn\u2019t email the invite (${res.emailError}) — copy the link below instead.`)
+      else setSentNote(null)
       setEmail('')
       router.refresh()
     } finally { setBusy(false) }
@@ -69,11 +76,12 @@ export function TeamManager({ data }: { data: TeamData }) {
             </select>
             <Button onClick={invite} disabled={busy}>{busy ? 'Creating…' : 'Create invite'}</Button>
           </div>
-          <p className="text-[11px] text-faint">{ROLE_META[role].hint}. You&rsquo;ll get a link to share — no email needed.</p>
+          <p className="text-[11px] text-faint">{ROLE_META[role].hint}. With an email, the invite sends itself; leave it blank for a share link.</p>
           {err && <p className="text-xs text-alert">{err}</p>}
+          {sentNote && <p className="text-xs text-teal">{sentNote}</p>}
           {newLink && (
             <div className="rounded-lg border border-teal/30 bg-teal/10 p-3">
-              <p className="text-xs text-teal font-medium mb-1.5">Invite ready — send this link:</p>
+              <p className="text-xs text-teal font-medium mb-1.5">Invite link:</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-[11px] text-ink bg-navy-950 rounded px-2 py-1.5 break-all">{newLink}</code>
                 <button onClick={() => copy(newLink, 'new')} className="flex-none inline-flex items-center gap-1 text-xs text-teal hover:underline">
@@ -112,6 +120,21 @@ export function TeamManager({ data }: { data: TeamData }) {
                   <p className="text-sm text-ink truncate">{inv.email || 'Anyone with the link'}</p>
                   <p className="text-xs text-faint">{ROLE_META[inv.role].label} · expires {new Date(inv.expires_at).toLocaleDateString()}</p>
                 </div>
+                {inv.email && (
+                  <button
+                    onClick={async () => {
+                      setEmailing(inv.id)
+                      try {
+                        const r = await emailInviteAction(inv.id)
+                        setSentNote(r.ok ? `Invite emailed to ${inv.email}.` : r.error ?? 'Send failed.')
+                      } finally { setEmailing(null) }
+                    }}
+                    disabled={emailing === inv.id}
+                    className="inline-flex items-center gap-1 text-xs text-teal hover:underline disabled:opacity-50"
+                  >
+                    <Mail className="h-3.5 w-3.5" /> {emailing === inv.id ? 'Sending…' : 'Email'}
+                  </button>
+                )}
                 <button onClick={() => copy(linkFor(inv.token), inv.id)} className="inline-flex items-center gap-1 text-xs text-teal hover:underline">
                   {copied === inv.id ? <><Check className="h-3.5 w-3.5" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Link</>}
                 </button>
