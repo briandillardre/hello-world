@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Minus } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { buildActivityCurve, areaPath } from '@/lib/activity'
@@ -38,9 +38,9 @@ export function Module({ k, title, state, onPanel, children }: {
         <button
           onClick={() => onPanel(k, state === 'min' ? 'open' : 'min')}
           aria-label={state === 'min' ? `Expand ${title}` : `Minimize ${title}`}
-          className={'grid place-items-center w-5 h-5 -mr-1 rounded text-faint hover:text-teal transition-colors flex-none ' + (state === 'open' ? '-mt-1' : '')}
+          className={'grid place-items-center w-5 h-5 -mr-1 rounded border border-navy-700/60 bg-navy-900/60 text-faint hover:text-teal transition-colors flex-none ' + (state === 'open' ? '-mt-1' : '')}
         >
-          {state === 'min' ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+          {state === 'min' ? <ChevronDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
         </button>
       </div>
       {state === 'open' && children}

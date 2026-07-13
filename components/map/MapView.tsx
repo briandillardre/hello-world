@@ -1384,9 +1384,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // When paused (scrubbing), keep the camera pinned to the followed asset. During
   // playback the RAF loop drives it every frame, so skip to avoid double work.
   useEffect(() => {
-    if (!mapReady || !followId || pbPlaying) return
+    if (!mapReady || !followId || pbPlaying || range === 'live') return
     focusFollow(displayT)
-  }, [mapReady, followId, pbPlaying, displayT, focusFollow])
+  }, [mapReady, followId, pbPlaying, displayT, focusFollow, range])
+
+  // LIVE follow: same camera modes as replay follow, but the target is the
+  // asset's LATEST fix (t=1 of the live track, which realtime keeps fresh).
+  // Runs its own frame loop so Orbit keeps gliding while the truck sits still.
+  useEffect(() => {
+    if (!mapReady || !followId || range !== 'live') return
+    let raf = 0
+    const loop = () => {
+      focusFollow(1)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [mapReady, followId, range, focusFollow])
 
   // Fetch conditions once. Location priority: the company default WITH exact
   // coords (the last star pressed, on any device — wins everywhere), else a
@@ -2559,17 +2573,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     if (m) { bearingRef.current = m.getBearing(); pitchRef.current = m.getPitch() }
     entranceRef.current = 0
-    // Live has no scrubber — drop into Today so the route can actually replay.
-    const wasLive = rangeRef.current === 'live'
-    if (wasLive) handleRange('today')
-    // Follow rides at 2x wall-clock: slow enough that tiles stream in ahead
-    // of the camera instead of the chase outrunning the map.
+    // LIVE follow: stay on Live — the camera rides each incoming fix (its
+    // own RAF loop below drives it). No replay, no range switch.
+    if (rangeRef.current === 'live') return
+    // Replay follow: ride at 2x wall-clock — slow enough that tiles stream
+    // in ahead of the camera instead of the chase outrunning the map.
     setPbSpeed(2)
     // Start the chase where the day's driving actually starts.
     tRef.current = firstMoveTRef.current
     setPbT(firstMoveTRef.current)
     setPbPlaying(true)
-  }, [handleRange, stopSpin])
+  }, [stopSpin])
   handleFollowRef.current = handleFollow
 
   // If the followed asset is filtered out or vanishes, release the camera.

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronUp, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw } from 'lucide-react'
+import { MinimizeButton } from '@/components/ui/window-chrome'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -421,21 +422,23 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <MapPin className="h-3 w-3 text-teal" /> {place}
         </div>
       ) : null}
-      {/* header — tap to collapse */}
-      <button onClick={() => setOpen(false)} className="w-full flex items-center justify-between px-3 py-1.5 border-b border-navy-800">
-        <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>
-        <span className="font-mono text-[10px] text-muted flex items-center gap-2">
-          {conditions && (
-            <>
-              <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
-              <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
-                <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
-              </span>
-            </>
-          )}
-          <ChevronUp className="h-3.5 w-3.5" />
-        </span>
-      </button>
+      {/* header — tap anywhere to collapse; the Minus is the obvious way */}
+      <div className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-navy-800">
+        <button onClick={() => setOpen(false)} className="flex-1 min-w-0 flex items-center justify-between gap-2">
+          <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>
+          <span className="font-mono text-[10px] text-muted flex items-center gap-2">
+            {conditions && (
+              <>
+                <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
+                <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
+                  <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
+                </span>
+              </>
+            )}
+          </span>
+        </button>
+        <MinimizeButton onClick={() => setOpen(false)} title="Minimize layers" className="w-6 h-6" />
+      </div>
 
       {/* home weather station — live hyper-local reading from the owner's PWS */}
       {pws && (

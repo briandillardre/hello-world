@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, ChevronDown, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { MinimizeButton } from '@/components/ui/window-chrome'
+import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -531,7 +532,7 @@ export function TimelinePlayback({
         {(followAssets.length > 0 || followZones.length > 0) && (
           <button
             onClick={() => setShowFollow((s) => !s)}
-            title={followed ? `Following ${followed.name} — camera settings` : 'Cinematic follow'}
+            title={followed ? `Following ${followed.name} — camera settings` : live ? 'Live follow — camera tracks the asset as fixes arrive' : 'Cinematic follow'}
             className={
               'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
               (followed
@@ -541,19 +542,13 @@ export function TimelinePlayback({
                   : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
             }
           >
-            <Video className="h-3.5 w-3.5" />
+            {live ? <Navigation className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline max-w-[90px] truncate">
               {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following' : 'Follow'}
             </span>
           </button>
         )}
-        <button
-          onClick={() => setMinimized(true)}
-          title="Minimize timeline"
-          className="flex-none grid place-items-center w-7 h-7 rounded-lg border bg-navy-900 text-faint border-navy-800 hover:text-ink transition-colors"
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
+        <MinimizeButton onClick={() => setMinimized(true)} title="Minimize timeline" />
       </div>
 
       {live ? (
