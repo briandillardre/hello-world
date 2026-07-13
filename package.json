@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
@@ -27,6 +28,7 @@
     "lucide-react": "^1.17.0",
     "maplibre-gl": "^5.24.0",
     "next": "14.2.35",
+    "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "react": "^18",
     "react-dom": "^18",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
