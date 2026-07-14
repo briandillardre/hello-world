@@ -198,12 +198,41 @@ function AssetDetails({
   return (
     <div className="space-y-3">
       {asset.photo_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={asset.photo_url}
-          alt={asset.name}
-          className="w-full h-36 object-cover rounded-xl border border-navy-800"
-        />
+        // Compact thumbnail with the key facts BESIDE it — the full-width
+        // photo ate half the phone sheet and pushed every number off-screen.
+        <div className="flex items-start gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset.photo_url}
+            alt={asset.name}
+            className="w-24 h-24 object-cover rounded-xl border border-navy-800 flex-none"
+          />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {(place || poi) && (
+              <div className="flex items-start gap-1.5">
+                <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
+                <div className="min-w-0 text-[13px] leading-snug">
+                  {place && <span className="text-ink font-semibold">{place}</span>}
+                  {poi && <span className="block text-teal text-[12px] truncate">at {poi}</span>}
+                </div>
+              </div>
+            )}
+            {loc?.timestamp && (
+              <p className="flex items-center gap-1 text-[11px] text-faint">
+                <Clock className="h-3 w-3 flex-none" /> {formatRelativeTime(loc.timestamp)}
+              </p>
+            )}
+            {loc?.speed != null && loc.speed > 2 ? (
+              <p className="flex items-center gap-1 text-[12px] font-semibold text-amber">
+                <Zap className="h-3.5 w-3.5 flex-none" /> {loc.speed} mph
+              </p>
+            ) : loc?.battery != null ? (
+              <p className="flex items-center gap-1 text-[12px] text-muted">
+                <Battery className={`h-3.5 w-3.5 flex-none ${BATTERY_COLOR(loc.battery)}`} /> {loc.battery}%
+              </p>
+            ) : null}
+          </div>
+        </div>
       )}
       {asset.type === 'tool' && gateway && (
         <div className="bg-[#60a5fa]/15 border border-[#60a5fa]/30 rounded-lg p-3 flex items-center gap-2">
@@ -252,8 +281,9 @@ function AssetDetails({
         </div>
       )}
       {/* Where it IS, up top — city/state, plus the named place when parked
-          somewhere recognizable. (The coordinates stay in the footer.) */}
-      {(place || poi) && (
+          somewhere recognizable. (The coordinates stay in the footer.) With a
+          photo this already rendered beside the thumbnail above. */}
+      {!asset.photo_url && (place || poi) && (
         <div className="bg-navy-800 rounded-lg px-3 py-2 flex items-start gap-2">
           <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
           <div className="min-w-0 text-[13px] leading-snug">
