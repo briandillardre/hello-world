@@ -110,31 +110,38 @@ export async function POST(request: NextRequest) {
     // (the same value the gateway reports in ble.beacons[].id). Register tools
     // with their beacon UUID as the tracker_id for this lookup to match.
     for (const beacon of r.beacons) {
-      // Separator/case tolerance: "DC:0D:04:BB:00:3A" typed in the asset form
-      // must match a gateway reporting "dc0d04bb003a" (or dashed, or spaced).
-      // First try exact case-insensitive, then fall back to comparing with
-      // every separator stripped — so the owner can paste the MAC exactly as
-      // the beacon scanner app shows it.
-      const { data: tool } = await supabase
-        .from('assets')
-        .select('id')
-        .eq('company_id', asset.company_id)
-        .ilike('tracker_id', beacon.id)
-        .limit(1)
-        .maybeSingle()
-      let toolId = tool?.id ?? null
+      // Identity tolerance. Trackers report tags two ways depending on
+      // config: hardware MAC ("DC:0D:04:BB:00:3A") or iBeacon identity
+      // ("FDA50693-…:2751:65C1" — and note major/minor arrive in HEX while
+      // every beacon app displays DECIMAL, e.g. 2751:65C1 = 10065:26049).
+      // Build candidate forms and match each case/separator-insensitively,
+      // so the owner can register a tool with whatever their scanner shows.
+      const strip = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
+      const candidates = [beacon.id]
+      const ib = beacon.id.match(/^(.*):([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})$/)
+      if (ib) candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)
+
+      let toolId: string | null = null
+      for (const cand of candidates) {
+        const { data: tool } = await supabase
+          .from('assets')
+          .select('id')
+          .eq('company_id', asset.company_id)
+          .ilike('tracker_id', cand)
+          .limit(1)
+          .maybeSingle()
+        if (tool) { toolId = tool.id; break }
+      }
       if (!toolId) {
-        const bare = beacon.id.replace(/[^0-9a-z]/gi, '').toLowerCase()
-        if (bare.length >= 8) {
+        const bare = candidates.map(strip).filter((s) => s.length >= 8)
+        if (bare.length) {
           const { data: tools } = await supabase
             .from('assets')
             .select('id, tracker_id')
             .eq('company_id', asset.company_id)
             .eq('type', 'tool')
             .not('tracker_id', 'is', null)
-          const hit = (tools ?? []).find(
-            (t) => String(t.tracker_id).replace(/[^0-9a-z]/gi, '').toLowerCase() === bare
-          )
+          const hit = (tools ?? []).find((t) => bare.includes(strip(String(t.tracker_id))))
           toolId = hit?.id ?? null
         }
       }

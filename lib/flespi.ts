@@ -88,6 +88,10 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
       params[k] = v
     }
   }
+  // Keep the beacon list in raw too — the scalar filter above silently
+  // dropped it, which made /diag read "ble: none" while beacons were in
+  // fact arriving (cost an hour of hardware-side debugging on Jul 14).
+  if (beacons.length) params['ble.beacons'] = beacons
 
   return {
     tracker_id,
