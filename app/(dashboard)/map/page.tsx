@@ -1,7 +1,7 @@
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
-import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
@@ -58,6 +58,8 @@ export default async function MapPage() {
     const gateway = rawAssets.find(a => a.id === assoc.gateway_asset_id)
     if (gateway) toolGateways[assoc.tool_asset_id] = { name: gateway.name, lastSeen: assoc.last_seen }
   }
+  // …and the reverse: what each truck/machine is carrying (badge + list).
+  const aboard = toolsAboard(rawAssets, toolAssociations)
 
   return (
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
@@ -71,6 +73,7 @@ export default async function MapPage() {
           earliestMs={earliestMs}
           tz={tz}
           toolGateways={toolGateways}
+          aboard={aboard}
           defaultWeatherPlace={prefs.weatherPlace}
           defaultWeatherCoords={prefs.weatherCoords}
           canSetWeatherDefault={prefs.isAdmin}

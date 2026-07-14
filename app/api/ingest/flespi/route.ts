@@ -156,6 +156,40 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: 'tool_asset_id' }
       )
+
+      // Pairing history (migration 021). tool_associations only holds the
+      // CURRENT ride; this log keeps episodes (started→ended) so "which truck
+      // had the laser level last Tuesday" is queryable. Open/extend/close as
+      // the beacon moves between gateways; best-effort — a missing table or
+      // write error must never break ingestion.
+      try {
+        const seenMs = new Date(r.timestamp).getTime()
+        const { data: open } = await supabase
+          .from('pairing_log')
+          .select('id, carrier_asset_id, last_seen')
+          .eq('member_asset_id', toolId)
+          .is('ended_at', null)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        // Unseen for 6h+ = that ride ended (engine-off units check in ~hourly,
+        // so a normal overnight gap stays one episode).
+        const GAP_MS = 6 * 3_600_000
+        const stale = open ? seenMs - new Date(open.last_seen).getTime() > GAP_MS : false
+        if (open && open.carrier_asset_id === asset.id && !stale) {
+          await supabase.from('pairing_log').update({ last_seen: r.timestamp }).eq('id', open.id)
+        } else {
+          if (open) await supabase.from('pairing_log').update({ ended_at: open.last_seen }).eq('id', open.id)
+          await supabase.from('pairing_log').insert({
+            company_id: asset.company_id,
+            kind: 'tool',
+            member_asset_id: toolId,
+            carrier_asset_id: asset.id,
+            started_at: r.timestamp,
+            last_seen: r.timestamp,
+          })
+        }
+      } catch { /* pairing log is additive; ingestion continues regardless */ }
     }
   }
 

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
@@ -40,7 +40,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const asset = assets.find((a) => a.id === params.id)
   if (!asset) notFound()
 
-  const [schedules, readings] = await Promise.all([getMaintenanceSchedules(companyId), getCurrentReadings()])
+  const [schedules, readings, pairingRows] = await Promise.all([
+    getMaintenanceSchedules(companyId),
+    getCurrentReadings(),
+    getPairingLog(companyId, asset.id),
+  ])
   const assetSchedules = schedules
     .filter((s) => s.asset_id === asset.id)
     .map((s) => ({ ...computeStatus(s, readings[s.asset_id] ?? s.last_service_value), name: s.description }))
@@ -165,6 +169,46 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
         {/* drive history (real cellular assets only) */}
         {trips !== null && <TripLog trips={trips} days={TRIP_DAYS} tz={tz} />}
+
+        {/* pairing history — which truck carried this tool / what this truck
+            carried, as episodes. Empty until migration 021 + first beacon. */}
+        {(() => {
+          const rows = pairingRows
+          if (!rows.length) return null
+          const nameOf = (id: string) => assets.find((a) => a.id === id)?.name ?? 'removed asset'
+          const dayFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' })
+          const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+          return (
+            <section>
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Pairing history</h2>
+              <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
+                {rows.map((p) => {
+                  const partnerId = p.member_asset_id === asset.id ? p.carrier_asset_id : p.member_asset_id
+                  const verb = p.member_asset_id === asset.id ? 'rode with' : 'carried'
+                  const start = new Date(p.started_at)
+                  const end = p.ended_at ? new Date(p.ended_at) : null
+                  return (
+                    <div key={p.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
+                      <Wifi className={'h-4 w-4 flex-none ' + (p.ended_at ? 'text-faint' : 'text-[#34d399]')} />
+                      <span className="flex-1 min-w-0">
+                        <span className="text-ink font-medium">{verb} </span>
+                        <Link href={`/assets/${partnerId}`} className="text-teal hover:underline font-medium">{nameOf(partnerId)}</Link>
+                        <span className="block text-xs text-faint">
+                          {dayFmt.format(start)} {timeFmt.format(start)}
+                          {' → '}
+                          {end ? `${dayFmt.format(end)} ${timeFmt.format(end)}` : 'still together'}
+                        </span>
+                      </span>
+                      {!p.ended_at && (
+                        <span className="flex-none font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#34d399]/15 text-[#6ee7b7]">LIVE</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })()}
 
         {/* maintenance */}
         <section>

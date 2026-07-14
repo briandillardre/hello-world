@@ -1,5 +1,36 @@
 import type { ToolAssociation, AssetWithLocation } from './types'
 
+export interface AboardTool {
+  id: string
+  name: string
+  color: string | null
+  rssi: number | null
+  lastSeen: string
+}
+
+/** Reverse index of tool_associations: gateway (truck/equipment) asset id →
+ *  the tools currently riding with it, for count badges and on-board lists. */
+export function toolsAboard(
+  assets: AssetWithLocation[],
+  associations: ToolAssociation[]
+): Record<string, AboardTool[]> {
+  const out: Record<string, AboardTool[]> = {}
+  for (const assoc of associations) {
+    const tool = assets.find(a => a.id === assoc.tool_asset_id)
+    if (!tool || !tool.active) continue
+    const color = typeof tool.metadata?.color === 'string' ? tool.metadata.color : null
+    ;(out[assoc.gateway_asset_id] ??= []).push({
+      id: tool.id,
+      name: tool.name,
+      color,
+      rssi: assoc.rssi,
+      lastSeen: assoc.last_seen,
+    })
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => a.name.localeCompare(b.name))
+  return out
+}
+
 /**
  * Given the full asset list and the current tool→gateway associations, returns
  * the gateway (truck/equipment) a given tool is currently detected by, if any.

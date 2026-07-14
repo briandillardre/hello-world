@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowRight, X } from 'lucide-react'
 import { MOCK_ASSETS, MOCK_GEOFENCES, MOCK_TOOL_ASSOCIATIONS } from '@/lib/mock-data'
 import { generateTracks } from '@/lib/trails'
-import { resolveToolLocations } from '@/lib/tools-resolve'
+import { resolveToolLocations, toolsAboard } from '@/lib/tools-resolve'
 import { Logo } from '@/components/brand/Logo'
 
 const MapView = dynamic(
@@ -65,6 +65,7 @@ export function LiveDemoClient() {
           geofences={MOCK_GEOFENCES}
           tracks={tracks}
           toolGateways={toolGateways}
+          aboard={toolsAboard(MOCK_ASSETS, MOCK_TOOL_ASSOCIATIONS)}
         />
         {/* mobile gets the honest label as a floating chip (header is tight) —
             parked under the layers pill so it never covers the type filters */}

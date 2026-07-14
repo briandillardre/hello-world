@@ -390,12 +390,21 @@ export function TimelinePlayback({
           <button onClick={() => setShowCustom(false)} className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors">Done</button>
         </div>
       )}
-      <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      <div className="relative rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      {/* Minimize pinned to the window's top-right corner — the site-wide
+          convention. Inline at the end of the wrapping row it drifted to a
+          random spot mid-bar on phones and read as a mystery button. */}
+      <div className="absolute top-1.5 right-1.5 z-20">
+        <MinimizeButton onClick={() => setMinimized(true)} title="Minimize timeline" />
+      </div>
       {/* range pills + movement-display control. On phones the pills get their
           own full-width scrollable row — sharing one row squeezed them into a
           useless 10px sliver next to all the flex-none controls. */}
-      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pt-2 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0">
+      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-3 pr-11 pt-2 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
+        {/* Reserve real width for the range pills — without a floor, the pile
+            of flex-none controls crushes this strip to a sliver ("Toda…") on
+            mid-width screens; controls wrap to a second line instead. */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px]">
           {RANGES.map((r) => (
             <button
               key={r.key}
@@ -548,7 +557,6 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
-        <MinimizeButton onClick={() => setMinimized(true)} title="Minimize timeline" />
       </div>
 
       {live ? (

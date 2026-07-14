@@ -717,3 +717,25 @@ SELECT
   created_at,
   ST_AsGeoJSON(geometry)::jsonb AS geometry
 FROM geofences;
+
+-- ── 021_pairing_log.sql ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS pairing_log (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id       UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  kind             TEXT NOT NULL DEFAULT 'tool' CHECK (kind IN ('tool', 'crew')),
+  member_asset_id  UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,  -- the tool / worker
+  carrier_asset_id UUID NOT NULL REFERENCES assets(id) ON DELETE CASCADE,  -- the truck / machine
+  started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ended_at         TIMESTAMPTZ  -- NULL = pairing still live
+);
+
+CREATE INDEX IF NOT EXISTS pairing_log_company_idx ON pairing_log(company_id);
+CREATE INDEX IF NOT EXISTS pairing_log_member_idx  ON pairing_log(member_asset_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS pairing_log_carrier_idx ON pairing_log(carrier_asset_id, started_at DESC);
+-- Fast "find the open episode" lookup for the ingest hot path.
+CREATE INDEX IF NOT EXISTS pairing_log_open_idx ON pairing_log(member_asset_id) WHERE ended_at IS NULL;
+
+ALTER TABLE pairing_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "company pairing log" ON pairing_log
+  FOR ALL USING (company_id = current_company_id());

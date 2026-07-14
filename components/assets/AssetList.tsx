@@ -21,10 +21,14 @@ const TYPE_COLORS: Record<AssetType, string> = {
 
 interface AssetListProps {
   assets: AssetWithLocation[]
+  /** Gateway id → # tools riding ("🔧 2 aboard" chip on trucks/machines). */
+  toolCounts?: Record<string, number>
+  /** Tool id → carrier name ("with Chevy 1500" chip on tools). */
+  carriers?: Record<string, string>
   onAdd?: (data: AssetFormData) => void
 }
 
-export function AssetList({ assets, onAdd }: AssetListProps) {
+export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProps) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
@@ -137,7 +141,12 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
           )
         ) : (
           filtered.map(asset => (
-            <AssetRow key={asset.id} asset={asset} />
+            <AssetRow
+              key={asset.id}
+              asset={asset}
+              toolCount={toolCounts?.[asset.id]}
+              carrier={carriers?.[asset.id]}
+            />
           ))
         )}
       </div>
@@ -153,7 +162,7 @@ export function AssetList({ assets, onAdd }: AssetListProps) {
   )
 }
 
-function AssetRow({ asset }: { asset: AssetWithLocation }) {
+function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; toolCount?: number; carrier?: string }) {
   return (
     <Link href={`/assets/${asset.id}`} className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
       <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
@@ -165,6 +174,16 @@ function AssetRow({ asset }: { asset: AssetWithLocation }) {
           <Badge variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>
+          {(toolCount ?? 0) > 0 && (
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[11px] font-semibold px-2 py-0.5">
+              🔧 {toolCount} aboard
+            </span>
+          )}
+          {carrier && (
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[11px] font-semibold px-2 py-0.5 max-w-[160px] truncate">
+              with {carrier}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-faint">
           {asset.tracker_id && <span className="truncate">ID: {asset.tracker_id}</span>}

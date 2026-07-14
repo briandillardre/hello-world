@@ -91,7 +91,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-bg', 'tool-count-num']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -118,7 +118,7 @@ function lerpAngle(from: number, to: number, f: number): number {
   return (from + diff * f + 360) % 360
 }
 
-function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJSON.FeatureCollection {
+function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: assets
@@ -128,6 +128,8 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
           id: a.id, name: a.name, type: a.type,
+          // Tools riding this gateway — drawn as a corner count badge.
+          toolCount: toolCounts?.[a.id] ?? 0,
           // Sanitize: an invalid stored color must degrade to the type color,
           // never feed the circle layers an unparseable paint value.
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS[a.type],
@@ -225,6 +227,8 @@ interface MapViewProps {
   /** Viewer IANA timezone for local-calendar-day range windows. */
   tz?: string
   toolGateways?: Record<string, { name: string; lastSeen: string }>
+  /** Gateway asset id → tools riding with it (count badge + on-board list). */
+  aboard?: Record<string, import('@/lib/tools-resolve').AboardTool[]>
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
@@ -253,7 +257,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -488,6 +492,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // they see live data instead of the first render's array.
   const assetsRef = useRef(assets)
   const geofencesRef = useRef(geofences)
+  // gateway id → # tools riding (fed to buildGeoJSON for the corner badge)
+  const toolCounts = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const [gw, list] of Object.entries(aboard ?? {})) out[gw] = list.length
+    return out
+  }, [aboard])
+  const toolCountsRef = useRef(toolCounts)
+  toolCountsRef.current = toolCounts
   tracksRef.current = tracksEff
   filterRef.current = filter
   speedRef.current = pbSpeed
@@ -907,7 +919,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
 
       // ── Live asset cluster source ──
-      m.addSource('assets', { type: 'geojson', data: buildGeoJSON(assets, filterRef.current), cluster: true, clusterMaxZoom: 15, clusterRadius: 40 })
+      m.addSource('assets', { type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current), cluster: true, clusterMaxZoom: 15, clusterRadius: 40 })
       m.addLayer({
         id: 'clusters', type: 'circle', source: 'assets', filter: ['has', 'point_count'],
         paint: {
@@ -969,6 +981,30 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           'text-optional': true,
         },
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+      })
+      // Tools-aboard badge: a small violet counter pinned to the dot's top-right
+      // corner on any truck/machine currently carrying Bluetooth-tagged tools.
+      // Tap it (or the dot) → asset sheet lists exactly which tools are inside.
+      const hasTools: maplibregl.FilterSpecification =
+        ['all', ['!', ['has', 'point_count']], ['>', ['get', 'toolCount'], 0]]
+      m.addLayer({
+        id: 'tool-count-bg', type: 'circle', source: 'assets', filter: hasTools,
+        paint: {
+          'circle-color': '#a78bfa',
+          'circle-radius': 8,
+          'circle-stroke-width': 2, 'circle-stroke-color': '#04121d',
+          'circle-translate': [11, -11],
+        },
+      })
+      m.addLayer({
+        id: 'tool-count-num', type: 'symbol', source: 'assets', filter: hasTools,
+        layout: {
+          'text-field': ['to-string', ['get', 'toolCount']],
+          'text-size': 10.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#0b0618', 'text-translate': [11, -11] },
       })
 
       // ── Site devices (cameras + sensors) ──
@@ -1040,6 +1076,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       }
       m.on('click', 'unclustered-circle', selectAsset)
       m.on('click', 'asset-glow', selectAsset)
+      m.on('click', 'tool-count-bg', selectAsset)
       m.on('click', 'clusters', (e) => {
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
@@ -1185,8 +1222,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!mapReady) return
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
-    source?.setData(buildGeoJSON(visible, filter))
-  }, [mapReady, assets, filter, isolateId])
+    source?.setData(buildGeoJSON(visible, filter, toolCounts))
+  }, [mapReady, assets, filter, isolateId, toolCounts])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {
@@ -2872,6 +2909,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         <AssetPanel
           asset={selectedAsset}
           gateway={toolGateways?.[selectedAsset.id]}
+          aboard={aboard?.[selectedAsset.id]}
+          onPick={(id) => {
+            const next = assets.find((a) => a.id === id)
+            if (next) { setSelectedZone(null); setSelectedDevice(null); setSelectedAsset(next) }
+          }}
           isolated={isolateId === selectedAsset.id}
           onToggleIsolate={() => setIsolateId((cur) => (cur === selectedAsset.id ? null : selectedAsset.id))}
           onClose={() => setSelectedAsset(null)}

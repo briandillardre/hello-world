@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin } from 'lucide-react'
+import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin, Wrench, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
+import type { AboardTool } from '@/lib/tools-resolve'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
@@ -134,13 +135,17 @@ function useAssetStats(assetId: string, enabled: boolean): StatsPayload | null {
 interface AssetPanelProps {
   asset: AssetWithLocation
   gateway?: { name: string; lastSeen: string }
+  /** Tools riding with this asset right now (trucks/equipment). */
+  aboard?: AboardTool[]
+  /** Jump the panel to another asset (tap a tool in the on-board list). */
+  onPick?: (assetId: string) => void
   /** Isolate mode: the map shows only this asset (dot + trails). */
   isolated?: boolean
   onToggleIsolate?: () => void
   onClose: () => void
 }
 
-export function AssetPanel({ asset, gateway, isolated = false, onToggleIsolate, onClose }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onClose }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -151,9 +156,19 @@ export function AssetPanel({ asset, gateway, isolated = false, onToggleIsolate, 
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} isolated={isolated} onToggleIsolate={onToggleIsolate} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} />
     </MapSheet>
   )
+}
+
+// RSSI → plain-language proximity. Bluetooth at truck scale: stronger than
+// -60 dBm reads "in the cab", -75 "in the bed / right there", weaker = edge
+// of range. Rough by nature — words beat raw dBm for a foreman.
+function signalWord(rssi: number | null): { word: string; cls: string } {
+  if (rssi === null) return { word: '', cls: 'text-faint' }
+  if (rssi >= -60) return { word: 'strong', cls: 'text-[#34d399]' }
+  if (rssi >= -75) return { word: 'good', cls: 'text-teal' }
+  return { word: 'weak', cls: 'text-amber' }
 }
 
 function AssetDetails({
@@ -161,6 +176,8 @@ function AssetDetails({
   loc,
   meta,
   gateway,
+  aboard,
+  onPick,
   isolated,
   onToggleIsolate,
 }: {
@@ -168,6 +185,8 @@ function AssetDetails({
   loc: AssetWithLocation['location']
   meta: Record<string, unknown>
   gateway?: { name: string; lastSeen: string }
+  aboard?: AboardTool[]
+  onPick?: (assetId: string) => void
   isolated: boolean
   onToggleIsolate?: () => void
 }) {
@@ -193,6 +212,42 @@ function AssetDetails({
             <span className="text-[#93c5fd]">Currently with </span>
             <span className="font-semibold text-[#93c5fd]">{gateway.name}</span>
             <span className="text-[#60a5fa] text-xs"> · {formatRelativeTime(gateway.lastSeen)}</span>
+          </div>
+        </div>
+      )}
+      {/* On board — every Bluetooth-tagged tool this truck/machine is carrying.
+          One glance answers "is the laser level still in the truck?"; a tap
+          jumps to that tool. Big touch rows — this gets used in gloves. */}
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && (aboard?.length ?? 0) > 0 && (
+        <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+            <Wrench className="h-4 w-4 text-[#a78bfa] flex-none" />
+            <span className="font-display font-bold text-[13px] text-[#c4b5fd]">
+              On board · {aboard!.length} tool{aboard!.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="pb-1">
+            {aboard!.map((t) => {
+              const sig = signalWord(t.rssi)
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onPick?.(t.id)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#a78bfa]/10 active:bg-[#a78bfa]/15 transition-colors"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: t.color ?? '#a78bfa' }} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13.5px] font-semibold text-ink truncate">{t.name}</span>
+                    <span className="block text-[11px] text-faint">
+                      {sig.word && <span className={sig.cls}>signal {sig.word}</span>}
+                      {sig.word && ' · '}
+                      seen {formatRelativeTime(t.lastSeen)}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-faint flex-none" />
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
