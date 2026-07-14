@@ -4,7 +4,7 @@ import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
-import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getCurrentCompany } from '@/lib/db/company'
 import { generateTracks, tracksFromHistory, historyWindow } from '@/lib/trails'
 import { buildCostCurve } from '@/lib/costs'
@@ -89,6 +89,7 @@ export default async function CommandPage() {
       company={company.name}
       alerts={alerts}
       aboard={toolsAboard(rawAssets, toolAssociations)}
+      pairingEpisodes={await getPairingEpisodes(companyId, new Date(fullSince).toISOString())}
     />
   )
 }

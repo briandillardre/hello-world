@@ -40,6 +40,8 @@ interface MapPageClientProps {
   toolGateways: Record<string, { name: string; lastSeen: string }>
   /** Gateway asset id → tools riding with it (badge + on-board list). */
   aboard?: Record<string, import('@/lib/tools-resolve').AboardTool[]>
+  /** Tool-pairing episodes over the history window (replay-accurate badges). */
+  pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   defaultWeatherPlace?: string | null
   defaultWeatherCoords?: { lat: number; lng: number } | null
   canSetWeatherDefault?: boolean
@@ -51,7 +53,7 @@ interface MapPageClientProps {
   alerts?: import('@/lib/types').AlertEvent[]
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [] }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [] }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -139,6 +141,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         tz={tz}
         toolGateways={toolGateways}
         aboard={aboard}
+        pairingEpisodes={pairingEpisodes}
         onGeofenceSave={handleGeofenceSave}
         onGeofenceEdit={handleGeofenceEdit}
         onGeofenceDelete={handleGeofenceDelete}

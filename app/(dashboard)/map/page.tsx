@@ -1,7 +1,7 @@
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
-import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
@@ -60,6 +60,9 @@ export default async function MapPage() {
   }
   // …and the reverse: what each truck/machine is carrying (badge + list).
   const aboard = toolsAboard(rawAssets, toolAssociations)
+  // Pairing episodes over the same window the timeline can replay, so
+  // scrubbing shows what was aboard at THAT moment, not now.
+  const pairingEpisodes = await getPairingEpisodes(companyId, new Date(sinceMs).toISOString())
 
   return (
     <div className="h-full flex flex-col pb-[70px] md:pb-0">
@@ -74,6 +77,7 @@ export default async function MapPage() {
           tz={tz}
           toolGateways={toolGateways}
           aboard={aboard}
+          pairingEpisodes={pairingEpisodes}
           defaultWeatherPlace={prefs.weatherPlace}
           defaultWeatherCoords={prefs.weatherCoords}
           canSetWeatherDefault={prefs.isAdmin}

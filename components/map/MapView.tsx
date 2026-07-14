@@ -232,6 +232,9 @@ interface MapViewProps {
   toolGateways?: Record<string, { name: string; lastSeen: string }>
   /** Gateway asset id → tools riding with it (count badge + on-board list). */
   aboard?: Record<string, import('@/lib/tools-resolve').AboardTool[]>
+  /** Tool-pairing episodes over the history window — replay badges show what
+   *  was aboard AT the scrubbed moment, never today's state on old data. */
+  pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
@@ -260,7 +263,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -503,6 +506,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [aboard])
   const toolCountsRef = useRef(toolCounts)
   toolCountsRef.current = toolCounts
+  const episodesRef = useRef(pairingEpisodes)
+  episodesRef.current = pairingEpisodes
   tracksRef.current = tracksEff
   filterRef.current = filter
   speedRef.current = pbSpeed
@@ -1294,7 +1299,24 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const iso = isolateIdRef.current
     const sel = selectedIdRef.current
     const trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, toolCountsRef.current))
+    // Replay heads show what was aboard AT the scrubbed moment (pairing_log
+    // episodes) — never today's tools painted onto last week's map. Live (and
+    // demo, which has no log) uses the current associations. No episodes for
+    // that moment = no badge; honest blank beats a plausible wrong number.
+    let counts = toolCountsRef.current
+    if (rangeRef.current !== 'live' && !isMock) {
+      counts = {}
+      const win = realWindowRef.current
+      if (win) {
+        const ts = win.from + t * (win.to - win.from)
+        for (const ep of episodesRef.current ?? []) {
+          if (ep.startMs <= ts && (ep.endMs == null || ep.endMs >= ts)) {
+            counts[ep.carrier] = (counts[ep.carrier] ?? 0) + 1
+          }
+        }
+      }
+    }
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts))
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel))
     } else if (mode === '3d') {

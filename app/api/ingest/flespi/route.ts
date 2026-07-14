@@ -146,6 +146,30 @@ export async function POST(request: NextRequest) {
         }
       }
       if (!toolId) continue
+
+      // ── Strongest-signal arbitration ─────────────────────────────────────
+      // Two trucks parked side by side BOTH hear every tag (BLE carries
+      // 30-100+ ft), and "last reporter wins" put Tool A in the wrong truck
+      // overnight (Jul 14). The truck that hears a tag LOUDEST is holding it:
+      // in-cab reads ~-50 dBm, the truck next door ~-85. A challenger only
+      // takes the tool if it beats the current holder's signal by a clear
+      // margin (hysteresis stops yard-flapping), or the holder's sighting
+      // has gone stale (engine-off units check in ~hourly — 3h = well past
+      // two missed check-ins, the holder likely no longer sees it at all).
+      const seenMs = new Date(r.timestamp).getTime()
+      const { data: cur } = await supabase
+        .from('tool_associations')
+        .select('gateway_asset_id, rssi, last_seen')
+        .eq('tool_asset_id', toolId)
+        .maybeSingle()
+      if (cur && cur.gateway_asset_id !== asset.id) {
+        const holderFresh = seenMs - new Date(cur.last_seen).getTime() < 3 * 3_600_000
+        const HYSTERESIS_DB = 6
+        const outshouts = typeof beacon.rssi === 'number' && typeof cur.rssi === 'number' &&
+          beacon.rssi > cur.rssi + HYSTERESIS_DB
+        if (holderFresh && !outshouts) continue // current holder keeps it
+      }
+
       await supabase.from('tool_associations').upsert(
         {
           company_id: asset.company_id,
@@ -163,7 +187,6 @@ export async function POST(request: NextRequest) {
       // the beacon moves between gateways; best-effort — a missing table or
       // write error must never break ingestion.
       try {
-        const seenMs = new Date(r.timestamp).getTime()
         const { data: open } = await supabase
           .from('pairing_log')
           .select('id, carrier_asset_id, last_seen')

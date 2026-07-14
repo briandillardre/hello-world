@@ -29,6 +29,29 @@ export interface PairingLogRow {
   ended_at: string | null
 }
 
+/** Episode intervals for replay-accurate "what was aboard at that moment"
+ *  badges: every tool-pairing episode that overlaps [sinceIso, now]. Times in
+ *  epoch ms; endMs null = still ongoing. Empty in demo mode / pre-021. */
+export interface PairingEpisode { member: string; carrier: string; startMs: number; endMs: number | null }
+export async function getPairingEpisodes(companyId: string, sinceIso: string): Promise<PairingEpisode[]> {
+  if (isMock) return []
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('pairing_log')
+    .select('member_asset_id, carrier_asset_id, started_at, ended_at')
+    .eq('company_id', companyId)
+    .eq('kind', 'tool')
+    .or(`ended_at.is.null,ended_at.gte.${sinceIso}`)
+    .limit(5000)
+  return (data ?? []).map((p) => ({
+    member: p.member_asset_id as string,
+    carrier: p.carrier_asset_id as string,
+    startMs: new Date(p.started_at as string).getTime(),
+    endMs: p.ended_at ? new Date(p.ended_at as string).getTime() : null,
+  }))
+}
+
 /** Pairing episodes involving an asset (as the tool OR the carrier), newest
  *  first. Empty in demo mode or before migration 021 lands. */
 export async function getPairingLog(companyId: string, assetId: string, limit = 25): Promise<PairingLogRow[]> {

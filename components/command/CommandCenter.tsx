@@ -59,6 +59,8 @@ interface CommandCenterProps {
   alerts?: AlertEvent[]
   /** Gateway asset id → tools riding with it (badge + on-board list). */
   aboard?: Record<string, import('@/lib/tools-resolve').AboardTool[]>
+  /** Tool-pairing episodes over the history window (replay-accurate badges). */
+  pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -227,7 +229,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
@@ -302,6 +304,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           earliestMs={earliestMs}
           tz={tz}
           aboard={aboard}
+          pairingEpisodes={pairingEpisodes}
           kiosk
           alerts={alerts}
           tourOn={tourOn}
