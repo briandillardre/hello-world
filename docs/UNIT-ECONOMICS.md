@@ -209,3 +209,38 @@ pricing page/blog; Supabase pricing; Vercel pricing/limits; MapTiler pricing;
 CARTO basemaps docs). Hologram list pricing is quote-gated — planning numbers
 here come from our actual pilot bills. Re-verify flespi Start inclusions
 before signing anything.*
+
+## 7 · Map-data layers at scale — Jul 14 refresh
+
+The weather/map stack grew a lot (clouds, storm tops, wind flow, watches,
+RTMA temp/feels/wind, radar + rain totals, city lights, traffic, webcams,
+stream gauges, PWS network). Key fact: **these cost per VIEWER, not per
+asset** — a 500-truck account with 5 dispatchers costs the same in map data
+as a 5-truck account with 5 users. The per-asset cost stack in §3 is
+unchanged; this section is the per-user adder.
+
+| Layer | Source | Cost today | At ~1,000 active users | Watch-out |
+|---|---|---|---|---|
+| Basemap (dark/streets) | CARTO free tiles | $0 | **Gate G2: MapTiler $25–95/mo** | CARTO free tier is goodwill, not a contract — G2 stands |
+| Satellite | Esri World Imagery | $0 (attribution) | $0–$95/mo if rate-limited → MapTiler satellite | Watch for 429s in /api/monitor |
+| Radar + rain totals | IEM (NEXRAD/MRMS) | $0 | $0 | Public service; browser-cached |
+| Clouds + storm tops + city lights | NASA GIBS (CloudFront CDN) | $0 | $0 | No key, no quota published; 1 domain query/10 min/client |
+| Wind flow | Unidata THREDDS | $0 | $0 (server caches 3 h per instance) | Academic courtesy; add a KV cache (~$10/mo) if instances multiply |
+| Storm watches/warnings | SPC/NWS | $0 | $0 | 5-min server cache already in place |
+| Temp / feels-like / wind speed | NOAA nowCOAST WMS | $0 | $0 | Gov service |
+| **Traffic** | TomTom | $0 (2.5k tiles/day free) | **~$300–700/mo if default-on** | The ONLY layer with a real bill. Stays default-OFF; consider Pro-tier gating past ~200 DAU |
+| Webcams | Windy (free key, proxied + cached) | $0 (500 req/day) | ~$0–20/mo | Server cache keeps us under quota |
+| Reverse geocode / POI names | BigDataCloud + Photon | $0 | $0–$50/mo | Photon is courtesy — swap to self-hosted Nominatim if throttled |
+| Weather stations | Ambient public network | $0 | $0 | — |
+
+**Planning adder: ~$0.10–0.30 per active user per month at 1k users**, and
+almost all of it is TomTom exposure. Everything else in the weather stack is
+government/NASA/university data that scales free.
+
+Actions (no new gates needed below ~1k users):
+1. G2 (MapTiler key) unchanged — trigger at real traction, ~$25/mo entry.
+2. TomTom is the one budget risk: it's default-off today; before any big
+   user push, add a daily tile-count check (the diag workflow can carry it)
+   and a hard per-day cap in the layer code if usage climbs.
+3. Storage (asset_locations growth) remains the real scale item and is
+   already gated in §4 (G3 at ~300 devices: retention/downsampling job).
