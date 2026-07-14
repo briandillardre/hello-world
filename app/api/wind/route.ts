@@ -85,18 +85,34 @@ async function fetchGfs(): Promise<WindFieldJson | null> {
   for (const { d, h } of tries.slice(0, 5)) {
     const url = `https://nomads.ncep.noaa.gov/dods/gfs_0p50/gfs${d}/gfs_0p50_${h}z.ascii?ugrd10m[0][${LAT_I0}:${LAT_I1}][${LON_I0}:${LON_I1}],vgrd10m[0][${LAT_I0}:${LAT_I1}][${LON_I0}:${LON_I1}]`
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(15_000) })
-      if (!r.ok) continue
+      // Browser-ish UA: NOMADS fronted responses 301'd our anonymous
+      // fetches from Vercel (/diag Jul 14); redirect follow is explicit.
+      const r = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'follow',
+        headers: { 'user-agent': 'Mozilla/5.0 (compatible; HammerTrack-weather/1.0; briandillardre@gmail.com)' },
+      })
+      if (!r.ok) {
+        lastTried.push({ url: url.slice(0, 90), status: r.status, location: r.headers.get('location') ?? undefined })
+        continue
+      }
       const text = await r.text()
       const u = parseVar(text, 'ugrd10m')
       const v = parseVar(text, 'vgrd10m')
       if (u && v) {
         return { lat0: 20, lon0: -130, dLat: 0.5, dLon: 0.5, ny: NY, nx: NX, u, v, ref: `${d}/${h}z` }
       }
-    } catch { /* run not up yet or NOMADS mood — try the previous cycle */ }
+      lastTried.push({ url: url.slice(0, 90), status: r.status, note: `parse miss: ${text.slice(0, 60).replace(/\s+/g, ' ')}` })
+    } catch (err) {
+      lastTried.push({ url: url.slice(0, 90), note: err instanceof Error ? err.message : 'fetch failed' })
+    }
   }
   return null
 }
+
+// Rolling forensics from the last failed fetch pass — surfaced in the 503
+// body so a /diag or browser hit tells us exactly how NOMADS is refusing us.
+let lastTried: { url: string; status?: number; location?: string; note?: string }[] = []
 
 export async function GET() {
   if (isMock) {
@@ -105,11 +121,12 @@ export async function GET() {
   if (cache && Date.now() - cache.at < TTL_MS) {
     return NextResponse.json(cache.data, { headers: { 'Cache-Control': 'public, s-maxage=3600' } })
   }
+  lastTried = []
   const data = await fetchGfs()
   if (!data) {
     // Stale beats blank if we ever had a field this process lifetime.
     if (cache) return NextResponse.json(cache.data)
-    return NextResponse.json({ error: 'wind model unavailable' }, { status: 503 })
+    return NextResponse.json({ error: 'wind model unavailable', tried: lastTried.slice(0, 6) }, { status: 503 })
   }
   cache = { data, at: Date.now() }
   return NextResponse.json(data, { headers: { 'Cache-Control': 'public, s-maxage=3600' } })

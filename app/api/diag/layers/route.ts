@@ -91,12 +91,6 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     expect: '<Name>',
   },
   {
-    key: 'spcwatch',
-    label: 'SPC watch boxes (IEM)',
-    url: 'https://mesonet.agron.iastate.edu/geojson/spcwatch.py',
-    kind: 'json',
-  },
-  {
     key: 'usgs',
     label: 'USGS stream gauges (API)',
     url: 'https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=-82.5000,34.7000,-82.2000,35.0000&parameterCd=00065&siteStatus=active',
@@ -129,8 +123,33 @@ export async function GET(req: NextRequest) {
     // First hit may fetch the model upstream — allow the route's full budget.
     timeout: 25_000,
   }
+  const selfWatches = {
+    key: 'api-watches',
+    label: 'SPC watch boxes (our /api/watches route)',
+    url: `${req.nextUrl.origin}/api/watches`,
+    kind: 'json' as const,
+    timeout: 25_000,
+  }
+  // The RTMA rows test the names the MAP actually uses: ask our discovery
+  // route first, fall back to the hardcoded guesses if it has nothing.
+  let checks = [...CHECKS]
+  try {
+    const r = await fetch(`${req.nextUrl.origin}/api/rtma-layers`, { signal: AbortSignal.timeout(25_000), cache: 'no-store' })
+    if (r.ok) {
+      const names = await r.json() as { temp?: string | null; feels?: string | null; wind?: string | null }
+      const sub = (key: string, name: string | null | undefined) => {
+        if (!name) return
+        checks = checks.map((c) => c.key === key
+          ? { ...c, label: `${c.label} → ${name}`, url: c.url.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(name)}`) }
+          : c)
+      }
+      sub('rtma-temp', names.temp)
+      sub('rtma-feels', names.feels)
+      sub('rtma-wind', names.wind)
+    }
+  } catch { /* discovery down — rows test the defaults */ }
   const results = await Promise.all(
-    [...CHECKS, nomadsCheck(), selfWind].map(async (c) => {
+    [...checks, nomadsCheck(), selfWind, selfWatches].map(async (c) => {
       try {
         const res = await fetch(c.url, {
           signal: AbortSignal.timeout((c as { timeout?: number }).timeout ?? 8000),
