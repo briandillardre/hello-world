@@ -1,12 +1,12 @@
 'use client'
 
-import { Minus, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 /**
  * ONE minimize button and ONE close button for every floating window in the
- * app — Microsoft-style: always top-right, always the same glyph, so nobody
- * hunts for the chevron-of-the-day. Minus = minimize (comes back from a pill
- * or edge tab), X = close (dismisses the thing).
+ * app — always top-right, always the same glyph. Both draw an X (owner's
+ * call, Jul 14: every window dismisses the same way); the tooltip and
+ * aria-label say whether the window minimizes back to a pill or closes.
  */
 
 const BASE =
@@ -20,7 +20,7 @@ export function MinimizeButton({ onClick, title = 'Minimize', className = '' }: 
 }) {
   return (
     <button type="button" onClick={onClick} title={title} aria-label={title} className={`${BASE} ${className}`}>
-      <Minus className="h-4 w-4" />
+      <X className="h-4 w-4" />
     </button>
   )
 }
