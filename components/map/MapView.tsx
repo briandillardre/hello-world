@@ -95,7 +95,10 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
-          id: a.id, name: a.name, type: a.type, color: (a.metadata?.color as string | undefined) || ASSET_COLORS[a.type],
+          id: a.id, name: a.name, type: a.type,
+          // Sanitize: an invalid stored color must degrade to the type color,
+          // never feed the circle layers an unparseable paint value.
+          color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS[a.type],
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
           // Three glance-states: moving (fresh fix + speed), idle (device awake
           // and reporting — trackers sleep minutes after ignition-off, so fresh
