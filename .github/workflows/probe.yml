@@ -1,0 +1,31 @@
+name: URL probe
+
+# Claude's remote curl: the dev sandbox has no outbound network, so this
+# workflow fetches any URL from GitHub's runners and Claude reads the log.
+# Used to verify external data-source shapes before coding parsers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL to fetch'
+        required: true
+        type: string
+      bytes:
+        description: 'Max bytes of body to print'
+        required: false
+        default: '4000'
+        type: string
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Fetch
+        run: |
+          echo "=== HEAD ==="
+          curl -sSgI --max-time 60 "${{ inputs.url }}" | head -20 || true
+          echo "=== BODY (first ${{ inputs.bytes }} bytes) ==="
+          curl -sSg --max-time 90 "${{ inputs.url }}" | head -c "${{ inputs.bytes }}"
+          echo
