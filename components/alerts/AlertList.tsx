@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Bell, CheckCheck, AlertTriangle, MapPin, Clock } from 'lucide-react'
 import type { AlertEvent, AlertRule } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
@@ -30,11 +31,34 @@ interface AlertListProps {
   onAcknowledgeAll?: () => void
 }
 
+type SortKey = 'newest' | 'asset' | 'type' | 'zone'
+
 export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertListProps) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
+  const [sort, setSort] = useState<SortKey>('newest')
+
+  // Gmail-style: opening this page marks everything as SEEN — the nav badge
+  // zeroes out (unacknowledged alerts stay in the Unread filter here).
+  useEffect(() => {
+    try {
+      localStorage.setItem('ht_alerts_seen_at', new Date().toISOString())
+      window.dispatchEvent(new Event('ht:alerts-seen'))
+    } catch { /* private mode */ }
+  }, [alerts.length])
 
   const unreadCount = alerts.filter(a => !a.acknowledged_at).length
-  const visible = filter === 'unread' ? alerts.filter(a => !a.acknowledged_at) : alerts
+  const filtered = filter === 'unread' ? alerts.filter(a => !a.acknowledged_at) : alerts
+  const visible = useMemo(() => {
+    const arr = [...filtered]
+    const name = (a: AlertEvent) => a.asset?.name ?? ''
+    const zone = (a: AlertEvent) => a.rule?.geofence?.name ?? ''
+    const trig = (a: AlertEvent) => a.rule?.trigger ?? ''
+    if (sort === 'asset') arr.sort((a, b) => name(a).localeCompare(name(b)) || b.triggered_at.localeCompare(a.triggered_at))
+    else if (sort === 'zone') arr.sort((a, b) => zone(a).localeCompare(zone(b)) || b.triggered_at.localeCompare(a.triggered_at))
+    else if (sort === 'type') arr.sort((a, b) => trig(a).localeCompare(trig(b)) || b.triggered_at.localeCompare(a.triggered_at))
+    else arr.sort((a, b) => b.triggered_at.localeCompare(a.triggered_at))
+    return arr
+  }, [filtered, sort])
 
   return (
     <div className="flex flex-col h-full">
@@ -60,6 +84,17 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
           >
             Unread ({unreadCount})
           </button>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+            className="rounded-full bg-navy-800 border border-navy-700 text-muted text-xs px-2.5 py-1 outline-none"
+            title="Sort alerts"
+          >
+            <option value="newest">Newest</option>
+            <option value="asset">By asset</option>
+            <option value="type">By type</option>
+            <option value="zone">By zone</option>
+          </select>
           {unreadCount > 1 && onAcknowledgeAll && (
             <button
               onClick={onAcknowledgeAll}
@@ -104,6 +139,15 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
   )
 }
 
+/** Deep link to the map replay: a 3-hour window with the scrubber parked on
+ *  the moment the alert fired, camera pinned to the asset involved. */
+function replayHref(alert: AlertEvent): string {
+  const at = Date.parse(alert.triggered_at)
+  const from = at - 2 * 3_600_000
+  const to = at + 3_600_000
+  return `/map?range=custom&from=${from}&to=${to}&t=${(2 / 3).toFixed(4)}&follow=${alert.asset_id}`
+}
+
 function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?: (id: string) => void }) {
   const trigger = alert.rule?.trigger ?? 'exit'
   const isUnread = !alert.acknowledged_at
@@ -126,9 +170,9 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
         }
       </div>
 
-      <div className="flex-1 min-w-0">
+      <Link href={replayHref(alert)} className="flex-1 min-w-0 group" title="View this moment on the map">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-sm text-ink">{assetName}</span>
+          <span className="font-semibold text-sm text-ink group-hover:text-amber transition-colors">{assetName}</span>
           <Badge variant={TRIGGER_COLORS[trigger]}>{TRIGGER_LABELS[trigger]}</Badge>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted mt-0.5">
@@ -137,8 +181,11 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
         </div>
         {/* suppressHydrationWarning: "Xm ago" drifts between server render and
             client hydration — cosmetic, not worth a mismatch error. */}
-        <p className="text-xs text-faint mt-0.5" suppressHydrationWarning>{formatRelativeTime(alert.triggered_at)}</p>
-      </div>
+        <p className="text-xs text-faint mt-0.5" suppressHydrationWarning>
+          {formatRelativeTime(alert.triggered_at)}
+          <span className="ml-2 text-teal opacity-0 group-hover:opacity-100 transition-opacity">view on map →</span>
+        </p>
+      </Link>
 
       {isUnread && onAcknowledge && (
         <button

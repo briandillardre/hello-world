@@ -23,15 +23,18 @@ export interface RtmaNames {
 let cache: { at: number; data: RtmaNames } | null = null
 const TTL_MS = 24 * 3_600_000
 
+// GLOBAL capabilities — the rtma workspace path 404s (seen on /diag Jul 13);
+// the global document lists every layer in every workspace, wherever NOAA
+// filed the surface-analysis layers this year.
 const CAPS_URL =
-  'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities'
+  'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities'
 
 export async function GET() {
   if (cache && Date.now() - cache.at < TTL_MS) {
     return NextResponse.json(cache.data, { headers: { 'Cache-Control': 'public, s-maxage=3600' } })
   }
   try {
-    const r = await fetch(CAPS_URL, { signal: AbortSignal.timeout(10_000), cache: 'no-store' })
+    const r = await fetch(CAPS_URL, { signal: AbortSignal.timeout(20_000), cache: 'no-store' })
     if (!r.ok) throw new Error(`caps ${r.status}`)
     const xml = await r.text()
     // Every <Name> in the doc; the service's own name and style names slip in,

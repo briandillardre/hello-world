@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useUnseenAlertCount } from './unseen-alerts'
 
 const primaryItems = [
   { href: '/map', label: 'Map', icon: Map },
@@ -27,13 +28,15 @@ const moreItems = [
   { href: '/welcome', label: 'Getting started', icon: Rocket },
 ]
 
-export function BottomNav({ alertCount = 0, companyName, userName, onSignOut }: {
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, onSignOut }: {
   alertCount?: number
+  latestAlertAt?: string | null
   companyName?: string
   userName?: string | null
   onSignOut?: () => void
 }) {
   const pathname = usePathname()
+  const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const [moreOpen, setMoreOpen] = useState(false)
   const moreActive = moreItems.some(i => pathname.startsWith(i.href))
 
@@ -115,9 +118,9 @@ export function BottomNav({ alertCount = 0, companyName, userName, onSignOut }: 
               >
                 <span className="relative">
                   <Icon className="h-5 w-5" />
-                  {isAlerts && alertCount > 0 && (
+                  {isAlerts && unseen > 0 && (
                     <span className="absolute -top-1 -right-1 bg-alert text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
-                      {alertCount > 9 ? '9+' : alertCount}
+                      {unseen > 9 ? '9+' : unseen}
                     </span>
                   )}
                 </span>

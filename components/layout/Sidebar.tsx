@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp, Receipt } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
 
 // Grouped by the job being done, not by when features shipped: Watch (live
@@ -38,12 +39,14 @@ interface SidebarProps {
   companyName?: string
   userName?: string | null
   alertCount?: number
+  latestAlertAt?: string | null
   onSignOut?: () => void
   collapsed?: boolean
   onToggle?: () => void
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, onSignOut, collapsed = false, onToggle }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle }: SidebarProps) {
+  const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
   return (
     <aside
@@ -103,12 +106,14 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
               {!collapsed && <span>{label}</span>}
-              {isAlerts && alertCount > 0 && (
+              {isAlerts && unseen > 0 && (
                 collapsed ? (
-                  <span className="absolute top-1.5 right-2.5 w-2 h-2 rounded-full bg-alert" />
+                  <span className="absolute top-0.5 right-1.5 bg-alert text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                    {unseen > 9 ? '9+' : unseen}
+                  </span>
                 ) : (
                   <span className="ml-auto bg-alert text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
-                    {alertCount > 9 ? '9+' : alertCount}
+                    {unseen > 9 ? '9+' : unseen}
                   </span>
                 )
               )}

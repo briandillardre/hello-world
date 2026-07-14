@@ -1818,18 +1818,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'nwswarn', at: Date.now() } }))
         })
         .catch(() => { /* IEM hiccup — keep the last polygons */ })
-    // Active SPC watches (tornado / severe t-storm watch boxes). Property
-    // names read defensively — a failed fetch just means no dashed outlines.
-    const loadWatches = () =>
-      fetch('https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson')
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j: { features?: Array<GeoJSON.Feature & { properties?: Record<string, unknown> }> } | null) => {
-          if (cancelled || !j?.features) return
+    // Active SPC watches (tornado / severe t-storm watch boxes). The first
+    // guessed endpoint 404'd in production (/diag Jul 13), so try candidates
+    // in order and keep the first that returns real polygons; the NWS alerts
+    // API is the fallback of last resort (its watch geometry is spottier).
+    const WATCH_URLS = [
+      'https://mesonet.agron.iastate.edu/geojson/spcwatch.py',
+      'https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson',
+      'https://api.weather.gov/alerts/active?status=actual&event=Tornado%20Watch,Severe%20Thunderstorm%20Watch',
+    ]
+    const loadWatches = async () => {
+      for (const url of WATCH_URLS) {
+        try {
+          const r = await fetch(url, url.includes('api.weather.gov') ? { headers: { accept: 'application/geo+json' } } : undefined)
+          if (!r.ok) continue
+          const j = await r.json() as { features?: Array<GeoJSON.Feature & { properties?: Record<string, unknown> }> }
+          if (cancelled) return
+          if (!Array.isArray(j?.features)) continue
           const features = j.features
             .filter((f) => f.geometry)
             .map((f) => {
               const p = f.properties ?? {}
-              const t = String(p.type ?? p.ww_type ?? p.phenomena ?? '').toUpperCase()
+              const t = String(p.type ?? p.ww_type ?? p.phenomena ?? p.event ?? '').toUpperCase()
               return {
                 type: 'Feature' as const,
                 geometry: f.geometry as GeoJSON.Geometry,
@@ -1837,8 +1847,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
               }
             })
           ;(m.getSource('spc-watches') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
-        })
-        .catch(() => { /* no watch feed — warnings still draw */ })
+          return
+        } catch { /* try the next candidate */ }
+      }
+    }
     load()
     loadWatches()
     const id = setInterval(load, 2 * 60_000)

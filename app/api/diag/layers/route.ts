@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,19 +38,19 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   {
     key: 'rtma-temp',
     label: 'Temperature (NOAA RTMA WMS)',
-    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
     kind: 'image',
   },
   {
     key: 'rtma-feels',
     label: 'Feels like (NOAA RTMA apparent temp)',
-    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=apparent_air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=apparent_air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
     kind: 'image',
   },
   {
     key: 'rtma-wind',
     label: 'Wind speed (NOAA RTMA WMS)',
-    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=wind_speed&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=wind_speed&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
     kind: 'image',
   },
   {
@@ -86,14 +86,14 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   {
     key: 'rtma-caps',
     label: 'RTMA layer names (nowCOAST GetCapabilities)',
-    url: 'https://nowcoast.noaa.gov/geoserver/rtma/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities',
+    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetCapabilities',
     kind: 'text',
     expect: '<Name>',
   },
   {
     key: 'spcwatch',
     label: 'SPC watch boxes (IEM)',
-    url: 'https://mesonet.agron.iastate.edu/geojson/spcwatch.geojson',
+    url: 'https://mesonet.agron.iastate.edu/geojson/spcwatch.py',
     kind: 'json',
   },
   {
@@ -118,12 +118,22 @@ function nomadsCheck(): { key: string; label: string; url: string; kind: 'text';
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Our own wind route — tests the REAL path the map uses (with its run
+  // fallbacks + cache), not just one raw NOMADS URL that may redirect.
+  const selfWind = {
+    key: 'api-wind',
+    label: 'Wind flow (our /api/wind route)',
+    url: `${req.nextUrl.origin}/api/wind`,
+    kind: 'json' as const,
+    // First hit may fetch the model upstream — allow the route's full budget.
+    timeout: 25_000,
+  }
   const results = await Promise.all(
-    [...CHECKS, nomadsCheck()].map(async (c) => {
+    [...CHECKS, nomadsCheck(), selfWind].map(async (c) => {
       try {
         const res = await fetch(c.url, {
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout((c as { timeout?: number }).timeout ?? 8000),
           headers: { 'user-agent': 'HammerTrack layer diagnostics (briandillardre@gmail.com)' },
           cache: 'no-store',
         })
