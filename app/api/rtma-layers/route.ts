@@ -41,10 +41,16 @@ export async function GET() {
     // but the pattern matches below only ever pick layer-shaped names.
     const names = Array.from(xml.matchAll(/<Name>([^<]+)<\/Name>/g), (m) => m[1].trim())
       .filter((n) => /temp|wind|dew|humid|apparent|heat|gust/i.test(n))
+    // Workspace-qualified names (with ':') are the servable ones — the bare
+    // 'wind_speed' the first pass picked drew a ServiceException in prod
+    // while 'ndfd_temperature:air_temperature' rendered fine.
+    const qualified = names.filter((n) => n.includes(':'))
     const pick = (...tests: RegExp[]): string | null => {
-      for (const t of tests) {
-        const hit = names.find((n) => t.test(n))
-        if (hit) return hit
+      for (const pool of [qualified, names]) {
+        for (const t of tests) {
+          const hit = pool.find((n) => t.test(n))
+          if (hit) return hit
+        }
       }
       return null
     }
