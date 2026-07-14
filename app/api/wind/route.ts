@@ -114,6 +114,114 @@ async function fetchGfs(): Promise<WindFieldJson | null> {
 // body so a /diag or browser hit tells us exactly how NOMADS is refusing us.
 let lastTried: { url: string; status?: number; location?: string; note?: string }[] = []
 
+// ── Fallback: Unidata THREDDS (same GFS model, university-run server that
+// welcomes programmatic access — NOMADS 301-blocks datacenter IPs).
+// Response shapes verified live via the repo's URL-probe workflow Jul 14:
+// lat arrives DESCENDING (55→20), height index 0 is the 10 m level, data
+// rows read "[t][h][row], v1, v2, …" with lat/lon value vectors inline.
+const THREDDS = 'https://thredds.ucar.edu/thredds/dodsC/grib/NCEP/GFS/Global_0p25deg/Best'
+const U_VAR = 'u-component_of_wind_height_above_ground'
+const V_VAR = 'v-component_of_wind_height_above_ground'
+
+async function fetchText(url: string, timeoutMs = 15_000): Promise<string> {
+  const r = await fetch(url, {
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: { 'user-agent': 'HammerTrack weather (briandillardre@gmail.com)' },
+    cache: 'no-store',
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.text()
+}
+
+/** Pull one variable's grid rows + its lat/lon map vectors from OPeNDAP ascii. */
+function odapGrid(text: string, varName: string): { rows: number[][]; lat: number[]; lon: number[] } | null {
+  const lines = text.split('\n')
+  const rows: number[][] = []
+  let lat: number[] = []
+  let lon: number[] = []
+  const vecAfter = (i: number): number[] => {
+    const out: number[] = []
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].trim()
+      if (!t) break
+      for (const s of t.split(',')) {
+        const f = parseFloat(s)
+        if (Number.isFinite(f)) out.push(f)
+      }
+    }
+    return out
+  }
+  let inData = false
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!inData) {
+      if (line.startsWith(`${varName}.${varName}[`)) inData = true
+      continue
+    }
+    if (line.startsWith('[')) {
+      const vals = line.slice(line.indexOf(',') + 1).split(',').map((s) => parseFloat(s))
+      rows.push(vals.map((f) => (!Number.isFinite(f) || Math.abs(f) > 1e19 ? 0 : f)))
+      continue
+    }
+    if (line.startsWith(`${varName}.lat[`)) { lat = vecAfter(i); continue }
+    if (line.startsWith(`${varName}.lon[`)) { lon = vecAfter(i); break }
+  }
+  return rows.length && lat.length && lon.length ? { rows, lat, lon } : null
+}
+
+async function fetchThredds(): Promise<WindFieldJson | null> {
+  try {
+    // The dataset's clock: time values are "Hour since <epoch>" (units in DAS).
+    const das = await fetchText(`${THREDDS}.das`)
+    const um = das.match(/Hour since ([0-9][0-9T:\-\.]*Z?)/i)
+    if (!um) { lastTried.push({ url: 'thredds.das', note: 'time units not found' }); return null }
+    const epochMs = Date.parse(um[1])
+    if (!Number.isFinite(epochMs)) { lastTried.push({ url: 'thredds.das', note: `bad epoch ${um[1]}` }); return null }
+
+    const tText = await fetchText(`${THREDDS}.ascii?time`)
+    // The values line is the longest comma-separated numeric line in the reply.
+    let hours: number[] = []
+    for (const l of tText.split('\n')) {
+      const t = l.trim()
+      if (!t.includes(',') || !/^[-0-9.eE+, ]+$/.test(t)) continue
+      const vals = t.split(',').map((s) => parseFloat(s)).filter(Number.isFinite)
+      if (vals.length > hours.length) hours = vals
+    }
+    if (!hours.length) { lastTried.push({ url: 'thredds time', note: 'no time vector' }); return null }
+    const nowH = (Date.now() - epochMs) / 3_600_000
+    let tIdx = -1
+    for (let i = 0; i < hours.length; i++) if (hours[i] <= nowH + 1.5) tIdx = i
+    if (tIdx < 0) tIdx = 0
+
+    // 10 m u+v over 20–55N / 130–60W, strided from 0.25° to our 0.5° grid.
+    const sel = `[${tIdx}][0][140:2:280][920:2:1200]`
+    const body = await fetchText(`${THREDDS}.ascii?${U_VAR}${sel},${V_VAR}${sel}`, 22_000)
+    const u = odapGrid(body, U_VAR)
+    const v = odapGrid(body, V_VAR)
+    if (!u || !v || u.rows.length !== v.rows.length) {
+      lastTried.push({ url: 'thredds u/v', note: `parse miss u:${u?.rows.length ?? 0} v:${v?.rows.length ?? 0}` })
+      return null
+    }
+    // Rows arrive north→south; our field is south-up — place by latitude value.
+    const ny = u.lat.length
+    const nx = u.lon.length
+    const uArr = new Array<number>(ny * nx).fill(0)
+    const vArr = new Array<number>(ny * nx).fill(0)
+    for (let r = 0; r < ny; r++) {
+      const j = Math.round((u.lat[r] - 20) / 0.5)
+      if (j < 0 || j >= ny) continue
+      for (let c = 0; c < nx; c++) {
+        uArr[j * nx + c] = u.rows[r]?.[c] ?? 0
+        vArr[j * nx + c] = v.rows[r]?.[c] ?? 0
+      }
+    }
+    return { lat0: 20, lon0: -130, dLat: 0.5, dLon: 0.5, ny, nx, u: uArr, v: vArr, ref: `gfs-thredds+${Math.round(hours[tIdx] - nowH)}h` }
+  } catch (err) {
+    lastTried.push({ url: 'thredds', note: err instanceof Error ? err.message : 'fetch failed' })
+    return null
+  }
+}
+
 export async function GET() {
   if (isMock) {
     return NextResponse.json(syntheticField(), { headers: { 'Cache-Control': 'public, max-age=3600' } })
@@ -122,7 +230,7 @@ export async function GET() {
     return NextResponse.json(cache.data, { headers: { 'Cache-Control': 'public, s-maxage=3600' } })
   }
   lastTried = []
-  const data = await fetchGfs()
+  const data = (await fetchGfs()) ?? (await fetchThredds())
   if (!data) {
     // Stale beats blank if we ever had a field this process lifetime.
     if (cache) return NextResponse.json(cache.data)
