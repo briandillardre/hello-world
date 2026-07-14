@@ -12,14 +12,8 @@ export const dynamic = 'force-dynamic'
 
 const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' | 'text'; expect?: string }[] = [
   {
-    key: 'stormtops7',
-    label: 'Storm tops IR (zoom set 7)',
-    url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level7/5/12/8.png',
-    kind: 'image',
-  },
-  {
     key: 'stormtops6',
-    label: 'Storm tops IR (zoom set 6 fallback)',
+    label: 'Storm tops IR',
     url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level6/5/12/8.png',
     kind: 'image',
   },
@@ -98,20 +92,6 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   },
 ]
 
-/** GFS wind sample (the Wind-flow layer's source) — yesterday's 00z run is
- *  always published, and one grid point keeps the request tiny. */
-function nomadsCheck(): { key: string; label: string; url: string; kind: 'text'; expect: string } {
-  const day = new Date(Date.now() - 86_400_000)
-  const d = `${day.getUTCFullYear()}${String(day.getUTCMonth() + 1).padStart(2, '0')}${String(day.getUTCDate()).padStart(2, '0')}`
-  return {
-    key: 'nomads-wind',
-    label: 'Wind flow model (NOAA NOMADS GFS)',
-    url: `https://nomads.ncep.noaa.gov/dods/gfs_0p50/gfs${d}/gfs_0p50_00z.ascii?ugrd10m[0][240][500]`,
-    kind: 'text',
-    expect: 'ugrd10m',
-  }
-}
-
 export async function GET(req: NextRequest) {
   // Our own wind route — tests the REAL path the map uses (with its run
   // fallbacks + cache), not just one raw NOMADS URL that may redirect.
@@ -149,7 +129,7 @@ export async function GET(req: NextRequest) {
     }
   } catch { /* discovery down — rows test the defaults */ }
   const results = await Promise.all(
-    [...checks, nomadsCheck(), selfWind, selfWatches].map(async (c) => {
+    [...checks, selfWind, selfWatches].map(async (c) => {
       try {
         const res = await fetch(c.url, {
           signal: AbortSignal.timeout((c as { timeout?: number }).timeout ?? 8000),
