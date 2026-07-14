@@ -92,7 +92,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-bg', 'tool-count-num']
-const HEAD_LAYERS = ['trail-heads', 'trail-head-labels']
+const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-bg', 'trail-head-tools-num']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -177,7 +177,7 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   return { type: 'FeatureCollection', features }
 }
 
-function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
+function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: tracks
@@ -185,7 +185,10 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, s
       .map((tr) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: positionAt(tr, t) },
-        properties: { id: tr.assetId, name: tr.name, color: tr.color, sel: selId === tr.assetId ? 1 : 0 },
+        // toolCount is the CURRENT ride, drawn on replay heads too — the
+        // badge answers "what's in the truck NOW", whatever moment the
+        // scrubber is showing (Brian asked for it on all trail modes).
+        properties: { id: tr.assetId, name: tr.name, color: tr.color, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0 },
       })),
   }
 }
@@ -893,7 +896,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         },
       })
 
-      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0) })
+      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current) })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
         layout: { visibility: 'none' },
@@ -916,6 +919,31 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           visibility: 'none',
         },
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+      })
+      // Tools-aboard badge on trail heads — same violet counter as the live
+      // dots, so Trails / Heatmap / 3D keep showing what each truck carries.
+      // Heads are smaller than live pins (r7 vs 14): tighter offset, same read.
+      const headHasTools: maplibregl.FilterSpecification = ['>', ['get', 'toolCount'], 0]
+      m.addLayer({
+        id: 'trail-head-tools-bg', type: 'circle', source: 'trail-heads', filter: headHasTools,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-color': '#a78bfa',
+          'circle-radius': 7,
+          'circle-stroke-width': 2, 'circle-stroke-color': '#04121d',
+          'circle-translate': [8, -8],
+        },
+      })
+      m.addLayer({
+        id: 'trail-head-tools-num', type: 'symbol', source: 'trail-heads', filter: headHasTools,
+        layout: {
+          'text-field': ['to-string', ['get', 'toolCount']],
+          'text-size': 9.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-allow-overlap': true,
+          visibility: 'none',
+        },
+        paint: { 'text-color': '#0b0618', 'text-translate': [8, -8] },
       })
 
       // ── Live asset cluster source ──
@@ -1266,7 +1294,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const iso = isolateIdRef.current
     const sel = selectedIdRef.current
     const trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel))
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, toolCountsRef.current))
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel))
     } else if (mode === '3d') {
