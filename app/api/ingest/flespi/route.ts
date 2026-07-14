@@ -110,8 +110,11 @@ export async function POST(request: NextRequest) {
     // (the same value the gateway reports in ble.beacons[].id). Register tools
     // with their beacon UUID as the tracker_id for this lookup to match.
     for (const beacon of r.beacons) {
-      // ilike (no wildcards) = case-insensitive equality: a MAC pasted as
-      // "7C:D9:F4…" still matches a tracker reporting "7c:d9:f4…".
+      // Separator/case tolerance: "DC:0D:04:BB:00:3A" typed in the asset form
+      // must match a gateway reporting "dc0d04bb003a" (or dashed, or spaced).
+      // First try exact case-insensitive, then fall back to comparing with
+      // every separator stripped — so the owner can paste the MAC exactly as
+      // the beacon scanner app shows it.
       const { data: tool } = await supabase
         .from('assets')
         .select('id')
@@ -119,11 +122,27 @@ export async function POST(request: NextRequest) {
         .ilike('tracker_id', beacon.id)
         .limit(1)
         .maybeSingle()
-      if (!tool) continue
+      let toolId = tool?.id ?? null
+      if (!toolId) {
+        const bare = beacon.id.replace(/[^0-9a-z]/gi, '').toLowerCase()
+        if (bare.length >= 8) {
+          const { data: tools } = await supabase
+            .from('assets')
+            .select('id, tracker_id')
+            .eq('company_id', asset.company_id)
+            .eq('type', 'tool')
+            .not('tracker_id', 'is', null)
+          const hit = (tools ?? []).find(
+            (t) => String(t.tracker_id).replace(/[^0-9a-z]/gi, '').toLowerCase() === bare
+          )
+          toolId = hit?.id ?? null
+        }
+      }
+      if (!toolId) continue
       await supabase.from('tool_associations').upsert(
         {
           company_id: asset.company_id,
-          tool_asset_id: tool.id,
+          tool_asset_id: toolId,
           gateway_asset_id: asset.id,
           rssi: beacon.rssi,
           last_seen: r.timestamp,
