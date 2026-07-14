@@ -6,9 +6,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { ageLabel, brainLevel } from '@/lib/game/adaptive'
-import { ADULT_SKILL_NAMES, SKILLS } from '@/lib/game/questions'
+import { skillDisplayName, SKILLS } from '@/lib/game/questions'
 import { speak } from '@/lib/game/speech'
-import { BALL_SKINS, loadProfiles, saveProfiles } from '@/lib/game/storage'
+import { BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { MissReview } from './MissReview'
@@ -20,8 +20,21 @@ type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'pare
 
 /** local calendar day as YYYY-MM-DD */
 const localDay = (d = new Date()) => d.toLocaleDateString('en-CA')
+/** yesterday via calendar arithmetic — a fixed -24h lands on the wrong day across DST shifts */
+const yesterdayDay = () => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return localDay(d)
+}
 const QUEST_ROUNDS = 3
 const QUEST_BONUS = 15
+
+/** single source of truth for the habit-loop numbers (round completion + home screen) */
+function dailyStatus(k: KidProfile, today = localDay()) {
+  const roundsToday = k.lastPlayedDay === today ? k.roundsToday ?? 0 : 0
+  const streakAlive = k.lastPlayedDay === today || k.lastPlayedDay === yesterdayDay()
+  return { roundsToday, currentStreak: streakAlive ? k.dayStreak ?? 0 : 0 }
+}
 
 export function PlayApp() {
   const [profiles, setProfiles] = useState<KidProfile[]>([])
@@ -32,11 +45,30 @@ export function PlayApp() {
   const [gameKey, setGameKey] = useState(0)
 
   useEffect(() => {
-    setProfiles(loadProfiles())
+    const local = loadProfiles()
+    setProfiles(local)
+    // pull + merge the cloud backup BEFORE any push can happen — covers the
+    // fresh-device / post-OAuth-redirect case where localStorage is empty
+    import('@/lib/game/sync').then(async ({ cloudEnabled, syncWithCloud }) => {
+      if (!cloudEnabled) return
+      const merged = await syncWithCloud(local).catch(() => null)
+      if (merged) {
+        setProfiles(merged)
+        saveProfiles(merged)
+      }
+    })
   }, [])
 
+  // debounce-persist locally (writing 100KB+ of JSON to localStorage on every
+  // answer caused jank mid-celebration on slow phones)
+  useEffect(() => {
+    if (profiles.length === 0) return
+    const t = window.setTimeout(() => saveProfiles(profiles), 400)
+    return () => window.clearTimeout(t)
+  }, [profiles])
+
   // debounce-push progress to the parent's cloud account (no-op when signed
-  // out or in demo mode — sync.ts guards internally)
+  // out, in demo mode, or before the first successful cloud pull)
   useEffect(() => {
     if (profiles.length === 0) return
     const t = window.setTimeout(() => {
@@ -50,11 +82,8 @@ export function PlayApp() {
   const kid = useMemo(() => profiles.find((p) => p.id === activeId) ?? null, [profiles, activeId])
 
   const updateKid = useCallback((id: string, fn: (k: KidProfile) => KidProfile) => {
-    setProfiles((prev) => {
-      const next = prev.map((p) => (p.id === id ? fn(p) : p))
-      saveProfiles(next)
-      return next
-    })
+    // pure updater — persistence is handled by the debounced save effect
+    setProfiles((prev) => prev.map((p) => (p.id === id ? fn(p) : p)))
   }, [])
 
   // ---------------------------------------------------------- game callbacks
@@ -65,7 +94,10 @@ export function PlayApp() {
         ...k,
         coins: k.coins + delta.coins,
         xp: k.xp + delta.xp,
-        history: [...k.history, { t: Date.now(), skill: delta.skill, difficulty: delta.difficulty, correct: delta.correct, ms: delta.ms }],
+        // cap in memory too — the uncapped copy was ballooning cloud payloads
+        history: [...k.history, { t: Date.now(), skill: delta.skill, difficulty: delta.difficulty, correct: delta.correct, ms: delta.ms }].slice(
+          -HISTORY_CAP
+        ),
         skills: {
           ...k.skills,
           [delta.skill]: {
@@ -73,7 +105,8 @@ export function PlayApp() {
             theta: delta.newTheta,
             attempts: k.skills[delta.skill].attempts + 1,
             correct: k.skills[delta.skill].correct + (delta.correct ? 1 : 0),
-            bestStreak: k.skills[delta.skill].bestStreak, // streak merged on round end
+            // per answer, so Mix-round streaks persist too (they were lost before)
+            bestStreak: Math.max(k.skills[delta.skill].bestStreak, delta.newBestStreak),
           },
         },
       }))
@@ -83,42 +116,32 @@ export function PlayApp() {
 
   const handleComplete = useCallback(
     (result: RoundResult) => {
-      if (!activeId) return
+      if (!activeId || !kid) return
       const today = localDay()
-      const yesterday = localDay(new Date(Date.now() - 86400000))
-      let questBonus = 0
-      updateKid(activeId, (k) => {
-        const roundsToday = (k.lastPlayedDay === today ? k.roundsToday ?? 0 : 0) + 1
-        const dayStreak = k.lastPlayedDay === today ? k.dayStreak ?? 1 : k.lastPlayedDay === yesterday ? (k.dayStreak ?? 0) + 1 : 1
-        const questDone = roundsToday >= QUEST_ROUNDS && k.questClaimedDay !== today
-        if (questDone) questBonus = QUEST_BONUS
-        return {
-          ...k,
-          // round-end bonuses (per-answer coins already applied)
-          coins: k.coins + result.stars * 5 + (result.chestBonus ?? 0) + questBonus,
-          stars: k.stars + result.stars,
-          roundsPlayed: k.roundsPlayed + 1,
-          lastPlayedDay: today,
-          roundsToday,
-          dayStreak,
-          questClaimedDay: questDone ? today : k.questClaimedDay,
-          reviewQueue: result.reviewQueue ?? k.reviewQueue,
-          skills:
-            result.skill === 'mix'
-              ? k.skills
-              : {
-                  ...k.skills,
-                  [result.skill]: {
-                    ...k.skills[result.skill],
-                    bestStreak: Math.max(k.skills[result.skill].bestStreak, result.bestStreak),
-                  },
-                },
-        }
-      })
+      // computed OUTSIDE the state updater — React may defer updaters, and a
+      // side-effect assignment inside one could leave the summary short
+      const status = dailyStatus(kid, today)
+      const roundsToday = status.roundsToday + 1
+      const dayStreak = kid.lastPlayedDay === today ? kid.dayStreak ?? 1 : status.currentStreak + 1
+      const questDone = roundsToday >= QUEST_ROUNDS && kid.questClaimedDay !== today
+      const questBonus = questDone ? QUEST_BONUS : 0
+      updateKid(activeId, (k) => ({
+        ...k,
+        // round-end bonuses (per-answer coins already applied)
+        coins: k.coins + result.stars * 5 + (result.chestBonus ?? 0) + questBonus,
+        stars: k.stars + result.stars,
+        roundsPlayed: k.roundsPlayed + 1,
+        lastPlayedDay: today,
+        roundsToday,
+        dayStreak,
+        questClaimedDay: questDone ? today : k.questClaimedDay,
+        reviewQueue: result.reviewQueue ?? k.reviewQueue,
+        // per-skill bestStreak already persisted per answer in handleAnswer
+      }))
       setLastResult({ ...result, questBonus })
       setScreen('summary')
     },
-    [activeId, updateKid]
+    [activeId, kid, updateKid]
   )
 
   const handlePersonality = useCallback(
@@ -231,7 +254,8 @@ export function PlayApp() {
   }
 
   if (screen === 'game') {
-    const isDailyDouble = kid.lastPlayedDay !== localDay()
+    // same predicate the home screen advertises with (roundsToday === 0)
+    const isDailyDouble = dailyStatus(kid).roundsToday === 0
     return (
       <Shell noPad>
         <BallGame
@@ -255,6 +279,9 @@ export function PlayApp() {
           kidName={kid.name}
           onDone={(fixedCount) => {
             if (fixedCount > 0) updateKid(kid.id, (k) => ({ ...k, coins: k.coins + fixedCount }))
+            // consume the misses — replaying the review repeatedly was an
+            // infinite coin faucet once the answers were known
+            setLastResult((lr) => (lr ? { ...lr, misses: [] } : lr))
             setScreen('summary')
           }}
         />
@@ -435,8 +462,7 @@ export function PlayApp() {
   // ---------------------------------------------------------- home
   const lvl = brainLevel(kid)
   const today = localDay()
-  const roundsToday = kid.lastPlayedDay === today ? kid.roundsToday ?? 0 : 0
-  const dayStreak = kid.lastPlayedDay === today || kid.lastPlayedDay === localDay(new Date(Date.now() - 86400000)) ? kid.dayStreak ?? 0 : 0
+  const { roundsToday, currentStreak: dayStreak } = dailyStatus(kid, today)
   const questClaimed = kid.questClaimedDay === today
   const quizDue = retakeDue(kid.personality)
   const temperament = kid.personality ? TEMPERAMENTS[kid.personality.current.primary] : null
@@ -504,7 +530,7 @@ export function PlayApp() {
                 className="rounded-2xl bg-white border-2 border-slate-200 shadow p-3 text-left active:scale-95 transition-transform"
               >
                 <div className="text-2xl">{s.emoji}</div>
-                <div className="font-extrabold text-slate-700">{kid.isTester ? ADULT_SKILL_NAMES[s.id] : s.name}</div>
+                <div className="font-extrabold text-slate-700">{skillDisplayName(s, !!kid.isTester)}</div>
                 <div className="text-[11px] text-slate-400 font-semibold leading-tight">{kid.isTester ? 'Adult challenge' : s.blurb}</div>
                 <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
                   <div className="h-full rounded-full bg-green-400" style={{ width: `${st.theta}%` }} />

@@ -43,9 +43,14 @@ Web Speech API reads every question aloud for pre-readers.
 
 ## App Store / Google Play plan
 
-The game is deliberately **fully client-side** (no server calls, no accounts, no ads, data stays on
-device) — that makes store packaging simple AND keeps it clean under kids' policies (COPPA /
-Apple Kids Category: no tracking, no personal data collected).
+The game is **local-first**: with no Supabase env vars it runs fully on-device (no server calls,
+no ads, no tracking). There IS an optional **parent account** (Google/email via Supabase) that
+syncs kid profiles to the family's own database — so the store data-safety answers depend on
+whether accounts are enabled in the shipped build:
+- **Accounts disabled** (no env vars): declare "no data collected."
+- **Accounts enabled**: declare account info (parent email) + app activity (game progress),
+  collected optionally, not shared, not used for ads. Kids never sign in themselves; the
+  account lives behind the grown-ups gate. Still no third-party ads/analytics either way.
 
 Already in place:
 - `public/brainball.webmanifest` — standalone PWA manifest scoped to `/play` (id, icons, portrait)
@@ -57,7 +62,7 @@ Already in place:
 1. Use **Bubblewrap** (`npm i -g @bubblewrap/cli`) or https://pwabuilder.com against
    `https://hammertrackai.com/brainball.webmanifest` to generate a **Trusted Web Activity** APK/AAB.
 2. Host the generated `assetlinks.json` at `https://hammertrackai.com/.well-known/assetlinks.json`.
-3. Play Console: one-time $25 developer fee, fill Data Safety form ("no data collected"),
+3. Play Console: one-time $25 developer fee, fill Data Safety form per the note above,
    target audience = kids → complete the Families policy questionnaire.
 
 ### Apple App Store

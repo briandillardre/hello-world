@@ -7,13 +7,11 @@ import { useEffect, useState } from 'react'
 import { Cloud, LogOut } from 'lucide-react'
 import {
   cloudEnabled,
-  fetchCloudProfiles,
   getParentSession,
-  mergeProfiles,
-  pushCloudProfiles,
   signInWithEmail,
   signInWithGoogle,
   signOut,
+  syncWithCloud,
   type ParentSession,
 } from '@/lib/game/sync'
 import type { KidProfile } from '@/lib/game/types'
@@ -42,12 +40,12 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
       setChecked(true)
       if (s) {
         setSynced('syncing')
-        const cloud = await fetchCloudProfiles()
+        // pull → merge → push; returns null on fetch failure so a transient
+        // error can never cause a blind overwrite of the cloud backup
+        const merged = await syncWithCloud(profiles)
         if (!alive) return
-        const merged = cloud ? mergeProfiles(profiles, cloud) : profiles
-        if (cloud) onRestore(merged)
-        await pushCloudProfiles(merged)
-        if (alive) setSynced('done')
+        if (merged) onRestore(merged)
+        setSynced(merged ? 'done' : 'idle')
       }
     })
     return () => {
@@ -127,7 +125,15 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
           setBusy(false)
           if (err) setError(err)
           else if (create) setError('Check your email to confirm your account!')
-          else setSession(await getParentSession())
+          else {
+            // restore the cloud backup right after sign-in — before this, the
+            // pull only happened on mount (while still signed out)
+            setSession(await getParentSession())
+            setSynced('syncing')
+            const merged = await syncWithCloud(profiles)
+            if (merged) onRestore(merged)
+            setSynced(merged ? 'done' : 'idle')
+          }
         }}
         className="grid gap-2"
       >

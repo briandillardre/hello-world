@@ -4,7 +4,7 @@ import { START_THETA } from './adaptive'
 import type { BallSkin, KidProfile, SkillId, SkillState } from './types'
 
 const STORAGE_KEY = 'hammertrack-brainball-v1'
-const HISTORY_CAP = 500
+export const HISTORY_CAP = 500
 
 export const BALL_SKINS: BallSkin[] = [
   { id: 'classic', name: 'Classic', cost: 0, colors: ['#fb923c', '#ea580c'] },

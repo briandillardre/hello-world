@@ -1054,6 +1054,11 @@ export const ADULT_SKILL_NAMES: Record<SkillId, string> = {
   words: 'Spelling',
 }
 
+/** one rule for kid-vs-adult skill labels (was copy-pasted at five call sites) */
+export function skillDisplayName(meta: SkillMeta, adult: boolean): string {
+  return adult ? ADULT_SKILL_NAMES[meta.id] : meta.name
+}
+
 export function generateQuestion(skill: SkillId, difficulty: number, adult = false): Question {
   const d = Math.max(1, Math.min(99, Math.round(difficulty)))
   const gen = adult ? ADULT_GENERATORS[skill] : GENERATORS[skill]

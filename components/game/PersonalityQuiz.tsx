@@ -4,9 +4,10 @@
 // temperament reveal. Read aloud for pre-readers; result saved to the profile.
 
 import { useState } from 'react'
-import { ArrowLeft, Volume2 } from 'lucide-react'
+import { Volume2 } from 'lucide-react'
 import { QUIZ, scoreQuiz, TEMPERAMENTS, type PersonalityResult, type TemperamentId } from '@/lib/game/personality'
 import { speak } from '@/lib/game/speech'
+import { BackButton } from './BackButton'
 import type { KidProfile } from '@/lib/game/types'
 
 interface PersonalityQuizProps {
@@ -143,13 +144,5 @@ export function PersonalityQuiz({ kid, onResult, onExit }: PersonalityQuizProps)
       </div>
       <p className="text-center text-xs text-slate-400 mt-5">No wrong answers — pick what sounds most like you!</p>
     </div>
-  )
-}
-
-function BackButton({ onBack }: { onBack: () => void }) {
-  return (
-    <button onClick={onBack} aria-label="Back" className="w-10 h-10 rounded-full bg-white border-2 border-slate-200 shadow flex items-center justify-center active:scale-95">
-      <ArrowLeft className="w-5 h-5 text-slate-500" />
-    </button>
   )
 }

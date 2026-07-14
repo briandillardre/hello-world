@@ -4,11 +4,14 @@
 // percentile, accuracy trends. Gated behind a grown-up math check.
 
 import { useMemo, useState } from 'react'
-import { ArrowLeft, TrendingDown, TrendingUp, Minus } from 'lucide-react'
+import { TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import {
   ADULT_BENCHMARKS,
   ADULT_NORM,
+  ADULT_SCORE_MAX,
   adultAdjustedScore,
+  CALIBRATION_MIN,
+  FIRM_MIN,
   ageLabel,
   BENCHMARKS,
   consistencyScore,
@@ -23,15 +26,16 @@ import {
   trend,
 } from '@/lib/game/adaptive'
 import { RETAKE_DAYS, retakeDue, TEMPERAMENTS } from '@/lib/game/personality'
-import { ADULT_SKILL_NAMES, SKILLS } from '@/lib/game/questions'
+import { skillDisplayName, SKILLS } from '@/lib/game/questions'
 import type { KidProfile } from '@/lib/game/types'
 import { AccountSync } from './AccountSync'
+import { BackButton } from './BackButton'
 
-/** median answer time (ms) over the last 20 timed answers for a skill */
-function medianMs(history: KidProfile['history'], skill: string): number | null {
+/** median answer time (ms) over the last n timed answers (skill null = all skills) */
+function medianMs(history: KidProfile['history'], skill: string | null, n = 20): number | null {
   const times = history
-    .filter((h) => h.skill === skill && typeof h.ms === 'number')
-    .slice(-20)
+    .filter((h) => (skill === null || h.skill === skill) && typeof h.ms === 'number')
+    .slice(-n)
     .map((h) => h.ms as number)
     .sort((a, b) => a - b)
   if (times.length === 0) return null
@@ -115,7 +119,7 @@ export function ParentDashboard({
 
   // strongest / focus skill among those with enough signal
   // (testers rank by adjusted adult score, kids by age-norm percentile)
-  const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3)
+  const ranked = SKILLS.filter((s) => kid.skills[s.id].attempts >= CALIBRATION_MIN)
     .map((s) => ({
       meta: s,
       pct: kid.isTester
@@ -167,7 +171,7 @@ export function ParentDashboard({
           <Stat
             label="Composite (IQ-style)"
             value={(() => {
-              const scored = SKILLS.filter((s) => kid.skills[s.id].attempts >= 3).map((s) => iqStyleScore(adjustedFor(s.id)))
+              const scored = SKILLS.filter((s) => kid.skills[s.id].attempts >= CALIBRATION_MIN).map((s) => iqStyleScore(adjustedFor(s.id)))
               return scored.length ? `~${Math.round(scored.reduce((a, b) => a + b, 0) / scored.length)}` : '—'
             })()}
           />
@@ -175,8 +179,8 @@ export function ParentDashboard({
           <Stat
             label="Processing speed"
             value={(() => {
-              const times = kid.history.filter((h) => typeof h.ms === 'number').slice(-40).map((h) => h.ms as number).sort((a, b) => a - b)
-              return times.length ? `${(times[Math.floor(times.length / 2)] / 1000).toFixed(1)}s med.` : '—'
+              const med = medianMs(kid.history, null, 40)
+              return med !== null ? `${(med / 1000).toFixed(1)}s med.` : '—'
             })()}
           />
           <Stat
@@ -201,12 +205,12 @@ export function ParentDashboard({
           <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-2">At a glance</p>
           <p className="text-sm font-bold text-green-700">
             💪 {kid.isTester ? 'Sharpest' : 'Excelling'}: {strongest.meta.emoji}{' '}
-            {kid.isTester ? ADULT_SKILL_NAMES[strongest.meta.id] : strongest.meta.name} —{' '}
+            {skillDisplayName(strongest.meta, !!kid.isTester)} —{' '}
             {kid.isTester ? `IQ-style ~${iqStyleScore(adjustedFor(strongest.meta.id))}` : `~${ord(strongest.pct)} percentile for age`}
           </p>
           {focus && (
             <p className="text-sm font-bold text-orange-600 mt-1">
-              🌱 Focus next: {focus.meta.emoji} {kid.isTester ? ADULT_SKILL_NAMES[focus.meta.id] : focus.meta.name} —{' '}
+              🌱 Focus next: {focus.meta.emoji} {skillDisplayName(focus.meta, !!kid.isTester)} —{' '}
               {kid.isTester ? `IQ-style ~${iqStyleScore(adjustedFor(focus.meta.id))}` : `~${ord(focus.pct)} percentile`}.{' '}
               {kid.isTester ? '' : `Try a ${focus.meta.name} round today; Mix rounds are already steering extra questions there automatically.`}
             </p>
@@ -222,8 +226,8 @@ export function ParentDashboard({
         {SKILLS.map((s) => {
           const st = kid.skills[s.id]
           const played = st.attempts > 0
-          const calibrated = st.attempts >= 3
-          const firm = st.attempts >= 10
+          const calibrated = st.attempts >= CALIBRATION_MIN
+          const firm = st.attempts >= FIRM_MIN
           const adjusted = kid.isTester ? adjustedFor(s.id) : st.theta
           const { percentile, z } = kid.isTester ? percentileForAdult(adjusted) : percentileForSkill(st.theta, kid.birthdate)
           const acc = recentAccuracy(kid.history, s.id, 20)
@@ -232,7 +236,7 @@ export function ParentDashboard({
             <div key={s.id} className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-extrabold text-slate-800">
-                  {s.emoji} {kid.isTester ? ADULT_SKILL_NAMES[s.id] : s.name}
+                  {s.emoji} {skillDisplayName(s, !!kid.isTester)}
                 </span>
                 {played ? (
                   <span className="text-xs font-bold text-slate-500">
@@ -251,7 +255,7 @@ export function ParentDashboard({
                   <div className="flex items-center justify-between text-xs font-bold mb-2">
                     <span className="text-blue-600">
                       {!calibrated
-                        ? `Warming up… (${st.attempts}/3 answers to first estimate)`
+                        ? `Warming up… (${st.attempts}/${CALIBRATION_MIN} answers to first estimate)`
                         : kid.isTester
                         ? `~${ord(percentile)} percentile of adults · IQ-style ~${iqStyleScore(adjusted)}${firm ? '' : ' · early estimate'}`
                         : `~${ord(percentile)} percentile for age · ${percentileLabel(percentile)}${firm ? '' : ' · early estimate'}`}
@@ -284,14 +288,14 @@ export function ParentDashboard({
                   )}
                   <div className="mt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-0.5">
-                      <span>{kid.isTester ? `Adjusted score ${Math.round(adjusted)}/130 (ability + accuracy + speed)` : `Skill level ${Math.round(st.theta)}/99`}</span>
+                      <span>{kid.isTester ? `Adjusted score ${Math.round(adjusted)}/${ADULT_SCORE_MAX} (ability + accuracy + speed)` : `Skill level ${Math.round(st.theta)}/99`}</span>
                       <span>{kid.isTester ? `typical adult: ${ADULT_NORM.mean}` : `typical for age: ${Math.round(expectedThetaForAge(months))}`}</span>
                     </div>
                     <div className="h-2 rounded-full bg-slate-100 overflow-hidden relative">
-                      <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${kid.isTester ? (adjusted / 130) * 100 : st.theta}%` }} />
+                      <div className="h-full rounded-full bg-gradient-to-r from-green-400 to-blue-500" style={{ width: `${kid.isTester ? (adjusted / ADULT_SCORE_MAX) * 100 : st.theta}%` }} />
                       <div
                         className="absolute top-0 bottom-0 w-0.5 bg-slate-500"
-                        style={{ left: `${kid.isTester ? (ADULT_NORM.mean / 130) * 100 : expectedThetaForAge(months)}%` }}
+                        style={{ left: `${kid.isTester ? (ADULT_NORM.mean / ADULT_SCORE_MAX) * 100 : expectedThetaForAge(months)}%` }}
                       />
                     </div>
                   </div>
@@ -446,10 +450,3 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function BackButton({ onBack }: { onBack: () => void }) {
-  return (
-    <button onClick={onBack} aria-label="Back" className="w-10 h-10 rounded-full bg-white border-2 border-slate-200 shadow flex items-center justify-center active:scale-95">
-      <ArrowLeft className="w-5 h-5 text-slate-500" />
-    </button>
-  )
-}

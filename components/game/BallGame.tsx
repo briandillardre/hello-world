@@ -6,8 +6,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Volume2, X } from 'lucide-react'
 import { ADULT_THETA_CAP, nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
-import { ADULT_SKILL_NAMES, generateQuestion, SKILLS } from '@/lib/game/questions'
-import { speak as speakText } from '@/lib/game/speech'
+import { generateQuestion, skillDisplayName, SKILLS } from '@/lib/game/questions'
+import { cancelSpeech, speak as speakText, warmVoices } from '@/lib/game/speech'
 import { BALL_SKINS } from '@/lib/game/storage'
 import type { KidProfile, MissedQuestion, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
 
@@ -20,6 +20,8 @@ export interface AnswerDelta {
   coins: number
   xp: number
   newTheta: number
+  /** best streak recorded for this skill so far this round (persisted per answer) */
+  newBestStreak: number
   /** time to answer, ms */
   ms: number
 }
@@ -96,8 +98,9 @@ const CONFETTI = ['#f97316', '#22c55e', '#3b82f6', '#eab308', '#ec4899', '#a855f
 const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!', 'Go Whalehogs!', 'Whalehog smart!']
 const ENCOURAGE = ['Good try!', 'Almost!', 'Keep going!', "You'll get it!", "We don't say can't!", 'Whalehogs never quit!']
 
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v))
+/** round-local copy of skill states (one level deep is all SkillState needs) */
+function cloneSkills(skills: Record<SkillId, SkillState>): Record<SkillId, SkillState> {
+  return Object.fromEntries(Object.entries(skills).map(([k, s]) => [k, { ...s }])) as Record<SkillId, SkillState>
 }
 
 export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComplete, onQuit }: BallGameProps) {
@@ -130,7 +133,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     tappedIndex: -1,
     t: 0,
   })
-  const skillsRef = useRef<Record<SkillId, SkillState>>(clone(profile.skills))
+  const skillsRef = useRef<Record<SkillId, SkillState>>(cloneSkills(profile.skills))
   const startThetasRef = useRef<Record<SkillId, number>>(
     Object.fromEntries(Object.entries(profile.skills).map(([k, s]) => [k, s.theta])) as Record<SkillId, number>
   )
@@ -146,6 +149,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   // spaced repetition of past misses, consumed during Mix rounds
   const queueRef = useRef([...(profile.reviewQueue ?? [])])
   const advanceTimerRef = useRef<number | null>(null)
+  // sky gradient rebuilt only on resize, not 60x/second
+  const skyCacheRef = useRef<{ grad: CanvasGradient | null }>({ grad: null })
   const audioRef = useRef<AudioContext | null>(null)
   const mutedRef = useRef(false)
   mutedRef.current = muted
@@ -239,24 +244,38 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   }, [])
 
   // ------------------------------------------------------------- questions
-  const layoutBubbles = useCallback((q: Question) => {
+  /** shared geometry for initial layout AND resize — one source of truth */
+  const positionBubbles = useCallback(() => {
     const w = world.current
     const r = Math.min(w.w, w.h) * 0.135
-    const two = q.choices.length === 2
+    const two = w.bubbles.length === 2
     const xs = two ? [0.3, 0.7] : [0.2, 0.5, 0.8]
     const ys = two ? [0.27, 0.27] : [0.3, 0.24, 0.3]
-    w.bubbles = q.choices.map((text, i) => ({
-      x: w.w * xs[i % 3],
-      y: w.h * ys[i % 3],
-      r,
-      text,
-      eaten: false,
-      pop: 0,
-      sucked: false,
-      wrongFlash: 0,
-      isCorrect: i === q.answer,
-    }))
+    w.bubbles.forEach((b, i) => {
+      b.x = w.w * xs[i % xs.length]
+      b.y = w.h * ys[i % ys.length]
+      b.r = r
+    })
   }, [])
+
+  const layoutBubbles = useCallback(
+    (q: Question) => {
+      const w = world.current
+      w.bubbles = q.choices.map((text, i) => ({
+        x: 0,
+        y: 0,
+        r: 0,
+        text,
+        eaten: false,
+        pop: 0,
+        sucked: false,
+        wrongFlash: 0,
+        isCorrect: i === q.answer,
+      }))
+      positionBubbles()
+    },
+    [positionBubbles]
+  )
 
   const nextQuestion = useCallback(
     (index: number) => {
@@ -289,7 +308,9 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
       autoReadTimerRef.current = window.setTimeout(() => {
         autoReadTimerRef.current = null
-        if (questionRef.current === q && world.current.phase === 'idle') {
+        // skip if the kid already asked for the voice — restarting a
+        // half-finished narration sounded like a stutter
+        if (questionRef.current === q && world.current.phase === 'idle' && !spokeRef.current) {
           spokeRef.current = true
           speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
         }
@@ -301,14 +322,13 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   // start round
   useEffect(() => {
     nextQuestion(0)
-    // preload voices (some browsers populate the list async)
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.getVoices()
+    warmVoices()
     return () => {
       // stop everything scheduled — a pending advance firing after quit would
       // yank the user to the summary screen out of nowhere
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
       if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+      cancelSpeech()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -407,7 +427,16 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         setStreak(0)
       }
       setResults((r) => [...r, correct])
-      onAnswer({ skill: q.skill, difficulty: q.difficulty, correct, coins: coinsDelta, xp: correct ? 1 : 0, newTheta, ms: elapsed })
+      onAnswer({
+        skill: q.skill,
+        difficulty: q.difficulty,
+        correct,
+        coins: coinsDelta,
+        xp: correct ? 1 : 0,
+        newTheta,
+        newBestStreak: state.bestStreak,
+        ms: elapsed,
+      })
 
       scheduleAdvance(correct ? 1350 : 3200)
     },
@@ -517,16 +546,9 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       if (sx !== 1 || sy !== 1) {
         w.ball.x *= sx
         w.ball.y *= sy
-        const r = Math.min(w.w, w.h) * 0.135
-        const two = w.bubbles.length === 2
-        const xs = two ? [0.3, 0.7] : [0.2, 0.5, 0.8]
-        const ys = two ? [0.27, 0.27] : [0.3, 0.24, 0.3]
-        w.bubbles.forEach((b, i) => {
-          b.x = w.w * xs[i % xs.length]
-          b.y = w.h * ys[i % ys.length]
-          b.r = r
-        })
+        positionBubbles()
       }
+      skyCacheRef.current.grad = null // gradient is sized to the canvas
     }
     resize()
     const ro = new ResizeObserver(resize)
@@ -610,12 +632,15 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       }
 
       // ---------- background
-      const sky = ctx.createLinearGradient(0, 0, 0, w.h)
-      sky.addColorStop(0, '#bfe6ff')
-      sky.addColorStop(0.55, '#dff2ff')
-      sky.addColorStop(0.56, '#bbe98d')
-      sky.addColorStop(1, '#8fd15f')
-      ctx.fillStyle = sky
+      if (!skyCacheRef.current.grad) {
+        const sky = ctx.createLinearGradient(0, 0, 0, w.h)
+        sky.addColorStop(0, '#bfe6ff')
+        sky.addColorStop(0.55, '#dff2ff')
+        sky.addColorStop(0.56, '#bbe98d')
+        sky.addColorStop(1, '#8fd15f')
+        skyCacheRef.current.grad = sky
+      }
+      ctx.fillStyle = skyCacheRef.current.grad
       ctx.fillRect(-20, -20, w.w + 40, w.h + 40)
       // sun
       ctx.fillStyle = 'rgba(255, 220, 100, 0.9)'
@@ -964,7 +989,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       <div className="mx-3 mb-2 rounded-2xl bg-white shadow-md border-2 border-blue-200 px-4 py-3 text-center relative">
         {skillMeta && (
           <span className="absolute -top-2.5 left-3 text-[10px] font-extrabold uppercase tracking-wide bg-blue-500 text-white rounded-full px-2 py-0.5">
-            {skillMeta.emoji} {profile.isTester ? ADULT_SKILL_NAMES[skillMeta.id] : skillMeta.name}
+            {skillMeta.emoji} {skillDisplayName(skillMeta, !!profile.isTester)}
           </span>
         )}
         {question && (
@@ -1014,8 +1039,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         <button
           onClick={() =>
             setMuted((m) => {
-              // muting should silence an in-flight voice immediately
-              if (!m && typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+              if (!m) cancelSpeech() // silence an in-flight voice immediately
               return !m
             })
           }

@@ -41,7 +41,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - `marketing/ad-variants.md` — Google Search, dealer, cold email ad copy
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
-- `app/play/page.tsx` + `components/game/` + `lib/game/` — Brain Ball, kids' adaptive learning game (Brian's kids; unlisted, client-only; app-store packaging plan in docs/BRAIN_BALL.md)
+- `app/play/page.tsx` + `components/game/` + `lib/game/` — Brain Ball, kids' adaptive learning game (Brian's kids; unlisted; local-first with optional parent cloud sync; app-store packaging plan in docs/BRAIN_BALL.md)
 
 ## Features Built
 - Live map with clustering (MapLibre GL JS)

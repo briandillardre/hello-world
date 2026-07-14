@@ -31,6 +31,13 @@ export function updateTheta(state: SkillState, difficulty: number, correct: bool
 /** adults can keep climbing past the kid scale so top performers separate */
 export const ADULT_THETA_CAP = 120
 
+/** answers per skill before the first percentile/curve appears */
+export const CALIBRATION_MIN = 3
+/** answers per skill before an estimate stops being labeled "early" */
+export const FIRM_MIN = 10
+/** ceiling of the adult adjusted score (ability + accuracy + speed) */
+export const ADULT_SCORE_MAX = 130
+
 /**
  * Pick the next question difficulty. Slightly above ability (stretch), an
  * occasional easy "confidence" question, and a hot-streak bonus so a run of
@@ -167,7 +174,7 @@ export function adultAdjustedScore(theta: number, recentAcc: number | null, medi
   let score = theta
   if (recentAcc !== null) score += (recentAcc - 0.75) * 30 // ±7.5 around the adaptive target
   if (medianSec !== null) score += Math.max(-0.5, Math.min(0.75, (8 - medianSec) / 8)) * 12
-  return Math.max(1, Math.min(130, score))
+  return Math.max(1, Math.min(ADULT_SCORE_MAX, score))
 }
 
 /**

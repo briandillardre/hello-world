@@ -36,6 +36,26 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return bestScore >= 0 ? best : null
 }
 
+/** stop any in-flight narration (mute toggles, screen exits) */
+export function cancelSpeech(): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.cancel()
+  } catch {
+    // ignore — speech unsupported
+  }
+}
+
+/** some browsers populate the voice list async; poke it early */
+export function warmVoices(): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  try {
+    window.speechSynthesis.getVoices()
+  } catch {
+    // ignore
+  }
+}
+
 export function speak(text: string, opts: { rate?: number; pitch?: number } = {}): void {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
   try {
