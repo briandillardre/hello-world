@@ -237,7 +237,10 @@ export function ParentDashboard({
                 {played ? (
                   <span className="text-xs font-bold text-slate-500">
                     {st.correct}/{st.attempts} correct{acc !== null ? ` · last 20: ${Math.round(acc * 100)}%` : ''}
-                    {medianMs(kid.history, s.id) !== null ? ` · ~${(medianMs(kid.history, s.id)! / 1000).toFixed(1)}s` : ''}
+                    {(() => {
+                      const med = medianMs(kid.history, s.id)
+                      return med !== null ? ` · ~${(med / 1000).toFixed(1)}s` : ''
+                    })()}
                   </span>
                 ) : (
                   <span className="text-xs font-bold text-slate-400">Not played yet</span>

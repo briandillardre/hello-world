@@ -133,6 +133,21 @@ export function PlayApp() {
     [activeId, updateKid]
   )
 
+  // read the round result aloud when the summary appears (skip for testers)
+  useEffect(() => {
+    if (screen !== 'summary' || !lastResult || !kid || kid.isTester) return
+    const r = lastResult
+    const line =
+      r.correct === r.total
+        ? `Perfect! ${r.correct} out of ${r.total}! You're on fire, ${kid.name}!`
+        : r.stars >= 2
+        ? `Great job ${kid.name}! You got ${r.correct} out of ${r.total}!`
+        : `You got ${r.correct} out of ${r.total}. We don't say can't — let's fix the tricky ones!`
+    const t = window.setTimeout(() => speak(line, { rate: 0.97 }), 500)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen])
+
   const startGame = (skillChoice: SkillId | 'mix') => {
     setGameSkill(skillChoice)
     setGameKey((k) => k + 1)
@@ -177,6 +192,12 @@ export function PlayApp() {
                 key={p.id}
                 onClick={() => {
                   setActiveId(p.id)
+                  if (p.isTester) {
+                    // grown-ups skip the kids' ritual (and "Dada says" would be
+                    // odd for Leslie) — straight to the menu
+                    setScreen('home')
+                    return
+                  }
                   setScreen('greatday')
                   // speak inside the tap gesture so mobile browsers allow it
                   speak("Dada says: Today's going to be a…", { rate: 0.97 })

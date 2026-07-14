@@ -16,12 +16,16 @@ unlockable Whalehog ball skin in the shop.
 
 | Piece | File | What it does |
 |---|---|---|
-| Game canvas | `components/game/BallGame.tsx` | Rolling-ball round of 10 questions, particles, sounds, voice narration |
-| App shell | `components/game/PlayApp.tsx` | Kid picker → home → game → summary, ball shop, grown-ups gate |
-| Parent dashboard | `components/game/ParentDashboard.tsx` | Per-skill percentile vs age norms, bell curve, trends |
-| Question banks | `lib/game/questions.ts` | 7 skills × 4–5 difficulty bands, generated (never repeats verbatim) |
-| Adaptive engine | `lib/game/adaptive.ts` | Elo/IRT-style ability per skill; targets ~70–80% success rate |
-| Persistence | `lib/game/storage.ts` | localStorage, per-kid profiles, coins/skins/history |
+| Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards |
+| App shell | `components/game/PlayApp.tsx` | Picker → GREAT DAY ritual → home (quests, streaks) → game → spoken summary; shop; review; grown-ups gate |
+| Miss review | `components/game/MissReview.tsx` | Missed questions replayed one at a time, read aloud, with the "why" spoken on success |
+| Personality quiz | `components/game/PersonalityQuiz.tsx` | "Who Am I?" four-temperaments animals, saved with history |
+| Parent dashboard | `components/game/ParentDashboard.tsx` | Kids: age-norm bell curves + US/TN/Global benchmarks. Adults: IQ-style 3-signal scores, consistency, speed |
+| Parent accounts | `components/game/AccountSync.tsx` + `lib/game/sync.ts` | Google/email sign-in, cloud profile sync (Supabase) |
+| Question banks | `lib/game/questions.ts` | Kid bank (7 skills, pre-K→1st) + adult bank (mental math, sequences, vocab, analogies, logic, spelling) |
+| Adaptive engine | `lib/game/adaptive.ts` | Elo/IRT ability per skill (kids cap 99, adults 120), speed-weighted updates, age norms, adult adjusted scores |
+| Speech | `lib/game/speech.ts` | Best-available voice ranking (novelty voices blacklisted), natural rate |
+| Persistence | `lib/game/storage.ts` | localStorage profiles (Marshall, Lincoln + Brian/Leslie testers), review queue, habit-loop fields |
 
 **Skills:** counting, numbers, math (add/subtract/missing addend), letters, sounds (phonics/rhymes),
 shapes & patterns, sight words / CVC reading.

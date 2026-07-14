@@ -304,7 +304,10 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     // preload voices (some browsers populate the list async)
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.getVoices()
     return () => {
+      // stop everything scheduled — a pending advance firing after quit would
+      // yank the user to the summary screen out of nowhere
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
+      if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1008,7 +1011,16 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
 
       <div className="px-4 pb-3 flex items-center justify-between text-xs text-slate-400">
         <span>Tap the answer — the ball rolls over and eats it!</span>
-        <button onClick={() => setMuted((m) => !m)} className="font-bold text-slate-500 underline">
+        <button
+          onClick={() =>
+            setMuted((m) => {
+              // muting should silence an in-flight voice immediately
+              if (!m && typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel()
+              return !m
+            })
+          }
+          className="font-bold text-slate-500 underline"
+        >
           {muted ? '🔇 Sound off' : '🔊 Sound on'}
         </button>
       </div>

@@ -4,7 +4,7 @@
 // read aloud: hear the question, tap until you find the right answer,
 // then hear WHY it's right. +1 coin per question fixed.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Volume2 } from 'lucide-react'
 import { speak } from '@/lib/game/speech'
 import type { MissedQuestion } from '@/lib/game/types'
@@ -20,21 +20,15 @@ export function MissReview({ misses, kidName, onDone }: MissReviewProps) {
   const [solved, setSolved] = useState(false)
   const [wrongPick, setWrongPick] = useState<string | null>(null)
   const [fixed, setFixed] = useState(0)
-  const spokenForRef = useRef(-1)
+  // stable per-question order for the two choices (answer + what they picked)
+  const [order, setOrder] = useState(() => (Math.random() < 0.5 ? [0, 1] : [1, 0]))
 
   const m = misses[index]
-  const choices = useRef<string[]>([])
-  if (choices.current.length === 0 || spokenForRef.current !== index) {
-    // stable per-question shuffle of the original picked/correct + filler
-    choices.current = [m.answer, m.picked].sort(() => 0.5 - Math.random())
-  }
+  const pair = [m.answer, m.picked]
+  const choices = order.map((i) => pair[i])
 
   // read each question aloud as it appears
   useEffect(() => {
-    if (spokenForRef.current === index) return
-    spokenForRef.current = index
-    setSolved(false)
-    setWrongPick(null)
     const t = window.setTimeout(() => speak(`Let's try this one again. ${m.prompt}`, { rate: 0.95 }), 400)
     return () => window.clearTimeout(t)
   }, [index, m.prompt])
@@ -52,8 +46,15 @@ export function MissReview({ misses, kidName, onDone }: MissReviewProps) {
   }
 
   const next = () => {
-    if (index + 1 >= misses.length) onDone(fixed)
-    else setIndex(index + 1)
+    if (index + 1 >= misses.length) {
+      onDone(fixed)
+      return
+    }
+    // reset synchronously so the next question never flashes "solved" styling
+    setSolved(false)
+    setWrongPick(null)
+    setOrder(Math.random() < 0.5 ? [0, 1] : [1, 0])
+    setIndex(index + 1)
   }
 
   return (
@@ -79,7 +80,7 @@ export function MissReview({ misses, kidName, onDone }: MissReviewProps) {
       </div>
 
       <div className="grid gap-3 mb-4">
-        {choices.current.map((c) => {
+        {choices.map((c) => {
           const isAnswer = c === m.answer
           const wasWrong = wrongPick === c
           return (
