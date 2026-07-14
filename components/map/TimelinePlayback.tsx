@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { MinimizeButton } from '@/components/ui/window-chrome'
+import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
@@ -390,13 +390,11 @@ export function TimelinePlayback({
           <button onClick={() => setShowCustom(false)} className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-xs py-1.5 hover:bg-amber-600 transition-colors">Done</button>
         </div>
       )}
-      <div className="relative rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* Minimize pinned to the window's top-right corner — the site-wide
-          convention. Inline at the end of the wrapping row it drifted to a
-          random spot mid-bar on phones and read as a mystery button. */}
-      <div className="absolute top-1.5 right-1.5 z-20">
-        <MinimizeButton onClick={() => setMinimized(true)} title="Minimize timeline" />
-      </div>
+      <div className="relative">
+      {/* X straddles the bar's top edge (site convention) — always visible,
+          always tappable, never buried in the wrapping control rows. */}
+      <ProtrudingClose onClick={() => setMinimized(true)} title="Minimize timeline" />
+      <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       {/* range pills + movement-display control. On phones the pills get their
           own full-width scrollable row — sharing one row squeezed them into a
           useless 10px sliver next to all the flex-none controls. */}
@@ -633,6 +631,7 @@ export function TimelinePlayback({
         </div>
         </>
       )}
+      </div>
       </div>
     </div>
   )

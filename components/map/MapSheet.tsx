@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { ProtrudingClose } from '@/components/ui/window-chrome'
 
 /**
  * One responsive shell for every map selection — asset, zone, or device.
@@ -37,10 +38,12 @@ export function MapSheet({
         {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
         {badge && <div className="mt-1.5">{badge}</div>}
       </div>
+      {/* Desktop only — on phones the X protrudes above the sheet instead
+          (always tappable even when the sheet content scrolls). */}
       <button
         onClick={onClose}
         aria-label="Close"
-        className="grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95 flex-none"
+        className="hidden md:grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95 flex-none"
       >
         <X className="h-5 w-5" />
       </button>
@@ -55,6 +58,9 @@ export function MapSheet({
           the expanded state dims the map and closes on tap-away. */}
       {expanded && <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />}
       <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
+        {/* X straddles the sheet's top edge (site convention) — reachable no
+            matter how tall the sheet grows or how far its content scrolls. */}
+        <ProtrudingClose onClick={onClose} className="right-5" />
         <div className={'bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-1.5 pb-6 mx-2 border border-navy-800 overflow-y-auto transition-[max-height] duration-200 ' + (expanded ? 'max-h-[85dvh]' : 'max-h-[40dvh]')}>
           <button
             onClick={() => setExpanded((v) => !v)}

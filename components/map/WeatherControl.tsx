@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
-import { MinimizeButton } from '@/components/ui/window-chrome'
+import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
@@ -373,7 +373,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     LAYER_ROWS.filter((d) => d.group === gid && !!d.nightFx === nightFx).map((d) => <LayerRow key={d.id} def={d} />)
 
   return (
-    <div style={{ top, zIndex: z }} className="absolute left-3 w-[210px] rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
+    // Outer wrapper exists so the X can straddle the top edge un-clipped —
+    // the inner panel scrolls (overflow-y-auto) and would cut it in half.
+    <div style={{ top, zIndex: z }} className="absolute left-3 w-[210px]">
+      <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
+      <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
         <div className="relative">
@@ -422,7 +426,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <MapPin className="h-3 w-3 text-teal" /> {place}
         </div>
       ) : null}
-      {/* header — tap anywhere to collapse; the Minus is the obvious way */}
+      {/* header — tap anywhere to collapse; the protruding X above is the
+          always-visible way */}
       <div className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-navy-800">
         <button onClick={() => setOpen(false)} className="flex-1 min-w-0 flex items-center justify-between gap-2">
           <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>
@@ -437,7 +442,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             )}
           </span>
         </button>
-        <MinimizeButton onClick={() => setOpen(false)} title="Minimize layers" className="w-6 h-6" />
       </div>
 
       {/* home weather station — live hyper-local reading from the owner's PWS */}
@@ -583,6 +587,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         More layers = more live data. On weak job-site signal, turn a few off
         and the map loads noticeably faster.
       </p>
+      </div>
     </div>
   )
 }
