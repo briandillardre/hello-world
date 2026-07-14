@@ -902,7 +902,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         id: 'asset-glow', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 0.06],
+          'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 0.14],
           'circle-radius': 24, 'circle-blur': 0.7,
         },
       })
@@ -911,7 +911,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         paint: {
           'circle-color': ['get', 'color'],
           'circle-radius': 14, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
-          'circle-opacity': ['match', ['get', 'state'], 'off', 0.45, 1],
+          // Parked is the NORMAL overnight state — read as calm, never absent.
+          // (0.45 made trucks near-invisible on satellite at night.)
+          'circle-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
         },
       })
       m.addLayer({

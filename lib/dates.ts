@@ -53,7 +53,11 @@ export function rangeWindow(
   const today = zonedDayWindow(tz, 0)
   const endToday = today.to
   switch (range) {
-    case 'live':
+    // Live is NOT day-gated: right after local midnight "today" holds zero
+    // pings, which blanked the live map until each tracker's next check-in
+    // (found Jul 15, 12:30 AM). Live always reaches back at least 4 hours;
+    // during normal hours that floor is moot and it matches Today exactly.
+    case 'live': return { from: Math.min(today.from, Date.now() - 4 * 3_600_000), to: endToday }
     case 'today': return today
     case 'yesterday': return zonedDayWindow(tz, 1)
     case '7d': return { from: zonedDayWindow(tz, 7).from, to: endToday }

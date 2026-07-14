@@ -8,19 +8,30 @@ export const dynamic = 'force-dynamic'
  *  dump of EXACTLY what the map page's asset query returns — so "dots
  *  missing" can be blamed on server data vs client rendering in one look. */
 export default async function DiagPage() {
-  let mapData: { name: string; type: string; hasLoc: boolean; ageMin: number | null; coords: string; color: string }[] = []
+  let mapData: { name: string; type: string; hasLoc: boolean; ageMin: number | null; coords: string; color: string; ble: string }[] = []
   let mapDataErr: string | null = null
   try {
     const company = await getCurrentCompany()
     const assets = await getAssetsWithLocations(company.id)
-    mapData = assets.map((a) => ({
-      name: a.name,
-      type: a.type,
-      hasLoc: !!a.location,
-      ageMin: a.location ? Math.round((Date.now() - new Date(a.location.timestamp).getTime()) / 60_000) : null,
-      coords: a.location ? `${a.location.lat.toFixed(3)}, ${a.location.lng.toFixed(3)}` : '—',
-      color: typeof a.metadata?.color === 'string' ? String(a.metadata.color) : '(auto)',
-    }))
+    mapData = assets.map((a) => {
+      // Beacon truth: does this gateway's latest telemetry carry ANY BLE
+      // data? "none" while driving with tags aboard = the tracker isn't
+      // configured to report beacons — config problem, not app problem.
+      const raw = (a.location?.raw ?? {}) as Record<string, unknown>
+      const bleKeys = Object.keys(raw).filter((k) => k.startsWith('ble.'))
+      const beacons = Array.isArray(raw['ble.beacons']) ? (raw['ble.beacons'] as unknown[]).length : 0
+      return {
+        name: a.name,
+        type: a.type,
+        hasLoc: !!a.location,
+        ageMin: a.location ? Math.round((Date.now() - new Date(a.location.timestamp).getTime()) / 60_000) : null,
+        coords: a.location ? `${a.location.lat.toFixed(3)}, ${a.location.lng.toFixed(3)}` : '—',
+        color: typeof a.metadata?.color === 'string' ? String(a.metadata.color) : '(auto)',
+        ble: a.type === 'vehicle' || a.type === 'equipment'
+          ? (beacons > 0 ? `${beacons} beacon${beacons === 1 ? '' : 's'}` : bleKeys.length ? `${bleKeys.length} ble key${bleKeys.length === 1 ? '' : 's'}` : 'none')
+          : '—',
+      }
+    })
   } catch (err) {
     mapDataErr = err instanceof Error ? err.message : 'query failed'
   }
@@ -51,7 +62,8 @@ export default async function DiagPage() {
                 <th className="pr-2 font-normal">location</th>
                 <th className="pr-2 font-normal">age</th>
                 <th className="pr-2 font-normal">coords</th>
-                <th className="font-normal">color</th>
+                <th className="pr-2 font-normal">color</th>
+                <th className="font-normal">ble</th>
               </tr>
             </thead>
             <tbody>
@@ -62,7 +74,8 @@ export default async function DiagPage() {
                   <td className={'pr-2 ' + (r.hasLoc ? 'text-teal' : 'text-faint')}>{r.hasLoc ? 'yes' : 'none'}</td>
                   <td className="pr-2">{r.ageMin != null ? `${r.ageMin}m` : '—'}</td>
                   <td className="pr-2">{r.coords}</td>
-                  <td>{r.color}</td>
+                  <td className="pr-2">{r.color}</td>
+                  <td className={r.ble === 'none' ? 'text-amber' : 'text-teal'}>{r.ble}</td>
                 </tr>
               ))}
             </tbody>
