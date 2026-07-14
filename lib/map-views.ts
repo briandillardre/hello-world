@@ -43,31 +43,33 @@ const cfg = (partial: Partial<MapViewCfg>): MapViewCfg => ({
   ...partial,
 })
 
+// Preset names describe the JOB each look does (owner ask, Jul 14) — ids are
+// persisted in saved defaults and must never change.
 export const PRESET_VIEWS: SavedMapView[] = [
   {
     id: 'preset-simple',
-    name: 'Simple',
+    name: 'Dispatch — clean map',
     preset: true,
     // Just the fleet on a clean dark map. Dispatch at a glance.
     cfg: cfg({}),
   },
   {
     id: 'preset-sexy',
-    name: 'Sexy',
+    name: 'Showcase — 3D + weather',
     preset: true,
     // The demo look: 3D imagery, live weather, movement trails.
     cfg: cfg({ base: 'hybrid', threeD: true, radar: true, trailMode: 'trails' }),
   },
   {
     id: 'preset-detailed',
-    name: 'Detailed',
+    name: 'Field ops — streets + terrain',
     preset: true,
     // Working superintendent: streets you can read, terrain + water context.
     cfg: cfg({ base: 'streets', trailMode: 'trails', overlays: { topo: true, streams: true } }),
   },
   {
     id: 'preset-insane',
-    name: 'Insane detail',
+    name: 'Site planning — everything on',
     preset: true,
     // Everything on. Site-walk planning, drainage arguments, parcel lines.
     cfg: cfg({

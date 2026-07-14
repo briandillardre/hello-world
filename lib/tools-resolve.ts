@@ -5,6 +5,8 @@ export interface AboardTool {
   name: string
   color: string | null
   rssi: number | null
+  /** Tag coin-cell % when the beacon reports it (TLM); null otherwise. */
+  battery: number | null
   lastSeen: string
 }
 
@@ -24,6 +26,7 @@ export function toolsAboard(
       name: tool.name,
       color,
       rssi: assoc.rssi,
+      battery: assoc.tag_battery ?? null,
       lastSeen: assoc.last_seen,
     })
   }
@@ -74,6 +77,9 @@ export function resolveToolLocations(
         id: `inherited-${asset.id}`,
         asset_id: asset.id,
         timestamp: match.assoc.last_seen,
+        // The truck's 12V state is NOT the tag's coin cell — show the tag's
+        // own battery when the beacon reports it, never the carrier's.
+        battery: match.assoc.tag_battery ?? null,
       },
     }
   })

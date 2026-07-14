@@ -185,7 +185,12 @@ export function tracksFromHistory(
 
   const GAP_MS = 15 * 60_000
 
-  return assets.map((a) => {
+  // Tools have no GPS of their own — any asset_locations rows they carry are
+  // seed/demo residue, and turning those into trails pinned Tool A/B to the
+  // old Nashville demo site in every replay mode (Jul 14). Their position is
+  // ALWAYS derived from the truck carrying them (tool_associations live,
+  // pairing_log historically) — never from own history.
+  return assets.filter((a) => a.type !== 'tool').map((a) => {
     const raw = (byAsset.get(a.id) ?? []).sort((x, y) => x.ms - y.ms)
     // Curve-preserving thinning (DP) — the old every-Nth stride here was the
     // second half of the corner-cutting trails bug (server thinning was the

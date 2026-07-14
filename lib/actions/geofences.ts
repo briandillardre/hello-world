@@ -7,6 +7,16 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site') {
   const companyId = await getCurrentCompanyId()
   const id = await createGeofence(companyId, { name, geometry, color, kind })
+  // Every new zone gets enter + exit rules for ALL assets by default —
+  // without them nothing ever fires, so alert pins and the entry/exit log
+  // sat empty and read as broken (owner, Jul 14). Deletable on /alerts.
+  if (id) {
+    try {
+      const { createAlertRule } = await import('../db/alerts')
+      await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'enter', idle_minutes: null })
+      await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'exit', idle_minutes: null })
+    } catch { /* rules are additive — zone creation must not fail on them */ }
+  }
   revalidatePath('/geofences')
   revalidatePath('/map')
   // Null = the insert didn't happen (RPC error / RLS) — callers surface it.

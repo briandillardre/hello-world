@@ -20,6 +20,8 @@ export interface ToolAssociation {
   tool_asset_id: string
   gateway_asset_id: string
   rssi: number | null
+  /** Tag coin-cell charge %, relayed from the beacon's TLM frame (022). */
+  tag_battery?: number | null
   last_seen: string
 }
 
@@ -148,8 +150,12 @@ export interface AlertRule {
 export interface AlertEvent {
   id: string
   company_id: string
-  rule_id: string
+  /** Null for system (vehicle-health) alerts — those carry `kind` instead. */
+  rule_id: string | null
   asset_id: string
+  /** 'fuel_low' | 'battery_low' for telemetry-driven alerts; null when the
+   *  event came from a geofence rule. */
+  kind?: string | null
   triggered_at: string
   acknowledged_at: string | null
   asset?: Asset

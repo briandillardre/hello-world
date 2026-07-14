@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
+import type { AssetType } from '@/lib/types'
+import type { SearchItem } from './MapSearch'
 import { GROUPS, BASEMAPS, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
 export type BaseStyle = BasemapId
@@ -59,6 +61,22 @@ interface WeatherControlProps {
   onSetDefaultView?: (id: string) => void
   top?: number
   z?: number
+  /** Which screen edge the pill/panel hugs. Live map = right; kiosk = left. */
+  side?: 'left' | 'right'
+  /** Asset-type visibility (the old chip row, folded in here). */
+  filter?: Set<AssetType>
+  onFilter?: (f: Set<AssetType>) => void
+  /** Start drawing a new zone. */
+  onDrawZone?: () => void
+  /** Demo-only Site IoT toggle. */
+  showDevices?: boolean
+  onToggleDevices?: () => void
+  /** Find an asset or zone from inside the panel — full list on focus,
+   *  filters as you type (or dictate via the keyboard mic). */
+  searchItems?: SearchItem[]
+  onPickItem?: (it: SearchItem) => void
+  /** Rendered beside the COLLAPSED pill (the floating AskAI button). */
+  askSlot?: ReactNode
 }
 
 /** "2m ago" style age for the station reading — stations report every 16s–5min. */
@@ -98,11 +116,17 @@ const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
   basemap: MapIcon,
 }
 
-const GROUPS_LS = 'ht_layer_groups_v1'
+// v2: everything defaults collapsed (owner ask Jul 14) — new key so stored
+// v1 expanded-states don't override the new default.
+const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10 }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, askSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
+  const sideCls = side === 'right' ? 'right-3' : 'left-3'
+  // Find-anything (assets + zones) inside the panel.
+  const [findQ, setFindQ] = useState('')
+  const [findOpen, setFindOpen] = useState(false)
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
   const activeView = views?.find((v) => v.id === activeViewId) ?? null
@@ -155,7 +179,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
 
   // ── Collapsible groups, persisted per device ──────────────────────────────
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {}
+    const init: Record<string, boolean> = { views: true }
     for (const g of GROUPS) init[g.id] = !!g.defaultCollapsed
     try {
       const raw = typeof window !== 'undefined' ? localStorage.getItem(GROUPS_LS) : null
@@ -163,7 +187,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     } catch { /* fresh device */ }
     return init
   })
-  const toggleGroup = (gid: GroupId) => {
+  const toggleGroup = (gid: GroupId | 'views') => {
     setCollapsed((c) => {
       const next = { ...c, [gid]: !c[gid] }
       try { localStorage.setItem(GROUPS_LS, JSON.stringify(next)) } catch { /* full */ }
@@ -340,14 +364,15 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     )
   }
 
-  // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles
+  // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles.
+  // The AskAI button rides to its right (owner layout, Jul 14).
   if (!open) {
     return (
+      <div style={{ top, zIndex: z }} className={`absolute ${sideCls} flex items-center gap-2`}>
       <button
-        style={{ top, zIndex: z }}
         onClick={() => setOpen(true)}
         aria-label="Map layers and weather"
-        className="absolute left-3 flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
+        className="flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
         {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
         {pws && (
@@ -355,10 +380,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             <Home className="h-3 w-3" />{pws.tempF}°
           </span>
         )}
+        {/* status icons: what's currently ON — rain cloud = radar looping,
+            satellite dish = satellite/hybrid basemap active */}
         {(radarOn || base === 'satellite' || base === 'hybrid') && (
           <span className="flex items-center gap-1">
-            {radarOn && <CloudRain className="h-3.5 w-3.5 text-teal" />}
-            {(base === 'satellite' || base === 'hybrid') && <Satellite className="h-3.5 w-3.5 text-teal" />}
+            {radarOn && <span title="Radar is on"><CloudRain className="h-3.5 w-3.5 text-teal" /></span>}
+            {(base === 'satellite' || base === 'hybrid') && <span title="Satellite basemap active"><Satellite className="h-3.5 w-3.5 text-teal" /></span>}
           </span>
         )}
         <span className="flex items-center gap-0.5 text-faint">
@@ -366,6 +393,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <ChevronDown className="h-3.5 w-3.5" />
         </span>
       </button>
+      {askSlot}
+      </div>
     )
   }
 
@@ -375,9 +404,123 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
     // the inner panel scrolls (overflow-y-auto) and would cut it in half.
-    <div style={{ top, zIndex: z }} className="absolute left-3 w-[210px]">
+    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[224px]`}>
       <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
       <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
+
+      {/* ── Find an asset or zone — full list on focus, filters as you type ── */}
+      {searchItems && onPickItem && (() => {
+        const q = findQ.trim().toLowerCase()
+        const TYPE_ORDER: Record<string, number> = { vehicle: 0, equipment: 1, personnel: 2, tool: 3 }
+        const match = (it: SearchItem) => !q || it.name.toLowerCase().includes(q)
+        const assets = searchItems.filter((i) => i.kind === 'asset' && match(i))
+          .sort((a, b) => (TYPE_ORDER[a.type ?? ''] ?? 9) - (TYPE_ORDER[b.type ?? ''] ?? 9) || a.name.localeCompare(b.name))
+        const zones = searchItems.filter((i) => i.kind === 'zone' && match(i)).sort((a, b) => a.name.localeCompare(b.name))
+        const pick = (it: SearchItem) => { onPickItem(it); setFindQ(''); setFindOpen(false); setOpen(false) }
+        const row = (it: SearchItem) => (
+          <button
+            key={`${it.kind}-${it.id}`}
+            onMouseDown={(e) => { e.preventDefault(); pick(it) }}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-muted hover:bg-navy-800 hover:text-ink transition-colors"
+          >
+            {it.kind === 'zone'
+              ? <Hexagon className="h-3 w-3 flex-none" style={{ color: it.color ?? '#ff9e16' }} />
+              : <span className="text-[13px] leading-none flex-none">{it.type === 'vehicle' ? '🚛' : it.type === 'equipment' ? '🏗️' : it.type === 'personnel' ? '👷' : '🔧'}</span>}
+            <span className="flex-1 min-w-0 truncate">{it.name}</span>
+            {it.sub && <span className="font-mono text-[9px] text-faint flex-none max-w-[80px] truncate">{it.sub}</span>}
+          </button>
+        )
+        return (
+          <div className="px-2 pt-2 pb-1">
+            <div className="flex items-center gap-1.5 bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 focus-within:border-teal transition-colors">
+              <Search className="h-3.5 w-3.5 text-faint flex-none" />
+              <input
+                value={findQ}
+                onChange={(e) => setFindQ(e.target.value)}
+                onFocus={() => setFindOpen(true)}
+                onBlur={() => setTimeout(() => setFindOpen(false), 150)}
+                placeholder="Find asset or zone…"
+                className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
+              />
+            </div>
+            {findOpen && (
+              <div className="mt-1 rounded-lg bg-navy-900 border border-navy-700 max-h-[240px] overflow-y-auto no-scrollbar">
+                {assets.length > 0 && <p className="px-2.5 pt-1.5 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Assets</p>}
+                {assets.map(row)}
+                {zones.length > 0 && <p className="px-2.5 pt-1.5 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint border-t border-navy-800">Zones</p>}
+                {zones.map(row)}
+                {assets.length + zones.length === 0 && (
+                  <p className="px-2.5 py-2.5 text-[11px] text-faint text-center">Nothing matches &ldquo;{findQ}&rdquo;</p>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ── Show on map — the old chip row lives here now, zero scrolling ── */}
+      {filter && onFilter && (
+        <div className="px-2 pb-1.5">
+          <p className="px-1 pt-1 pb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Show on map</p>
+          <div className="grid grid-cols-2 gap-1">
+            {([
+              ['vehicle', '🚛', 'Vehicles'],
+              ['equipment', '🏗️', 'Equipment'],
+              ['personnel', '👷', 'People'],
+              ['tool', '🔧', 'Tools'],
+            ] as [AssetType, string, string][]).map(([t, emoji, label]) => {
+              const on = filter.has(t)
+              return (
+                <button
+                  key={t}
+                  onClick={() => {
+                    const next = new Set(filter)
+                    if (on) next.delete(t); else next.add(t)
+                    onFilter(next)
+                  }}
+                  className={
+                    'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
+                    (on ? 'bg-teal/15 border-teal/40 text-ink' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
+                  }
+                >
+                  <span>{emoji}</span>{label}
+                </button>
+              )
+            })}
+            {onShowZones && (
+              <button
+                onClick={() => onShowZones(!showZones)}
+                className={
+                  'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
+                  (showZones ? 'bg-amber/15 border-amber/40 text-amber' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
+                }
+              >
+                <Hexagon className="h-3.5 w-3.5" /> Zones
+              </button>
+            )}
+            {onDrawZone && (
+              <button
+                onClick={() => { setOpen(false); onDrawZone() }}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border border-dashed border-teal/60 text-teal hover:bg-teal/10 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" /> New zone
+              </button>
+            )}
+            {onToggleDevices && (
+              <button
+                onClick={onToggleDevices}
+                className={
+                  'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
+                  (showDevices ? 'bg-teal/15 border-teal/40 text-teal' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
+                }
+              >
+                <Cctv className="h-3.5 w-3.5" /> Site IoT
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* location — editable so the weather can follow any site/city */}
       {onPlaceChange ? (
         <div className="relative">
@@ -474,14 +617,26 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </div>
       )}
 
-      {/* named saveable views — one tap to a whole look; star = opens with it */}
+      {/* named saveable views — one tap to a whole look; star = opens with it.
+          Collapsed by default like every other section; saved per USER (your
+          account across devices), not company-wide. */}
       {views && onApplyView && (
-        <div className="px-2 py-2 border-b border-navy-800">
+        <div className="border-b border-navy-800">
+          <button onClick={() => toggleGroup('views')} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
+            <Bookmark className="h-3.5 w-3.5 text-teal flex-none" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">Map views</span>
+            {collapsed.views ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
+          </button>
+          {!collapsed.views && (
+          <div className="px-2 pb-2">
           <div className="px-1 flex items-center justify-between mb-1.5">
-            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Views</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">Saved to your account</span>
             {onSaveView && !savingView && (
-              <button onClick={() => setSavingView(true)} className="flex items-center gap-1 text-[10.5px] font-semibold text-teal hover:text-ink">
-                <Check className="h-3 w-3" /> Save current
+              <button
+                onClick={() => setSavingView(true)}
+                className="flex items-center gap-1 rounded-md bg-amber text-[#1a1100] font-display font-bold text-[10.5px] px-2 py-1 hover:bg-amber-600 transition-colors"
+              >
+                <Plus className="h-3 w-3" /> Save current
               </button>
             )}
           </div>
@@ -536,6 +691,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
                 </button>
               )}
             </div>
+          )}
+          </div>
           )}
         </div>
       )}

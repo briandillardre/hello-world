@@ -13,7 +13,7 @@ export interface FlespiMessage {
   'movement.status'?: boolean
   timestamp?: number // unix seconds
   // BLE beacons can arrive in several shapes depending on device/config:
-  'ble.beacons'?: Array<{ id?: string; mac?: string; rssi?: number }>
+  'ble.beacons'?: Array<{ id?: string; mac?: string; rssi?: number; battery?: number; 'battery.voltage'?: number; 'battery.level'?: number }>
   [key: string]: unknown
 }
 
@@ -27,7 +27,7 @@ export interface NormalizedReading {
   altitude: number | null
   battery: number | null
   timestamp: string
-  beacons: { id: string; rssi: number | null }[]
+  beacons: { id: string; rssi: number | null; battery: number | null }[]
   /** Everything else the tracker reported (OBD PIDs, voltages, ignition,
    *  movement, odometer, DTCs…) — persisted so no telemetry is lost. */
   params: Record<string, unknown>
@@ -63,12 +63,20 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
   if (typeof msg['battery.level'] === 'number') battery = Math.round(msg['battery.level'])
   else if (typeof msg['battery.voltage'] === 'number') battery = voltageToPercent(msg['battery.voltage'])
 
+  // Tag battery arrives as TLM voltage (~2.4-3.1 V coin cell) or a percent,
+  // depending on tracker firmware. Normalize to percent; null when absent.
+  const tagBattery = (v: unknown): number | null => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null
+    if (v > 100) return tagBattery(v / 1000)                    // millivolts
+    if (v <= 5) return Math.max(0, Math.min(100, Math.round(((v - 2.5) / (3.0 - 2.5)) * 100))) // volts
+    return Math.round(v)                                        // already %
+  }
   const beacons: NormalizedReading['beacons'] = []
   const rawBeacons = msg['ble.beacons']
   if (Array.isArray(rawBeacons)) {
     for (const b of rawBeacons) {
       const id = b.id ?? b.mac
-      if (id) beacons.push({ id, rssi: typeof b.rssi === 'number' ? b.rssi : null })
+      if (id) beacons.push({ id, rssi: typeof b.rssi === 'number' ? b.rssi : null, battery: tagBattery(b['battery.level'] ?? b['battery.voltage'] ?? b.battery) })
     }
   }
   // Also support flattened "ble.sensor.<n>.id" style fields.
@@ -76,7 +84,7 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
     const m = k.match(/^ble\.sensor\.(\d+)\.(id|mac)$/)
     if (m && typeof v === 'string') {
       const rssi = msg[`ble.sensor.${m[1]}.rssi`]
-      beacons.push({ id: v, rssi: typeof rssi === 'number' ? rssi : null })
+      beacons.push({ id: v, rssi: typeof rssi === 'number' ? rssi : null, battery: tagBattery(msg[`ble.sensor.${m[1]}.battery.voltage`] ?? msg[`ble.sensor.${m[1]}.battery`]) })
     }
   }
 

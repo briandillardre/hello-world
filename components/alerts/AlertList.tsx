@@ -52,7 +52,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
     const arr = [...filtered]
     const name = (a: AlertEvent) => a.asset?.name ?? ''
     const zone = (a: AlertEvent) => a.rule?.geofence?.name ?? ''
-    const trig = (a: AlertEvent) => a.rule?.trigger ?? ''
+    const trig = (a: AlertEvent) => a.rule?.trigger ?? a.kind ?? ''
     if (sort === 'asset') arr.sort((a, b) => name(a).localeCompare(name(b)) || b.triggered_at.localeCompare(a.triggered_at))
     else if (sort === 'zone') arr.sort((a, b) => zone(a).localeCompare(zone(b)) || b.triggered_at.localeCompare(a.triggered_at))
     else if (sort === 'type') arr.sort((a, b) => trig(a).localeCompare(trig(b)) || b.triggered_at.localeCompare(a.triggered_at))
@@ -150,10 +150,13 @@ function replayHref(alert: AlertEvent): string {
 
 function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?: (id: string) => void }) {
   const trigger = alert.rule?.trigger ?? 'exit'
+  // System (vehicle-health) alerts carry `kind` and no rule/zone.
+  const sysLabel = alert.kind === 'fuel_low' ? 'Fuel low'
+    : alert.kind === 'battery_low' ? '12V battery weak' : null
   const isUnread = !alert.acknowledged_at
-  const isCritical = CRITICAL_TRIGGERS.includes(trigger)
+  const isCritical = CRITICAL_TRIGGERS.includes(trigger) && !sysLabel
   const assetName = alert.asset?.name ?? 'Unknown Asset'
-  const zoneName = alert.rule?.geofence?.name ?? 'Unknown Zone'
+  const zoneName = sysLabel ? 'Vehicle health' : (alert.rule?.geofence?.name ?? 'Unknown Zone')
 
   const rowBg = isCritical && isUnread
     ? 'bg-alert/15 border-l-4 border-alert'
@@ -173,7 +176,7 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
       <Link href={replayHref(alert)} className="flex-1 min-w-0 group" title="View this moment on the map">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-sm text-ink group-hover:text-amber transition-colors">{assetName}</span>
-          <Badge variant={TRIGGER_COLORS[trigger]}>{TRIGGER_LABELS[trigger]}</Badge>
+          <Badge variant={sysLabel ? 'destructive' : TRIGGER_COLORS[trigger]}>{sysLabel ?? TRIGGER_LABELS[trigger]}</Badge>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted mt-0.5">
           <MapPin className="h-3 w-3" />

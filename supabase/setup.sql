@@ -739,3 +739,10 @@ CREATE INDEX IF NOT EXISTS pairing_log_open_idx ON pairing_log(member_asset_id) 
 ALTER TABLE pairing_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "company pairing log" ON pairing_log
   FOR ALL USING (company_id = current_company_id());
+
+-- ── 022_vehicle_health_alerts.sql ───────────────────────────────────────
+ALTER TABLE alert_events ALTER COLUMN rule_id DROP NOT NULL;
+ALTER TABLE alert_events ADD COLUMN IF NOT EXISTS kind TEXT;
+-- kind: NULL for rule-based events; 'fuel_low' | 'battery_low' for system ones.
+CREATE INDEX IF NOT EXISTS alert_events_kind_idx ON alert_events(asset_id, kind, triggered_at DESC);
+ALTER TABLE tool_associations ADD COLUMN IF NOT EXISTS tag_battery INTEGER;

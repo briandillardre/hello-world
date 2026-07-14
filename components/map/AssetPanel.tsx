@@ -270,6 +270,9 @@ function AssetDetails({
                     <span className="block text-[11px] text-faint">
                       {sig.word && <span className={sig.cls}>signal {sig.word}</span>}
                       {sig.word && ' · '}
+                      {t.battery != null && (
+                        <span className={BATTERY_COLOR(t.battery)}>🔋{t.battery}% · </span>
+                      )}
                       seen {formatRelativeTime(t.lastSeen)}
                     </span>
                   </span>

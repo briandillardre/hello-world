@@ -272,3 +272,9 @@ input[type='range'].slider-heat::-moz-range-thumb {
 @media (prefers-reduced-motion: reduce) {
   .anim-word { animation: none; opacity: 1; filter: none; transform: none; }
 }
+
+/* Live map: layers pill + AskAI now hover top-right — push the zoom cluster
+   down so nothing stacks on it. */
+.map-live .maplibregl-ctrl-top-right {
+  margin-top: 52px;
+}

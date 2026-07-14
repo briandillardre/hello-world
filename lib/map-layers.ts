@@ -30,11 +30,13 @@ export interface LayerRowDef {
   isLive?: boolean
 }
 
+// Every group starts collapsed (owner ask, Jul 14) — the panel opens to the
+// basics (find, show-on-map, weather summary) with the deep layers one tap in.
 export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[] = [
-  { id: 'site', label: 'Site' },
-  { id: 'weather', label: 'Weather' },
+  { id: 'site', label: 'Site', defaultCollapsed: true },
+  { id: 'weather', label: 'Weather', defaultCollapsed: true },
   { id: 'water', label: 'Water & Terrain', defaultCollapsed: true },
-  { id: 'basemap', label: 'Basemap' },
+  { id: 'basemap', label: 'Basemap', defaultCollapsed: true },
 ]
 
 export const BASEMAPS: { id: BasemapId; label: string }[] = [
@@ -63,7 +65,9 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly' },
   { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
   { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see weather stations', hint: 'community stations · tap for readings' },
-  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'coming-soon' },
+  // Layer name discovered live from NOAA's server (like temp/feels/wind) —
+  // GOES lightning mapper strike density. Row reports if NOAA drops it.
+  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', hasOpacity: true, hint: 'GOES strike density · ~10 min' },
 
   // ── Water & Terrain ───────────────────────────────────────────────────────
   { id: 'streams', label: 'Streams', group: 'water', status: 'live', hasOpacity: true, hint: 'rivers & creeks (national hydrography)' },

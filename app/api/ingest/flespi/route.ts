@@ -170,16 +170,20 @@ export async function POST(request: NextRequest) {
         if (holderFresh && !outshouts) continue // current holder keeps it
       }
 
-      await supabase.from('tool_associations').upsert(
-        {
-          company_id: asset.company_id,
-          tool_asset_id: toolId,
-          gateway_asset_id: asset.id,
-          rssi: beacon.rssi,
-          last_seen: r.timestamp,
-        },
-        { onConflict: 'tool_asset_id' }
-      )
+      // tag_battery column arrives with migration 022 — retry without it so
+      // ingestion never breaks on a not-yet-migrated database.
+      const assocRow: Record<string, unknown> = {
+        company_id: asset.company_id,
+        tool_asset_id: toolId,
+        gateway_asset_id: asset.id,
+        rssi: beacon.rssi,
+        last_seen: r.timestamp,
+      }
+      const withBattery = beacon.battery != null ? { ...assocRow, tag_battery: beacon.battery } : assocRow
+      const { error: assocErr } = await supabase.from('tool_associations').upsert(withBattery, { onConflict: 'tool_asset_id' })
+      if (assocErr && beacon.battery != null) {
+        await supabase.from('tool_associations').upsert(assocRow, { onConflict: 'tool_asset_id' })
+      }
 
       // Pairing history (migration 021). tool_associations only holds the
       // CURRENT ride; this log keeps episodes (started→ended) so "which truck
@@ -214,6 +218,63 @@ export async function POST(request: NextRequest) {
         }
       } catch { /* pairing log is additive; ingestion continues regardless */ }
     }
+  }
+
+  // ── Vehicle health: fuel low + 12V battery weak, straight from telemetry ──
+  // No geofence rule involved (migration 022: rule_id nullable + kind).
+  // Dedupe 12h per (asset, kind) so a low tank pages once, not every ping.
+  try {
+    for (const [companyId, byAsset] of Array.from(updated.entries())) {
+      const healthNotes: { reason: string; severity: 'critical' | 'warning' | 'info' }[] = []
+      for (const [assetId, r] of Array.from(byAsset.entries())) {
+        const checks: { kind: string; reason: string; severity: 'warning' | 'critical' }[] = []
+        // Fuel level: Teltonika OBD reports percent under a few names.
+        let fuelPct: number | null = null
+        for (const [k, v] of Object.entries(r.params)) {
+          if (/fuel[._ ]?level/i.test(k) && typeof v === 'number' && v >= 0 && v <= 100) { fuelPct = v; break }
+        }
+        if (fuelPct != null && fuelPct <= 15) {
+          checks.push({ kind: 'fuel_low', reason: `Fuel low — ${Math.round(fuelPct)}%`, severity: fuelPct <= 8 ? 'critical' : 'warning' })
+        }
+        // 12V battery: external/OBD voltage in volts (mV variants normalized
+        // by dividing when the number is implausibly large).
+        for (const k of ['external.powersource.voltage', 'battery.current.voltage', 'obd.battery.voltage']) {
+          const raw = r.params[k]
+          if (typeof raw !== 'number') continue
+          const volts = raw > 100 ? raw / 1000 : raw
+          if (volts > 5 && volts < 11.8) {
+            checks.push({ kind: 'battery_low', reason: `12V battery weak — ${volts.toFixed(1)} V`, severity: volts < 11.4 ? 'critical' : 'warning' })
+          }
+          break
+        }
+        for (const c of checks) {
+          const sinceIso = new Date(Date.now() - 12 * 3_600_000).toISOString()
+          const { data: recent } = await supabase
+            .from('alert_events')
+            .select('id')
+            .eq('asset_id', assetId)
+            .eq('kind', c.kind)
+            .gte('triggered_at', sinceIso)
+            .limit(1)
+          if (recent?.length) continue
+          const { error } = await supabase.from('alert_events').insert({
+            company_id: companyId, asset_id: assetId, kind: c.kind, triggered_at: r.timestamp,
+          })
+          if (!error) {
+            const { data: a } = await supabase.from('assets').select('name').eq('id', assetId).single()
+            healthNotes.push({ reason: `${a?.name ?? 'Vehicle'}: ${c.reason}`, severity: c.severity })
+          }
+        }
+      }
+      if (healthNotes.length) {
+        const { data: co } = await supabase
+          .from('companies').select('name, alert_phone, alert_email').eq('id', companyId).single()
+        const { dispatchAlerts } = await import('@/lib/notify')
+        await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, healthNotes)
+      }
+    }
+  } catch (err) {
+    console.error('vehicle health checks failed', err) // pre-022 DB or notify down — never break ingestion
   }
 
   // ── Alert rules: evaluate against the fresh readings ──────────────────────

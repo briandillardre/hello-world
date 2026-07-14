@@ -32,7 +32,6 @@ import { MapSearch, type SearchItem } from './MapSearch'
 import { formatRelativeTime } from '@/lib/utils'
 import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
-import { FilterBar } from './FilterBar'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
@@ -235,6 +234,9 @@ interface MapViewProps {
   /** Tool-pairing episodes over the history window — replay badges show what
    *  was aboard AT the scrubbed moment, never today's state on old data. */
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
+  /** Floating AskAI button, rendered beside the collapsed layers pill
+   *  (only the real /map passes one — demo + kiosk have no assistant). */
+  askSlot?: React.ReactNode
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
@@ -263,7 +265,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -1712,15 +1714,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // trusted from our hardcoded guesses — a wrong/renamed LAYERS= draws
   // nothing, silently. null = not fetched yet; {} = discovery failed, use
   // the configured defaults.
-  const RTMA_KEYS = useMemo(() => ['temp', 'feels', 'wind'] as const, [])
-  const [rtmaNames, setRtmaNames] = useState<{ temp?: string | null; feels?: string | null; wind?: string | null } | null>(null)
+  const RTMA_KEYS = useMemo(() => ['temp', 'feels', 'wind', 'lightning'] as const, [])
+  type RtmaDiscovered = { temp?: string | null; feels?: string | null; wind?: string | null; lightning?: string | null }
+  const [rtmaNames, setRtmaNames] = useState<RtmaDiscovered | null>(null)
   const rtmaWanted = RTMA_KEYS.some((k) => overlaysOn[k])
   useEffect(() => {
     if (!rtmaWanted || rtmaNames !== null) return
     let cancelled = false
     fetch('/api/rtma-layers')
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { temp?: string | null; feels?: string | null; wind?: string | null } | null) => {
+      .then((j: RtmaDiscovered | null) => {
         if (!cancelled) setRtmaNames(j ?? {})
       })
       .catch(() => { if (!cancelled) setRtmaNames({}) })
@@ -1742,8 +1745,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (on && !m.getSource(srcId)) {
         let tiles = o.tiles
         if (isRtma) {
-          const real = rtmaNames?.[o.key as 'temp' | 'feels' | 'wind']
+          const real = rtmaNames?.[o.key as 'temp' | 'feels' | 'wind' | 'lightning']
           if (real) tiles = tiles.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(real)}`)
+          else if (o.key === 'lightning' && rtmaNames) {
+            // Discovery-only layer: without a real name the placeholder would
+            // just draw nothing — say so on the row instead.
+            window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'lightning', msg: 'NOAA is not publishing a lightning layer right now' } }))
+            continue
+          }
         }
         m.addSource(srcId, { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: o.maxzoom })
         const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
@@ -2038,6 +2047,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
   // ── Community weather stations (Ambient public network via our proxy) ─────
   // Temp-colored dots at neighborhood zoom; tap one for the full reading.
+  const pwsCacheRef = useRef(new Map<string, GeoJSON.Feature>())
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -2078,27 +2088,44 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!on) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
+    // Station cache keyed by id: each fetch MERGES into it instead of
+    // replacing the source outright — a mid-zoom refetch that returned a
+    // different sample used to blank dots that were plainly still in view.
+    // Prune only what's drifted far outside the current viewport.
+    const cache = pwsCacheRef.current
     const load = () => {
       if (m.getZoom() < 8) return
       const b = m.getBounds()
-      const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(3)).join(',')
+      // Padded bbox: fetch one viewport-width beyond every edge so small
+      // pans/zooms land on already-cached dots.
+      const padW = (b.getEast() - b.getWest())
+      const padH = (b.getNorth() - b.getSouth())
+      const bbox = [b.getWest() - padW, b.getSouth() - padH, b.getEast() + padW, b.getNorth() + padH].map((v) => v.toFixed(3)).join(',')
       fetch(`/api/pws-stations?bbox=${bbox}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((j: { stations?: { id: string; name: string; lat: number; lng: number; tempF: number | null; feelsF: number | null; windMph: number | null; gustMph: number | null; humidity: number | null; rainInHr: number | null; ageMin: number | null }[] } | null) => {
           if (cancelled || !j?.stations) return
-          const features = j.stations.map((s) => ({
-            type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
-            // -999 sentinel: expressions and popup HTML can't branch on null.
-            properties: {
-              name: s.name,
-              tempF: s.tempF ?? -999, feelsF: s.feelsF ?? -999,
-              windMph: s.windMph ?? -999, gustMph: s.gustMph ?? -999,
-              humidity: s.humidity ?? -999, rainInHr: s.rainInHr ?? 0,
-              ageMin: s.ageMin ?? -999,
-            },
-          }))
-          ;(m.getSource('pwsnet') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          for (const s of j.stations) {
+            cache.set(s.id ?? `${s.lat},${s.lng}`, {
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+              // -999 sentinel: expressions and popup HTML can't branch on null.
+              properties: {
+                name: s.name,
+                tempF: s.tempF ?? -999, feelsF: s.feelsF ?? -999,
+                windMph: s.windMph ?? -999, gustMph: s.gustMph ?? -999,
+                humidity: s.humidity ?? -999, rainInHr: s.rainInHr ?? 0,
+                ageMin: s.ageMin ?? -999,
+              },
+            })
+          }
+          // Drop stations more than ~3 viewport-widths out (unbounded growth).
+          const keepW = padW * 3, keepH = padH * 3
+          for (const [k, f] of Array.from(cache.entries())) {
+            const [lng, lat] = (f.geometry as GeoJSON.Point).coordinates
+            if (lng < b.getWest() - keepW || lng > b.getEast() + keepW || lat < b.getSouth() - keepH || lat > b.getNorth() + keepH) cache.delete(k)
+          }
+          ;(m.getSource('pwsnet') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: Array.from(cache.values()) })
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'pwsnet', at: Date.now() } }))
         })
         .catch(() => { /* feed down — keep last dots */ })
@@ -2796,47 +2823,92 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     src?.setData({ type: 'FeatureCollection', features: [] })
   }, [handleDrawClick])
 
+  // One list + one handler serve both search surfaces (map pill + layers hub).
+  const searchItems: SearchItem[] = [
+    ...assets.map((a): SearchItem => ({
+      kind: 'asset', id: a.id, name: a.name, type: a.type,
+      sub: a.location ? `last seen ${formatRelativeTime(a.location.timestamp)}` : 'no signal yet',
+    })),
+    ...geofences.map((g): SearchItem => ({ kind: 'zone', id: g.id, name: g.name, color: g.color })),
+  ]
+  const pickSearchItem = (it: SearchItem) => {
+    if (it.kind === 'asset') {
+      const a = assets.find((x) => x.id === it.id)
+      if (!a) return
+      setSelectedAsset(a)
+      setSelectedZone(null)
+      if (a.location) map.current?.flyTo({ center: [a.location.lng, a.location.lat], zoom: 15.5, duration: 1200 })
+    } else {
+      const g = geofences.find((x) => x.id === it.id)
+      const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
+      if (!g || !ring?.length) return
+      setSelectedZone(g)
+      setSelectedAsset(null)
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      for (const [lng, lat] of ring) {
+        if (lng < minLng) minLng = lng
+        if (lng > maxLng) maxLng = lng
+        if (lat < minLat) minLat = lat
+        if (lat > maxLat) maxLat = lat
+      }
+      map.current?.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, duration: 1200 })
+    }
+  }
+
   return (
-    <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : '')}>
+    <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {!kiosk && <FilterBar filter={filter} onChange={setFilter} showZones={showZones} onToggleZones={() => setShowZones((v) => !v)} showDevices={showDevices} onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined} onDrawZone={!pbActive && onGeofenceSave ? startDrawing : undefined} />}
+      {/* find-anything: type or talk, jump to an asset or zone — the same
+          list also powers the search inside the layers hub */}
+      {!kiosk && <MapSearch top={12} items={searchItems} onPick={pickSearchItem} />}
 
-      {/* find-anything: type or talk, jump to an asset or zone */}
-      {!kiosk && (
-        <MapSearch
-          top={58}
-          items={[
-            ...assets.map((a): SearchItem => ({
-              kind: 'asset', id: a.id, name: a.name, type: a.type,
-              sub: a.location ? `last seen ${formatRelativeTime(a.location.timestamp)}` : 'no signal yet',
-            })),
-            ...geofences.map((g): SearchItem => ({ kind: 'zone', id: g.id, name: g.name, color: g.color })),
-          ]}
-          onPick={(it) => {
-            if (it.kind === 'asset') {
-              const a = assets.find((x) => x.id === it.id)
-              if (!a) return
-              setSelectedAsset(a)
-              setSelectedZone(null)
-              if (a.location) map.current?.flyTo({ center: [a.location.lng, a.location.lat], zoom: 15.5, duration: 1200 })
-            } else {
-              const g = geofences.find((x) => x.id === it.id)
-              const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
-              if (!g || !ring?.length) return
-              setSelectedZone(g)
-              setSelectedAsset(null)
-              let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
-              for (const [lng, lat] of ring) {
-                if (lng < minLng) minLng = lng
-                if (lng > maxLng) maxLng = lng
-                if (lat < minLat) minLat = lat
-                if (lat > maxLat) maxLat = lat
-              }
-              map.current?.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, duration: 1200 })
-            }
-          }}
-        />
+      {/* Numeric scales for shaded layers — a wash of color with no numbers
+          is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS
+          server's own legend so colors match the tiles exactly. */}
+      {!kiosk && (overlaysOn.temp || overlaysOn.feels || overlaysOn.wind || overlaysOn.lightning || precipOn || trailMode === 'heatmap' || trailMode === '3d') && (
+        <div className="absolute left-3 top-[60px] z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none">
+          {(['temp', 'feels', 'wind', 'lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
+            const name = rtmaNames?.[k] ?? (k === 'temp' ? 'air_temperature' : k === 'feels' ? 'apparent_air_temperature' : k === 'wind' ? 'wind_speed' : null)
+            if (!name) return null
+            return (
+              <div key={k} className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
+                <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">
+                  {k === 'temp' ? 'Temperature °F' : k === 'feels' ? 'Feels like °F' : k === 'wind' ? 'Wind mph' : 'Lightning · strikes'}
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetLegendGraphic&FORMAT=image/png&LAYER=${encodeURIComponent(name)}`}
+                  alt={`${k} scale`}
+                  className="max-h-44 w-auto rounded bg-white/90 p-0.5 object-contain"
+                  onError={(e) => { const p = e.currentTarget.parentElement; if (p) p.style.display = 'none' }}
+                />
+              </div>
+            )
+          })}
+          {precipOn && (
+            <div className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
+              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">
+                Rain · inches / {PRECIP_PERIODS.find((p) => p.key === precipPeriod)?.label ?? precipPeriod}
+              </p>
+              <div className="h-2.5 rounded-sm" style={{ background: 'linear-gradient(90deg,#78f573,#1eb51e,#fffa72,#ffa322,#ff1f1c,#bd0021,#f800fd,#9854c6)' }} />
+              <div className="flex justify-between font-mono text-[8.5px] text-faint mt-0.5">
+                {['.01', '.25', '.5', '1', '2', '3', '5', '10+'].map((v) => <span key={v}>{v}</span>)}
+              </div>
+            </div>
+          )}
+          {(trailMode === 'heatmap' || trailMode === '3d') && (
+            <div className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
+              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">Activity · assets moving</p>
+              <div className="h-2.5 rounded-sm" style={{ background: 'linear-gradient(90deg,#14506f,#2dd4bf,#ff9e16,#ff5d5d)' }} />
+              <div className="flex justify-between font-mono text-[8.5px] text-faint mt-0.5">
+                <span>0</span>
+                <span>{Math.max(1, Math.round(Math.max(0, ...activity) / 2))}</span>
+                <span>{Math.max(1, ...activity)} at once</span>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {followHud && followId && (
@@ -2887,8 +2959,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveView={handleSaveView}
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
-        top={kiosk ? 68 : 102}
-        z={kiosk ? 45 : 10}
+        side={kiosk ? 'left' : 'right'}
+        top={kiosk ? 68 : 12}
+        z={kiosk ? 45 : 15}
+        filter={kiosk ? undefined : filter}
+        onFilter={kiosk ? undefined : setFilter}
+        onDrawZone={!kiosk && !pbActive && onGeofenceSave ? startDrawing : undefined}
+        showDevices={showDevices}
+        onToggleDevices={!kiosk && isMock ? () => setShowDevices((v) => !v) : undefined}
+        searchItems={kiosk ? undefined : searchItems}
+        onPickItem={kiosk ? undefined : pickSearchItem}
+        askSlot={askSlot}
       />
 
 

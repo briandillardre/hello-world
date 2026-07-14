@@ -16,6 +16,8 @@ export interface RtmaNames {
   temp: string | null
   feels: string | null
   wind: string | null
+  /** GOES GLM lightning strike density, when nowCOAST carries it. */
+  lightning: string | null
   /** All plausible layer names found — /diag debugging aid. */
   names: string[]
 }
@@ -40,7 +42,7 @@ export async function GET() {
     // Every <Name> in the doc; the service's own name and style names slip in,
     // but the pattern matches below only ever pick layer-shaped names.
     const names = Array.from(xml.matchAll(/<Name>([^<]+)<\/Name>/g), (m) => m[1].trim())
-      .filter((n) => /temp|wind|dew|humid|apparent|heat|gust/i.test(n))
+      .filter((n) => /temp|wind|dew|humid|apparent|heat|gust|lightning|glm|strike/i.test(n))
     // Workspace-qualified names (with ':') are the servable ones — the bare
     // 'wind_speed' the first pass picked drew a ServiceException in prod
     // while 'ndfd_temperature:air_temperature' rendered fine.
@@ -58,6 +60,7 @@ export async function GET() {
       temp: pick(/^(\w+:)?air_temperature$/i, /air_temp(?!.*(apparent|dew))/i),
       feels: pick(/apparent/i, /heat_index/i, /feels/i),
       wind: pick(/^(\w+:)?wind_speed$/i, /wind_speed/i, /wind_velocity/i, /(?<!gust_)wind(?!_dir)/i),
+      lightning: pick(/lightning.*density/i, /strike.*density/i, /glm/i, /lightning/i),
       names: Array.from(new Set(names)).slice(0, 60),
     }
     cache = { at: Date.now(), data }

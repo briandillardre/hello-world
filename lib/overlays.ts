@@ -107,6 +107,17 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     opacity: 0.55,
   },
   {
+    key: 'lightning',
+    label: 'Lightning',
+    note: 'GOES GLM strike density · ~10 min',
+    // LAYERS= placeholder — the real workspace-qualified name is discovered
+    // from GetCapabilities at runtime (/api/rtma-layers), same as temp/wind.
+    tiles: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=lightning_strike_density&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    minzoom: 0,
+    maxzoom: 10,
+    opacity: 0.7,
+  },
+  {
     key: 'nightlights',
     label: 'City lights',
     note: 'NASA Black Marble · Earth at night · zoom out',
