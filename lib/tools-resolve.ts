@@ -25,9 +25,17 @@ export function resolveToolLocations(
   associations: ToolAssociation[]
 ): AssetWithLocation[] {
   return assets.map(asset => {
-    if (asset.type !== 'tool' || asset.location) return asset
+    if (asset.type !== 'tool') return asset
     const match = findGatewayForTool(asset.id, associations, assets)
     if (!match?.gateway.location) return asset
+    // A tool can carry a location row of its own (seeded demo fixes; possibly
+    // GPS tags someday). Whichever signal is FRESHER wins — a live Bluetooth
+    // sighting must beat a stale stored fix, or a repurposed demo asset stays
+    // pinned to the old demo site forever (Tool A/B rendered at Nashville
+    // while physically riding the Chevy in SC, Jul 14).
+    const ownMs = asset.location ? new Date(asset.location.timestamp).getTime() : -Infinity
+    const seenMs = new Date(match.assoc.last_seen).getTime()
+    if (Number.isFinite(ownMs) && ownMs >= seenMs) return asset
     return {
       ...asset,
       location: {

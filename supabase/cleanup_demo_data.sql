@@ -16,11 +16,23 @@
 --
 -- Safe to re-run.
 
--- 1) Demo assets = seeded tracker ids (obd-001 … gps-009 style), or anything
---    that isn't a real 15-digit IMEI. Everything they own goes with them.
+-- 1) Demo assets = the exact seeded tracker ids. Everything they own goes
+--    with them. (An earlier draft deleted anything that wasn't a 15-digit
+--    IMEI — that would now also delete real BLE tool tags, whose tracker_id
+--    is a beacon identity like "FDA50693-…:10065:1", and phone-tracked
+--    personnel. Only the seed list is safe to match on.)
 DELETE FROM assets
-WHERE tracker_id IS NULL
-   OR tracker_id !~ '^[0-9]{15}$';
+WHERE tracker_id IN (
+  'obd-001','gps-002','bt-003','bt-004','gps-005',
+  'obd-006','bt-007','bt-008','gps-009','obd-010'
+);
+
+-- 1b) Stale seeded fixes attached to assets that were RENAMED into real ones
+--     (e.g. a seeded tool repurposed as a live BLE tag keeps its old Nashville
+--     row, which pins it to TN on the map). Tools have no GPS of their own —
+--     any tool-owned location row is seed residue.
+DELETE FROM asset_locations
+WHERE asset_id IN (SELECT id FROM assets WHERE type = 'tool');
 
 -- 2) All seeded demo zones (Riverfront Tower, Maple St Grading, Equipment Yard).
 --    Redraw real zones around your actual yard/sites on the map afterward.

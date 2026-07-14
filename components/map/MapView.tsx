@@ -39,6 +39,38 @@ import { WeatherControl, type BaseStyle } from './WeatherControl'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
+// GIBS GOES tiles: the literal "default" time resolves to the START of the
+// current UTC day (00:00Z = evening in the US), so the clouds layer showed a
+// frozen night frame all day. But you can't just stamp "now − 40 min" either —
+// the archive is gappy (DescribeDomains probe Jul 14 showed 10–50 min holes
+// and 30+ min ingest latency), and a missing frame 404s to a blank sky. So ask
+// GIBS which frame actually exists last, and fall back to "default" if that
+// lookup fails. CORS is open (access-control-allow-origin: *), 10-min cache.
+const goesTileUrl = (layer: string, level: number, stamp: string) =>
+  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${stamp}/GoogleMapsCompatible_Level${level}/{z}/{y}/{x}.png`
+
+const goesStampCache: Record<string, { stamp: string; at: number }> = {}
+async function goesLatestStamp(layer: string, level: number): Promise<string> {
+  const hit = goesStampCache[layer]
+  if (hit && Date.now() - hit.at < 590_000) return hit.stamp
+  try {
+    const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+    const url = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi' +
+      `?SERVICE=WMTS&REQUEST=DescribeDomains&VERSION=1.0.0&LAYER=${layer}` +
+      `&TILEMATRIXSET=GoogleMapsCompatible_Level${level}&bbox=-180,-90,180,90` +
+      `&time=${iso(Date.now() - 12 * 3_600_000)}/${iso(Date.now() + 3_600_000)}`
+    const xml = await (await fetch(url, { signal: AbortSignal.timeout(8_000) })).text()
+    // <Domain>start/end/PT10M,start/end/PT10M,…</Domain> — newest range last.
+    const domain = xml.match(/<Domain>([^<]*)<\/Domain>/)?.[1] ?? ''
+    const last = domain.split(',').pop()?.split('/')[1]
+    if (last?.includes('T')) {
+      goesStampCache[layer] = { stamp: last, at: Date.now() }
+      return last
+    }
+  } catch { /* offline / GIBS hiccup — stale sky beats no sky */ }
+  return hit?.stamp ?? 'default'
+}
+
 // Demo mode renders the mock Site-IoT devices (cameras, fuel, generators…).
 // Real accounts must never see them: they're fake pins at the demo site, and
 // including them in fit-to-content dragged the camera toward Tennessee.
@@ -2253,31 +2285,34 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (cloudsAdded.current && m.getLayer('clouds-layer')) m.setLayoutProperty('clouds-layer', 'visibility', 'none')
       return
     }
-    if (!cloudsAdded.current) {
-      m.addSource('clouds', {
-        type: 'raster',
-        tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png'],
-        tileSize: 256,
-        maxzoom: 7,
-        attribution: 'NASA GIBS · NOAA GOES-East',
-      })
-      const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
-        : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'clouds-layer', type: 'raster', source: 'clouds', paint: { 'raster-opacity': 0.6 } }, beforeId)
-      cloudsAdded.current = true
-    } else {
-      m.setLayoutProperty('clouds-layer', 'visibility', 'visible')
+    // GOES publishes ~every 10 min; re-resolve the newest REAL frame on the
+    // same cadence so the sky stays current — day where it's day, night where
+    // it's night — instead of a frozen screenshot of the layer's first load.
+    let gone = false
+    const apply = async () => {
+      const stamp = await goesLatestStamp('GOES-East_ABI_GeoColor', 7)
+      if (gone || !map.current) return
+      const url = goesTileUrl('GOES-East_ABI_GeoColor', 7, stamp)
+      if (!cloudsAdded.current) {
+        m.addSource('clouds', {
+          type: 'raster',
+          tiles: [url],
+          tileSize: 256,
+          maxzoom: 7,
+          attribution: 'NASA GIBS · NOAA GOES-East',
+        })
+        const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
+          : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        m.addLayer({ id: 'clouds-layer', type: 'raster', source: 'clouds', paint: { 'raster-opacity': 0.6 } }, beforeId)
+        cloudsAdded.current = true
+      } else {
+        ;(m.getSource('clouds') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+        m.setLayoutProperty('clouds-layer', 'visibility', 'visible')
+      }
     }
-    // GOES publishes a new frame ~every 10 min, but a raster source caches by
-    // URL — without this the "clouds" are a screenshot of whenever the layer
-    // first loaded. Cache-bust on the same cadence so the sky stays real.
-    const id = setInterval(() => {
-      const src = m.getSource('clouds') as maplibregl.RasterTileSource | undefined
-      src?.setTiles([
-        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/default/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
-      ])
-    }, 600_000)
-    return () => clearInterval(id)
+    apply()
+    const id = setInterval(apply, 600_000)
+    return () => { gone = true; clearInterval(id) }
   }, [mapReady, cloudsOn])
 
   // Storm tops — GOES-East Band 13 clean-window IR from the same GIBS service.
@@ -2293,22 +2328,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (stormAdded.current && m.getLayer('stormtops-layer')) m.setLayoutProperty('stormtops-layer', 'visibility', 'none')
       return
     }
-    const tileUrl =
-      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_Band13_Clean_Infrared/default/default/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png'
-    if (!stormAdded.current) {
-      m.addSource('stormtops', { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom: 6, attribution: 'NASA GIBS · NOAA GOES-East' })
-      const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
-        : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.62 } }, beforeId)
-      stormAdded.current = true
-    } else {
-      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])
-      m.setLayoutProperty('stormtops-layer', 'visibility', 'visible')
+    let gone = false
+    const apply = async () => {
+      const stamp = await goesLatestStamp('GOES-East_ABI_Band13_Clean_Infrared', 6)
+      if (gone || !map.current) return
+      const tileUrl = goesTileUrl('GOES-East_ABI_Band13_Clean_Infrared', 6, stamp)
+      if (!stormAdded.current) {
+        m.addSource('stormtops', { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom: 6, attribution: 'NASA GIBS · NOAA GOES-East' })
+        const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
+          : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.62 } }, beforeId)
+        stormAdded.current = true
+      } else {
+        ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])
+        m.setLayoutProperty('stormtops-layer', 'visibility', 'visible')
+      }
     }
-    const id = setInterval(() => {
-      ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])
-    }, 600_000)
-    return () => clearInterval(id)
+    apply()
+    const id = setInterval(apply, 600_000)
+    return () => { gone = true; clearInterval(id) }
   }, [mapReady, stormTopsOn])
 
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
