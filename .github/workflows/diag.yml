@@ -1,0 +1,35 @@
+name: Live diagnostics
+
+# Claude runs this on demand (workflow_dispatch) and reads the job log —
+# the dev sandbox has no outbound network, so this is how sessions check
+# production health without asking Brian for screenshots. Also runs on a
+# schedule so there's always a recent snapshot in the Actions history.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 11 * * *'   # daily 7:17 AM ET
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Layer health (/api/diag/layers)
+        run: |
+          echo "=== DIAG LAYERS ==="
+          curl -sS --max-time 60 https://hammertrackjune28.vercel.app/api/diag/layers | python3 -m json.tool
+      - name: RTMA discovered names (/api/rtma-layers)
+        run: |
+          echo "=== RTMA NAMES ==="
+          curl -sS --max-time 30 https://hammertrackjune28.vercel.app/api/rtma-layers | python3 -m json.tool
+      - name: Wind model (/api/wind)
+        run: |
+          echo "=== WIND ==="
+          curl -sS --max-time 40 https://hammertrackjune28.vercel.app/api/wind | head -c 1200
+          echo
+      - name: SPC watches (/api/watches)
+        run: |
+          echo "=== WATCHES ==="
+          curl -sS --max-time 40 https://hammertrackjune28.vercel.app/api/watches | head -c 800
+          echo
