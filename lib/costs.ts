@@ -239,7 +239,7 @@ export function zoneAssetUsage(
 }
 
 export function zoneCostsFromHistory(
-  geofences: { id: string; geometry: { coordinates: unknown[] } }[],
+  geofences: { id: string; geometry: { coordinates: unknown[] }; kind?: string | null }[],
   assets: (Asset | CostInput)[],
   rows: HistoryPoint[],
   windowFromMs?: number,
@@ -250,7 +250,11 @@ export function zoneCostsFromHistory(
   const span = Math.max(1, to - from)
   const out: Record<string, ZoneCostCurve> = {}
   const perBucket: Record<string, { cost: number[]; hours: number[]; idle: number[] }> = {}
-  const rings = geofences.map((g) => ({
+  // Boundary zones are perimeters, not billable places — and because a point
+  // is attributed to the FIRST ring that contains it, a big property boundary
+  // wrapped around a site/yard could siphon the hours away from the real
+  // zone inside it. Exclude them from usage accrual entirely.
+  const rings = geofences.filter((g) => g.kind !== 'boundary').map((g) => ({
     id: g.id,
     ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][],
   })).filter((g) => g.ring.length >= 3)
