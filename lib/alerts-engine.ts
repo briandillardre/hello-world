@@ -90,7 +90,10 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
           if (!inside) {
             out.push({
               rule_id: rule.id, asset_id: asset.id, trigger: rule.trigger,
-              geofence_id: fence.id, severity: 'warning',
+              // Routine crossings are ACTIVITY, not alarms — info events are
+              // logged (pins, site history, Zone activity tab) but never page
+              // anyone. The theft posture lives in left_site/after_hours.
+              geofence_id: fence.id, severity: 'info',
               reason: `${asset.name} exited ${fence.name}`,
             })
           }

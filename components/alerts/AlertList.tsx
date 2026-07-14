@@ -36,6 +36,9 @@ type SortKey = 'newest' | 'asset' | 'type' | 'zone'
 export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertListProps) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [sort, setSort] = useState<SortKey>('newest')
+  // Alert-fatigue split: routine enter/exit crossings are the ACTIVITY LOG,
+  // everything else is a real alert. Two tabs, alerts first.
+  const [tab, setTab] = useState<'alerts' | 'activity'>('alerts')
 
   // Gmail-style: opening this page marks everything as SEEN — the nav badge
   // zeroes out (unacknowledged alerts stay in the Unread filter here).
@@ -46,8 +49,11 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
     } catch { /* private mode */ }
   }, [alerts.length])
 
-  const unreadCount = alerts.filter(a => !a.acknowledged_at).length
-  const filtered = filter === 'unread' ? alerts.filter(a => !a.acknowledged_at) : alerts
+  const isActivity = (a: AlertEvent) => !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
+  const tabbed = alerts.filter(a => (tab === 'activity' ? isActivity(a) : !isActivity(a)))
+  const activityCount = alerts.filter(isActivity).length
+  const unreadCount = tabbed.filter(a => !a.acknowledged_at).length
+  const filtered = filter === 'unread' ? tabbed.filter(a => !a.acknowledged_at) : tabbed
   const visible = useMemo(() => {
     const arr = [...filtered]
     const name = (a: AlertEvent) => a.asset?.name ?? ''
@@ -71,12 +77,28 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
             </span>
           )}
         </div>
+        {/* Alerts = needs attention · Zone activity = the silent comings-and-
+            goings log (powers pins + site history, never pages anyone) */}
+        <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 w-fit">
+          <button
+            onClick={() => setTab('alerts')}
+            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'alerts' ? 'bg-alert/20 text-alert' : 'text-faint hover:text-ink'}`}
+          >
+            Alerts ({alerts.length - activityCount})
+          </button>
+          <button
+            onClick={() => setTab('activity')}
+            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'activity' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink'}`}
+          >
+            Zone activity ({activityCount})
+          </button>
+        </div>
         <div className="flex gap-2 items-center">
           <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium ${filter === 'all' ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted'}`}
           >
-            All ({alerts.length})
+            All ({tabbed.length})
           </button>
           <button
             onClick={() => setFilter('unread')}

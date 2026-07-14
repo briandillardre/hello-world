@@ -29,8 +29,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const company = await getCurrentCompany()
   const alerts = await getAlertEvents(company.id)
-  const unreadAlerts = alerts.filter(a => !a.acknowledged_at).length
-  const latestAlertAt = alerts.reduce<string | null>(
+  // Bell badge = ATTENTION alerts only. Routine enter/exit crossings are the
+  // activity log — counting them made the badge cry wolf all day.
+  const isActivity = (a: (typeof alerts)[number]) =>
+    !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
+  const attention = alerts.filter(a => !isActivity(a))
+  const unreadAlerts = attention.filter(a => !a.acknowledged_at).length
+  const latestAlertAt = attention.reduce<string | null>(
     (m, a) => (m === null || a.triggered_at > m ? a.triggered_at : m), null)
 
   return (

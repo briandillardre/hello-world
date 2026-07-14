@@ -27,8 +27,17 @@ export default async function DiagPage() {
         ageMin: a.location ? Math.round((Date.now() - new Date(a.location.timestamp).getTime()) / 60_000) : null,
         coords: a.location ? `${a.location.lat.toFixed(3)}, ${a.location.lng.toFixed(3)}` : '—',
         color: typeof a.metadata?.color === 'string' ? String(a.metadata.color) : '(auto)',
+        // Raw beacon entries verbatim (ids truncated) — answers "does the
+        // tracker forward tag battery?" without a flespi session.
         ble: a.type === 'vehicle' || a.type === 'equipment'
-          ? (beacons > 0 ? `${beacons} beacon${beacons === 1 ? '' : 's'}` : bleKeys.length ? `${bleKeys.length} ble key${bleKeys.length === 1 ? '' : 's'}` : 'none')
+          ? (beacons > 0
+            ? (raw['ble.beacons'] as Record<string, unknown>[]).map((b) => {
+                const rest = Object.entries(b).filter(([k]) => k !== 'id' && k !== 'mac')
+                  .map(([k, v]) => `${k}:${String(v)}`).join(' ')
+                const id = String(b.id ?? b.mac ?? '?')
+                return `…${id.slice(-7)} ${rest}`
+              }).join(' | ')
+            : bleKeys.length ? `${bleKeys.length} ble key${bleKeys.length === 1 ? '' : 's'}` : 'none')
           : '—',
       }
     })

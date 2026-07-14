@@ -2451,7 +2451,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         m.addSource('stormtops', { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom: 6, attribution: 'NASA GIBS · NOAA GOES-East' })
         const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
           : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-        m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.62 } }, beforeId)
+        // 0.45: the IR enhancement paints EVERY cold cloud top, and at 0.62 it
+        // read as rainbow soup smeared over half the country (owner, Jul 14).
+        m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.45 } }, beforeId)
         stormAdded.current = true
       } else {
         ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])

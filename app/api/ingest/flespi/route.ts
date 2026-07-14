@@ -337,7 +337,9 @@ export async function POST(request: NextRequest) {
           company_id: companyId, rule_id: f.rule_id, asset_id: f.asset_id,
         })
         alertsFired++
-        notifyBatch.push({ reason: f.reason, severity: f.severity })
+        // Alert-fatigue tiering: info events (routine enter/exit) are logged
+        // but never dispatched — only warning/critical reach a phone.
+        if (f.severity !== 'info') notifyBatch.push({ reason: f.reason, severity: f.severity })
       }
 
       // Text/webhook the owner for freshly-fired alerts (no-op unless Twilio /
