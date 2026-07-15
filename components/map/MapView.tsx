@@ -2170,6 +2170,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const celestialRef = useRef<CelestialState | null>(null)
   const starCatRef = useRef<{ ra: number; dec: number; mag: number; bv: number }[] | null>(null)
   const planesRef = useRef<Plane3D[] | null>(null)
+  const planePrevRef = useRef<Map<string, { track: number; at: number }>>(new Map())
   const swarmRef = useRef<SwarmState | null>(null)
   const swarmWorkerRef = useRef<Worker | null>(null)
 
@@ -2448,17 +2449,37 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         if (!r.ok) throw new Error(`feed ${r.status}`)
         const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null }[] } = await r.json()
         if (cancelled) return
+        const nowMs = Date.now()
         planesRef.current = (j.planes ?? []).map((p) => {
           const info = typeInfo(p.type)
+          // Bank angle from turn rate: ADS-B carries no roll, but successive
+          // tracks give ω, and coordinated flight obeys tan(φ) = v·ω/g.
+          let bankRad = 0
+          const prev = planePrevRef.current.get(p.hex)
+          if (prev && p.track != null && prev.track != null && p.gsKt) {
+            const dt = (nowMs - prev.at) / 1000
+            if (dt > 1 && dt < 60) {
+              let dTrack = p.track - prev.track
+              if (dTrack > 180) dTrack -= 360
+              if (dTrack < -180) dTrack += 360
+              const omega = (dTrack / dt) * Math.PI / 180
+              if (Math.abs(dTrack / dt) > 0.3) {
+                const vMs = p.gsKt * 0.514444
+                bankRad = Math.max(-0.6, Math.min(0.6, Math.atan((vMs * omega) / 9.81)))
+              }
+            }
+          }
+          if (p.track != null) planePrevRef.current.set(p.hex, { track: p.track, at: nowMs })
           return {
             hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
             typeLabel: info.label, shape: info.cls, spanM: info.spanM,
             lon: p.lon, lat: p.lat, altFt: p.altFt,
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
-            track: p.track,
+            track: p.track, bankRad,
             sx: 0, sy: 0, visible: false,
           }
         })
+        if (planePrevRef.current.size > 2000) planePrevRef.current.clear()
         m.triggerRepaint()
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() } }))
       } catch (err) {

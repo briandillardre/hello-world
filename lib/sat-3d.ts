@@ -56,6 +56,8 @@ export interface Plane3D {
   altFt: number
   mph: number | null
   track: number | null
+  /** Estimated bank angle (rad, + = right turn) inferred from turn rate. */
+  bankRad: number
   sx: number
   sy: number
   visible: boolean
@@ -176,20 +178,10 @@ const POINT_FRAG = `
 precision mediump float;
 uniform vec4 u_color;   // premultiplied
 uniform vec3 u_light;   // moon mode: sun direction in sprite space (y down)
-uniform float u_mode;   // 0 soft glow · 1 hard disc · 2 moon sphere · 3 aircraft sprite
-uniform float u_rot;    // aircraft mode: screen heading, radians CW from up
-uniform sampler2D u_tex; // aircraft silhouette atlas
-uniform vec4 u_uv;      // atlas cell: offset.xy + scale.zw
+uniform float u_mode;   // 0 soft glow · 1 hard disc · 2 moon sphere
 void main() {
   vec2 pc = gl_PointCoord - 0.5;
-  if (u_mode > 2.5) {
-    float cs = cos(u_rot); float sn = sin(u_rot);
-    vec2 q = vec2(pc.x * cs + pc.y * sn, -pc.x * sn + pc.y * cs) * 2.0;
-    vec2 st = q * 0.5 + 0.5;
-    if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0) { gl_FragColor = vec4(0.0); return; }
-    float a = texture2D(u_tex, u_uv.xy + st * u_uv.zw).a;
-    gl_FragColor = u_color * a;
-  } else if (u_mode > 1.5) {
+  if (u_mode > 1.5) {
     float r2 = dot(pc, pc) * 4.0;
     if (r2 > 1.0) { gl_FragColor = vec4(0.0); return; }
     vec3 n = vec3(pc.x * 2.0, pc.y * 2.0, sqrt(max(0.0, 1.0 - r2)));
@@ -250,6 +242,29 @@ void main() {
   gl_FragColor = vec4(col * a, a);
 }`
 
+// ── World-space quad program (aircraft lie in the ground plane) ─────────────
+const QUAD_VERT = `
+attribute vec3 a_pos;
+attribute vec2 a_uv;
+uniform mat4 u_matrix;
+varying vec2 v_uv;
+void main() {
+  vec4 p = u_matrix * vec4(a_pos, 1.0);
+  p.z = clamp(p.z, -abs(p.w) * 0.999, abs(p.w) * 0.999);
+  gl_Position = p;
+  v_uv = a_uv;
+}`
+
+const QUAD_FRAG = `
+precision mediump float;
+uniform sampler2D u_tex;
+uniform vec4 u_color;
+varying vec2 v_uv;
+void main() {
+  float a = texture2D(u_tex, v_uv).a;
+  gl_FragColor = u_color * a;
+}`
+
 interface ModelTransform {
   getMatrixForModel(location: [number, number], altitude?: number): ArrayLike<number>
   worldSize?: number
@@ -304,10 +319,14 @@ export function createSat3DLayer(
   let uColor: WebGLUniformLocation | null = null
   let uLight: WebGLUniformLocation | null = null
   let uMode: WebGLUniformLocation | null = null
-  let uRot: WebGLUniformLocation | null = null
-  let uTex: WebGLUniformLocation | null = null
-  let uUv: WebGLUniformLocation | null = null
   let planeTex: WebGLTexture | null = null
+  let quadProg: WebGLProgram | null = null
+  let quadBuf: WebGLBuffer | null = null
+  let qPos = 0
+  let qUv = 0
+  let qMatrix: WebGLUniformLocation | null = null
+  let qTex: WebGLUniformLocation | null = null
+  let qColor: WebGLUniformLocation | null = null
   let sPos = 0
   let sMeta = 0
   let sMatrix: WebGLUniformLocation | null = null
@@ -330,9 +349,6 @@ export function createSat3DLayer(
         uColor = gl.getUniformLocation(prog, 'u_color')
         uLight = gl.getUniformLocation(prog, 'u_light')
         uMode = gl.getUniformLocation(prog, 'u_mode')
-        uRot = gl.getUniformLocation(prog, 'u_rot')
-        uTex = gl.getUniformLocation(prog, 'u_tex')
-        uUv = gl.getUniformLocation(prog, 'u_uv')
         buf = gl.createBuffer()
         gl.bindBuffer(gl.ARRAY_BUFFER, buf)
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 0]), gl.STATIC_DRAW)
@@ -345,6 +361,15 @@ export function createSat3DLayer(
         starBuf = gl.createBuffer()
         swarmBuf = gl.createBuffer()
       }
+      quadProg = compile(gl, QUAD_VERT, QUAD_FRAG)
+      if (quadProg) {
+        qPos = gl.getAttribLocation(quadProg, 'a_pos')
+        qUv = gl.getAttribLocation(quadProg, 'a_uv')
+        qMatrix = gl.getUniformLocation(quadProg, 'u_matrix')
+        qTex = gl.getUniformLocation(quadProg, 'u_tex')
+        qColor = gl.getUniformLocation(quadProg, 'u_color')
+        quadBuf = gl.createBuffer()
+      }
     },
 
     onRemove(_map: MLMap, gl: WebGLRenderingContext | WebGL2RenderingContext) {
@@ -352,6 +377,10 @@ export function createSat3DLayer(
       if (starProg) gl.deleteProgram(starProg)
       if (planeTex) gl.deleteTexture(planeTex)
       planeTex = null
+      if (quadProg) gl.deleteProgram(quadProg)
+      if (quadBuf) gl.deleteBuffer(quadBuf)
+      quadProg = null
+      quadBuf = null
       if (buf) gl.deleteBuffer(buf)
       if (starBuf) gl.deleteBuffer(starBuf)
       if (swarmBuf) gl.deleteBuffer(swarmBuf)
@@ -531,7 +560,6 @@ export function createSat3DLayer(
         gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0)
       }
       gl.uniform3f(uLight, 0, 0, 1)
-      gl.uniform1f(uRot, 0)
 
       /** Pixel diameter for a body of angular radius `ang` under the current fov. */
       const angPx = (ang: number): number => (2 * ang / options.fov) * hCss
@@ -611,7 +639,6 @@ export function createSat3DLayer(
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
           } catch { planeTex = null }
         }
-        const bearing = mapRef.getBearing() * Math.PI / 180
         const zoom = mapRef.getZoom()
         // Zoomed in tight, the camera sits BELOW cruise altitude and jets
         // would vanish behind it — clamp render altitude under the camera so
@@ -619,31 +646,117 @@ export function createSat3DLayer(
         const ctrLat = mapRef.getCenter().lat * Math.PI / 180
         const camAltM = (156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)) * hCss / (2 * Math.tan(options.fov / 2))
         const altCapM = Math.max(300, camAltM * 0.62)
-        gl.activeTexture(gl.TEXTURE0)
-        if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
-        gl.uniform1i(uTex, 0)
+
+        // Pass 1: soft glows (point program, already bound).
+        const glowables: { pl: Plane3D; clip: V4; spanPx: number }[] = []
         for (const pl of planes) {
           const P = toWorld(pl.lon, pl.lat, Math.min(pl.altFt * 0.3048, altCapM))
           if (occluded(P)) { pl.visible = false; continue }
           const p = project(P)
           if (!p) { pl.visible = false; continue }
           pl.sx = p.sx; pl.sy = p.sy; pl.visible = true
-          // True-to-scale where zoom allows: on-screen wingspan = real span ÷
-          // meters-per-pixel, floored per class so distant traffic stays
-          // visible. Sprite is bigger than the span (cell padding).
           const mpp = 156543.03 * Math.cos(pl.lat * Math.PI / 180) / Math.pow(2, zoom)
           const spanPx = Math.min(72, Math.max(PLANE_FLOOR_PX[pl.shape], pl.spanM / mpp))
-          const rot = ((pl.track ?? 0) * Math.PI / 180) - bearing
-          gl.uniform1f(uRot, rot)
-          drawPoint(p.clip, spanPx * 1.6, 0, GLOW[0], GLOW[1], GLOW[2], 0.14)
-          gl.uniform1f(uMode, 3)
-          gl.uniform1f(uSize, (spanPx / SHAPE_SPAN_FRAC) * dpr)
-          const cell = PLANE_CLASS_INDEX[pl.shape]
-          gl.uniform4f(uUv, cell / ATLAS_CELLS, 0, 1 / ATLAS_CELLS, 1)
-          gl.uniform4f(uColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 1)
-          gl.drawArrays(gl.POINTS, 0, 1)
+          glowables.push({ pl, clip: p.clip, spanPx })
+          drawPoint(p.clip, spanPx * 1.5, 0, GLOW[0], GLOW[1], GLOW[2], 0.13)
         }
-        gl.uniform1f(uRot, 0)
+
+        // Pass 2: silhouettes as WORLD-SPACE quads lying in the ground plane
+        // (nose along track) — they foreshorten with the map's pitch like the
+        // terrain does, instead of standing up billboard-style. Banking rolls
+        // the quad around its longitudinal axis into the turn.
+        if (quadProg && quadBuf && glowables.length) {
+          const verts = new Float32Array(glowables.length * 6 * 5)
+          let vi = 0
+          const mppCam = 156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)
+          for (const { pl } of glowables) {
+            const latR = pl.lat * Math.PI / 180
+            const lonR = pl.lon * Math.PI / 180
+            const altM = Math.min(pl.altFt * 0.3048, altCapM)
+            // Render span: true size, floored for distant visibility.
+            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * mppCam)
+            const half = (spanMr / SHAPE_SPAN_FRAC) / 2
+            const theta = (pl.track ?? 0) * Math.PI / 180
+            const bank = pl.bankRad
+            let C: V3, fwd: V3, right: V3, up: V3, scale: number
+            if (isGlobe) {
+              // Planet space: x = cosφ·sinλ, y = sinφ, z = cosφ·cosλ.
+              C = toWorld(pl.lon, pl.lat, altM)
+              up = [Math.cos(latR) * Math.sin(lonR), Math.sin(latR), Math.cos(latR) * Math.cos(lonR)]
+              const east: V3 = [Math.cos(lonR), 0, -Math.sin(lonR)]
+              const north: V3 = [
+                up[1] * east[2] - up[2] * east[1],
+                up[2] * east[0] - up[0] * east[2],
+                up[0] * east[1] - up[1] * east[0],
+              ]
+              fwd = [
+                north[0] * Math.cos(theta) + east[0] * Math.sin(theta),
+                north[1] * Math.cos(theta) + east[1] * Math.sin(theta),
+                north[2] * Math.cos(theta) + east[2] * Math.sin(theta),
+              ]
+              right = [
+                east[0] * Math.cos(theta) - north[0] * Math.sin(theta),
+                east[1] * Math.cos(theta) - north[1] * Math.sin(theta),
+                east[2] * Math.cos(theta) - north[2] * Math.sin(theta),
+              ]
+              scale = half / 6371008.8
+            } else {
+              // Mercator world px: north = −y, east = +x, up = +z.
+              C = toWorld(pl.lon, pl.lat, altM)
+              up = [0, 0, 1]
+              fwd = [Math.sin(theta), -Math.cos(theta), 0]
+              right = [Math.cos(theta), Math.sin(theta), 0]
+              const mppHere = 156543.03 * Math.cos(latR) / Math.pow(2, zoom)
+              scale = half / mppHere
+            }
+            if (bank) {
+              const cb = Math.cos(bank), sb = Math.sin(bank)
+              right = [
+                right[0] * cb - up[0] * sb,
+                right[1] * cb - up[1] * sb,
+                right[2] * cb - up[2] * sb,
+              ]
+            }
+            const F: V3 = [fwd[0] * scale, fwd[1] * scale, fwd[2] * scale]
+            const R: V3 = [right[0] * scale, right[1] * scale, right[2] * scale]
+            const cellU0 = PLANE_CLASS_INDEX[pl.shape] / ATLAS_CELLS
+            const cellU1 = cellU0 + 1 / ATLAS_CELLS
+            // Corners: nose (v=0) at +F; atlas u grows to the RIGHT.
+            const corner = (sf: number, sr: number): V3 => [
+              C[0] + F[0] * sf + R[0] * sr,
+              C[1] + F[1] * sf + R[1] * sr,
+              C[2] + F[2] * sf + R[2] * sr,
+            ]
+            const nl = corner(1, -1), nr = corner(1, 1), tl = corner(-1, -1), tr = corner(-1, 1)
+            const put = (v: V3, u: number, w: number) => {
+              verts[vi++] = v[0]; verts[vi++] = v[1]; verts[vi++] = v[2]
+              verts[vi++] = u; verts[vi++] = w
+            }
+            put(nl, cellU0, 0); put(nr, cellU1, 0); put(tl, cellU0, 1)
+            put(nr, cellU1, 0); put(tr, cellU1, 1); put(tl, cellU0, 1)
+          }
+          gl.useProgram(quadProg)
+          gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
+          gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
+          gl.enableVertexAttribArray(qPos)
+          gl.vertexAttribPointer(qPos, 3, gl.FLOAT, false, 20, 0)
+          gl.enableVertexAttribArray(qUv)
+          gl.vertexAttribPointer(qUv, 2, gl.FLOAT, false, 20, 12)
+          gl.uniformMatrix4fv(qMatrix, false, Array.from(main))
+          gl.activeTexture(gl.TEXTURE0)
+          if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
+          gl.uniform1i(qTex, 0)
+          gl.uniform4f(qColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 1)
+          gl.drawArrays(gl.TRIANGLES, 0, glowables.length * 6)
+          gl.disableVertexAttribArray(qUv)
+          // Restore the point program state for the satellite pass below.
+          gl.useProgram(prog)
+          gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+          if (aPos >= 0) {
+            gl.enableVertexAttribArray(aPos)
+            gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0)
+          }
+        }
       }
 
       // ── Satellites ────────────────────────────────────────────────────────
