@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createAsset, updateAsset } from '@/lib/db/assets'
+import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import type { AssetType } from '@/lib/types'
 
@@ -65,15 +65,35 @@ async function uploadAssetPhoto(companyId: string, file: File): Promise<string |
   }
 }
 
+/**
+ * Upload every image in a photo FormData (repeatable `photo` field + a parallel
+ * JSON `labels` array) and return {url,label} for each that succeeded. Order is
+ * preserved so the first becomes the asset's hero image.
+ */
+async function uploadPhotoSet(companyId: string, photoForm?: FormData): Promise<{ url: string; label: string | null }[]> {
+  if (!photoForm) return []
+  const files = photoForm.getAll('photo').filter((f): f is File => f instanceof File && f.size > 0)
+  if (!files.length) return []
+  let labels: (string | null)[] = []
+  try {
+    const raw = photoForm.get('labels')
+    if (typeof raw === 'string') labels = JSON.parse(raw)
+  } catch { /* labels are optional */ }
+  const out: { url: string; label: string | null }[] = []
+  for (let i = 0; i < files.length; i++) {
+    const url = await uploadAssetPhoto(companyId, files[i])
+    if (url) out.push({ url, label: (labels[i] ?? null) || null })
+  }
+  return out
+}
+
 export async function createAssetAction(input: CreateAssetInput, photoForm?: FormData) {
   const companyId = await getCurrentCompanyId()
 
-  // A captured/chosen photo (FormData) wins over a pasted URL.
-  let photoUrl = orNull(input.photo_url)
-  const file = photoForm?.get('photo')
-  if (file instanceof File && file.size > 0) {
-    photoUrl = (await uploadAssetPhoto(companyId, file)) ?? photoUrl
-  }
+  // Captured/chosen photos win over a pasted URL. The first uploaded photo
+  // becomes the hero (the map panel + list thumbnail); the rest form the gallery.
+  const uploaded = await uploadPhotoSet(companyId, photoForm)
+  const photoUrl = orNull(input.photo_url) ?? uploaded[0]?.url ?? null
 
   const asset = await createAsset(companyId, {
     name: input.name.trim(),
@@ -89,9 +109,22 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
     metadata: input.metadata ?? {},
   })
 
+  if (asset && uploaded.length) await addAssetPhotos(companyId, asset.id, uploaded)
+
   revalidatePath('/assets')
   revalidatePath('/map')
   return asset
+}
+
+/** Remove one gallery photo. If it was the hero, the caller re-picks a hero. */
+export async function deleteAssetPhotoAction(assetId: string, photoId: string, newHeroUrl?: string | null) {
+  if (isMock) return
+  const companyId = await getCurrentCompanyId()
+  await deleteAssetPhoto(companyId, photoId)
+  if (newHeroUrl !== undefined) await updateAsset(assetId, { photo_url: newHeroUrl })
+  revalidatePath('/assets')
+  revalidatePath(`/assets/${assetId}`)
+  revalidatePath('/map')
 }
 
 export async function updateAssetAction(
@@ -99,14 +132,22 @@ export async function updateAssetAction(
   input: Partial<CreateAssetInput> & { active?: boolean },
   photoForm?: FormData
 ) {
-  // New photo (FormData) wins; photo_url '' clears the existing one.
-  let photoOverride: string | null | undefined =
-    input.photo_url !== undefined ? orNull(input.photo_url) : undefined
-  const file = photoForm?.get('photo')
-  if (file instanceof File && file.size > 0) {
-    const companyId = await getCurrentCompanyId()
-    photoOverride = (await uploadAssetPhoto(companyId, file)) ?? photoOverride
+  const companyId = await getCurrentCompanyId()
+
+  // New photos append to the gallery. Hero is NOT taken from the form (the
+  // gallery + delete action own it) — that avoids an edit resending a stale
+  // hero after a photo was just deleted. Promote a hero only when none exists.
+  const uploaded = await uploadPhotoSet(companyId, photoForm)
+  let heroPatch: { photo_url?: string } = {}
+  if (uploaded.length) {
+    await addAssetPhotos(companyId, id, uploaded)
+    if (!isMock) {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: cur } = await createClient().from('assets').select('photo_url').eq('id', id).maybeSingle()
+      if (!cur?.photo_url) heroPatch = { photo_url: uploaded[0].url }
+    }
   }
+
   const asset = await updateAsset(id, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.type !== undefined ? { type: input.type } : {}),
@@ -119,7 +160,7 @@ export async function updateAssetAction(
     ...(input.mileage_rate !== undefined ? { mileage_rate: numOrNull(input.mileage_rate) } : {}),
     ...(input.daily_cost !== undefined ? { daily_cost: numOrNull(input.daily_cost) } : {}),
     ...(input.purchase_value !== undefined ? { purchase_value: numOrNull(input.purchase_value) } : {}),
-    ...(photoOverride !== undefined ? { photo_url: photoOverride } : {}),
+    ...heroPatch,
   })
 
   revalidatePath('/assets')

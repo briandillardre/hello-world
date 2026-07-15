@@ -3,26 +3,21 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Asset } from '@/lib/types'
-import { updateAssetAction, deleteAssetAction } from '@/lib/actions/assets'
-import { AssetForm, type AssetFormData } from './AssetForm'
+import type { Asset, AssetPhoto } from '@/lib/types'
+import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction } from '@/lib/actions/assets'
+import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
 
 /** Edit + Delete controls on the asset detail page. Edit reuses the full
- *  AssetForm (all attributes, cost structure, photo add/change/remove). */
-export function AssetActions({ asset }: { asset: Asset }) {
+ *  AssetForm (all attributes, cost structure, labeled photo gallery). */
+export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: AssetPhoto[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const handleSave = async (data: AssetFormData, photo?: Blob | null) => {
+  const handleSave = async (data: AssetFormData, newPhotos?: NewPhoto[]) => {
     setSaving(true)
     try {
-      let photoForm: FormData | undefined
-      if (photo && photo.size > 0) {
-        photoForm = new FormData()
-        photoForm.append('photo', photo, 'photo.jpg')
-      }
-      await updateAssetAction(asset.id, data, photoForm)
+      await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
       setEditing(false)
       router.refresh()
     } catch (err) {
@@ -31,6 +26,17 @@ export function AssetActions({ asset }: { asset: Asset }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Remove a saved gallery photo. If it was the hero, promote the next one
+  // (or clear the hero) so the map thumbnail never points at a deleted file.
+  const handleDeletePhoto = async (photo: AssetPhoto) => {
+    let newHero: string | null | undefined
+    if (asset.photo_url === photo.url) {
+      newHero = photos.find((p) => p.id !== photo.id)?.url ?? null
+    }
+    await deleteAssetPhotoAction(asset.id, photo.id, newHero)
+    router.refresh()
   }
 
   const handleDelete = async () => {
@@ -79,6 +85,8 @@ export function AssetActions({ asset }: { asset: Asset }) {
             daily_cost: asset.daily_cost,
             purchase_value: asset.purchase_value,
           }}
+          initialPhotos={photos}
+          onDeleteExistingPhoto={handleDeletePhoto}
         />
       )}
     </>

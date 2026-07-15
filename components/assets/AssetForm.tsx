@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import type { AssetType } from '@/lib/types'
+import type { AssetType, AssetPhoto } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +21,35 @@ export interface AssetFormData {
   mileage_rate: number | null
   daily_cost: number | null
   purchase_value: number | null
+}
+
+/** A photo chosen in the form but not yet uploaded (blob + its label). */
+export interface NewPhoto {
+  blob: Blob
+  preview: string
+  label: string
+}
+
+/** Suggested labels for the different shots a truck/asset needs. Free-text via
+ *  "Other" isn't offered here — these six cover the field's real needs. */
+export const PHOTO_LABELS: [string, string][] = [
+  ['truck', 'Truck / unit'],
+  ['gvwr', 'GVWR sticker'],
+  ['vin', 'VIN plate'],
+  ['engine', 'Engine'],
+  ['issue', 'Issue / damage'],
+  ['other', 'Other'],
+]
+const labelText = (v: string | null) => PHOTO_LABELS.find(([k]) => k === v)?.[1] ?? (v || 'Photo')
+
+/** Pack new photos into FormData (repeatable `photo` + parallel `labels` JSON)
+ *  for the create/update server actions. Undefined when there are none. */
+export function photosToFormData(photos: NewPhoto[]): FormData | undefined {
+  if (!photos.length) return undefined
+  const fd = new FormData()
+  photos.forEach((p, i) => fd.append('photo', p.blob, `photo-${i}.jpg`))
+  fd.append('labels', JSON.stringify(photos.map((p) => p.label || null)))
+  return fd
 }
 
 /** Which cost fields make sense per asset type, with owner-friendly labels. */
@@ -55,11 +84,15 @@ export function parseCost(v: string): number | null {
 
 interface AssetFormProps {
   onClose: () => void
-  onSubmit: (data: AssetFormData, photo?: Blob | null) => void
+  onSubmit: (data: AssetFormData, photos?: NewPhoto[]) => void
   saving?: boolean
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string;
     metadata?: Record<string, unknown>;
     hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_value?: number | null }
+  /** Existing gallery photos (edit mode). */
+  initialPhotos?: AssetPhoto[]
+  /** Delete an already-saved gallery photo (edit mode); resolves on success. */
+  onDeleteExistingPhoto?: (photo: AssetPhoto) => Promise<void>
 }
 
 /**
@@ -96,14 +129,12 @@ const MAKE_SUGGESTIONS = [
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
 ]
 
-export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetFormProps) {
+export function AssetForm({ onClose, onSubmit, saving = false, initial, initialPhotos = [], onDeleteExistingPhoto }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
   const [category, setCategory] = useState(initial?.category ?? '')
   const [serial, setSerial] = useState(initial?.serial ?? '')
-  const [photoUrl, setPhotoUrl] = useState(initial?.photo_url ?? '')
   const [trackerId, setTrackerId] = useState(initial?.tracker_id ?? '')
-  const [photo, setPhoto] = useState<Blob | null>(null)
   // Specs (year/make/model/engine…) — hand-entered on edit or filled by the
   // free NHTSA VIN decoder. Rendered as Details rows on the asset page.
   const [specs, setSpecs] = useState<Record<string, unknown>>(initial?.metadata ?? {})
@@ -118,17 +149,22 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       return next
     })
 
-  // Model typeahead: once a make is picked, pull its model list from the
-  // federal vehicle database (vPIC — free, keyless, CORS-open). Equipment
-  // brands mostly aren't in it; the field stays free text either way.
+  // Model typeahead: once a make (and ideally year) is picked, pull its model
+  // list from the federal vehicle database (vPIC — free, keyless, CORS-open).
+  // Filtering by year gives the right generation's models. Equipment brands
+  // mostly aren't in it; the field stays free text either way.
   const [modelOptions, setModelOptions] = useState<string[]>([])
   const modelFetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadModels = (make: string) => {
+  const loadModels = (make: string, year: string) => {
     if (modelFetchTimer.current) clearTimeout(modelFetchTimer.current)
     const mk = make.trim()
     if (mk.length < 3) { setModelOptions([]); return }
+    const yr = year.trim()
     modelFetchTimer.current = setTimeout(() => {
-      fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(mk)}?format=json`)
+      const url = /^(19|20)\d{2}$/.test(yr)
+        ? `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(mk)}/modelyear/${yr}?format=json`
+        : `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(mk)}?format=json`
+      fetch(url)
         .then((r) => (r.ok ? r.json() : null))
         .then((j: { Results?: { Model_Name?: string }[] } | null) => {
           const names = Array.from(new Set((j?.Results ?? []).map((x) => x.Model_Name).filter((n): n is string => !!n))).sort()
@@ -154,6 +190,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       setDecoding(false)
     }
   }
+
   const [valuing, setValuing] = useState(false)
   const estimateValue = async () => {
     if (!name.trim() || valuing) return
@@ -175,9 +212,101 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
       setValuing(false)
     }
   }
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+
+  // AI advisor — infers service specs or cost structure from the entered
+  // identity (year/make/model/engine/type). Fills only EMPTY fields so it
+  // advises without stomping anything typed. Cost is meant to be the last
+  // thing done, after the identity is in.
+  const [advising, setAdvising] = useState<null | 'service' | 'cost'>(null)
+  const advise = async (scope: 'service' | 'cost') => {
+    if (advising) return
+    setAdvising(scope)
+    setDecodeMsg(null)
+    try {
+      const r = await fetch('/api/asset-advisor', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, type, specs }),
+      })
+      const j = await r.json()
+      if (!r.ok) { setDecodeMsg(j.error === 'AI key not configured' ? 'Needs the AI key in Vercel first.' : (j.error ?? 'Advisor failed.')); return }
+      if (scope === 'service') {
+        setSpecs((prev) => {
+          const next = { ...prev }
+          for (const k of ['oil', 'oil_filter', 'air_filter', 'tires']) {
+            if (j.service?.[k] && !String(next[k] ?? '').trim()) next[k] = j.service[k]
+          }
+          if (j.value_range && !next.value_range) next.value_range = j.value_range
+          return next
+        })
+        setDecodeMsg(Object.keys(j.service ?? {}).length ? `✓ Service specs suggested — review${j.note ? `. ${j.note}` : ''}` : 'No confident service specs for this one.')
+      } else {
+        setCosts((prev) => {
+          const next = { ...prev }
+          for (const f of COST_FIELDS[type]) {
+            const v = j.costs?.[f.key]
+            if (v != null && !String(next[f.key] ?? '').trim()) next[f.key] = String(v)
+          }
+          return next
+        })
+        setDecodeMsg(Object.keys(j.costs ?? {}).length ? `✓ Costs suggested — review before saving${j.note ? `. ${j.note}` : ''}` : 'Not enough to suggest costs yet.')
+      }
+    } catch {
+      setDecodeMsg('Advisor unreachable.')
+    } finally {
+      setAdvising(null)
+    }
+  }
+
+  // ── Photos ──────────────────────────────────────────────────────────────
+  const [existingPhotos, setExistingPhotos] = useState<AssetPhoto[]>(initialPhotos)
+  const [newPhotos, setNewPhotos] = useState<NewPhoto[]>([])
   const [photoBusy, setPhotoBusy] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Legacy single hero with no gallery rows yet — show it so it isn't lost.
+  const legacyHero = initialPhotos.length === 0 && initial?.photo_url ? initial.photo_url : null
+
+  const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    setPhotoBusy(true)
+    try {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue
+        const resized = await resizePhoto(file)
+        const preview = URL.createObjectURL(resized)
+        // Default the first-ever photo to "Truck / unit", the rest to "Other".
+        setNewPhotos((prev) => [...prev, { blob: resized, preview, label: prev.length + existingPhotos.length === 0 ? 'truck' : 'other' }])
+      }
+    } finally {
+      setPhotoBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const removeNewPhoto = (i: number) =>
+    setNewPhotos((prev) => {
+      URL.revokeObjectURL(prev[i].preview)
+      return prev.filter((_, idx) => idx !== i)
+    })
+
+  const setNewPhotoLabel = (i: number, label: string) =>
+    setNewPhotos((prev) => prev.map((p, idx) => (idx === i ? { ...p, label } : p)))
+
+  const removeExistingPhoto = async (photo: AssetPhoto) => {
+    if (!onDeleteExistingPhoto || deletingId) return
+    setDeletingId(photo.id)
+    try {
+      await onDeleteExistingPhoto(photo)
+      setExistingPhotos((prev) => prev.filter((p) => p.id !== photo.id))
+    } catch {
+      setDecodeMsg('Could not remove that photo.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   // Cost inputs kept as strings while typing; parsed on submit.
   const [costs, setCosts] = useState<Record<string, string>>(() => ({
     hourly_rate: initial?.hourly_rate != null ? String(initial.hourly_rate) : '',
@@ -186,40 +315,24 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
     purchase_value: initial?.purchase_value != null ? String(initial.purchase_value) : '',
   }))
 
-  const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoBusy(true)
-    try {
-      const resized = await resizePhoto(file)
-      setPhoto(resized)
-      if (photoPreview) URL.revokeObjectURL(photoPreview)
-      setPhotoPreview(URL.createObjectURL(resized))
-    } finally {
-      setPhotoBusy(false)
-    }
-  }
-
-  const clearPhoto = () => {
-    setPhoto(null)
-    if (photoPreview) URL.revokeObjectURL(photoPreview)
-    setPhotoPreview(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
     onSubmit({
       name: name.trim(), type,
-      category: category.trim(), serial: serial.trim(), photo_url: photoUrl.trim(),
+      category: category.trim(), serial: serial.trim(),
+      // Hero stays whatever it was; the server sets it from the first upload
+      // when the asset has none. Keep legacy hero so edits don't wipe it.
+      photo_url: initial?.photo_url ?? '',
       tracker_id: trackerId.trim(), metadata: specs,
       hourly_rate: parseCost(costs.hourly_rate ?? ''),
       mileage_rate: parseCost(costs.mileage_rate ?? ''),
       daily_cost: parseCost(costs.daily_cost ?? ''),
       purchase_value: parseCost(costs.purchase_value ?? ''),
-    }, photo)
+    }, newPhotos)
   }
+
+  const hasVehicleId = (type === 'vehicle' || type === 'equipment')
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -233,7 +346,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             <Label htmlFor="asset-name">Asset name *</Label>
             <Input
               id="asset-name"
-              placeholder="e.g. F-350 Truck #1, CAT Excavator"
+              placeholder="e.g. Bryson's Ram 3500, CAT Excavator"
               value={name}
               onChange={e => setName(e.target.value)}
               autoFocus
@@ -316,24 +429,25 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             </div>
           )}
 
-          {/* Year / Make / Model — typeahead for vehicles & equipment. Make
-              suggests common truck + equipment brands; picking one live-loads
-              its model list from the federal vehicle database (vPIC). No VIN
-              needed — name-based entry gets real specs too. */}
-          {(type === 'vehicle' || type === 'equipment') && (
+          {/* Year / Make / Model / Trim / Fuel — typeahead for vehicles &
+              equipment. Make suggests common brands; picking make + year
+              live-loads that generation's model list from the federal vehicle
+              database (vPIC). Trim + fuel capture "3500" / "Diesel" as real
+              structured specs instead of burying them in the name. */}
+          {hasVehicleId && (
             <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Year · Make · Model (optional)</p>
               <div className="grid grid-cols-[70px_1fr_1fr] gap-2">
                 <input
                   value={String(specs.year ?? '')}
-                  onChange={(e) => setSpecField('year', e.target.value)}
+                  onChange={(e) => { setSpecField('year', e.target.value); loadModels(String(specs.make ?? ''), e.target.value) }}
                   placeholder="Year"
                   inputMode="numeric"
                   className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
                 />
                 <input
                   value={String(specs.make ?? '')}
-                  onChange={(e) => { setSpecField('make', e.target.value); loadModels(e.target.value) }}
+                  onChange={(e) => { setSpecField('make', e.target.value); loadModels(e.target.value, String(specs.year ?? '')) }}
                   placeholder="Make"
                   list="asset-make-suggestions"
                   className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
@@ -341,8 +455,23 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
                 <input
                   value={String(specs.model ?? '')}
                   onChange={(e) => setSpecField('model', e.target.value)}
-                  placeholder="Model"
+                  placeholder="Model (e.g. 3500)"
                   list="asset-model-suggestions"
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={String(specs.trim ?? '')}
+                  onChange={(e) => setSpecField('trim', e.target.value)}
+                  placeholder="Trim / config (e.g. Laramie, 4x4)"
+                  className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
+                />
+                <input
+                  value={String(specs.fuel ?? '')}
+                  onChange={(e) => setSpecField('fuel', e.target.value)}
+                  placeholder="Fuel / engine (e.g. Diesel 6.7L)"
+                  list="asset-fuel-suggestions"
                   className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-2 text-[12.5px] text-ink placeholder:text-faint outline-none focus:border-amber/50 min-w-0"
                 />
               </div>
@@ -352,8 +481,11 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
               <datalist id="asset-model-suggestions">
                 {modelOptions.map((mo) => <option key={mo} value={mo} />)}
               </datalist>
+              <datalist id="asset-fuel-suggestions">
+                {['Diesel', 'Gasoline', 'Flex Fuel', 'Electric', 'Hybrid', 'Propane', 'CNG'].map((f) => <option key={f} value={f} />)}
+              </datalist>
               {modelOptions.length > 0 && (
-                <p className="text-[10.5px] text-faint">{modelOptions.length} known models for {String(specs.make)} — keep typing to filter.</p>
+                <p className="text-[10.5px] text-faint">{modelOptions.length} known models for {String(specs.make)}{/^(19|20)\d{2}$/.test(String(specs.year ?? '')) ? ` ${String(specs.year)}` : ''} — keep typing to filter.</p>
               )}
             </div>
           )}
@@ -407,21 +539,34 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
           </div>
 
           {/* Service specs — the numbers on the shop wall: what oil, which
-              filter, what tires. Hand-typed once; receipts can fill them later. */}
+              filter, what tires. AI can pre-fill them from the make/model, or
+              type them once; receipts can fill them later. */}
           <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Service specs (optional)</p>
-              <button
-                type="button"
-                onClick={estimateValue}
-                disabled={valuing || !name.trim()}
-                className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40"
-              >
-                {valuing ? 'Estimating…' : specs.value_range ? `Value: ${String(specs.value_range)} ↻` : 'AI market value'}
-              </button>
+              <div className="flex items-center gap-3">
+                {hasVehicleId && (
+                  <button
+                    type="button"
+                    onClick={() => advise('service')}
+                    disabled={advising !== null || (!name.trim() && !specs.make)}
+                    className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40"
+                  >
+                    {advising === 'service' ? 'Thinking…' : '✨ AI fill from make/model'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={estimateValue}
+                  disabled={valuing || !name.trim()}
+                  className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40"
+                >
+                  {valuing ? 'Estimating…' : specs.value_range ? `Value: ${String(specs.value_range)} ↻` : 'AI market value'}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {([['oil', 'Oil (e.g. 0W-30 Euro)'], ['oil_filter', 'Oil filter #'], ['air_filter', 'Air filter #'], ['tires', 'Tire size']] as const).map(([key, ph]) => (
+              {([['oil', 'Oil (e.g. 15W-40 diesel)'], ['oil_filter', 'Oil filter #'], ['air_filter', 'Air filter #'], ['tires', 'Tire size']] as const).map(([key, ph]) => (
                 <input
                   key={key}
                   value={String(specs[key] ?? '')}
@@ -438,48 +583,73 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             </div>
           </div>
 
+          {/* Photos — the whole set: truck shot, GVWR sticker, VIN plate,
+              engine, damage. The first becomes the hero on the map + list. */}
           <div className="space-y-2">
-            <Label htmlFor="asset-photo-file">Photo</Label>
+            <Label>Photos</Label>
             <input
               ref={fileInputRef}
-              id="asset-photo-file"
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={handlePhotoPick}
             />
-            {photoPreview || photoUrl ? (
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photoPreview ?? photoUrl} alt="Asset photo preview" className="h-16 w-16 rounded-lg object-cover border border-navy-700" />
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                    Change
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => { clearPhoto(); setPhotoUrl('') }}>
-                    Remove
-                  </Button>
-                </div>
+            {(existingPhotos.length > 0 || newPhotos.length > 0 || legacyHero) && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {legacyHero && (
+                  <div className="relative rounded-lg border border-navy-700 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={legacyHero} alt="Current photo" className="h-24 w-full object-cover" />
+                    <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5">Current</span>
+                  </div>
+                )}
+                {existingPhotos.map((p) => (
+                  <div key={p.id} className="relative rounded-lg border border-navy-700 overflow-hidden group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={labelText(p.label)} className="h-24 w-full object-cover" />
+                    <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{labelText(p.label)}</span>
+                    {onDeleteExistingPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => removeExistingPhoto(p)}
+                        disabled={deletingId === p.id}
+                        aria-label="Remove photo"
+                        className="absolute top-1 right-1 h-6 w-6 rounded-full bg-navy-950/80 text-alert text-xs font-bold flex items-center justify-center hover:bg-alert hover:text-white disabled:opacity-50"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+                {newPhotos.map((p, i) => (
+                  <div key={i} className="relative rounded-lg border border-teal/50 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.preview} alt={labelText(p.label)} className="h-24 w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeNewPhoto(i)}
+                      aria-label="Remove photo"
+                      className="absolute top-1 right-1 h-6 w-6 rounded-full bg-navy-950/80 text-alert text-xs font-bold flex items-center justify-center hover:bg-alert hover:text-white"
+                    >×</button>
+                    <select
+                      value={p.label}
+                      onChange={(e) => setNewPhotoLabel(i, e.target.value)}
+                      className="absolute bottom-0 inset-x-0 bg-navy-950/85 text-[11px] text-ink px-1 py-1 outline-none border-t border-navy-700"
+                    >
+                      {PHOTO_LABELS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                    </select>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                disabled={photoBusy}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {photoBusy ? 'Processing…' : '📷 Take photo or choose from library'}
-              </Button>
             )}
-            {!photo && !photoUrl && (
-              <Input
-                id="asset-photo"
-                placeholder="…or paste a photo URL"
-                value={photoUrl}
-                onChange={e => setPhotoUrl(e.target.value)}
-              />
-            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={photoBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {photoBusy ? 'Processing…' : '📷 Add photos (truck, GVWR, VIN, engine, issues…)'}
+            </Button>
           </div>
 
           <div className="space-y-2">
@@ -495,8 +665,20 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial }: AssetF
             </p>
           </div>
 
+          {/* Cost structure — the last thing to fill in, once the identity is
+              set. AI can advise the numbers from the year/make/model. */}
           <div className="space-y-2 rounded-lg border border-navy-800 p-3">
-            <p className="text-sm font-medium text-ink">Cost structure <span className="text-faint font-normal">(powers job-cost tracking)</span></p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium text-ink">Cost structure <span className="text-faint font-normal">(powers job-cost tracking)</span></p>
+              <button
+                type="button"
+                onClick={() => advise('cost')}
+                disabled={advising !== null || (!name.trim() && !specs.make)}
+                className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40 whitespace-nowrap"
+              >
+                {advising === 'cost' ? 'Thinking…' : '✨ AI advise from specs'}
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {COST_FIELDS[type].map((f) => (
                 <div key={f.key} className="space-y-1">

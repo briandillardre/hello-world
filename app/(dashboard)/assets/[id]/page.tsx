@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
-import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getAssetsWithLocations, getAssetPhotos } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -22,6 +22,7 @@ import { vehiclePower } from '@/lib/vehicle-power'
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
 const UNIT: Record<string, string> = { engine_hours: 'hrs', mileage: 'mi', days: 'days' }
+const PHOTO_LABEL: Record<string, string> = { truck: 'Truck / unit', gvwr: 'GVWR sticker', vin: 'VIN plate', engine: 'Engine', issue: 'Issue / damage', other: 'Other' }
 const M_STATUS = {
   overdue: { label: 'Overdue', cls: 'bg-alert/15 text-alert', bar: 'bg-alert' },
   due_soon: { label: 'Due soon', cls: 'bg-amber/15 text-amber', bar: 'bg-amber' },
@@ -40,10 +41,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const asset = assets.find((a) => a.id === params.id)
   if (!asset) notFound()
 
-  const [schedules, readings, pairingRows] = await Promise.all([
+  const [schedules, readings, pairingRows, assetPhotos] = await Promise.all([
     getMaintenanceSchedules(companyId),
     getCurrentReadings(),
     getPairingLog(companyId, asset.id),
+    getAssetPhotos(asset.id),
   ])
   const assetSchedules = schedules
     .filter((s) => s.asset_id === asset.id)
@@ -95,7 +97,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            {canEdit && <AssetActions asset={asset} />}
+            {canEdit && <AssetActions asset={asset} photos={assetPhotos} />}
             {/* phones: icon-only (the text version wrapped to 3 ugly lines) */}
             <Link href="/map" aria-label="View on map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm p-2.5 sm:px-3.5 sm:py-2 hover:bg-amber-600 transition-colors whitespace-nowrap">
               <MapPin className="h-4 w-4" /> <span className="hidden sm:inline">View on map</span>
@@ -126,6 +128,22 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             ))}
           </div>
         </section>
+
+        {/* photo gallery — truck shot, GVWR sticker, VIN plate, engine, issues */}
+        {assetPhotos.length > 0 && (
+          <section>
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Photos</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {assetPhotos.map((p) => (
+                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="relative rounded-lg border border-navy-800 overflow-hidden group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'} className="h-28 w-full object-cover transition-transform group-hover:scale-105" />
+                  <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'}</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* cost structure — dollar figures are permission-gated */}
         {perms.canViewCosts && <CostCard asset={asset} />}

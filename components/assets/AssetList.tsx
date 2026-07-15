@@ -10,7 +10,7 @@ import { createAssetAction } from '@/lib/actions/assets'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { AssetForm, type AssetFormData } from './AssetForm'
+import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
@@ -36,7 +36,7 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleAdd = async (data: AssetFormData, photo?: Blob | null) => {
+  const handleAdd = async (data: AssetFormData, photos?: NewPhoto[]) => {
     // Allow a parent to override persistence (e.g. tests / custom flows).
     if (onAdd) {
       onAdd(data)
@@ -47,11 +47,7 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
     setError(null)
     try {
       // Blobs can't ride in a plain server-action argument — wrap in FormData.
-      let photoForm: FormData | undefined
-      if (photo && photo.size > 0) {
-        photoForm = new FormData()
-        photoForm.append('photo', photo, 'photo.jpg')
-      }
+      const photoForm = photosToFormData(photos ?? [])
       await createAssetAction(data, photoForm)
       setShowForm(false)
       router.refresh()

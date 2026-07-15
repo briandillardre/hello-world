@@ -1,4 +1,4 @@
-import type { Asset, AssetWithLocation } from '../types'
+import type { Asset, AssetWithLocation, AssetPhoto } from '../types'
 import { MOCK_ASSETS } from '../mock-data'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -119,6 +119,50 @@ export async function createAsset(
     .select()
     .single()
   return data
+}
+
+/** All photos for an asset, hero-first (sort asc). Empty in demo mode or when
+ *  the 025 table isn't present yet — callers fall back to the single hero. */
+export async function getAssetPhotos(assetId: string): Promise<AssetPhoto[]> {
+  if (isMock) return []
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('asset_photos')
+    .select('*')
+    .eq('asset_id', assetId)
+    .order('sort', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (error) return [] // pre-025 database
+  return data ?? []
+}
+
+/** Append labeled photos, continuing the sort sequence after existing ones. */
+export async function addAssetPhotos(
+  companyId: string,
+  assetId: string,
+  photos: { url: string; label: string | null }[]
+): Promise<void> {
+  if (isMock || !photos.length) return
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data: last } = await supabase
+    .from('asset_photos')
+    .select('sort')
+    .eq('asset_id', assetId)
+    .order('sort', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  let sort = (last?.sort ?? -1) + 1
+  const rows = photos.map((p) => ({ company_id: companyId, asset_id: assetId, url: p.url, label: p.label, sort: sort++ }))
+  await supabase.from('asset_photos').insert(rows)
+}
+
+export async function deleteAssetPhoto(companyId: string, id: string): Promise<void> {
+  if (isMock) return
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await supabase.from('asset_photos').delete().eq('id', id).eq('company_id', companyId)
 }
 
 export async function updateAsset(

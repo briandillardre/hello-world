@@ -123,6 +123,19 @@ export interface Asset {
   created_at: string
 }
 
+/** One of several labeled photos attached to an asset (025). The asset's
+ *  `photo_url` remains the hero image; these are the full gallery. */
+export interface AssetPhoto {
+  id: string
+  company_id: string
+  asset_id: string
+  url: string
+  /** 'truck' | 'gvwr' | 'vin' | 'engine' | 'issue' | free text | null */
+  label: string | null
+  sort: number
+  created_at: string
+}
+
 export interface AssetLocation {
   id: string
   asset_id: string
