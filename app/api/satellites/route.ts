@@ -18,7 +18,7 @@ export const maxDuration = 30
  * on a phone.
  */
 
-interface Tle { name: string; l1: string; l2: string; group: string }
+interface Tle { name: string; l1: string; l2: string; group: string; norad: string }
 
 let cache: { at: number; sats: Tle[] } | null = null
 const TTL_MS = 6 * 3_600_000
@@ -38,7 +38,7 @@ function parseTle(text: string, group: string, cap: number): Tle[] {
     const l1 = lines[i + 1]
     const l2 = lines[i + 2]
     if (!l1?.startsWith('1 ') || !l2?.startsWith('2 ')) break
-    out.push({ name: name.trim(), l1, l2, group })
+    out.push({ name: name.trim(), l1, l2, group, norad: l1.slice(2, 7).trim() })
   }
   return out
 }

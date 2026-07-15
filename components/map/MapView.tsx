@@ -21,11 +21,12 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
-import { nightPolygon } from '@/lib/terminator'
+import { twilightBands } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
-import { createSat3DLayer, pickSat, type Sat3D } from '@/lib/sat-3d'
+import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState } from '@/lib/sat-3d'
+import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -718,7 +719,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       zoom: DEMO_MAP_ZOOM,
       // Let the camera pull well back from the globe — breathing room for
       // the satellites layer instead of a planet jammed to the screen edge.
-      minZoom: -1,
+      minZoom: -2, // MapLibre's floor — far enough to see the GPS shell + GEO ring
+
       attributionControl: false,
       // Follow mode drags the camera across town — keep far more tiles in
       // memory than the default so revisited areas render instantly.
@@ -2155,45 +2157,119 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.pwsnet])
 
-  // ── Live satellites — CelesTrak element sets, physics done in-browser ─────
-  // One TLE fetch, then satellite.js propagates every bird's real position
-  // every 2s. Rendered by a custom WebGL layer at TRUE altitude above the
-  // globe (lib/sat-3d.ts) — LEO skims the surface, the GEO weather ring
-  // hangs 35,786 km out, to scale. Far-side birds are hidden geometrically.
-  const satRecsRef = useRef<{ name: string; group: string; rec: unknown }[] | null>(null)
+  // ── The sky: satellites + sun/moon/stars + live aircraft ─────────────────
+  // One custom WebGL layer (lib/sat-3d.ts) renders everything above the map
+  // at TRUE position and scale. Satellites propagate in-browser from TLEs;
+  // sun/moon come from live ephemeris; stars are the Yale catalog on a
+  // sidereal shell; aircraft are live ADS-B. Far-side bodies hide behind
+  // the planet geometrically.
+  const satRecsRef = useRef<{ name: string; group: string; norad: string | null; rec: unknown }[] | null>(null)
   const satLibRef = useRef<typeof import('satellite.js') | null>(null)
   const satsRef = useRef<Sat3D[] | null>(null)
+  const celestialRef = useRef<CelestialState | null>(null)
+  const starCatRef = useRef<{ ra: number; dec: number; mag: number; bv: number }[] | null>(null)
+  const planesRef = useRef<Plane3D[] | null>(null)
+
+  // Sky playback: satellites/sun/moon/stars obey the timeline. Replaying a
+  // range renders the sky AS IT WAS at the scrubbed moment (SGP4 + ephemeris
+  // run at any time); paused means frozen — the scrubber rule applies to
+  // orbits too. simTimeRef is null on Live.
+  const simTimeRef = useRef<number | null>(null)
+  simTimeRef.current = range !== 'live' && realWindowEff
+    ? realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from)
+    : null
+  const skyKickRef = useRef<(() => void) | null>(null)
+  const dayNightKickRef = useRef<(() => void) | null>(null)
+  const skyKickWall = useRef(0)
+  useEffect(() => {
+    // Throttled: scrub drags fire at 60fps; the sky repaints ≤ ~3×/s and the
+    // regular tick trues it up within 2s of the drag ending.
+    const noww = Date.now()
+    if (noww - skyKickWall.current < 300) return
+    skyKickWall.current = noww
+    skyKickRef.current?.()
+    dayNightKickRef.current?.()
+  }, [displayT, range])
+
+  // Sky-layer lifecycle + shared click/hover — lives while EITHER toggle is on.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    const on = !!overlaysOn.satellites
+    const on = !!overlaysOn.satellites || !!overlaysOn.planes
     if (!on) {
-      if (m.getLayer('sat-3d')) m.removeLayer('sat-3d')
-      satsRef.current = null
+      if (m.getLayer(SKY_LAYER_ID)) m.removeLayer(SKY_LAYER_ID)
       return
     }
-    let cancelled = false
-    if (!m.getLayer('sat-3d')) {
-      try { m.addLayer(createSat3DLayer(() => satsRef.current)) } catch { /* WebGL edge case — layer stays off */ }
+    if (!m.getLayer(SKY_LAYER_ID)) {
+      try {
+        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current))
+      } catch { /* WebGL edge case — layer stays off */ }
     }
     const kindLabel = (g: string) =>
       g === 'gps' ? 'GPS fleet' : g === 'weather' ? 'Weather satellite' : g === 'stations' ? 'Station' : 'Satellite'
-    const onClick = (e: maplibregl.MapMouseEvent) => {
-      const s = pickSat(satsRef.current, e.point.x, e.point.y)
-      if (!s) return
-      new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
-        .setLngLat(e.lngLat)
-        .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc">${s.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLabel(s.group)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Math.round(s.altKm).toLocaleString()} km</b> (${Math.round(s.altKm * 0.6214).toLocaleString()} mi)</div>${s.mph ? `<div>speed ${s.mph.toLocaleString()} mph</div>` : ''}</div>`)
+    const popup = (lngLat: maplibregl.LngLatLike, html: string) => {
+      new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
+        .setLngLat(lngLat)
+        .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">${html}</div>`)
         .addTo(m)
     }
-    let satHover = false
+    const pickAll = (x: number, y: number) => {
+      const cel = celestialRef.current
+      const bodies = [cel?.sun, cel?.moon].filter(Boolean) as CelestialBody[]
+      return (
+        pickSat(satsRef.current, x, y) ??
+        (pickSat(planesRef.current, x, y) as Sat3D | Plane3D | CelestialBody | null) ??
+        pickSat(bodies, x, y, 20)
+      )
+    }
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      const hit = pickAll(e.point.x, e.point.y)
+      if (!hit) return
+      if ('kind' in hit) {
+        if (hit.kind === 'sun') {
+          popup(e.lngLat, `<div style="font-weight:700;color:#ffd479">Sun</div><div style="margin-top:3px">${hit.distLabel}</div>`)
+        } else {
+          popup(e.lngLat, `<div style="font-weight:700;color:#cdd5df">Moon</div><div style="margin-top:3px">${hit.distLabel}</div>${hit.illum != null ? `<div>${Math.round(hit.illum * 100)}% illuminated</div>` : ''}`)
+        }
+      } else if ('hex' in hit) {
+        const title = hit.flight ?? hit.reg ?? hit.hex.toUpperCase()
+        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${[hit.typeCode, hit.reg && hit.reg !== title ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}`)
+      } else {
+        const facts: string[] = []
+        if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
+        if (hit.inclDeg != null) facts.push(`${hit.inclDeg.toFixed(1)}° inclination`)
+        const link = hit.norad
+          ? `<a href="https://www.n2yo.com/satellite/?s=${hit.norad}" target="_blank" rel="noopener" style="display:inline-block;margin-top:5px;color:#2dd4bf;font-weight:600">full details & live track →</a>`
+          : ''
+        popup(e.lngLat, `<div style="font-weight:700;color:#7dd3fc">${hit.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLabel(hit.group)}${hit.norad ? ` · NORAD ${hit.norad}` : ''}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Math.round(hit.altKm).toLocaleString()} km</b> (${Math.round(hit.altKm * 0.6214).toLocaleString()} mi)</div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}${facts.length ? `<div style="color:#9fb6cc">${facts.join(' · ')}</div>` : ''}${link}`)
+      }
+    }
+    let skyHover = false
     const onHover = (e: maplibregl.MapMouseEvent) => {
-      const hit = !!pickSat(satsRef.current, e.point.x, e.point.y)
-      if (hit && !satHover) { satHover = true; m.getCanvas().style.cursor = 'pointer' }
-      else if (!hit && satHover) { satHover = false; m.getCanvas().style.cursor = '' }
+      const hit = !!pickAll(e.point.x, e.point.y)
+      if (hit && !skyHover) { skyHover = true; m.getCanvas().style.cursor = 'pointer' }
+      else if (!hit && skyHover) { skyHover = false; m.getCanvas().style.cursor = '' }
     }
     m.on('click', onClick)
     m.on('mousemove', onHover)
+    return () => {
+      m.off('click', onClick)
+      m.off('mousemove', onHover)
+      if (skyHover) m.getCanvas().style.cursor = ''
+    }
+  }, [mapReady, overlaysOn.satellites, overlaysOn.planes])
+
+  // Satellites + celestial data (the Satellites toggle owns the whole sky look).
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!overlaysOn.satellites) {
+      satsRef.current = null
+      celestialRef.current = null
+      m.triggerRepaint()
+      return
+    }
+    let cancelled = false
     const tick = async () => {
       try {
         if (!satLibRef.current) satLibRef.current = await import('satellite.js')
@@ -2201,11 +2277,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         if (!satRecsRef.current) {
           const r = await fetch('/api/satellites')
           if (!r.ok) throw new Error(`feed ${r.status}`)
-          const j: { sats?: { name: string; l1: string; l2: string; group: string }[] } = await r.json()
-          satRecsRef.current = (j.sats ?? []).map((s) => ({ name: s.name, group: s.group, rec: sat.twoline2satrec(s.l1, s.l2) }))
+          const j: { sats?: { name: string; l1: string; l2: string; group: string; norad?: string }[] } = await r.json()
+          satRecsRef.current = (j.sats ?? []).map((s) => ({ name: s.name, group: s.group, norad: s.norad ?? null, rec: sat.twoline2satrec(s.l1, s.l2) }))
+        }
+        if (!starCatRef.current) {
+          try {
+            const r = await fetch('/api/stars')
+            if (r.ok) {
+              const j: { stars?: { ra: number; dec: number; mag: number; bv: number }[] } = await r.json()
+              if (j.stars?.length) starCatRef.current = j.stars
+            }
+          } catch { /* stars are garnish — satellites still fly */ }
         }
         if (cancelled) return
-        const now = new Date()
+        const now = simTimeRef.current != null ? new Date(simTimeRef.current) : new Date()
         const gmst = sat.gstime(now)
         const next: Sat3D[] = []
         for (const s of satRecsRef.current) {
@@ -2217,15 +2302,71 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           const vel = pv.velocity && typeof pv.velocity !== 'boolean'
             ? Math.sqrt(pv.velocity.x ** 2 + pv.velocity.y ** 2 + pv.velocity.z ** 2)
             : null
+          const rec = s.rec as { inclo?: number; no?: number; no_kozai?: number }
+          const meanMotion = rec.no ?? rec.no_kozai
           next.push({
             name: s.name, group: s.group,
             lon: sat.degreesLong(gd.longitude), lat: sat.degreesLat(gd.latitude),
             altKm: gd.height,
             mph: vel ? Math.round(vel * 2236.94) : null,
+            norad: s.norad,
+            inclDeg: rec.inclo != null ? rec.inclo * (180 / Math.PI) : null,
+            periodMin: meanMotion ? (2 * Math.PI) / meanMotion : null,
             sx: 0, sy: 0, visible: false,
           })
         }
         satsRef.current = next
+
+        // ── Celestial: sun, moon, stars as raw sub-points — the sky layer
+        // projects them per frame for whichever shader variant is active.
+        const sunEq = sunEquatorial(now)
+        const moonEq = moonEquatorial(now)
+        const sunSub = subPoint(sunEq, gmst)
+        const moonSub = subPoint(moonEq, gmst)
+        const dir = (lon: number, lat: number): [number, number, number] => {
+          const lo = lon * Math.PI / 180, la = lat * Math.PI / 180
+          return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)]
+        }
+        const illum = moonIllumination(dir(sunSub.lon, sunSub.lat), dir(moonSub.lon, moonSub.lat))
+        let stars: Float32Array | null = celestialRef.current?.stars ?? null
+        let starCount = celestialRef.current?.starCount ?? 0
+        if (starCatRef.current) {
+          const cat = starCatRef.current
+          const gmstDeg = gmst * (180 / Math.PI)
+          const dpr = window.devicePixelRatio || 1
+          if (!stars || starCount !== cat.length) stars = new Float32Array(cat.length * 5)
+          for (let i = 0; i < cat.length; i++) {
+            const st = cat[i]
+            const o = i * 5
+            stars[o] = norm180(st.ra - gmstDeg)
+            stars[o + 1] = st.dec
+            stars[o + 2] = Math.min(5, Math.max(1.3, 4.4 - 0.6 * st.mag)) * dpr
+            stars[o + 3] = Math.min(1, Math.max(0.22, 1.05 - 0.15 * st.mag))
+            stars[o + 4] = Math.min(1, Math.max(0, (st.bv + 0.1) / 1.6))
+          }
+          starCount = cat.length
+        }
+        // The sun's true distance (23,000 planet radii) is beyond float
+        // comfort — render its DIRECTION at a far shell; the disc is sized
+        // by true angular diameter either way.
+        celestialRef.current = {
+          sun: {
+            kind: 'sun', lon: sunSub.lon, lat: sunSub.lat, altM: 179 * EARTH_RADIUS_M,
+            angRad: Math.atan2(SUN_RADIUS_KM, sunEq.distAU * AU_KM),
+            distLabel: `${(sunEq.distAU * 92.955807).toFixed(1)}M miles away`,
+            sx: 0, sy: 0, visible: false,
+          },
+          moon: {
+            kind: 'moon', lon: moonSub.lon, lat: moonSub.lat, altM: moonEq.distKm * 1000 - EARTH_RADIUS_M,
+            angRad: Math.atan2(MOON_RADIUS_KM, moonEq.distKm),
+            distLabel: `${Math.round(moonEq.distKm * 0.621371).toLocaleString()} miles away`,
+            illum,
+            sx: 0, sy: 0, visible: false,
+          },
+          stars, starCount,
+          starsRev: (celestialRef.current?.starsRev ?? 0) + 1,
+          starAltM: 149 * EARTH_RADIUS_M,
+        }
         m.triggerRepaint()
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'satellites', at: Date.now() } }))
       } catch (err) {
@@ -2233,15 +2374,67 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       }
     }
     tick()
+    skyKickRef.current = () => { void tick() }
     const id = setInterval(tick, 2000)
+    return () => { cancelled = true; clearInterval(id); skyKickRef.current = null }
+  }, [mapReady, overlaysOn.satellites])
+
+  // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (!overlaysOn.planes) {
+      planesRef.current = null
+      m.triggerRepaint()
+      return
+    }
+    let cancelled = false
+    let inflight = false
+    const load = async () => {
+      if (inflight || cancelled) return
+      // ADS-B is live-only — during replay, showing NOW's planes over LAST
+      // WEEK's map would be a lie. Hide them until the timeline returns home.
+      if (rangeRef.current !== 'live') {
+        if (planesRef.current) { planesRef.current = null; m.triggerRepaint() }
+        return
+      }
+      inflight = true
+      try {
+        const c = m.getCenter()
+        const r = await fetch(`/api/planes?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&r=250`)
+        if (!r.ok) throw new Error(`feed ${r.status}`)
+        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null }[] } = await r.json()
+        if (cancelled) return
+        planesRef.current = (j.planes ?? []).map((p) => ({
+          hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
+          lon: p.lon, lat: p.lat, altFt: p.altFt,
+          mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
+          track: p.track,
+          sx: 0, sy: 0, visible: false,
+        }))
+        m.triggerRepaint()
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() } }))
+      } catch (err) {
+        window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'planes', msg: err instanceof Error ? err.message : 'ADS-B feed down' } }))
+      } finally {
+        inflight = false
+      }
+    }
+    let moveTimer: ReturnType<typeof setTimeout> | null = null
+    const onMove = () => {
+      if (moveTimer) clearTimeout(moveTimer)
+      moveTimer = setTimeout(load, 900)
+    }
+    load()
+    const id = setInterval(load, 6000)
+    m.on('moveend', onMove)
     return () => {
       cancelled = true
       clearInterval(id)
-      m.off('click', onClick)
-      m.off('mousemove', onHover)
-      if (satHover) m.getCanvas().style.cursor = ''
+      if (moveTimer) clearTimeout(moveTimer)
+      m.off('moveend', onMove)
     }
-  }, [mapReady, overlaysOn.satellites])
+  }, [mapReady, overlaysOn.planes])
 
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
   useEffect(() => {
@@ -2316,36 +2509,105 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.webcams])
 
-  // ── Day/night terminator: shade the half of Earth in darkness right now.
-  // Pure solar math (lib/terminator) — no service, no key; re-derives every
-  // minute so the line creeps west like it should. Pairs with "City lights".
+  // ── Day/night, the realistic way: whatever basemap is up shows in daylight,
+  // then the map fades through graduated twilight bands (sun 0/−6/−12/−18°
+  // below the horizon) into night — and real cities glow on the dark side,
+  // ramping up through dusk exactly where evening actually is. Pure solar
+  // math + Natural Earth city points; re-derives every minute so the line
+  // creeps west. The NASA "City lights" raster remains the separate
+  // whole-planet nighttime look for the dark basemap.
+  const cityCatRef = useRef<{ lat: number; lon: number; pop: number }[] | null>(null)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
     const on = !!overlaysOn.daynight
-    for (const lid of ['daynight-fill', 'daynight-line']) {
+    for (const lid of ['daynight-shade', 'citylight-glow', 'citylight-core']) {
       if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
     }
     if (!on) return
-    const src = m.getSource('daynight') as maplibregl.GeoJSONSource | undefined
-    if (!src) {
-      m.addSource('daynight', { type: 'geojson', data: nightPolygon() })
+    let cancelled = false
+
+    const cityFeatures = (): GeoJSON.Feature[] => {
+      const cat = cityCatRef.current
+      if (!cat) return []
+      const now = simTimeRef.current != null ? new Date(simTimeRef.current) : new Date()
+      const sun = sunEquatorial(now)
+      // GMST ≈ ERA approximation is overkill here — the sub-solar point from
+      // the ephemeris + UTC keeps city dusk within a minute of truth.
+      const jd = now.getTime() / 86400000 + 2440587.5
+      const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - 2451545)) % 360 + 360) % 360
+      const sub = subPoint(sun, gmstDeg * Math.PI / 180)
+      const rad = Math.PI / 180
+      const sinDec = Math.sin(sub.lat * rad)
+      const cosDec = Math.cos(sub.lat * rad)
+      const out: GeoJSON.Feature[] = []
+      for (const c of cat) {
+        const H = (c.lon - sub.lon) * rad
+        const sinAlt = Math.sin(c.lat * rad) * sinDec + Math.cos(c.lat * rad) * cosDec * Math.cos(H)
+        const altDeg = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / rad
+        // Lights fade in from +1° (sunset glow) to full at −8°.
+        const glow = Math.max(0, Math.min(1, (1 - altDeg) / 9))
+        if (glow < 0.03) continue
+        out.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [c.lon, c.lat] },
+          properties: { g: glow, p: Math.sqrt(Math.max(c.pop, 20000)) / 1000 },
+        })
+      }
+      return out
+    }
+
+    const refresh = () => {
+      if (cancelled) return
+      const at = simTimeRef.current != null ? new Date(simTimeRef.current) : new Date()
+      ;(m.getSource('daynight') as maplibregl.GeoJSONSource | undefined)?.setData(twilightBands(at) as GeoJSON.GeoJSON)
+      ;(m.getSource('citylights') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: cityFeatures() })
+    }
+
+    if (!m.getSource('daynight')) {
+      m.addSource('daynight', { type: 'geojson', data: twilightBands() as GeoJSON.GeoJSON })
+      m.addSource('citylights', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      // Stacked translucent bands accumulate: day → dusk → deep night.
       m.addLayer({
-        id: 'daynight-fill', type: 'fill', source: 'daynight',
-        paint: { 'fill-color': '#020b18', 'fill-opacity': 0.45 },
+        id: 'daynight-shade', type: 'fill', source: 'daynight',
+        paint: { 'fill-color': '#020817', 'fill-opacity': ['get', 'op'], 'fill-antialias': false },
       }, beforeId)
       m.addLayer({
-        id: 'daynight-line', type: 'line', source: 'daynight',
-        paint: { 'line-color': '#7dd3fc', 'line-width': 1.2, 'line-opacity': 0.35, 'line-blur': 2 },
+        id: 'citylight-glow', type: 'circle', source: 'citylights',
+        paint: {
+          'circle-color': '#ffc25e',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, ['*', ['get', 'p'], 1.1], 4, ['*', ['get', 'p'], 2.6], 8, ['*', ['get', 'p'], 5]],
+          'circle-blur': 1.4,
+          'circle-opacity': ['*', ['get', 'g'], 0.5],
+        },
+      }, beforeId)
+      m.addLayer({
+        id: 'citylight-core', type: 'circle', source: 'citylights',
+        paint: {
+          'circle-color': '#ffe9bd',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, ['max', ['*', ['get', 'p'], 0.34], 0.6], 8, ['*', ['get', 'p'], 1.6]],
+          'circle-opacity': ['*', ['get', 'g'], 0.95],
+        },
       }, beforeId)
     } else {
-      src.setData(nightPolygon())
+      refresh()
     }
-    const id = setInterval(() => {
-      ;(m.getSource('daynight') as maplibregl.GeoJSONSource | undefined)?.setData(nightPolygon())
-    }, 60_000)
-    return () => clearInterval(id)
+
+    if (!cityCatRef.current) {
+      fetch('/api/cities')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`cities ${r.status}`))))
+        .then((j: { cities?: { lat: number; lon: number; pop: number }[] }) => {
+          if (cancelled || !j.cities?.length) return
+          cityCatRef.current = j.cities
+          refresh()
+        })
+        .catch(() => { /* shading still works without the lights */ })
+    }
+
+    dayNightKickRef.current = refresh
+    const id = setInterval(refresh, 60_000)
+    return () => { cancelled = true; clearInterval(id); dayNightKickRef.current = null }
   }, [mapReady, overlaysOn.daynight])
 
   // ── Wind flow: animated particles advected through model wind ─────────────

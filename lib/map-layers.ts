@@ -78,11 +78,12 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'topo', label: 'Topo lines', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see contours', hint: 'elevation contours' },
 
   // ── View extras (Basemap group, above Night effects) ──────────────────────
-  { id: 'satellites', label: 'Satellites (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude above the globe · tap one for details · zoom way out to see the GPS shell & GEO ring' },
+  { id: 'satellites', label: 'Satellites & sky (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
+  { id: 'planes', label: 'Aircraft (live)', group: 'basemap', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
 
   // ── Night effects (nested under Basemap) ──────────────────────────────────
-  { id: 'nightlights', label: 'City lights', group: 'basemap', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'Earth at night — cities glow (NASA imagery)' },
-  { id: 'daynight', label: 'Day / night line', group: 'basemap', nightFx: true, status: 'live', requiresBasemap: 'dark', hint: 'live terminator — night side shaded' },
+  { id: 'daynight', label: 'Day / night (real)', group: 'basemap', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
+  { id: 'nightlights', label: 'Night photo (NASA)', group: 'basemap', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
 ]
 
 export interface RowState {
