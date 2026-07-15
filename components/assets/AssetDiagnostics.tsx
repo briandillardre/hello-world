@@ -80,17 +80,54 @@ function fmtVal(key: string, v: unknown): string {
   return String(v)
 }
 
-export function AssetDiagnostics({ raw, timestamp }: { raw: Raw; timestamp?: string | null }) {
+/** "3h ago" style stamp from an ISO timestamp. */
+function ago(ts: string): string {
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000)
+  if (s < 90) return 'just now'
+  if (s < 5400) return `${Math.round(s / 60)}m ago`
+  if (s < 172800) return `${Math.round(s / 3600)}h ago`
+  return `${Math.round(s / 86400)}d ago`
+}
+
+type History = Record<string, { value: unknown; ts: string }>
+
+export function AssetDiagnostics({ raw, timestamp, history }: { raw: Raw; timestamp?: string | null; history?: History }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [copied, setCopied] = useState(false)
+  // 'latest' = this report only; 'all' = every signal seen in the last 7 days
+  // (so a parked/engine-off unit still shows its full OBD set).
+  const [mode, setMode] = useState<'latest' | 'all'>('latest')
+
+  const latestKeys = useMemo(
+    () => new Set(Object.keys(raw ?? {}).filter((k) => k !== 'source')),
+    [raw]
+  )
+
+  // How many extra signals live in history beyond this report — drives the toggle.
+  const extraCount = useMemo(() => {
+    if (!history) return 0
+    return Object.keys(history).filter((k) => !latestKeys.has(k)).length
+  }, [history, latestKeys])
+
+  const showAll = mode === 'all' && !!history
+  // When each key was last seen, for the "all" view stamp.
+  const seenAt = useMemo(() => {
+    const m: Record<string, string> = {}
+    if (history) for (const [k, { ts }] of Object.entries(history)) m[k] = ts
+    return m
+  }, [history])
 
   const entries = useMemo(
-    () =>
-      Object.entries(raw ?? {})
+    () => {
+      const src: [string, unknown][] = showAll && history
+        ? Object.entries(history).map(([k, { value }]) => [k, value])
+        : Object.entries(raw ?? {})
+      return src
         .filter(([k, v]) => k !== 'source' && v !== null && v !== undefined && v !== '')
-        .sort((a, b) => a[0].localeCompare(b[0])),
-    [raw]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+    },
+    [raw, history, showAll]
   )
 
   const groups = useMemo(() => {
@@ -131,7 +168,8 @@ export function AssetDiagnostics({ raw, timestamp }: { raw: Raw; timestamp?: str
           <p className="font-display font-bold text-ink text-[15px]">Diagnostics</p>
           <p className="text-xs text-faint mt-0.5 truncate">
             {count > 0 ? `${count} signal${count === 1 ? '' : 's'} from the tracker` : 'Position only — no extended telemetry yet'}
-            {timestamp ? ' · latest report' : ''}
+            {showAll ? ' · all seen (7d)' : timestamp ? ' · latest report' : ''}
+            {!showAll && extraCount > 0 ? ` · +${extraCount} more seen recently` : ''}
           </p>
         </div>
         {count > 0 && (
@@ -142,13 +180,34 @@ export function AssetDiagnostics({ raw, timestamp }: { raw: Raw; timestamp?: str
 
       {open && (
         <div className="border-t border-navy-800 p-4 space-y-4">
+          {/* Latest vs All-seen toggle — lets a parked, engine-off unit still
+              show its full OBD signal set from the last time it was running. */}
+          {history && extraCount > 0 && (
+            <div className="inline-flex rounded-lg border border-navy-700 overflow-hidden text-xs font-semibold">
+              <button
+                onClick={() => setMode('latest')}
+                className={'px-3 py-1.5 transition-colors ' + (!showAll ? 'bg-teal/15 text-teal' : 'text-faint hover:text-ink')}
+              >Latest report</button>
+              <button
+                onClick={() => setMode('all')}
+                className={'px-3 py-1.5 transition-colors ' + (showAll ? 'bg-teal/15 text-teal' : 'text-faint hover:text-ink')}
+              >All signals (7d)</button>
+            </div>
+          )}
+
           {count === 0 ? (
             <p className="text-sm text-faint">
               This tracker is only reporting its position so far. Voltages, engine data, and fault codes
-              appear here as soon as the device sends them.
+              appear here as soon as the device sends them{history ? ' — or switch to “All signals (7d)” above' : ''}.
             </p>
           ) : (
             <>
+              {showAll && (
+                <p className="text-[11px] text-faint">
+                  Every field this tracker sent in the last 7 days, newest value shown. Engine data (RPM,
+                  coolant, fuel, DTCs) reports while the ignition is on.
+                </p>
+              )}
               {count > 10 && (
                 <div className="relative">
                   <Search className="h-3.5 w-3.5 text-faint absolute left-3 top-1/2 -translate-y-1/2" />
@@ -171,7 +230,10 @@ export function AssetDiagnostics({ raw, timestamp }: { raw: Raw; timestamp?: str
                           <span className="text-[13px] text-muted capitalize truncate" title={k}>{humanize(k)}</span>
                           <span className="text-[13px] font-semibold text-ink text-right tabular-nums break-all">{fmtVal(k, v)}</span>
                         </div>
-                        <span className="font-mono text-[9.5px] text-faint/70 truncate block" title={k}>{k}</span>
+                        <span className="font-mono text-[9.5px] text-faint/70 truncate block" title={k}>
+                          {k}
+                          {showAll && !latestKeys.has(k) && seenAt[k] ? <span className="text-amber/70"> · {ago(seenAt[k])}</span> : null}
+                        </span>
                       </div>
                     ))}
                   </div>

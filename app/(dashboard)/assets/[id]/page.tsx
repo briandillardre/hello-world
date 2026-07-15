@@ -82,6 +82,34 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     trips = segmentTrips(rows ?? [], fences)
   }
 
+  // Diagnostics "all signals seen" — the FULL set of fields this tracker has
+  // emitted over the last week, each with its most-recent value + when. An
+  // engine-off unit reports only position now, but RPM/coolant/fuel/DTCs show
+  // up here from the last time it was running. Newest-first so the first time
+  // we see a key is its latest value.
+  let signalHistory: Record<string, { value: unknown; ts: string }> | undefined
+  if (!isMockEnv && asset.tracker_id) {
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const { data: rows } = await supabase
+      .from('asset_locations')
+      .select('raw, timestamp')
+      .eq('asset_id', asset.id)
+      .gte('timestamp', new Date(Date.now() - 7 * 86_400_000).toISOString())
+      .order('timestamp', { ascending: false })
+      .limit(3000)
+    const hist: Record<string, { value: unknown; ts: string }> = {}
+    for (const r of rows ?? []) {
+      const rw = r.raw as Record<string, unknown> | null
+      if (!rw) continue
+      for (const [k, v] of Object.entries(rw)) {
+        if (k === 'source' || v === null || v === undefined || v === '') continue
+        if (!(k in hist)) hist[k] = { value: v, ts: r.timestamp as string }
+      }
+    }
+    if (Object.keys(hist).length) signalHistory = hist
+  }
+
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
       {/* header */}
@@ -185,7 +213,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
         {/* full raw telemetry — collapsed, one tap from the glance stats above */}
         <section>
-          <AssetDiagnostics raw={loc?.raw} timestamp={loc?.timestamp} />
+          <AssetDiagnostics raw={loc?.raw} timestamp={loc?.timestamp} history={signalHistory} />
         </section>
 
         {/* drive history (real cellular assets only) */}
