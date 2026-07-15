@@ -22,8 +22,21 @@ interface GeofenceEditorProps {
   color: string
   parentId: string | null
   kind?: 'site' | 'boundary' | 'yard'
+  /** Personal zone owner (this user sees it only); null = global. */
+  ownerId?: string | null
+  /** Whether the current viewer owns this personal zone (can keep it personal). */
+  isOwnedByMe?: boolean
+  activeFrom?: string | null
+  activeUntil?: string | null
   /** Closed ring [[lng,lat],…] (first == last). */
   ring: [number, number][]
+}
+
+/** ISO → the yyyy-MM-dd a date input wants (or ''). */
+function dayInput(iso?: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10)
 }
 
 /**
@@ -31,7 +44,7 @@ interface GeofenceEditorProps {
  * move — works with touch for iPad. Midpoints (hollow dots) tap to add a
  * vertex. Tap a vertex to select it, then "Delete vertex" removes it (min 3).
  */
-export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ring: initialRing }: GeofenceEditorProps) {
+export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ownerId = null, isOwnedByMe = false, activeFrom: initialActiveFrom = null, activeUntil: initialActiveUntil = null, ring: initialRing }: GeofenceEditorProps) {
   const router = useRouter()
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -49,6 +62,9 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   const [name, setName] = useState(initialName)
   const [color, setColor] = useState(initialColor)
   const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>(initialKind)
+  const [personal, setPersonal] = useState<boolean>(!!ownerId)
+  const [activeFrom, setActiveFrom] = useState<string>(dayInput(initialActiveFrom))
+  const [activeUntil, setActiveUntil] = useState<string>(dayInput(initialActiveUntil))
   const colorRef = useRef(color)
   colorRef.current = color
   const [saving, setSaving] = useState(false)
@@ -222,7 +238,14 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
       await saveGeofenceAction(id, name.trim() || initialName, color, parentId, {
         type: 'Polygon',
         coordinates: [closed],
-      }, kind)
+      }, kind, {
+        // Only the owner can keep a personal zone personal; a global zone can be
+        // made personal by anyone who can edit it.
+        personal: (isOwnedByMe || !ownerId) ? personal : undefined,
+        active_from: activeFrom ? new Date(activeFrom + 'T00:00:00').toISOString() : null,
+        active_until: activeUntil ? new Date(activeUntil + 'T23:59:59').toISOString() : null,
+        clear_dates: !activeFrom && !activeUntil,
+      })
       setDirty(false)
       router.refresh()
     } catch (err) {
@@ -296,6 +319,47 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
               </div>
             </div>
           </div>
+          {/* Visibility — global (everyone) vs personal (only me). */}
+          <div className="space-y-1.5 border-t border-navy-800 pt-3">
+            <Label className="text-xs">Visibility</Label>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => { setPersonal(false); setDirty(true) }}
+                className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (!personal ? 'border-amber bg-amber/10 text-amber' : 'border-navy-700 text-faint hover:text-ink')}>
+                🌐 Global (whole team)
+              </button>
+              <button type="button" onClick={() => { setPersonal(true); setDirty(true) }}
+                disabled={!!ownerId && !isOwnedByMe}
+                className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors disabled:opacity-40 ' + (personal ? 'border-[#a78bfa] bg-[#a78bfa]/10 text-[#c4b5fd]' : 'border-navy-700 text-faint hover:text-ink')}>
+                🔒 Personal (only me)
+              </button>
+            </div>
+            {personal && (
+              <p className="text-[10.5px] text-amber/90 leading-snug rounded-lg bg-amber/5 border border-amber/30 px-2.5 py-2">
+                ⚠️ A personal zone is private to you: teammates won&apos;t see it, it won&apos;t fire theft / enter-exit
+                alerts to anyone, and it won&apos;t appear in shared reports or the daily site log. It&apos;s for your own
+                reference only — not team coordination.
+              </p>
+            )}
+          </div>
+
+          {/* Optional job-site window — scopes cost totals + auto-archives. */}
+          {kind !== 'boundary' && (
+            <div className="space-y-1.5 border-t border-navy-800 pt-3">
+              <Label className="text-xs">Project window <span className="text-faint font-normal">(optional — leave blank for ongoing)</span></Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-faint">Start</span>
+                  <Input type="date" value={activeFrom} onChange={(e) => { setActiveFrom(e.target.value); setDirty(true) }} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-faint">End</span>
+                  <Input type="date" value={activeUntil} onChange={(e) => { setActiveUntil(e.target.value); setDirty(true) }} />
+                </div>
+              </div>
+              <p className="text-[10.5px] text-faint leading-snug">Job-cost totals count activity within this window; a past end date archives the zone off the live map (history stays).</p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={save} disabled={saving || !dirty || verts.length < 3} className="gap-1.5">
               <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save changes'}

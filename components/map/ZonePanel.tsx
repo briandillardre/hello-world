@@ -150,10 +150,17 @@ export function ZonePanel({
                 </div>
               )}
 
+          <Link
+            href={`/geofences/${fence.id}`}
+            className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-teal/50 text-teal text-sm font-semibold py-2.5 hover:bg-teal/10 transition-colors"
+          >
+            📊 See full details — hours, costs, charts, history
+          </Link>
+
           {canEdit && (
             <button
               onClick={() => setEditing(true)}
-              className="mt-4 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy-800 border border-navy-700 text-ink text-sm font-medium py-2.5 hover:bg-navy-700 transition-colors"
+              className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy-800 border border-navy-700 text-ink text-sm font-medium py-2.5 hover:bg-navy-700 transition-colors"
             >
               <Pencil className="h-3.5 w-3.5" /> Edit zone
             </button>

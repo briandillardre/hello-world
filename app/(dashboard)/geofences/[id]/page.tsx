@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Hexagon, MapPin, CornerDownRight } from 'lucide-react'
-import { getGeofence, getGeofences } from '@/lib/db/geofences'
+import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/geofences'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -26,13 +26,21 @@ const USAGE_DAYS = 30
 
 export default async function GeofenceDetailPage({ params }: { params: { id: string } }) {
   const companyId = await getCurrentCompanyId()
-  const [fence, allFences, assets, perms] = await Promise.all([
+  const [fence, allFences, assets, perms, zoneEvents] = await Promise.all([
     getGeofence(params.id),
     getGeofences(companyId),
     getAssetsWithLocations(companyId),
     getMyPermissions(),
+    getZoneEvents(params.id),
   ])
   if (!fence) notFound()
+
+  const fmtDay = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const activeFrom = fmtDay(fence.active_from)
+  const activeUntil = fmtDay(fence.active_until)
+  const archived = !!fence.active_until && Date.parse(fence.active_until) < Date.now()
+  const ACTION_LABEL: Record<string, string> = { created: 'Created', edited: 'Edited', reshaped: 'Boundary reshaped', archived: 'Archived', reactivated: 'Reactivated' }
 
   const ring = fence.geometry?.coordinates?.[0] as [number, number][] | undefined
   const inside = !ring ? [] : assets.filter((a) => a.location && pointInPolygon([a.location.lng, a.location.lat], ring))
@@ -83,11 +91,20 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-ink truncate">{fence.name}</h1>
-            {parent && (
-              <Link href={`/geofences/${parent.id}`} className="text-xs text-faint hover:text-amber">
-                Sub-zone of {parent.name}
-              </Link>
-            )}
+            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+              {parent && (
+                <Link href={`/geofences/${parent.id}`} className="text-xs text-faint hover:text-amber">
+                  Sub-zone of {parent.name}
+                </Link>
+              )}
+              {fence.owner_id && <span className="rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[10px] font-semibold px-2 py-0.5">🔒 Personal</span>}
+              {(activeFrom || activeUntil) && (
+                <span className="rounded-full bg-navy-800 border border-navy-700 text-[10px] text-muted px-2 py-0.5">
+                  {activeFrom ?? '—'} → {activeUntil ?? 'ongoing'}
+                </span>
+              )}
+              {archived && <span className="rounded-full bg-faint/15 border border-navy-600 text-[10px] text-faint px-2 py-0.5">Archived</span>}
+            </div>
           </div>
           <Link href="/map" className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
             <MapPin className="h-4 w-4" /> View on map
@@ -97,7 +114,14 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
       <div className="p-4 max-w-3xl space-y-6">
         {ring && ring.length >= 3 && (
-          <GeofenceEditor id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null} kind={isBoundary ? 'boundary' : 'site'} ring={ring} />
+          <GeofenceEditor
+            id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null}
+            kind={isBoundary ? 'boundary' : 'site'} ring={ring}
+            ownerId={fence.owner_id ?? null}
+            isOwnedByMe={!!fence.owner_id /* RLS only returns your own personal zones */}
+            activeFrom={fence.active_from ?? null}
+            activeUntil={fence.active_until ?? null}
+          />
         )}
 
         {isBoundary && (
@@ -140,6 +164,30 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             </div>
           )}
         </section>
+
+        {zoneEvents.length > 0 && (
+          <section>
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Change history</h2>
+            <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
+              {zoneEvents.map((ev) => {
+                const changed = ev.detail?.changed as string[] | undefined
+                const by = ev.detail?.by as string | undefined
+                return (
+                  <div key={ev.id} className="flex items-start gap-3 p-3">
+                    <span className="mt-0.5 w-2 h-2 rounded-full bg-teal flex-none" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-ink">
+                        {ACTION_LABEL[ev.action] ?? ev.action}
+                        {changed?.length ? <span className="text-faint"> · {changed.join(', ')}</span> : null}
+                      </p>
+                      <p className="text-[11px] text-faint">{fmtWhen(ev.created_at)}{by ? ` · ${by}` : ''}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {subZones.length > 0 && (
           <section>

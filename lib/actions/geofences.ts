@@ -1,21 +1,49 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getGeofence, createGeofence, updateGeofence, deleteGeofence } from '@/lib/db/geofences'
+import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/geofences'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
-export async function createGeofenceAction(name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site') {
+/** Who's performing the action, for the zone change log. */
+async function currentActor(): Promise<{ id: string | null; name: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const s = createClient()
+    const { data: { user } } = await s.auth.getUser()
+    if (!user) return { id: null, name: 'System' }
+    const { data: p } = await s.from('profiles').select('name').eq('id', user.id).maybeSingle()
+    return { id: user.id, name: (p?.name as string) || user.email || 'User' }
+  } catch { return { id: null, name: 'User' } }
+}
+
+export interface ZoneLifecycleOpts {
+  personal?: boolean
+  active_from?: string | null
+  active_until?: string | null
+}
+
+export async function createGeofenceAction(
+  name: string, geometry: GeoJSON.Polygon, color: string,
+  kind: 'site' | 'boundary' | 'yard' = 'site', opts?: ZoneLifecycleOpts
+) {
   const companyId = await getCurrentCompanyId()
-  const id = await createGeofence(companyId, { name, geometry, color, kind })
-  // Every new zone gets enter + exit rules for ALL assets by default —
-  // without them nothing ever fires, so alert pins and the entry/exit log
-  // sat empty and read as broken (owner, Jul 14). Deletable on /alerts.
+  const id = await createGeofence(companyId, {
+    name, geometry, color, kind,
+    personal: opts?.personal, active_from: opts?.active_from ?? null, active_until: opts?.active_until ?? null,
+  })
   if (id) {
-    try {
-      const { createAlertRule } = await import('../db/alerts')
-      await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'enter', idle_minutes: null })
-      await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'exit', idle_minutes: null })
-    } catch { /* rules are additive — zone creation must not fail on them */ }
+    // Personal zones are private reference only — they never drive company
+    // alerts, so skip the default enter/exit rules. Global zones get them:
+    // without a rule nothing ever fires (owner, Jul 14). Deletable on /alerts.
+    if (!opts?.personal) {
+      try {
+        const { createAlertRule } = await import('../db/alerts')
+        await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'enter', idle_minutes: null })
+        await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'exit', idle_minutes: null })
+      } catch { /* rules are additive — zone creation must not fail on them */ }
+    }
+    const actor = await currentActor()
+    await logZoneEvent(companyId, id, actor.id, 'created', { by: actor.name, kind, personal: !!opts?.personal })
   }
   revalidatePath('/geofences')
   revalidatePath('/map')
@@ -29,11 +57,34 @@ export async function saveGeofenceAction(
   color: string,
   parentId: string | null,
   geometry?: GeoJSON.Polygon,
-  kind?: 'site' | 'boundary' | 'yard'
+  kind?: 'site' | 'boundary' | 'yard',
+  opts?: ZoneLifecycleOpts & { clear_dates?: boolean }
 ) {
   const g = await getGeofence(id)
   if (!g) return
-  await updateGeofence(id, { name, color, geometry: geometry ?? g.geometry, parent_id: parentId, kind })
+  const geomChanged = !!geometry && JSON.stringify(geometry) !== JSON.stringify(g.geometry)
+  await updateGeofence(id, {
+    name, color, geometry: geometry ?? g.geometry, parent_id: parentId, kind,
+    personal: opts?.personal, active_from: opts?.active_from, active_until: opts?.active_until, clear_dates: opts?.clear_dates,
+  })
+
+  // Log what changed so the zone page can explain shifts in hours/acreage.
+  const changed: string[] = []
+  if (name !== g.name) changed.push('name')
+  if (color !== g.color) changed.push('color')
+  if (kind && kind !== g.kind) changed.push('kind')
+  if (geomChanged) changed.push('boundary')
+  if (opts && (opts.active_from !== undefined || opts.active_until !== undefined || opts.clear_dates)) changed.push('dates')
+  if (opts?.personal !== undefined) changed.push('visibility')
+  if (changed.length) {
+    const companyId = await getCurrentCompanyId()
+    const actor = await currentActor()
+    await logZoneEvent(companyId, id, actor.id, geomChanged ? 'reshaped' : 'edited', {
+      by: actor.name, changed,
+      from: { name: g.name, color: g.color, kind: g.kind ?? 'site' },
+      to: { name, color, kind: kind ?? g.kind ?? 'site' },
+    })
+  }
   revalidatePath('/geofences')
   revalidatePath(`/geofences/${id}`)
   revalidatePath('/map')

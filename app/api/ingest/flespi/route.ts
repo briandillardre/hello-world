@@ -286,7 +286,10 @@ export async function POST(request: NextRequest) {
     for (const [companyId, byAsset] of Array.from(updated.entries())) {
       const [{ data: rules }, { data: fences }, { data: companyRow }, { data: assetRows }] = await Promise.all([
         supabase.from('alert_rules').select('*').eq('company_id', companyId).eq('active', true),
-        supabase.from('geofences_json').select('*').eq('company_id', companyId),
+        // Personal zones (owner_id set) are private reference only — never
+        // drive company alerts. Migration 027 applies at build before this code
+        // ships, so owner_id exists whenever this runs.
+        supabase.from('geofences_json').select('*').eq('company_id', companyId).is('owner_id', null),
         supabase.from('companies').select('name, work_start, work_end, work_days, alert_phone, alert_email').eq('id', companyId).single(),
         supabase.from('assets').select('*').eq('company_id', companyId).eq('active', true),
       ])

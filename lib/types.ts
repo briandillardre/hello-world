@@ -158,6 +158,8 @@ export interface AssetWithLocation extends Asset {
 export interface Geofence {
   id: string
   company_id: string
+  /** Personal zone: visible only to this user. NULL = global (company-wide). */
+  owner_id?: string | null
   name: string
   geometry: GeoJSON.Polygon
   color: string
@@ -167,6 +169,19 @@ export interface Geofence {
   kind?: 'site' | 'boundary' | 'yard'
   /** Owner-written free text ("gate code 4188") — shown on the zone, read by the AI. */
   notes?: string | null
+  /** Optional job-site window. NULL = perpetual. Scopes cost totals + archive. */
+  active_from?: string | null
+  active_until?: string | null
+  created_at: string
+}
+
+export interface ZoneEvent {
+  id: string
+  company_id: string
+  geofence_id: string
+  user_id: string | null
+  action: 'created' | 'edited' | 'reshaped' | 'archived' | 'reactivated'
+  detail: { changed?: string[]; from?: Record<string, unknown>; to?: Record<string, unknown>; by?: string } | null
   created_at: string
 }
 
