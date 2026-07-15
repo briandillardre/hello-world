@@ -118,6 +118,85 @@ const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
 
 // v2: everything defaults collapsed (owner ask Jul 14) — new key so stored
 // v1 expanded-states don't override the new default.
+// LayerRow/GroupSection live at MODULE scope on purpose: defined inside the
+// component they took a new identity every render, so React REMOUNTED every
+// row on the first slider tick and the opacity drag died mid-gesture (owner:
+// "the teal bars don't drag", Jul 14). Same type across renders = live drag.
+function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggle, extra }: {
+  def: LayerRowDef
+  on: boolean
+  zoom: number
+  base: BasemapId
+  err?: string
+  fresh: { text: string; stale: boolean } | null
+  opacity: number
+  onOpacity?: (v: number) => void
+  onToggle: () => void
+  extra?: ReactNode
+}) {
+  const st = rowState(def, on, zoom, base)
+  const comingSoon = def.status === 'coming-soon'
+  const dim = st.disabled || (!!st.reason && !comingSoon)
+  return (
+    <div className="border-t border-navy-800 first:border-t-0">
+      <button
+        onClick={() => { if (!st.disabled) onToggle() }}
+        disabled={st.disabled}
+        className={'w-full flex items-center justify-between gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
+      >
+        <span className={'text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
+        {comingSoon
+          ? <span className="font-mono text-[9px] uppercase tracking-wide text-faint border border-navy-700 rounded px-1.5 py-0.5 flex-none">Coming soon</span>
+          : <Toggle on={st.on} disabled={st.disabled} />}
+      </button>
+      {st.reason && !comingSoon && (
+        <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber/90">{st.reason}</p>
+      )}
+      {st.on && !st.disabled && err && (
+        <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber">⚠ {err}</p>
+      )}
+      {st.on && !st.disabled && !st.reason && def.hint && (
+        <p className="px-3 pb-1.5 -mt-1 font-mono text-[10px] text-teal">
+          {def.hint}
+          {fresh && <span className={'ml-1.5 ' + (fresh.stale ? 'text-amber' : 'text-faint')}>{fresh.text}</span>}
+        </p>
+      )}
+      {st.on && !st.disabled && def.hasOpacity && onOpacity && (
+        <div className="px-3 pb-2 flex items-center gap-2">
+          <span className="font-mono text-[9px] text-faint flex-none">opacity</span>
+          <input
+            type="range" min={15} max={100}
+            value={Math.round(opacity * 100)}
+            onChange={(e) => onOpacity(Number(e.target.value) / 100)}
+            className="flex-1 h-1 accent-teal cursor-pointer"
+          />
+        </div>
+      )}
+      {extra}
+    </div>
+  )
+}
+
+function GroupSection({ gid, collapsed, onToggle, children }: {
+  gid: GroupId
+  collapsed: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const g = GROUPS.find((x) => x.id === gid)!
+  const Icon = GROUP_ICON[gid]
+  return (
+    <div className="border-b border-navy-800">
+      <button onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
+        <Icon className="h-3.5 w-3.5 text-teal flex-none" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">{g.label}</span>
+        {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
+      </button>
+      {!collapsed && children}
+    </div>
+  )
+}
+
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
@@ -303,66 +382,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
     return null
   }
 
-  function LayerRow({ def }: { def: LayerRowDef }) {
-    const st = rowState(def, isOn(def.id), zoom, base)
-    const comingSoon = def.status === 'coming-soon'
-    const dim = st.disabled || (!!st.reason && !comingSoon)
-    const fresh = def.isLive && st.on ? stamp(def.id) : null
-    return (
-      <div className="border-t border-navy-800 first:border-t-0">
-        <button
-          onClick={() => { if (!st.disabled) toggle(def.id) }}
-          disabled={st.disabled}
-          className={'w-full flex items-center justify-between gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
-        >
-          <span className={'text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
-          {comingSoon
-            ? <span className="font-mono text-[9px] uppercase tracking-wide text-faint border border-navy-700 rounded px-1.5 py-0.5 flex-none">Coming soon</span>
-            : <Toggle on={st.on} disabled={st.disabled} />}
-        </button>
-        {st.reason && !comingSoon && (
-          <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber/90">{st.reason}</p>
-        )}
-        {st.on && !st.disabled && feedErr[def.id] && (
-          <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber">⚠ {feedErr[def.id]}</p>
-        )}
-        {st.on && !st.disabled && !st.reason && def.hint && (
-          <p className="px-3 pb-1.5 -mt-1 font-mono text-[10px] text-teal">
-            {def.hint}
-            {fresh && <span className={'ml-1.5 ' + (fresh.stale ? 'text-amber' : 'text-faint')}>{fresh.text}</span>}
-          </p>
-        )}
-        {st.on && !st.disabled && def.hasOpacity && onOverlayOpacity && (
-          <div className="px-3 pb-2 flex items-center gap-2">
-            <span className="font-mono text-[9px] text-faint flex-none">opacity</span>
-            <input
-              type="range" min={15} max={100}
-              value={Math.round((overlayOpacity[def.id] ?? 0.6) * 100)}
-              onChange={(e) => onOverlayOpacity(def.id, Number(e.target.value) / 100)}
-              className="flex-1 h-1 accent-teal cursor-pointer"
-            />
-          </div>
-        )}
-        {rowExtra(def.id)}
-      </div>
-    )
-  }
-
-  function Group({ gid, children }: { gid: GroupId; children: ReactNode }) {
-    const g = GROUPS.find((x) => x.id === gid)!
-    const Icon = GROUP_ICON[gid]
-    const isCollapsed = !!collapsed[gid]
-    return (
-      <div className="border-b border-navy-800">
-        <button onClick={() => toggleGroup(gid)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
-          <Icon className="h-3.5 w-3.5 text-teal flex-none" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">{g.label}</span>
-          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
-        </button>
-        {!isCollapsed && children}
-      </div>
-    )
-  }
 
   // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles.
   // The map search button rides to its right (owner layout, Jul 14 PM).
@@ -399,7 +418,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   }
 
   const rowsFor = (gid: GroupId, nightFx = false) =>
-    LAYER_ROWS.filter((d) => d.group === gid && !!d.nightFx === nightFx).map((d) => <LayerRow key={d.id} def={d} />)
+    LAYER_ROWS.filter((d) => d.group === gid && !!d.nightFx === nightFx).map((d) => (
+      <LayerRow
+        key={d.id}
+        def={d}
+        on={isOn(d.id)}
+        zoom={zoom}
+        base={base}
+        err={feedErr[d.id]}
+        fresh={d.isLive && isOn(d.id) ? stamp(d.id) : null}
+        opacity={overlayOpacity[d.id] ?? 0.6}
+        onOpacity={onOverlayOpacity ? (v: number) => onOverlayOpacity(d.id, v) : undefined}
+        onToggle={() => toggle(d.id)}
+        extra={rowExtra(d.id)}
+      />
+    ))
 
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
@@ -707,10 +740,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       )}
 
       {/* ── Layer groups: Site · Weather · Water & Terrain · Basemap ── */}
-      <Group gid="site">{rowsFor('site')}</Group>
-      <Group gid="weather">{rowsFor('weather')}</Group>
-      <Group gid="water">{rowsFor('water')}</Group>
-      <Group gid="basemap">
+      <GroupSection gid="site" collapsed={!!collapsed.site} onToggle={() => toggleGroup('site')}>{rowsFor('site')}</GroupSection>
+      <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>{rowsFor('weather')}</GroupSection>
+      <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
+      <GroupSection gid="basemap" collapsed={!!collapsed.basemap} onToggle={() => toggleGroup('basemap')}>
         <div className="grid grid-cols-2 gap-1 p-1">
           {BASEMAPS.map((b) => (
             <Seg key={b.id} active={base === b.id} onClick={() => onBase(b.id)}>
@@ -740,7 +773,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
           {rowsFor('basemap', true)}
         </div>
-      </Group>
+      </GroupSection>
 
       {onResetLayers && (
         <button
