@@ -29,11 +29,13 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - `lib/types.ts` — all TypeScript types
 - `lib/mock-data.ts` — demo data (Dillard Construction Group)
 - `lib/flespi.ts` — normalizes Teltonika + Digital Matter telemetry
+- `lib/aemp.ts` / `lib/aemp-client.ts` / `lib/aemp-ingest.ts` — ISO 15143-3 (AEMP 2.0) OEM telematics: parser, Fleet HTTP client + OEM presets, asset-mapping/persistence (see `docs/OEM-TELEMATICS.md`)
 - `lib/alerts-engine.ts` — pure alert evaluation (after-hours theft, left-site, etc.)
 - `lib/qbo.ts` — QuickBooks Online OAuth2 + invoice generation
 - `lib/db/tools.ts` — BLE tool association / location inheritance
 - `lib/db/maintenance.ts` — service schedules + overdue tracking
 - `app/api/ingest/flespi/route.ts` — flespi webhook (Teltonika/Digital Matter)
+- `app/api/ingest/aemp/route.ts` + `app/api/cron/oem-sync/route.ts` — ISO 15143-3 OEM telematics push endpoint + 2-hourly pull cron
 - `app/api/ingest/obd2/route.ts` — direct OBD2 ingestion
 - `app/api/ingest/location/route.ts` — direct GPS ingestion
 - `app/(dashboard)/map/page.tsx` — live map with tool gateway resolution
@@ -54,6 +56,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - Utilization reports (engine hours, idle %, miles, hours per job site)
 - QuickBooks Online integration (OAuth2, asset sync, job-cost invoices, expenses)
 - flespi connector — Teltonika FMM series + Digital Matter normalized to same schema
+- OEM telematics ingestion — ISO 15143-3 / AEMP 2.0 pull of Komatsu/Link-Belt/Cat/CNH/Bomag/Wirtgen (hours, GPS, fuel, idle, faults) into the same map/timeline/maintenance, no hardware (`docs/OEM-TELEMATICS.md`)
 - Pricing page with Tenna comparison
 - Demo landing page at /demo (ad funnel landing page)
 - PWA (manifest.json)

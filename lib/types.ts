@@ -57,6 +57,25 @@ export interface AssetUtilization {
   job_site_hours: { geofence_id: string; geofence_name: string; hours: number }[]
 }
 
+export interface OemConnection {
+  id: string
+  company_id: string
+  /** komatsu | linkbelt | cat | cnh | bomag | wirtgen | custom */
+  provider: string
+  label: string | null
+  base_url: string
+  auth_type: 'basic' | 'bearer' | 'apikey'
+  username: string | null
+  /** basic password / bearer token / api key — never send to the browser. */
+  secret: string | null
+  header_name: string | null
+  enabled: boolean
+  last_sync: string | null
+  last_status: string | null
+  last_count: number | null
+  created_at: string
+}
+
 export interface QboConnection {
   company_id: string
   realm_id: string

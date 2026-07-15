@@ -52,14 +52,18 @@ Recommended **hybrid**: order CAN kits for the 7 no-API machines + FMM00A
 pickups + TAT141 (trailers, mechanical machines, and live-theft insurance on the
 5 API machines) now; build the ISO 15143-3 ingestion in parallel.
 
-## Product opportunity (roadmap — see task)
+## Product opportunity — BUILT (Jul 15 2026, task #92)
 
-Build an **ISO 15143-3 / AEMP 2.0 ingestion connector**. A mixed-fleet
-contractor with Komatsu + Cat + CNH + Bomag machines can see them all in
-HammerTrack with zero hardware — this is a premium aggregation feature that
-enterprise platforms (Tenna) charge for. flespi already has the parser.
-Caveat: OEM feeds are lower-frequency, so real-time theft still needs a live
-tracker — pair API-pull with a TAT141 on high-value machines.
+The **ISO 15143-3 / AEMP 2.0 ingestion connector** now ships: a mixed-fleet
+contractor with Komatsu + Cat + CNH + Bomag machines sees them all in
+HammerTrack with zero hardware — the premium aggregation feature enterprise
+platforms (Tenna) charge for. Komatsu (KOMTRAX) + Link-Belt (RemoteCARE) are the
+first two feeds; the same connector serves Cat/CNH/Bomag/Wirtgen. Setup +
+architecture: **`docs/OEM-TELEMATICS.md`**. To go live, Brian requests ISO
+15143-3 API access from Komatsu (My Komatsu) and the Link-Belt dealer (RemoteCARE
+via ORBCOMM), then drops the Fleet URL + credentials into an `oem_connections`
+row. Caveat unchanged: OEM feeds are lower-frequency, so real-time theft still
+needs a live tracker — pair API-pull with a TAT141 on high-value machines.
 
 ## Bench-verify before promising billing-grade hours
 Sany (older vs PQ190III) · F-650 Cat C7 (partial J1939, no DEF) · Hamm (WITOS
