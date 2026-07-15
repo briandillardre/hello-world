@@ -132,6 +132,11 @@ PWS_MAC=                       # ambient only, optional: pick one of several sta
 ANTHROPIC_API_KEY=            # optional: natural-language AI dispatcher (Haiku)
 ```
 
+## Business Entity (Jul 2026)
+- **HAMMERTRACK LLC** — SC single-member LLC, formed Jul 2026; EIN issued Jul 14 2026 (CP 575 G on file with Brian — keep EIN out of the repo)
+- Unblocked: Twilio A2P 10DLC (SMS theft alerts), business bank → Stripe billing, Plaid (receipt-chase), D-U-N-S → Apple/Google developer org accounts
+- **App wrapper:** Capacitor shell committed (capacitor.config.ts, mobile-shell/, android/, ios/) loading hammertrack.ai remotely — web deploys update the apps instantly. Full checklist + architecture: `docs/APP-STORE-PLAYBOOK.md`
+
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
 2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), 009 (alert phone/email), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 9). See `docs/GO-LIVE.md`.

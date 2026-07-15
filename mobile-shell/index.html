@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>HammerTrack</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center;
+      background: #0a1420; color: #e8f0f7;
+      font: 15px/1.6 system-ui, -apple-system, sans-serif;
+      text-align: center; padding: 24px;
+    }
+    .card { max-width: 320px; }
+    h1 { font-size: 20px; margin: 0 0 8px; letter-spacing: 0.02em; }
+    p { color: #9fb6cc; margin: 0 0 20px; }
+    button {
+      background: #f5a623; color: #1a1100; border: 0; border-radius: 12px;
+      font-weight: 700; font-size: 15px; padding: 12px 28px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Shown only when the device has no connection — the live app is remote. -->
+  <div class="card">
+    <h1>HammerTrack</h1>
+    <p>No connection. Your fleet is still tracking — reconnect to see the live map.</p>
+    <button onclick="location.href='https://hammertrack.ai'">Retry</button>
+  </div>
+</body>
+</html>
