@@ -42,10 +42,13 @@ function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
 }
 
-export function MapSearch({ items, onPick, top = 58 }: {
+export function MapSearch({ items, onPick, top = 58, inline = false }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
   top?: number
+  /** Render as a flex-row member (beside the layers pill) instead of an
+   *  absolutely positioned element; the open box overlays from that spot. */
+  inline?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -109,18 +112,21 @@ export function MapSearch({ items, onPick, top = 58 }: {
   if (!open) {
     return (
       <button
-        style={{ top }}
+        style={inline ? undefined : { top }}
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50) }}
         aria-label="Search assets and zones"
-        className="absolute left-3 z-20 grid place-items-center w-9 h-9 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel text-faint hover:text-teal transition-colors"
+        className={
+          (inline ? 'flex-none ' : 'absolute left-3 z-20 ') +
+          'grid place-items-center w-9 h-9 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel text-faint hover:text-teal transition-colors'
+        }
       >
         <Search className="h-4 w-4" />
       </button>
     )
   }
 
-  return (
-    <div style={{ top }} className="absolute left-3 z-20 w-[248px]">
+  const body = (
+    <>
       <div className="flex items-center gap-1.5 rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel px-2.5 py-2">
         <Search className="h-3.5 w-3.5 text-teal flex-none" />
         <input
@@ -178,6 +184,20 @@ export function MapSearch({ items, onPick, top = 58 }: {
           ))}
         </ul>
       )}
-    </div>
+    </>
+  )
+
+  // Inline mode: hold the button's 36px slot in the row and overlay the open
+  // box from that anchor, so the pill beside it doesn't jump.
+  if (inline) {
+    return (
+      <div className="relative w-9 h-9 flex-none">
+        <div className="absolute left-0 top-0 z-30 w-[248px]">{body}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ top }} className="absolute left-3 z-20 w-[248px]">{body}</div>
   )
 }

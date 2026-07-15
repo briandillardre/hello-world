@@ -77,6 +77,9 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'soils', label: 'Soils', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see soil units', hint: 'soil survey map units' },
   { id: 'topo', label: 'Topo lines', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see contours', hint: 'elevation contours' },
 
+  // ── View extras (Basemap group, above Night effects) ──────────────────────
+  { id: 'satellites', label: 'Satellites (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits from live element sets · tap one for altitude & speed · zoom out to the globe' },
+
   // ── Night effects (nested under Basemap) ──────────────────────────────────
   { id: 'nightlights', label: 'City lights', group: 'basemap', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'Earth at night — cities glow (NASA imagery)' },
   { id: 'daynight', label: 'Day / night line', group: 'basemap', nightFx: true, status: 'live', requiresBasemap: 'dark', hint: 'live terminator — night side shaded' },

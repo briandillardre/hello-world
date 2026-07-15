@@ -62,30 +62,46 @@ export function hexHeatGeoJSON(
 
   if (bins.size === 0 || lat0 === null) return { type: 'FeatureCollection', features: [] }
 
+  // Rounded terrain, not a hex farm (owner ask Jul 14): blur each cell's
+  // dwell with its six neighbors so heights roll instead of step, then draw
+  // overlapping near-circular columns — adjacent cells merge into smooth
+  // rounded masses, and lone cells read as soft domes instead of crystals.
+  const NEIGHBORS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]
+  const smoothed = new Map<string, { q: number; r: number; sec: number; own: number }>()
+  for (const b of Array.from(bins.values())) {
+    let sec = b.sec
+    for (const [dq, dr] of NEIGHBORS) {
+      sec += (bins.get(`${b.q + dq},${b.r + dr}`)?.sec ?? 0) * 0.35
+    }
+    smoothed.set(`${b.q},${b.r}`, { q: b.q, r: b.r, sec, own: b.sec })
+  }
+
   let maxSec = 0
-  for (const b of Array.from(bins.values())) if (b.sec > maxSec) maxSec = b.sec
+  for (const b of Array.from(smoothed.values())) if (b.sec > maxSec) maxSec = b.sec
 
   const features: GeoJSON.Feature[] = []
-  for (const b of Array.from(bins.values())) {
-    // hex center back to planar meters, then to lng/lat
+  for (const b of Array.from(smoothed.values())) {
+    // cell center back to planar meters, then to lng/lat
     const cx = cellMeters * SQRT3 * (b.q + b.r / 2)
     const cy = cellMeters * 1.5 * b.r
+    const ratio = b.sec / maxSec
+    // 18-gon ≈ cylinder; busier cells swell slightly so peaks look rounded
+    const radius = cellMeters * (1.0 + 0.25 * ratio)
     const ring: [number, number][] = []
-    for (let k = 0; k < 6; k++) {
-      const ang = ((60 * k - 30) * Math.PI) / 180 // pointy-top vertices
-      const vx = cx + cellMeters * Math.cos(ang)
-      const vy = cy + cellMeters * Math.sin(ang)
+    for (let k = 0; k < 18; k++) {
+      const ang = (k / 18) * Math.PI * 2
+      const vx = cx + radius * Math.cos(ang)
+      const vy = cy + radius * Math.sin(ang)
       ring.push([vx / (cosLat * M_PER_DEG), vy / M_PER_DEG])
     }
     ring.push(ring[0])
-    const ratio = b.sec / maxSec
     features.push({
       type: 'Feature',
       geometry: { type: 'Polygon', coordinates: [ring] },
       properties: {
         ratio,
         h: H_MIN + ratio * (H_MAX - H_MIN),
-        hours: Math.round((b.sec / 3600) * 10) / 10,
+        hours: Math.round((b.own / 3600) * 10) / 10,
       },
     })
   }

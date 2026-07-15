@@ -75,8 +75,8 @@ interface WeatherControlProps {
    *  filters as you type (or dictate via the keyboard mic). */
   searchItems?: SearchItem[]
   onPickItem?: (it: SearchItem) => void
-  /** Rendered beside the COLLAPSED pill (the floating AskAI button). */
-  askSlot?: ReactNode
+  /** Rendered to the RIGHT of the collapsed pill (the map search button). */
+  searchSlot?: ReactNode
 }
 
 /** "2m ago" style age for the station reading — stations report every 16s–5min. */
@@ -121,7 +121,7 @@ const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, askSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   // Find-anything (assets + zones) inside the panel.
@@ -365,7 +365,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   }
 
   // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles.
-  // The AskAI button rides to its right (owner layout, Jul 14).
+  // The map search button rides to its right (owner layout, Jul 14 PM).
   if (!open) {
     return (
       <div style={{ top, zIndex: z }} className={`absolute ${sideCls} flex items-center gap-2`}>
@@ -393,7 +393,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
           <ChevronDown className="h-3.5 w-3.5" />
         </span>
       </button>
-      {askSlot}
+      {searchSlot}
       </div>
     )
   }
@@ -724,6 +724,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             </p>
           )}
         </div>
+        {/* View extras (satellites, …) — regular rows in the basemap group */}
+        {rowsFor('basemap')}
         {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
         <div className="border-t border-navy-800">
           <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>

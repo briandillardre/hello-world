@@ -2139,6 +2139,90 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.pwsnet])
 
+  // ── Live satellites — CelesTrak element sets, physics done in-browser ─────
+  // One TLE fetch, then satellite.js propagates every bird's real position
+  // every 2s. Altitude/speed in the tap popup; glorious at globe zoom.
+  const satRecsRef = useRef<{ name: string; group: string; rec: unknown }[] | null>(null)
+  const satLibRef = useRef<typeof import('satellite.js') | null>(null)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.satellites
+    for (const lid of ['sat-glow', 'sat-dots']) {
+      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+    }
+    if (!on) return
+    let cancelled = false
+    if (!m.getSource('satellites')) {
+      m.addSource('satellites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'sat-glow', type: 'circle', source: 'satellites',
+        paint: { 'circle-color': '#7dd3fc', 'circle-radius': 5.5, 'circle-blur': 1, 'circle-opacity': 0.5 },
+      })
+      m.addLayer({
+        id: 'sat-dots', type: 'circle', source: 'satellites',
+        paint: {
+          'circle-color': ['match', ['get', 'group'], 'gps', '#34d399', 'weather', '#ff9e16', 'stations', '#f472b6', '#e8f0f7'],
+          // Higher orbit = bigger dot (LEO specks race, GEO anchors sit)
+          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 1.8, 2000, 2.4, 20000, 3.4, 36000, 4.2],
+          'circle-stroke-width': 0.5, 'circle-stroke-color': '#001523',
+        },
+      })
+      m.on('click', 'sat-dots', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        const kind = p.group === 'gps' ? 'GPS fleet' : p.group === 'weather' ? 'Weather satellite' : p.group === 'stations' ? 'Station' : 'Satellite'
+        new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc">${p.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kind}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Number(p.alt).toLocaleString()} km</b> (${Math.round(Number(p.alt) * 0.6214).toLocaleString()} mi)</div>${p.mph ? `<div>speed ${Number(p.mph).toLocaleString()} mph</div>` : ''}</div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'sat-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'sat-dots', () => { m.getCanvas().style.cursor = '' })
+    }
+    const tick = async () => {
+      try {
+        if (!satLibRef.current) satLibRef.current = await import('satellite.js')
+        const sat = satLibRef.current
+        if (!satRecsRef.current) {
+          const r = await fetch('/api/satellites')
+          if (!r.ok) throw new Error(`feed ${r.status}`)
+          const j: { sats?: { name: string; l1: string; l2: string; group: string }[] } = await r.json()
+          satRecsRef.current = (j.sats ?? []).map((s) => ({ name: s.name, group: s.group, rec: sat.twoline2satrec(s.l1, s.l2) }))
+        }
+        if (cancelled) return
+        const now = new Date()
+        const gmst = sat.gstime(now)
+        const features: GeoJSON.Feature[] = []
+        for (const s of satRecsRef.current) {
+          const pv = sat.propagate(s.rec as Parameters<typeof sat.propagate>[0], now)
+          const pos = pv?.position
+          if (!pos || typeof pos === 'boolean') continue
+          const gd = sat.eciToGeodetic(pos, gmst)
+          const vel = pv.velocity && typeof pv.velocity !== 'boolean'
+            ? Math.sqrt(pv.velocity.x ** 2 + pv.velocity.y ** 2 + pv.velocity.z ** 2)
+            : null
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [sat.degreesLong(gd.longitude), sat.degreesLat(gd.latitude)] },
+            properties: {
+              name: s.name, group: s.group,
+              alt: Math.round(gd.height),
+              mph: vel ? Math.round(vel * 2236.94) : null,
+            },
+          })
+        }
+        ;(m.getSource('satellites') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'satellites', at: Date.now() } }))
+      } catch (err) {
+        window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'satellites', msg: err instanceof Error ? err.message : 'orbit feed down' } }))
+      }
+    }
+    tick()
+    const id = setInterval(tick, 2000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [mapReady, overlaysOn.satellites])
+
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
   useEffect(() => {
     const m = map.current
@@ -2861,9 +2945,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* find-anything: type or talk, jump to an asset or zone — the same
-          list also powers the search inside the layers hub */}
-      {!kiosk && <MapSearch top={12} items={searchItems} onPick={pickSearchItem} />}
+      {/* AskAI floats top-right on its own; the layers pill + search button
+          pair lives top-LEFT (owner layout, Jul 14 PM). */}
+      {!kiosk && askSlot && <div className="absolute top-3 right-3 z-20">{askSlot}</div>}
 
       {/* Numeric scales for shaded layers — a wash of color with no numbers
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS
@@ -2945,7 +3029,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}
@@ -2961,7 +3045,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveView={handleSaveView}
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
-        side={kiosk ? 'left' : 'right'}
+        side="left"
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 15}
         filter={kiosk ? undefined : filter}
@@ -2971,7 +3055,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onToggleDevices={!kiosk && isMock ? () => setShowDevices((v) => !v) : undefined}
         searchItems={kiosk ? undefined : searchItems}
         onPickItem={kiosk ? undefined : pickSearchItem}
-        askSlot={askSlot}
+        searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
       />
 
 
