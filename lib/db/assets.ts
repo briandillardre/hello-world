@@ -107,7 +107,7 @@ export async function getEarliestLocationTime(companyId: string): Promise<number
 export async function createAsset(
   companyId: string,
   payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'> &
-    Partial<Pick<Asset, 'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'>>
+    Partial<Pick<Asset, 'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'>>
 ): Promise<Asset | null> {
   if (isMock) return null
 
@@ -168,7 +168,7 @@ export async function deleteAssetPhoto(companyId: string, id: string): Promise<v
 export async function updateAsset(
   id: string,
   payload: Partial<Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata' | 'active' |
-    'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'>>
+    'category' | 'serial' | 'photo_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'>>
 ): Promise<Asset | null> {
   if (isMock) return null
 

@@ -20,6 +20,7 @@ export interface AssetFormData {
   hourly_rate: number | null
   mileage_rate: number | null
   daily_cost: number | null
+  purchase_price: number | null
   purchase_value: number | null
 }
 
@@ -53,23 +54,26 @@ export function photosToFormData(photos: NewPhoto[]): FormData | undefined {
 }
 
 /** Which cost fields make sense per asset type, with owner-friendly labels. */
-export const COST_FIELDS: Record<AssetType, { key: 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_value'; label: string; hint: string }[]> = {
+export const COST_FIELDS: Record<AssetType, { key: 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'; label: string; hint: string }[]> = {
   vehicle: [
     { key: 'hourly_rate', label: 'Operating $/hr', hint: 'fuel + wear while running' },
     { key: 'mileage_rate', label: '$/mile', hint: 'per-mile cost (IRS-style)' },
     { key: 'daily_cost', label: 'Ownership $/day', hint: 'payment, insurance, depreciation' },
-    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+    { key: 'purchase_price', label: 'Purchase price $', hint: 'what you paid for it' },
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace today' },
   ],
   equipment: [
     { key: 'hourly_rate', label: 'Operating $/engine-hr', hint: 'fuel + wear per engine hour' },
     { key: 'daily_cost', label: 'Ownership $/day', hint: 'payment, insurance, depreciation' },
-    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+    { key: 'purchase_price', label: 'Purchase price $', hint: 'what you paid for it' },
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace today' },
   ],
   personnel: [
     { key: 'hourly_rate', label: 'Loaded labor $/hr', hint: 'wage + burden (taxes, insurance)' },
   ],
   tool: [
-    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace' },
+    { key: 'purchase_price', label: 'Purchase price $', hint: 'what you paid for it' },
+    { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs to replace today' },
     { key: 'daily_cost', label: 'Ownership $/day', hint: 'optional — rental-equivalent' },
   ],
 }
@@ -88,7 +92,7 @@ interface AssetFormProps {
   saving?: boolean
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string;
     metadata?: Record<string, unknown>;
-    hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_value?: number | null }
+    hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_price?: number | null; purchase_value?: number | null }
   /** Existing gallery photos (edit mode). */
   initialPhotos?: AssetPhoto[]
   /** Delete an already-saved gallery photo (edit mode); resolves on success. */
@@ -312,6 +316,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
     hourly_rate: initial?.hourly_rate != null ? String(initial.hourly_rate) : '',
     mileage_rate: initial?.mileage_rate != null ? String(initial.mileage_rate) : '',
     daily_cost: initial?.daily_cost != null ? String(initial.daily_cost) : '',
+    purchase_price: initial?.purchase_price != null ? String(initial.purchase_price) : '',
     purchase_value: initial?.purchase_value != null ? String(initial.purchase_value) : '',
   }))
 
@@ -328,6 +333,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
       hourly_rate: parseCost(costs.hourly_rate ?? ''),
       mileage_rate: parseCost(costs.mileage_rate ?? ''),
       daily_cost: parseCost(costs.daily_cost ?? ''),
+      purchase_price: parseCost(costs.purchase_price ?? ''),
       purchase_value: parseCost(costs.purchase_value ?? ''),
     }, newPhotos)
   }

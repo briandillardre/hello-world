@@ -17,6 +17,7 @@ export interface CreateAssetInput {
   hourly_rate?: number | null
   mileage_rate?: number | null
   daily_cost?: number | null
+  purchase_price?: number | null
   purchase_value?: number | null
 }
 
@@ -105,6 +106,7 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
     hourly_rate: numOrNull(input.hourly_rate),
     mileage_rate: numOrNull(input.mileage_rate),
     daily_cost: numOrNull(input.daily_cost),
+    purchase_price: numOrNull(input.purchase_price),
     purchase_value: numOrNull(input.purchase_value),
     metadata: input.metadata ?? {},
   })
@@ -159,6 +161,7 @@ export async function updateAssetAction(
     ...(input.hourly_rate !== undefined ? { hourly_rate: numOrNull(input.hourly_rate) } : {}),
     ...(input.mileage_rate !== undefined ? { mileage_rate: numOrNull(input.mileage_rate) } : {}),
     ...(input.daily_cost !== undefined ? { daily_cost: numOrNull(input.daily_cost) } : {}),
+    ...(input.purchase_price !== undefined ? { purchase_price: numOrNull(input.purchase_price) } : {}),
     ...(input.purchase_value !== undefined ? { purchase_value: numOrNull(input.purchase_value) } : {}),
     ...heroPatch,
   })

@@ -83,6 +83,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
             hourly_rate: asset.hourly_rate,
             mileage_rate: asset.mileage_rate,
             daily_cost: asset.daily_cost,
+            purchase_price: asset.purchase_price,
             purchase_value: asset.purchase_value,
           }}
           initialPhotos={photos}

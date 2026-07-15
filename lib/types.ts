@@ -116,7 +116,8 @@ export interface Asset {
   hourly_rate?: number | null    // $/operating-hr (vehicle/equipment) or loaded labor $/hr (personnel)
   mileage_rate?: number | null   // $/mile (vehicles)
   daily_cost?: number | null     // ownership $/day — payment, insurance, depreciation
-  purchase_value?: number | null // replacement value $
+  purchase_price?: number | null // what you PAID (acquisition cost / cost basis)
+  purchase_value?: number | null // current replacement value $
   tracker_id: string | null
   metadata: Record<string, unknown>
   active: boolean

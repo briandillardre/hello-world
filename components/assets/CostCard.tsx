@@ -32,6 +32,7 @@ export function CostCard({ asset }: { asset: Asset }) {
         hourly_rate: parseCost(values.hourly_rate ?? ''),
         mileage_rate: parseCost(values.mileage_rate ?? ''),
         daily_cost: parseCost(values.daily_cost ?? ''),
+        purchase_price: parseCost(values.purchase_price ?? ''),
         purchase_value: parseCost(values.purchase_value ?? ''),
       })
       setEditing(false)
