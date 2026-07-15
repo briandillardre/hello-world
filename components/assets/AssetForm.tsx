@@ -255,6 +255,8 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
           }
           return next
         })
+        // Persist the assumptions the AI used so they show on the asset screen.
+        if (j.note) setSpecs((prev) => ({ ...prev, cost_basis: j.note }))
         setDecodeMsg(Object.keys(j.costs ?? {}).length ? `✓ Costs suggested — review before saving${j.note ? `. ${j.note}` : ''}` : 'Not enough to suggest costs yet.')
       }
     } catch {
@@ -438,7 +440,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
             </div>
           </div>
 
-          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color').length > 0 && (
+          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color' && k !== 'cost_basis').length > 0 && (
             <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Specs</p>
@@ -456,7 +458,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                 >clear</button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color').map(([k, v]) => (
+                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color' && k !== 'cost_basis').map(([k, v]) => (
                   <span key={k} className="px-2 py-0.5 rounded-md bg-navy-800 text-[11px] text-muted">
                     <span className="text-faint">{k.replace(/_/g, ' ')}:</span> <span className="text-ink">{String(v)}</span>
                   </span>

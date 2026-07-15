@@ -58,7 +58,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
-  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin'].includes(k))
+  // Show every spec, but keep internal/UI-only keys out of the flat row list:
+  // serial variants are shown above; `color` is a map setting; `cost_basis`
+  // is the AI cost-assumption note rendered under the cost card.
+  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'cost_basis'].includes(k))
 
   // Trip log: segment this asset's last 7 days of pings into drives, with
   // zone names anchoring each end ("Yard → Riverfront Tower").
@@ -177,7 +180,16 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         )}
 
         {/* cost structure — dollar figures are permission-gated */}
-        {perms.canViewCosts && <CostCard asset={asset} />}
+        {perms.canViewCosts && (
+          <div className="space-y-2">
+            <CostCard asset={asset} />
+            {typeof meta.cost_basis === 'string' && meta.cost_basis.trim() && (
+              <p className="text-[11px] text-faint leading-snug px-1">
+                <span className="text-teal font-semibold">✨ AI cost basis:</span> {meta.cost_basis}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* live telemetry */}
         <section>
