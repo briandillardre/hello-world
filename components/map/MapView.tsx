@@ -90,8 +90,8 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-bg', 'tool-count-num']
-const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-bg', 'trail-head-tools-num']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge']
+const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-badge']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -714,6 +714,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       style: mapStyle as maplibregl.StyleSpecification,
       center: DEMO_MAP_CENTER,
       zoom: DEMO_MAP_ZOOM,
+      // Let the camera pull well back from the globe — breathing room for
+      // the satellites layer instead of a planet jammed to the screen edge.
+      minZoom: -1,
       attributionControl: false,
       // Follow mode drags the camera across town — keep far more tiles in
       // memory than the default so revisited areas render instantly.
@@ -903,6 +906,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         },
       })
 
+      // Violet disc for the tools-aboard badges (live dots + trail heads) —
+      // drawn once on a canvas so the symbol layers can icon-text-fit it.
+      if (!m.hasImage('tool-badge')) {
+        const c = document.createElement('canvas')
+        c.width = 48; c.height = 48
+        const ctx = c.getContext('2d')
+        if (ctx) {
+          ctx.fillStyle = '#a78bfa'
+          ctx.strokeStyle = '#04121d'
+          ctx.lineWidth = 6
+          ctx.beginPath(); ctx.arc(24, 24, 19, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+          m.addImage('tool-badge', ctx.getImageData(0, 0, 48, 48), { pixelRatio: 3 })
+        }
+      }
       m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current) })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
@@ -916,6 +933,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       m.addLayer({
         id: 'trail-head-labels', type: 'symbol', source: 'trail-heads',
+        // Names off past regional zoom — at state/globe scale they're noise
+        // pinned to dots (owner, Jul 14). Same threshold as live-dot names.
+        minzoom: 9,
         layout: {
           'text-field': ['get', 'name'], 'text-size': 10.5,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
@@ -927,30 +947,24 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         },
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
       })
-      // Tools-aboard badge on trail heads — same violet counter as the live
-      // dots, so Trails / Heatmap / 3D keep showing what each truck carries.
-      // Heads are smaller than live pins (r7 vs 14): tighter offset, same read.
-      const headHasTools: maplibregl.FilterSpecification = ['>', ['get', 'toolCount'], 0]
+      // Tools-aboard badge on trail heads — same projection-safe symbol badge
+      // as the live dots, so Trails / Heatmap / 3D keep the count attached.
       m.addLayer({
-        id: 'trail-head-tools-bg', type: 'circle', source: 'trail-heads', filter: headHasTools,
-        layout: { visibility: 'none' },
-        paint: {
-          'circle-color': '#a78bfa',
-          'circle-radius': 7,
-          'circle-stroke-width': 2, 'circle-stroke-color': '#04121d',
-          'circle-translate': [8, -8],
-        },
-      })
-      m.addLayer({
-        id: 'trail-head-tools-num', type: 'symbol', source: 'trail-heads', filter: headHasTools,
+        id: 'trail-head-tools-badge', type: 'symbol', source: 'trail-heads',
+        filter: ['>', ['get', 'toolCount'], 0],
         layout: {
+          'icon-image': 'tool-badge',
+          'icon-text-fit': 'both',
+          'icon-text-fit-padding': [2.5, 4.5, 2.5, 4.5],
           'text-field': ['to-string', ['get', 'toolCount']],
           'text-size': 9.5,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-allow-overlap': true,
+          'text-offset': [1.0, -1.0],
+          'icon-allow-overlap': true, 'text-allow-overlap': true,
+          'icon-ignore-placement': true, 'text-ignore-placement': true,
           visibility: 'none',
         },
-        paint: { 'text-color': '#0b0618', 'text-translate': [8, -8] },
+        paint: { 'text-color': '#0b0618' },
       })
 
       // ── Live asset cluster source ──
@@ -997,6 +1011,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       m.addLayer({
         id: 'unclustered-label', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        minzoom: 6, // plain dots past state scale — emoji become smudges
         layout: {
           'text-field': ['match', ['get', 'type'], 'vehicle', '🚛', 'equipment', '🏗️', 'personnel', '👷', 'tool', '🔧', '📍'],
           'text-size': 14, 'text-allow-overlap': true,
@@ -1019,27 +1034,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       // Tools-aboard badge: a small violet counter pinned to the dot's top-right
       // corner on any truck/machine currently carrying Bluetooth-tagged tools.
-      // Tap it (or the dot) → asset sheet lists exactly which tools are inside.
+      // ONE symbol layer with icon-text-fit — circle-translate offsets warp on
+      // the globe projection (the "2" floated 60px off its dot at planet zoom,
+      // Jul 14); symbol text-offset is placement-space and projection-safe.
       const hasTools: maplibregl.FilterSpecification =
         ['all', ['!', ['has', 'point_count']], ['>', ['get', 'toolCount'], 0]]
+      const toolBadgeLayout: NonNullable<maplibregl.SymbolLayerSpecification['layout']> = {
+        'icon-image': 'tool-badge',
+        'icon-text-fit': 'both',
+        'icon-text-fit-padding': [3, 5, 3, 5],
+        'text-field': ['to-string', ['get', 'toolCount']],
+        'text-size': 10.5,
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-offset': [1.15, -1.15],
+        'icon-allow-overlap': true, 'text-allow-overlap': true,
+        'icon-ignore-placement': true, 'text-ignore-placement': true,
+      }
       m.addLayer({
-        id: 'tool-count-bg', type: 'circle', source: 'assets', filter: hasTools,
-        paint: {
-          'circle-color': '#a78bfa',
-          'circle-radius': 8,
-          'circle-stroke-width': 2, 'circle-stroke-color': '#04121d',
-          'circle-translate': [11, -11],
-        },
-      })
-      m.addLayer({
-        id: 'tool-count-num', type: 'symbol', source: 'assets', filter: hasTools,
-        layout: {
-          'text-field': ['to-string', ['get', 'toolCount']],
-          'text-size': 10.5,
-          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-allow-overlap': true,
-        },
-        paint: { 'text-color': '#0b0618', 'text-translate': [11, -11] },
+        id: 'tool-count-badge', type: 'symbol', source: 'assets', filter: hasTools,
+        layout: toolBadgeLayout,
+        paint: { 'text-color': '#0b0618' },
       })
 
       // ── Site devices (cameras + sensors) ──
@@ -1111,7 +1125,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       }
       m.on('click', 'unclustered-circle', selectAsset)
       m.on('click', 'asset-glow', selectAsset)
-      m.on('click', 'tool-count-bg', selectAsset)
+      m.on('click', 'tool-count-badge', selectAsset)
       m.on('click', 'clusters', (e) => {
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
@@ -2157,14 +2171,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addSource('satellites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({
         id: 'sat-glow', type: 'circle', source: 'satellites',
-        paint: { 'circle-color': '#7dd3fc', 'circle-radius': 5.5, 'circle-blur': 1, 'circle-opacity': 0.5 },
+        // Halo scales hard with orbit altitude — LEO specks, MEO wreaths,
+        // GEO lanterns. Altitude IS the visual, since the map projects every
+        // bird onto its ground-track point.
+        paint: {
+          'circle-color': '#7dd3fc',
+          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 3, 2000, 5, 20000, 9, 36000, 13],
+          'circle-blur': 1.1, 'circle-opacity': 0.45,
+        },
       })
       m.addLayer({
         id: 'sat-dots', type: 'circle', source: 'satellites',
         paint: {
           'circle-color': ['match', ['get', 'group'], 'gps', '#34d399', 'weather', '#ff9e16', 'stations', '#f472b6', '#e8f0f7'],
-          // Higher orbit = bigger dot (LEO specks race, GEO anchors sit)
-          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 1.8, 2000, 2.4, 20000, 3.4, 36000, 4.2],
+          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 1.6, 2000, 2.4, 20000, 3.8, 36000, 5],
           'circle-stroke-width': 0.5, 'circle-stroke-color': '#001523',
         },
       })

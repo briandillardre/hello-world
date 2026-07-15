@@ -624,7 +624,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         <div className="border-b border-navy-800">
           <button onClick={() => toggleGroup('views')} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
             <Bookmark className="h-3.5 w-3.5 text-teal flex-none" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">Map views</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">Preset maps</span>
             {collapsed.views ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
           </button>
           {!collapsed.views && (
