@@ -184,7 +184,9 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
         <LayoutGrid className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[240px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2 z-50">
+        // Phone: full-width sheet under the header (the 240px flyout collided
+        // with the weather pill). Desktop: classic anchored dropdown.
+        <div className="fixed inset-x-3 top-[62px] max-h-[72vh] overflow-y-auto rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2 z-50 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-[240px] md:max-h-none md:overflow-visible">
           <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink">Screen setup</p>
           {ROWS.map(({ k, label }) => {
             const on = panels[k] !== 'hidden'
@@ -275,6 +277,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   }, [])
 
   const time = now?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) ?? '—'
+  const timeShort = now?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? '—'
   const date = now?.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase() ?? ''
 
   // Live event ticker: real alerts first (loud), then fleet status lines.
@@ -382,9 +385,12 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       )}
 
       {/* top HUD bar */}
-      <div className="absolute top-0 left-0 right-0 z-40 h-[56px] flex items-center justify-between px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
-        <div className="flex items-center gap-3 pointer-events-none">
-          <Logo size={26} href={null} />
+      {/* z-[46]: above the kiosk layers pill (z 45) so the Screens sheet wins */}
+      <div className="absolute top-0 left-0 right-0 z-[46] h-[56px] flex items-center justify-between px-3 md:px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
+        <div className="flex items-center gap-3 pointer-events-none min-w-0">
+          {/* phone: mark only — the wordmark fought the Ask button for space */}
+          <span className="md:hidden"><Logo size={26} href={null} wordmark={false} /></span>
+          <span className="hidden md:block"><Logo size={26} href={null} /></span>
           <span className="hidden md:block w-px h-6 bg-navy-700" />
           <span className="hidden md:block font-mono text-[11px] text-faint tracking-wide">{company.toUpperCase()}</span>
         </div>
@@ -400,10 +406,10 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           </div>
         )}
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4 flex-none">
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-3 py-1.5 hover:brightness-110 transition"
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
           >
             <Sparkles className="h-4 w-4" /> Ask
           </button>
@@ -416,11 +422,14 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
             onShowAll={showAll}
           />
           <div className="text-right pointer-events-none">
-            <div className="font-display font-black text-[18px] leading-none tabular-nums">{time}</div>
-            <div className="font-mono text-[10px] text-faint">{date}</div>
+            {/* phone: no seconds — the full clock ran off the screen edge */}
+            <div className="md:hidden font-display font-black text-[15px] leading-none tabular-nums">{timeShort}</div>
+            <div className="hidden md:block font-display font-black text-[18px] leading-none tabular-nums">{time}</div>
+            <div className="font-mono text-[10px] text-faint whitespace-nowrap">{date}</div>
           </div>
           <span className="flex items-center gap-2 font-mono text-[11px] text-teal pointer-events-none">
-            <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" /> LIVE
+            <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink" />
+            <span className="hidden md:inline">LIVE</span>
           </span>
           <Link href="/map" className="grid place-items-center w-8 h-8 rounded-lg bg-navy-900 border border-navy-700 text-faint hover:text-ink transition-colors" title="Exit command center">
             <X className="h-4 w-4" />
