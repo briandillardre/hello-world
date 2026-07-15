@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Asset, AssetPhoto } from '@/lib/types'
-import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction } from '@/lib/actions/assets'
+import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction, reorderAssetPhotosAction } from '@/lib/actions/assets'
 import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
 
 /** Edit + Delete controls on the asset detail page. Edit reuses the full
@@ -28,14 +28,16 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
     }
   }
 
-  // Remove a saved gallery photo. If it was the hero, promote the next one
-  // (or clear the hero) so the map thumbnail never points at a deleted file.
+  // Remove a saved gallery photo; the action re-picks the thumbnail (first
+  // remaining photo) so the map thumbnail never points at a deleted file.
   const handleDeletePhoto = async (photo: AssetPhoto) => {
-    let newHero: string | null | undefined
-    if (asset.photo_url === photo.url) {
-      newHero = photos.find((p) => p.id !== photo.id)?.url ?? null
-    }
-    await deleteAssetPhotoAction(asset.id, photo.id, newHero)
+    await deleteAssetPhotoAction(asset.id, photo.id)
+    router.refresh()
+  }
+
+  // Persist a drag / make-thumbnail reorder; first photo becomes the thumbnail.
+  const handleReorderPhotos = async (orderedIds: string[]) => {
+    await reorderAssetPhotosAction(asset.id, orderedIds)
     router.refresh()
   }
 
@@ -88,6 +90,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
           }}
           initialPhotos={photos}
           onDeleteExistingPhoto={handleDeletePhoto}
+          onReorderPhotos={handleReorderPhotos}
         />
       )}
     </>

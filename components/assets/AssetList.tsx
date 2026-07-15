@@ -161,9 +161,14 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
 function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; toolCount?: number; carrier?: string }) {
   return (
     <Link href={`/assets/${asset.id}`} className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
-      <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
-        {TYPE_EMOJI[asset.type]}
-      </div>
+      {asset.photo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={asset.photo_url} alt={asset.name} className="w-10 h-10 rounded-lg object-cover bg-navy-800 flex-shrink-0" />
+      ) : (
+        <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
+          {TYPE_EMOJI[asset.type]}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="font-medium text-ink truncate">{asset.name}</p>

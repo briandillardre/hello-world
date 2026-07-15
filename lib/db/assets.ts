@@ -165,6 +165,37 @@ export async function deleteAssetPhoto(companyId: string, id: string): Promise<v
   await supabase.from('asset_photos').delete().eq('id', id).eq('company_id', companyId)
 }
 
+/** Persist a new display order — sort = position in `orderedIds`. */
+export async function setAssetPhotoOrder(companyId: string, assetId: string, orderedIds: string[]): Promise<void> {
+  if (isMock || !orderedIds.length) return
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await Promise.all(orderedIds.map((id, i) =>
+    supabase.from('asset_photos').update({ sort: i }).eq('id', id).eq('asset_id', assetId).eq('company_id', companyId)
+  ))
+}
+
+/**
+ * Make the legacy single `photo_url` a real gallery row so it's visible,
+ * deletable and re-orderable like the rest. Idempotent: only inserts when the
+ * hero URL isn't already in the gallery. Inserts at the FRONT so the current
+ * thumbnail stays first. Returns true if it added one.
+ */
+export async function ensureHeroInGallery(companyId: string, assetId: string, heroUrl: string | null): Promise<boolean> {
+  if (isMock || !heroUrl) return false
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data: rows, error } = await supabase
+    .from('asset_photos')
+    .select('id, url, sort')
+    .eq('asset_id', assetId)
+  if (error) return false // pre-025 database
+  if ((rows ?? []).some((r) => r.url === heroUrl)) return false
+  const minSort = (rows ?? []).reduce((m, r) => Math.min(m, r.sort ?? 0), 0)
+  await supabase.from('asset_photos').insert({ company_id: companyId, asset_id: assetId, url: heroUrl, label: 'other', sort: minSort - 1 })
+  return true
+}
+
 export async function updateAsset(
   id: string,
   payload: Partial<Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata' | 'active' |

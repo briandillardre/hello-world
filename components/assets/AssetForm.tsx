@@ -97,6 +97,8 @@ interface AssetFormProps {
   initialPhotos?: AssetPhoto[]
   /** Delete an already-saved gallery photo (edit mode); resolves on success. */
   onDeleteExistingPhoto?: (photo: AssetPhoto) => Promise<void>
+  /** Persist a new order of saved photos (drag / make-thumbnail). */
+  onReorderPhotos?: (orderedIds: string[]) => Promise<void>
 }
 
 /**
@@ -133,7 +135,7 @@ const MAKE_SUGGESTIONS = [
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
 ]
 
-export function AssetForm({ onClose, onSubmit, saving = false, initial, initialPhotos = [], onDeleteExistingPhoto }: AssetFormProps) {
+export function AssetForm({ onClose, onSubmit, saving = false, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -267,9 +269,22 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
   const [newPhotos, setNewPhotos] = useState<NewPhoto[]>([])
   const [photoBusy, setPhotoBusy] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // Legacy single hero with no gallery rows yet — show it so it isn't lost.
-  const legacyHero = initialPhotos.length === 0 && initial?.photo_url ? initial.photo_url : null
+
+  // Persist a reordered existing-photo list; first photo = thumbnail.
+  const applyOrder = (next: AssetPhoto[]) => {
+    setExistingPhotos(next)
+    onReorderPhotos?.(next.map((p) => p.id)).catch(() => setDecodeMsg('Could not save the new order.'))
+  }
+  const moveExisting = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= existingPhotos.length || to >= existingPhotos.length) return
+    const next = existingPhotos.slice()
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    applyOrder(next)
+  }
+  const makeThumbnail = (i: number) => moveExisting(i, 0)
 
   const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -601,19 +616,34 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               className="hidden"
               onChange={handlePhotoPick}
             />
-            {(existingPhotos.length > 0 || newPhotos.length > 0 || legacyHero) && (
+            {(existingPhotos.length > 0 || newPhotos.length > 0) && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {legacyHero && (
-                  <div className="relative rounded-lg border border-navy-700 overflow-hidden">
+                {existingPhotos.map((p, i) => (
+                  <div
+                    key={p.id}
+                    draggable={!!onReorderPhotos}
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={(e) => { if (dragIndex !== null) e.preventDefault() }}
+                    onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) moveExisting(dragIndex, i); setDragIndex(null) }}
+                    onDragEnd={() => setDragIndex(null)}
+                    className={
+                      'relative rounded-lg border overflow-hidden ' +
+                      (i === 0 ? 'border-amber/70 ' : 'border-navy-700 ') +
+                      (onReorderPhotos ? 'cursor-grab active:cursor-grabbing ' : '') +
+                      (dragIndex === i ? 'opacity-50 ' : '')
+                    }
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={legacyHero} alt="Current photo" className="h-24 w-full object-cover" />
-                    <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5">Current</span>
-                  </div>
-                )}
-                {existingPhotos.map((p) => (
-                  <div key={p.id} className="relative rounded-lg border border-navy-700 overflow-hidden group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.url} alt={labelText(p.label)} className="h-24 w-full object-cover" />
+                    <img src={p.url} alt={labelText(p.label)} className="h-24 w-full object-cover pointer-events-none" />
+                    {i === 0 ? (
+                      <span className="absolute top-1 left-1 rounded bg-amber text-[#1a1100] text-[9px] font-bold px-1.5 py-0.5">★ THUMBNAIL</span>
+                    ) : onReorderPhotos && (
+                      <button
+                        type="button"
+                        onClick={() => makeThumbnail(i)}
+                        className="absolute top-1 left-1 rounded bg-navy-950/85 text-teal text-[9px] font-semibold px-1.5 py-0.5 hover:bg-teal hover:text-[#04222a]"
+                      >★ Make thumbnail</button>
+                    )}
                     <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{labelText(p.label)}</span>
                     {onDeleteExistingPhoto && (
                       <button
@@ -656,6 +686,9 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
             >
               {photoBusy ? 'Processing…' : '📷 Add photos (truck, GVWR, VIN, engine, issues…)'}
             </Button>
+            {onReorderPhotos && existingPhotos.length > 1 && (
+              <p className="text-[10px] text-faint leading-tight">Drag to reorder · the first photo (★) is the thumbnail on the map &amp; list.</p>
+            )}
           </div>
 
           <div className="space-y-2">

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
-import { getAssetsWithLocations, getAssetPhotos } from '@/lib/db/assets'
+import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -45,7 +45,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     getMaintenanceSchedules(companyId),
     getCurrentReadings(),
     getPairingLog(companyId, asset.id),
-    getAssetPhotos(asset.id),
+    // Pull the legacy single hero into the gallery first, so an orphaned old
+    // photo (e.g. a repurposed record's previous image) is visible + deletable.
+    ensureHeroInGallery(companyId, asset.id, asset.photo_url ?? null).then(() => getAssetPhotos(asset.id)),
   ])
   const assetSchedules = schedules
     .filter((s) => s.asset_id === asset.id)
@@ -134,10 +136,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           <section>
             <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Photos</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {assetPhotos.map((p) => (
-                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="relative rounded-lg border border-navy-800 overflow-hidden group">
+              {assetPhotos.map((p, i) => (
+                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className={'relative rounded-lg border overflow-hidden group ' + (i === 0 ? 'border-amber/70' : 'border-navy-800')}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.url} alt={PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'} className="h-28 w-full object-cover transition-transform group-hover:scale-105" />
+                  {i === 0 && <span className="absolute top-1 left-1 rounded bg-amber text-[#1a1100] text-[9px] font-bold px-1.5 py-0.5">★ THUMBNAIL</span>}
                   <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'}</span>
                 </a>
               ))}

@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto } from '@/lib/db/assets'
+import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPhotos, setAssetPhotoOrder } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import type { AssetType } from '@/lib/types'
 
@@ -118,12 +118,26 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
   return asset
 }
 
-/** Remove one gallery photo. If it was the hero, the caller re-picks a hero. */
-export async function deleteAssetPhotoAction(assetId: string, photoId: string, newHeroUrl?: string | null) {
+/** Remove one gallery photo, then set the hero/thumbnail to whatever is now
+ *  first (or null when the gallery is empty). */
+export async function deleteAssetPhotoAction(assetId: string, photoId: string) {
   if (isMock) return
   const companyId = await getCurrentCompanyId()
   await deleteAssetPhoto(companyId, photoId)
-  if (newHeroUrl !== undefined) await updateAsset(assetId, { photo_url: newHeroUrl })
+  const remaining = await getAssetPhotos(assetId)
+  await updateAsset(assetId, { photo_url: remaining[0]?.url ?? null })
+  revalidatePath('/assets')
+  revalidatePath(`/assets/${assetId}`)
+  revalidatePath('/map')
+}
+
+/** Persist a drag-reordered gallery; the first photo becomes the thumbnail. */
+export async function reorderAssetPhotosAction(assetId: string, orderedIds: string[]) {
+  if (isMock) return
+  const companyId = await getCurrentCompanyId()
+  await setAssetPhotoOrder(companyId, assetId, orderedIds)
+  const photos = await getAssetPhotos(assetId)
+  await updateAsset(assetId, { photo_url: photos[0]?.url ?? null })
   revalidatePath('/assets')
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/map')
