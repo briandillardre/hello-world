@@ -1,4 +1,5 @@
 import { MercatorCoordinate } from 'maplibre-gl'
+import { buildPlaneAtlas, ATLAS_CELLS, SHAPE_SPAN_FRAC, PLANE_CLASS_INDEX, PLANE_FLOOR_PX, type PlaneClass } from './aircraft-shapes'
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MLMap } from 'maplibre-gl'
 
 /**
@@ -45,6 +46,11 @@ export interface Plane3D {
   flight: string | null
   reg: string | null
   typeCode: string | null
+  /** Friendly name from the type database ("Cessna 172", "Airbus A380"). */
+  typeLabel: string | null
+  /** Silhouette class + real wingspan — drives shape + on-screen size. */
+  shape: PlaneClass
+  spanM: number
   lon: number
   lat: number
   altFt: number
@@ -170,19 +176,18 @@ const POINT_FRAG = `
 precision mediump float;
 uniform vec4 u_color;   // premultiplied
 uniform vec3 u_light;   // moon mode: sun direction in sprite space (y down)
-uniform float u_mode;   // 0 soft glow · 1 hard disc · 2 moon sphere · 3 plane dart
-uniform float u_rot;    // plane mode: screen heading, radians CW from up
+uniform float u_mode;   // 0 soft glow · 1 hard disc · 2 moon sphere · 3 aircraft sprite
+uniform float u_rot;    // aircraft mode: screen heading, radians CW from up
+uniform sampler2D u_tex; // aircraft silhouette atlas
+uniform vec4 u_uv;      // atlas cell: offset.xy + scale.zw
 void main() {
   vec2 pc = gl_PointCoord - 0.5;
   if (u_mode > 2.5) {
     float cs = cos(u_rot); float sn = sin(u_rot);
     vec2 q = vec2(pc.x * cs + pc.y * sn, -pc.x * sn + pc.y * cs) * 2.0;
-    float f = -q.y;                 // forward: +1 at the nose
-    float w = abs(q.x);
-    float halfW = mix(0.42, 0.03, clamp((f + 0.75) / 1.6, 0.0, 1.0));
-    float body = step(-0.75, f) * step(f, 0.85) * (1.0 - smoothstep(halfW - 0.10, halfW, w));
-    float notch = 1.0 - 0.55 * step(f, -0.45) * step(w, 0.12); // tail notch
-    float a = body * notch;
+    vec2 st = q * 0.5 + 0.5;
+    if (st.x < 0.0 || st.x > 1.0 || st.y < 0.0 || st.y > 1.0) { gl_FragColor = vec4(0.0); return; }
+    float a = texture2D(u_tex, u_uv.xy + st * u_uv.zw).a;
     gl_FragColor = u_color * a;
   } else if (u_mode > 1.5) {
     float r2 = dot(pc, pc) * 4.0;
@@ -300,6 +305,9 @@ export function createSat3DLayer(
   let uLight: WebGLUniformLocation | null = null
   let uMode: WebGLUniformLocation | null = null
   let uRot: WebGLUniformLocation | null = null
+  let uTex: WebGLUniformLocation | null = null
+  let uUv: WebGLUniformLocation | null = null
+  let planeTex: WebGLTexture | null = null
   let sPos = 0
   let sMeta = 0
   let sMatrix: WebGLUniformLocation | null = null
@@ -323,6 +331,8 @@ export function createSat3DLayer(
         uLight = gl.getUniformLocation(prog, 'u_light')
         uMode = gl.getUniformLocation(prog, 'u_mode')
         uRot = gl.getUniformLocation(prog, 'u_rot')
+        uTex = gl.getUniformLocation(prog, 'u_tex')
+        uUv = gl.getUniformLocation(prog, 'u_uv')
         buf = gl.createBuffer()
         gl.bindBuffer(gl.ARRAY_BUFFER, buf)
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 0]), gl.STATIC_DRAW)
@@ -340,6 +350,8 @@ export function createSat3DLayer(
     onRemove(_map: MLMap, gl: WebGLRenderingContext | WebGL2RenderingContext) {
       if (prog) gl.deleteProgram(prog)
       if (starProg) gl.deleteProgram(starProg)
+      if (planeTex) gl.deleteTexture(planeTex)
+      planeTex = null
       if (buf) gl.deleteBuffer(buf)
       if (starBuf) gl.deleteBuffer(starBuf)
       if (swarmBuf) gl.deleteBuffer(swarmBuf)
@@ -584,20 +596,50 @@ export function createSat3DLayer(
         } else { mo.visible = false }
       } else if (cel?.moon) { cel.moon.visible = false }
 
-      // ── Aircraft (heading-rotated darts at true altitude) ────────────────
+      // ── Aircraft (real silhouettes at real proportions) ──────────────────
       if (planes && planes.length) {
+        if (!planeTex && typeof document !== 'undefined') {
+          try {
+            const atlas = buildPlaneAtlas()
+            planeTex = gl.createTexture()
+            gl.activeTexture(gl.TEXTURE0)
+            gl.bindTexture(gl.TEXTURE_2D, planeTex)
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+          } catch { planeTex = null }
+        }
         const bearing = mapRef.getBearing() * Math.PI / 180
+        const zoom = mapRef.getZoom()
+        // Zoomed in tight, the camera sits BELOW cruise altitude and jets
+        // would vanish behind it — clamp render altitude under the camera so
+        // traffic stays visible (parallax still reads at every zoom).
+        const ctrLat = mapRef.getCenter().lat * Math.PI / 180
+        const camAltM = (156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)) * hCss / (2 * Math.tan(options.fov / 2))
+        const altCapM = Math.max(300, camAltM * 0.62)
+        gl.activeTexture(gl.TEXTURE0)
+        if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
+        gl.uniform1i(uTex, 0)
         for (const pl of planes) {
-          const P = toWorld(pl.lon, pl.lat, pl.altFt * 0.3048)
+          const P = toWorld(pl.lon, pl.lat, Math.min(pl.altFt * 0.3048, altCapM))
           if (occluded(P)) { pl.visible = false; continue }
           const p = project(P)
           if (!p) { pl.visible = false; continue }
           pl.sx = p.sx; pl.sy = p.sy; pl.visible = true
+          // True-to-scale where zoom allows: on-screen wingspan = real span ÷
+          // meters-per-pixel, floored per class so distant traffic stays
+          // visible. Sprite is bigger than the span (cell padding).
+          const mpp = 156543.03 * Math.cos(pl.lat * Math.PI / 180) / Math.pow(2, zoom)
+          const spanPx = Math.min(72, Math.max(PLANE_FLOOR_PX[pl.shape], pl.spanM / mpp))
           const rot = ((pl.track ?? 0) * Math.PI / 180) - bearing
           gl.uniform1f(uRot, rot)
-          drawPoint(p.clip, 26, 0, GLOW[0], GLOW[1], GLOW[2], 0.16)
+          drawPoint(p.clip, spanPx * 1.6, 0, GLOW[0], GLOW[1], GLOW[2], 0.14)
           gl.uniform1f(uMode, 3)
-          gl.uniform1f(uSize, 15 * dpr)
+          gl.uniform1f(uSize, (spanPx / SHAPE_SPAN_FRAC) * dpr)
+          const cell = PLANE_CLASS_INDEX[pl.shape]
+          gl.uniform4f(uUv, cell / ATLAS_CELLS, 0, 1 / ATLAS_CELLS, 1)
           gl.uniform4f(uColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 1)
           gl.drawArrays(gl.POINTS, 0, 1)
         }

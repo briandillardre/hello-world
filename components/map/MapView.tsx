@@ -27,6 +27,7 @@ import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type Save
 import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState } from '@/lib/sat-3d'
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
+import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -2236,7 +2237,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         }
       } else if ('hex' in hit) {
         const title = hit.flight ?? hit.reg ?? hit.hex.toUpperCase()
-        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${[hit.typeCode, hit.reg && hit.reg !== title ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}`)
+        const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== title ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
+        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}`)
       } else {
         const facts: string[] = []
         if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
@@ -2446,13 +2448,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         if (!r.ok) throw new Error(`feed ${r.status}`)
         const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null }[] } = await r.json()
         if (cancelled) return
-        planesRef.current = (j.planes ?? []).map((p) => ({
-          hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
-          lon: p.lon, lat: p.lat, altFt: p.altFt,
-          mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
-          track: p.track,
-          sx: 0, sy: 0, visible: false,
-        }))
+        planesRef.current = (j.planes ?? []).map((p) => {
+          const info = typeInfo(p.type)
+          return {
+            hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
+            typeLabel: info.label, shape: info.cls, spanM: info.spanM,
+            lon: p.lon, lat: p.lat, altFt: p.altFt,
+            mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
+            track: p.track,
+            sx: 0, sy: 0, visible: false,
+          }
+        })
         m.triggerRepaint()
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() } }))
       } catch (err) {
