@@ -25,6 +25,7 @@ import { nightPolygon } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
+import { createSat3DLayer, pickSat, type Sat3D } from '@/lib/sat-3d'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
@@ -2156,51 +2157,43 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
   // ── Live satellites — CelesTrak element sets, physics done in-browser ─────
   // One TLE fetch, then satellite.js propagates every bird's real position
-  // every 2s. Altitude/speed in the tap popup; glorious at globe zoom.
+  // every 2s. Rendered by a custom WebGL layer at TRUE altitude above the
+  // globe (lib/sat-3d.ts) — LEO skims the surface, the GEO weather ring
+  // hangs 35,786 km out, to scale. Far-side birds are hidden geometrically.
   const satRecsRef = useRef<{ name: string; group: string; rec: unknown }[] | null>(null)
   const satLibRef = useRef<typeof import('satellite.js') | null>(null)
+  const satsRef = useRef<Sat3D[] | null>(null)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
     const on = !!overlaysOn.satellites
-    for (const lid of ['sat-glow', 'sat-dots']) {
-      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+    if (!on) {
+      if (m.getLayer('sat-3d')) m.removeLayer('sat-3d')
+      satsRef.current = null
+      return
     }
-    if (!on) return
     let cancelled = false
-    if (!m.getSource('satellites')) {
-      m.addSource('satellites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      m.addLayer({
-        id: 'sat-glow', type: 'circle', source: 'satellites',
-        // Halo scales hard with orbit altitude — LEO specks, MEO wreaths,
-        // GEO lanterns. Altitude IS the visual, since the map projects every
-        // bird onto its ground-track point.
-        paint: {
-          'circle-color': '#7dd3fc',
-          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 3, 2000, 5, 20000, 9, 36000, 13],
-          'circle-blur': 1.1, 'circle-opacity': 0.45,
-        },
-      })
-      m.addLayer({
-        id: 'sat-dots', type: 'circle', source: 'satellites',
-        paint: {
-          'circle-color': ['match', ['get', 'group'], 'gps', '#34d399', 'weather', '#ff9e16', 'stations', '#f472b6', '#e8f0f7'],
-          'circle-radius': ['interpolate', ['linear'], ['get', 'alt'], 300, 1.6, 2000, 2.4, 20000, 3.8, 36000, 5],
-          'circle-stroke-width': 0.5, 'circle-stroke-color': '#001523',
-        },
-      })
-      m.on('click', 'sat-dots', (e) => {
-        const p = e.features?.[0]?.properties
-        if (!p) return
-        const kind = p.group === 'gps' ? 'GPS fleet' : p.group === 'weather' ? 'Weather satellite' : p.group === 'stations' ? 'Station' : 'Satellite'
-        new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
-          .setLngLat(e.lngLat)
-          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc">${p.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kind}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Number(p.alt).toLocaleString()} km</b> (${Math.round(Number(p.alt) * 0.6214).toLocaleString()} mi)</div>${p.mph ? `<div>speed ${Number(p.mph).toLocaleString()} mph</div>` : ''}</div>`)
-          .addTo(m)
-      })
-      m.on('mouseenter', 'sat-dots', () => { m.getCanvas().style.cursor = 'pointer' })
-      m.on('mouseleave', 'sat-dots', () => { m.getCanvas().style.cursor = '' })
+    if (!m.getLayer('sat-3d')) {
+      try { m.addLayer(createSat3DLayer(() => satsRef.current)) } catch { /* WebGL edge case — layer stays off */ }
     }
+    const kindLabel = (g: string) =>
+      g === 'gps' ? 'GPS fleet' : g === 'weather' ? 'Weather satellite' : g === 'stations' ? 'Station' : 'Satellite'
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      const s = pickSat(satsRef.current, e.point.x, e.point.y)
+      if (!s) return
+      new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
+        .setLngLat(e.lngLat)
+        .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#7dd3fc">${s.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLabel(s.group)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Math.round(s.altKm).toLocaleString()} km</b> (${Math.round(s.altKm * 0.6214).toLocaleString()} mi)</div>${s.mph ? `<div>speed ${s.mph.toLocaleString()} mph</div>` : ''}</div>`)
+        .addTo(m)
+    }
+    let satHover = false
+    const onHover = (e: maplibregl.MapMouseEvent) => {
+      const hit = !!pickSat(satsRef.current, e.point.x, e.point.y)
+      if (hit && !satHover) { satHover = true; m.getCanvas().style.cursor = 'pointer' }
+      else if (!hit && satHover) { satHover = false; m.getCanvas().style.cursor = '' }
+    }
+    m.on('click', onClick)
+    m.on('mousemove', onHover)
     const tick = async () => {
       try {
         if (!satLibRef.current) satLibRef.current = await import('satellite.js')
@@ -2214,26 +2207,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         if (cancelled) return
         const now = new Date()
         const gmst = sat.gstime(now)
-        const features: GeoJSON.Feature[] = []
+        const next: Sat3D[] = []
         for (const s of satRecsRef.current) {
           const pv = sat.propagate(s.rec as Parameters<typeof sat.propagate>[0], now)
           const pos = pv?.position
           if (!pos || typeof pos === 'boolean') continue
           const gd = sat.eciToGeodetic(pos, gmst)
+          if (!Number.isFinite(gd.height) || gd.height <= 0) continue
           const vel = pv.velocity && typeof pv.velocity !== 'boolean'
             ? Math.sqrt(pv.velocity.x ** 2 + pv.velocity.y ** 2 + pv.velocity.z ** 2)
             : null
-          features.push({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [sat.degreesLong(gd.longitude), sat.degreesLat(gd.latitude)] },
-            properties: {
-              name: s.name, group: s.group,
-              alt: Math.round(gd.height),
-              mph: vel ? Math.round(vel * 2236.94) : null,
-            },
+          next.push({
+            name: s.name, group: s.group,
+            lon: sat.degreesLong(gd.longitude), lat: sat.degreesLat(gd.latitude),
+            altKm: gd.height,
+            mph: vel ? Math.round(vel * 2236.94) : null,
+            sx: 0, sy: 0, visible: false,
           })
         }
-        ;(m.getSource('satellites') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        satsRef.current = next
+        m.triggerRepaint()
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'satellites', at: Date.now() } }))
       } catch (err) {
         window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'satellites', msg: err instanceof Error ? err.message : 'orbit feed down' } }))
@@ -2241,7 +2234,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     tick()
     const id = setInterval(tick, 2000)
-    return () => { cancelled = true; clearInterval(id) }
+    return () => {
+      cancelled = true
+      clearInterval(id)
+      m.off('click', onClick)
+      m.off('mousemove', onHover)
+      if (satHover) m.getCanvas().style.cursor = ''
+    }
   }, [mapReady, overlaysOn.satellites])
 
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
