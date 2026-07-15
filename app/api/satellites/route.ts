@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -43,7 +43,37 @@ function parseTle(text: string, group: string, cap: number): Tle[] {
   return out
 }
 
-export async function GET() {
+// The FULL swarm — every active satellite CelesTrak tracks (~11,500).
+// Names dropped to keep the payload lean; the client renders these as an
+// ambient batched field, not interactive dots. Parsed in a Web Worker.
+let fullCache: { at: number; sats: { l1: string; l2: string }[] } | null = null
+
+export async function GET(req: NextRequest) {
+  if (req.nextUrl.searchParams.get('full')) {
+    if (fullCache && Date.now() - fullCache.at < TTL_MS) {
+      return NextResponse.json({ sats: fullCache.sats }, { headers: { 'Cache-Control': 'public, s-maxage=21600' } })
+    }
+    try {
+      const r = await fetch('https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle', {
+        signal: AbortSignal.timeout(25_000), cache: 'no-store',
+      })
+      if (!r.ok) throw new Error(`active ${r.status}`)
+      const lines = (await r.text()).split('\n').map((l) => l.trimEnd()).filter(Boolean)
+      const sats: { l1: string; l2: string }[] = []
+      for (let i = 0; i + 2 < lines.length + 1 && sats.length < 20000; i += 3) {
+        const l1 = lines[i + 1]
+        const l2 = lines[i + 2]
+        if (!l1?.startsWith('1 ') || !l2?.startsWith('2 ')) break
+        sats.push({ l1, l2 })
+      }
+      if (!sats.length) throw new Error('active catalog empty')
+      fullCache = { at: Date.now(), sats }
+      return NextResponse.json({ sats }, { headers: { 'Cache-Control': 'public, s-maxage=21600' } })
+    } catch (e) {
+      if (fullCache) return NextResponse.json({ sats: fullCache.sats })
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'CelesTrak unreachable' }, { status: 503 })
+    }
+  }
   if (cache && Date.now() - cache.at < TTL_MS) {
     return NextResponse.json({ sats: cache.sats }, { headers: { 'Cache-Control': 'public, s-maxage=21600' } })
   }

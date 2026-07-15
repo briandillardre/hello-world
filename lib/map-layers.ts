@@ -79,6 +79,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── View extras (Basemap group, above Night effects) ──────────────────────
   { id: 'satellites', label: 'Satellites & sky (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
+  { id: 'satswarm', label: '↳ Full swarm (11,000+)', group: 'basemap', status: 'live', isLive: true, hint: 'EVERY tracked satellite as an ambient field — needs Satellites on · heavier on older phones' },
   { id: 'planes', label: 'Aircraft (live)', group: 'basemap', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
 
   // ── Night effects (nested under Basemap) ──────────────────────────────────

@@ -267,10 +267,18 @@ function compile(gl: WebGLRenderingContext | WebGL2RenderingContext, vertSrc: st
 
 export const SKY_LAYER_ID = 'sat-3d'
 
+export interface SwarmState {
+  /** [lon, lat, altKm] triplets from the propagation worker. */
+  pos: Float32Array
+  n: number
+  rev: number
+}
+
 export function createSat3DLayer(
   getSats: () => Sat3D[] | null,
   getCelestial?: () => CelestialState | null,
   getPlanes?: () => Plane3D[] | null,
+  getSwarm?: () => SwarmState | null,
 ): CustomLayerInterface {
   let prog: WebGLProgram | null = null
   let starProg: WebGLProgram | null = null
@@ -280,6 +288,11 @@ export function createSat3DLayer(
   let starBufRev = -1
   let starBufVariant = ''
   let starPosArr: Float32Array | null = null
+  let swarmBuf: WebGLBuffer | null = null
+  let swarmBufCount = 0
+  let swarmBufRev = -1
+  let swarmBufVariant = ''
+  let swarmPosArr: Float32Array | null = null
   let aPos = 0
   let uPos: WebGLUniformLocation | null = null
   let uSize: WebGLUniformLocation | null = null
@@ -320,6 +333,7 @@ export function createSat3DLayer(
         sMatrix = gl.getUniformLocation(starProg, 'u_matrix')
         sCam = gl.getUniformLocation(starProg, 'u_cam')
         starBuf = gl.createBuffer()
+        swarmBuf = gl.createBuffer()
       }
     },
 
@@ -328,6 +342,12 @@ export function createSat3DLayer(
       if (starProg) gl.deleteProgram(starProg)
       if (buf) gl.deleteBuffer(buf)
       if (starBuf) gl.deleteBuffer(starBuf)
+      if (swarmBuf) gl.deleteBuffer(swarmBuf)
+      swarmBuf = null
+      swarmBufCount = 0
+      swarmBufRev = -1
+      swarmBufVariant = ''
+      swarmPosArr = null
       prog = null
       starProg = null
       buf = null
@@ -344,7 +364,8 @@ export function createSat3DLayer(
       const sats = getSats()
       const cel = getCelestial?.() ?? null
       const planes = getPlanes?.() ?? null
-      const anything = (sats && sats.length) || cel?.sun || cel?.moon || (cel?.starCount ?? 0) > 0 || (planes && planes.length)
+      const swarm = getSwarm?.() ?? null
+      const anything = (sats && sats.length) || cel?.sun || cel?.moon || (cel?.starCount ?? 0) > 0 || (planes && planes.length) || (swarm && swarm.n > 0)
       if (!anything) return
       const isGlobe = options.shaderData.variantName === 'globe'
       // Globe shader: mainMatrix projects unit-sphere planet space (pair
@@ -451,6 +472,41 @@ export function createSat3DLayer(
           gl.uniformMatrix4fv(sMatrix, false, Array.from(main))
           gl.uniform4f(sCam, cam?.[0] ?? 0, cam?.[1] ?? 0, cam?.[2] ?? 0, cam ? 1 : 0)
           gl.drawArrays(gl.POINTS, 0, starBufCount)
+          gl.disableVertexAttribArray(sMeta)
+        }
+      }
+
+      // ── Full swarm (~11,500 ambient specks, one batched call) ─────────────
+      if (starProg && swarmBuf && swarm && swarm.n > 0) {
+        gl.useProgram(starProg)
+        gl.bindBuffer(gl.ARRAY_BUFFER, swarmBuf)
+        const variantKey = options.shaderData.variantName
+        if (swarm.rev !== swarmBufRev || variantKey !== swarmBufVariant) {
+          const n = swarm.n
+          const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+          if (!swarmPosArr || swarmPosArr.length !== n * 6) swarmPosArr = new Float32Array(n * 6)
+          for (let i = 0; i < n; i++) {
+            const altKm = swarm.pos[i * 3 + 2]
+            const P = toWorld(swarm.pos[i * 3], swarm.pos[i * 3 + 1], altKm * 1000)
+            const o = i * 6
+            swarmPosArr[o] = P[0]; swarmPosArr[o + 1] = P[1]; swarmPosArr[o + 2] = P[2]
+            swarmPosArr[o + 3] = (altKm > 10000 ? 2.2 : altKm > 1500 ? 1.7 : 1.3) * dpr
+            swarmPosArr[o + 4] = 0.55
+            swarmPosArr[o + 5] = 0.12
+          }
+          gl.bufferData(gl.ARRAY_BUFFER, swarmPosArr, gl.DYNAMIC_DRAW)
+          swarmBufCount = n
+          swarmBufRev = swarm.rev
+          swarmBufVariant = variantKey
+        }
+        if (swarmBufCount > 0) {
+          gl.enableVertexAttribArray(sPos)
+          gl.vertexAttribPointer(sPos, 3, gl.FLOAT, false, 24, 0)
+          gl.enableVertexAttribArray(sMeta)
+          gl.vertexAttribPointer(sMeta, 3, gl.FLOAT, false, 24, 12)
+          gl.uniformMatrix4fv(sMatrix, false, Array.from(main))
+          gl.uniform4f(sCam, cam?.[0] ?? 0, cam?.[1] ?? 0, cam?.[2] ?? 0, cam ? 1 : 0)
+          gl.drawArrays(gl.POINTS, 0, swarmBufCount)
           gl.disableVertexAttribArray(sMeta)
         }
       }

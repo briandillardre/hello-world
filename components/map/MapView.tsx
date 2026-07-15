@@ -25,7 +25,7 @@ import { twilightBands } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
-import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState } from '@/lib/sat-3d'
+import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState } from '@/lib/sat-3d'
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
@@ -2169,6 +2169,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const celestialRef = useRef<CelestialState | null>(null)
   const starCatRef = useRef<{ ra: number; dec: number; mag: number; bv: number }[] | null>(null)
   const planesRef = useRef<Plane3D[] | null>(null)
+  const swarmRef = useRef<SwarmState | null>(null)
+  const swarmWorkerRef = useRef<Worker | null>(null)
 
   // Sky playback: satellites/sun/moon/stars obey the timeline. Replaying a
   // range renders the sky AS IT WAS at the scrubbed moment (SGP4 + ephemeris
@@ -2189,6 +2191,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     skyKickWall.current = noww
     skyKickRef.current?.()
     dayNightKickRef.current?.()
+    swarmWorkerRef.current?.postMessage({ simOffset: simTimeRef.current != null ? simTimeRef.current - Date.now() : null })
   }, [displayT, range])
 
   // Sky-layer lifecycle + shared click/hover — lives while EITHER toggle is on.
@@ -2202,7 +2205,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     if (!m.getLayer(SKY_LAYER_ID)) {
       try {
-        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current))
+        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current, () => swarmRef.current))
       } catch { /* WebGL edge case — layer stays off */ }
     }
     const kindLabel = (g: string) =>
@@ -2378,6 +2381,44 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const id = setInterval(tick, 2000)
     return () => { cancelled = true; clearInterval(id); skyKickRef.current = null }
   }, [mapReady, overlaysOn.satellites])
+
+  // Full swarm — every active satellite (~11,500), propagated in a Web
+  // Worker so the map thread never feels it. Opt-in sub-toggle; needs the
+  // Satellites layer on (it shares the sky renderer).
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.satellites && !!overlaysOn.satswarm
+    if (!on) {
+      swarmWorkerRef.current?.terminate()
+      swarmWorkerRef.current = null
+      if (swarmRef.current) { swarmRef.current = null; m.triggerRepaint() }
+      return
+    }
+    let cancelled = false
+    const w = new Worker(new URL('../../lib/swarm-worker.ts', import.meta.url))
+    swarmWorkerRef.current = w
+    w.onmessage = (e: MessageEvent<{ pos: Float32Array; n: number }>) => {
+      if (cancelled) return
+      swarmRef.current = { pos: e.data.pos, n: e.data.n, rev: (swarmRef.current?.rev ?? 0) + 1 }
+      m.triggerRepaint()
+      window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'satswarm', at: Date.now() } }))
+    }
+    fetch('/api/satellites?full=1')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`catalog ${r.status}`))))
+      .then((j: { sats?: { l1: string; l2: string }[] }) => {
+        if (cancelled || !j.sats?.length) return
+        w.postMessage({ tles: j.sats, simOffset: simTimeRef.current != null ? simTimeRef.current - Date.now() : null })
+      })
+      .catch((err) => {
+        window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'satswarm', msg: err instanceof Error ? err.message : 'catalog unreachable' } }))
+      })
+    return () => {
+      cancelled = true
+      w.terminate()
+      if (swarmWorkerRef.current === w) swarmWorkerRef.current = null
+    }
+  }, [mapReady, overlaysOn.satellites, overlaysOn.satswarm])
 
   // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
   useEffect(() => {
