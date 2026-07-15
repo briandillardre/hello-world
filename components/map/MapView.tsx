@@ -241,7 +241,7 @@ interface MapViewProps {
   /** Floating AskAI button, rendered beside the collapsed layers pill
    *  (only the real /map passes one — demo + kiosk have no assistant). */
   askSlot?: React.ReactNode
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean }) => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */

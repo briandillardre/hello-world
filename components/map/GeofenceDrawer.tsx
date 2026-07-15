@@ -16,7 +16,7 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard') => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean }) => void
   /** Fly the map to an address hit so the user can draw around it. */
   onLocate?: (lng: number, lat: number) => void
 }
@@ -35,6 +35,7 @@ export function GeofenceDrawer({
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0])
   const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>('site')
+  const [personal, setPersonal] = useState(false)
 
   // Address search while drawing — type a street address, jump there, click
   // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
@@ -75,10 +76,11 @@ export function GeofenceDrawer({
 
   const handleSave = () => {
     if (!pendingGeom || !name.trim()) return
-    onSave?.(name.trim(), pendingGeom, color, kind)
+    onSave?.(name.trim(), pendingGeom, color, kind, { personal })
     setShowDialog(false)
     setName('')
     setKind('site')
+    setPersonal(false)
     setPendingGeom(null)
   }
 
@@ -200,6 +202,25 @@ export function GeofenceDrawer({
                   />
                 ))}
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Visibility</Label>
+              <div className="flex gap-1.5">
+                <button type="button" onClick={() => setPersonal(false)}
+                  className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (!personal ? 'border-amber bg-amber/10 text-amber' : 'border-navy-700 text-faint hover:text-ink')}>
+                  🌐 Global (whole team)
+                </button>
+                <button type="button" onClick={() => setPersonal(true)}
+                  className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (personal ? 'border-[#a78bfa] bg-[#a78bfa]/10 text-[#c4b5fd]' : 'border-navy-700 text-faint hover:text-ink')}>
+                  🔒 Personal (only me)
+                </button>
+              </div>
+              {personal && (
+                <p className="text-[10.5px] text-amber/90 leading-snug rounded-lg bg-amber/5 border border-amber/30 px-2.5 py-2">
+                  ⚠️ A personal zone is private to you: teammates won&apos;t see it, it won&apos;t fire theft / enter-exit
+                  alerts, and it won&apos;t appear in shared reports or the daily site log. For your own reference only.
+                </p>
+              )}
             </div>
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">
