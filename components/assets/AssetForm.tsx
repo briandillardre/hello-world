@@ -286,13 +286,13 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
   }
   const makeThumbnail = (i: number) => moveExisting(i, 0)
 
-  const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    if (!files.length) return
+  // Shared by the file picker AND drag-and-drop: resize each image and append.
+  const addFiles = async (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith('image/'))
+    if (!imgs.length) return
     setPhotoBusy(true)
     try {
-      for (const file of files) {
-        if (!file.type.startsWith('image/')) continue
+      for (const file of imgs) {
         const resized = await resizePhoto(file)
         const preview = URL.createObjectURL(resized)
         // Default the first-ever photo to "Truck / unit", the rest to "Other".
@@ -300,8 +300,23 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
       }
     } finally {
       setPhotoBusy(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  const handlePhotoPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    await addFiles(Array.from(e.target.files ?? []))
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Drag-and-drop upload (dropping image FILES from the desktop). Distinct from
+  // the in-gallery reorder drag — that carries no files, so we ignore it here.
+  const [dropActive, setDropActive] = useState(false)
+  const dragHasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+  const handleFileDrop = async (e: React.DragEvent) => {
+    if (!dragHasFiles(e)) return
+    e.preventDefault()
+    setDropActive(false)
+    await addFiles(Array.from(e.dataTransfer.files))
   }
 
   const removeNewPhoto = (i: number) =>
@@ -605,8 +620,15 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
           </div>
 
           {/* Photos — the whole set: truck shot, GVWR sticker, VIN plate,
-              engine, damage. The first becomes the hero on the map + list. */}
-          <div className="space-y-2">
+              engine, damage. The first becomes the hero on the map + list.
+              Drop image files anywhere in here to upload. */}
+          <div
+            className="space-y-2"
+            onDragEnter={(e) => { if (dragHasFiles(e)) { e.preventDefault(); setDropActive(true) } }}
+            onDragOver={(e) => { if (dragHasFiles(e)) e.preventDefault() }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setDropActive(false) }}
+            onDrop={handleFileDrop}
+          >
             <Label>Photos</Label>
             <input
               ref={fileInputRef}
@@ -624,7 +646,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                     draggable={!!onReorderPhotos}
                     onDragStart={() => setDragIndex(i)}
                     onDragOver={(e) => { if (dragIndex !== null) e.preventDefault() }}
-                    onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) moveExisting(dragIndex, i); setDragIndex(null) }}
+                    onDrop={(e) => { if (dragIndex !== null) { e.preventDefault(); e.stopPropagation(); moveExisting(dragIndex, i); setDragIndex(null) } }}
                     onDragEnd={() => setDragIndex(null)}
                     className={
                       'relative rounded-lg border overflow-hidden ' +
@@ -677,17 +699,25 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                 ))}
               </div>
             )}
-            <Button
+            <button
               type="button"
-              variant="outline"
-              className="w-full"
               disabled={photoBusy}
               onClick={() => fileInputRef.current?.click()}
+              className={
+                'w-full rounded-lg border-2 border-dashed px-3 py-4 text-sm font-medium transition-colors disabled:opacity-60 ' +
+                (dropActive
+                  ? 'border-teal bg-teal/10 text-teal'
+                  : 'border-navy-700 text-muted hover:border-navy-600 hover:text-ink')
+              }
             >
-              {photoBusy ? 'Processing…' : '📷 Add photos (truck, GVWR, VIN, engine, issues…)'}
-            </Button>
+              {photoBusy
+                ? 'Processing…'
+                : dropActive
+                ? '⬇ Drop photos to upload'
+                : '📷 Add photos — tap, or drag & drop (truck, GVWR, VIN, engine, issues…)'}
+            </button>
             {onReorderPhotos && existingPhotos.length > 1 && (
-              <p className="text-[10px] text-faint leading-tight">Drag to reorder · the first photo (★) is the thumbnail on the map &amp; list.</p>
+              <p className="text-[10px] text-faint leading-tight">Drag a photo to reorder · the first photo (★) is the thumbnail on the map &amp; list.</p>
             )}
           </div>
 
