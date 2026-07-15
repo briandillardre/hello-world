@@ -29,6 +29,7 @@ import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devi
 import { geofencePresence } from '@/lib/site-presence'
 import { AssetPanel } from './AssetPanel'
 import { MapSearch, type SearchItem } from './MapSearch'
+import { MapTour } from './MapTour'
 import { formatRelativeTime } from '@/lib/utils'
 import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
@@ -2967,7 +2968,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
       {/* AskAI floats top-right on its own; the layers pill + search button
           pair lives top-LEFT (owner layout, Jul 14 PM). */}
-      {!kiosk && askSlot && <div className="absolute top-3 right-3 z-20">{askSlot}</div>}
+      {!kiosk && askSlot && <div data-tour="askai" className="absolute top-3 right-3 z-20">{askSlot}</div>}
+
+      {/* First-run walkthrough of the controls (skippable, once per device;
+          relaunch from Getting Started or /map?tour=1) */}
+      {!kiosk && <MapTour />}
 
       {/* Numeric scales for shaded layers — a wash of color with no numbers
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS

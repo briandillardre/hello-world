@@ -102,7 +102,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
         </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-navy-950 border-t border-navy-800 md:hidden safe-area-pb">
+      <nav data-tour="nav" className="fixed bottom-0 left-0 right-0 z-40 bg-navy-950 border-t border-navy-800 md:hidden safe-area-pb">
         <div className="flex">
           {primaryItems.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)

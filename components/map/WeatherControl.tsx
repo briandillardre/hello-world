@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -368,7 +368,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   // The map search button rides to its right (owner layout, Jul 14 PM).
   if (!open) {
     return (
-      <div style={{ top, zIndex: z }} className={`absolute ${sideCls} flex items-center gap-2`}>
+      <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex items-center gap-2`}>
       <button
         onClick={() => setOpen(true)}
         aria-label="Map layers and weather"
@@ -442,6 +442,15 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
                 placeholder="Find asset or zone…"
                 className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
               />
+              {(findOpen || findQ) && (
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); setFindQ(''); setFindOpen(false); (e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null)?.blur() }}
+                  aria-label="Close search"
+                  className="grid place-items-center w-5 h-5 rounded text-faint hover:text-ink flex-none"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
             {findOpen && (
               <div className="mt-1 rounded-lg bg-navy-900 border border-navy-700 max-h-[240px] overflow-y-auto no-scrollbar">

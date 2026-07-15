@@ -224,7 +224,7 @@ export function TimelinePlayback({
     // Hug the bottom edge — the page already pads for the mobile tab bar, so
     // the old 80px offset left a dead strip of map under the controls. Kiosk
     // rides above the event ticker.
-    <div ref={rootRef} className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
+    <div ref={rootRef} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
       {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}

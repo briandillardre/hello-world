@@ -94,6 +94,9 @@ export default async function WelcomePage() {
             Skip to the map
           </Link>
         </div>
+        <Link href="/map?tour=1" className="block mt-3 text-center text-[13px] font-semibold text-teal hover:underline">
+          🎓 New here? Take the 30-second map tour
+        </Link>
       </div>
     </div>
   )
