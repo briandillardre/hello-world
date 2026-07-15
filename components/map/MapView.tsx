@@ -25,7 +25,7 @@ import { twilightBands } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
-import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState } from '@/lib/sat-3d'
+import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -2174,6 +2174,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const starCatRef = useRef<{ ra: number; dec: number; mag: number; bv: number }[] | null>(null)
   const planesRef = useRef<Plane3D[] | null>(null)
   const planePrevRef = useRef<Map<string, { track: number; at: number }>>(new Map())
+  // Rolling flight-path history per aircraft (flat lon,lat,altM triplets),
+  // accumulated each poll; a clicked plane's path renders as a 3D trail.
+  const planeHistRef = useRef<Map<string, number[]>>(new Map())
+  const selPlaneRef = useRef<string | null>(null)
+  const planeTrailRef = useRef<PlaneTrail | null>(null)
+  // Real recent track per hex, backfilled once from adsb.lol (flat triplets).
+  const traceRef = useRef<Map<string, number[]>>(new Map())
+  // Set by the sky-layer effect so the plane poll can refresh a live trail.
+  const rebuildTrailRef = useRef<(() => void) | null>(null)
   const swarmRef = useRef<SwarmState | null>(null)
   const swarmWorkerRef = useRef<Worker | null>(null)
 
@@ -2210,7 +2219,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     if (!m.getLayer(SKY_LAYER_ID)) {
       try {
-        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current, () => swarmRef.current))
+        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current, () => swarmRef.current, () => planeTrailRef.current))
       } catch { /* WebGL edge case — layer stays off */ }
     }
     const kindLabel = (g: string) =>
@@ -2230,9 +2239,38 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         pickSat(bodies, x, y, 20)
       )
     }
+    // Selected aircraft's trail = its real recent track (backfilled once)
+    // followed by everything we've watched live since, newest last.
+    const rebuildPlaneTrail = () => {
+      const hex = selPlaneRef.current
+      if (!hex) { planeTrailRef.current = null; m.triggerRepaint(); return }
+      const trace = traceRef.current.get(hex) ?? []
+      const hist = planeHistRef.current.get(hex) ?? []
+      const flat = trace.concat(hist)
+      const n = Math.floor(flat.length / 3)
+      if (n < 2) { planeTrailRef.current = null; m.triggerRepaint(); return }
+      planeTrailRef.current = { pts: new Float32Array(flat), n }
+      m.triggerRepaint()
+    }
+    rebuildTrailRef.current = rebuildPlaneTrail
+    const backfillTrace = (hex: string) => {
+      if (traceRef.current.has(hex)) return
+      fetch(`/api/plane-track?hex=${hex}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((j: { pts?: [number, number, number][] }) => {
+          if (!j.pts?.length) { traceRef.current.set(hex, []); return }
+          traceRef.current.set(hex, j.pts.flat())
+          if (selPlaneRef.current === hex) rebuildPlaneTrail()
+        })
+        .catch(() => { traceRef.current.set(hex, []) })
+    }
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const hit = pickAll(e.point.x, e.point.y)
-      if (!hit) return
+      if (!hit) {
+        // Tap on empty sky clears the trail.
+        if (selPlaneRef.current) { selPlaneRef.current = null; planeTrailRef.current = null; m.triggerRepaint() }
+        return
+      }
       if ('kind' in hit) {
         if (hit.kind === 'sun') {
           popup(e.lngLat, `<div style="font-weight:700;color:#ffd479">Sun</div><div style="margin-top:3px">${hit.distLabel}</div>`)
@@ -2242,7 +2280,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       } else if ('hex' in hit) {
         const title = hit.flight ?? hit.reg ?? hit.hex.toUpperCase()
         const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== title ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
-        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}`)
+        // Draw this aircraft's 3D flight trail: whatever we've watched so far,
+        // backfilled with its real recent track from adsb.lol.
+        selPlaneRef.current = hit.hex
+        rebuildPlaneTrail()
+        backfillTrace(hit.hex)
+        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`)
       } else {
         const facts: string[] = []
         if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
@@ -2264,6 +2307,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => {
       m.off('click', onClick)
       m.off('mousemove', onHover)
+      rebuildTrailRef.current = null
       if (skyHover) m.getCanvas().style.cursor = ''
     }
   }, [mapReady, overlaysOn.satellites, overlaysOn.planes])
@@ -2483,6 +2527,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           }
         })
         if (planePrevRef.current.size > 2000) planePrevRef.current.clear()
+        // Accumulate each aircraft's path (cap ~200 samples/plane) so a
+        // clicked plane draws a live-growing 3D trail. Prune to what's in view.
+        const seen = new Set<string>()
+        for (const p of j.planes ?? []) {
+          seen.add(p.hex)
+          const buf = planeHistRef.current.get(p.hex) ?? []
+          const L = buf.length
+          if (L < 3 || buf[L - 3] !== p.lon || buf[L - 2] !== p.lat) {
+            buf.push(p.lon, p.lat, p.altFt * 0.3048)
+            if (buf.length > 600) buf.splice(0, buf.length - 600)
+            planeHistRef.current.set(p.hex, buf)
+          }
+        }
+        if (planeHistRef.current.size > 400) {
+          for (const k of Array.from(planeHistRef.current.keys())) {
+            if (!seen.has(k) && k !== selPlaneRef.current) planeHistRef.current.delete(k)
+          }
+        }
+        if (selPlaneRef.current) rebuildTrailRef.current?.()
         m.triggerRepaint()
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() } }))
       } catch (err) {
@@ -3386,7 +3449,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}

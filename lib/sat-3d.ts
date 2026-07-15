@@ -265,6 +265,28 @@ void main() {
   gl_FragColor = u_color * a;
 }`
 
+// ── Flight-trail line program (world-space polyline at altitude) ───────────
+const LINE_VERT = `
+attribute vec3 a_pos;
+attribute float a_t;
+uniform mat4 u_matrix;
+varying float v_t;
+void main() {
+  vec4 p = u_matrix * vec4(a_pos, 1.0);
+  p.z = clamp(p.z, -abs(p.w) * 0.999, abs(p.w) * 0.999);
+  gl_Position = p;
+  v_t = a_t;
+}`
+
+const LINE_FRAG = `
+precision mediump float;
+uniform vec4 u_color;
+varying float v_t;
+void main() {
+  // Fade the tail out: oldest (t=0) faint, newest (t=1) bright.
+  gl_FragColor = vec4(u_color.rgb, u_color.a * (0.12 + 0.88 * v_t));
+}`
+
 interface ModelTransform {
   getMatrixForModel(location: [number, number], altitude?: number): ArrayLike<number>
   worldSize?: number
@@ -294,11 +316,18 @@ export interface SwarmState {
   rev: number
 }
 
+export interface PlaneTrail {
+  /** [lon, lat, altM] triplets, oldest → newest (aircraft at the end). */
+  pts: Float32Array
+  n: number
+}
+
 export function createSat3DLayer(
   getSats: () => Sat3D[] | null,
   getCelestial?: () => CelestialState | null,
   getPlanes?: () => Plane3D[] | null,
   getSwarm?: () => SwarmState | null,
+  getPlaneTrail?: () => PlaneTrail | null,
 ): CustomLayerInterface {
   let prog: WebGLProgram | null = null
   let starProg: WebGLProgram | null = null
@@ -327,6 +356,12 @@ export function createSat3DLayer(
   let qMatrix: WebGLUniformLocation | null = null
   let qTex: WebGLUniformLocation | null = null
   let qColor: WebGLUniformLocation | null = null
+  let lineProg: WebGLProgram | null = null
+  let lineBuf: WebGLBuffer | null = null
+  let lPos = 0
+  let lT = 0
+  let lMatrix: WebGLUniformLocation | null = null
+  let lColor: WebGLUniformLocation | null = null
   let sPos = 0
   let sMeta = 0
   let sMatrix: WebGLUniformLocation | null = null
@@ -370,6 +405,14 @@ export function createSat3DLayer(
         qColor = gl.getUniformLocation(quadProg, 'u_color')
         quadBuf = gl.createBuffer()
       }
+      lineProg = compile(gl, LINE_VERT, LINE_FRAG)
+      if (lineProg) {
+        lPos = gl.getAttribLocation(lineProg, 'a_pos')
+        lT = gl.getAttribLocation(lineProg, 'a_t')
+        lMatrix = gl.getUniformLocation(lineProg, 'u_matrix')
+        lColor = gl.getUniformLocation(lineProg, 'u_color')
+        lineBuf = gl.createBuffer()
+      }
     },
 
     onRemove(_map: MLMap, gl: WebGLRenderingContext | WebGL2RenderingContext) {
@@ -381,6 +424,10 @@ export function createSat3DLayer(
       if (quadBuf) gl.deleteBuffer(quadBuf)
       quadProg = null
       quadBuf = null
+      if (lineProg) gl.deleteProgram(lineProg)
+      if (lineBuf) gl.deleteBuffer(lineBuf)
+      lineProg = null
+      lineBuf = null
       if (buf) gl.deleteBuffer(buf)
       if (starBuf) gl.deleteBuffer(starBuf)
       if (swarmBuf) gl.deleteBuffer(swarmBuf)
@@ -406,7 +453,8 @@ export function createSat3DLayer(
       const cel = getCelestial?.() ?? null
       const planes = getPlanes?.() ?? null
       const swarm = getSwarm?.() ?? null
-      const anything = (sats && sats.length) || cel?.sun || cel?.moon || (cel?.starCount ?? 0) > 0 || (planes && planes.length) || (swarm && swarm.n > 0)
+      const trail = getPlaneTrail?.() ?? null
+      const anything = (sats && sats.length) || cel?.sun || cel?.moon || (cel?.starCount ?? 0) > 0 || (planes && planes.length) || (swarm && swarm.n > 0) || (trail && trail.n > 1)
       if (!anything) return
       const isGlobe = options.shaderData.variantName === 'globe'
       // Globe shader: mainMatrix projects unit-sphere planet space (pair
@@ -623,6 +671,38 @@ export function createSat3DLayer(
           gl.uniform3f(uLight, 0, 0, 1)
         } else { mo.visible = false }
       } else if (cel?.moon) { cel.moon.visible = false }
+
+      // ── Selected aircraft's flight trail (3D polyline at true altitude) ──
+      // Foreshortens with pitch; fades from a faint tail to a bright head at
+      // the aircraft. Drawn before the planes so the silhouette sits on top.
+      if (lineProg && lineBuf && trail && trail.n > 1) {
+        const n = trail.n
+        const arr = new Float32Array(n * 4)
+        for (let i = 0; i < n; i++) {
+          const P = toWorld(trail.pts[i * 3], trail.pts[i * 3 + 1], trail.pts[i * 3 + 2])
+          arr[i * 4] = P[0]; arr[i * 4 + 1] = P[1]; arr[i * 4 + 2] = P[2]
+          arr[i * 4 + 3] = i / (n - 1)
+        }
+        gl.useProgram(lineProg)
+        gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf)
+        gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW)
+        gl.enableVertexAttribArray(lPos)
+        gl.vertexAttribPointer(lPos, 3, gl.FLOAT, false, 16, 0)
+        gl.enableVertexAttribArray(lT)
+        gl.vertexAttribPointer(lT, 1, gl.FLOAT, false, 16, 12)
+        gl.uniformMatrix4fv(lMatrix, false, Array.from(main))
+        gl.uniform4f(lColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 0.85)
+        try { gl.lineWidth(2) } catch { /* clamped to 1 on many GPUs */ }
+        gl.drawArrays(gl.LINE_STRIP, 0, n)
+        gl.disableVertexAttribArray(lT)
+        // Restore point-program vertex state for the passes below.
+        gl.useProgram(prog!)
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+        if (aPos >= 0) {
+          gl.enableVertexAttribArray(aPos)
+          gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0)
+        }
+      }
 
       // ── Aircraft (real silhouettes at real proportions) ──────────────────
       if (planes && planes.length) {
