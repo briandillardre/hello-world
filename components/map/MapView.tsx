@@ -721,6 +721,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // Let the camera pull well back from the globe — breathing room for
       // the satellites layer instead of a planet jammed to the screen edge.
       minZoom: -2, // MapLibre's floor — far enough to see the GPS shell + GEO ring
+      // Let the camera lie almost flat — near-horizon views of aircraft in
+      // the sky, terrain, and the 3D activity terrain. Default cap is 60°.
+      maxPitch: 85,
 
       attributionControl: false,
       // Follow mode drags the camera across town — keep far more tiles in

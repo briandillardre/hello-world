@@ -418,7 +418,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   }
 
   const rowsFor = (gid: GroupId, nightFx = false) =>
-    LAYER_ROWS.filter((d) => d.group === gid && !!d.nightFx === nightFx).map((d) => (
+    LAYER_ROWS
+      .filter((d) => d.group === gid && !!d.nightFx === nightFx)
+      // A sub-layer (e.g. the satellite swarm) stays hidden until its parent
+      // layer is on — no orphan toggle sitting there doing nothing.
+      .filter((d) => !d.requiresLayer || isOn(d.requiresLayer))
+      .map((d) => (
       <LayerRow
         key={d.id}
         def={d}

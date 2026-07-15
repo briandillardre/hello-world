@@ -22,6 +22,9 @@ export interface LayerRowDef {
   zoomHint?: string
   /** Night effects only make sense on the dark basemap. */
   requiresBasemap?: BasemapId
+  /** Row hides entirely until this parent layer id is on (e.g. the swarm
+   *  only appears once Satellites is toggled on). */
+  requiresLayer?: string
   /** Renders in the nested "Night effects" sub-group under Basemap. */
   nightFx?: boolean
   /** Raster overlays get an opacity slider while on. */
@@ -79,7 +82,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── View extras (Basemap group, above Night effects) ──────────────────────
   { id: 'satellites', label: 'Satellites & sky (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
-  { id: 'satswarm', label: '↳ Full swarm (11,000+)', group: 'basemap', status: 'live', isLive: true, hint: 'EVERY tracked satellite as an ambient field — needs Satellites on · heavier on older phones' },
+  { id: 'satswarm', label: '↳ 11k satellites', group: 'basemap', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
   { id: 'planes', label: 'Aircraft (live)', group: 'basemap', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
 
   // ── Night effects (nested under Basemap) ──────────────────────────────────
