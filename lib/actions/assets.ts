@@ -187,6 +187,93 @@ export async function updateAssetAction(
 }
 
 
+export interface ReassignTrackerInput {
+  /** ISO timestamp of the physical tracker swap. */
+  swapAtIso: string
+  /** Is THIS record the vehicle the tracker is in now (keeps it), or the old
+   *  one it just left (loses it)? */
+  currentRole: 'new' | 'old'
+  /** The other vehicle: create a fresh record or reuse an existing (trackerless) one. */
+  other: { mode: 'new'; name: string; type: AssetType } | { mode: 'existing'; assetId: string }
+}
+
+/**
+ * Move a tracker (IMEI) between vehicles and split the location history at the
+ * swap moment, so each vehicle keeps only its own past.
+ *
+ *  - currentRole 'old'  → the tracker LEAVES this record for `other`. This
+ *    record keeps everything before the swap; `other` gets the tracker + all
+ *    pings from the swap onward. (The normal "device moved to a new truck" case.)
+ *  - currentRole 'new'  → the tracker STAYS here; `other` is the previous
+ *    vehicle and receives all pings BEFORE the swap. (Fixes a record that was
+ *    just renamed onto a new truck, conflating two vehicles' history.)
+ */
+export async function reassignTrackerAction(currentId: string, input: ReassignTrackerInput):
+  Promise<{ ok: boolean; otherId?: string; moved?: number; error?: string }> {
+  if (isMock) return { ok: false, error: 'Not available in demo mode.' }
+  const swapMs = Date.parse(input.swapAtIso)
+  if (Number.isNaN(swapMs)) return { ok: false, error: 'Invalid swap date/time.' }
+
+  const companyId = await getCurrentCompanyId()
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const db = createServiceClient()
+
+  const { data: current } = await db
+    .from('assets').select('id, company_id, tracker_id, name, type')
+    .eq('id', currentId).eq('company_id', companyId).maybeSingle()
+  if (!current) return { ok: false, error: 'Asset not found.' }
+  const trackerId = current.tracker_id
+  if (!trackerId) return { ok: false, error: 'This asset has no tracker to reassign.' }
+
+  // Resolve the "other" vehicle.
+  let otherId: string
+  if (input.other.mode === 'existing') {
+    const { data: other } = await db
+      .from('assets').select('id, tracker_id')
+      .eq('id', input.other.assetId).eq('company_id', companyId).maybeSingle()
+    if (!other) return { ok: false, error: 'Destination vehicle not found.' }
+    if (input.currentRole === 'old' && other.tracker_id)
+      return { ok: false, error: 'That vehicle already has a tracker. Pick one without a tracker.' }
+    otherId = other.id
+  } else {
+    const name = input.other.name.trim()
+    if (!name) return { ok: false, error: 'Name the other vehicle.' }
+    const { data: created, error } = await db
+      .from('assets')
+      .insert({ company_id: companyId, name, type: input.other.type, active: true, metadata: {}, tracker_id: null })
+      .select('id').single()
+    if (error || !created) return { ok: false, error: 'Could not create the new vehicle.' }
+    otherId = created.id
+  }
+
+  // Which record keeps the tracker, and which direction the history moves.
+  // keeper = record the tracker stays/goes to (also the vehicle NOW).
+  // mover  = record that receives the split-off history.
+  const iso = new Date(swapMs).toISOString()
+  let moved = 0
+  if (input.currentRole === 'old') {
+    // Tracker leaves current → other. Other keeps the tracker + pings >= swap.
+    await db.from('assets').update({ tracker_id: null }).eq('id', currentId).eq('company_id', companyId)
+    await db.from('assets').update({ tracker_id: trackerId }).eq('id', otherId).eq('company_id', companyId)
+    const { data: rows } = await db
+      .from('asset_locations').update({ asset_id: otherId })
+      .eq('asset_id', currentId).eq('company_id', companyId).gte('timestamp', iso).select('id')
+    moved = rows?.length ?? 0
+  } else {
+    // Tracker stays on current; other (old vehicle) gets pings < swap.
+    const { data: rows } = await db
+      .from('asset_locations').update({ asset_id: otherId })
+      .eq('asset_id', currentId).eq('company_id', companyId).lt('timestamp', iso).select('id')
+    moved = rows?.length ?? 0
+  }
+
+  revalidatePath('/assets')
+  revalidatePath(`/assets/${currentId}`)
+  revalidatePath(`/assets/${otherId}`)
+  revalidatePath('/map')
+  return { ok: true, otherId, moved }
+}
+
 export async function deleteAssetAction(id: string) {
   if (isMock) return
   // Hard delete — locations, tool associations, maintenance, and alert events

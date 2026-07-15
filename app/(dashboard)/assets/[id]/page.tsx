@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatRelativeTime } from '@/lib/utils'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
+import { ReassignTracker } from '@/components/assets/ReassignTracker'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 import { TripLog } from '@/components/assets/TripLog'
 import { getGeofences } from '@/lib/db/geofences'
@@ -130,6 +131,12 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {canEdit && asset.tracker_id && (
+              <ReassignTracker
+                asset={asset}
+                trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
+              />
+            )}
             {canEdit && <AssetActions asset={asset} photos={assetPhotos} />}
             {/* phones: icon-only (the text version wrapped to 3 ugly lines) */}
             <Link href="/map" aria-label="View on map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm p-2.5 sm:px-3.5 sm:py-2 hover:bg-amber-600 transition-colors whitespace-nowrap">
