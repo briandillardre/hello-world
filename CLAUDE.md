@@ -134,6 +134,11 @@ PWS_TOKEN=                     # tempest only
 PWS_STATION_ID=                # tempest + wunderground
 PWS_MAC=                       # ambient only, optional: pick one of several stations
 ANTHROPIC_API_KEY=            # optional: natural-language AI dispatcher (Haiku)
+# ── Plaid bank/card auto-import for missing-receipts (optional; unset = CSV paste only) ──
+PLAID_CLIENT_ID=             # from dashboard.plaid.com
+PLAID_SECRET=                # per-environment secret
+PLAID_ENV=                   # sandbox | development | production (default sandbox)
+PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 ```
 
 ## Business Entity (Jul 2026)

@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/receipt-chase",
       "schedule": "45 22 * * *"
+    },
+    {
+      "path": "/api/cron/plaid-sync",
+      "schedule": "20 */6 * * *"
     }
   ]
 }

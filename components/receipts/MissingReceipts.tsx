@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AlertTriangle, Upload, Plus, Link2, X } from 'lucide-react'
 import type { Expense } from '@/lib/db/expenses'
 import { importChargesAction, addExpenseAction, linkReceiptAction, markNoReceiptAction } from '@/lib/actions/expenses'
+import { PlaidConnect } from './PlaidConnect'
 
 type Suggestion = { receiptId: string; score: number; reasons: string[] }
 type ReceiptLite = { vendor: string | null; amount: number | null; txn_date: string | null; url: string }
@@ -48,6 +49,7 @@ export function MissingReceipts({
             {open.length === 0 ? 'All charges accounted for 🎉' : `${open.length} charge${open.length === 1 ? '' : 's'} without a receipt · ${money(total)} unaccounted`}
           </p>
         </div>
+        <PlaidConnect onMessage={setMsg} />
         <button onClick={() => setShowImport((v) => !v)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
           <Upload className="h-3.5 w-3.5" /> Import
         </button>
