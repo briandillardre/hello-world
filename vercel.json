@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/oem-sync",
       "schedule": "15 */2 * * *"
+    },
+    {
+      "path": "/api/cron/receipt-chase",
+      "schedule": "45 22 * * *"
     }
   ]
 }

@@ -1,6 +1,9 @@
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/geofences'
+import { getExpenses } from '@/lib/db/expenses'
+import { suggestMatchesAction } from '@/lib/actions/expenses'
 import { ReceiptsInbox } from '@/components/receipts/ReceiptsInbox'
+import { MissingReceipts } from '@/components/receipts/MissingReceipts'
 import type { ReceiptRow } from '@/lib/actions/receipts'
 
 export const dynamic = 'force-dynamic'
@@ -14,6 +17,7 @@ export default async function ReceiptsPage() {
   let pending: ReceiptRow[] = []
   let done: ReceiptRow[] = []
   let available = false
+  const receiptsById: Record<string, { vendor: string | null; amount: number | null; txn_date: string | null; url: string }> = {}
   if (!isMock) {
     try {
       const { createClient } = await import('@/lib/supabase-server')
@@ -28,9 +32,15 @@ export default async function ReceiptsPage() {
         available = true
         pending = (data ?? []).filter((r) => r.status === 'pending') as ReceiptRow[]
         done = (data ?? []).filter((r) => r.status !== 'pending').slice(0, 30) as ReceiptRow[]
+        for (const r of (data ?? []) as ReceiptRow[]) receiptsById[r.id] = { vendor: r.vendor, amount: r.amount, txn_date: r.txn_date, url: r.url }
       }
     } catch { /* table absent — setup note below */ }
   }
+
+  // Missing receipts — charges without a matching receipt, + suggested matches.
+  const openExpenses = available ? await getExpenses(companyId, 'needs_receipt') : []
+  const suggestions = openExpenses.length ? await suggestMatchesAction() : {}
+
   const geofences = await getGeofences(companyId)
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
@@ -51,7 +61,10 @@ export default async function ReceiptsPage() {
           </p>
         </div>
       ) : (
-        <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
+        <>
+          <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} />
+          <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
+        </>
       )}
     </div>
   )

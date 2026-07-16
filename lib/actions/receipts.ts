@@ -41,32 +41,23 @@ export async function extractReceiptAction(id: string): Promise<{ ok: boolean; e
     if (buf.byteLength > 4.5 * 1024 * 1024) return { ok: false, error: 'Photo too large to read' }
     const mediaType = rcpt.url.endsWith('.png') ? 'image/png' : rcpt.url.endsWith('.webp') ? 'image/webp' : 'image/jpeg'
 
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
-    const client = new Anthropic({ apiKey })
-    const res = await client.messages.create({
-      model: process.env.AI_MODEL || 'claude-opus-4-8',
-      max_tokens: 300,
-      system:
-        'You read receipt/invoice photos for a construction company\'s books. Reply with ONLY JSON: {"vendor":string|null,"amount":number|null,"date":"YYYY-MM-DD"|null,"category":"fuel"|"materials"|"repairs"|"meals"|"tools"|"other"|null}. amount = the FINAL total paid. null anything you cannot read confidently — never guess.',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: buf.toString('base64') } },
-          { type: 'text', text: 'Extract this receipt.' },
-        ],
-      }],
-    })
-    const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('')
-    const m = text.match(/\{[\s\S]*\}/)
-    if (!m) return { ok: false, error: 'Could not read the receipt' }
-    const j = JSON.parse(m[0])
+    const { extractReceiptFields } = await import('@/lib/receipts/extract')
+    const fields = await extractReceiptFields({ data: buf, mediaType }, { apiKey })
 
+    // Fill blanks only — never overwrite a human's manual edit.
     const patch: Record<string, unknown> = {}
-    if (!rcpt.vendor && j.vendor) patch.vendor = String(j.vendor).slice(0, 120)
-    if (rcpt.amount == null && typeof j.amount === 'number') patch.amount = j.amount
-    if (!rcpt.txn_date && j.date) patch.txn_date = String(j.date).slice(0, 10)
-    if (!rcpt.category && j.category) patch.category = String(j.category).slice(0, 40)
+    if (!rcpt.vendor && fields.vendor) patch.vendor = fields.vendor
+    if (rcpt.amount == null && fields.amount != null) patch.amount = fields.amount
+    if (!rcpt.txn_date && fields.date) patch.txn_date = fields.date
+    if (!rcpt.category && fields.category) patch.category = fields.category
     if (Object.keys(patch).length) await supabase.from('receipts').update(patch).eq('id', id)
+
+    // A freshly-read receipt may complete a missing-receipt charge.
+    try {
+      const { autoMatchReceipts } = await import('@/lib/db/expenses')
+      await autoMatchReceipts(await getCurrentCompanyId())
+    } catch { /* expenses table may not exist yet (pre-030) */ }
+
     revalidatePath('/receipts')
     return { ok: true }
   } catch (err) {
