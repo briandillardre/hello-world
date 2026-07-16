@@ -195,6 +195,20 @@ function AssetDetails({
   // Range mileage table only makes sense for assets that actually move.
   const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment')
 
+  // Compact isolate toggle — sits beside the photo (or the location block) so
+  // it's the first thing in reach, not buried in the stat grid.
+  const isolateBtn = onToggleIsolate ? (
+    <button
+      onClick={onToggleIsolate}
+      className={
+        'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold border transition-colors ' +
+        (isolated ? 'bg-amber/15 border-amber/40 text-amber' : 'bg-navy-800 border-navy-700 text-teal hover:bg-navy-700')
+      }
+    >
+      <Crosshair className="h-3.5 w-3.5 flex-none" /> {isolated ? 'Isolated · only this' : 'Isolate'}
+    </button>
+  ) : null
+
   return (
     <div className="space-y-3">
       {asset.photo_url && (
@@ -231,6 +245,7 @@ function AssetDetails({
                 <Battery className={`h-3.5 w-3.5 flex-none ${BATTERY_COLOR(loc.battery)}`} /> {loc.battery}%
               </p>
             ) : null}
+            {isolateBtn && <div className="pt-0.5">{isolateBtn}</div>}
           </div>
         </div>
       )}
@@ -295,6 +310,8 @@ function AssetDetails({
           </div>
         </div>
       )}
+      {/* Isolate lives up top; when there's no photo to sit beside, show it here. */}
+      {!asset.photo_url && isolateBtn}
       <div className="grid grid-cols-2 gap-3">
         {loc?.battery !== null && loc?.battery !== undefined && (
           <StatTile
@@ -317,32 +334,16 @@ function AssetDetails({
             value={formatRelativeTime(loc.timestamp)}
           />
         )}
-        {onToggleIsolate && (
-          <button
-            onClick={onToggleIsolate}
-            className={
-              'rounded-lg p-3 flex items-start gap-2 text-left transition-colors border ' +
-              (isolated
-                ? 'bg-amber/15 border-amber/40'
-                : 'bg-navy-800 border-transparent hover:bg-navy-700')
-            }
-          >
-            <Crosshair className={'h-4 w-4 ' + (isolated ? 'text-amber' : 'text-teal')} />
-            <span>
-              <span className={'block text-xs ' + (isolated ? 'text-amber' : 'text-faint')}>Isolate</span>
-              <span className="block text-sm font-semibold text-ink">{isolated ? 'On · only this one' : 'Only show this'}</span>
-            </span>
-          </button>
-        )}
       </div>
+
+      {/* Order: speed/last-seen → stops → activity → engine/specs. */}
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && <StopsCard assetId={asset.id} />}
+
+      {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
 
       <EngineWidget asset={asset} />
 
       <SpecSheet meta={meta} mpg={stats?.mpg} />
-
-      {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
-
-      {(asset.type === 'vehicle' || asset.type === 'equipment') && <StopsCard assetId={asset.id} />}
 
       {typeof meta.notes === 'string' && meta.notes.trim() !== '' && (
         <div className="bg-navy-800 rounded-lg p-3">

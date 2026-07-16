@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
-import { ProtrudingClose } from '@/components/ui/window-chrome'
 
 /**
  * One responsive shell for every map selection — asset, zone, or device.
@@ -28,7 +27,39 @@ export function MapSheet({
 }) {
   // Mobile only: peek (map visible + interactive) vs expanded (full detail).
   const [expanded, setExpanded] = useState(false)
-  const header = (
+  // Live drag: pull the handle down to minimize/close, up to maximize.
+  const [dragY, setDragY] = useState(0)
+  const dragging = useRef(false)
+  const startY = useRef(0)
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragging.current = true
+    startY.current = e.clientY
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging.current) return
+    // Only track downward pull live (feels like pull-to-dismiss); upward just
+    // snaps to expanded on release so the sheet never detaches from the bottom.
+    setDragY(Math.max(-70, e.clientY - startY.current))
+  }
+  const onPointerUp = () => {
+    if (!dragging.current) return
+    dragging.current = false
+    const dy = dragY
+    setDragY(0)
+    if (Math.abs(dy) < 8) { setExpanded((v) => !v); return } // tap = toggle
+    if (expanded) {
+      if (dy > 220) onClose()            // hard pull down from full → close
+      else if (dy > 80) setExpanded(false) // ease down → peek
+      else if (dy < -20) setExpanded(true)
+    } else {
+      if (dy < -40) setExpanded(true)    // pull up → maximize
+      else if (dy > 90) onClose()        // pull down from peek → close
+    }
+  }
+
+  const header = (showMobileClose = false) => (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -38,12 +69,10 @@ export function MapSheet({
         {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
         {badge && <div className="mt-1.5">{badge}</div>}
       </div>
-      {/* Desktop only — on phones the X protrudes above the sheet instead
-          (always tappable even when the sheet content scrolls). */}
       <button
         onClick={onClose}
         aria-label="Close"
-        className="hidden md:grid place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95 flex-none"
+        className={(showMobileClose ? 'grid' : 'hidden md:grid') + ' place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95 flex-none'}
       >
         <X className="h-5 w-5" />
       </button>
@@ -53,32 +82,41 @@ export function MapSheet({
   return (
     <>
       {/* Mobile: half-sheet first — the MAP stays visible and interactive
-          (isolate/highlight is pointless behind a full-screen panel). The
-          handle/chevron expands to nearly full; collapse drops it back. Only
-          the expanded state dims the map and closes on tap-away. */}
+          (isolate/highlight is pointless behind a full-screen panel). Drag the
+          handle up to maximize, down to minimize or close; the X is always in
+          the fixed header. Only the expanded state dims + closes on tap-away. */}
       {expanded && <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />}
       <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
-        {/* X straddles the sheet's top edge (site convention) — reachable no
-            matter how tall the sheet grows or how far its content scrolls. */}
-        <ProtrudingClose onClick={onClose} className="right-5" />
-        <div className={'bg-navy-900 rounded-t-2xl shadow-2xl px-5 pt-1.5 pb-6 mx-2 border border-navy-800 overflow-y-auto transition-[max-height] duration-200 ' + (expanded ? 'max-h-[85dvh]' : 'max-h-[40dvh]')}>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? 'Collapse panel' : 'Expand panel'}
-            className="w-full grid place-items-center py-1 mb-1.5 text-faint active:text-ink"
+        <div
+          className="bg-navy-900 rounded-t-2xl shadow-2xl mx-2 border border-navy-800 flex flex-col"
+          style={{
+            maxHeight: expanded ? '85dvh' : '42dvh',
+            transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+            transition: dragging.current ? 'none' : 'transform .2s ease, max-height .2s ease',
+          }}
+        >
+          {/* Fixed header — handle + title + close never scroll away. */}
+          <div
+            className="shrink-0 px-5 pt-1.5 touch-none cursor-grab active:cursor-grabbing"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
           >
-            <span className="w-9 h-1 rounded-full bg-navy-700 mb-0.5" />
-            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-          </button>
-          {header}
-          <div className="mt-4">{children}</div>
+            <div className="w-full grid place-items-center py-1 mb-1.5 text-faint">
+              <span className="w-10 h-1.5 rounded-full bg-navy-600 mb-0.5" />
+              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </div>
+            {header(true)}
+          </div>
+          <div className="overflow-y-auto px-5 pb-6 mt-3 flex-1 overscroll-contain">{children}</div>
         </div>
       </div>
 
       {/* Desktop: right sidebar panel (kiosk offsets via .map-sheet-desktop) */}
       <div className="map-sheet-desktop absolute top-0 right-0 bottom-0 z-20 hidden md:block w-72">
         <div className="bg-navy-900 h-full shadow-2xl border-l border-navy-800 flex flex-col">
-          <div className="p-5 border-b border-navy-800">{header}</div>
+          <div className="p-5 border-b border-navy-800">{header()}</div>
           <div className="p-5 flex-1 overflow-y-auto">{children}</div>
         </div>
       </div>
