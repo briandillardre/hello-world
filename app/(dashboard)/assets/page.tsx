@@ -21,7 +21,7 @@ export default async function AssetsPage() {
   }
 
   return (
-    <div className="h-full overflow-hidden flex flex-col pb-[70px] md:pb-20">
+    <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
       <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} />
     </div>
   )

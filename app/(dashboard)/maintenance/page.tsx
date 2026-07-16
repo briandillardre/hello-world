@@ -37,7 +37,7 @@ export default async function MaintenancePage() {
   const totalSpent = services.reduce((sum, r) => sum + r.cost, 0)
 
   return (
-    <div className="h-full overflow-auto pb-[70px] md:pb-20">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <h1 className="text-xl font-bold text-ink">Maintenance</h1>
         {overdueCount > 0 && <Badge variant="destructive">{overdueCount} overdue</Badge>}

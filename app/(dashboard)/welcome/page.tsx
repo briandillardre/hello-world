@@ -36,7 +36,7 @@ export default async function WelcomePage() {
   const pct = Math.round((doneCount / steps.length) * 100)
 
   return (
-    <div className="h-full overflow-auto pb-[70px] md:pb-20">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="max-w-2xl mx-auto p-5 sm:p-8">
         <div className="text-center">
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-teal">Welcome to HammerTrack</p>

@@ -13,7 +13,33 @@ export async function getToolAssociations(companyId: string): Promise<ToolAssoci
     .from('tool_associations')
     .select('*')
     .eq('company_id', companyId)
-  return data ?? []
+  const rows: ToolAssociation[] = data ?? []
+
+  // Backfill (one-time per row): associations written before migration 033
+  // have no last_lat/lng snapshot, so a stale tag had nowhere truthful to
+  // render. The gateway's OWN GPS fix at the sighting time is in history —
+  // look it up, use it, and persist it so this never runs again for the row.
+  for (const a of rows) {
+    if (a.last_lat != null || !a.last_seen) continue
+    try {
+      const { data: fix } = await supabase
+        .from('asset_locations')
+        .select('lat, lng')
+        .eq('asset_id', a.gateway_asset_id)
+        .lte('timestamp', a.last_seen)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (fix) {
+        a.last_lat = fix.lat
+        a.last_lng = fix.lng
+        await supabase.from('tool_associations')
+          .update({ last_lat: fix.lat, last_lng: fix.lng })
+          .eq('id', a.id)
+      }
+    } catch { /* pre-033 DB (column missing) — enrichment just skips */ }
+  }
+  return rows
 }
 
 export { findGatewayForTool, resolveToolLocations, toolsAboard } from '../tools-resolve'

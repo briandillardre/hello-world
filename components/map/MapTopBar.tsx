@@ -5,8 +5,9 @@ import { Logo } from '@/components/brand/Logo'
 /** Slim banner above the Live Map: brand + company. The AskAI button floats
  *  over the map beside the layers pill (owner layout, Jul 14). */
 export function MapTopBar({ companyName }: { companyName: string }) {
+  // Phones get a slimmer bar (h-8) — every vertical pixel is map space.
   return (
-    <div className="flex items-center gap-3 h-11 px-3 md:px-4 bg-navy-950 border-b border-navy-800 flex-none">
+    <div className="flex items-center gap-2.5 md:gap-3 h-8 md:h-11 px-3 md:px-4 bg-navy-950 border-b border-navy-800 flex-none">
       {/* Mobile: full branding (no sidebar there). Desktop: the sidebar already
           shows logo + company, so just a section label — no double branding. */}
       <span className="md:hidden"><Logo size={22} href="/map" /></span>

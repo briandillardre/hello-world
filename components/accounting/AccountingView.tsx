@@ -78,7 +78,7 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
   }
 
   return (
-    <div className="h-full overflow-auto pb-[70px] md:pb-20">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <h1 className="text-xl font-bold text-ink">Accounting</h1>
         <Badge variant="success" className="flex items-center gap-1">

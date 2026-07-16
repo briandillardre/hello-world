@@ -65,7 +65,7 @@ export default async function MapPage() {
   const pairingEpisodes = await getPairingEpisodes(companyId, new Date(sinceMs).toISOString())
 
   return (
-    <div className="h-full flex flex-col pb-[70px] md:pb-0">
+    <div className="h-full flex flex-col pb-[54px] md:pb-0">
       <MapTopBar companyName={company.name} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient

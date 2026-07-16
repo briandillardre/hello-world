@@ -11,7 +11,7 @@ import { TestAlertButton } from '@/components/settings/TestAlertButton'
 export default async function SettingsPage() {
   const co = await getCompanySettings()
   return (
-    <div className="h-full overflow-auto pb-[70px] md:pb-20">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
         <h1 className="text-xl font-bold text-ink">Settings</h1>
       </div>

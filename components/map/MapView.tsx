@@ -3524,7 +3524,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         <button
           onClick={() => setMeasureOn((v) => !v)}
           title="Measure & takeoff — distance, area, tonnage"
-          className={'absolute top-[58px] right-3 z-20 grid place-items-center w-9 h-9 rounded-xl border shadow-panel backdrop-blur transition-colors ' +
+          className={'absolute top-[58px] right-[58px] z-20 grid place-items-center w-9 h-9 rounded-xl border shadow-panel backdrop-blur transition-colors ' +
             (measureOn ? 'bg-amber text-[#1a1100] border-amber' : 'bg-navy-950/80 text-faint border-navy-700 hover:text-amber')}
         >
           <Ruler className="h-4 w-4" />

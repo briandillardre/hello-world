@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin, Wrench, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
-import type { AboardTool } from '@/lib/tools-resolve'
+import { toolIsFresh, type AboardTool } from '@/lib/tools-resolve'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
@@ -283,67 +283,61 @@ function AssetDetails({
         </div>
       )}
       {asset.type === 'tool' && gateway && (
-        <div className="bg-[#60a5fa]/15 border border-[#60a5fa]/30 rounded-lg p-3 flex items-center gap-2">
-          <Wifi className="h-4 w-4 text-[#60a5fa] flex-shrink-0" />
-          <div className="text-sm">
-            <span className="text-[#93c5fd]">Currently with </span>
-            <span className="font-semibold text-[#93c5fd]">{gateway.name}</span>
-            <span className="text-[#60a5fa] text-xs"> · {formatRelativeTime(gateway.lastSeen)}</span>
+        toolIsFresh(gateway.lastSeen) ? (
+          <div className="bg-[#60a5fa]/15 border border-[#60a5fa]/30 rounded-lg p-3 flex items-center gap-2">
+            <Wifi className="h-4 w-4 text-[#60a5fa] flex-shrink-0" />
+            <div className="text-sm">
+              <span className="text-[#93c5fd]">Currently with </span>
+              <span className="font-semibold text-[#93c5fd]">{gateway.name}</span>
+              <span className="text-[#60a5fa] text-xs"> · {formatRelativeTime(gateway.lastSeen)}</span>
+            </div>
+          </div>
+        ) : (
+          // Stale sighting: the tag was dropped/left — the pin marks where.
+          <div className="bg-amber/10 border border-amber/30 rounded-lg p-3 flex items-start gap-2">
+            <MapPin className="h-4 w-4 text-amber flex-none mt-0.5" />
+            <div className="text-sm min-w-0">
+              <span className="text-amber font-semibold">Left near this spot</span>
+              <span className="block text-[12px] text-muted">
+                Last seen with <span className="font-semibold">{gateway.name}</span> · {formatRelativeTime(gateway.lastSeen)} — no Bluetooth ping since.
+              </span>
+            </div>
+          </div>
+        )
+      )}
+      {/* On board — BLE tools CONFIRMED riding this truck right now (fresh
+          Bluetooth sighting). Tags not heard in ~25 min are dropped/left
+          somewhere — they don't show here at all; each renders on the map at
+          its true last-seen spot instead (owner rule, Jul 16). */}
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && (aboard?.length ?? 0) > 0 && (
+        <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+            <Wrench className="h-4 w-4 text-[#a78bfa] flex-none" />
+            <span className="font-display font-bold text-[13px] text-[#c4b5fd]">On board · {aboard!.length} tool{aboard!.length === 1 ? '' : 's'}</span>
+            <span className="ml-auto flex items-center gap-1 text-[10px] font-mono text-[#34d399]"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-blink" />LIVE</span>
+          </div>
+          <div className="pb-1">
+            {aboard!.map((t) => {
+              const sig = signalWord(t.rssi)
+              return (
+                <button key={t.id} onClick={() => onPick?.(t.id)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#a78bfa]/10 active:bg-[#a78bfa]/15">
+                  <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: t.color ?? '#a78bfa' }} />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13.5px] font-semibold text-ink truncate">{t.name}</span>
+                    <span className="block text-[11px] text-faint">
+                      {sig.word && <><span className={sig.cls}>signal {sig.word}</span> · </>}
+                      {t.battery != null && <span className={BATTERY_COLOR(t.battery)}>🔋{t.battery}% · </span>}
+                      seen {formatRelativeTime(t.lastSeen)}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-faint flex-none" />
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
-      {/* On board — BLE tools this truck is carrying. A gateway re-reports a
-          tag every few minutes, so we split CONFIRMED aboard (fresh sighting)
-          from tools only "last seen" here — a day-old ping doesn't mean the
-          tag is still in the truck (it might be in a no-tracker vehicle, or
-          left on a job). */}
-      {(asset.type === 'vehicle' || asset.type === 'equipment') && (aboard?.length ?? 0) > 0 && (() => {
-        const fresh = aboard!.filter((t) => t.fresh)
-        const stale = aboard!.filter((t) => !t.fresh)
-        const Row = (t: AboardTool, live: boolean) => {
-          const sig = signalWord(t.rssi)
-          return (
-            <button key={t.id} onClick={() => onPick?.(t.id)}
-              className={'w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ' + (live ? 'hover:bg-[#a78bfa]/10 active:bg-[#a78bfa]/15' : 'hover:bg-navy-700/40 opacity-80')}>
-              <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: live ? (t.color ?? '#a78bfa') : '#64748b' }} />
-              <span className="flex-1 min-w-0">
-                <span className="block text-[13.5px] font-semibold text-ink truncate">{t.name}</span>
-                <span className="block text-[11px] text-faint">
-                  {live && sig.word && <><span className={sig.cls}>signal {sig.word}</span> · </>}
-                  {t.battery != null && <span className={BATTERY_COLOR(t.battery)}>🔋{t.battery}% · </span>}
-                  {live ? `seen ${formatRelativeTime(t.lastSeen)}` : `last seen ${formatRelativeTime(t.lastSeen)}`}
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 text-faint flex-none" />
-            </button>
-          )
-        }
-        return (
-          <div className="space-y-2">
-            {fresh.length > 0 && (
-              <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                  <Wrench className="h-4 w-4 text-[#a78bfa] flex-none" />
-                  <span className="font-display font-bold text-[13px] text-[#c4b5fd]">On board · {fresh.length} tool{fresh.length === 1 ? '' : 's'}</span>
-                  <span className="ml-auto flex items-center gap-1 text-[10px] font-mono text-[#34d399]"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-blink" />LIVE</span>
-                </div>
-                <div className="pb-1">{fresh.map((t) => Row(t, true))}</div>
-              </div>
-            )}
-            {stale.length > 0 && (
-              <div className="bg-navy-800/60 border border-navy-700 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                  <Wrench className="h-4 w-4 text-faint flex-none" />
-                  <span className="font-display font-bold text-[12.5px] text-muted">Last seen here · {stale.length} tool{stale.length === 1 ? '' : 's'}</span>
-                  <span className="ml-auto text-[10px] font-mono text-faint">not confirmed aboard</span>
-                </div>
-                <div className="pb-1">{stale.map((t) => Row(t, false))}</div>
-                <p className="px-3 pb-2 text-[10.5px] text-faint">No recent Bluetooth ping — these may have moved to another vehicle or been left behind.</p>
-              </div>
-            )}
-          </div>
-        )
-      })()}
       {/* Where it IS, up top — city/state, plus the named place when parked
           somewhere recognizable. (The coordinates stay in the footer.) With a
           photo this already rendered beside the thumbnail above. */}

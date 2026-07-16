@@ -45,7 +45,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
       {moreOpen && (
         <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMoreOpen(false)}>
           <div
-            className="absolute bottom-[60px] left-0 right-0 bg-navy-950 border-t border-navy-800 rounded-t-2xl p-4 safe-area-pb"
+            className="absolute bottom-[46px] left-0 right-0 bg-navy-950 border-t border-navy-800 rounded-t-2xl p-4 safe-area-pb"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
@@ -112,7 +112,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 key={href}
                 href={href}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs font-medium transition-colors min-h-[60px]',
+                  'flex-1 flex flex-col items-center justify-center py-1 gap-0.5 text-[10.5px] font-medium transition-colors min-h-[46px]',
                   active ? 'text-amber' : 'text-faint hover:text-muted'
                 )}
               >

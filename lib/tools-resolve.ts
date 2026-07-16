@@ -32,8 +32,10 @@ export interface AboardTool {
 }
 
 /** Reverse index of tool_associations: gateway (truck/equipment) asset id →
- *  the tools last detected by it. `fresh` distinguishes "aboard now" from a
- *  stale sighting that shouldn't imply the tool is still in the truck. */
+ *  the tools CURRENTLY riding with it. Stale sightings are excluded outright —
+ *  a tag not heard in TOOL_FRESH_MS was dropped/left somewhere (owner rule,
+ *  Jul 16: "Bryson's truck should not show any tools right now"). The tool
+ *  itself still renders on the map at its true last-seen spot. */
 export function toolsAboard(
   assets: AssetWithLocation[],
   associations: ToolAssociation[],
@@ -41,6 +43,7 @@ export function toolsAboard(
 ): Record<string, AboardTool[]> {
   const out: Record<string, AboardTool[]> = {}
   for (const assoc of associations) {
+    if (!toolIsFresh(assoc.last_seen, nowMs)) continue // dropped/left — not aboard
     const tool = assets.find(a => a.id === assoc.tool_asset_id)
     if (!tool || !tool.active) continue
     const color = typeof tool.metadata?.color === 'string' ? tool.metadata.color : null
