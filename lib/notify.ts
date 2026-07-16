@@ -79,13 +79,22 @@ async function postWebhook(payload: { company: string; alerts: AlertMessage[]; a
 export async function dispatchAlerts(
   companyName: string,
   recipients: Recipients,
-  alerts: AlertMessage[]
+  alerts: AlertMessage[],
+  companyId?: string
 ): Promise<number> {
   if (!alerts.length) return 0
   const smsTo = recipients.phone || process.env.ALERT_SMS_TO
   let smsSent = 0
 
   await postWebhook({ company: companyName, alerts, at: new Date().toISOString() })
+
+  // Native push to the lock screen (no-op without Firebase creds / devices).
+  if (companyId) {
+    try {
+      const { sendPushToCompany } = await import('./push')
+      await sendPushToCompany(companyId, companyName, alerts)
+    } catch { /* push is best-effort */ }
+  }
 
   if (smsTo) {
     for (const a of alerts) {

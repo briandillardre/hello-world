@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
         const { data: co } = await supabase
           .from('companies').select('name, alert_phone, alert_email').eq('id', companyId).single()
         const { dispatchAlerts } = await import('@/lib/notify')
-        await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, healthNotes)
+        await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, healthNotes, companyId)
       }
     }
   } catch (err) {
@@ -351,7 +351,7 @@ export async function POST(request: NextRequest) {
         try {
           const { dispatchAlerts } = await import('@/lib/notify')
           const co = companyRow as { name?: string; alert_phone?: string; alert_email?: string }
-          await dispatchAlerts(co.name ?? 'Your fleet', { phone: co.alert_phone, email: co.alert_email }, notifyBatch)
+          await dispatchAlerts(co.name ?? 'Your fleet', { phone: co.alert_phone, email: co.alert_email }, notifyBatch, companyId)
         } catch (err) {
           console.error('alert dispatch failed', err)
         }

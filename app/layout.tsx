@@ -3,6 +3,7 @@ import { Inter, Archivo, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { BRAND_NAME, BRAND_URL } from '@/lib/brand'
 import { ErrorReporter } from '@/components/system/ErrorReporter'
+import { NativePush } from '@/components/system/NativePush'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const archivo = Archivo({
@@ -67,7 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="font-sans"><ErrorReporter />{children}</body>
+      <body className="font-sans"><ErrorReporter /><NativePush />{children}</body>
     </html>
   )
 }

@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
         await dispatchAlerts(co?.name ?? 'Your fleet', { email: co?.alert_email }, [{
           severity: 'info',
           reason: `${uniq.length} OEM machine${uniq.length === 1 ? '' : 's'} reporting but not registered: ${names}. Add them in HammerTrack with tracker_id aemp:<serial>.`,
-        }])
+        }], companyId)
       }
     }
   } catch { /* notify is best-effort */ }

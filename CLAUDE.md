@@ -118,6 +118,7 @@ TWILIO_AUTH_TOKEN=
 TWILIO_FROM=                   # your Twilio number, E.164
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
+FCM_SERVER_KEY=               # optional: native push to the phone lock screen (Firebase → Cloud Messaging). Devices self-register via the Capacitor app → /api/push/register (migration 029). Unset = no push.
 RESEND_API_KEY=                # optional: emails team invites (free at resend.com; verify hammertrack.ai domain)
 EMAIL_FROM=                    # optional sender override, default "HammerTrack <team@hammertrack.ai>"
 SUPABASE_DB_URL=               # optional: session-pooler Postgres URI — enables `npm run migrate` (auto-migrations)

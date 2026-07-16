@@ -151,7 +151,7 @@ export async function applyAempReadings(
       const { data: co } = await supabase
         .from('companies').select('name, alert_phone, alert_email').eq('id', companyId).single()
       const { dispatchAlerts } = await import('./notify')
-      await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, faultNotes)
+      await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, faultNotes, companyId)
     } catch { /* notify down — faults are already logged */ }
   }
 

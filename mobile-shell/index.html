@@ -8,25 +8,45 @@
     html, body { height: 100%; margin: 0; }
     body {
       display: grid; place-items: center;
-      background: #0a1420; color: #e8f0f7;
+      background: radial-gradient(120% 120% at 50% 0%, #12233a 0%, #0a1420 60%);
+      color: #e8f0f7;
       font: 15px/1.6 system-ui, -apple-system, sans-serif;
-      text-align: center; padding: 24px;
+      text-align: center; padding: max(24px, env(safe-area-inset-top)) 24px 24px;
     }
     .card { max-width: 320px; }
-    h1 { font-size: 20px; margin: 0 0 8px; letter-spacing: 0.02em; }
-    p { color: #9fb6cc; margin: 0 0 20px; }
+    .mark {
+      width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 18px;
+      background: #f5a623; display: grid; place-items: center; font-size: 34px;
+      box-shadow: 0 8px 30px rgba(245,166,35,0.25);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.94); opacity: 0.82; } }
+    @media (prefers-reduced-motion: reduce) { .mark { animation: none; } }
+    h1 { font-size: 20px; margin: 0 0 8px; letter-spacing: 0.02em; font-weight: 800; }
+    p { color: #9fb6cc; margin: 0 0 22px; }
     button {
       background: #f5a623; color: #1a1100; border: 0; border-radius: 12px;
       font-weight: 700; font-size: 15px; padding: 12px 28px;
     }
+    button:active { transform: translateY(1px); }
+    .hint { color: #64809b; font-size: 12px; margin-top: 16px; }
   </style>
 </head>
 <body>
   <!-- Shown only when the device has no connection — the live app is remote. -->
   <div class="card">
+    <div class="mark">🔨</div>
     <h1>HammerTrack</h1>
     <p>No connection. Your fleet is still tracking — reconnect to see the live map.</p>
-    <button onclick="location.href='https://hammertrack.ai'">Retry</button>
+    <button onclick="go()">Retry</button>
+    <p class="hint">Reconnecting automatically…</p>
   </div>
+  <script>
+    function go() { location.href = 'https://hammertrack.ai'; }
+    // Jump back the instant the device is online again.
+    window.addEventListener('online', go);
+    // And gently poll in case the online event is missed.
+    setInterval(function () { if (navigator.onLine) go(); }, 4000);
+  </script>
 </body>
 </html>
