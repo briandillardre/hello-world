@@ -23,6 +23,11 @@ export interface ToolAssociation {
   /** Tag coin-cell charge %, relayed from the beacon's TLM frame (022). */
   tag_battery?: number | null
   last_seen: string
+  /** Gateway's fix at the last sighting — the tag's TRUE last-seen spot (033). */
+  last_lat?: number | null
+  last_lng?: number | null
+  /** When this tool started riding its current gateway (033) — dwell clock. */
+  attached_since?: string | null
 }
 
 export interface MaintenanceSchedule {
@@ -120,6 +125,7 @@ export interface Asset {
   purchase_value?: number | null // current replacement value $
   tracker_id: string | null
   metadata: Record<string, unknown>
+  folder_url?: string | null   // link to the asset's document folder (Dropbox/Drive/…)
   active: boolean
   created_at: string
 }
@@ -169,6 +175,8 @@ export interface Geofence {
   kind?: 'site' | 'boundary' | 'yard'
   /** Owner-written free text ("gate code 4188") — shown on the zone, read by the AI. */
   notes?: string | null
+  /** Link to the zone's document folder (Dropbox/Drive/…). */
+  folder_url?: string | null
   /** Optional job-site window. NULL = perpetual. Scopes cost totals + archive. */
   active_from?: string | null
   active_until?: string | null

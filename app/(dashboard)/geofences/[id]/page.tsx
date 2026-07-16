@@ -13,6 +13,7 @@ import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 import { ZoneVisits } from '@/components/geofences/ZoneVisits'
 import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
 import { ZoneNotes } from '@/components/geofences/ZoneNotes'
+import { FolderLink } from '@/components/ui/FolderLink'
 import { segmentVisits, type Visit } from '@/lib/visits'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
@@ -57,15 +58,27 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
     const from = Date.now() - USAGE_DAYS * 86_400_000
-    const { data: rows } = await supabase
-      .from('asset_locations')
-      .select('asset_id, lat, lng, speed, timestamp')
-      .eq('company_id', companyId)
-      .gte('timestamp', new Date(from).toISOString())
-      .order('timestamp', { ascending: true })
-      .limit(40_000)
-    usage = zoneAssetUsage(ring, assets, rows ?? [], from, Date.now())
-    visits = segmentVisits(rows ?? [], ring)
+    // Page NEWEST-first so recent visits survive the cap. A bare
+    // .order(ascending).limit(40k) returned the OLDEST 40k rows for a busy
+    // fleet — dropping yesterday's trucks and showing "no activity" on a zone
+    // that was clearly used. Reverse to chronological for the accrual engines.
+    const PAGE = 1000, CAP = 40_000
+    const fetched: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+    while (fetched.length < CAP) {
+      const { data } = await supabase
+        .from('asset_locations')
+        .select('asset_id, lat, lng, speed, timestamp')
+        .eq('company_id', companyId)
+        .gte('timestamp', new Date(from).toISOString())
+        .order('timestamp', { ascending: false })
+        .range(fetched.length, fetched.length + PAGE - 1)
+      if (!data || data.length === 0) break
+      fetched.push(...data)
+      if (data.length < PAGE) break
+    }
+    const rows = fetched.reverse() // chronological — zoneAssetUsage tracks last-per-asset in order
+    usage = zoneAssetUsage(ring, assets, rows, from, Date.now())
+    visits = segmentVisits(rows, ring)
     // Weather log (migration 019 + nightly cron) — tolerate the table missing.
     const { data: wx } = await supabase
       .from('site_weather')
@@ -145,6 +158,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         )}
 
         {!isMock && <ZoneNotes id={fence.id} initial={fence.notes ?? ''} />}
+
+        {!isMock && <FolderLink kind="zone" id={fence.id} initial={fence.folder_url ?? null} />}
 
         <ZoneWeather rows={weather} />
 

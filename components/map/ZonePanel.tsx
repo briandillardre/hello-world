@@ -35,6 +35,7 @@ const STAT = [
  *  inline — rename, recolor, or delete right from the map. */
 export function ZonePanel({
   fence, presence, range, t, real, onClose, canEdit = false, onEdit, onDelete, showCosts = true,
+  insideAssets = [], onPickAsset,
 }: {
   fence: Geofence
   presence: SitePresence
@@ -47,7 +48,12 @@ export function ZonePanel({
   onDelete?: (id: string) => void
   /** False = viewer lacks the $-costs permission; show presence/hours only. */
   showCosts?: boolean
+  /** Assets physically inside the zone right now — shown by name. */
+  insideAssets?: { id: string; name: string; type: string }[]
+  /** Tap an on-site asset to open its panel. */
+  onPickAsset?: (id: string) => void
 }) {
+  const EMOJI: Record<string, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(fence.name)
   const [color, setColor] = useState(fence.color)
@@ -132,6 +138,26 @@ export function ZonePanel({
               </div>
             ))}
           </div>
+
+          {/* On site now — by name, tappable */}
+          {insideAssets.length > 0 && (
+            <div className="mt-3 rounded-lg bg-navy-800/60 p-2">
+              <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint mb-1.5 px-1">On site now</p>
+              <div className="space-y-0.5">
+                {insideAssets.map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => onPickAsset?.(a.id)}
+                    className="w-full flex items-center gap-2 text-left rounded-md px-1.5 py-1 hover:bg-navy-700/60 transition-colors"
+                  >
+                    <span className="flex-none">{EMOJI[a.type] ?? '📍'}</span>
+                    <span className="flex-1 min-w-0 truncate text-[12.5px] text-ink font-medium">{a.name}</span>
+                    {onPickAsset && <span className="text-faint text-[10px]">view →</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {fence.notes && (
             <p className="mt-3 rounded-lg bg-navy-800/70 px-3 py-2 text-[12px] text-muted whitespace-pre-line leading-snug">

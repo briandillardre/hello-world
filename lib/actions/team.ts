@@ -140,10 +140,21 @@ export async function acceptInviteAction(token: string): Promise<{ ok: boolean; 
   if (inv.accepted_at) return { ok: false, error: 'This invite was already used.' }
   if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, error: 'This invite has expired.' }
 
+  // Accepting an invite must NEVER downgrade an existing member of the same
+  // company. The owner opened his own test invite while signed in and the
+  // blind upsert turned the admin into a Foreman (Jul 16). Keep whichever
+  // role is higher; joining a DIFFERENT company still takes the invite role.
+  const RANK: Record<string, number> = { viewer: 0, foreman: 1, manager: 2, admin: 3 }
+  let role = inv.role as string
+  const { data: existing } = await svc.from('profiles').select('company_id, role').eq('id', user.id).maybeSingle()
+  if (existing && existing.company_id === inv.company_id && (RANK[existing.role] ?? 0) >= (RANK[role] ?? 0)) {
+    role = existing.role
+  }
+
   const { error: upErr } = await svc.from('profiles').upsert({
     id: user.id,
     company_id: inv.company_id,
-    role: inv.role,
+    role,
     name: (user.user_metadata?.name as string) || user.email?.split('@')[0] || 'Teammate',
     email: user.email ?? null,
   }, { onConflict: 'id' })

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { Play, Pause, Gauge } from 'lucide-react'
+import { Play, Pause } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
-import { speedsForWindow, defaultSpeedForWindow, formatSpeed } from '@/lib/trails'
+import { SpeedControl } from '@/components/ui/speed-control'
+import { speedsForWindow, defaultSpeedForWindow } from '@/lib/trails'
 import type { SharedReplayProps, SharePoint } from './SharedReplay'
 
 /**
@@ -179,16 +180,7 @@ export function SharedReplayInner({ name, points, fromMs, toMs, startT }: Shared
             className="slider-heat flex-1 h-[17px] cursor-pointer"
             aria-label="Replay position"
           />
-          <div className="flex-none flex items-center gap-1.5 text-faint">
-            <Gauge className="h-4 w-4" />
-            <select
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
-              className="bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs font-mono px-2 py-1.5 outline-none focus:border-amber"
-            >
-              {speeds.map((s) => <option key={s} value={s}>{formatSpeed(s)}</option>)}
-            </select>
-          </div>
+          <SpeedControl speeds={speeds} value={speed} onChange={setSpeed} />
         </div>
         <p className="mt-1.5 font-mono text-[9px] text-faint">
           Times shown in your local timezone · link expires 7 days after sharing ·{' '}

@@ -5,6 +5,26 @@ import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPho
 import { getCurrentCompanyId } from '@/lib/db/company'
 import type { AssetType } from '@/lib/types'
 
+/** Document-folder link on an asset (Dropbox/Drive/etc.) — direct column update. */
+export async function saveAssetFolderAction(id: string, folderUrl: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const url = folderUrl.trim()
+    if (url && !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a full link starting with https://' }
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const { error } = await supabase.from('assets').update({ folder_url: url || null }).eq('id', id)
+    if (error) {
+      if (error.code === '42703') return { ok: false, error: 'Run migration 032 first.' }
+      return { ok: false, error: error.message }
+    }
+    revalidatePath(`/assets/${id}`)
+    revalidatePath('/map')
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'failed' }
+  }
+}
+
 export interface CreateAssetInput {
   name: string
   type: AssetType

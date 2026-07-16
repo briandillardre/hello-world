@@ -32,6 +32,13 @@ export const POI_KIND_META: Record<PoiKind, { label: string; cls: string }> = {
   other:      { label: 'Stop',       cls: 'bg-navy-700/60 text-muted border-navy-600' },
 }
 
+/** Solid hex per kind — for map pins, where tailwind classes can't reach. */
+export const POI_KIND_COLOR: Record<PoiKind, string> = {
+  site: '#f5a623', supplier: '#2dd4bf', fuel: '#60a5fa', food: '#fb923c',
+  government: '#c084fc', dealer: '#34d399', service: '#22d3ee', store: '#f472b6',
+  residence: '#8fa3b8', other: '#8fa3b8',
+}
+
 const SUPPLIER_SHOPS = new Set(['doityourself', 'hardware', 'trade', 'building_materials', 'electrical', 'plumbing', 'garden_centre', 'agrarian', 'wholesale', 'landscaping'])
 const DEALER_SHOPS = new Set(['car', 'car_parts', 'truck', 'tyres', 'motorcycle', 'trailer'])
 const FOOD_AMENITIES = new Set(['restaurant', 'fast_food', 'cafe', 'bar', 'food_court', 'ice_cream', 'pub'])

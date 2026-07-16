@@ -40,6 +40,29 @@ export async function classifyPoint(lat: number, lng: number): Promise<{ name: s
   return out
 }
 
+/** Street name at a point — for "what roads did it drive" recaps. Shares the
+ *  cache (prefixed key) so repeated commutes stay free. */
+export async function streetAt(lat: number, lng: number): Promise<string | null> {
+  const key = `st:${lat.toFixed(3)},${lng.toFixed(3)}`
+  const hit = geoCache.get(key)
+  if (hit) return hit.name === '' ? null : hit.name
+  let street: string | null = null
+  try {
+    const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`, {
+      headers: { 'user-agent': 'HammerTrack stops (briandillardre@gmail.com)' },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (r.ok) {
+      const j = await r.json()
+      const p = j?.features?.[0]?.properties
+      street = p?.street || (p?.osm_key === 'highway' ? p?.name : null) || null
+    }
+  } catch { /* geocoder down — skip this sample */ }
+  if (geoCache.size >= CACHE_CAP) geoCache.clear()
+  geoCache.set(key, { name: street ?? '', kind: 'other' })
+  return street
+}
+
 /** Company zones win over geocoding; off-site stops classify via OSM,
  *  bounded by a geocode budget per call. */
 export async function classifyStops(

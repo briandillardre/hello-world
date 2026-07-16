@@ -8,6 +8,8 @@ import type { AboardTool } from '@/lib/tools-resolve'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
+import { deriveLiveStatus } from '@/lib/live-status'
+import { LiveStatusBadge } from '@/components/assets/LiveStatus'
 import { Badge } from '@/components/ui/badge'
 import { MapSheet } from './MapSheet'
 
@@ -132,6 +134,17 @@ function useAssetStats(assetId: string, enabled: boolean): StatsPayload | null {
   return stats
 }
 
+/** A stop as the map needs it — position + label for the numbered pins. */
+export interface PanelStop {
+  lat: number
+  lng: number
+  fromMs: number
+  toMs: number
+  minutes: number
+  name: string
+  kind: PoiKind
+}
+
 interface AssetPanelProps {
   asset: AssetWithLocation
   gateway?: { name: string; lastSeen: string }
@@ -142,10 +155,14 @@ interface AssetPanelProps {
   /** Isolate mode: the map shows only this asset (dot + trails). */
   isolated?: boolean
   onToggleIsolate?: () => void
+  /** The Stops card publishes its stops here so the map can pin them. */
+  onStops?: (stops: PanelStop[]) => void
+  /** Tap a stop row → the map flies there. */
+  onFocusStop?: (lat: number, lng: number) => void
   onClose: () => void
 }
 
-export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onClose }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -156,7 +173,7 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} />
     </MapSheet>
   )
 }
@@ -180,6 +197,8 @@ function AssetDetails({
   onPick,
   isolated,
   onToggleIsolate,
+  onStops,
+  onFocusStop,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
@@ -189,11 +208,25 @@ function AssetDetails({
   onPick?: (assetId: string) => void
   isolated: boolean
   onToggleIsolate?: () => void
+  onStops?: (stops: PanelStop[]) => void
+  onFocusStop?: (lat: number, lng: number) => void
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
   const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
   // Range mileage table only makes sense for assets that actually move.
   const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment')
+
+  // Current status — moving / idling / parked / no-signal — from the latest
+  // fix, engine voltage, and last-moved time. Same deriver as the asset page.
+  const showStatus = asset.type === 'vehicle' || asset.type === 'equipment'
+  const enginePower = asset.type === 'vehicle' ? vehiclePower(loc?.raw) : { engineOn: null as boolean | null }
+  const liveStatus = deriveLiveStatus({
+    speedMph: loc?.speed ?? null,
+    lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
+    engineOn: enginePower.engineOn,
+    lastMovedMs: stats?.lastMovedIso ? Date.parse(stats.lastMovedIso) : null,
+  })
+  const idleTodayMin = stats?.ranges.find((r) => r.key === 'today')?.idleMin ?? null
 
   // Compact isolate toggle — sits beside the photo (or the location block) so
   // it's the first thing in reach, not buried in the stat grid.
@@ -222,6 +255,9 @@ function AssetDetails({
             className="w-24 h-24 object-cover rounded-xl border border-navy-800 flex-none"
           />
           <div className="flex-1 min-w-0 space-y-1.5">
+            {showStatus && (
+              <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
+            )}
             {(place || poi) && (
               <div className="flex items-start gap-1.5">
                 <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
@@ -231,22 +267,19 @@ function AssetDetails({
                 </div>
               </div>
             )}
-            {loc?.timestamp && (
+            {!showStatus && loc?.timestamp && (
               <p className="flex items-center gap-1 text-[11px] text-faint">
                 <Clock className="h-3 w-3 flex-none" /> {formatRelativeTime(loc.timestamp)}
               </p>
             )}
-            {loc?.speed != null && loc.speed > 2 ? (
-              <p className="flex items-center gap-1 text-[12px] font-semibold text-amber">
-                <Zap className="h-3.5 w-3.5 flex-none" /> {loc.speed} mph
-              </p>
-            ) : loc?.battery != null ? (
-              <p className="flex items-center gap-1 text-[12px] text-muted">
-                <Battery className={`h-3.5 w-3.5 flex-none ${BATTERY_COLOR(loc.battery)}`} /> {loc.battery}%
-              </p>
-            ) : null}
             {isolateBtn && <div className="pt-0.5">{isolateBtn}</div>}
           </div>
+        </div>
+      )}
+      {/* No photo: still lead with the live status for vehicles/equipment. */}
+      {!asset.photo_url && showStatus && (
+        <div className="bg-navy-800 rounded-lg px-3 py-2.5">
+          <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} />
         </div>
       )}
       {asset.type === 'tool' && gateway && (
@@ -259,45 +292,58 @@ function AssetDetails({
           </div>
         </div>
       )}
-      {/* On board — every Bluetooth-tagged tool this truck/machine is carrying.
-          One glance answers "is the laser level still in the truck?"; a tap
-          jumps to that tool. Big touch rows — this gets used in gloves. */}
-      {(asset.type === 'vehicle' || asset.type === 'equipment') && (aboard?.length ?? 0) > 0 && (
-        <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg overflow-hidden">
-          <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-            <Wrench className="h-4 w-4 text-[#a78bfa] flex-none" />
-            <span className="font-display font-bold text-[13px] text-[#c4b5fd]">
-              On board · {aboard!.length} tool{aboard!.length === 1 ? '' : 's'}
-            </span>
+      {/* On board — BLE tools this truck is carrying. A gateway re-reports a
+          tag every few minutes, so we split CONFIRMED aboard (fresh sighting)
+          from tools only "last seen" here — a day-old ping doesn't mean the
+          tag is still in the truck (it might be in a no-tracker vehicle, or
+          left on a job). */}
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && (aboard?.length ?? 0) > 0 && (() => {
+        const fresh = aboard!.filter((t) => t.fresh)
+        const stale = aboard!.filter((t) => !t.fresh)
+        const Row = (t: AboardTool, live: boolean) => {
+          const sig = signalWord(t.rssi)
+          return (
+            <button key={t.id} onClick={() => onPick?.(t.id)}
+              className={'w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ' + (live ? 'hover:bg-[#a78bfa]/10 active:bg-[#a78bfa]/15' : 'hover:bg-navy-700/40 opacity-80')}>
+              <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: live ? (t.color ?? '#a78bfa') : '#64748b' }} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13.5px] font-semibold text-ink truncate">{t.name}</span>
+                <span className="block text-[11px] text-faint">
+                  {live && sig.word && <><span className={sig.cls}>signal {sig.word}</span> · </>}
+                  {t.battery != null && <span className={BATTERY_COLOR(t.battery)}>🔋{t.battery}% · </span>}
+                  {live ? `seen ${formatRelativeTime(t.lastSeen)}` : `last seen ${formatRelativeTime(t.lastSeen)}`}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-faint flex-none" />
+            </button>
+          )
+        }
+        return (
+          <div className="space-y-2">
+            {fresh.length > 0 && (
+              <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/30 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+                  <Wrench className="h-4 w-4 text-[#a78bfa] flex-none" />
+                  <span className="font-display font-bold text-[13px] text-[#c4b5fd]">On board · {fresh.length} tool{fresh.length === 1 ? '' : 's'}</span>
+                  <span className="ml-auto flex items-center gap-1 text-[10px] font-mono text-[#34d399]"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-blink" />LIVE</span>
+                </div>
+                <div className="pb-1">{fresh.map((t) => Row(t, true))}</div>
+              </div>
+            )}
+            {stale.length > 0 && (
+              <div className="bg-navy-800/60 border border-navy-700 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+                  <Wrench className="h-4 w-4 text-faint flex-none" />
+                  <span className="font-display font-bold text-[12.5px] text-muted">Last seen here · {stale.length} tool{stale.length === 1 ? '' : 's'}</span>
+                  <span className="ml-auto text-[10px] font-mono text-faint">not confirmed aboard</span>
+                </div>
+                <div className="pb-1">{stale.map((t) => Row(t, false))}</div>
+                <p className="px-3 pb-2 text-[10.5px] text-faint">No recent Bluetooth ping — these may have moved to another vehicle or been left behind.</p>
+              </div>
+            )}
           </div>
-          <div className="pb-1">
-            {aboard!.map((t) => {
-              const sig = signalWord(t.rssi)
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => onPick?.(t.id)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#a78bfa]/10 active:bg-[#a78bfa]/15 transition-colors"
-                >
-                  <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: t.color ?? '#a78bfa' }} />
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[13.5px] font-semibold text-ink truncate">{t.name}</span>
-                    <span className="block text-[11px] text-faint">
-                      {sig.word && <span className={sig.cls}>signal {sig.word}</span>}
-                      {sig.word && ' · '}
-                      {t.battery != null && (
-                        <span className={BATTERY_COLOR(t.battery)}>🔋{t.battery}% · </span>
-                      )}
-                      seen {formatRelativeTime(t.lastSeen)}
-                    </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-faint flex-none" />
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+        )
+      })()}
       {/* Where it IS, up top — city/state, plus the named place when parked
           somewhere recognizable. (The coordinates stay in the footer.) With a
           photo this already rendered beside the thumbnail above. */}
@@ -337,7 +383,9 @@ function AssetDetails({
       </div>
 
       {/* Order: speed/last-seen → stops → activity → engine/specs. */}
-      {(asset.type === 'vehicle' || asset.type === 'equipment') && <StopsCard assetId={asset.id} />}
+      {(asset.type === 'vehicle' || asset.type === 'equipment') && (
+        <StopsCard assetId={asset.id} onStops={onStops} onFocusStop={onFocusStop} />
+      )}
 
       {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
 
@@ -423,24 +471,43 @@ function SpecSheet({ meta, mpg }: { meta: Record<string, unknown>; mpg?: number 
 }
 
 /** Classified stop log: where it stopped, how long, what kind of place —
- *  supplier run vs DMV morning vs two-hour lunch, at a glance. */
-function StopsCard({ assetId }: { assetId: string }) {
+ *  supplier run vs DMV morning vs two-hour lunch, at a glance. Publishes its
+ *  stops to the map (numbered pins) and leads with a plain-English recap of
+ *  the day: miles, drive time, roads taken, places visited. */
+function StopsCard({ assetId, onStops, onFocusStop }: {
+  assetId: string
+  onStops?: (stops: PanelStop[]) => void
+  onFocusStop?: (lat: number, lng: number) => void
+}) {
   const [range, setRange] = useState<'today' | 'yesterday' | '7d'>('today')
-  const [data, setData] = useState<{ stops: { fromMs: number; toMs: number; minutes: number; name: string; kind: PoiKind }[]; tz: string } | null>(null)
+  const [data, setData] = useState<{ stops: PanelStop[]; tz: string } | null>(null)
+  const [recap, setRecap] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   useEffect(() => {
     if (isMock) return
     setLoading(true)
+    setRecap(null)
     const ctrl = new AbortController()
     fetch(`/api/stops?asset=${assetId}&range=${range}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j) setData(j); setLoading(false) })
       .catch(() => setLoading(false))
+    fetch(`/api/day-recap?asset=${assetId}&range=${range}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.text) setRecap(j.text) })
+      .catch(() => { /* recap is a bonus — the stops list still renders */ })
     return () => ctrl.abort()
   }, [assetId, range])
+  // The map mirrors whatever this card is showing; clear the pins on close.
+  useEffect(() => {
+    onStops?.(data?.stops ?? [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data])
+  useEffect(() => () => { onStops?.([]) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   if (isMock) return null
   const fmtT = (ms: number) =>
     new Intl.DateTimeFormat('en-US', { timeZone: data?.tz, hour: 'numeric', minute: '2-digit' }).format(new Date(ms))
+  const n = data?.stops.length ?? 0
   return (
     <div className="bg-navy-800 rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
@@ -454,26 +521,42 @@ function StopsCard({ assetId }: { assetId: string }) {
           ))}
         </div>
       </div>
+      {recap && (
+        <p className="mb-2 text-[12px] leading-snug text-muted border-l-2 border-amber/50 pl-2">
+          {recap}
+        </p>
+      )}
       {loading && !data ? (
         <p className="text-xs text-faint">Reading the day…</p>
-      ) : !data?.stops.length ? (
+      ) : !n ? (
         <p className="text-xs text-faint">No stops of 5+ minutes in this range.</p>
       ) : (
+        <>
         <ul className="space-y-1.5">
-          {data.stops.map((st, i) => {
+          {data!.stops.map((st, i) => {
             const meta = POI_KIND_META[st.kind] ?? POI_KIND_META.other
             return (
-              <li key={i} className="flex items-center gap-2 text-xs min-w-0">
-                <span className="font-mono text-faint tabular-nums flex-none">{fmtT(st.fromMs)}</span>
-                <span className="text-ink font-medium truncate flex-1">{st.name}</span>
-                <span className={'flex-none rounded-full border px-1.5 py-px text-[9.5px] font-semibold ' + meta.cls}>{meta.label}</span>
-                <span className="font-mono text-muted tabular-nums flex-none">
-                  {st.minutes >= 60 ? `${Math.floor(st.minutes / 60)}h ${String(st.minutes % 60).padStart(2, '0')}m` : `${st.minutes}m`}
-                </span>
+              <li key={i}>
+                <button
+                  onClick={() => onFocusStop?.(st.lat, st.lng)}
+                  className="flex items-center gap-2 text-xs min-w-0 w-full text-left rounded-md -mx-1 px-1 py-0.5 hover:bg-navy-700/60"
+                  title="Show on map"
+                >
+                  {/* Same number as the pin on the map (1 = first stop of the day). */}
+                  <span className="flex-none grid place-items-center w-[18px] h-[18px] rounded-full bg-amber/20 text-amber font-mono text-[9.5px] font-bold tabular-nums">{n - i}</span>
+                  <span className="font-mono text-faint tabular-nums flex-none">{fmtT(st.fromMs)}</span>
+                  <span className="text-ink font-medium truncate flex-1">{st.name}</span>
+                  <span className={'flex-none rounded-full border px-1.5 py-px text-[9.5px] font-semibold ' + meta.cls}>{meta.label}</span>
+                  <span className="font-mono text-muted tabular-nums flex-none">
+                    {st.minutes >= 60 ? `${Math.floor(st.minutes / 60)}h ${String(st.minutes % 60).padStart(2, '0')}m` : `${st.minutes}m`}
+                  </span>
+                </button>
               </li>
             )
           })}
         </ul>
+        <p className="mt-1.5 text-[10px] text-faint">Tap a stop to see it on the map.</p>
+        </>
       )}
     </div>
   )

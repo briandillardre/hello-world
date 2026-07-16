@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { Play, Pause, Gauge, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { SpeedControl } from '@/components/ui/speed-control'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane, Globe2 } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -13,7 +14,7 @@ const CAMERA_MODES: { key: FollowMode; label: string; icon: typeof Orbit; note: 
 ]
 import {
   type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
-  speedsForWindow, formatSpeed, customScrubLabel, customTickLabel, windowTickLabel,
+  speedsForWindow, customScrubLabel, customTickLabel, windowTickLabel,
 } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { money } from '@/lib/projects'
@@ -82,6 +83,11 @@ interface TimelinePlaybackProps {
   /** "360" — slow continuous rotation of the current view (disabled while following). */
   spinning?: boolean
   onSpin?: () => void
+  /** Earth spin — the planet's true rotation (sidereal rate), 1×/60×/3600×. */
+  earthSpin?: boolean
+  onEarthSpin?: () => void
+  earthRate?: 1 | 60 | 3600
+  onEarthRate?: (r: 1 | 60 | 3600) => void
   /** Flyover — the slow-plane tour over every asset; speed = 0.5 | 1 | 2. */
   flying?: boolean
   onFlyover?: () => void
@@ -93,6 +99,10 @@ interface TimelinePlaybackProps {
   /** IANA timezone for clock/date labels (kiosk walls + shared replays render
    *  somewhere else — labels must still read in the crew's local time). */
   tz?: string
+  /** Speed/time/miles readout for the followed or selected asset — docked in
+   *  this bar (live: current fix + miles today; replay: values at the scrub
+   *  position) so it never floats over the map. */
+  hud?: { name: string; mph: number | null; clock: string; milesIn: number } | null
   /** Command Center wall display: starts minimized as a pill above the
    *  ticker; expandable/collapsible so the map stays the star. */
   kiosk?: boolean
@@ -104,7 +114,8 @@ export function TimelinePlayback({
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
   spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed,
-  alertMarks = [], tz, kiosk = false,
+  earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate,
+  alertMarks = [], tz, kiosk = false, hud = null,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -215,6 +226,12 @@ export function TimelinePlayback({
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
         {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
+        {/* Keep the asset readout visible even collapsed. */}
+        {hud && (
+          <span className="text-ink tabular-nums whitespace-nowrap">
+            {[hud.mph != null ? `${Math.round(hud.mph)} mph` : null, `${hud.milesIn.toFixed(1)} mi`].filter(Boolean).join(' · ')}
+          </span>
+        )}
         <ChevronUp className="h-3.5 w-3.5" />
       </button>
     )
@@ -487,6 +504,37 @@ export function TimelinePlayback({
             <span className="hidden sm:inline">360</span>
           </button>
         )}
+        {/* Earth spin — the planet's real rotation (time-lapse chips while on) */}
+        {onEarthSpin && !followed && (
+          <span className="flex-none flex items-center gap-0.5">
+            <button
+              onClick={onEarthSpin}
+              title={earthSpin ? 'Stop the Earth spin' : "Earth spin — the globe turns at the planet's real rate (15°/hour). Zoom out to the globe, pick ×60/×3600 to time-lapse."}
+              className={
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+                (earthSpin ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+              }
+            >
+              <Globe2 className={'h-3.5 w-3.5' + (earthSpin ? ' animate-spin [animation-duration:8s]' : '')} />
+              <span className="hidden sm:inline">Earth</span>
+            </button>
+            {earthSpin && onEarthRate && (
+              <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+                {([[1, '1× real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => onEarthRate(v)}
+                    title={v === 1 ? 'True speed — one turn per day, like watching from orbit' : v === 60 ? 'One turn ≈ 24 minutes' : 'One turn ≈ 24 seconds'}
+                    className={
+                      'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                      (earthRate === v ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+                    }
+                  >{label}</button>
+                ))}
+              </span>
+            )}
+          </span>
+        )}
         {/* Flyover — the slow-plane pass over every asset; loops until stopped */}
         {onFlyover && !followed && (
           <span className="flex-none flex items-center gap-0.5">
@@ -557,6 +605,19 @@ export function TimelinePlayback({
         )}
       </div>
 
+      {/* Asset readout — speed / clock / miles for the followed or selected
+          asset, docked in the bar so it never covers the map. Same row, same
+          look, live and replay. */}
+      {hud && (
+        <div className="flex items-center gap-2.5 px-4 pt-1.5 -mb-0.5 font-mono text-[11.5px] tabular-nums min-w-0 flex-nowrap overflow-hidden">
+          <Navigation className="h-3 w-3 text-amber flex-none" />
+          <span className="text-ink font-semibold truncate min-w-0 max-w-[150px]">{hud.name}</span>
+          <span className="text-amber font-bold flex-none whitespace-nowrap">{hud.mph != null ? `${Math.round(hud.mph)} mph` : '— mph'}</span>
+          <span className="text-teal flex-none whitespace-nowrap">{hud.clock}</span>
+          <span className="text-muted flex-none whitespace-nowrap">{hud.milesIn.toFixed(1)} mi</span>
+        </div>
+      )}
+
       {live ? (
         /* phones only — desktop shows the status inline in the pill row */
         <div className="sm:hidden flex items-center gap-2 px-4 pb-2 min-w-0 flex-nowrap overflow-hidden">
@@ -618,16 +679,7 @@ export function TimelinePlayback({
             </div>
           </div>
 
-          <div className="flex-none flex items-center gap-1.5 text-faint">
-            <Gauge className="h-4 w-4" />
-            <select
-              value={speed}
-              onChange={(e) => onSpeed(Number(e.target.value))}
-              className="bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs font-mono px-2 py-1.5 outline-none focus:border-amber"
-            >
-              {speeds.map((s) => <option key={s} value={s}>{formatSpeed(s)}</option>)}
-            </select>
-          </div>
+          <SpeedControl speeds={speeds} value={speed} onChange={onSpeed} />
         </div>
         </>
       )}

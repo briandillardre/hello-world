@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
         gsKt: typeof a.gs === 'number' ? Math.round(a.gs) : null,
         track: typeof a.track === 'number' ? Math.round(a.track) : null,
       })
-      if (planes.length >= 400) break
+      if (planes.length >= 1200) break
     }
     // Keep the per-center cache from growing unbounded across a long session.
     if (cache.size > 200) cache.clear()

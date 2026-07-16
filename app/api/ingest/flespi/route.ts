@@ -170,19 +170,30 @@ export async function POST(request: NextRequest) {
         if (holderFresh && !outshouts) continue // current holder keeps it
       }
 
-      // tag_battery column arrives with migration 022 — retry without it so
-      // ingestion never breaks on a not-yet-migrated database.
-      const assocRow: Record<string, unknown> = {
+      // Newer columns (tag_battery 022; last_lat/lng + attached_since 033)
+      // degrade gracefully — retry with the legacy row so ingestion never
+      // breaks on a not-yet-migrated database.
+      const legacyRow: Record<string, unknown> = {
         company_id: asset.company_id,
         tool_asset_id: toolId,
         gateway_asset_id: asset.id,
         rssi: beacon.rssi,
         last_seen: r.timestamp,
       }
-      const withBattery = beacon.battery != null ? { ...assocRow, tag_battery: beacon.battery } : assocRow
-      const { error: assocErr } = await supabase.from('tool_associations').upsert(withBattery, { onConflict: 'tool_asset_id' })
-      if (assocErr && beacon.battery != null) {
-        await supabase.from('tool_associations').upsert(assocRow, { onConflict: 'tool_asset_id' })
+      const assocRow: Record<string, unknown> = {
+        ...legacyRow,
+        // The gateway's fix at THIS sighting = the tag's true last-seen spot.
+        // A stale tag renders here, not wherever the carrier drove afterwards.
+        last_lat: r.lat,
+        last_lng: r.lng,
+        // New ride (or first sighting) starts the dwell clock; same holder
+        // keeps its original attach time (column omitted → value preserved).
+        ...(!cur || cur.gateway_asset_id !== asset.id ? { attached_since: r.timestamp } : {}),
+        ...(beacon.battery != null ? { tag_battery: beacon.battery } : {}),
+      }
+      const { error: assocErr } = await supabase.from('tool_associations').upsert(assocRow, { onConflict: 'tool_asset_id' })
+      if (assocErr) {
+        await supabase.from('tool_associations').upsert(legacyRow, { onConflict: 'tool_asset_id' })
       }
 
       // Pairing history (migration 021). tool_associations only holds the

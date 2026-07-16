@@ -208,6 +208,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
   const [findOpen, setFindOpen] = useState(false)
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
+  // Two-tap confirm for deleting a personal preset — first × arms it, second removes.
+  const [confirmDelId, setConfirmDelId] = useState<string | null>(null)
   const activeView = views?.find((v) => v.id === activeViewId) ?? null
   const submitSaveView = (e: React.FormEvent) => {
     e.preventDefault()
@@ -702,21 +704,35 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             </form>
           )}
           <div className="flex flex-wrap gap-1 px-1">
-            {views.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => onApplyView(v.id)}
-                className={
-                  'flex items-center gap-1 px-2 py-1 rounded-md text-[10.5px] font-semibold transition-colors border ' +
-                  (activeViewId === v.id
-                    ? 'bg-teal/20 text-teal border-teal/40'
-                    : 'text-faint border-navy-700 hover:text-ink hover:border-navy-600')
-                }
-              >
-                {defaultViewId === v.id && <Star className="h-2.5 w-2.5 fill-current text-amber" />}
-                {v.name}
-              </button>
-            ))}
+            {views.map((v) => {
+              const active = activeViewId === v.id
+              return (
+                <span
+                  key={v.id}
+                  className={
+                    'group inline-flex items-center rounded-md text-[10.5px] font-semibold transition-colors border ' +
+                    (active ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink hover:border-navy-600')
+                  }
+                >
+                  <button onClick={() => onApplyView(v.id)} className="flex items-center gap-1 pl-2 py-1 pr-1.5">
+                    {defaultViewId === v.id && <Star className="h-2.5 w-2.5 fill-current text-amber" />}
+                    {v.name}
+                  </button>
+                  {/* Personal presets get an inline × — presets ship with the
+                      app and can't be removed. */}
+                  {!v.preset && onDeleteView && (
+                    <button
+                      onClick={() => { if (confirmDelId === v.id) { onDeleteView(v.id); setConfirmDelId(null) } else setConfirmDelId(v.id) }}
+                      onBlur={() => setConfirmDelId((c) => (c === v.id ? null : c))}
+                      title={confirmDelId === v.id ? 'Tap again to delete' : `Delete "${v.name}"`}
+                      className={'grid place-items-center h-full pr-1.5 pl-0.5 ' + (confirmDelId === v.id ? 'text-alert' : 'text-faint/60 hover:text-alert')}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              )
+            })}
           </div>
           {activeView && (
             <div className="flex items-center gap-2 mt-1.5 px-1">
@@ -732,11 +748,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
                   {defaultViewId === activeView.id ? 'Opens with this view' : 'Use on open'}
                 </button>
               )}
-              {!activeView.preset && onDeleteView && (
-                <button onClick={() => onDeleteView(activeView.id)} className="ml-auto flex items-center gap-1 text-[10.5px] text-faint hover:text-alert">
-                  <RotateCcw className="h-3 w-3 rotate-90" /> Delete
-                </button>
-              )}
+              {!activeView.preset && <span className="ml-auto text-[10px] text-faint/70">× on a chip to delete</span>}
             </div>
           )}
           </div>

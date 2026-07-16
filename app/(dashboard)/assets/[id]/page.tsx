@@ -19,6 +19,9 @@ import { segmentTrips, type Trip } from '@/lib/trips'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { vehiclePower } from '@/lib/vehicle-power'
+import { deriveLiveStatus } from '@/lib/live-status'
+import { LiveStatusBadge } from '@/components/assets/LiveStatus'
+import { FolderLink } from '@/components/ui/FolderLink'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -65,26 +68,59 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'cost_basis'].includes(k))
 
   // Trip log: segment this asset's last 7 days of pings into drives, with
-  // zone names anchoring each end ("Yard → Riverfront Tower").
+  // zone names anchoring each end ("Yard → Riverfront Tower"). Also drives the
+  // live-status badge (today's idle + last-moved) up top.
   const isMockEnv = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
   const TRIP_DAYS = 7
   let trips: Trip[] | null = null
+  let todayStats: { idleMin: number; movingMin: number } | null = null
+  let lastMovedMs: number | null = null
   if (!isMockEnv && (asset.type === 'vehicle' || asset.type === 'equipment')) {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
-    const [fences, { data: rows }] = await Promise.all([
+    // Page NEWEST-first so today survives the cap — a bare ascending .limit()
+    // returned the OLDEST rows and cut today/yesterday off the trip log.
+    const PAGE = 1000, CAP = 30_000
+    const from = new Date(Date.now() - TRIP_DAYS * 86_400_000).toISOString()
+    const [fences, rows] = await Promise.all([
       getGeofences(companyId),
-      supabase
-        .from('asset_locations')
-        .select('lat, lng, speed, timestamp')
-        .eq('asset_id', asset.id)
-        .gte('timestamp', new Date(Date.now() - TRIP_DAYS * 86_400_000).toISOString())
-        .order('timestamp', { ascending: true })
-        .limit(30_000),
+      (async () => {
+        const acc: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+        while (acc.length < CAP) {
+          const { data } = await supabase
+            .from('asset_locations')
+            .select('lat, lng, speed, timestamp')
+            .eq('asset_id', asset.id)
+            .gte('timestamp', from)
+            .order('timestamp', { ascending: false })
+            .range(acc.length, acc.length + PAGE - 1)
+          if (!data || data.length === 0) break
+          acc.push(...data)
+          if (data.length < PAGE) break
+        }
+        return acc.reverse() // chronological
+      })(),
     ])
-    trips = segmentTrips(rows ?? [], fences)
+    trips = segmentTrips(rows, fences)
+    // Today's idle/moving + newest moving fix — for the live-status badge.
+    const { computeRangeStats } = await import('@/lib/asset-stats')
+    const { rangeWindow } = await import('@/lib/dates')
+    const pts = rows.map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp) })).filter((p) => Number.isFinite(p.ms))
+    const w = rangeWindow(tz, 'today', {})
+    const s = computeRangeStats(pts, w.from, w.to, pts[0]?.ms ?? null)
+    todayStats = { idleMin: s.idleMin, movingMin: s.movingMin }
+    for (let i = pts.length - 1; i >= 0; i--) { if ((pts[i].speed ?? 0) >= 2) { lastMovedMs = pts[i].ms; break } }
   }
+
+  // Current status badge from the latest fix (+ engine voltage for vehicles).
+  const enginePower = asset.type === 'vehicle' ? vehiclePower(loc?.raw) : { engineOn: null as boolean | null }
+  const liveStatus = deriveLiveStatus({
+    speedMph: loc?.speed ?? null,
+    lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
+    engineOn: enginePower.engineOn,
+    lastMovedMs,
+  })
 
   // Diagnostics "all signals seen" — the FULL set of fields this tracker has
   // emitted over the last week, each with its most-recent value + when. An
@@ -147,7 +183,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
       </div>
 
       <div className="p-4 max-w-3xl space-y-6">
-        {/* photo + identity */}
+        {/* main photo + current status — the "what's it doing now" up top */}
         <section className="grid sm:grid-cols-[200px_1fr] gap-4">
           {asset.photo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -160,31 +196,24 @@ export default async function AssetDetailPage({ params }: { params: { id: string
               </div>
             </div>
           )}
-          <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
-            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker ID" value={asset.tracker_id ?? '—'} />
-            <Field icon={<Hash className="h-4 w-4 text-faint" />} label="Serial number" value={serial ?? '— (add later)'} />
-            {detailRows.map(([k, v]) => (
-              <Field key={k} icon={<Tag className="h-4 w-4 text-faint" />} label={k.replace(/_/g, ' ')} value={String(v)} />
-            ))}
+          <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 flex flex-col justify-center gap-3">
+            <LiveStatusBadge
+              status={liveStatus}
+              idleTodayMin={todayStats?.idleMin}
+              lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
+            />
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />
+              <MiniStat label="Battery" value={loc?.battery != null ? `${loc.battery}` : '—'} unit="%" />
+              <MiniStat label="Drove today" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />
+            </div>
+            {loc && (
+              <p className="text-[11px] text-faint text-center">
+                <MapPin className="inline h-3 w-3 mr-0.5" />{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
+              </p>
+            )}
           </div>
         </section>
-
-        {/* photo gallery — truck shot, GVWR sticker, VIN plate, engine, issues */}
-        {assetPhotos.length > 0 && (
-          <section>
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Photos</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {assetPhotos.map((p, i) => (
-                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className={'relative rounded-lg border overflow-hidden group ' + (i === 0 ? 'border-amber/70' : 'border-navy-800')}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'} className="h-28 w-full object-cover transition-transform group-hover:scale-105" />
-                  {i === 0 && <span className="absolute top-1 left-1 rounded bg-amber text-[#1a1100] text-[9px] font-bold px-1.5 py-0.5">★ THUMBNAIL</span>}
-                  <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'}</span>
-                </a>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* cost structure — dollar figures are permission-gated */}
         {perms.canViewCosts && (
@@ -310,7 +339,50 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             </div>
           )}
         </section>
+
+        {/* photo gallery — everything past the main shot lives down here:
+            GVWR sticker, VIN plate, engine, damage photos. */}
+        {assetPhotos.length > 1 && (
+          <section>
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Photos</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {assetPhotos.slice(1).map((p) => (
+                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="relative rounded-lg border border-navy-800 overflow-hidden group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={p.url} alt={PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'} className="h-28 w-full object-cover transition-transform group-hover:scale-105" />
+                  <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'}</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* document folder — link to Dropbox/Drive/etc. */}
+        <FolderLink kind="asset" id={asset.id} initial={asset.folder_url ?? null} />
+
+        {/* identity / hardware — reference info, kept at the bottom */}
+        <section>
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Identity &amp; hardware</h2>
+          <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
+            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker ID" value={asset.tracker_id ?? '—'} />
+            <Field icon={<Hash className="h-4 w-4 text-faint" />} label="Serial number" value={serial ?? '— (add later)'} />
+            {detailRows.map(([k, v]) => (
+              <Field key={k} icon={<Tag className="h-4 w-4 text-faint" />} label={k.replace(/_/g, ' ')} value={String(v)} />
+            ))}
+          </div>
+        </section>
       </div>
+    </div>
+  )
+}
+
+function MiniStat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div className="rounded-lg bg-navy-800/70 py-1.5">
+      <p className="font-display font-bold text-ink text-[15px] leading-none tabular-nums">
+        {value}{unit && value !== '—' && <span className="text-[10px] text-faint font-normal ml-0.5">{unit}</span>}
+      </p>
+      <p className="text-[10px] text-faint mt-0.5">{label}</p>
     </div>
   )
 }

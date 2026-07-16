@@ -30,7 +30,10 @@ import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EAR
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
-import { AssetPanel } from './AssetPanel'
+import { AssetPanel, type PanelStop } from './AssetPanel'
+import { MeasureTool } from './MeasureTool'
+import { Ruler } from 'lucide-react'
+import { POI_KIND_COLOR, POI_KIND_META } from '@/lib/poi'
 import { MapSearch, type SearchItem } from './MapSearch'
 import { MapTour } from './MapTour'
 import { formatRelativeTime } from '@/lib/utils'
@@ -291,6 +294,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [selectedAsset, isolateId])
   const [selectedZone, setSelectedZone] = useState<Geofence | null>(null)
   const [selectedDevice, setSelectedDevice] = useState<SiteDevice | null>(null)
+  // Stops of the selected asset (published by the panel's Stops card) —
+  // rendered as numbered pins so "where did it stop today" reads off the map.
+  const [panelStops, setPanelStops] = useState<PanelStop[]>([])
+  const panelStopMarkers = useRef<maplibregl.Marker[]>([])
+  useEffect(() => {
+    panelStopMarkers.current.forEach((mk) => mk.remove())
+    panelStopMarkers.current = []
+    const m = map.current
+    if (!m || !panelStops.length) return
+    const n = panelStops.length // stops arrive newest-first; pin 1 = first stop of the day
+    panelStops.forEach((st, i) => {
+      const color = POI_KIND_COLOR[st.kind] ?? POI_KIND_COLOR.other
+      const el = document.createElement('div')
+      el.style.cssText = `width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:2px solid #06101c;box-shadow:0 2px 8px rgba(0,0,0,.55);display:grid;place-items:center;cursor:pointer`
+      const num = document.createElement('span')
+      num.textContent = String(n - i)
+      num.style.cssText = 'transform:rotate(45deg);font:700 11px/1 ui-monospace,SFMono-Regular,monospace;color:#06101c'
+      el.appendChild(num)
+      const dur = st.minutes >= 60 ? `${Math.floor(st.minutes / 60)}h ${String(st.minutes % 60).padStart(2, '0')}m` : `${st.minutes}m`
+      const when = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(new Date(st.fromMs))
+      const popup = new maplibregl.Popup({ closeButton: false, maxWidth: '240px', offset: 20 }).setHTML(
+        `<div style="padding:8px 12px"><div style="font-weight:700;font-size:12.5px">${st.name}</div>` +
+        `<div style="font-size:11px;color:#9fb6cc">${when} · ${dur} · ${(POI_KIND_META[st.kind] ?? POI_KIND_META.other).label}</div></div>`
+      )
+      panelStopMarkers.current.push(
+        new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([st.lng, st.lat]).setPopup(popup).addTo(m)
+      )
+    })
+  }, [panelStops, mapReady, tz])
   const [filter, setFilter] = useState<Set<AssetType>>(new Set<AssetType>(['vehicle', 'equipment', 'personnel', 'tool']))
   // Last-session snapshot (per surface: map vs command) — the screen comes
   // back exactly how you left it: basemap, layers, 3D, trail mode, camera.
@@ -370,7 +402,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const handleFollowRef = useRef<(id: string | null) => void>(() => {})
   // Follow HUD: replay telemetry projected while the camera rides the asset —
   // speed at the scrub position, time of day, miles covered so far.
-  const [followHud, setFollowHud] = useState<{ mph: number | null; clock: string; milesIn: number } | null>(null)
+  const [followHud, setFollowHud] = useState<{ name: string; mph: number | null; clock: string; milesIn: number } | null>(null)
   const followModeRef = useRef<FollowMode>('orbit')
   const bearingRef = useRef(0)   // smoothed camera bearing
   const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
@@ -386,6 +418,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [threeD, setThreeD] = useState(lastState.threeD ?? false)
   const threeDRef = useRef(threeD)
   threeDRef.current = threeD
+  // Measure + takeoff tool overlay (off by default). Ref so the map's
+  // click-to-select handlers can bail while measuring (clicks add vertices).
+  const [measureOn, setMeasureOn] = useState(false)
+  const measureOnRef = useRef(false)
+  measureOnRef.current = measureOn
 
   // On-demand full-resolution history for the selected window. The shipped
   // snapshot is capped + newest-biased (older days were getting silently
@@ -506,8 +543,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const geofencesRef = useRef(geofences)
   // gateway id → # tools riding (fed to buildGeoJSON for the corner badge)
   const toolCounts = useMemo(() => {
+    // The "2 tools" badge counts only SETTLED tags — fresh Bluetooth sighting
+    // AND riding this gateway ≥10 min. Stale tags (left elsewhere) and
+    // drive-by pings don't tag the truck.
     const out: Record<string, number> = {}
-    for (const [gw, list] of Object.entries(aboard ?? {})) out[gw] = list.length
+    for (const [gw, list] of Object.entries(aboard ?? {})) {
+      const live = list.filter((t) => t.settled).length
+      if (live > 0) out[gw] = live
+    }
     return out
   }, [aboard])
   const toolCountsRef = useRef(toolCounts)
@@ -540,6 +583,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
     m.fitBounds(bounds, { padding: 60, maxZoom: 16, duration: 600 })
   }, [])
+
+  // "Double-click the scroll wheel to zoom to everything" — a double-click of
+  // the MIDDLE mouse button (the wheel is also a button) fits the whole fleet,
+  // so you can never get lost. Uses mousedown/button===1 (dblclick doesn't fire
+  // for the middle button) and blocks the default middle-click autoscroll.
+  const midClick = useRef(0)
+  useEffect(() => {
+    const el = mapContainer.current
+    if (!el || !mapReady) return
+    const onDown = (e: MouseEvent) => {
+      if (e.button !== 1) return // middle button only
+      e.preventDefault() // no autoscroll cursor
+      const now = e.timeStamp
+      if (now - midClick.current < 500) { midClick.current = 0; fitAll() }
+      else midClick.current = now
+    }
+    // auxclick blocks the browser's middle-click-to-open-in-new-tab side effect.
+    const onAux = (e: MouseEvent) => { if (e.button === 1) e.preventDefault() }
+    el.addEventListener('mousedown', onDown)
+    el.addEventListener('auxclick', onAux)
+    return () => { el.removeEventListener('mousedown', onDown); el.removeEventListener('auxclick', onAux) }
+  }, [mapReady, fitAll])
 
   // ── Basemap + weather layer state ─────────────────────────────────────────
   // Default to satellite — real aerial imagery reads as "the actual jobsite".
@@ -810,6 +875,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           'fill-extrusion-opacity': 0.85,
         },
       })
+
+      // DEM terrain (free AWS "terrarium" tiles, no key). Added as a source now;
+      // setTerrain is toggled with 3D so the flat map stays flat by default.
+      // This also powers the measure tool's live elevation readout.
+      if (!m.getSource('dem')) {
+        m.addSource('dem', {
+          type: 'raster-dem',
+          tiles: ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256,
+          maxzoom: 14,
+        })
+      }
 
       // Geofences (drawn under everything)
       m.addSource('geofences', {
@@ -1122,6 +1200,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // Click handlers — bind to both the pin and its glow so the whole dot is a
       // hit target (assets always win over the zone underneath).
       const selectAsset = (e: maplibregl.MapLayerMouseEvent) => {
+        if (measureOnRef.current) return // measuring — clicks add vertices, not select
         const props = e.features?.[0]?.properties
         if (!props) return
         const asset = assetsRef.current.find((a) => a.id === props.id)
@@ -1146,6 +1225,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       // Device pin → device sheet
       m.on('click', 'device-bg', (e) => {
+        if (measureOnRef.current) return
         const id = e.features?.[0]?.properties?.id
         const device = SITE_DEVICES.find((d) => d.id === id)
         if (!device) return
@@ -1158,6 +1238,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // timeline). Site/yard zones open from their interior (geofence-fill);
       // boundary zones open ONLY from their border (geofence-hit-line).
       const selectZoneAt = (e: maplibregl.MapLayerMouseEvent) => {
+        if (measureOnRef.current) return // measuring — clicks add vertices
         // Don't hijack clicks landing on/near any asset, cluster, or device — the
         // pin always wins. Query a small box so the whole dot (incl. its glow) is
         // protected, not just the exact pixel.
@@ -1188,6 +1269,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // order); if none of them consumed the tap, search a padded box around
       // the finger and select the nearest pin (live or replay head).
       m.on('click', (e) => {
+        if (measureOnRef.current) return // measuring — clicks add vertices
         const pad = 24
         const box: [maplibregl.PointLike, maplibregl.PointLike] = [
           [e.point.x - pad, e.point.y - pad],
@@ -1676,6 +1758,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     if (!mapReady || !m?.getLayer('buildings-3d')) return
     m.setLayoutProperty('buildings-3d', 'visibility', threeD ? 'visible' : 'none')
+    // Real DEM terrain relief when 3D is on (also enables elevation readout).
+    // Wrapped defensively — a DEM tile hiccup must never blank the map.
+    try {
+      if (threeD && m.getSource('dem')) m.setTerrain({ source: 'dem', exaggeration: 1.3 })
+      else m.setTerrain(null)
+    } catch { /* terrain unsupported / source not ready — ignore */ }
     if (!followIdRef.current) m.easeTo({ pitch: threeD ? 55 : 0, duration: 600 })
   }, [mapReady, threeD])
 
@@ -3062,11 +3150,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     cancelAnimationFrame(spinRaf.current)
     setSpinning(false)
   }, [])
+  const stopEarthSpinRef = useRef<(() => void) | null>(null)
   const handleSpin = useCallback(() => {
     const m = map.current
     if (!m) return
     if (spinningRef.current) { stopSpin(); return }
     stopFlyoverRef.current?.()
+    stopEarthSpinRef.current?.() // one camera driver at a time
     setSpinning(true)
     const DEG_PER_SEC = 360 / 26 // one lap every ~26s
     const start = performance.now()
@@ -3083,6 +3173,48 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     spinRaf.current = requestAnimationFrame(frame)
   }, [stopSpin])
   useEffect(() => () => cancelAnimationFrame(spinRaf.current), [])
+
+  // "Earth spin" — the planet's real rotation, simulated: the camera drifts
+  // west so the globe turns eastward exactly as Earth does — 360° per
+  // sidereal day (23h56m04s ≈ 15°/hr). 1× is the honest satellite view
+  // (glacial by nature); ×60 and ×3600 are time-lapses of the same physics
+  // (one lap ≈ 24 min / 24 s). Best at globe zoom; drag cancels.
+  const [earthSpin, setEarthSpin] = useState(false)
+  const earthSpinRef = useRef(false)
+  earthSpinRef.current = earthSpin
+  const [earthRate, setEarthRate] = useState<1 | 60 | 3600>(60)
+  const earthRateRef = useRef<number>(earthRate)
+  earthRateRef.current = earthRate
+  const earthRaf = useRef(0)
+  const stopEarthSpin = useCallback(() => {
+    cancelAnimationFrame(earthRaf.current)
+    setEarthSpin(false)
+  }, [])
+  stopEarthSpinRef.current = stopEarthSpin
+  const handleEarthSpin = useCallback(() => {
+    const m = map.current
+    if (!m) return
+    if (earthSpinRef.current) { stopEarthSpin(); return }
+    stopFlyoverRef.current?.()
+    stopSpin()
+    setEarthSpin(true)
+    earthSpinRef.current = true
+    const SIDEREAL_DEG_PER_SEC = 360 / 86164.0905
+    let last = performance.now()
+    const frame = (now: number) => {
+      if (!earthSpinRef.current) return
+      if (userGestureRef.current) { setEarthSpin(false); return } // hand on the wheel wins
+      const dt = Math.min(0.1, (now - last) / 1000)
+      last = now
+      const c = m.getCenter()
+      let lng = c.lng - SIDEREAL_DEG_PER_SEC * earthRateRef.current * dt
+      if (lng < -180) lng += 360
+      m.jumpTo({ center: [lng, c.lat] })
+      earthRaf.current = requestAnimationFrame(frame)
+    }
+    earthRaf.current = requestAnimationFrame(frame)
+  }, [stopSpin, stopEarthSpin])
+  useEffect(() => () => cancelAnimationFrame(earthRaf.current), [])
 
   // "Flyover" — the slow-plane pass: visit every located asset in
   // nearest-neighbor order at altitude, bank around each for a few seconds,
@@ -3175,11 +3307,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [mapReady, stopFlyover])
   useEffect(() => () => cancelAnimationFrame(flyRaf.current), [])
 
-  // Toggle cinematic follow. Picking an asset arms a 3D chase: switch to a replay
-  // range if we're live, tilt/zoom the camera up, and play the route from the top.
+  // Speed / time / miles readout — docked in the timeline bar (never floats
+  // over the map). Shows for the followed asset OR, absent a follow, the
+  // selected one; works live (current fix, miles so far today) and in replay
+  // (values at the scrub position).
   useEffect(() => {
-    if (!followId || range === 'live' || !realWindowEff) { setFollowHud(null); return }
-    const tr = tracksEff.find((t) => t.assetId === followId)
+    const target = followId && !followId.startsWith('zone:')
+      ? followId
+      : selectedAsset?.id ?? null
+    if (!target) { setFollowHud(null); return }
+    const tr = tracksEff.find((t) => t.assetId === target)
     if (!tr || tr.points.length < 2) { setFollowHud(null); return }
     // Cumulative miles along the track, once per track change.
     const R = 3958.8
@@ -3192,19 +3329,36 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       cum.push(cum[i - 1] + (b.gap ? 0 : 2 * R * Math.asin(Math.sqrt(h))))
     }
     const win = realWindowEff
-    const id = setInterval(() => {
+    const live = range === 'live'
+    const fmtClock = (ms: number) =>
+      new Intl.DateTimeFormat('en-US', { timeZone: tzRef.current, hour: 'numeric', minute: '2-digit' }).format(new Date(ms))
+    const update = () => {
+      if (live) {
+        // Live: the current fix speaks — speed now, last-fix time, miles today.
+        const loc = assets.find((a) => a.id === target)?.location
+        setFollowHud({
+          name: tr.name,
+          mph: loc?.speed ?? tr.points[tr.points.length - 1].mph ?? null,
+          clock: loc?.timestamp ? fmtClock(Date.parse(loc.timestamp)) : fmtClock(Date.now()),
+          milesIn: cum[cum.length - 1],
+        })
+        return
+      }
+      if (!win) { setFollowHud(null); return }
       const t = tRef.current
       let lo = 0, hi = tr.points.length - 1
       while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (tr.points[mid].t <= t) lo = mid; else hi = mid - 1 }
-      const ms = win.from + t * (win.to - win.from)
       setFollowHud({
+        name: tr.name,
         mph: tr.points[lo].mph ?? null,
-        clock: new Intl.DateTimeFormat('en-US', { timeZone: tzRef.current, hour: 'numeric', minute: '2-digit' }).format(new Date(ms)),
+        clock: fmtClock(win.from + t * (win.to - win.from)),
         milesIn: cum[lo],
       })
-    }, 500)
+    }
+    update()
+    const id = setInterval(update, live ? 5000 : 500)
     return () => clearInterval(id)
-  }, [followId, range, realWindowEff, tracksEff])
+  }, [followId, selectedAsset, range, realWindowEff, tracksEff, assets])
 
   const handleFollow = useCallback((id: string | null) => {
     setFollowId(id)
@@ -3365,6 +3519,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           pair lives top-LEFT (owner layout, Jul 14 PM). */}
       {!kiosk && askSlot && <div data-tour="askai" className="absolute top-3 right-3 z-20">{askSlot}</div>}
 
+      {/* Measure + takeoff toggle — sits under AskAI, top-right */}
+      {!kiosk && (
+        <button
+          onClick={() => setMeasureOn((v) => !v)}
+          title="Measure & takeoff — distance, area, tonnage"
+          className={'absolute top-[58px] right-3 z-20 grid place-items-center w-9 h-9 rounded-xl border shadow-panel backdrop-blur transition-colors ' +
+            (measureOn ? 'bg-amber text-[#1a1100] border-amber' : 'bg-navy-950/80 text-faint border-navy-700 hover:text-amber')}
+        >
+          <Ruler className="h-4 w-4" />
+        </button>
+      )}
+      {!kiosk && (
+        <MeasureTool
+          map={mapReady ? map.current : null}
+          active={measureOn}
+          terrainOn={threeD}
+          onClose={() => setMeasureOn(false)}
+          onSaved={() => { /* saved measurements reload on next page visit */ }}
+        />
+      )}
+
       {/* First-run walkthrough of the controls (skippable, once per device;
           relaunch from Getting Started or /map?tour=1) */}
       {!kiosk && <MapTour />}
@@ -3417,13 +3592,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         </div>
       )}
 
-      {followHud && followId && (
-        <div className="absolute top-[104px] left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-center gap-3 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-1.5 font-mono text-[12px] tabular-nums">
-          <span className="text-amber font-bold">{followHud.mph != null ? `${Math.round(followHud.mph)} MPH` : '— MPH'}</span>
-          <span className="text-teal">{followHud.clock}</span>
-          <span className="text-muted">{followHud.milesIn.toFixed(1)} mi in</span>
-        </div>
-      )}
       <WeatherControl
         base={base}
         onBase={setBase}
@@ -3513,6 +3681,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           activity={activity}
           costCurve={canViewCosts ? chartCostCurve : null}
           windowSeconds={windowSecondsEff}
+          hud={followHud}
           followId={followId}
           onFollow={handleFollow}
           followMode={followMode}
@@ -3535,6 +3704,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           })()}
           spinning={spinning}
           onSpin={handleSpin}
+          earthSpin={earthSpin}
+          onEarthSpin={handleEarthSpin}
+          earthRate={earthRate}
+          onEarthRate={setEarthRate}
           flying={flying}
           onFlyover={handleFlyover}
           flySpeed={flySpeed}
@@ -3553,14 +3726,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           }}
           isolated={isolateId === selectedAsset.id}
           onToggleIsolate={() => setIsolateId((cur) => (cur === selectedAsset.id ? null : selectedAsset.id))}
+          onStops={setPanelStops}
+          onFocusStop={(lat, lng) => map.current?.flyTo({ center: [lng, lat], zoom: Math.max(map.current.getZoom(), 15), duration: 1200 })}
           onClose={() => setSelectedAsset(null)}
         />
       )}
 
-      {selectedZone && (
+      {selectedZone && (() => {
+        const pres = geofencePresence(selectedZone, assets)
+        const insideAssets = pres.insideIds
+          .map((id) => assets.find((a) => a.id === id))
+          .filter((a): a is AssetWithLocation => !!a)
+          .map((a) => ({ id: a.id, name: a.name, type: a.type }))
+        return (
         <ZonePanel
           fence={selectedZone}
-          presence={geofencePresence(selectedZone, assets)}
+          presence={pres}
+          insideAssets={insideAssets}
+          onPickAsset={(id) => {
+            const next = assets.find((a) => a.id === id)
+            if (next) { setSelectedZone(null); setSelectedDevice(null); setSelectedAsset(next) }
+          }}
           range={range}
           t={pbActive ? displayT : 1}
           real={zoneRealAt(selectedZone.id, pbActive ? displayT : 1)}
@@ -3573,7 +3759,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           } : undefined}
           onDelete={onGeofenceDelete ? (id) => { onGeofenceDelete(id); setSelectedZone(null) } : undefined}
         />
-      )}
+        )
+      })()}
 
       {selectedDevice && (
         <DevicePanel device={selectedDevice} onClose={() => setSelectedDevice(null)} />

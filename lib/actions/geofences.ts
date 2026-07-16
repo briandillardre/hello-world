@@ -119,3 +119,26 @@ export async function saveZoneNotesAction(id: string, notes: string): Promise<{ 
     return { ok: false, error: err instanceof Error ? err.message : 'failed' }
   }
 }
+
+/** Document-folder link on a zone (Dropbox/Drive/etc.) — just a URL. */
+export async function saveZoneFolderAction(id: string, folderUrl: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const url = folderUrl.trim()
+    if (url && !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a full link starting with https://' }
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('geofences')
+      .update({ folder_url: url || null })
+      .eq('id', id)
+    if (error) {
+      if (error.code === '42703') return { ok: false, error: 'Run migration 032 first.' }
+      return { ok: false, error: error.message }
+    }
+    revalidatePath(`/geofences/${id}`)
+    revalidatePath('/map')
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'failed' }
+  }
+}
