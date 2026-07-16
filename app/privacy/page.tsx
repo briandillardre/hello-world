@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'How HammerTrack collects, uses, and protects your data.',
 }
 
-const UPDATED = 'July 3, 2026'
+const UPDATED = 'July 16, 2026'
 
 export default function PrivacyPage() {
   return (
@@ -73,11 +73,53 @@ export default function PrivacyPage() {
           </section>
 
           <section>
+            <h2>Mobile app permissions (iOS &amp; Android)</h2>
+            <p className="mt-2">
+              The HammerTrack app requests only the permissions a feature needs, and only when you
+              use that feature:
+            </p>
+            <ul className="mt-2 space-y-1.5 list-disc pl-5">
+              <li>
+                <strong className="text-ink">Location</strong> — to show your own phone as a live
+                asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;) and to power geofence
+                check-ins. See the background-location note below.
+              </li>
+              <li>
+                <strong className="text-ink">Camera &amp; Photos</strong> — to take or attach asset,
+                VIN/GVWR, and receipt photos.
+              </li>
+              <li>
+                <strong className="text-ink">Notifications</strong> — to deliver theft and critical
+                fleet alerts to your lock screen. We store only an anonymous per-device push token.
+              </li>
+            </ul>
+            <p className="mt-2">
+              Revoke any permission in your device settings at any time; the related feature simply
+              stops working.
+            </p>
+          </section>
+
+          <section>
+            <h2>Background location</h2>
+            <p className="mt-2">
+              When — and only when — you turn on live crew tracking (&ldquo;Go Live&rdquo;), the app
+              collects that device&apos;s location <strong className="text-ink">in the background,
+              including while the app is closed or not in use</strong>, so your fleet map stays live
+              for your team during the working session. Background tracking runs only while Go Live
+              is on and stops the moment you turn it off or the session ends. This location is used
+              solely to display your fleet on your company&apos;s map and to trigger the alerts you
+              configure — it is never used for advertising and never sold or shared with third
+              parties.
+            </p>
+          </section>
+
+          <section>
             <h2>Retention &amp; deletion</h2>
             <p className="mt-2">
-              Location history is retained while your account is active. You can export your data
-              at any time, and when you close your account we delete it within 30 days, except
-              where the law requires longer retention.
+              Location history is retained while your account is active. You can export your data at
+              any time. To delete your account and all associated data, use the in-app option or
+              email us from your account address; we complete deletion within 30 days, except where
+              the law requires longer retention.
             </p>
           </section>
 
