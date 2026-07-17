@@ -75,7 +75,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   let trips: Trip[] | null = null
   let todayStats: { idleMin: number; movingMin: number; miles: number; maxMph: number; starts: number } | null = null
   let lastMovedMs: number | null = null
-  if (!isMockEnv && (asset.type === 'vehicle' || asset.type === 'equipment')) {
+  if (!isMockEnv && (asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool')) {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
     // Page NEWEST-first so today survives the cap — a bare ascending .limit()
@@ -85,6 +85,12 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     const [fences, rows] = await Promise.all([
       getGeofences(companyId),
       (async () => {
+        // Tools: their week is stitched from the trucks that carried them
+        // (pairing episodes) — same trip log a truck gets for those rides.
+        if (asset.type === 'tool') {
+          const { getToolWindowRows } = await import('@/lib/db/tools')
+          return getToolWindowRows(asset.id, from, new Date().toISOString(), CAP)
+        }
         const acc: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
         while (acc.length < CAP) {
           const { data } = await supabase

@@ -57,7 +57,14 @@ export interface PairingLogRow {
 
 /** Episode intervals for replay-accurate "what was aboard at that moment"
  *  badges: every tool-pairing episode that overlaps [sinceIso, now]. Times in
- *  epoch ms; endMs null = still ongoing. Empty in demo mode / pre-021. */
+ *  epoch ms; endMs null = still ongoing. Empty in demo mode / pre-021.
+ *
+ *  Open episodes (ended_at null) are CLAMPED to last_seen: the log only
+ *  closes an episode when another gateway takes over, so a tag that simply
+ *  went silent (left in an untracked truck) stays "open" forever — and its
+ *  synthesized path kept riding the old carrier, painting the tool in two
+ *  places at once (Tool A aboard the Ram AND "left here", Jul 17). A pairing
+ *  is only true through its last confirmed sighting. */
 export interface PairingEpisode { member: string; carrier: string; startMs: number; endMs: number | null }
 export async function getPairingEpisodes(companyId: string, sinceIso: string): Promise<PairingEpisode[]> {
   if (isMock) return []
@@ -65,17 +72,20 @@ export async function getPairingEpisodes(companyId: string, sinceIso: string): P
   const supabase = createClient()
   const { data } = await supabase
     .from('pairing_log')
-    .select('member_asset_id, carrier_asset_id, started_at, ended_at')
+    .select('member_asset_id, carrier_asset_id, started_at, last_seen, ended_at')
     .eq('company_id', companyId)
     .eq('kind', 'tool')
     .or(`ended_at.is.null,ended_at.gte.${sinceIso}`)
     .limit(5000)
-  return (data ?? []).map((p) => ({
-    member: p.member_asset_id as string,
-    carrier: p.carrier_asset_id as string,
-    startMs: new Date(p.started_at as string).getTime(),
-    endMs: p.ended_at ? new Date(p.ended_at as string).getTime() : null,
-  }))
+  return (data ?? []).map((p) => {
+    const end = (p.ended_at ?? p.last_seen) as string | null
+    return {
+      member: p.member_asset_id as string,
+      carrier: p.carrier_asset_id as string,
+      startMs: new Date(p.started_at as string).getTime(),
+      endMs: end ? new Date(end).getTime() : null,
+    }
+  })
 }
 
 export interface ToolWindowRow { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }
@@ -96,7 +106,7 @@ export async function getToolWindowRows(
   const supabase = createClient()
   const { data: eps } = await supabase
     .from('pairing_log')
-    .select('carrier_asset_id, started_at, ended_at')
+    .select('carrier_asset_id, started_at, last_seen, ended_at')
     .eq('kind', 'tool')
     .eq('member_asset_id', toolId)
     .lte('started_at', toIso)
@@ -105,7 +115,10 @@ export async function getToolWindowRows(
   const out: ToolWindowRow[] = []
   for (const ep of eps ?? []) {
     const from = (ep.started_at as string) > fromIso ? (ep.started_at as string) : fromIso
-    const to = ep.ended_at && (ep.ended_at as string) < toIso ? (ep.ended_at as string) : toIso
+    // Open episodes clamp to last_seen — a silent tag stopped riding then,
+    // even though arbitration never wrote ended_at (see getPairingEpisodes).
+    const epEnd = (ep.ended_at ?? ep.last_seen) as string | null
+    const to = epEnd && epEnd < toIso ? epEnd : toIso
     if (from >= to) continue
     const PAGE = 1000
     let got = 0

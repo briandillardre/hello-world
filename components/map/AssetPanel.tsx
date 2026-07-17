@@ -213,12 +213,16 @@ function AssetDetails({
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
   const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
-  // Range mileage table only makes sense for assets that actually move.
-  const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment')
+  // Range mileage table — vehicles/equipment from their own pings; tools get
+  // the same numbers server-stitched from whichever truck carried them.
+  const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool')
 
   // Current status — moving / idling / parked / no-signal — from the latest
   // fix, engine voltage, and last-moved time. Same deriver as the asset page.
-  const showStatus = asset.type === 'vehicle' || asset.type === 'equipment'
+  // Tools included for a consistent feel: riding a moving truck reads
+  // "Moving", a dropped tag reads "No signal" (the amber left-here card
+  // right below says where and with whom).
+  const showStatus = asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool'
   const enginePower = asset.type === 'vehicle' ? vehiclePower(loc?.raw) : { engineOn: null as boolean | null }
   const liveStatus = deriveLiveStatus({
     speedMph: loc?.speed ?? null,

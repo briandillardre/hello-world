@@ -1483,7 +1483,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (mode === 'off' || !m) return
     const iso = isolateIdRef.current
     const sel = selectedIdRef.current
-    const trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
+    let trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
+    // LIVE + trails: tools keep their single tools-live dot (current truth,
+    // "left here" labels) — a trail head on top painted the same tag twice
+    // (Tool A aboard the Ram AND left near Hawkins Rd, Jul 17). Replay ranges
+    // are the opposite: the head IS the tool marker and the dot hides.
+    if (rangeRef.current === 'live') trs = trs.filter((tr) => tr.type !== 'tool')
     // Replay heads show what was aboard AT the scrubbed moment (pairing_log
     // episodes) — never today's tools painted onto last week's map. Live (and
     // demo, which has no log) uses the current associations. No episodes for
