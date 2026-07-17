@@ -37,25 +37,34 @@ export async function GET(req: NextRequest) {
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
   const w = rangeWindow(tz, ['today', 'yesterday', '7d'].includes(range) ? range : 'today', {})
 
-  const PAGE = 1000
-  const rows: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
-  while (rows.length < 20_000) {
-    const { data, error } = await supabase
-      .from('asset_locations')
-      .select('lat, lng, speed, timestamp')
-      .eq('asset_id', assetId)
-      .gte('timestamp', new Date(w.from).toISOString())
-      .lt('timestamp', new Date(w.to).toISOString())
-      .order('timestamp', { ascending: false })
-      .range(rows.length, rows.length + PAGE - 1)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    rows.push(...(data ?? []))
-    if (!data || data.length < PAGE) break
+  // Tools: the recap narrates the carrying truck's movement while the tag was
+  // aboard (pairing episodes) — same pipeline as /api/stops.
+  const { data: assetRow } = await supabase.from('assets').select('type').eq('id', assetId).single()
+
+  let rows: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
+  if (assetRow?.type === 'tool') {
+    const { getToolWindowRows } = await import('@/lib/db/tools')
+    rows = await getToolWindowRows(assetId, new Date(w.from).toISOString(), new Date(w.to).toISOString())
+  } else {
+    const PAGE = 1000
+    while (rows.length < 20_000) {
+      const { data, error } = await supabase
+        .from('asset_locations')
+        .select('lat, lng, speed, timestamp, ignition')
+        .eq('asset_id', assetId)
+        .gte('timestamp', new Date(w.from).toISOString())
+        .lt('timestamp', new Date(w.to).toISOString())
+        .order('timestamp', { ascending: false })
+        .range(rows.length, rows.length + PAGE - 1)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      rows.push(...(data ?? []))
+      if (!data || data.length < PAGE) break
+    }
+    rows.reverse() // chronological
   }
-  rows.reverse() // chronological
 
   const pts = rows
-    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp) }))
+    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp), ign: r.ignition ?? null }))
     .filter((p) => Number.isFinite(p.ms))
 
   if (!pts.length) {

@@ -5,7 +5,15 @@
  * so both always report identical numbers.
  */
 
-export interface StatPoint { lat: number; lng: number; speed: number | null; ms: number }
+export interface StatPoint {
+  lat: number
+  lng: number
+  speed: number | null
+  ms: number
+  /** Engine state at this fix (asset_locations.ignition, 034). null/undefined
+   *  = unknown (no OBD on that ping, or pre-migration row). */
+  ign?: boolean | null
+}
 
 export interface RangeStats {
   miles: number
@@ -19,6 +27,11 @@ export interface RangeStats {
 
 // Ignore distance across silence — the truck was towed/parked, not driving.
 export const MAX_SEG_GAP_MS = 15 * 60_000
+// Without an ignition signal, "idle" needs engine-on CADENCE: ignition-on
+// trackers report every few seconds to ~1 min; anything slower is a parked
+// device checking in, not a running engine. (The old 15-min rule counted a
+// parked-but-awake device as idling — 19h of phantom idle in a day, Jul 16.)
+export const IDLE_CADENCE_MS = 3 * 60_000
 // Speed at/above this = moving; awake below it = idling (engine on, parked
 // trackers sleep and check in ~hourly, so tight ping cadence means running).
 export const MOVE_MPH = 2
@@ -111,10 +124,17 @@ export function computeRangeStats(
     }
     if (prev && dt <= MAX_SEG_GAP_MS) {
       miles += haversineMi(prev.lat, prev.lng, p.lat, p.lng)
-      // Awake time splits into moving vs idling; sleep gaps (>15 min
-      // between pings, engine off) fall through to "parked".
-      if ((prev.speed ?? 0) >= MOVE_MPH || mph >= MOVE_MPH) movingMs += dt
-      else idleMs += dt
+      if ((prev.speed ?? 0) >= MOVE_MPH || mph >= MOVE_MPH) {
+        movingMs += dt
+      } else {
+        // IDLE = engine ON and not moving. Trust the stored ignition when we
+        // have it; explicit engine-off is parked time, never idle. Unknown
+        // (no OBD) falls back to the strict engine-on cadence test.
+        const engineOn = p.ign ?? prev.ign
+        if (engineOn === true) idleMs += dt
+        else if (engineOn == null && dt <= IDLE_CADENCE_MS) idleMs += dt
+        // else: parked (accrues via the span remainder below)
+      }
     }
     if (mph >= MOVE_MPH) {
       if (lastMovingMs === null || p.ms - lastMovingMs > START_GAP_MS) starts++

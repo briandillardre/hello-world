@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/lib/flespi'
 import { evaluateAlerts, pointInPolygon } from '@/lib/alerts-engine'
+import { vehiclePower } from '@/lib/vehicle-power'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       if (prev) prevFix.set(asset.id, prev)
     }
 
-    await supabase.from('asset_locations').insert({
+    const locRow = {
       asset_id: asset.id,
       company_id: asset.company_id,
       lat: r.lat,
@@ -100,7 +101,12 @@ export async function POST(request: NextRequest) {
       // nothing the tracker reports is discarded — the asset page and future
       // maintenance/utilization features read from here.
       raw: { source: 'flespi', ...r.params },
-    })
+    }
+    // Engine state as a REAL column (034) so the idle math can select it
+    // cheaply — idle must mean engine ON, not merely device-awake.
+    const ignition = vehiclePower(locRow.raw).engineOn
+    const { error: locErr } = await supabase.from('asset_locations').insert({ ...locRow, ignition })
+    if (locErr) await supabase.from('asset_locations').insert(locRow) // pre-034 DB
     persisted++
     if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
     updated.get(asset.company_id)!.set(asset.id, r)

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+// Long windows page through a lot of rows — never let the platform default
+// (10s) kill the fetch mid-way; that silent 504 was why 30d/YTD/All fell back
+// to the newest-biased snapshot and "lost" older trips entirely.
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -9,6 +13,9 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 // thinning, small enough to stay a snappy mobile payload.
 const FETCH_CAP = 40_000
 const SHIP_CAP = 20_000
+// Reduced-resolution budget for the part of the window OLDER than the
+// full-res cap (see sampled_history below).
+const BACKFILL_CAP = 10_000
 
 /**
  * Range-scoped location history for the timeline. The map page ships a capped
@@ -39,24 +46,57 @@ export async function GET(req: NextRequest) {
   // longer ranges (7d/30d/YTD "not working"). .range() paging gets past any
   // server cap. Newest-first because when a window truly exceeds our cap,
   // losing the oldest hours beats dropping the newest tracker's whole history
-  // (a freshly installed unit's data is always at the recent end). The client
-  // backfills the older tail from its strided snapshot when `truncated`.
+  // (a freshly installed unit's data is always at the recent end). Pages run
+  // in small parallel batches — 40 sequential round-trips was pushing long
+  // windows past the function timeout (the 30d/YTD/All missing-trip bug).
   const PAGE = 1000
+  const CONCURRENCY = 5
   const fetched: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
-  while (fetched.length < FETCH_CAP) {
-    const { data, error } = await supabase
-      .from('asset_locations')
-      .select('asset_id, lat, lng, speed, timestamp')
-      .gte('timestamp', new Date(fromMs).toISOString())
-      .lt('timestamp', new Date(toMs).toISOString())
-      .order('timestamp', { ascending: false })
-      .range(fetched.length, fetched.length + PAGE - 1)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    fetched.push(...(data ?? []))
-    if (!data || data.length < PAGE) break
+  let offset = 0
+  let done = false
+  while (!done && offset < FETCH_CAP) {
+    const offsets: number[] = []
+    for (let i = 0; i < CONCURRENCY && offset < FETCH_CAP; i++, offset += PAGE) offsets.push(offset)
+    const results = await Promise.all(offsets.map((o) =>
+      supabase
+        .from('asset_locations')
+        .select('asset_id, lat, lng, speed, timestamp')
+        .gte('timestamp', new Date(fromMs).toISOString())
+        .lt('timestamp', new Date(toMs).toISOString())
+        .order('timestamp', { ascending: false })
+        .range(o, o + PAGE - 1)
+    ))
+    for (const { data, error } of results) {
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      fetched.push(...(data ?? []))
+      if (!data || data.length < PAGE) done = true
+    }
   }
 
-  const rows = fetched.reverse()
+  const truncated = fetched.length >= FETCH_CAP
+  let rows = fetched.reverse()
+
+  // Over-cap window: everything OLDER than the full-res cap still has to
+  // exist on the map. sampled_history (migration 035) returns one uniform
+  // stride across the remainder in a single query — without this, a trip
+  // older than the cap horizon showed on 7d but vanished from 30d/YTD/All
+  // (Chesterfield run, Jul 17). RLS applies inside (SECURITY INVOKER).
+  if (truncated && rows.length) {
+    const oldestMs = Date.parse(rows[0].timestamp)
+    if (Number.isFinite(oldestMs) && oldestMs > fromMs) {
+      const { data: older, error: rpcErr } = await supabase.rpc('sampled_history', {
+        p_from: new Date(fromMs).toISOString(),
+        p_to: new Date(oldestMs).toISOString(),
+        p_max: BACKFILL_CAP,
+      })
+      // Pre-035 DB (function missing): keep newest-only rows; the client's
+      // snapshot splice remains as the last-ditch fallback.
+      if (!rpcErr && Array.isArray(older) && older.length) {
+        rows = [...(older as typeof rows), ...rows]
+      }
+    }
+  }
+
   // Even stride ACROSS the window (not newest-biased) keeps every hour of the
   // day equally represented when we're over the ship cap.
   // Geometry-aware thinning: keeps every curve point, drops straight-line
@@ -66,7 +106,7 @@ export async function GET(req: NextRequest) {
   const thinned = rows.length > SHIP_CAP ? simplifyHistoryRows(rows, 12, SHIP_CAP) : rows
 
   return NextResponse.json(
-    { rows: thinned, truncated: rows.length >= FETCH_CAP },
+    { rows: thinned, truncated },
     { headers: { 'Cache-Control': 'private, max-age=30' } }
   )
 }

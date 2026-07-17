@@ -78,6 +78,57 @@ export async function getPairingEpisodes(companyId: string, sinceIso: string): P
   }))
 }
 
+export interface ToolWindowRow { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }
+
+/** A tool's location rows over [fromIso, toIso): its CARRIERS' asset_locations
+ *  rows during each pairing episode overlapping the window, clamped and
+ *  stitched chronologically. This is what makes /api/stops and /api/asset-stats
+ *  answer for a Bluetooth tag the same way they do for a truck — the tag's
+ *  day IS the truck's day while it was aboard. RLS scopes everything. */
+export async function getToolWindowRows(
+  toolId: string,
+  fromIso: string,
+  toIso: string,
+  cap = 20_000
+): Promise<ToolWindowRow[]> {
+  if (isMock) return []
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data: eps } = await supabase
+    .from('pairing_log')
+    .select('carrier_asset_id, started_at, ended_at')
+    .eq('kind', 'tool')
+    .eq('member_asset_id', toolId)
+    .lte('started_at', toIso)
+    .or(`ended_at.is.null,ended_at.gte.${fromIso}`)
+    .limit(500)
+  const out: ToolWindowRow[] = []
+  for (const ep of eps ?? []) {
+    const from = (ep.started_at as string) > fromIso ? (ep.started_at as string) : fromIso
+    const to = ep.ended_at && (ep.ended_at as string) < toIso ? (ep.ended_at as string) : toIso
+    if (from >= to) continue
+    const PAGE = 1000
+    let got = 0
+    while (out.length < cap) {
+      const { data } = await supabase
+        .from('asset_locations')
+        .select('lat, lng, speed, timestamp')
+        .eq('asset_id', ep.carrier_asset_id)
+        .gte('timestamp', from)
+        .lt('timestamp', to)
+        .order('timestamp', { ascending: false })
+        .range(got, got + PAGE - 1)
+      if (!data?.length) break
+      out.push(...data)
+      got += data.length
+      if (data.length < PAGE) break
+    }
+    if (out.length >= cap) break
+  }
+  out.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  return out
+}
+
 /** Pairing episodes involving an asset (as the tool OR the carrier), newest
  *  first. Empty in demo mode or before migration 021 lands. */
 export async function getPairingLog(companyId: string, assetId: string, limit = 25): Promise<PairingLogRow[]> {

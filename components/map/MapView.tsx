@@ -30,6 +30,7 @@ import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EAR
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
+import { synthesizeToolRows } from '@/lib/tools-resolve'
 import { AssetPanel, type PanelStop } from './AssetPanel'
 import { MeasureTool } from './MeasureTool'
 import { Ruler } from 'lucide-react'
@@ -502,13 +503,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const ms = Date.parse(r.timestamp)
       return ms >= w.from && ms < w.to
     })
+    // Tool replay paths: the carrier's rows during each pairing episode,
+    // re-keyed to the tool — a tag replays wherever its truck went while it
+    // was aboard. Kept OUT of `rows` so cost/zone curves never double-count
+    // the same drive once per tag riding along.
+    const toolIdSet = new Set(assets.filter((a) => a.type === 'tool').map((a) => a.id))
+    const toolRows = toolIdSet.size && pairingEpisodes?.length
+      ? synthesizeToolRows(toolIdSet, rows, pairingEpisodes)
+      : []
     return {
-      tracks: tracksFromHistory(assets, rows, w.from, w.to),
+      tracks: tracksFromHistory(assets, rows, w.from, w.to, toolRows),
       window: w,
       cost: buildCostCurve(assets, rows, w.from, w.to),
       zones: zoneCostsFromHistory(geofences.filter((g) => fenceKind(g) === 'site'), assets, rows, w.from, w.to),
     }
-  }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows])
+  }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows, pairingEpisodes])
 
   const tracksEff = dayData?.tracks ?? tracks
   const realWindowEff = dayData?.window ?? null
@@ -1424,8 +1433,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
     source?.setData(buildGeoJSON(visible, filter, toolCounts))
     const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
-    tools?.setData(toolsGeoJSON(visible, filter))
-  }, [mapReady, assets, filter, isolateId, toolCounts])
+    // Replaying with trails on: a tool that has a synthesized track gets a
+    // moving trail head like any other asset — drop its static "now" dot so
+    // the same tag isn't on the map twice. Tools with no episodes in the
+    // window keep the dot (their only truthful position).
+    const replayToolIds = range !== 'live' && trailMode !== 'off'
+      ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
+      : null
+    tools?.setData(toolsGeoJSON(replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible, filter))
+  }, [mapReady, assets, filter, isolateId, toolCounts, range, trailMode, tracksEff])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {

@@ -376,8 +376,10 @@ function AssetDetails({
         )}
       </div>
 
-      {/* Order: speed/last-seen → stops → activity → engine/specs. */}
-      {(asset.type === 'vehicle' || asset.type === 'equipment') && (
+      {/* Order: speed/last-seen → stops → activity → engine/specs. Tools get
+          the same stop log — theirs is stitched from the carrying truck's
+          movement during pairing episodes (server-side). */}
+      {(asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool') && (
         <StopsCard assetId={asset.id} onStops={onStops} onFocusStop={onFocusStop} />
       )}
 

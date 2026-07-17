@@ -162,7 +162,8 @@ export function tracksFromHistory(
   assets: AssetWithLocation[],
   rows: { asset_id: string; lat: number; lng: number; speed?: number | null; timestamp: string }[],
   windowFromMs?: number,
-  windowToMs?: number
+  windowToMs?: number,
+  toolRows?: { asset_id: string; lat: number; lng: number; speed?: number | null; timestamp: string }[]
 ): AssetTrack[] {
   const MAX_POINTS_PER_ASSET = 3000
 
@@ -178,6 +179,17 @@ export function tracksFromHistory(
     if (!list) byAsset.set(r.asset_id, (list = []))
     list.push({ lng: r.lng, lat: r.lat, ms, mph: typeof r.speed === 'number' ? r.speed : undefined })
   }
+  // Tool paths come pre-synthesized from pairing episodes (synthesizeToolRows)
+  // in their OWN bucket — they never widen the fleet window (they're clones
+  // of carrier rows already counted above).
+  const byTool = new Map<string, { lng: number; lat: number; ms: number; mph?: number }[]>()
+  for (const r of toolRows ?? []) {
+    const ms = new Date(r.timestamp).getTime()
+    if (!Number.isFinite(ms)) continue
+    let list = byTool.get(r.asset_id)
+    if (!list) byTool.set(r.asset_id, (list = []))
+    list.push({ lng: r.lng, lat: r.lat, ms, mph: typeof r.speed === 'number' ? r.speed : undefined })
+  }
   // Explicit window (e.g. a local calendar day) wins over the data extent so
   // the scrubber axis runs midnight → midnight, not first-ping → last-ping.
   if (windowFromMs != null) minTs = windowFromMs
@@ -187,11 +199,11 @@ export function tracksFromHistory(
 
   // Tools have no GPS of their own — any asset_locations rows they carry are
   // seed/demo residue, and turning those into trails pinned Tool A/B to the
-  // old Nashville demo site in every replay mode (Jul 14). Their position is
-  // ALWAYS derived from the truck carrying them (tool_associations live,
-  // pairing_log historically) — never from own history.
-  return assets.filter((a) => a.type !== 'tool').map((a) => {
-    const raw = (byAsset.get(a.id) ?? []).sort((x, y) => x.ms - y.ms)
+  // old Nashville demo site in every replay mode (Jul 14). Their replay path
+  // comes ONLY from `toolRows` (the carrier's path during pairing episodes);
+  // tools with no episodes in the window get no track at all.
+  return assets.filter((a) => a.type !== 'tool' || (byTool.get(a.id)?.length ?? 0) > 0).map((a) => {
+    const raw = ((a.type === 'tool' ? byTool.get(a.id) : byAsset.get(a.id)) ?? []).sort((x, y) => x.ms - y.ms)
     // Curve-preserving thinning (DP) — the old every-Nth stride here was the
     // second half of the corner-cutting trails bug (server thinning was the
     // first). Straightaways compress, bends survive.

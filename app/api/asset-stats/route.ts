@@ -38,29 +38,36 @@ export async function GET(req: NextRequest) {
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
 
   // Fuel-burn rate from the vehicle's own VIN-decoded specs (SUV != dump truck).
-  const { data: assetRow } = await supabase.from('assets').select('name, metadata').eq('id', assetId).single()
+  const { data: assetRow } = await supabase.from('assets').select('name, type, metadata').eq('id', assetId).single()
   const md = (assetRow?.metadata ?? {}) as Record<string, unknown>
   const estMpg = estMpgForSpecs((md.specs as Record<string, unknown> | undefined) ?? md, assetRow?.name ?? '')
 
-  // Page past Supabase's API Max-Rows cap (a bare .limit(40000) can silently
-  // return 1000). Newest-first so an over-cap asset keeps its recent history.
-  const PAGE = 1000
-  const fetched: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
-  while (fetched.length < FETCH_CAP) {
-    const { data, error } = await supabase
-      .from('asset_locations')
-      .select('lat, lng, speed, timestamp')
-      .eq('asset_id', assetId)
-      .order('timestamp', { ascending: false })
-      .range(fetched.length, fetched.length + PAGE - 1)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    fetched.push(...(data ?? []))
-    if (!data || data.length < PAGE) break
+  let fetched: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
+  if (assetRow?.type === 'tool') {
+    // Tools: miles/time = the carrier's movement while the tag was aboard
+    // (pairing episodes) — same numbers a truck would get for those rides.
+    const { getToolWindowRows } = await import('@/lib/db/tools')
+    fetched = (await getToolWindowRows(assetId, new Date(0).toISOString(), new Date().toISOString(), FETCH_CAP)).reverse()
+  } else {
+    // Page past Supabase's API Max-Rows cap (a bare .limit(40000) can silently
+    // return 1000). Newest-first so an over-cap asset keeps its recent history.
+    const PAGE = 1000
+    while (fetched.length < FETCH_CAP) {
+      const { data, error } = await supabase
+        .from('asset_locations')
+        .select('lat, lng, speed, timestamp, ignition')
+        .eq('asset_id', assetId)
+        .order('timestamp', { ascending: false })
+        .range(fetched.length, fetched.length + PAGE - 1)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      fetched.push(...(data ?? []))
+      if (!data || data.length < PAGE) break
+    }
   }
 
   const pts = fetched
     .reverse()
-    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed as number | null, ms: Date.parse(r.timestamp) }))
+    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed as number | null, ms: Date.parse(r.timestamp), ign: r.ignition ?? null }))
     .filter((p) => Number.isFinite(p.ms))
 
   const earliestMs = pts.length ? pts[0].ms : null

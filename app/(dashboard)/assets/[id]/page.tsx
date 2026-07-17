@@ -85,11 +85,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     const [fences, rows] = await Promise.all([
       getGeofences(companyId),
       (async () => {
-        const acc: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+        const acc: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
         while (acc.length < CAP) {
           const { data } = await supabase
             .from('asset_locations')
-            .select('lat, lng, speed, timestamp')
+            .select('lat, lng, speed, timestamp, ignition')
             .eq('asset_id', asset.id)
             .gte('timestamp', from)
             .order('timestamp', { ascending: false })
@@ -105,7 +105,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     // Today's idle/moving + newest moving fix — for the live-status badge.
     const { computeRangeStats } = await import('@/lib/asset-stats')
     const { rangeWindow } = await import('@/lib/dates')
-    const pts = rows.map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp) })).filter((p) => Number.isFinite(p.ms))
+    const pts = rows.map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp), ign: r.ignition ?? null })).filter((p) => Number.isFinite(p.ms))
     const w = rangeWindow(tz, 'today', {})
     const s = computeRangeStats(pts, w.from, w.to, pts[0]?.ms ?? null)
     todayStats = { idleMin: s.idleMin, movingMin: s.movingMin, miles: s.miles, maxMph: s.maxMph, starts: s.starts }

@@ -64,6 +64,48 @@ export function toolsAboard(
   return out
 }
 
+/** A tool↔carrier pairing interval (pairing_log row, times in epoch ms).
+ *  Structural twin of lib/db/tools' PairingEpisode so client code can use it
+ *  without importing a server module. */
+export interface ToolPathEpisode { member: string; carrier: string; startMs: number; endMs: number | null }
+
+/**
+ * Tools have no GPS history of their own — a tool's PATH is its carrier's
+ * path during each pairing episode. Clone the carrier's history rows inside
+ * every episode window, re-keyed to the tool, so tools replay on the timeline
+ * like any other asset (trail, scrubbing head, click-to-highlight, stops).
+ * Rows outside every episode are skipped — no path is invented for time the
+ * tag wasn't confirmed aboard anything.
+ */
+export function synthesizeToolRows<R extends { asset_id: string; timestamp: string }>(
+  toolIds: ReadonlySet<string>,
+  rows: R[],
+  episodes: ToolPathEpisode[]
+): R[] {
+  if (!toolIds.size || !episodes.length) return []
+  const byCarrier = new Map<string, ToolPathEpisode[]>()
+  for (const ep of episodes) {
+    if (!toolIds.has(ep.member)) continue
+    const list = byCarrier.get(ep.carrier)
+    if (list) list.push(ep)
+    else byCarrier.set(ep.carrier, [ep])
+  }
+  if (!byCarrier.size) return []
+  const out: R[] = []
+  for (const r of rows) {
+    const eps = byCarrier.get(r.asset_id)
+    if (!eps) continue
+    const ms = Date.parse(r.timestamp)
+    if (!Number.isFinite(ms)) continue
+    for (const ep of eps) {
+      if (ms >= ep.startMs && (ep.endMs == null || ms <= ep.endMs)) {
+        out.push({ ...r, asset_id: ep.member })
+      }
+    }
+  }
+  return out
+}
+
 /**
  * Given the full asset list and the current tool→gateway associations, returns
  * the gateway (truck/equipment) a given tool is currently detected by, if any.

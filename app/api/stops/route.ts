@@ -31,24 +31,35 @@ export async function GET(req: NextRequest) {
   const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
   const w = rangeWindow(tz, ['today', 'yesterday', '7d'].includes(range) ? range : 'today', {})
 
-  // Window-scoped rows, paged past the API max-rows cap.
-  const PAGE = 1000
-  const rows: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
-  while (rows.length < 20_000) {
-    const { data, error } = await supabase
-      .from('asset_locations')
-      .select('lat, lng, speed, timestamp')
-      .eq('asset_id', assetId)
-      .gte('timestamp', new Date(w.from).toISOString())
-      .lt('timestamp', new Date(w.to).toISOString())
-      .order('timestamp', { ascending: false })
-      .range(rows.length, rows.length + PAGE - 1)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    rows.push(...(data ?? []))
-    if (!data || data.length < PAGE) break
+  // Tools have no rows of their own — their day is stitched from the trucks
+  // that carried them (pairing episodes), so a tag gets the same stop log.
+  const { data: assetRow } = await supabase.from('assets').select('type').eq('id', assetId).single()
+
+  let rows: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+  if (assetRow?.type === 'tool') {
+    const { getToolWindowRows } = await import('@/lib/db/tools')
+    rows = await getToolWindowRows(assetId, new Date(w.from).toISOString(), new Date(w.to).toISOString())
+  } else {
+    // Window-scoped rows, paged past the API max-rows cap (newest-first,
+    // restored to chronological below).
+    const PAGE = 1000
+    while (rows.length < 20_000) {
+      const { data, error } = await supabase
+        .from('asset_locations')
+        .select('lat, lng, speed, timestamp')
+        .eq('asset_id', assetId)
+        .gte('timestamp', new Date(w.from).toISOString())
+        .lt('timestamp', new Date(w.to).toISOString())
+        .order('timestamp', { ascending: false })
+        .range(rows.length, rows.length + PAGE - 1)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      rows.push(...(data ?? []))
+      if (!data || data.length < PAGE) break
+    }
+    rows.reverse() // chronological
   }
 
-  const raw = segmentStops(rows.reverse())
+  const raw = segmentStops(rows)
 
   // Company zones win over geocoding — a stop at Riverfront IS Riverfront.
   const { data: fences } = await supabase.from('geofences_json').select('*')

@@ -212,11 +212,11 @@ async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; ra
   // Page past Supabase's Max-Rows cap, newest-first, then restore order.
   const PAGE = 1000
   const CAP = 40_000
-  const rows: { lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+  const rows: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
   while (rows.length < CAP) {
     const { data, error } = await supabase
       .from('asset_locations')
-      .select('lat, lng, speed, timestamp')
+      .select('lat, lng, speed, timestamp, ignition')
       .eq('asset_id', asset.id)
       .order('timestamp', { ascending: false })
       .range(rows.length, rows.length + PAGE - 1)
@@ -226,7 +226,7 @@ async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; ra
   }
   const pts: StatPoint[] = rows
     .reverse()
-    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp) }))
+    .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp), ign: r.ignition ?? null }))
     .filter((p) => Number.isFinite(p.ms))
   const earliestMs = pts.length ? pts[0].ms : null
   const w = rangeWindow(ctx.tz, key, { earliestMs })
