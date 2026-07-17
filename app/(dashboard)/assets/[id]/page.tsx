@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Battery, Zap, Clock, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
+import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
 import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -8,7 +8,6 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
-import { formatRelativeTime } from '@/lib/utils'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
 import { ReassignTracker } from '@/components/assets/ReassignTracker'
@@ -74,7 +73,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
   const TRIP_DAYS = 7
   let trips: Trip[] | null = null
-  let todayStats: { idleMin: number; movingMin: number } | null = null
+  let todayStats: { idleMin: number; movingMin: number; miles: number; maxMph: number; starts: number } | null = null
   let lastMovedMs: number | null = null
   if (!isMockEnv && (asset.type === 'vehicle' || asset.type === 'equipment')) {
     const { createClient } = await import('@/lib/supabase-server')
@@ -109,7 +108,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     const pts = rows.map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp) })).filter((p) => Number.isFinite(p.ms))
     const w = rangeWindow(tz, 'today', {})
     const s = computeRangeStats(pts, w.from, w.to, pts[0]?.ms ?? null)
-    todayStats = { idleMin: s.idleMin, movingMin: s.movingMin }
+    todayStats = { idleMin: s.idleMin, movingMin: s.movingMin, miles: s.miles, maxMph: s.maxMph, starts: s.starts }
     for (let i = pts.length - 1; i >= 0; i--) { if ((pts[i].speed ?? 0) >= 2) { lastMovedMs = pts[i].ms; break } }
   }
 
@@ -152,21 +151,28 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
-      {/* header */}
-      <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
-        <Link href="/assets" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-3">
-          <ArrowLeft className="h-4 w-4" /> All assets
-        </Link>
-        <div className="flex items-center gap-3">
-          <div className="text-3xl w-12 h-12 grid place-items-center bg-navy-800 rounded-xl flex-none">{TYPE_EMOJI[asset.type]}</div>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-ink leading-snug">{asset.name}</h1>
-            <div className="flex items-center gap-1.5 mt-1">
+      {/* header — compact: the small MAIN PHOTO sits where the icon was, the
+          back link shares the row, and every saved pixel is first-screen data
+          (owner ask, Jul 16: "as much important info on first screen"). */}
+      <div className="px-4 py-2 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
+        <div className="flex items-center gap-2.5">
+          <Link href="/assets" aria-label="All assets" className="flex-none grid place-items-center w-8 h-8 rounded-lg text-muted hover:text-ink hover:bg-navy-800">
+            <ArrowLeft className="h-4.5 w-4.5" />
+          </Link>
+          {asset.photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={asset.photo_url} alt={asset.name} className="w-10 h-10 rounded-lg object-cover border border-navy-700 flex-none" />
+          ) : (
+            <div className="text-xl w-10 h-10 grid place-items-center bg-navy-800 rounded-lg flex-none">{TYPE_EMOJI[asset.type]}</div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[15px] sm:text-lg font-bold text-ink leading-tight truncate">{asset.name}</h1>
+            <div className="flex items-center gap-1.5 mt-0.5">
               <Badge variant="secondary">{TYPE_LABEL[asset.type]}</Badge>
               {asset.category && <Badge variant="outline">{asset.category}</Badge>}
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex-none flex items-center gap-1.5">
             {canEdit && asset.tracker_id && (
               <ReassignTracker
                 asset={asset}
@@ -182,37 +188,40 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         </div>
       </div>
 
-      <div className="p-4 max-w-3xl space-y-6">
-        {/* main photo + current status — the "what's it doing now" up top */}
-        <section className="grid sm:grid-cols-[200px_1fr] gap-4">
-          {asset.photo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={asset.photo_url} alt={asset.name} className="aspect-square w-full rounded-xl border border-navy-800 bg-navy-900 object-cover" />
-          ) : (
-            <div className="aspect-square rounded-xl border border-navy-800 bg-navy-900 grid place-items-center text-center">
-              <div>
-                <p className="text-5xl mb-1">{TYPE_EMOJI[asset.type]}</p>
-                <p className="font-mono text-[11px] text-faint">No photo yet</p>
-              </div>
-            </div>
-          )}
-          <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 flex flex-col justify-center gap-3">
-            <LiveStatusBadge
-              status={liveStatus}
-              idleTodayMin={todayStats?.idleMin}
-              lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
-            />
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />
-              <MiniStat label="Battery" value={loc?.battery != null ? `${loc.battery}` : '—'} unit="%" />
-              <MiniStat label="Drove today" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />
-            </div>
-            {loc && (
-              <p className="text-[11px] text-faint text-center">
-                <MapPin className="inline h-3 w-3 mr-0.5" />{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
-              </p>
-            )}
+      <div className="p-4 max-w-3xl space-y-5">
+        {/* current status — one dense card: state, today's numbers, recap line */}
+        <section className="rounded-xl border border-navy-800 bg-navy-900 p-3.5 space-y-2.5">
+          <LiveStatusBadge
+            status={liveStatus}
+            idleTodayMin={todayStats?.idleMin}
+            lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
+          />
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
+            <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />
+            <MiniStat label="Miles today" value={todayStats ? `${todayStats.miles}` : '—'} unit="mi" />
+            <MiniStat label="Drive time" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />
+            <MiniStat label="Idle today" value={todayStats ? `${Math.floor(todayStats.idleMin / 60)}:${String(todayStats.idleMin % 60).padStart(2, '0')}` : '—'} unit="h" />
+            <MiniStat label="Battery" value={loc?.battery != null ? `${loc.battery}` : '—'} unit="%" />
+            {(() => {
+              if (asset.type !== 'vehicle') return <MiniStat label="Starts today" value={todayStats ? `${todayStats.starts}` : '—'} />
+              const p = vehiclePower(loc?.raw)
+              return <MiniStat label={p.health === 'low' ? '12V · LOW' : p.health === 'weak' ? '12V · weak' : '12V battery'} value={p.volts != null ? p.volts.toFixed(1) : '—'} unit="V" />
+            })()}
           </div>
+          {/* today in one line — the writeup a foreman actually reads */}
+          {todayStats && (
+            <p className="text-[12px] text-muted leading-snug border-l-2 border-amber/50 pl-2">
+              Today: {todayStats.miles >= 0.5
+                ? `drove ${todayStats.miles} mi in ${trips?.filter((t) => new Date(t.startMs).toDateString() === new Date().toDateString()).length ?? '—'} trip(s), top ${todayStats.maxMph} mph, ${todayStats.starts} start${todayStats.starts === 1 ? '' : 's'}`
+                : 'no driving recorded'}
+              {todayStats.idleMin >= 15 ? ` · idled ${Math.floor(todayStats.idleMin / 60)}h ${String(todayStats.idleMin % 60).padStart(2, '0')}m` : ''}.
+            </p>
+          )}
+          {loc && (
+            <p className="text-[11px] text-faint">
+              <MapPin className="inline h-3 w-3 mr-0.5" />{loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
+            </p>
+          )}
         </section>
 
         {/* cost structure — dollar figures are permission-gated */}
@@ -226,38 +235,6 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             )}
           </div>
         )}
-
-        {/* live telemetry */}
-        <section>
-          <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Live status</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat icon={<Battery className="h-4 w-4 text-[#34d399]" />} label="Battery" value={loc?.battery != null ? `${loc.battery}%` : '—'} />
-            <Stat icon={<Zap className="h-4 w-4 text-amber" />} label="Speed" value={loc?.speed != null ? `${loc.speed} mph` : '—'} />
-            <Stat icon={<Clock className="h-4 w-4 text-faint" />} label="Last seen" value={loc?.timestamp ? formatRelativeTime(loc.timestamp) : '—'} />
-            <Stat icon={<MapPin className="h-4 w-4 text-teal" />} label="Location" value={loc ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : 'Off-grid'} />
-            {(() => {
-              // Engine + 12V health from OBD voltage — the free dead-battery
-              // early warning (docs/TRACKER-DATA.md). Vehicles only.
-              if (asset.type !== 'vehicle') return null
-              const p = vehiclePower(loc?.raw)
-              if (p.volts == null && p.engineOn == null) return null
-              return (
-                <>
-                  <Stat
-                    icon={<Zap className={'h-4 w-4 ' + (p.engineOn ? 'text-[#34d399]' : 'text-faint')} />}
-                    label="Engine"
-                    value={p.engineOn == null ? '—' : p.engineOn ? 'Running' : 'Off'}
-                  />
-                  <Stat
-                    icon={<Battery className={'h-4 w-4 ' + (p.health === 'low' ? 'text-alert' : p.health === 'weak' ? 'text-amber' : 'text-[#34d399]')} />}
-                    label={p.health === 'low' ? '12V battery · charge soon' : p.health === 'weak' ? '12V battery · getting weak' : '12V battery'}
-                    value={p.volts != null ? `${p.volts.toFixed(1)} V` : '—'}
-                  />
-                </>
-              )
-            })()}
-          </div>
-        </section>
 
         {/* full raw telemetry — collapsed, one tap from the glance stats above */}
         <section>
@@ -340,16 +317,17 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           )}
         </section>
 
-        {/* photo gallery — everything past the main shot lives down here:
-            GVWR sticker, VIN plate, engine, damage photos. */}
-        {assetPhotos.length > 1 && (
+        {/* photo gallery — ALL photos live down here (the header carries only a
+            small thumbnail). Tap any to open full-size. */}
+        {assetPhotos.length > 0 && (
           <section>
             <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Photos</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {assetPhotos.slice(1).map((p) => (
-                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="relative rounded-lg border border-navy-800 overflow-hidden group">
+              {assetPhotos.map((p, i) => (
+                <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className={'relative rounded-lg border overflow-hidden group ' + (i === 0 ? 'border-amber/60' : 'border-navy-800')}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.url} alt={PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'} className="h-28 w-full object-cover transition-transform group-hover:scale-105" />
+                  {i === 0 && <span className="absolute top-1 left-1 rounded bg-amber text-[#1a1100] text-[9px] font-bold px-1.5 py-0.5">★ MAIN</span>}
                   <span className="absolute bottom-0 inset-x-0 bg-navy-950/80 text-[10px] text-muted px-1.5 py-0.5 truncate">{PHOTO_LABEL[p.label ?? ''] ?? p.label ?? 'Photo'}</span>
                 </a>
               ))}
@@ -397,12 +375,3 @@ function Field({ icon, label, value }: { icon: React.ReactNode; label: string; v
   )
 }
 
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-navy-800 bg-navy-900 p-3">
-      <div className="flex items-center gap-1.5 mb-1">{icon}</div>
-      <p className="font-display font-bold text-ink text-[15px]">{value}</p>
-      <p className="text-xs text-faint">{label}</p>
-    </div>
-  )
-}
