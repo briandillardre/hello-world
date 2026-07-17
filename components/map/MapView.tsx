@@ -127,8 +127,11 @@ function lerpAngle(from: number, to: number, f: number): number {
 function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
+    // Tools live in their own unclustered source (tools-live) so they stay
+    // visible in EVERY trail mode — they have no GPS history, so they never
+    // get a trail head, and hiding live dots in Trails mode made them vanish.
     features: assets
-      .filter((a) => filter.has(a.type) && a.location)
+      .filter((a) => a.type !== 'tool' && filter.has(a.type) && a.location)
       .map((a) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
@@ -148,6 +151,26 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
             if (age < 15 * 60_000 && (a.location!.speed ?? 0) > 2) return 'moving'
             return age < 15 * 60_000 ? 'idle' : 'off'
           })(),
+        },
+      })),
+  }
+}
+
+/** Tools as standalone dots — no clustering, visible in every trail mode.
+ *  `state` distinguishes a live ride (fresh sighting) from a dropped tag
+ *  sitting at its last-seen spot. */
+function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: assets
+      .filter((a) => a.type === 'tool' && filter.has('tool') && a.location)
+      .map((a) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
+        properties: {
+          id: a.id, name: a.name, type: 'tool',
+          color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS.tool,
+          state: Date.now() - new Date(a.location!.timestamp).getTime() < 25 * 60_000 ? 'live' : 'dropped',
         },
       })),
   }
@@ -1118,6 +1141,41 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         },
         paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
       })
+      // Tools — their OWN unclustered source so a Bluetooth tag is visible in
+      // every trail mode (they have no GPS history → no trail head; the live
+      // dots hide in Trails mode, which made tools vanish entirely, Jul 16).
+      // A dropped tag sits dimmer at its true last-seen spot.
+      m.addSource('tools-live', { type: 'geojson', data: toolsGeoJSON(assets, filterRef.current) })
+      m.addLayer({
+        id: 'tool-dots', type: 'circle', source: 'tools-live',
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 9,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#04121d',
+          'circle-opacity': ['match', ['get', 'state'], 'dropped', 0.75, 1],
+        },
+      })
+      m.addLayer({
+        id: 'tool-dots-emoji', type: 'symbol', source: 'tools-live',
+        minzoom: 6,
+        layout: { 'text-field': '🔧', 'text-size': 10, 'text-allow-overlap': true },
+      })
+      m.addLayer({
+        id: 'tool-dots-name', type: 'symbol', source: 'tools-live',
+        minzoom: 9,
+        layout: {
+          'text-field': ['case', ['==', ['get', 'state'], 'dropped'], ['concat', ['get', 'name'], ' · left here'], ['get', 'name']],
+          'text-size': 10,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+          'text-radial-offset': 1.3,
+          'text-justify': 'auto',
+          'text-optional': true,
+        },
+        paint: { 'text-color': '#c4b5fd', 'text-halo-color': '#001523', 'text-halo-width': 2 },
+      })
+
       // Tools-aboard badge: a small violet counter pinned to the dot's top-right
       // corner on any truck/machine currently carrying Bluetooth-tagged tools.
       // ONE symbol layer with icon-text-fit — circle-translate offsets warp on
@@ -1213,6 +1271,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.on('click', 'unclustered-circle', selectAsset)
       m.on('click', 'asset-glow', selectAsset)
       m.on('click', 'tool-count-badge', selectAsset)
+      m.on('click', 'tool-dots', selectAsset)
+      m.on('mouseenter', 'tool-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'tool-dots', () => { m.getCanvas().style.cursor = '' })
       m.on('click', 'clusters', (e) => {
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
@@ -1362,6 +1423,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
     source?.setData(buildGeoJSON(visible, filter, toolCounts))
+    const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
+    tools?.setData(toolsGeoJSON(visible, filter))
   }, [mapReady, assets, filter, isolateId, toolCounts])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)

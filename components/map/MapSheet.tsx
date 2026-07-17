@@ -25,9 +25,12 @@ export function MapSheet({
   onClose: () => void
   children: ReactNode
 }) {
-  // Mobile only: peek (map visible + interactive) vs expanded (full detail).
-  const [expanded, setExpanded] = useState(false)
-  // Live drag: pull the handle down to minimize/close, up to maximize.
+  // Mobile only, three drag stops (owner ask, Jul 16 — "a drag-down stop so I
+  // can see more of the map with an asset selected"):
+  //   0 mini (~24dvh: handle + title + status) · 1 peek (~42dvh) · 2 full.
+  const [level, setLevel] = useState(1)
+  const expanded = level === 2
+  // Live drag: pull the handle down to step down/close, up to step up.
   const [dragY, setDragY] = useState(0)
   const dragging = useRef(false)
   const startY = useRef(0)
@@ -40,7 +43,7 @@ export function MapSheet({
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return
     // Only track downward pull live (feels like pull-to-dismiss); upward just
-    // snaps to expanded on release so the sheet never detaches from the bottom.
+    // snaps a level up on release so the sheet never detaches from the bottom.
     setDragY(Math.max(-70, e.clientY - startY.current))
   }
   const onPointerUp = () => {
@@ -48,16 +51,15 @@ export function MapSheet({
     dragging.current = false
     const dy = dragY
     setDragY(0)
-    if (Math.abs(dy) < 8) { setExpanded((v) => !v); return } // tap = toggle
-    if (expanded) {
-      if (dy > 220) onClose()            // hard pull down from full → close
-      else if (dy > 80) setExpanded(false) // ease down → peek
-      else if (dy < -20) setExpanded(true)
-    } else {
-      if (dy < -40) setExpanded(true)    // pull up → maximize
-      else if (dy > 90) onClose()        // pull down from peek → close
+    if (Math.abs(dy) < 8) { setLevel((l) => (l === 2 ? 1 : l + 1)); return } // tap = step up (full → peek)
+    if (dy < -40) { setLevel((l) => Math.min(2, l + 1)); return }            // pull up → step up
+    if (dy > 220) { onClose(); return }                                      // hard pull → close from anywhere
+    if (dy > 80) {
+      if (level === 0) onClose()                                             // already mini → close
+      else setLevel((l) => l - 1)                                            // step down one stop
     }
   }
+  const MAX_H = ['24dvh', '42dvh', '85dvh'][level]
 
   const header = (showMobileClose = false) => (
     <div className="flex items-start justify-between gap-3">
@@ -86,11 +88,11 @@ export function MapSheet({
           handle up to maximize, down to minimize or close; the X is always in
           the fixed header. Only the expanded state dims + closes on tap-away. */}
       {expanded && <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />}
-      <div className="absolute bottom-[70px] left-0 right-0 z-[71] md:hidden">
+      <div className="absolute bottom-[54px] left-0 right-0 z-[71] md:hidden">
         <div
           className="bg-navy-900 rounded-t-2xl shadow-2xl mx-2 border border-navy-800 flex flex-col"
           style={{
-            maxHeight: expanded ? '85dvh' : '42dvh',
+            maxHeight: MAX_H,
             transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
             transition: dragging.current ? 'none' : 'transform .2s ease, max-height .2s ease',
           }}
