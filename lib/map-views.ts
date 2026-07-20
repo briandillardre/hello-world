@@ -6,9 +6,10 @@
  */
 
 import type { TrailMode } from './trails'
+import type { BasemapId } from './map-layers'
 
 export interface MapViewCfg {
-  base: 'dark' | 'streets' | 'satellite' | 'hybrid'
+  base: BasemapId
   threeD: boolean
   radar: boolean
   /** GOES satellite clouds overlay. */

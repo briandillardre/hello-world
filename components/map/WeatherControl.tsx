@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Signpost, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
 import type { SearchItem } from './MapSearch'
-import { GROUPS, BASEMAPS, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
+import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
 export type BaseStyle = BasemapId
 
@@ -85,20 +85,6 @@ function pwsAge(iso: string): string {
   if (mins < 1) return 'live'
   if (mins < 60) return `${mins}m ago`
   return `${Math.round(mins / 60)}h ago`
-}
-
-function Seg({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ' +
-        (active ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
-      }
-    >
-      {children}
-    </button>
-  )
 }
 
 function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
@@ -761,12 +747,37 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
       <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>{rowsFor('weather')}</GroupSection>
       <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
       <GroupSection gid="basemap" collapsed={!!collapsed.basemap} onToggle={() => toggleGroup('basemap')}>
-        <div className="grid grid-cols-2 gap-1 p-1">
+        {/* FR24-style map-type grid: real tile thumbnails, current pick ringed */}
+        <div className="grid grid-cols-3 gap-1.5 p-1.5">
           {BASEMAPS.map((b) => (
-            <Seg key={b.id} active={base === b.id} onClick={() => onBase(b.id)}>
-              {b.id === 'dark' ? <MapIcon className="h-3.5 w-3.5" /> : b.id === 'streets' ? <Signpost className="h-3.5 w-3.5" /> : b.id === 'satellite' ? <Satellite className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
-              {b.label}
-            </Seg>
+            <button
+              key={b.id}
+              onClick={() => onBase(b.id)}
+              className={
+                'relative rounded-lg overflow-hidden aspect-square border transition-all ' +
+                (base === b.id ? 'border-amber ring-2 ring-amber/50' : 'border-navy-700 hover:border-navy-500')
+              }
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={BASEMAP_TILE[b.id]}
+                alt={b.label}
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover"
+                style={BASEMAP_THUMB_FILTER[b.id] ? { filter: BASEMAP_THUMB_FILTER[b.id] } : undefined}
+              />
+              {/* Hybrid preview = imagery + the label overlay it actually gets */}
+              {b.id === 'hybrid' && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={BASEMAP_TILE.dark} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen" />
+              )}
+              <span className={
+                'absolute inset-x-0 bottom-0 text-[9.5px] font-semibold text-center py-0.5 ' +
+                (base === b.id ? 'bg-amber/90 text-[#1a1100]' : 'bg-black/55 text-white')
+              }>
+                {b.label}
+              </span>
+            </button>
           ))}
         </div>
         {/* 3D buildings + tilt — layerable on any basemap */}

@@ -19,6 +19,11 @@ const DRAFT_SRC = 'measure-draft'
  * (length), area (SF/SY/acre) — with a material×depth takeoff that returns
  * cubic yards and tonnage, and an optional 3D extrusion to see the lift.
  * Saves to the company (global) or just you (personal).
+ *
+ * Two layouts: md+ keeps the side card; phones get a slim top strip with the
+ * readout + a bottom save sheet, so the MAP stays visible while measuring
+ * (Brian's Fields-app reference, Jul 18). Per-segment lengths label the edges
+ * directly on the map in both layouts.
  */
 export function MeasureTool({
   map, active, onClose, onSaved, terrainOn,
@@ -43,6 +48,8 @@ export function MeasureTool({
   const [name, setName] = useState('')
   const [personal, setPersonal] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // Phone-only: the save/takeoff details live in a dismissible bottom sheet.
+  const [sheetOpen, setSheetOpen] = useState(false)
   const ptsRef = useRef(pts)
   ptsRef.current = pts
 
@@ -50,6 +57,7 @@ export function MeasureTool({
   const live: [number, number][] = hover && mode !== 'point' ? [...pts, hover] : pts
   const lengthFt = mode === 'line' ? polylineLengthFt(live) : 0
   const areaSqFt = mode === 'area' && live.length >= 3 ? polygonAreaSqFt(live) : 0
+  const perimFt = mode === 'area' && live.length >= 3 ? polylineLengthFt([...live, live[0]]) : 0
   const depth = Number(depthIn) || 0
   const to = mode === 'area' && areaSqFt > 0 && depth > 0 ? takeoff(areaSqFt, depth, material) : null
   const sp = mode === 'point' && pts[0] ? toStatePlaneSC(pts[0][0], pts[0][1]) : hover ? toStatePlaneSC(hover[0], hover[1]) : null
@@ -99,11 +107,28 @@ export function MeasureTool({
         fc.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: live } })
       }
       for (const p of pts) fc.features.push({ type: 'Feature', properties: { vertex: 1 }, geometry: { type: 'Point', coordinates: p } })
+      // Per-edge length labels at segment midpoints (the Fields-app treatment:
+      // read the dimensions off the map, not out of a panel). Closing edge
+      // included once the polygon has 3+ corners.
+      if (mode !== 'point' && live.length >= 2) {
+        const edges: [number, number][][] = []
+        for (let i = 1; i < live.length; i++) edges.push([live[i - 1], live[i]])
+        if (mode === 'area' && live.length >= 3) edges.push([live[live.length - 1], live[0]])
+        for (const [a, b] of edges) {
+          const ft = polylineLengthFt([a, b])
+          if (ft < 1) continue
+          fc.features.push({
+            type: 'Feature',
+            properties: { lbl: `${fmt(lengthIn(ft, lenUnit), lenUnit === 'mi' ? 2 : 0)} ${LENGTH_LABEL[lenUnit]}` },
+            geometry: { type: 'Point', coordinates: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] },
+          })
+        }
+      }
     }
     const src = map.getSource(DRAFT_SRC) as maplibregl.GeoJSONSource | undefined
     if (src) src.setData(fc)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, pts, hover, mode, extrude, depth])
+  }, [map, pts, hover, mode, extrude, depth, lenUnit])
 
   // Ensure source + layers exist while active; remove on teardown.
   useEffect(() => {
@@ -113,16 +138,21 @@ export function MeasureTool({
       if (!map.getLayer('measure-fill')) map.addLayer({ id: 'measure-fill', type: 'fill', source: DRAFT_SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.18 } })
       if (!map.getLayer('measure-extrude')) map.addLayer({ id: 'measure-extrude', type: 'fill-extrusion', source: DRAFT_SRC, filter: ['all', ['==', '$type', 'Polygon'], ['>', ['get', 'h'], 0]], paint: { 'fill-extrusion-color': '#f5a623', 'fill-extrusion-opacity': 0.35, 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0 } })
       if (!map.getLayer('measure-line')) map.addLayer({ id: 'measure-line', type: 'line', source: DRAFT_SRC, paint: { 'line-color': '#ffb648', 'line-width': 2.5, 'line-dasharray': [2, 1] } })
-      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 5, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      if (!map.getLayer('measure-seglabels')) map.addLayer({
+        id: 'measure-seglabels', type: 'symbol', source: DRAFT_SRC, filter: ['has', 'lbl'],
+        layout: { 'text-field': ['get', 'lbl'], 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true },
+        paint: { 'text-color': '#ffe0b0', 'text-halo-color': '#04121d', 'text-halo-width': 1.8 },
+      })
     }
     if (map.isStyleLoaded()) add(); else map.once('load', add)
     return () => {
-      for (const l of ['measure-fill', 'measure-extrude', 'measure-line', 'measure-verts']) if (map.getLayer(l)) map.removeLayer(l)
+      for (const l of ['measure-fill', 'measure-extrude', 'measure-line', 'measure-verts', 'measure-seglabels']) if (map.getLayer(l)) map.removeLayer(l)
       if (map.getSource(DRAFT_SRC)) map.removeSource(DRAFT_SRC)
     }
   }, [map, active])
 
-  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null) }
+  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false) }
   useEffect(() => { reset() }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const canSave = mode === 'point' ? pts.length === 1 : mode === 'line' ? pts.length >= 2 : pts.length >= 3
@@ -150,8 +180,95 @@ export function MeasureTool({
   }
 
   if (!active) return null
+
+  // One-line readout for the phone strip.
+  const stripReadout = mode === 'point'
+    ? (sp ? `N ${fmt(sp.northing, 1)} · E ${fmt(sp.easting, 1)}${elev != null ? ` · ${fmt(elev, 0)} ft` : ''}` : 'Tap the map to drop a point')
+    : mode === 'line'
+      ? (pts.length ? `${fmt(lengthIn(lengthFt, lenUnit), lenUnit === 'mi' ? 3 : 1)} ${LENGTH_LABEL[lenUnit]} · ${pts.length} pt${pts.length === 1 ? '' : 's'}` : 'Tap to add points')
+      : (pts.length >= 3
+          ? `${fmt(areaIn(areaSqFt, areaUnit), areaUnit === 'acre' ? 3 : 0)} ${AREA_LABEL[areaUnit]} · perim ${fmt(lengthIn(perimFt, lenUnit), lenUnit === 'mi' ? 2 : 0)} ${LENGTH_LABEL[lenUnit]}`
+          : pts.length ? `${pts.length} corner${pts.length === 1 ? '' : 's'} — keep tapping` : 'Tap corners to outline the area')
+
+  const modeBtns = ([['point', MapPin], ['line', Spline], ['area', Hexagon]] as const)
+
   return (
-    <div className="absolute left-3 bottom-24 md:bottom-28 z-30 w-[290px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel">
+    <>
+      {/* ── PHONE: slim top strip — the map stays fully visible ── */}
+      <div className="md:hidden absolute top-0 inset-x-0 z-30">
+        <div className="flex items-center gap-1 px-1.5 py-1 bg-navy-950/95 backdrop-blur border-b border-amber/30">
+          <button onClick={onClose} className="p-1.5 text-faint hover:text-ink flex-none" aria-label="Close measure"><X className="h-4 w-4" /></button>
+          <Ruler className="h-3.5 w-3.5 text-amber flex-none" />
+          <span className="flex items-center gap-0.5 bg-navy-900 rounded-md p-0.5 border border-navy-800 flex-none">
+            {modeBtns.map(([m, Icon]) => (
+              <button key={m} onClick={() => setMode(m)} aria-label={m}
+                className={'p-1.5 rounded ' + (mode === m ? 'bg-amber/25 text-amber' : 'text-faint')}>
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </span>
+          <button onClick={() => setPts((p) => p.slice(0, -1))} disabled={!pts.length || mode === 'point'} className="p-1.5 text-faint disabled:opacity-30 flex-none" aria-label="Undo"><Undo2 className="h-4 w-4" /></button>
+          <button onClick={reset} disabled={!pts.length} className="p-1.5 text-faint disabled:opacity-30 flex-none" aria-label="Clear"><Trash2 className="h-4 w-4" /></button>
+          <span className="flex-1" />
+          <button
+            onClick={() => setSheetOpen(true)}
+            disabled={!canSave}
+            className="flex-none rounded-md bg-amber text-[#1a1100] font-display font-bold text-[11.5px] px-3 py-1.5 disabled:opacity-35"
+          >
+            Next
+          </button>
+        </div>
+        {/* readout line — tap the unit chip to cycle */}
+        <div className="flex items-center gap-2 px-2.5 py-1 bg-navy-950/85 backdrop-blur border-b border-navy-800">
+          <span className="font-mono text-[11.5px] text-amber tabular-nums truncate flex-1">{stripReadout}</span>
+          {mode === 'line' && <UnitBtns opts={['ft', 'yd', 'mi']} labels={LENGTH_LABEL} val={lenUnit} set={(u) => setLenUnit(u as LengthUnit)} />}
+          {mode === 'area' && <UnitBtns opts={['sf', 'sy', 'acre']} labels={AREA_LABEL} val={areaUnit} set={(u) => setAreaUnit(u as AreaUnit)} />}
+        </div>
+      </div>
+
+      {/* ── PHONE: save/takeoff bottom sheet (only after Next) ── */}
+      {sheetOpen && canSave && (
+        <div className="md:hidden absolute inset-x-2 bottom-16 z-40 rounded-xl bg-navy-950/97 backdrop-blur border border-navy-700 shadow-panel p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="font-display font-bold text-[13px] text-ink flex-1">
+              {mode === 'point' ? 'Save point' : mode === 'line' ? `Save line — ${fmt(lengthIn(polylineLengthFt(pts), lenUnit), 1)} ${LENGTH_LABEL[lenUnit]}` : `Save area — ${fmt(areaIn(polygonAreaSqFt(pts), areaUnit), areaUnit === 'acre' ? 3 : 0)} ${AREA_LABEL[areaUnit]}`}
+            </span>
+            <button onClick={() => setSheetOpen(false)} className="text-faint hover:text-ink p-1"><X className="h-4 w-4" /></button>
+          </div>
+          {mode === 'area' && (
+            <div className="rounded-lg bg-navy-900 p-2 space-y-1.5">
+              <p className="font-mono text-[9px] uppercase tracking-wider text-faint flex items-center gap-1"><Box className="h-3 w-3" /> Takeoff</p>
+              <div className="flex gap-1.5">
+                <select value={material} onChange={(e) => setMaterial(e.target.value)} className="flex-1 bg-navy-950 border border-navy-700 rounded-md text-[11.5px] text-ink px-2 py-1 outline-none">
+                  {MATERIALS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+                </select>
+                <div className="flex items-center bg-navy-950 border border-navy-700 rounded-md px-1.5">
+                  <input value={depthIn} onChange={(e) => setDepthIn(e.target.value)} inputMode="decimal" className="w-9 bg-transparent text-[11.5px] text-ink text-right outline-none" />
+                  <span className="text-[10px] text-faint ml-0.5">in</span>
+                </div>
+              </div>
+              {to && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="rounded-md bg-amber/10 px-2 py-1"><p className="font-display font-bold text-amber text-[15px] tabular-nums leading-none">{fmt(to.tons, 1)}<span className="text-[10px] font-normal ml-0.5">tons</span></p></div>
+                  <div className="rounded-md bg-teal/10 px-2 py-1"><p className="font-display font-bold text-teal text-[15px] tabular-nums leading-none">{fmt(to.cubicYd, 1)}<span className="text-[10px] font-normal ml-0.5">CY</span></p></div>
+                </div>
+              )}
+            </div>
+          )}
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Lot A — 2&quot; asphalt)" className="w-full bg-navy-950 border border-navy-700 rounded-md text-[12px] text-ink px-2 py-1.5 outline-none focus:border-amber/50" />
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setPersonal(false)} className={'flex-1 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold border ' + (!personal ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700')}><Globe className="h-3 w-3" /> Everyone</button>
+            <button onClick={() => setPersonal(true)} className={'flex-1 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold border ' + (personal ? 'bg-[#a78bfa]/20 text-[#c4b5fd] border-[#a78bfa]/40' : 'text-faint border-navy-700')}><Lock className="h-3 w-3" /> Just me</button>
+          </div>
+          <button onClick={save} disabled={saving} className="w-full flex items-center justify-center gap-1.5 rounded-md bg-amber text-[#1a1100] font-display font-bold text-[12.5px] py-2 disabled:opacity-50">
+            <Check className="h-4 w-4" /> {saving ? 'Saving…' : 'Save measurement'}
+          </button>
+          {msg && <p className={'text-[11px] ' + (msg.includes('✓') ? 'text-teal' : 'text-alert')}>{msg}</p>}
+        </div>
+      )}
+
+      {/* ── DESKTOP: the full side card ── */}
+      <div className="hidden md:block absolute left-3 bottom-28 z-30 w-[290px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-navy-800">
         <Ruler className="h-4 w-4 text-amber" />
         <span className="font-display font-bold text-[13px] text-ink flex-1">Measure &amp; takeoff</span>
@@ -203,7 +320,7 @@ export function MeasureTool({
                 <span className="font-display font-black text-amber text-xl tabular-nums">{areaSqFt > 0 ? fmt(areaIn(areaSqFt, areaUnit), areaUnit === 'acre' ? 3 : 0) : '0'}</span>
                 <UnitBtns opts={['sf', 'sy', 'acre']} labels={AREA_LABEL} val={areaUnit} set={(u) => setAreaUnit(u as AreaUnit)} />
               </div>
-              <p className="text-[10px] text-faint mt-0.5">{pts.length} corner{pts.length === 1 ? '' : 's'}{areaSqFt > 0 ? ` · ${fmt(areaIn(areaSqFt, 'sf'), 0)} SF` : ''}</p>
+              <p className="text-[10px] text-faint mt-0.5">{pts.length} corner{pts.length === 1 ? '' : 's'}{areaSqFt > 0 ? ` · ${fmt(areaIn(areaSqFt, 'sf'), 0)} SF · perim ${fmt(lengthIn(perimFt, 'ft'), 0)} ft` : ''}</p>
             </div>
             {/* Takeoff */}
             <div className="rounded-lg bg-navy-900 p-2.5 space-y-1.5">
@@ -258,7 +375,8 @@ export function MeasureTool({
         )}
         {msg && <p className={'text-[11px] ' + (msg.includes('✓') ? 'text-teal' : 'text-alert')}>{msg}</p>}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -267,7 +385,7 @@ function Row({ k, v }: { k: string; v: string }) {
 }
 function UnitBtns<T extends string>({ opts, labels, val, set }: { opts: T[]; labels: Record<T, string>; val: T; set: (u: T) => void }) {
   return (
-    <span className="flex items-center gap-0.5 bg-navy-950 rounded-md p-0.5 border border-navy-800">
+    <span className="flex items-center gap-0.5 bg-navy-950 rounded-md p-0.5 border border-navy-800 flex-none">
       {opts.map((o) => (
         <button key={o} onClick={() => set(o)} className={'px-1.5 py-0.5 rounded text-[10px] font-semibold ' + (val === o ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}>{labels[o]}</button>
       ))}

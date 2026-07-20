@@ -877,6 +877,39 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, maxzoom: 19, attribution: 'Esri, Maxar' })
       m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
 
+      // ── Extra basemap flavors (FR24-style picker, Jul 18) ──
+      // Terrain — Esri World Topo (relief + contours, free, no key).
+      m.addSource('terrain-base', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256, maxzoom: 19, attribution: 'Esri',
+      })
+      m.addLayer({ id: 'terrain-base', type: 'raster', source: 'terrain-base', layout: { visibility: 'none' } })
+      // Silver — CARTO Positron (light, labeled). Plain — Positron without
+      // labels. B/W reuses the Positron source with a grayscale+contrast paint.
+      m.addSource('silver-base', {
+        type: 'raster',
+        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png'],
+        tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
+      })
+      m.addLayer({ id: 'silver-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' } })
+      m.addSource('plain-base', {
+        type: 'raster',
+        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}@2x.png'],
+        tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
+      })
+      m.addLayer({ id: 'plain-base', type: 'raster', source: 'plain-base', layout: { visibility: 'none' } })
+      m.addLayer({
+        id: 'bw-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' },
+        paint: { 'raster-saturation': -1, 'raster-contrast': 0.3 },
+      })
+      // Aubergine — Voyager hue-rotated into a deep purple night map (paint
+      // transform, no extra tile source).
+      m.addLayer({
+        id: 'aubergine-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' },
+        paint: { 'raster-hue-rotate': 230, 'raster-saturation': -0.4, 'raster-brightness-max': 0.55, 'raster-brightness-min': 0.06 },
+      })
+
       // Hybrid labels — CARTO's retina label-only tiles (place + road names
       // with dark halos, crisp on hi-DPI). Replaced Esri's dated reference
       // rasters: non-retina text and salmon road lines read blurry over
@@ -1530,7 +1563,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const z = Math.min(18, Math.max(3, Math.floor(m.getZoom())))
       const base = baseRef.current
       const tpl = base === 'satellite' || base === 'hybrid' ? SAT_TILES
-        : base === 'streets' ? 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+        : base === 'streets' || base === 'aubergine' ? 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+        : base === 'terrain' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
+        : base === 'silver' || base === 'bw' ? 'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png'
+        : base === 'plain' ? 'https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}@2x.png'
         : 'https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'
       let n = 0
       // Sample the next few playhead positions and warm a 3×3 tile block
@@ -1824,7 +1860,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
   }, [])
 
-  // Switch basemap layers (dark / streets / satellite / hybrid)
+  // Switch basemap layers. 'dark' is the underlying style; every other flavor
+  // is a raster layer toggled over it (B/W + Aubergine are paint-transformed
+  // views of the Positron/Voyager sources).
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('sat-base')) return
@@ -1833,7 +1871,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     set('streets-base', base === 'streets')
     set('sat-base', base === 'satellite' || base === 'hybrid')
-    set('labels-overlay', base === 'hybrid')
+    set('terrain-base', base === 'terrain')
+    set('silver-base', base === 'silver')
+    set('plain-base', base === 'plain')
+    set('bw-base', base === 'bw')
+    set('aubergine-base', base === 'aubergine')
+    set('labels-overlay', base === 'hybrid' || base === 'aubergine')
   }, [mapReady, base])
 
   // 3D is an independent toggle now — buildings + camera tilt, layerable on any

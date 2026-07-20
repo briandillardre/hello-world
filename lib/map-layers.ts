@@ -5,7 +5,7 @@
  * — never rename one without a back-compat mapping.
  */
 
-export type BasemapId = 'dark' | 'streets' | 'satellite' | 'hybrid'
+export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine'
 export type GroupId = 'site' | 'weather' | 'water' | 'basemap'
 
 export interface LayerRowDef {
@@ -42,12 +42,40 @@ export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[
   { id: 'basemap', label: 'Basemap', defaultCollapsed: true },
 ]
 
+// Rendered as a thumbnail grid (FR24-style map-type picker, Brian's ask Jul 18).
+// Thumb = a real tile of upstate SC from that source; cssFilter approximates
+// the paint-property treatment for derived styles (B/W, Aubergine).
 export const BASEMAPS: { id: BasemapId; label: string }[] = [
-  { id: 'dark', label: 'Dark' },
-  { id: 'streets', label: 'Streets' },
   { id: 'satellite', label: 'Satellite' },
   { id: 'hybrid', label: 'Hybrid' },
+  { id: 'streets', label: 'Streets' },
+  { id: 'terrain', label: 'Terrain' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'silver', label: 'Silver' },
+  { id: 'plain', label: 'Plain' },
+  { id: 'bw', label: 'B/W' },
+  { id: 'aubergine', label: 'Aubergine' },
 ]
+
+// One representative tile per source for the picker thumbnails (z8 tile over
+// upstate SC — recognizable home turf, cached hard by the CDNs).
+const THUMB = { z: 8, x: 69, y: 101 }
+export const BASEMAP_TILE: Record<BasemapId, string> = {
+  dark: `https://a.basemaps.cartocdn.com/rastertiles/dark_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  streets: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  terrain: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
+  satellite: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
+  hybrid: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
+  silver: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  plain: `https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  bw: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  aubergine: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+}
+/** CSS filter approximating the map paint treatment, for picker thumbs only. */
+export const BASEMAP_THUMB_FILTER: Partial<Record<BasemapId, string>> = {
+  bw: 'grayscale(1) contrast(1.25)',
+  aubergine: 'hue-rotate(230deg) saturate(0.6) brightness(0.55)',
+}
 
 export const LAYER_ROWS: LayerRowDef[] = [
   // ── Site: context drawn around your assets ────────────────────────────────
