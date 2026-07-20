@@ -120,6 +120,69 @@ export async function saveZoneNotesAction(id: string, notes: string): Promise<{ 
   }
 }
 
+/**
+ * Complete / reopen a job (the DCG "Z flip"). One tap renames the zone with
+ * the leading Z and stamps completed_at — the SAME name flows to the map,
+ * costing, site log, and folder card because they all key off the zone id.
+ * When QuickBooks is connected, the paired QBO customer renames too, so the
+ * crews' Workforce pick list re-sorts itself the moment the job closes.
+ * QBO failures never block the flip — books catch up on the next try.
+ */
+export async function setZoneCompletedAction(id: string, completed: boolean): Promise<{ ok: boolean; error?: string; qbo?: string }> {
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { toCompletedName, toActiveName } = await import('@/lib/job-code')
+    const supabase = createClient()
+    const { data: zone, error: readErr } = await supabase
+      .from('geofences')
+      .select('id, company_id, name, qbo_customer_id')
+      .eq('id', id)
+      .single()
+    if (readErr || !zone) return { ok: false, error: readErr?.message ?? 'Zone not found' }
+
+    const oldName = zone.name as string
+    const newName = completed ? toCompletedName(oldName) : toActiveName(oldName)
+    const { error } = await supabase
+      .from('geofences')
+      .update({ name: newName, completed_at: completed ? new Date().toISOString() : null })
+      .eq('id', id)
+    if (error) {
+      if (error.code === '42703') return { ok: false, error: 'Run migration 037_jobs.sql first.' }
+      return { ok: false, error: error.message }
+    }
+
+    // Best-effort QBO mirror: rename the paired customer (or find it by the
+    // old name and pair it now). Never blocks the zone flip.
+    let qboNote: string | undefined
+    try {
+      const { getLiveConnection, renameCustomer, findCustomerByName } = await import('@/lib/qbo')
+      const conn = await getLiveConnection(zone.company_id as string)
+      if (conn) {
+        let custId = (zone.qbo_customer_id as string | null) ?? null
+        if (!custId) {
+          custId = await findCustomerByName(conn, oldName)
+          if (custId) await supabase.from('geofences').update({ qbo_customer_id: custId }).eq('id', id)
+        }
+        if (custId) {
+          await renameCustomer(conn, custId, newName)
+          qboNote = 'QuickBooks customer renamed to match.'
+        } else {
+          qboNote = 'No matching QuickBooks customer found — rename it there when convenient.'
+        }
+      }
+    } catch (qboErr) {
+      qboNote = `Zone updated; QuickBooks rename failed (${qboErr instanceof Error ? qboErr.message.slice(0, 120) : 'error'}).`
+    }
+
+    revalidatePath(`/geofences/${id}`)
+    revalidatePath('/geofences')
+    revalidatePath('/map')
+    return { ok: true, qbo: qboNote }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'failed' }
+  }
+}
+
 /** Document-folder link on a zone (Dropbox/Drive/etc.) — just a URL. */
 export async function saveZoneFolderAction(id: string, folderUrl: string): Promise<{ ok: boolean; error?: string }> {
   try {

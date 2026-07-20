@@ -187,6 +187,26 @@ export async function findOrCreateCustomer(conn: LiveConnection, name: string): 
   return (created.Customer as Entity).Id
 }
 
+/** Customer id by exact DisplayName, or null. Used to pair a zone with the
+ *  QBO customer the crews already pick in Workforce (same name = same job). */
+export async function findCustomerByName(conn: LiveConnection, name: string): Promise<string | null> {
+  const found = firstEntity(
+    await qboQuery(conn, `select Id from Customer where DisplayName = '${q(name)}'`), 'Customer')
+  return found?.Id ?? null
+}
+
+/** Rename a QBO customer (sparse update; QBO requires the current SyncToken).
+ *  This is the Z-flip on the books side: complete a job in HammerTrack and
+ *  the Workforce pick list renames (and re-sorts) itself to match. */
+export async function renameCustomer(conn: LiveConnection, customerId: string, newName: string): Promise<void> {
+  const resp = await qboFetch(conn, `/customer/${customerId}`)
+  const cust = resp.Customer as { Id: string; SyncToken: string }
+  await qboFetch(conn, '/customer', {
+    method: 'POST',
+    body: JSON.stringify({ Id: cust.Id, SyncToken: cust.SyncToken, sparse: true, DisplayName: newName }),
+  })
+}
+
 export async function findOrCreateVendor(conn: LiveConnection, name: string): Promise<string> {
   const found = firstEntity(
     await qboQuery(conn, `select Id from Vendor where DisplayName = '${q(name)}'`), 'Vendor')

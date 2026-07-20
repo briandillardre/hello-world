@@ -177,6 +177,10 @@ export interface Geofence {
   notes?: string | null
   /** Link to the zone's document folder (Dropbox/Drive/…). */
   folder_url?: string | null
+  /** Job completed (the DCG "Z flip") — name carries the Z prefix while set. */
+  completed_at?: string | null
+  /** Paired QuickBooks customer id — complete/reopen renames both systems. */
+  qbo_customer_id?: string | null
   /** Optional job-site window. NULL = perpetual. Scopes cost totals + archive. */
   active_from?: string | null
   active_until?: string | null
