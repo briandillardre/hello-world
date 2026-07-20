@@ -52,6 +52,12 @@ export function MeasureTool({
   const [sheetOpen, setSheetOpen] = useState(false)
   const ptsRef = useRef(pts)
   ptsRef.current = pts
+  // Set when a vertex drag just ended — the mouseup/touchend can still emit a
+  // map 'click', which must NOT add a new point on top of the drop spot.
+  const justDraggedRef = useRef(0)
+  // Latest draft geometry — replayed into the source right after the layers
+  // finally attach (they can attach late, see the idle-retry below).
+  const fcRef = useRef<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] })
 
   // Build the working geometry (committed pts + rubber-band to the cursor).
   const live: [number, number][] = hover && mode !== 'point' ? [...pts, hover] : pts
@@ -77,6 +83,7 @@ export function MeasureTool({
       } else setElev(null)
     }
     const onClick = (e: maplibregl.MapMouseEvent) => {
+      if (Date.now() - justDraggedRef.current < 200) return // drag drop, not a new point
       const ll: [number, number] = [e.lngLat.lng, e.lngLat.lat]
       if (mode === 'point') { setPts([ll]); return }
       setPts((p) => [...p, ll])
@@ -106,7 +113,7 @@ export function MeasureTool({
       } else if (live.length >= 2) {
         fc.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: live } })
       }
-      for (const p of pts) fc.features.push({ type: 'Feature', properties: { vertex: 1 }, geometry: { type: 'Point', coordinates: p } })
+      pts.forEach((p, i) => fc.features.push({ type: 'Feature', properties: { vertex: 1, vi: i }, geometry: { type: 'Point', coordinates: p } }))
       // Per-edge length labels at segment midpoints (the Fields-app treatment:
       // read the dimensions off the map, not out of a panel). Closing edge
       // included once the polygon has 3+ corners.
@@ -125,6 +132,7 @@ export function MeasureTool({
         }
       }
     }
+    fcRef.current = fc
     const src = map.getSource(DRAFT_SRC) as maplibregl.GeoJSONSource | undefined
     if (src) src.setData(fc)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,17 +146,89 @@ export function MeasureTool({
       if (!map.getLayer('measure-fill')) map.addLayer({ id: 'measure-fill', type: 'fill', source: DRAFT_SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.18 } })
       if (!map.getLayer('measure-extrude')) map.addLayer({ id: 'measure-extrude', type: 'fill-extrusion', source: DRAFT_SRC, filter: ['all', ['==', '$type', 'Polygon'], ['>', ['get', 'h'], 0]], paint: { 'fill-extrusion-color': '#f5a623', 'fill-extrusion-opacity': 0.35, 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0 } })
       if (!map.getLayer('measure-line')) map.addLayer({ id: 'measure-line', type: 'line', source: DRAFT_SRC, paint: { 'line-color': '#ffb648', 'line-width': 2.5, 'line-dasharray': [2, 1] } })
-      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 5, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      // Invisible fat hit ring over each vertex — a thumb-sized drag target
+      // (the visible 6px dot is unhittable on a phone).
+      if (!map.getLayer('measure-verts-hit')) map.addLayer({ id: 'measure-verts-hit', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 18, 'circle-color': '#000', 'circle-opacity': 0.001 } })
       if (!map.getLayer('measure-seglabels')) map.addLayer({
         id: 'measure-seglabels', type: 'symbol', source: DRAFT_SRC, filter: ['has', 'lbl'],
         layout: { 'text-field': ['get', 'lbl'], 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true },
         paint: { 'text-color': '#ffe0b0', 'text-halo-color': '#04121d', 'text-halo-width': 1.8 },
       })
     }
-    if (map.isStyleLoaded()) add(); else map.once('load', add)
+    // isStyleLoaded() reports false during ANY pending style mutation, and the
+    // old `once('load')` fallback never fires again after startup — so
+    // activating measure mid-churn silently added NO layers: the panel counted
+    // corners while the map drew nothing (found via headless drag test, Jul 18).
+    // 'idle' always fires again, so retry there until the add sticks.
+    let disposed = false
+    const ensure = () => {
+      if (disposed) return
+      try {
+        add()
+        ;(map.getSource(DRAFT_SRC) as maplibregl.GeoJSONSource | undefined)?.setData(fcRef.current)
+      } catch {
+        map.once('idle', ensure) // style mid-mutation — try again when it settles
+      }
+    }
+    ensure()
     return () => {
-      for (const l of ['measure-fill', 'measure-extrude', 'measure-line', 'measure-verts', 'measure-seglabels']) if (map.getLayer(l)) map.removeLayer(l)
+      disposed = true
+      for (const l of ['measure-fill', 'measure-extrude', 'measure-line', 'measure-verts', 'measure-verts-hit', 'measure-seglabels']) if (map.getLayer(l)) map.removeLayer(l)
       if (map.getSource(DRAFT_SRC)) map.removeSource(DRAFT_SRC)
+    }
+  }, [map, active])
+
+  // ── Drag a vertex to adjust it (mouse + touch) ─────────────────────────────
+  // Grab the fat hit ring, dragPan pauses, the point follows the pointer, and
+  // all readouts/edge labels update live. The post-drag click is swallowed via
+  // justDraggedRef so dropping a corner never plants a new one.
+  useEffect(() => {
+    if (!map || !active) return
+    let dragVi: number | null = null
+    let moved = false
+    const move = (e: maplibregl.MapMouseEvent | maplibregl.MapTouchEvent) => {
+      if (dragVi == null) return
+      moved = true
+      const ll: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      setHover(null)
+      setPts((p) => p.map((q, i) => (i === dragVi ? ll : q)))
+    }
+    const end = () => {
+      if (dragVi == null) return
+      dragVi = null
+      if (moved) justDraggedRef.current = Date.now()
+      moved = false
+      map.dragPan.enable()
+      map.off('mousemove', move)
+      map.off('touchmove', move)
+    }
+    const start = (e: (maplibregl.MapLayerMouseEvent | maplibregl.MapLayerTouchEvent) & { preventDefault: () => void }) => {
+      const vi = e.features?.[0]?.properties?.vi
+      if (typeof vi !== 'number') return
+      e.preventDefault()
+      dragVi = vi
+      moved = false
+      map.dragPan.disable()
+      map.on('mousemove', move)
+      map.on('touchmove', move)
+      map.once('mouseup', end)
+      map.once('touchend', end)
+    }
+    const enter = () => { map.getCanvas().style.cursor = 'move' }
+    const leave = () => { map.getCanvas().style.cursor = 'crosshair' }
+    map.on('mousedown', 'measure-verts-hit', start)
+    map.on('touchstart', 'measure-verts-hit', start)
+    map.on('mouseenter', 'measure-verts-hit', enter)
+    map.on('mouseleave', 'measure-verts-hit', leave)
+    return () => {
+      map.off('mousedown', 'measure-verts-hit', start)
+      map.off('touchstart', 'measure-verts-hit', start)
+      map.off('mouseenter', 'measure-verts-hit', enter)
+      map.off('mouseleave', 'measure-verts-hit', leave)
+      map.off('mousemove', move)
+      map.off('touchmove', move)
+      map.dragPan.enable()
     }
   }, [map, active])
 
