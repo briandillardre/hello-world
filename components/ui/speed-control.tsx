@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Gauge } from 'lucide-react'
-import { formatSpeed } from '@/lib/trails'
+import { formatSpeed, niceSpeed } from '@/lib/trails'
 
 /**
  * Playback-speed picker. A native <select> here opens Android's full-screen
  * radio list over the whole map — so instead: a compact button that pops a
- * stepped slider (snaps across the discrete speeds for the current window),
- * with tappable tick labels underneath.
+ * CONTINUOUS slider (log scale from 1× to the window's fastest sweep, so the
+ * bounds adapt to every timeframe), snapped to clean 1/2/5×10ⁿ values, with
+ * the window's preset speeds as tappable ticks underneath.
  */
+const STEPS = 200 // slider resolution across the log range
+
 export function SpeedControl({
   speeds, value, onChange,
 }: {
@@ -20,12 +23,16 @@ export function SpeedControl({
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
 
-  // Closest index — the speeds list changes with the time window, so the
-  // current value may not be an exact member.
-  const idx = speeds.reduce(
-    (best, s, i) => (Math.abs(s - value) < Math.abs(speeds[best] - value) ? i : best),
-    0,
-  )
+  // Log-scale mapping between slider position (0..STEPS) and multiplier.
+  // Bounds come from the per-window speeds list, so Today slides 1×–5k×
+  // while YTD slides 1×–1M× — "applicable to each timeframe" for free.
+  const min = Math.max(1, speeds[0] ?? 1)
+  const max = Math.max(min + 1, speeds[speeds.length - 1] ?? 1000)
+  const lnMin = Math.log(min)
+  const lnMax = Math.log(max)
+  const toPos = (v: number) =>
+    Math.round(((Math.log(Math.min(max, Math.max(min, v))) - lnMin) / (lnMax - lnMin)) * STEPS)
+  const fromPos = (p: number) => niceSpeed(Math.exp(lnMin + (p / STEPS) * (lnMax - lnMin)))
 
   useEffect(() => {
     if (!open) return
@@ -49,24 +56,25 @@ export function SpeedControl({
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 z-30 w-[232px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2">
+        <div className="absolute bottom-full right-0 mb-2 z-30 w-[248px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2">
           <div className="flex items-baseline justify-between mb-1">
             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Speed</span>
-            <span className="font-display font-bold text-amber text-[13px] tabular-nums">{formatSpeed(speeds[idx])}</span>
+            <span className="font-display font-bold text-amber text-[13px] tabular-nums">{formatSpeed(value)}</span>
           </div>
           <input
-            type="range" min={0} max={speeds.length - 1} step={1} value={idx}
-            onChange={(e) => onChange(speeds[Number(e.target.value)])}
+            type="range" min={0} max={STEPS} step={1} value={toPos(value)}
+            onChange={(e) => onChange(fromPos(Number(e.target.value)))}
             className="slider-heat w-full h-[22px] cursor-pointer touch-none"
             aria-label="Playback speed"
-            aria-valuetext={formatSpeed(speeds[idx])}
+            aria-valuetext={formatSpeed(value)}
           />
+          {/* Preset ticks — one-tap jumps to the window's canonical speeds */}
           <div className="flex justify-between mt-0.5">
-            {speeds.map((s, i) => (
+            {speeds.map((s) => (
               <button
                 key={s}
                 onClick={() => onChange(s)}
-                className={`font-mono text-[9.5px] px-0.5 py-1 ${i === idx ? 'text-amber font-bold' : 'text-faint hover:text-ink'}`}
+                className={`font-mono text-[9.5px] px-0.5 py-1 ${s === value ? 'text-amber font-bold' : 'text-faint hover:text-ink'}`}
               >
                 {formatSpeed(s)}
               </button>

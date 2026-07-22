@@ -302,7 +302,7 @@ export function rangeWindowSeconds(range: TimeRange): number {
 }
 
 /** Round to a "nice" 1/2/5×10ⁿ multiplier so the speed menu reads clean. */
-const niceSpeed = (x: number) => {
+export const niceSpeed = (x: number) => {
   const p = Math.pow(10, Math.floor(Math.log10(Math.max(1, x))))
   const m = x / p
   return Math.max(1, (m >= 7.5 ? 10 : m >= 3.5 ? 5 : m >= 1.5 ? 2 : 1) * p)
