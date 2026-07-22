@@ -460,9 +460,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // A window that includes NOW keeps growing \u2014 and trackers buffer offline
     // and backfill with original timestamps (start of a drive after days
     // parked shows up minutes late). Caching that window forever froze the
-    // trail at first fetch, so live windows re-pull every minute; windows
-    // entirely in the past stay cached.
+    // trail at first fetch, so live windows re-pull; windows entirely in the
+    // past stay cached. Re-pull CADENCE scales with the window: a Today tab
+    // refreshing every minute is cheap, but a YTD/All tab doing that made the
+    // server re-scan the entire history every 60s and dragged the whole DB
+    // down ("map loading extremely slowly", Jul 21). Only the newest sliver
+    // changes on big windows \u2014 minutes-stale is invisible there.
     const windowIsLive = w.to > Date.now()
+    const spanDays = (w.to - w.from) / 86_400_000
+    const repullMs = spanDays <= 2 ? 60_000 : spanDays <= 31 ? 5 * 60_000 : 15 * 60_000
     if (fetchedRows[key] && !windowIsLive) return
     const ctrl = new AbortController()
     const load = () => {
@@ -486,7 +492,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
     }
     load()
-    const iv = windowIsLive ? setInterval(load, 60_000) : null
+    const iv = windowIsLive ? setInterval(load, repullMs) : null
     return () => { ctrl.abort(); if (iv) clearInterval(iv) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyRows, range, customFrom, customTo, earliestMs, tz])

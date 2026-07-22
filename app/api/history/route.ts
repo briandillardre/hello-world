@@ -83,7 +83,10 @@ export async function GET(req: NextRequest) {
   // (Chesterfield run, Jul 17). RLS applies inside (SECURITY INVOKER).
   if (truncated && rows.length) {
     const oldestMs = Date.parse(rows[0].timestamp)
-    if (Number.isFinite(oldestMs) && oldestMs > fromMs) {
+    // Skip the whole-remainder scan when the uncovered gap is trivial — a
+    // sub-30-minute tail ships zero visually meaningful points but still made
+    // Postgres window-scan the range on every poll (DB drag, Jul 21).
+    if (Number.isFinite(oldestMs) && oldestMs - fromMs > 30 * 60_000) {
       const { data: older, error: rpcErr } = await supabase.rpc('sampled_history', {
         p_from: new Date(fromMs).toISOString(),
         p_to: new Date(oldestMs).toISOString(),
@@ -105,8 +108,12 @@ export async function GET(req: NextRequest) {
   const { simplifyHistoryRows } = await import('@/lib/simplify')
   const thinned = rows.length > SHIP_CAP ? simplifyHistoryRows(rows, 12, SHIP_CAP) : rows
 
+  // Cache big windows longer — their content barely changes minute to minute,
+  // and the browser cache absorbs an over-eager poller between real re-pulls.
+  const spanDays = (toMs - fromMs) / 86_400_000
+  const maxAge = spanDays <= 2 ? 30 : spanDays <= 31 ? 240 : 600
   return NextResponse.json(
     { rows: thinned, truncated },
-    { headers: { 'Cache-Control': 'private, max-age=30' } }
+    { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
   )
 }
