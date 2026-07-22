@@ -203,7 +203,14 @@ export function tracksFromHistory(
   // comes ONLY from `toolRows` (the carrier's path during pairing episodes);
   // tools with no episodes in the window get no track at all.
   return assets.filter((a) => a.type !== 'tool' || (byTool.get(a.id)?.length ?? 0) > 0).map((a) => {
-    const raw = ((a.type === 'tool' ? byTool.get(a.id) : byAsset.get(a.id)) ?? []).sort((x, y) => x.ms - y.ms)
+    let raw = ((a.type === 'tool' ? byTool.get(a.id) : byAsset.get(a.id)) ?? []).sort((x, y) => x.ms - y.ms)
+    // No fixes in this window but the asset HAS a live position → pin it
+    // there for the whole window. Without this, empty tracks fell through
+    // positionAt's demo-center fallback and replay heads rendered parked
+    // trucks in NASHVILLE (Bryson's vacationing Ram, Jul 21).
+    if (raw.length === 0 && a.location) {
+      raw = [{ lng: a.location.lng, lat: a.location.lat, ms: minTs, mph: 0 }]
+    }
     // Curve-preserving thinning (DP) — the old every-Nth stride here was the
     // second half of the corner-cutting trails bug (server thinning was the
     // first). Straightaways compress, bends survive.

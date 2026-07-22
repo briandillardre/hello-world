@@ -211,7 +211,9 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, s
   return {
     type: 'FeatureCollection',
     features: tracks
-      .filter((tr) => filter.has(tr.type))
+      // Empty track = no position knowledge at all — never draw a head for it
+      // (positionAt's fallback is the demo center: a phantom pin in Nashville).
+      .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
       .map((tr) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: positionAt(tr, t) },
