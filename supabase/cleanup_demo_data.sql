@@ -34,9 +34,14 @@ WHERE tracker_id IN (
 DELETE FROM asset_locations
 WHERE asset_id IN (SELECT id FROM assets WHERE type = 'tool');
 
--- 2) All seeded demo zones (Riverfront Tower, Maple St Grading, Equipment Yard).
---    Redraw real zones around your actual yard/sites on the map afterward.
-DELETE FROM geofences;
+-- 2) The seeded demo zones ONLY — matched by their exact seeded names.
+--    (An earlier version of this file was `DELETE FROM geofences;` with no
+--    filter, written when demo zones were the only zones in existence. It
+--    outlived that assumption and wiped real drawn zones on Jul 21. Never
+--    delete unscoped: this script must stay safe to run at ANY point in a
+--    company's life.)
+DELETE FROM geofences
+WHERE name IN ('Riverfront Tower', 'Maple St Grading', 'Equipment Yard');
 
 -- 3) Verify: should list ONLY your real tracker(s).
 SELECT name, type, tracker_id, created_at FROM assets ORDER BY created_at;
