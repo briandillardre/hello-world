@@ -7,7 +7,6 @@ import { PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
-import type { SearchItem } from './MapSearch'
 import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
 export type BaseStyle = BasemapId
@@ -73,10 +72,6 @@ interface WeatherControlProps {
   /** Demo-only Site IoT toggle. */
   showDevices?: boolean
   onToggleDevices?: () => void
-  /** Find an asset or zone from inside the panel — full list on focus,
-   *  filters as you type (or dictate via the keyboard mic). */
-  searchItems?: SearchItem[]
-  onPickItem?: (it: SearchItem) => void
   /** Rendered to the RIGHT of the collapsed pill (the map search button). */
   searchSlot?: ReactNode
 }
@@ -189,12 +184,9 @@ function GroupSection({ gid, collapsed, onToggle, children }: {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
-  // Find-anything (assets + zones) inside the panel.
-  const [findQ, setFindQ] = useState('')
-  const [findOpen, setFindOpen] = useState(false)
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
   // Two-tap confirm for deleting a personal preset — first × arms it, second removes.
@@ -429,64 +421,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
       <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
 
-      {/* ── Find an asset or zone — full list on focus, filters as you type ── */}
-      {searchItems && onPickItem && (() => {
-        const q = findQ.trim().toLowerCase()
-        const TYPE_ORDER: Record<string, number> = { vehicle: 0, equipment: 1, personnel: 2, tool: 3 }
-        const match = (it: SearchItem) => !q || it.name.toLowerCase().includes(q)
-        const assets = searchItems.filter((i) => i.kind === 'asset' && match(i))
-          .sort((a, b) => (TYPE_ORDER[a.type ?? ''] ?? 9) - (TYPE_ORDER[b.type ?? ''] ?? 9) || a.name.localeCompare(b.name))
-        const zones = searchItems.filter((i) => i.kind === 'zone' && match(i)).sort((a, b) => a.name.localeCompare(b.name))
-        const pick = (it: SearchItem) => { onPickItem(it); setFindQ(''); setFindOpen(false); setOpen(false) }
-        const row = (it: SearchItem) => (
-          <button
-            key={`${it.kind}-${it.id}`}
-            onMouseDown={(e) => { e.preventDefault(); pick(it) }}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-muted hover:bg-navy-800 hover:text-ink transition-colors"
-          >
-            {it.kind === 'zone'
-              ? <Hexagon className="h-3 w-3 flex-none" style={{ color: it.color ?? '#ff9e16' }} />
-              : <span className="text-[13px] leading-none flex-none">{it.type === 'vehicle' ? '🚛' : it.type === 'equipment' ? '🏗️' : it.type === 'personnel' ? '👷' : '🔧'}</span>}
-            <span className="flex-1 min-w-0 truncate">{it.name}</span>
-            {it.sub && <span className="font-mono text-[9px] text-faint flex-none max-w-[80px] truncate">{it.sub}</span>}
-          </button>
-        )
-        return (
-          <div className="px-2 pt-2 pb-1">
-            <div className="flex items-center gap-1.5 bg-navy-900 border border-navy-700 rounded-lg px-2 py-1.5 focus-within:border-teal transition-colors">
-              <Search className="h-3.5 w-3.5 text-faint flex-none" />
-              <input
-                value={findQ}
-                onChange={(e) => setFindQ(e.target.value)}
-                onFocus={() => setFindOpen(true)}
-                onBlur={() => setTimeout(() => setFindOpen(false), 150)}
-                placeholder="Find asset or zone…"
-                className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
-              />
-              {(findOpen || findQ) && (
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); setFindQ(''); setFindOpen(false); (e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null)?.blur() }}
-                  aria-label="Close search"
-                  className="grid place-items-center w-5 h-5 rounded text-faint hover:text-ink flex-none"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            {findOpen && (
-              <div className="mt-1 rounded-lg bg-navy-900 border border-navy-700 max-h-[240px] overflow-y-auto no-scrollbar">
-                {assets.length > 0 && <p className="px-2.5 pt-1.5 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Assets</p>}
-                {assets.map(row)}
-                {zones.length > 0 && <p className="px-2.5 pt-1.5 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint border-t border-navy-800">Zones</p>}
-                {zones.map(row)}
-                {assets.length + zones.length === 0 && (
-                  <p className="px-2.5 py-2.5 text-[11px] text-faint text-center">Nothing matches &ldquo;{findQ}&rdquo;</p>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })()}
+      {/* No header, no in-panel search (owner ask, Jul 22): the search button
+          beside the pill finds assets/zones, the protruding X closes — the
+          panel opens straight onto the controls. */}
 
       {/* ── Show on map — the old chip row lives here now, zero scrolling ── */}
       {filter && onFilter && (
@@ -550,16 +487,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           </div>
         </div>
       )}
-
-      {/* header — tap anywhere to collapse; the protruding X above is the
-          always-visible way. (Weather readout lives in the TOP BAR now; the
-          location picker + home station moved into the Weather group.) */}
-      <div className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-navy-800">
-        <button onClick={() => setOpen(false)} className="flex-1 min-w-0 flex items-center justify-between gap-2">
-          <span className="font-display font-bold text-[14px] text-ink">Layers</span>
-          <ChevronDown className="h-3.5 w-3.5 text-faint rotate-180" />
-        </button>
-      </div>
 
       {/* named saveable views — one tap to a whole look; star = opens with it.
           Collapsed by default like every other section; saved per USER (your

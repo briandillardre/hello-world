@@ -1029,7 +1029,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           tiles: ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
           encoding: 'terrarium',
           tileSize: 256,
-          maxzoom: 14,
+          // z12 mesh over-scales beyond — 16× fewer DEM tiles at street zoom
+          // than z14 and visually identical at site scale ("terrain not
+          // usable, slows everything down", Jul 22).
+          maxzoom: 12,
         })
       }
 
@@ -1677,7 +1680,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (!m) return
     let raf = 0
     const tick = () => {
-      if (m.getLayer('asset-pulse')) {
+      // Every paint write forces a full repaint — free on the flat map, but
+      // with 3D terrain each one re-renders the whole terrain pipeline, and
+      // this 60fps heartbeat alone pinned a desktop GPU ("terrain not
+      // usable", Jul 22). Steady dots while terrain is on.
+      if (!terrain3dRef.current && m.getLayer('asset-pulse')) {
         const ph = (performance.now() % 1500) / 1500
         m.setPaintProperty('asset-pulse', 'circle-radius', 15 + ph * 20)
         m.setPaintProperty('asset-pulse', 'circle-opacity', 0.45 * (1 - ph))
@@ -3433,11 +3440,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     return () => cancelAnimationFrame(earthRaf.current)
   }, [mapReady, overlaysOn.satellites])
 
-  // Google-style progressive tilt lock (owner ask, Jul 21): the farther you
-  // zoom out, the less tilt is allowed — full 85° at site zoom, draining to
-  // flat by regional zoom, so the map never ends up cocked sideways at state
-  // scale. The sky layers (Satellites, Aircraft) free the camera again —
-  // near-horizon star/plane views need pitch at any zoom.
+  // Google-style progressive tilt lock (owner ask, Jul 21; retuned Jul 22 —
+  // "needs to not really start to apply until near a globe view"): full 85°
+  // tilt everywhere you'd actually work, only draining to flat across the
+  // continent-to-globe transition. The sky layers (Satellites, Aircraft)
+  // free the camera entirely — near-horizon views need pitch at any zoom.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -3447,7 +3454,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     }
     const apply = () => {
       const z = m.getZoom()
-      const max = z >= 13 ? 85 : z <= 6 ? 0 : Math.round(((z - 6) / 7) * 85)
+      const max = z >= 5.5 ? 85 : z <= 3 ? 0 : Math.round(((z - 3) / 2.5) * 85)
       try { m.setMaxPitch(max) } catch { /* mid-gesture */ }
     }
     apply()
@@ -3875,8 +3882,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onDrawZone={!kiosk && !pbActive && onGeofenceSave ? startDrawing : undefined}
         showDevices={showDevices}
         onToggleDevices={!kiosk && isMock ? () => setShowDevices((v) => !v) : undefined}
-        searchItems={kiosk ? undefined : searchItems}
-        onPickItem={kiosk ? undefined : pickSearchItem}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
       />
 
