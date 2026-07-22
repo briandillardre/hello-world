@@ -114,9 +114,9 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── Advanced: the planetarium & spectacle layers — fun on a TV wall,
   //    noise on a Tuesday. Lives at the bottom, collapsed. ──────────────────
+  { id: 'planes', label: 'Aircraft (live)', group: 'advanced', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
   { id: 'satellites', label: 'Satellites & sky (live)', group: 'advanced', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
   { id: 'satswarm', label: '↳ 11k satellites', group: 'advanced', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
-  { id: 'planes', label: 'Aircraft (live)', group: 'advanced', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
 
   // ── Night effects (nested under Advanced) ─────────────────────────────────
   { id: 'daynight', label: 'Day / night (real)', group: 'advanced', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },

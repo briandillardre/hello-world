@@ -66,7 +66,7 @@ export default async function MapPage() {
 
   return (
     <div className="h-full flex flex-col pb-[54px] md:pb-0">
-      <MapTopBar companyName={company.name} />
+      <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient
           assets={assets}

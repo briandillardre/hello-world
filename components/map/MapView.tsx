@@ -774,7 +774,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const handleDefaultView = useCallback((id: string) => {
     persistViews({ views: mapViews.views, defaultId: mapViews.defaultId === id ? null : id })
   }, [mapViews, persistViews])
-  const [conditions, setConditions] = useState<Conditions | null>(null)
+  // Conditions display moved to the top bar (TopBarWeather fetches its own);
+  // MapView still resolves the weather PLACE (wxPlace/wxCoordsRef drive the
+  // radar/layers) and keeps the fetch warm for the same 10-min cache.
+  const [, setConditions] = useState<Conditions | null>(null)
   // Home weather station (owner's PWS) — polled every 5 min; null when not set up.
   const [pws, setPws] = useState<PwsConditions | null>(null)
   useEffect(() => {
@@ -3336,15 +3339,34 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     earthSpinRef.current = true
     const SIDEREAL_DEG_PER_SEC = 360 / 86164.0905
     let last = performance.now()
+    // Replay coupling: the globe's rotation follows the TIMELINE clock, not
+    // the wall clock — scrub forward and it turns ahead, scrub back and it
+    // turns back, pause and it freezes (the "manual pause wins" rule). A full
+    // Today sweep rotates the planet almost exactly once, because that's what
+    // the planet did. Live keeps the free-run at the chosen 1×/60×/3600×.
+    let lastScrubMs: number | null = null
     const frame = (now: number) => {
       if (!earthSpinRef.current) return
       if (userGestureRef.current) { setEarthSpin(false); return } // hand on the wheel wins
       const dt = Math.min(0.1, (now - last) / 1000)
       last = now
-      const c = m.getCenter()
-      let lng = c.lng - SIDEREAL_DEG_PER_SEC * earthRateRef.current * dt
-      if (lng < -180) lng += 360
-      m.jumpTo({ center: [lng, c.lat] })
+      const win = realWindowRef.current
+      let dDeg: number
+      if (rangeRef.current !== 'live' && win) {
+        const scrubMs = win.from + tRef.current * (win.to - win.from)
+        dDeg = lastScrubMs == null ? 0 : SIDEREAL_DEG_PER_SEC * ((scrubMs - lastScrubMs) / 1000)
+        lastScrubMs = scrubMs
+      } else {
+        lastScrubMs = null
+        dDeg = SIDEREAL_DEG_PER_SEC * earthRateRef.current * dt
+      }
+      if (dDeg !== 0) {
+        const c = m.getCenter()
+        let lng = c.lng - dDeg
+        while (lng < -180) lng += 360
+        while (lng > 180) lng -= 360
+        m.jumpTo({ center: [lng, c.lat] })
+      }
       earthRaf.current = requestAnimationFrame(frame)
     }
     earthRaf.current = requestAnimationFrame(frame)
@@ -3748,7 +3770,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onPrecip={setPrecipOn}
         precipPeriod={precipPeriod}
         onPrecipPeriod={setPrecipPeriod}
-        conditions={conditions}
         pws={pws}
         frameTime={radarLabel}
         place={wxPlace}

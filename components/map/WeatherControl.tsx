@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
-import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
+import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
@@ -35,7 +35,6 @@ interface WeatherControlProps {
   onPrecip?: (v: boolean) => void
   precipPeriod?: string
   onPrecipPeriod?: (k: string) => void
-  conditions: Conditions | null
   pws?: PwsConditions | null
   frameTime: string | null
   place?: string
@@ -192,7 +191,7 @@ function GroupSection({ gid, collapsed, onToggle, children }: {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   // Find-anything (assets + zones) inside the panel.
@@ -211,7 +210,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
   }
   const [placeInput, setPlaceInput] = useState(place ?? '')
   useEffect(() => { setPlaceInput(place ?? '') }, [place])
-  const temp = conditions ? `${weatherEmoji(conditions.code)} ${conditions.tempF}°` : null
 
   // Live place autocomplete (free geocoder), debounced.
   type Place = { name: string; admin1?: string; country_code?: string; latitude?: number; longitude?: number }
@@ -377,22 +375,18 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
   }
 
 
-  // Collapsed: a compact pill — keeps the at-a-glance temp, hides the toggles.
-  // The map search button rides to its right (owner layout, Jul 14 PM).
+  // Collapsed: a compact pill — just Layers + what's-on status icons (the
+  // weather readout moved to the top bar, Jul 21). Search rides to its right.
   if (!open) {
     return (
       <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex items-center gap-2`}>
       <button
         onClick={() => setOpen(true)}
-        aria-label="Map layers and weather"
+        aria-label="Map layers"
         className="flex items-center gap-2 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel px-3 py-2"
       >
-        {temp ? <span className="font-display font-bold text-[14px] text-ink">{temp}</span> : <Layers className="h-4 w-4 text-faint" />}
-        {pws && (
-          <span className="flex items-center gap-1 font-mono text-[11px] text-amber" title={`${pws.station} — home station`}>
-            <Home className="h-3 w-3" />{pws.tempF}°
-          </span>
-        )}
+        <Layers className="h-4 w-4 text-faint" />
+        <span className="font-display font-bold text-[13px] text-ink hidden sm:inline">Layers</span>
         {/* status icons: what's currently ON — rain cloud = radar looping,
             satellite dish = satellite/hybrid basemap active */}
         {(radarOn || base === 'satellite' || base === 'hybrid') && (
@@ -401,10 +395,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
             {(base === 'satellite' || base === 'hybrid') && <span title="Satellite basemap active"><Satellite className="h-3.5 w-3.5 text-teal" /></span>}
           </span>
         )}
-        <span className="flex items-center gap-0.5 text-faint">
-          <Layers className="h-3.5 w-3.5" />
-          <ChevronDown className="h-3.5 w-3.5" />
-        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-faint" />
       </button>
       {searchSlot}
       </div>
@@ -562,101 +553,15 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
         </div>
       )}
 
-      {/* location — editable so the weather can follow any site/city */}
-      {onPlaceChange ? (
-        <div className="relative">
-          <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 pt-2 -mb-0.5">
-            <MapPin className="h-3 w-3 text-teal flex-none" />
-            <input
-              value={placeInput}
-              onChange={(e) => setPlaceInput(e.target.value)}
-              onFocus={() => setSugOpen(true)}
-              onBlur={() => setTimeout(() => setSugOpen(false), 150)}
-              placeholder="City or place…"
-              className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
-            />
-            <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
-              <Search className="h-3 w-3" />
-            </button>
-            {onSaveDefault && (
-              <button
-                type="button"
-                onClick={saveDefault}
-                title="Save as company default location"
-                className="grid place-items-center w-5 h-5 rounded text-faint hover:text-amber flex-none"
-              >
-                {savedDefault ? <Check className="h-3 w-3 text-amber" /> : <Star className="h-3 w-3" />}
-              </button>
-            )}
-          </form>
-          {sugOpen && suggestions.length > 0 && (
-            <ul className="absolute left-2 right-2 top-full mt-1 z-30 rounded-lg bg-navy-900 border border-navy-700 shadow-panel overflow-hidden">
-              {suggestions.map((s, i) => (
-                <li key={i}>
-                  <button
-                    onMouseDown={(e) => { e.preventDefault(); pickPlace(s) }}
-                    className="w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-navy-800 flex items-center gap-1.5"
-                  >
-                    <MapPin className="h-3 w-3 text-faint flex-none" />
-                    <span className="truncate">{placeLabel(s)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : place ? (
-        <div className="px-3 pt-2 -mb-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
-          <MapPin className="h-3 w-3 text-teal" /> {place}
-        </div>
-      ) : null}
       {/* header — tap anywhere to collapse; the protruding X above is the
-          always-visible way */}
+          always-visible way. (Weather readout lives in the TOP BAR now; the
+          location picker + home station moved into the Weather group.) */}
       <div className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-navy-800">
         <button onClick={() => setOpen(false)} className="flex-1 min-w-0 flex items-center justify-between gap-2">
-          <span className="font-display font-bold text-[14px] text-ink">{temp ?? 'Layers'}</span>
-          <span className="font-mono text-[10px] text-muted flex items-center gap-2">
-            {conditions && (
-              <>
-                <span className="flex items-center gap-1"><Wind className="h-3 w-3" />{conditions.windMph}</span>
-                <span className={conditions.isThunder ? 'text-amber flex items-center gap-1' : 'flex items-center gap-1'}>
-                  <Zap className="h-3 w-3" />{conditions.isThunder ? 'Storm' : 'Clear'}
-                </span>
-              </>
-            )}
-          </span>
+          <span className="font-display font-bold text-[14px] text-ink">Layers</span>
+          <ChevronDown className="h-3.5 w-3.5 text-faint rotate-180" />
         </button>
       </div>
-
-      {/* home weather station — live hyper-local reading from the owner's PWS */}
-      {pws && (
-        <div className="px-3 py-2 border-b border-navy-800 bg-amber/[0.04]">
-          <div className="flex items-center justify-between mb-1">
-            <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-amber">
-              <Home className="h-3 w-3" /> Home station
-            </span>
-            <span className="font-mono text-[9.5px] text-faint">{pwsAge(pws.at)}</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-display font-bold text-[18px] text-ink">{pws.tempF}°</span>
-            {pws.feelsF != null && Math.abs(pws.feelsF - pws.tempF) >= 2 && (
-              <span className="font-mono text-[10px] text-muted">feels {Math.round(pws.feelsF)}°</span>
-            )}
-            <span className="ml-auto font-mono text-[10.5px] text-muted flex items-center gap-1">
-              <Wind className="h-3 w-3" />
-              {pws.windDir ? `${pws.windDir} ` : ''}{pws.windMph}
-              {pws.gustMph != null && pws.gustMph > pws.windMph + 2 ? ` g${Math.round(pws.gustMph)}` : ''}
-            </span>
-          </div>
-          <div className="mt-1 font-mono text-[10px] text-faint flex items-center gap-3">
-            {pws.humidity != null && <span>{Math.round(pws.humidity)}% rh</span>}
-            {pws.rainTodayIn != null && (
-              <span className={pws.rainTodayIn > 0 ? 'text-teal' : ''}>{pws.rainTodayIn}&quot; today</span>
-            )}
-            {pws.pressureInHg != null && <span>{pws.pressureInHg} inHg</span>}
-          </div>
-        </div>
-      )}
 
       {/* named saveable views — one tap to a whole look; star = opens with it.
           Collapsed by default like every other section; saved per USER (your
@@ -751,7 +656,86 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
       {/* ── Layer groups, contractor-first: Site · Weather · Basemap ·
              Water & Terrain · Advanced (planetarium lives at the bottom) ── */}
       <GroupSection gid="site" collapsed={!!collapsed.site} onToggle={() => toggleGroup('site')}>{rowsFor('site')}</GroupSection>
-      <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>{rowsFor('weather')}</GroupSection>
+      <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>
+        {/* weather location — editable so radar/temps can follow any site */}
+        {onPlaceChange ? (
+          <div className="relative border-b border-navy-800">
+            <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 py-2">
+              <MapPin className="h-3 w-3 text-teal flex-none" />
+              <input
+                value={placeInput}
+                onChange={(e) => setPlaceInput(e.target.value)}
+                onFocus={() => setSugOpen(true)}
+                onBlur={() => setTimeout(() => setSugOpen(false), 150)}
+                placeholder="Weather location — city or place…"
+                className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
+              />
+              <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
+                <Search className="h-3 w-3" />
+              </button>
+              {onSaveDefault && (
+                <button
+                  type="button"
+                  onClick={saveDefault}
+                  title="Save as company default location"
+                  className="grid place-items-center w-5 h-5 rounded text-faint hover:text-amber flex-none"
+                >
+                  {savedDefault ? <Check className="h-3 w-3 text-amber" /> : <Star className="h-3 w-3" />}
+                </button>
+              )}
+            </form>
+            {sugOpen && suggestions.length > 0 && (
+              <ul className="absolute left-2 right-2 top-full mt-1 z-30 rounded-lg bg-navy-900 border border-navy-700 shadow-panel overflow-hidden">
+                {suggestions.map((s, i) => (
+                  <li key={i}>
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); pickPlace(s) }}
+                      className="w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-navy-800 flex items-center gap-1.5"
+                    >
+                      <MapPin className="h-3 w-3 text-faint flex-none" />
+                      <span className="truncate">{placeLabel(s)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : place ? (
+          <div className="px-3 py-2 border-b border-navy-800 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
+            <MapPin className="h-3 w-3 text-teal" /> {place}
+          </div>
+        ) : null}
+        {/* home weather station — live hyper-local reading from the owner's PWS */}
+        {pws && (
+          <div className="px-3 py-2 border-b border-navy-800 bg-amber/[0.04]">
+            <div className="flex items-center justify-between mb-1">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-amber">
+                <Home className="h-3 w-3" /> Home station
+              </span>
+              <span className="font-mono text-[9.5px] text-faint">{pwsAge(pws.at)}</span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-display font-bold text-[18px] text-ink">{pws.tempF}°</span>
+              {pws.feelsF != null && Math.abs(pws.feelsF - pws.tempF) >= 2 && (
+                <span className="font-mono text-[10px] text-muted">feels {Math.round(pws.feelsF)}°</span>
+              )}
+              <span className="ml-auto font-mono text-[10.5px] text-muted flex items-center gap-1">
+                <Wind className="h-3 w-3" />
+                {pws.windDir ? `${pws.windDir} ` : ''}{pws.windMph}
+                {pws.gustMph != null && pws.gustMph > pws.windMph + 2 ? ` g${Math.round(pws.gustMph)}` : ''}
+              </span>
+            </div>
+            <div className="mt-1 font-mono text-[10px] text-faint flex items-center gap-3">
+              {pws.humidity != null && <span>{Math.round(pws.humidity)}% rh</span>}
+              {pws.rainTodayIn != null && (
+                <span className={pws.rainTodayIn > 0 ? 'text-teal' : ''}>{pws.rainTodayIn}&quot; today</span>
+              )}
+              {pws.pressureInHg != null && <span>{pws.pressureInHg} inHg</span>}
+            </div>
+          </div>
+        )}
+        {rowsFor('weather')}
+      </GroupSection>
       <GroupSection gid="basemap" collapsed={!!collapsed.basemap} onToggle={() => toggleGroup('basemap')}>
         {/* FR24-style map-type grid: real tile thumbnails, current pick ringed */}
         <div className="grid grid-cols-3 gap-1.5 p-1.5">
@@ -810,26 +794,33 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
         {rowsFor('advanced')}
         {onEarthSpin && (
           <div className="border-t border-navy-800">
+            {/* Sits under Satellites & sky as a sibling of the swarm row —
+                same physics family. In replays the rotation follows the
+                TIMELINE (scrub/pause/rewind); the rate chips apply on Live. */}
             <button onClick={onEarthSpin} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
               <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-                <Globe2 className={'h-4 w-4 ' + (earthSpin ? 'text-teal animate-spin [animation-duration:8s]' : 'text-faint')} /> Earth spin (real rotation)
+                <Globe2 className={'h-4 w-4 ' + (earthSpin ? 'text-teal animate-spin [animation-duration:8s]' : 'text-faint')} /> ↳ Earth spin (real rotation)
               </span>
               <Toggle on={!!earthSpin} />
             </button>
-            {earthSpin && onEarthRate && (
-              <div className="px-3 pb-2 flex items-center gap-1">
-                <span className="font-mono text-[9px] uppercase tracking-wider text-faint mr-1">Rate</span>
-                {([[1, 'real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
-                  <button
-                    key={v}
-                    onClick={() => onEarthRate(v)}
-                    className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold border ' +
-                      (earthRate === v ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink')}
-                  >
-                    {label}
-                  </button>
-                ))}
-                <span className="text-[9.5px] text-faint ml-1">zoom out to the globe to see it</span>
+            {earthSpin && (
+              <div className="px-3 pb-2">
+                <p className="font-mono text-[10px] text-teal mb-1">follows the timeline in replays · zoom out to the globe to see it</p>
+                {onEarthRate && (
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-faint mr-1">Live rate</span>
+                    {([[1, 'real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        onClick={() => onEarthRate(v)}
+                        className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold border ' +
+                          (earthRate === v ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink')}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
