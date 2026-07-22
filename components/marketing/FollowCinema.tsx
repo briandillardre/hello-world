@@ -187,7 +187,7 @@ export function FollowCinema() {
       g!.font = `700 ${Math.round(r * 1.05)}px sans-serif`; g!.textAlign = 'center'; g!.textBaseline = 'middle'
       g!.fillText('🚚', p.x, p.y + 1)
       g!.font = '700 14px sans-serif'; g!.textAlign = 'left'
-      const label = 'Chevy 1500 — Brian', tw = g!.measureText(label).width
+      const label = 'Silverado 1500 #3', tw = g!.measureText(label).width
       roundRect(p.x + r + 8, p.y - 15, tw + 16, 24, 7); g!.fillStyle = 'rgba(0,26,46,0.9)'; g!.fill()
       g!.strokeStyle = 'rgba(20,80,111,0.9)'; g!.lineWidth = 1; g!.stroke()
       g!.fillStyle = INK; g!.fillText(label, p.x + r + 16, p.y - 2)
@@ -199,7 +199,7 @@ export function FollowCinema() {
       g!.fillStyle = tg; g!.fillRect(0, 0, W, 78)
       // FOLLOWING chip
       g!.font = '700 13px sans-serif'; g!.textAlign = 'center'
-      const chip = '🎥  FOLLOWING · Chevy 1500 — Brian', cw = g!.measureText(chip).width
+      const chip = '🎥  FOLLOWING · Silverado 1500 #3', cw = g!.measureText(chip).width
       roundRect(W / 2 - cw / 2 - 14, 16, cw + 28, 30, 15); g!.fillStyle = 'rgba(255,158,22,0.16)'; g!.fill()
       g!.strokeStyle = 'rgba(255,158,22,0.5)'; g!.lineWidth = 1.2; g!.stroke()
       g!.fillStyle = AMBER; g!.fillText(chip, W / 2, 35)
