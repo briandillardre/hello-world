@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane, Globe2 } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -83,11 +83,6 @@ interface TimelinePlaybackProps {
   /** "360" — slow continuous rotation of the current view (disabled while following). */
   spinning?: boolean
   onSpin?: () => void
-  /** Earth spin — the planet's true rotation (sidereal rate), 1×/60×/3600×. */
-  earthSpin?: boolean
-  onEarthSpin?: () => void
-  earthRate?: 1 | 60 | 3600
-  onEarthRate?: (r: 1 | 60 | 3600) => void
   /** Flyover — the slow-plane tour over every asset; speed = 0.5 | 1 | 2. */
   flying?: boolean
   onFlyover?: () => void
@@ -114,7 +109,6 @@ export function TimelinePlayback({
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
   spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed,
-  earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate,
   alertMarks = [], tz, kiosk = false, hud = null,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
@@ -504,37 +498,7 @@ export function TimelinePlayback({
             <span className="hidden sm:inline">360</span>
           </button>
         )}
-        {/* Earth spin — the planet's real rotation (time-lapse chips while on) */}
-        {onEarthSpin && !followed && (
-          <span className="flex-none flex items-center gap-0.5">
-            <button
-              onClick={onEarthSpin}
-              title={earthSpin ? 'Stop the Earth spin' : "Earth spin — the globe turns at the planet's real rate (15°/hour). Zoom out to the globe, pick ×60/×3600 to time-lapse."}
-              className={
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
-                (earthSpin ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
-              }
-            >
-              <Globe2 className={'h-3.5 w-3.5' + (earthSpin ? ' animate-spin [animation-duration:8s]' : '')} />
-              <span className="hidden sm:inline">Earth</span>
-            </button>
-            {earthSpin && onEarthRate && (
-              <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
-                {([[1, '1× real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
-                  <button
-                    key={v}
-                    onClick={() => onEarthRate(v)}
-                    title={v === 1 ? 'True speed — one turn per day, like watching from orbit' : v === 60 ? 'One turn ≈ 24 minutes' : 'One turn ≈ 24 seconds'}
-                    className={
-                      'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
-                      (earthRate === v ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
-                    }
-                  >{label}</button>
-                ))}
-              </span>
-            )}
-          </span>
-        )}
+        {/* Earth spin moved to the layers panel → Advanced (owner ask, Jul 21) */}
         {/* Flyover — the slow-plane pass over every asset; loops until stopped */}
         {onFlyover && !followed && (
           <span className="flex-none flex items-center gap-0.5">

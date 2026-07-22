@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Wind, Zap, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { type Conditions, weatherEmoji, PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -18,6 +18,11 @@ interface WeatherControlProps {
   /** 3D buildings + tilt — an independent toggle layerable on any basemap. */
   threeD: boolean
   onThreeD: (v: boolean) => void
+  /** Earth spin (Advanced group) — the planet's true rotation, 1×/60×/3600×. */
+  earthSpin?: boolean
+  onEarthSpin?: () => void
+  earthRate?: 1 | 60 | 3600
+  onEarthRate?: (r: 1 | 60 | 3600) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
   radarPaused?: boolean
@@ -100,6 +105,7 @@ const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
   weather: CloudRain,
   water: Waves,
   basemap: MapIcon,
+  advanced: Satellite,
 }
 
 // v2: everything defaults collapsed (owner ask Jul 14) — new key so stored
@@ -186,7 +192,7 @@ function GroupSection({ gid, collapsed, onToggle, children }: {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, conditions, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   // Find-anything (assets + zones) inside the panel.
@@ -742,10 +748,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
         </div>
       )}
 
-      {/* ── Layer groups: Site · Weather · Water & Terrain · Basemap ── */}
+      {/* ── Layer groups, contractor-first: Site · Weather · Basemap ·
+             Water & Terrain · Advanced (planetarium lives at the bottom) ── */}
       <GroupSection gid="site" collapsed={!!collapsed.site} onToggle={() => toggleGroup('site')}>{rowsFor('site')}</GroupSection>
       <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>{rowsFor('weather')}</GroupSection>
-      <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
       <GroupSection gid="basemap" collapsed={!!collapsed.basemap} onToggle={() => toggleGroup('basemap')}>
         {/* FR24-style map-type grid: real tile thumbnails, current pick ringed */}
         <div className="grid grid-cols-3 gap-1.5 p-1.5">
@@ -794,12 +800,44 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, radarOn, onRada
             </p>
           )}
         </div>
-        {/* View extras (satellites, …) — regular rows in the basemap group */}
-        {rowsFor('basemap')}
+      </GroupSection>
+
+      <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
+
+      {/* ── Advanced: satellites, aircraft, night effects, Earth spin — the
+             show-off layers, out of the everyday path (owner ask, Jul 21) ── */}
+      <GroupSection gid="advanced" collapsed={!!collapsed.advanced} onToggle={() => toggleGroup('advanced')}>
+        {rowsFor('advanced')}
+        {onEarthSpin && (
+          <div className="border-t border-navy-800">
+            <button onClick={onEarthSpin} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <Globe2 className={'h-4 w-4 ' + (earthSpin ? 'text-teal animate-spin [animation-duration:8s]' : 'text-faint')} /> Earth spin (real rotation)
+              </span>
+              <Toggle on={!!earthSpin} />
+            </button>
+            {earthSpin && onEarthRate && (
+              <div className="px-3 pb-2 flex items-center gap-1">
+                <span className="font-mono text-[9px] uppercase tracking-wider text-faint mr-1">Rate</span>
+                {([[1, 'real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
+                  <button
+                    key={v}
+                    onClick={() => onEarthRate(v)}
+                    className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold border ' +
+                      (earthRate === v ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink')}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <span className="text-[9.5px] text-faint ml-1">zoom out to the globe to see it</span>
+              </div>
+            )}
+          </div>
+        )}
         {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
         <div className="border-t border-navy-800">
           <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
-          {rowsFor('basemap', true)}
+          {rowsFor('advanced', true)}
         </div>
       </GroupSection>
 

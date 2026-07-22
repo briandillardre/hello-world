@@ -44,33 +44,35 @@ const cfg = (partial: Partial<MapViewCfg>): MapViewCfg => ({
   ...partial,
 })
 
-// Preset names describe the JOB each look does (owner ask, Jul 14) — ids are
-// persisted in saved defaults and must never change.
+// Preset names describe the JOB each look does, in the words a contractor or
+// owner would use (owner asks, Jul 14 + Jul 21) — ids are persisted in saved
+// defaults and must never change.
 export const PRESET_VIEWS: SavedMapView[] = [
   {
     id: 'preset-simple',
-    name: 'Dispatch — clean map',
+    name: 'Where is everybody — clean map',
     preset: true,
-    // Just the fleet on a clean dark map. Dispatch at a glance.
+    // The owner's glance: just the fleet on a clean dark map, zones on.
     cfg: cfg({}),
   },
   {
+    id: 'preset-detailed',
+    name: "Foreman — streets, sites & today's tracks",
+    preset: true,
+    // Working superintendent: streets you can read, today's movement, parcels
+    // for "whose property is that", terrain + water context.
+    cfg: cfg({ base: 'streets', trailMode: 'trails', parcels: true, overlays: { topo: true, streams: true } }),
+  },
+  {
     id: 'preset-sexy',
-    name: 'Showcase — 3D + weather',
+    name: 'Show a client — 3D + live weather',
     preset: true,
     // The demo look: 3D imagery, live weather, movement trails.
     cfg: cfg({ base: 'hybrid', threeD: true, radar: true, trailMode: 'trails' }),
   },
   {
-    id: 'preset-detailed',
-    name: 'Field ops — streets + terrain',
-    preset: true,
-    // Working superintendent: streets you can read, terrain + water context.
-    cfg: cfg({ base: 'streets', trailMode: 'trails', overlays: { topo: true, streams: true } }),
-  },
-  {
     id: 'preset-insane',
-    name: 'Site planning — everything on',
+    name: 'Site planning — full detail',
     preset: true,
     // Everything on. Site-walk planning, drainage arguments, parcel lines.
     cfg: cfg({

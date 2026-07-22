@@ -3732,6 +3732,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onBase={setBase}
         threeD={threeD}
         onThreeD={setThreeD}
+        earthSpin={earthSpin}
+        onEarthSpin={handleEarthSpin}
+        earthRate={earthRate}
+        onEarthRate={setEarthRate}
         radarOn={radarOn}
         radarPaused={radarPaused}
         onRadarPause={setRadarPaused}
@@ -3839,10 +3843,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           })()}
           spinning={spinning}
           onSpin={handleSpin}
-          earthSpin={earthSpin}
-          onEarthSpin={handleEarthSpin}
-          earthRate={earthRate}
-          onEarthRate={setEarthRate}
           flying={flying}
           onFlyover={handleFlyover}
           flySpeed={flySpeed}

@@ -6,7 +6,7 @@
  */
 
 export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine'
-export type GroupId = 'site' | 'weather' | 'water' | 'basemap'
+export type GroupId = 'site' | 'weather' | 'water' | 'basemap' | 'advanced'
 
 export interface LayerRowDef {
   /** Stable persisted key (overlays record / dedicated toggle). */
@@ -35,11 +35,15 @@ export interface LayerRowDef {
 
 // Every group starts collapsed (owner ask, Jul 14) — the panel opens to the
 // basics (find, show-on-map, weather summary) with the deep layers one tap in.
+// Order = how a contractor reaches for them (owner ask, Jul 21): job-site
+// context first, weather second, the map's look third, engineering layers
+// fourth — and the planetarium/eye-candy tucked into Advanced at the bottom.
 export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[] = [
   { id: 'site', label: 'Site', defaultCollapsed: true },
   { id: 'weather', label: 'Weather', defaultCollapsed: true },
-  { id: 'water', label: 'Water & Terrain', defaultCollapsed: true },
   { id: 'basemap', label: 'Basemap', defaultCollapsed: true },
+  { id: 'water', label: 'Water & Terrain', defaultCollapsed: true },
+  { id: 'advanced', label: 'Advanced', defaultCollapsed: true },
 ]
 
 // Rendered as a thumbnail grid (FR24-style map-type picker, Brian's ask Jul 18).
@@ -108,14 +112,15 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'soils', label: 'Soils', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see soil units', hint: 'soil survey map units' },
   { id: 'topo', label: 'Topo lines', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see contours', hint: 'elevation contours' },
 
-  // ── View extras (Basemap group, above Night effects) ──────────────────────
-  { id: 'satellites', label: 'Satellites & sky (live)', group: 'basemap', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
-  { id: 'satswarm', label: '↳ 11k satellites', group: 'basemap', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
-  { id: 'planes', label: 'Aircraft (live)', group: 'basemap', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
+  // ── Advanced: the planetarium & spectacle layers — fun on a TV wall,
+  //    noise on a Tuesday. Lives at the bottom, collapsed. ──────────────────
+  { id: 'satellites', label: 'Satellites & sky (live)', group: 'advanced', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
+  { id: 'satswarm', label: '↳ 11k satellites', group: 'advanced', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
+  { id: 'planes', label: 'Aircraft (live)', group: 'advanced', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
 
-  // ── Night effects (nested under Basemap) ──────────────────────────────────
-  { id: 'daynight', label: 'Day / night (real)', group: 'basemap', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
-  { id: 'nightlights', label: 'Night photo (NASA)', group: 'basemap', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
+  // ── Night effects (nested under Advanced) ─────────────────────────────────
+  { id: 'daynight', label: 'Day / night (real)', group: 'advanced', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
+  { id: 'nightlights', label: 'Night photo (NASA)', group: 'advanced', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
 ]
 
 export interface RowState {
