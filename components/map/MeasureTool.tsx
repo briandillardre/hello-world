@@ -39,6 +39,14 @@ export function MeasureTool({
   const [pts, setPts] = useState<[number, number][]>([])
   const [hover, setHover] = useState<[number, number] | null>(null)
   const [elev, setElev] = useState<number | null>(null)
+  // Finished shape: clicks stop adding, the rubber-band stops following.
+  // PC double-clicks to finish; phone taps the ✓ (owner ask, Jul 22).
+  const [done, setDone] = useState(false)
+  const doneRef = useRef(false)
+  doneRef.current = done
+  // Approximate elevation of the DROPPED point — free DEM lookup (~90m grid),
+  // so it works without the heavy 3D terrain turned on (owner ask, Jul 22).
+  const [clickElev, setClickElev] = useState<number | null>(null)
   const [lenUnit, setLenUnit] = useState<LengthUnit>('ft')
   const [areaUnit, setAreaUnit] = useState<AreaUnit>('sf')
   const [material, setMaterial] = useState('asphalt')
@@ -59,8 +67,9 @@ export function MeasureTool({
   // finally attach (they can attach late, see the idle-retry below).
   const fcRef = useRef<GeoJSON.FeatureCollection>({ type: 'FeatureCollection', features: [] })
 
-  // Build the working geometry (committed pts + rubber-band to the cursor).
-  const live: [number, number][] = hover && mode !== 'point' ? [...pts, hover] : pts
+  // Build the working geometry (committed pts + rubber-band to the cursor —
+  // unless the shape is finished, then what you clicked is what you get).
+  const live: [number, number][] = hover && mode !== 'point' && !done ? [...pts, hover] : pts
   const lengthFt = mode === 'line' ? polylineLengthFt(live) : 0
   const areaSqFt = mode === 'area' && live.length >= 3 ? polygonAreaSqFt(live) : 0
   const perimFt = mode === 'area' && live.length >= 3 ? polylineLengthFt([...live, live[0]]) : 0
@@ -84,11 +93,25 @@ export function MeasureTool({
     }
     const onClick = (e: maplibregl.MapMouseEvent) => {
       if (Date.now() - justDraggedRef.current < 200) return // drag drop, not a new point
+      if (doneRef.current && mode !== 'point') return // finished — Undo/Clear to edit
       const ll: [number, number] = [e.lngLat.lng, e.lngLat.lat]
       if (mode === 'point') { setPts([ll]); return }
       setPts((p) => [...p, ll])
     }
-    const onDbl = (e: maplibregl.MapMouseEvent) => { e.preventDefault() } // finish handled by button; block zoom
+    // Double-click finishes the line/area (PC). The double-click's own pair of
+    // 'click' events already planted the end point twice — drop the duplicate
+    // so the LAST CLICKED spot is the end, exactly once (owner ask, Jul 22).
+    const onDbl = (e: maplibregl.MapMouseEvent) => {
+      e.preventDefault() // never zoom while measuring
+      if (mode === 'point' || doneRef.current) return
+      let p = ptsRef.current
+      if (p.length >= 2) {
+        const a = map.project({ lng: p[p.length - 1][0], lat: p[p.length - 1][1] })
+        const b = map.project({ lng: p[p.length - 2][0], lat: p[p.length - 2][1] })
+        if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { p = p.slice(0, -1); setPts(p) }
+      }
+      if (p.length >= (mode === 'line' ? 2 : 3)) { setDone(true); setHover(null) }
+    }
 
     map.on('mousemove', onMove)
     map.on('click', onClick)
@@ -232,7 +255,23 @@ export function MeasureTool({
     }
   }, [map, active])
 
-  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false) }
+  // Approximate elevation for the dropped point — open-meteo's free DEM
+  // (Copernicus 90m). Refetches if the point is dragged somewhere new.
+  useEffect(() => {
+    if (mode !== 'point' || !pts[0]) { setClickElev(null); return }
+    let cancelled = false
+    const [lng, lat] = pts[0]
+    fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(6)}&longitude=${lng.toFixed(6)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        const m = Array.isArray(j?.elevation) ? j.elevation[0] : null
+        if (!cancelled && typeof m === 'number') setClickElev(m * M_TO_FT)
+      })
+      .catch(() => { /* offline / blocked — readout just stays blank */ })
+    return () => { cancelled = true }
+  }, [mode, pts])
+
+  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false); setDone(false) }
   useEffect(() => { reset() }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const canSave = mode === 'point' ? pts.length === 1 : mode === 'line' ? pts.length >= 2 : pts.length >= 3
@@ -249,7 +288,7 @@ export function MeasureTool({
       lengthFt: mode === 'line' ? polylineLengthFt(pts) : undefined,
       areaSqFt: mode === 'area' ? polygonAreaSqFt(pts) : undefined,
       statePlane: mode === 'point' ? toStatePlaneSC(pts[0][0], pts[0][1]) : undefined,
-      elevationFt: mode === 'point' ? elev : undefined,
+      elevationFt: mode === 'point' ? (clickElev ?? elev) : undefined,
       takeoff: mode === 'area' && depth > 0 ? takeoff(polygonAreaSqFt(pts), depth, material) : null,
     }
     const r = await saveMeasurementAction({ name: name || defaultName(mode, props), kind: mode, personal, geometry, props })
@@ -261,9 +300,11 @@ export function MeasureTool({
 
   if (!active) return null
 
-  // One-line readout for the phone strip.
+  // One-line readout for the phone strip. Dropped point → approx DEM
+  // elevation; hovering with 3D terrain on → live mesh elevation.
+  const shownElev = pts.length && mode === 'point' ? clickElev : elev
   const stripReadout = mode === 'point'
-    ? (sp ? `N ${fmt(sp.northing, 1)} · E ${fmt(sp.easting, 1)}${elev != null ? ` · ${fmt(elev, 0)} ft` : ''}` : 'Tap the map to drop a point')
+    ? (sp ? `N ${fmt(sp.northing, 1)} · E ${fmt(sp.easting, 1)}${shownElev != null ? ` · ~${fmt(shownElev, 0)} ft` : ''}` : 'Tap the map to drop a point')
     : mode === 'line'
       ? (pts.length ? `${fmt(lengthIn(lengthFt, lenUnit), lenUnit === 'mi' ? 3 : 1)} ${LENGTH_LABEL[lenUnit]} · ${pts.length} pt${pts.length === 1 ? '' : 's'}` : 'Tap to add points')
       : (pts.length >= 3
@@ -287,8 +328,19 @@ export function MeasureTool({
               </button>
             ))}
           </span>
-          <button onClick={() => setPts((p) => p.slice(0, -1))} disabled={!pts.length || mode === 'point'} className="p-1.5 text-faint disabled:opacity-30 flex-none" aria-label="Undo"><Undo2 className="h-4 w-4" /></button>
+          <button onClick={() => { setPts((p) => p.slice(0, -1)); setDone(false) }} disabled={!pts.length || mode === 'point'} className="p-1.5 text-faint disabled:opacity-30 flex-none" aria-label="Undo"><Undo2 className="h-4 w-4" /></button>
           <button onClick={reset} disabled={!pts.length} className="p-1.5 text-faint disabled:opacity-30 flex-none" aria-label="Clear"><Trash2 className="h-4 w-4" /></button>
+          {/* ✓ = finish the shape at the last tapped point (phone's double-click) */}
+          {mode !== 'point' && (
+            <button
+              onClick={() => { setDone(true); setHover(null) }}
+              disabled={!canSave || done}
+              className={'p-1.5 flex-none disabled:opacity-30 ' + (done ? 'text-teal' : 'text-amber')}
+              aria-label="Finish shape"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          )}
           <span className="flex-1" />
           <button
             onClick={() => setSheetOpen(true)}
@@ -373,9 +425,11 @@ export function MeasureTool({
               <>
                 <Row k="Northing" v={`${fmt(sp.northing, 2)} ft`} />
                 <Row k="Easting" v={`${fmt(sp.easting, 2)} ft`} />
-                <Row k="Elevation" v={elev != null ? `${fmt(elev, 1)} ft` : terrainOn ? '—' : 'turn on Terrain'} />
+                <Row k="Elevation" v={pts.length
+                  ? (clickElev != null ? `~${fmt(clickElev, 0)} ft` : 'looking up…')
+                  : elev != null ? `${fmt(elev, 1)} ft` : 'click to read'} />
                 <Row k="Lat, Lng" v={`${(pts[0]?.[1] ?? hover?.[1] ?? 0).toFixed(6)}, ${(pts[0]?.[0] ?? hover?.[0] ?? 0).toFixed(6)}`} />
-                <p className="text-[9.5px] text-faint pt-0.5">SC State Plane (EPSG:2273, US ft){elev != null ? ' · elev approx (DEM)' : ''}</p>
+                <p className="text-[9.5px] text-faint pt-0.5">SC State Plane (EPSG:2273, US ft){shownElev != null ? ' · elev approx (DEM)' : ''}</p>
               </>
             ) : <p className="text-faint">Hover the map, then click to drop the point.</p>}
           </div>
@@ -400,7 +454,7 @@ export function MeasureTool({
                 <span className="font-display font-black text-amber text-xl tabular-nums">{areaSqFt > 0 ? fmt(areaIn(areaSqFt, areaUnit), areaUnit === 'acre' ? 3 : 0) : '0'}</span>
                 <UnitBtns opts={['sf', 'sy', 'acre']} labels={AREA_LABEL} val={areaUnit} set={(u) => setAreaUnit(u as AreaUnit)} />
               </div>
-              <p className="text-[10px] text-faint mt-0.5">{pts.length} corner{pts.length === 1 ? '' : 's'}{areaSqFt > 0 ? ` · ${fmt(areaIn(areaSqFt, 'sf'), 0)} SF · perim ${fmt(lengthIn(perimFt, 'ft'), 0)} ft` : ''}</p>
+              <p className="text-[10px] text-faint mt-0.5">{pts.length} corner{pts.length === 1 ? '' : 's'}{areaSqFt > 0 ? ` · ${fmt(areaIn(areaSqFt, 'sf'), 0)} SF · perim ${fmt(lengthIn(perimFt, 'ft'), 0)} ft` : ''}{done ? ' · finished' : ' · double-click or Finish to end'}</p>
             </div>
             {/* Takeoff */}
             <div className="rounded-lg bg-navy-900 p-2.5 space-y-1.5">
@@ -431,13 +485,23 @@ export function MeasureTool({
         {/* controls */}
         <div className="flex items-center gap-1.5">
           {mode !== 'point' && (
-            <button onClick={() => setPts((p) => p.slice(0, -1))} disabled={!pts.length} className="flex items-center gap-1 rounded-md border border-navy-700 text-faint hover:text-ink text-[11px] px-2 py-1 disabled:opacity-40">
+            <button onClick={() => { setPts((p) => p.slice(0, -1)); setDone(false) }} disabled={!pts.length} className="flex items-center gap-1 rounded-md border border-navy-700 text-faint hover:text-ink text-[11px] px-2 py-1 disabled:opacity-40">
               <Undo2 className="h-3 w-3" /> Undo
             </button>
           )}
           <button onClick={reset} disabled={!pts.length} className="flex items-center gap-1 rounded-md border border-navy-700 text-faint hover:text-alert text-[11px] px-2 py-1 disabled:opacity-40">
             <Trash2 className="h-3 w-3" /> Clear
           </button>
+          {mode !== 'point' && (
+            <button
+              onClick={() => { setDone(true); setHover(null) }}
+              disabled={!canSave || done}
+              className={'ml-auto flex items-center gap-1 rounded-md border text-[11px] px-2 py-1 disabled:opacity-40 ' +
+                (done ? 'border-teal/40 text-teal' : 'border-amber/40 text-amber hover:bg-amber/10')}
+            >
+              <Check className="h-3 w-3" /> {done ? 'Finished' : 'Finish'}
+            </button>
+          )}
         </div>
 
         {/* save */}
