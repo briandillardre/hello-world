@@ -792,11 +792,13 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
              show-off layers, out of the everyday path (owner ask, Jul 21) ── */}
       <GroupSection gid="advanced" collapsed={!!collapsed.advanced} onToggle={() => toggleGroup('advanced')}>
         {rowsFor('advanced')}
-        {onEarthSpin && (
+        {/* Earth spin nests under Satellites & sky exactly like the 11k swarm
+            row: hidden until the parent layer is on (owner ask, Jul 21) — but
+            never hidden WHILE spinning, so it can always be turned off. */}
+        {onEarthSpin && (isOn('satellites') || earthSpin) && (
           <div className="border-t border-navy-800">
-            {/* Sits under Satellites & sky as a sibling of the swarm row —
-                same physics family. In replays the rotation follows the
-                TIMELINE (scrub/pause/rewind); the rate chips apply on Live. */}
+            {/* In replays the rotation follows the TIMELINE
+                (scrub/pause/rewind); the rate chips apply on Live. */}
             <button onClick={onEarthSpin} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
               <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
                 <Globe2 className={'h-4 w-4 ' + (earthSpin ? 'text-teal animate-spin [animation-duration:8s]' : 'text-faint')} /> ↳ Earth spin (real rotation)
