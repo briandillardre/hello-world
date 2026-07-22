@@ -39,7 +39,9 @@ const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
   { key: 'trails', label: 'Trails', icon: Route },
   { key: 'heatmap', label: 'Heatmap', icon: Flame },
-  { key: '3d', label: '3D', icon: Box },
+  // '3d' is the hex activity terrain — towers of movement, i.e. a heatmap
+  // with height. Named accordingly ("3D" read like a camera mode, Jul 21).
+  { key: '3d', label: '3D heat', icon: Box },
 ]
 
 interface TimelinePlaybackProps {

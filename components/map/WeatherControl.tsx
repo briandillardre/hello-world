@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Globe2, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -18,11 +18,9 @@ interface WeatherControlProps {
   /** 3D buildings + tilt — an independent toggle layerable on any basemap. */
   threeD: boolean
   onThreeD: (v: boolean) => void
-  /** Earth spin (Advanced group) — the planet's true rotation, 1×/60×/3600×. */
-  earthSpin?: boolean
-  onEarthSpin?: () => void
-  earthRate?: 1 | 60 | 3600
-  onEarthRate?: (r: 1 | 60 | 3600) => void
+  /** 3D terrain relief (the "3D map") — heavy, so it's a separate opt-in. */
+  terrain3d?: boolean
+  onTerrain3d?: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
   radarPaused?: boolean
@@ -191,7 +189,7 @@ function GroupSection({ gid, collapsed, onToggle, children }: {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = false, onEarthSpin, earthRate = 60, onEarthRate, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchItems, onPickItem, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   // Find-anything (assets + zones) inside the panel.
@@ -784,48 +782,37 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, earthSpin = fal
             </p>
           )}
         </div>
+        {/* 3D terrain — split from buildings & tilt (Jul 21): the DEM relief
+            is the heavy half, so it's its own opt-in. */}
+        {onTerrain3d && (
+          <div className="border-t border-navy-800">
+            <button onClick={() => onTerrain3d(!terrain3d)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <Waves className={'h-4 w-4 ' + (terrain3d ? 'text-teal' : 'text-faint')} /> 3D terrain (real elevation)
+              </span>
+              <Toggle on={terrain3d} />
+            </button>
+            {terrain3d && (
+              <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+                mountains rise · measure reads elevation · heavier on phones — turn off for everyday dispatch
+              </p>
+            )}
+          </div>
+        )}
       </GroupSection>
 
       <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
 
-      {/* ── Advanced: satellites, aircraft, night effects, Earth spin — the
-             show-off layers, out of the everyday path (owner ask, Jul 21) ── */}
+      {/* ── Advanced: satellites, aircraft, night effects — the show-off
+             layers, out of the everyday path (owner ask, Jul 21). Earth's
+             real rotation needs no switch: with Satellites & sky on, the
+             globe simply turns with the timeline clock. ── */}
       <GroupSection gid="advanced" collapsed={!!collapsed.advanced} onToggle={() => toggleGroup('advanced')}>
         {rowsFor('advanced')}
-        {/* Earth spin nests under Satellites & sky exactly like the 11k swarm
-            row: hidden until the parent layer is on (owner ask, Jul 21) — but
-            never hidden WHILE spinning, so it can always be turned off. */}
-        {onEarthSpin && (isOn('satellites') || earthSpin) && (
-          <div className="border-t border-navy-800">
-            {/* In replays the rotation follows the TIMELINE
-                (scrub/pause/rewind); the rate chips apply on Live. */}
-            <button onClick={onEarthSpin} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
-              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-                <Globe2 className={'h-4 w-4 ' + (earthSpin ? 'text-teal animate-spin [animation-duration:8s]' : 'text-faint')} /> ↳ Earth spin (real rotation)
-              </span>
-              <Toggle on={!!earthSpin} />
-            </button>
-            {earthSpin && (
-              <div className="px-3 pb-2">
-                <p className="font-mono text-[10px] text-teal mb-1">follows the timeline in replays · zoom out to the globe to see it</p>
-                {onEarthRate && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono text-[9px] uppercase tracking-wider text-faint mr-1">Live rate</span>
-                    {([[1, 'real'], [60, '×60'], [3600, '×3600']] as const).map(([v, label]) => (
-                      <button
-                        key={v}
-                        onClick={() => onEarthRate(v)}
-                        className={'px-2 py-0.5 rounded-md text-[10.5px] font-semibold border ' +
-                          (earthRate === v ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink')}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        {isOn('satellites') && (
+          <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+            ↳ zoom out to the globe — Earth turns in real time (and with the timeline in replays)
+          </p>
         )}
         {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
         <div className="border-t border-navy-800">

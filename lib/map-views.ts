@@ -10,7 +10,10 @@ import type { BasemapId } from './map-layers'
 
 export interface MapViewCfg {
   base: BasemapId
+  /** 3D buildings + camera tilt (cheap). */
   threeD: boolean
+  /** 3D terrain relief — the DEM "3D map" (heavy, split from threeD Jul 21). */
+  terrain?: boolean
   radar: boolean
   /** GOES satellite clouds overlay. */
   clouds?: boolean
@@ -75,8 +78,9 @@ export const PRESET_VIEWS: SavedMapView[] = [
     name: 'Site planning — full detail',
     preset: true,
     // Everything on. Site-walk planning, drainage arguments, parcel lines.
+    // The one preset that turns on the heavy 3D terrain too.
     cfg: cfg({
-      base: 'hybrid', threeD: true, radar: true, precip: true, trailMode: 'trails',
+      base: 'hybrid', threeD: true, terrain: true, radar: true, precip: true, trailMode: 'trails',
       overlays: { topo: true, wetlands: true, streams: true }, parcels: true,
     }),
   },

@@ -55,6 +55,11 @@ body {
 .maplibregl-ctrl-icon.maplibregl-ctrl-geolocate-active {
   filter: invert(64%) sepia(86%) saturate(420%) hue-rotate(120deg) brightness(102%);
 }
+/* Measure toggle rides in the ctrl cluster; amber = actively measuring.
+   !important because the base ctrl-group button forces transparent. */
+.maplibregl-ctrl-group button.ht-measure-btn.on {
+  background-color: #ff9e16 !important;
+}
 /* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden */
 .kiosk-map .maplibregl-ctrl-top-right {
   margin-top: 60px;

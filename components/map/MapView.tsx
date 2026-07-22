@@ -33,7 +33,6 @@ import { geofencePresence } from '@/lib/site-presence'
 import { synthesizeToolRows } from '@/lib/tools-resolve'
 import { AssetPanel, type PanelStop } from './AssetPanel'
 import { MeasureTool } from './MeasureTool'
-import { Ruler } from 'lucide-react'
 import { POI_KIND_COLOR, POI_KIND_META } from '@/lib/poi'
 import { MapSearch, type SearchItem } from './MapSearch'
 import { MapTour } from './MapTour'
@@ -355,7 +354,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // Read once before the state initializers below; a starred saved view
   // still overrides after mount (an explicit choice beats a remembered one).
   const lastState = useRef<Partial<{
-    base: BaseStyle; threeD: boolean; radar: boolean; clouds: boolean; stormtops: boolean
+    base: BaseStyle; threeD: boolean; terrain: boolean; radar: boolean; clouds: boolean; stormtops: boolean
     precip: boolean; precipPeriod: string; parcels: boolean; zones: boolean
     overlays: Record<string, boolean>; trailMode: TrailMode
   }>>((() => {
@@ -444,11 +443,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [threeD, setThreeD] = useState(lastState.threeD ?? false)
   const threeDRef = useRef(threeD)
   threeDRef.current = threeD
+  // 3D terrain (the "3D map") — split from buildings & tilt (Jul 21): the
+  // DEM is the expensive half and gets its own opt-in toggle.
+  const [terrain3d, setTerrain3d] = useState(lastState.terrain ?? false)
+  const terrain3dRef = useRef(terrain3d)
+  terrain3dRef.current = terrain3d
   // Measure + takeoff tool overlay (off by default). Ref so the map's
   // click-to-select handlers can bail while measuring (clicks add vertices).
   const [measureOn, setMeasureOn] = useState(false)
   const measureOnRef = useRef(false)
   measureOnRef.current = measureOn
+  // The measure toggle lives INSIDE the MapLibre control cluster (same size,
+  // same column as zoom/locate/fit — owner ask, Jul 21); this ref lets React
+  // paint its active state onto the DOM button.
+  const measureBtnRef = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    const btn = measureBtnRef.current
+    if (!btn) return
+    btn.classList.toggle('on', measureOn)
+    btn.querySelector('svg')?.setAttribute('stroke', measureOn ? '#1a1100' : '#9fb6cc')
+  }, [measureOn])
 
   // On-demand full-resolution history for the selected window. The shipped
   // snapshot is capped + newest-biased (older days were getting silently
@@ -690,17 +704,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   useEffect(() => {
     try {
       localStorage.setItem(kiosk ? 'ht_last_state_command' : 'ht_last_state_map', JSON.stringify({
-        base, threeD, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
+        base, threeD, terrain: terrain3d, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
         precip: precipOn, precipPeriod, parcels: parcelsOn, zones: showZones,
         overlays: overlaysOn, trailMode,
       }))
     } catch { /* private mode */ }
-  }, [kiosk, base, threeD, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode])
+  }, [kiosk, base, threeD, terrain3d, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode])
 
   // Factory reset for the whole panel — spec rule 6.
   const resetLayers = useCallback(() => {
     setBase(kiosk ? 'dark' : 'satellite')
     setThreeD(false)
+    setTerrain3d(false)
     setRadarOn(kiosk)
     setRadarPaused(false)
     setCloudsOn(false)
@@ -722,6 +737,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const c = v.cfg
     setBase(c.base)
     setThreeD(c.threeD)
+    setTerrain3d(c.terrain ?? false)
     setRadarOn(c.radar)
     setCloudsOn(c.clouds ?? false)
     setPrecipOn(c.precip)
@@ -755,13 +771,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       id: `v-${Date.now().toString(36)}`,
       name: name.trim().slice(0, 40) || 'My view',
       cfg: {
-        base, threeD, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
+        base, threeD, terrain: terrain3d, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
         overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones,
       },
     }
     persistViews({ views: [v, ...mapViews.views].slice(0, 20), defaultId: mapViews.defaultId })
     setActiveViewId(v.id)
-  }, [base, threeD, radarOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, mapViews, persistViews])
+  }, [base, threeD, terrain3d, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, mapViews, persistViews])
 
   const handleDeleteView = useCallback((id: string) => {
     persistViews({
@@ -843,7 +859,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // rail on the wall display, and the two were stacked on top of each other.
     const ctrlCorner = kiosk ? 'bottom-left' : 'top-right'
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), ctrlCorner)
-    map.current.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), ctrlCorner)
+
+    // Rotate 90° either way, right under the compass — the compass itself is
+    // the Google-style "north up, no tilt" reset (owner ask, Jul 21).
+    const rotateControl: maplibregl.IControl = {
+      onAdd() {
+        const div = document.createElement('div')
+        div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+        const mk = (dir: 1 | -1, title: string, svg: string) => {
+          const b = document.createElement('button')
+          b.type = 'button'
+          b.title = title
+          b.setAttribute('aria-label', title)
+          b.innerHTML = svg
+          b.onclick = () => { const m2 = map.current; if (m2) m2.easeTo({ bearing: m2.getBearing() + 90 * dir, duration: 450 }) }
+          div.appendChild(b)
+        }
+        mk(-1, 'Rotate 90° left', '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>')
+        mk(1, 'Rotate 90° right', '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>')
+        return div
+      },
+      onRemove() {},
+    }
+    map.current.addControl(rotateControl, ctrlCorner)
+
+    // "Show your location" follows the convention every Google Maps user
+    // already knows: the moment you locate, the map goes north-up, no tilt.
+    const geoCtrl = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true })
+    geoCtrl.on('trackuserlocationstart', () => map.current?.easeTo({ bearing: 0, pitch: 0, duration: 600 }))
+    map.current.addControl(geoCtrl, ctrlCorner)
 
     // Zoom-to-all control (sits below the geolocate button)
     const fitAllControl: maplibregl.IControl = {
@@ -862,6 +906,30 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       onRemove() {},
     }
     map.current.addControl(fitAllControl, ctrlCorner)
+
+    // Measure & takeoff toggle — same cluster as zoom/locate/fit so it gets
+    // their exact size and sits directly below Zoom-to-all (owner ask, Jul 21).
+    if (!kiosk) {
+      const measureControl: maplibregl.IControl = {
+        onAdd() {
+          const div = document.createElement('div')
+          div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+          const btn = document.createElement('button')
+          btn.type = 'button'
+          btn.title = 'Measure & takeoff — distance, area, tonnage'
+          btn.setAttribute('aria-label', 'Measure & takeoff')
+          btn.className = 'ht-measure-btn'
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.3 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>'
+          btn.onclick = () => setMeasureOn((v) => !v)
+          measureBtnRef.current = btn
+          div.appendChild(btn)
+          return div
+        },
+        onRemove() { measureBtnRef.current = null },
+      }
+      map.current.addControl(measureControl, ctrlCorner)
+    }
+
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     map.current.on('load', () => {
@@ -1890,20 +1958,32 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     set('labels-overlay', base === 'hybrid' || base === 'aubergine')
   }, [mapReady, base])
 
-  // 3D is an independent toggle now — buildings + camera tilt, layerable on any
-  // basemap. While following, the follow camera owns the pitch, so don't fight it.
+  // 3D buildings & tilt — buildings + camera tilt only, layerable on any
+  // basemap. While following, the follow camera owns the pitch, so don't
+  // fight it. TERRAIN is deliberately NOT here anymore: piggybacking the DEM
+  // onto this toggle (Jul 17) is what made "3D buildings" suddenly heavy —
+  // "it used to work fine" (owner, Jul 21). Terrain has its own toggle below.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('buildings-3d')) return
     m.setLayoutProperty('buildings-3d', 'visibility', threeD ? 'visible' : 'none')
-    // Real DEM terrain relief when 3D is on (also enables elevation readout).
+    if (!followIdRef.current) m.easeTo({ pitch: threeD || terrain3d ? 55 : 0, duration: 600 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, threeD])
+
+  // 3D terrain (the "3D map") — real DEM elevation relief; mountains rise and
+  // the measure tool gets its elevation readout. The expensive one, opt-in.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
     // Wrapped defensively — a DEM tile hiccup must never blank the map.
     try {
-      if (threeD && m.getSource('dem')) m.setTerrain({ source: 'dem', exaggeration: 1.3 })
+      if (terrain3d && m.getSource('dem')) m.setTerrain({ source: 'dem', exaggeration: 1.3 })
       else m.setTerrain(null)
     } catch { /* terrain unsupported / source not ready — ignore */ }
-    if (!followIdRef.current) m.easeTo({ pitch: threeD ? 55 : 0, duration: 600 })
-  }, [mapReady, threeD])
+    if (!followIdRef.current) m.easeTo({ pitch: terrain3d || threeD ? 55 : 0, duration: 600 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, terrain3d])
 
   // Toggle visibility of all geofence layers at once
   useEffect(() => {
@@ -3288,13 +3368,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     cancelAnimationFrame(spinRaf.current)
     setSpinning(false)
   }, [])
-  const stopEarthSpinRef = useRef<(() => void) | null>(null)
   const handleSpin = useCallback(() => {
     const m = map.current
     if (!m) return
     if (spinningRef.current) { stopSpin(); return }
     stopFlyoverRef.current?.()
-    stopEarthSpinRef.current?.() // one camera driver at a time
     setSpinning(true)
     const DEG_PER_SEC = 360 / 26 // one lap every ~26s
     const start = performance.now()
@@ -3312,42 +3390,24 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   }, [stopSpin])
   useEffect(() => () => cancelAnimationFrame(spinRaf.current), [])
 
-  // "Earth spin" — the planet's real rotation, simulated: the camera drifts
-  // west so the globe turns eastward exactly as Earth does — 360° per
-  // sidereal day (23h56m04s ≈ 15°/hr). 1× is the honest satellite view
-  // (glacial by nature); ×60 and ×3600 are time-lapses of the same physics
-  // (one lap ≈ 24 min / 24 s). Best at globe zoom; drag cancels.
-  const [earthSpin, setEarthSpin] = useState(false)
-  const earthSpinRef = useRef(false)
-  earthSpinRef.current = earthSpin
-  const [earthRate, setEarthRate] = useState<1 | 60 | 3600>(60)
-  const earthRateRef = useRef<number>(earthRate)
-  earthRateRef.current = earthRate
+  // Earth rotation — automatic, no toggle (owner ask, Jul 21: "real rotation
+  // should only really work when the timeline tells it to"). Whenever the
+  // Satellites & sky layer is on and you're zoomed out far enough to see the
+  // planet, the globe turns exactly as Earth does under the fixed star /
+  // satellite field — 360° per sidereal day (23h56m04s ≈ 15°/hr). The
+  // TIMELINE is the clock: replay follows the scrub (sweep a day, the planet
+  // turns once; scrub back, it turns back; pause freezes it — manual pause
+  // wins). Live runs at the true 1× rate. A hand on the wheel skips frames
+  // instead of killing the loop — rotation resumes wherever you let go.
   const earthRaf = useRef(0)
-  const stopEarthSpin = useCallback(() => {
-    cancelAnimationFrame(earthRaf.current)
-    setEarthSpin(false)
-  }, [])
-  stopEarthSpinRef.current = stopEarthSpin
-  const handleEarthSpin = useCallback(() => {
+  useEffect(() => {
     const m = map.current
-    if (!m) return
-    if (earthSpinRef.current) { stopEarthSpin(); return }
-    stopFlyoverRef.current?.()
-    stopSpin()
-    setEarthSpin(true)
-    earthSpinRef.current = true
+    if (!mapReady || !m || !overlaysOn.satellites) return
     const SIDEREAL_DEG_PER_SEC = 360 / 86164.0905
+    const GLOBE_ZOOM = 4 // above this you're looking at a job site, not a planet
     let last = performance.now()
-    // Replay coupling: the globe's rotation follows the TIMELINE clock, not
-    // the wall clock — scrub forward and it turns ahead, scrub back and it
-    // turns back, pause and it freezes (the "manual pause wins" rule). A full
-    // Today sweep rotates the planet almost exactly once, because that's what
-    // the planet did. Live keeps the free-run at the chosen 1×/60×/3600×.
     let lastScrubMs: number | null = null
     const frame = (now: number) => {
-      if (!earthSpinRef.current) return
-      if (userGestureRef.current) { setEarthSpin(false); return } // hand on the wheel wins
       const dt = Math.min(0.1, (now - last) / 1000)
       last = now
       const win = realWindowRef.current
@@ -3358,9 +3418,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         lastScrubMs = scrubMs
       } else {
         lastScrubMs = null
-        dDeg = SIDEREAL_DEG_PER_SEC * earthRateRef.current * dt
+        dDeg = SIDEREAL_DEG_PER_SEC * dt
       }
-      if (dDeg !== 0) {
+      if (dDeg !== 0 && !userGestureRef.current && m.getZoom() <= GLOBE_ZOOM) {
         const c = m.getCenter()
         let lng = c.lng - dDeg
         while (lng < -180) lng += 360
@@ -3370,8 +3430,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       earthRaf.current = requestAnimationFrame(frame)
     }
     earthRaf.current = requestAnimationFrame(frame)
-  }, [stopSpin, stopEarthSpin])
-  useEffect(() => () => cancelAnimationFrame(earthRaf.current), [])
+    return () => cancelAnimationFrame(earthRaf.current)
+  }, [mapReady, overlaysOn.satellites])
+
+  // Google-style progressive tilt lock (owner ask, Jul 21): the farther you
+  // zoom out, the less tilt is allowed — full 85° at site zoom, draining to
+  // flat by regional zoom, so the map never ends up cocked sideways at state
+  // scale. The sky layers (Satellites, Aircraft) free the camera again —
+  // near-horizon star/plane views need pitch at any zoom.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    if (overlaysOn.satellites || overlaysOn.planes) {
+      try { m.setMaxPitch(85) } catch { /* mid-gesture */ }
+      return
+    }
+    const apply = () => {
+      const z = m.getZoom()
+      const max = z >= 13 ? 85 : z <= 6 ? 0 : Math.round(((z - 6) / 7) * 85)
+      try { m.setMaxPitch(max) } catch { /* mid-gesture */ }
+    }
+    apply()
+    m.on('zoom', apply)
+    return () => {
+      m.off('zoom', apply)
+      try { m.setMaxPitch(85) } catch { /* teardown */ }
+    }
+  }, [mapReady, overlaysOn.satellites, overlaysOn.planes])
 
   // "Flyover" — the slow-plane pass: visit every located asset in
   // nearest-neighbor order at altitude, bank around each for a few seconds,
@@ -3388,7 +3473,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     cancelAnimationFrame(flyRaf.current)
     flyingRef.current = false
     setFlying(false)
-    map.current?.easeTo({ pitch: threeDRef.current ? 55 : 0, duration: 600 })
+    map.current?.easeTo({ pitch: threeDRef.current || terrain3dRef.current ? 55 : 0, duration: 600 })
   }, [])
   stopFlyoverRef.current = stopFlyover
   const handleFlyover = useCallback(() => {
@@ -3522,7 +3607,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     if (!id) {
       // Release: glide back to the flat (or 3D-base) overview.
-      m?.easeTo({ pitch: threeDRef.current ? 55 : 0, bearing: 0, duration: 800 })
+      m?.easeTo({ pitch: threeDRef.current || terrain3dRef.current ? 55 : 0, bearing: 0, duration: 800 })
       return
     }
     stopSpin() // follow owns the camera — a running 360 would fight it
@@ -3676,22 +3761,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           pair lives top-LEFT (owner layout, Jul 14 PM). */}
       {!kiosk && askSlot && <div data-tour="askai" className="absolute top-3 right-3 z-20">{askSlot}</div>}
 
-      {/* Measure + takeoff toggle — sits under AskAI, top-right */}
-      {!kiosk && (
-        <button
-          onClick={() => setMeasureOn((v) => !v)}
-          title="Measure & takeoff — distance, area, tonnage"
-          className={'absolute top-[58px] right-[58px] z-20 grid place-items-center w-9 h-9 rounded-xl border shadow-panel backdrop-blur transition-colors ' +
-            (measureOn ? 'bg-amber text-[#1a1100] border-amber' : 'bg-navy-950/80 text-faint border-navy-700 hover:text-amber')}
-        >
-          <Ruler className="h-4 w-4" />
-        </button>
-      )}
+      {/* Measure toggle lives in the MapLibre control cluster (added at map
+          init) — same size + column as zoom/locate/fit, below Zoom-to-all. */}
       {!kiosk && (
         <MeasureTool
           map={mapReady ? map.current : null}
           active={measureOn}
-          terrainOn={threeD}
+          terrainOn={terrain3d}
           onClose={() => setMeasureOn(false)}
           onSaved={() => { /* saved measurements reload on next page visit */ }}
         />
@@ -3754,10 +3830,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onBase={setBase}
         threeD={threeD}
         onThreeD={setThreeD}
-        earthSpin={earthSpin}
-        onEarthSpin={handleEarthSpin}
-        earthRate={earthRate}
-        onEarthRate={setEarthRate}
+        terrain3d={terrain3d}
+        onTerrain3d={setTerrain3d}
         radarOn={radarOn}
         radarPaused={radarPaused}
         onRadarPause={setRadarPaused}

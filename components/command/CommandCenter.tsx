@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { X, Sparkles, ChevronRight, ChevronLeft, Radar, Map, Package, Hexagon, Bell, Wrench, BarChart3, Calculator, Users, Settings, MonitorPlay, LayoutGrid, Check, Route } from 'lucide-react'
+import { X, Sparkles, ChevronRight, ChevronLeft, Radar, LayoutGrid, Check, Route } from 'lucide-react'
 import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
+import { Sidebar } from '@/components/layout/Sidebar'
+import { signOutAction } from '@/lib/actions/auth'
 import { TacticalHud } from './TacticalHud'
 import { CommandRail } from './CommandRail'
 import { EventRail } from './EventRail'
@@ -71,58 +73,30 @@ const TRIGGER_LABEL: Record<string, string> = {
   idle: 'idle too long',
 }
 
-const NAV_LINKS = [
-  { href: '/command', label: 'Command Center', icon: MonitorPlay },
-  { href: '/map', label: 'Live Map', icon: Map },
-  { href: '/assets', label: 'Assets', icon: Package },
-  { href: '/geofences', label: 'Zones', icon: Hexagon },
-  { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/maintenance', label: 'Maintenance', icon: Wrench },
-  { href: '/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/accounting', label: 'Accounting', icon: Calculator },
-  { href: '/team', label: 'Team', icon: Users },
-  { href: '/settings', label: 'Settings', icon: Settings },
-]
-
-/** Hidden left-edge nav: nothing but a slim arrow tab until tapped, then a
- *  slide-out with the whole app one tap away — the wall display stays clean
- *  but you're never trapped on it. Lives near the bottom corner so the layers
- *  panel and instrument rail never cover it. */
-function NavFlyout() {
-  const [open, setOpen] = useState(false)
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Open navigation"
-        className="fixed left-0 bottom-24 z-50 grid place-items-center w-5 h-16 rounded-r-lg bg-navy-950/80 backdrop-blur border border-l-0 border-teal/25 text-teal/70 hover:text-teal hover:w-6 transition-all"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </button>
-    )
-  }
+/** The app sidebar, kiosk edition — the SAME left-side look as the map view
+ *  (same nav, same circular collapse chevron in the same spot), except that
+ *  collapsing here removes it entirely: a wall display wants nothing on it
+ *  but the expand arrow (owner ask, Jul 21). Starts collapsed, remembered
+ *  per device. */
+function KioskNav({ company, alerts }: { company: string; alerts: AlertEvent[] }) {
+  const [collapsed, setCollapsed] = useState(true)
+  useEffect(() => { setCollapsed(localStorage.getItem('ht-cc-nav') !== '0') }, [])
+  const toggle = () =>
+    setCollapsed((c) => {
+      const next = !c
+      try { localStorage.setItem('ht-cc-nav', next ? '1' : '0') } catch { /* private mode */ }
+      return next
+    })
   return (
-    <>
-      <div className="fixed inset-0 z-50 bg-navy-950/40" onClick={() => setOpen(false)} />
-      <nav className="fixed left-0 inset-y-0 z-50 w-60 bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel flex flex-col py-4">
-        <div className="px-4 pb-3 mb-2 border-b border-navy-800 flex items-center justify-between">
-          <Logo size={22} href={null} />
-          <button onClick={() => setOpen(false)} aria-label="Close navigation" className="grid place-items-center w-7 h-7 rounded-lg text-faint hover:text-ink">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        {NAV_LINKS.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            onClick={() => setOpen(false)}
-            className={'flex items-center gap-3 px-4 py-2.5 text-[13.5px] font-medium transition-colors ' + (href === '/command' ? 'text-amber' : 'text-muted hover:text-ink hover:bg-navy-900')}
-          >
-            <Icon className="h-4 w-4 flex-none" /> {label}
-          </Link>
-        ))}
-      </nav>
-    </>
+    <Sidebar
+      companyName={company}
+      alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+      latestAlertAt={alerts[0]?.triggered_at ?? null}
+      collapsed={collapsed}
+      onToggle={toggle}
+      onSignOut={signOutAction}
+      fullCollapse
+    />
   )
 }
 
@@ -327,13 +301,19 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
-      {/* hidden left-edge nav — a slim arrow until tapped */}
-      <NavFlyout />
+      {/* app sidebar, kiosk edition — fully hidden until the arrow is tapped */}
+      <KioskNav company={company} alerts={alerts} />
 
       {/* left instrument rail — below the layers pill; slim edge tab when hidden */}
       {leftVisible ? (
-        <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start">
-          <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
+        // pointer-events-none on the WRAPPER: it spans to the bottom of the
+        // screen and its empty lower half was swallowing clicks meant for the
+        // map's zoom/locate buttons underneath ("none of those are working",
+        // Jul 21). Only the rail itself accepts input.
+        <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
+          <div className="pointer-events-auto max-h-full">
+            <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
+          </div>
         </div>
       ) : (
         <button
@@ -350,8 +330,12 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           clamp(150px,26vw,320px) tall + pill + margins). Overflow scrolls
           inside the rail instead of over the dial. */}
       {rightVisible ? (
-        <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden">
-          <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={historyRows} panels={panels} onPanel={onPanel} />
+        // Same pointer-events split as the left rail — empty wrapper area
+        // must never block the map.
+        <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
+          <div className="pointer-events-auto max-h-full">
+            <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={historyRows} panels={panels} onPanel={onPanel} />
+          </div>
         </div>
       ) : (
         <button
@@ -374,10 +358,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
               center={camCenter}
             />
           )}
+          {/* same bare mono chip as the rails' hide buttons (owner ask, Jul 21) */}
           <button
             onClick={() => onPanel('hud', panels.hud === 'open' ? 'min' : 'open')}
             aria-label={panels.hud === 'open' ? 'Hide radar' : 'Show radar'}
-            className="flex items-center gap-1.5 rounded-full bg-navy-950/80 backdrop-blur border border-teal/20 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors"
+            className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors px-1"
           >
             <Radar className="h-3 w-3" /> {panels.hud === 'open' ? 'hide' : 'radar'}
           </button>

@@ -43,15 +43,32 @@ interface SidebarProps {
   onSignOut?: () => void
   collapsed?: boolean
   onToggle?: () => void
+  /** Command Center kiosk mode: the sidebar OVERLAYS the wall display, and
+   *  collapsing removes it entirely — nothing left but the expand arrow in
+   *  the same spot as the map view's toggle (owner ask, Jul 21). */
+  fullCollapse?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
+  if (fullCollapse && collapsed) {
+    return (
+      <button
+        onClick={onToggle}
+        title="Expand"
+        aria-label="Expand sidebar"
+        className="fixed left-2 top-[22px] z-[48] grid place-items-center w-7 h-7 rounded-full bg-navy-900 border border-navy-700 text-faint shadow-md hover:text-ink hover:border-teal/60 transition-colors"
+      >
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
+    )
+  }
   return (
     <aside
       className={cn(
-        'hidden md:flex flex-col bg-navy-950 text-ink h-screen fixed left-0 top-0 z-40 border-r border-navy-800 transition-[width] duration-200',
+        'flex-col bg-navy-950 text-ink h-screen fixed left-0 top-0 border-r border-navy-800 transition-[width] duration-200',
+        fullCollapse ? 'flex z-[48]' : 'hidden md:flex z-40',
         collapsed ? 'w-16' : 'w-56'
       )}
     >
