@@ -8,9 +8,8 @@ export const metadata: Metadata = {
   description: 'Fleet pricing, multi-site rollouts, and hardware for large contractors.',
 }
 
+// No personal contact info on the public site (owner ask, Jul 23).
 const SALES_EMAIL = BRAND_EMAIL_SALES
-const SALES_PHONE = '864-915-2351'
-const SALES_TEL = 'tel:+18649152351'
 
 export default function ContactPage() {
   const subject = encodeURIComponent('HammerTrack — Fleet inquiry')
@@ -44,7 +43,7 @@ export default function ContactPage() {
             </Link>
           </div>
           <p className="text-sm text-muted">
-            Or just call/text <a href={SALES_TEL} className="text-amber font-semibold hover:underline">{SALES_PHONE}</a> — you&rsquo;ll get the founder, not a call center.
+            Every email lands with the team that builds the product — not a call center.
           </p>
           <p className="text-xs text-faint pt-2">
             Prefer to see it first? <Link href="/map" className="text-amber hover:underline">Open the live map →</Link>

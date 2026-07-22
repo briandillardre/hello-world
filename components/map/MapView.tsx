@@ -3879,14 +3879,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         z={kiosk ? 45 : 15}
         filter={kiosk ? undefined : filter}
         onFilter={kiosk ? undefined : setFilter}
-        onDrawZone={!kiosk && !pbActive && onGeofenceSave ? startDrawing : undefined}
+        // Always available (was hidden during replays — "where did add zones
+        // go?", Jul 23). Drawing from a replay snaps the timeline back to
+        // Live first so clicks mean corners, not scrubbing.
+        onDrawZone={!kiosk && onGeofenceSave ? () => { if (rangeRef.current !== 'live') handleRange('live'); startDrawing() } : undefined}
         showDevices={showDevices}
         onToggleDevices={!kiosk && isMock ? () => setShowDevices((v) => !v) : undefined}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
       />
 
 
-      {!kiosk && !pbActive && (
+      {!kiosk && (
         <GeofenceDrawer
           isDrawing={isDrawing}
           onFinishDraw={finishDrawing}

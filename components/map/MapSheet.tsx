@@ -88,7 +88,14 @@ export function MapSheet({
           handle up to maximize, down to minimize or close; the X is always in
           the fixed header. Only the expanded state dims + closes on tap-away. */}
       {expanded && <div className="absolute inset-0 z-[70] bg-navy-950/45 md:hidden" onClick={onClose} />}
-      <div className="absolute bottom-[54px] left-0 right-0 z-[71] md:hidden">
+      {/* Bottom offset rides --ht-sheet-lift (set by the timeline bar) so the
+          scrubber stays operable with an asset selected (owner ask, Jul 23).
+          Fully expanded, the sheet takes the screen (dimmed map) — no lift,
+          or 85dvh + lift would push its top off-screen. */}
+      <div
+        className="absolute left-0 right-0 z-[71] md:hidden"
+        style={{ bottom: expanded ? '54px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
+      >
         <div
           className="bg-navy-900 rounded-t-2xl shadow-2xl mx-2 border border-navy-800 flex flex-col"
           style={{

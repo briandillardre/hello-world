@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { Check, Phone } from 'lucide-react'
+import { Check, Mail } from 'lucide-react'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
+import { BRAND_EMAIL_SALES } from '@/lib/brand'
 
-const SALES_PHONE = '864-915-2351'
-const SALES_TEL = 'tel:+18649152351'
+// No personal contact info on the public site (owner ask, Jul 23).
+const SALES_EMAIL = BRAND_EMAIL_SALES
+const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('HammerTrack — pricing question')}`
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
@@ -158,8 +160,8 @@ export default function PricingPage() {
             <Link href="/register" className="font-display font-bold text-sm rounded-xl px-4 py-2.5 bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07] transition-colors">
               Start free pilot
             </Link>
-            <a href={SALES_TEL} className="inline-flex items-center gap-1.5 text-xs text-faint hover:text-teal transition-colors">
-              <Phone className="h-3 w-3" /> or call {SALES_PHONE}
+            <a href={SALES_MAILTO} className="inline-flex items-center gap-1.5 text-xs text-faint hover:text-teal transition-colors">
+              <Mail className="h-3 w-3" /> or email {SALES_EMAIL}
             </a>
           </div>
         </section>

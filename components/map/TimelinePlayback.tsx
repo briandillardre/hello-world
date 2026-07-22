@@ -122,7 +122,7 @@ export function TimelinePlayback({
   const [showChart, setShowChart] = useState(false)
   const [shared, setShared] = useState(false)
   const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
-  const rootRef = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const followed = followAssets.find((a) => a.id === followId)
     ?? followZones.find((z) => z.id === followId)
     ?? null
@@ -199,6 +199,27 @@ export function TimelinePlayback({
   const seriesMax = Math.max(0, ...series)
   const spanLabel = bucketSpanLabel(windowSeconds, activity.length || ACTIVITY_BUCKETS)
 
+  // Lift the phone selection sheet clear of this bar (owner ask, Jul 23 —
+  // "can not operate timeline slider with an asset selected on phone"):
+  // publish how far the bar rises above the 54px gap the sheet already
+  // leaves. 0 while collapsed to the pill; kiosk has its own layout.
+  const measureRef = useRef<HTMLElement | null>(null)
+  const publishLift = useCallback(() => {
+    if (kiosk || typeof document === 'undefined') return
+    const h = measureRef.current?.getBoundingClientRect().height ?? 0
+    document.documentElement.style.setProperty('--ht-sheet-lift', `${Math.max(0, Math.ceil(h) + 8 - 54)}px`)
+  }, [kiosk])
+  const attachMeasure = useCallback((el: HTMLElement | null) => { measureRef.current = el; publishLift() }, [publishLift])
+  useEffect(() => {
+    if (kiosk || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(publishLift)
+    if (measureRef.current) ro.observe(measureRef.current)
+    return () => {
+      ro.disconnect()
+      document.documentElement.style.setProperty('--ht-sheet-lift', '0px')
+    }
+  }, [kiosk, minimized, publishLift])
+
   const chartRef = useRef<HTMLDivElement>(null)
   const seekFromPointer = useCallback((clientX: number) => {
     const el = chartRef.current
@@ -217,6 +238,7 @@ export function TimelinePlayback({
   if (minimized) {
     return (
       <button
+        ref={attachMeasure}
         onClick={() => setMinimized(false)}
         className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
@@ -237,7 +259,7 @@ export function TimelinePlayback({
     // Hug the bottom edge — the page already pads for the mobile tab bar, so
     // the old 80px offset left a dead strip of map under the controls. Kiosk
     // rides above the event ticker.
-    <div ref={rootRef} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
+    <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
       {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}

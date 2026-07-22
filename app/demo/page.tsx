@@ -6,6 +6,7 @@ import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { DemoCinemaLoader } from '@/components/marketing/DemoCinemaLoader'
 import { Reveal } from '@/components/ui/reveal'
 import { CountUp } from '@/components/ui/count-up'
+import { BRAND_EMAIL_SALES } from '@/lib/brand'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine & tool is. Right now.',
@@ -27,8 +28,10 @@ const VS_TENNA = [
   ['~$3–8 / asset / mo', 'Tenna: $15–25 / asset / mo'],
 ]
 
-const SALES_PHONE = '864-915-2351'
-const SALES_TEL = 'tel:+18649152351'
+// No personal contact info on the public site (owner ask, Jul 23) — every
+// "talk to us" path routes through the sales address.
+const SALES_EMAIL = BRAND_EMAIL_SALES
+const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('HammerTrack — quick question')}`
 
 export default function DemoLandingPage() {
   return (
@@ -68,7 +71,7 @@ export default function DemoLandingPage() {
             </div>
             <p className="font-mono text-xs text-faint mt-3">No credit card. We ship the trackers. Cancel anytime.</p>
             <p className="text-sm text-muted mt-3">
-              Rather talk it through? Call/text <a href={SALES_TEL} className="text-amber font-semibold hover:underline">{SALES_PHONE}</a>.
+              Rather talk it through? Email <a href={SALES_MAILTO} className="text-amber font-semibold hover:underline">{SALES_EMAIL}</a> — we answer same day.
             </p>
           </div>
 
@@ -174,7 +177,7 @@ export default function DemoLandingPage() {
                 Start free pilot <ArrowRight className="h-4 w-4" />
               </Link>
               <p className="text-sm mt-4 opacity-80">
-                Or call/text <a href={SALES_TEL} className="font-semibold underline">{SALES_PHONE}</a> — real person, no call center.
+                Or email <a href={SALES_MAILTO} className="font-semibold underline">{SALES_EMAIL}</a> — real person, no call center.
               </p>
             </div>
           </Reveal>
