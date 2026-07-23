@@ -13,9 +13,13 @@ import { cookies } from 'next/headers'
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
 // to `force-dynamic` AND add a no-cache header so the edge doesn't serve stale.
-export default async function MapPage() {
+export default async function MapPage({ searchParams }: { searchParams?: { m?: string } }) {
   const company = await getCurrentCompany()
   const companyId = company.id
+  // ?m=<id> — deep link from /measurements: draw that saved measurement and
+  // fly the camera to it.
+  const { getMeasurement } = await import('@/lib/db/measurements')
+  const focusMeasurement = searchParams?.m ? await getMeasurement(searchParams.m) : null
   const prefs = await getCompanyPrefs()
   const perms = await getMyPermissions()
   const savedMapViews = await getMyMapViews()
@@ -84,6 +88,7 @@ export default async function MapPage() {
           canViewCosts={perms.canViewCosts}
           savedMapViews={savedMapViews}
           alerts={alerts}
+          focusMeasurement={focusMeasurement}
         />
       </div>
     </div>

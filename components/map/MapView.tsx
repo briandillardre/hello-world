@@ -16,6 +16,7 @@ import {
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
 import { fetchPws, type PwsConditions } from '@/lib/pws'
+import { measureSummary } from '@/lib/measure'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
@@ -269,13 +270,15 @@ interface MapViewProps {
   /** Floating AskAI button, rendered beside the collapsed layers pill
    *  (only the real /map passes one — demo + kiosk have no assistant). */
   askSlot?: React.ReactNode
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean }) => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean; folderUrl?: string }) => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
   onGeofenceDelete?: (id: string) => void
   /** Recent alert events — powers the "Alert pins" site layer. */
   alerts?: AlertEvent[]
+  /** Saved measurement to draw + fly to (deep link from /measurements). */
+  focusMeasurement?: import('@/lib/db/measurements').Measurement | null
   kiosk?: boolean
   /** Kiosk auto-tour (asset → asset camera glide). Off = the wall stays put. */
   tourOn?: boolean
@@ -297,7 +300,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -463,6 +466,68 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     btn.classList.toggle('on', measureOn)
     btn.querySelector('svg')?.setAttribute('stroke', measureOn ? '#1a1100' : '#9fb6cc')
   }, [measureOn])
+
+  // Saved measurement deep link (/map?m=<id> from the Measurements page):
+  // draw the saved geometry in the measure tool's amber and fly to it.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !focusMeasurement) return
+    const g = focusMeasurement.geometry
+    const coords: [number, number][] =
+      g.type === 'Point' ? [g.coordinates as [number, number]]
+      : g.type === 'LineString' ? (g.coordinates as [number, number][])
+      : (g.coordinates[0] as [number, number][])
+    if (!coords.length) return
+    const label = `${focusMeasurement.name} — ${measureSummary(focusMeasurement.kind, focusMeasurement.props)}`
+    const mid = coords[Math.floor(coords.length / 2)]
+    const fc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: {}, geometry: g },
+        { type: 'Feature', properties: { lbl: label }, geometry: { type: 'Point', coordinates: g.type === 'Point' ? coords[0] : mid } },
+        ...coords.map((c) => ({ type: 'Feature' as const, properties: { vertex: 1 }, geometry: { type: 'Point' as const, coordinates: c } })),
+      ],
+    }
+    const SRC = 'measure-focus'
+    const add = () => {
+      if (!m.getSource(SRC)) m.addSource(SRC, { type: 'geojson', data: fc })
+      if (!m.getLayer('mfocus-fill')) m.addLayer({ id: 'mfocus-fill', type: 'fill', source: SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.18 } })
+      if (!m.getLayer('mfocus-line')) m.addLayer({ id: 'mfocus-line', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': '#ffb648', 'line-width': 2.5, 'line-dasharray': [2, 1] } })
+      if (!m.getLayer('mfocus-verts')) m.addLayer({ id: 'mfocus-verts', type: 'circle', source: SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 5.5, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      if (!m.getLayer('mfocus-label')) m.addLayer({
+        id: 'mfocus-label', type: 'symbol', source: SRC, filter: ['has', 'lbl'],
+        layout: { 'text-field': ['get', 'lbl'], 'text-size': 12, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-offset': [0, -1.4], 'text-allow-overlap': true },
+        paint: { 'text-color': '#ffe0b0', 'text-halo-color': '#04121d', 'text-halo-width': 1.8 },
+      })
+    }
+    let disposed = false
+    const ensure = () => {
+      if (disposed) return
+      try { add() } catch { m.once('idle', ensure) }
+    }
+    ensure()
+    const fit = () => {
+      if (g.type === 'Point') { m.flyTo({ center: coords[0], zoom: 17, duration: 1100 }); return }
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      for (const [lng, lat] of coords) {
+        if (lng < minLng) minLng = lng
+        if (lng > maxLng) maxLng = lng
+        if (lat < minLat) minLat = lat
+        if (lat > maxLat) maxLat = lat
+      }
+      m.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, maxZoom: 18, duration: 1100 })
+    }
+    fit()
+    // Re-assert once — the first-open zoom-to-fleet can land later and steal
+    // the camera from the deep link.
+    const t = setTimeout(fit, 1600)
+    return () => {
+      disposed = true
+      clearTimeout(t)
+      for (const l of ['mfocus-fill', 'mfocus-line', 'mfocus-verts', 'mfocus-label']) if (m.getLayer(l)) m.removeLayer(l)
+      if (m.getSource(SRC)) m.removeSource(SRC)
+    }
+  }, [mapReady, focusMeasurement])
 
   // On-demand full-resolution history for the selected window. The shipped
   // snapshot is capped + newest-biased (older days were getting silently

@@ -20,6 +20,8 @@ export interface ZoneLifecycleOpts {
   personal?: boolean
   active_from?: string | null
   active_until?: string | null
+  /** Project document folder (Dropbox/Drive/OneDrive URL). */
+  folderUrl?: string
 }
 
 export async function createGeofenceAction(
@@ -44,6 +46,7 @@ export async function createGeofenceAction(
     }
     const actor = await currentActor()
     await logZoneEvent(companyId, id, actor.id, 'created', { by: actor.name, kind, personal: !!opts?.personal })
+    if (opts?.folderUrl?.trim()) await saveZoneFolderAction(id, opts.folderUrl)
   }
   revalidatePath('/geofences')
   revalidatePath('/map')

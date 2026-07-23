@@ -52,9 +52,11 @@ interface MapPageClientProps {
   canViewCosts?: boolean
   /** Recent alert events — powers the "Alert pins" layer. */
   alerts?: import('@/lib/types').AlertEvent[]
+  /** Saved measurement to draw + fly to (deep link from /measurements). */
+  focusMeasurement?: import('@/lib/db/measurements').Measurement | null
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [] }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -76,7 +78,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
-  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site', opts?: { personal?: boolean }) => {
+  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site', opts?: { personal?: boolean; folderUrl?: string }) => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
       company_id: MOCK_COMPANY.id,
@@ -92,7 +94,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       // Await + surface failure — this used to be fire-and-forget, so a failed
       // insert looked saved until the next page load quietly dropped it.
       try {
-        const id = await createGeofenceAction(name, geometry, color, kind, { personal: opts?.personal })
+        const id = await createGeofenceAction(name, geometry, color, kind, { personal: opts?.personal, folderUrl: opts?.folderUrl })
         if (!id) throw new Error('no id returned')
       } catch (err) {
         console.error('Geofence save failed', err)
@@ -162,6 +164,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         onSaveMapViews={isMock ? undefined : saveMapViewsAction}
         canViewCosts={canViewCosts}
         alerts={alerts}
+        focusMeasurement={focusMeasurement}
       />
       {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}
     </>

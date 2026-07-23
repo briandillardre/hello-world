@@ -25,6 +25,28 @@ export interface Measurement {
   created_at: string
 }
 
+/** One saved measurement by id (RLS scopes to the caller's visibility). */
+export async function getMeasurement(id: string): Promise<Measurement | null> {
+  if (isMock || !id) return null
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data: r } = await supabase
+    .from('measurements')
+    .select('id, name, kind, owner_id, geometry, props, created_at')
+    .eq('id', id)
+    .maybeSingle()
+  if (!r) return null
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    kind: r.kind as MeasureKind,
+    personal: r.owner_id != null,
+    geometry: r.geometry as Measurement['geometry'],
+    props: (r.props ?? {}) as MeasureProps,
+    created_at: r.created_at as string,
+  }
+}
+
 /** All measurements visible to the caller (company + own personal), newest first. */
 export async function getMeasurements(companyId: string): Promise<Measurement[]> {
   if (isMock) return []

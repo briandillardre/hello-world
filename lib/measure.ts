@@ -132,3 +132,31 @@ export function takeoff(areaSqFt: number, depthIn: number, materialKey: string):
 export function fmt(n: number, dp = 1): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })
 }
+
+/** One-line human summary of a saved measurement, in the units it was saved
+ *  with — "2,183 ft", "1.25 acre · 312.0 tons", "N 1,281,517 · E 1,503,238". */
+export function measureSummary(kind: 'point' | 'line' | 'area', p: {
+  lengthUnit?: LengthUnit
+  areaUnit?: AreaUnit
+  lengthFt?: number
+  areaSqFt?: number
+  statePlane?: StatePlane
+  elevationFt?: number | null
+  takeoff?: Takeoff | null
+}): string {
+  if (kind === 'point') {
+    const parts: string[] = []
+    if (p.statePlane) parts.push(`N ${fmt(p.statePlane.northing, 0)} · E ${fmt(p.statePlane.easting, 0)}`)
+    if (p.elevationFt != null) parts.push(`~${fmt(p.elevationFt, 0)} ft elev`)
+    return parts.join(' · ') || 'Point'
+  }
+  if (kind === 'line') {
+    const u = p.lengthUnit ?? 'ft'
+    return p.lengthFt != null ? `${fmt(lengthIn(p.lengthFt, u), u === 'mi' ? 2 : 0)} ${LENGTH_LABEL[u]}` : 'Line'
+  }
+  const u = p.areaUnit ?? 'sf'
+  const parts: string[] = []
+  if (p.areaSqFt != null) parts.push(`${fmt(areaIn(p.areaSqFt, u), u === 'acre' ? 2 : 0)} ${AREA_LABEL[u]}`)
+  if (p.takeoff) parts.push(`${fmt(p.takeoff.tons, 1)} tons ${p.takeoff.material.toLowerCase()}`)
+  return parts.join(' · ') || 'Area'
+}

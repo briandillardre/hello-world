@@ -2,9 +2,9 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Search, Archive, RotateCcw } from 'lucide-react'
+import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Search, Archive, RotateCcw, FolderOpen } from 'lucide-react'
 import type { Geofence } from '@/lib/types'
-import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction } from '@/lib/actions/geofences'
+import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/geofences'
 import { parseJobName, compareJobs } from '@/lib/job-code'
 import { Input } from '@/components/ui/input'
 
@@ -157,12 +157,14 @@ function GeofenceRow({
   const [name, setName] = useState(fence.name)
   const [color, setColor] = useState(fence.color)
   const [parentId, setParentId] = useState<string | null>(fence.parent_id ?? null)
+  const [folderUrl, setFolderUrl] = useState(fence.folder_url ?? '')
   const [pending, start] = useTransition()
   const [flipNote, setFlipNote] = useState<string | null>(null)
 
   const save = () =>
     start(async () => {
       await saveGeofenceAction(fence.id, name.trim() || fence.name, color, parentId)
+      if (folderUrl.trim() !== (fence.folder_url ?? '')) await saveZoneFolderAction(fence.id, folderUrl)
       setEditing(false)
     })
   const remove = () =>
@@ -214,6 +216,17 @@ function GeofenceRow({
             <option key={p.id} value={p.id}>Sub-zone of: {p.name}</option>
           ))}
         </select>
+        <div className="flex items-center gap-2 bg-navy-950 border border-navy-700 rounded-lg px-3 py-2 focus-within:border-amber">
+          <FolderOpen className="h-3.5 w-3.5 text-faint flex-none" />
+          <input
+            value={folderUrl}
+            onChange={(e) => setFolderUrl(e.target.value)}
+            type="url"
+            inputMode="url"
+            placeholder="Project folder link (Dropbox / Drive / OneDrive)"
+            className="flex-1 min-w-0 bg-transparent text-xs text-ink placeholder:text-faint outline-none"
+          />
+        </div>
         <div className="flex gap-2">
           <button onClick={save} disabled={pending} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2 hover:bg-amber-600 disabled:opacity-60">
             <Check className="h-4 w-4" /> {pending ? 'Saving…' : 'Save'}

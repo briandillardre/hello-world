@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
@@ -15,6 +15,7 @@ const primaryItems = [
 
 const moreItems = [
   { href: '/geofences', label: 'Zones', icon: Hexagon },
+  { href: '/measurements', label: 'Measurements', icon: Ruler },
   { href: '/command', label: 'Command Center', icon: MonitorPlay },
   { href: '/clock', label: 'Time clock', icon: Clock },
   { href: '/logs', label: 'Daily logs', icon: ClipboardList },

@@ -38,6 +38,7 @@ export async function saveMeasurementAction(input: SaveMeasurementInput): Promis
       .single()
     if (error) return { ok: false, error: error.message }
     revalidatePath('/map')
+    revalidatePath('/measurements')
     return { ok: true, id: data.id as string }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Save failed.' }
@@ -52,6 +53,7 @@ export async function deleteMeasurementAction(id: string): Promise<{ ok: boolean
     const { error } = await supabase.from('measurements').delete().eq('id', id)
     if (error) return { ok: false, error: error.message }
     revalidatePath('/map')
+    revalidatePath('/measurements')
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Delete failed.' }

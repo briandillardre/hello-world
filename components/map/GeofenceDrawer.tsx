@@ -16,7 +16,7 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean }) => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean; folderUrl?: string }) => void
   /** Fly the map to an address hit so the user can draw around it. */
   onLocate?: (lng: number, lat: number) => void
 }
@@ -36,6 +36,9 @@ export function GeofenceDrawer({
   const [color, setColor] = useState(COLORS[0])
   const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>('site')
   const [personal, setPersonal] = useState(false)
+  // Project document folder (Dropbox/Drive/OneDrive) — one link per job, so
+  // plans and photos are a tap from the zone everywhere it appears.
+  const [folderUrl, setFolderUrl] = useState('')
 
   // Address search while drawing — type a street address, jump there, click
   // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
@@ -76,11 +79,12 @@ export function GeofenceDrawer({
 
   const handleSave = () => {
     if (!pendingGeom || !name.trim()) return
-    onSave?.(name.trim(), pendingGeom, color, kind, { personal })
+    onSave?.(name.trim(), pendingGeom, color, kind, { personal, folderUrl: folderUrl.trim() || undefined })
     setShowDialog(false)
     setName('')
     setKind('site')
     setPersonal(false)
+    setFolderUrl('')
     setPendingGeom(null)
   }
 
@@ -155,6 +159,17 @@ export function GeofenceDrawer({
                 value={name}
                 onChange={e => setName(e.target.value)}
                 autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fence-folder">Project folder link <span className="text-faint font-normal">(optional)</span></Label>
+              <Input
+                id="fence-folder"
+                type="url"
+                inputMode="url"
+                placeholder="Dropbox / Drive / OneDrive folder URL"
+                value={folderUrl}
+                onChange={e => setFolderUrl(e.target.value)}
               />
             </div>
             <div className="space-y-2">
