@@ -69,11 +69,13 @@ export interface OemConnection {
   provider: string
   label: string | null
   base_url: string
-  auth_type: 'basic' | 'bearer' | 'apikey'
+  auth_type: 'basic' | 'bearer' | 'apikey' | 'oauth'
   username: string | null
-  /** basic password / bearer token / api key — never send to the browser. */
+  /** basic password / bearer token / api key / oauth secret — never send to the browser. */
   secret: string | null
   header_name: string | null
+  /** OAuth2 token endpoint (auth_type 'oauth', e.g. KOMTRAX /provider/token). */
+  token_url: string | null
   enabled: boolean
   last_sync: string | null
   last_status: string | null

@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
       username: c.username,
       secret: c.secret,
       header_name: c.header_name,
+      token_url: c.token_url,
     }
     try {
       const { readings, pages } = await fetchAempFleet(conf)

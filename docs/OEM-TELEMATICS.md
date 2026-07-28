@@ -47,14 +47,23 @@ in the cron result and trigger a once-daily "link these" nudge to the owner.
      it's served through ORBCOMM, which returns a Fleet URL + credentials.
 2. **Insert a connection row** (Supabase SQL Editor — service-role only):
    ```sql
+   -- Komatsu (KOMTRAX): OAuth — the dealer email includes a Fleet URL, an
+   -- Account + Password, AND a Token URL. Needs migration 038.
+   insert into oem_connections (company_id, provider, label, base_url, auth_type, username, secret, token_url)
+   values ('<company_id>', 'komatsu', 'Komatsu KOMTRAX',
+           'https://isoapi.komtrax.komatsu/provider/v1/<acct#>/Fleet/1',
+           'oauth', '<Account>', '<Password>',
+           'https://isoapi.komtrax.komatsu/provider/token');
+
+   -- Link-Belt (ORBCOMM): plain basic auth.
    insert into oem_connections (company_id, provider, label, base_url, auth_type, username, secret)
-   values
-     ('<DCG company_id>', 'komatsu',  'DCG Komatsu',   'https://<komatsu-fleet-url>/1',  'basic', '<user>', '<pass>'),
-     ('<DCG company_id>', 'linkbelt', 'DCG Link-Belt', 'https://<orbcomm-fleet-url>/1',  'basic', '<user>', '<pass>');
+   values ('<company_id>', 'linkbelt', 'Link-Belt RemoteCARE',
+           'https://<orbcomm-fleet-url>/1', 'basic', '<user>', '<pass>');
    ```
-   `base_url` is page 1 of the Fleet endpoint; the client follows `Links.Next` to
-   the end. `auth_type` is `basic` for both (use `bearer` or `apikey` +
-   `header_name` if an OEM/aggregator differs).
+   `base_url` is page 1 of the Fleet endpoint; the client follows `Links.Next`
+   to the end. Auth flavors: `oauth` (token URL mints short-lived bearers —
+   the client tries client-credentials then password grants), `basic`,
+   `bearer`, or `apikey` + `header_name`.
 3. **Register the machines** as assets with `tracker_id = aemp:<serial>` (or just
    fill in the Serial field). Confirmed DCG serials: Link-Belt 130X2 = `EFCK2-6671`.
 4. **Wait for the cron** (runs at :15 every 2h) or trigger a pull manually:

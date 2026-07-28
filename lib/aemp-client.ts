@@ -11,7 +11,7 @@
 import { parseAempFleet, nextLink, type AempReading } from './aemp'
 
 export type OemProvider = 'komatsu' | 'linkbelt' | 'cat' | 'cnh' | 'bomag' | 'wirtgen' | 'custom'
-export type OemAuthType = 'basic' | 'bearer' | 'apikey'
+export type OemAuthType = 'basic' | 'bearer' | 'apikey' | 'oauth'
 
 export interface OemConnectionConfig {
   provider: OemProvider
@@ -21,6 +21,8 @@ export interface OemConnectionConfig {
   secret?: string | null
   /** Header name for apikey auth (default `x-api-key`). */
   header_name?: string | null
+  /** OAuth2 token endpoint (auth_type 'oauth') — e.g. KOMTRAX /provider/token. */
+  token_url?: string | null
 }
 
 export interface OemPreset {
@@ -45,9 +47,9 @@ export const OEM_PRESETS: OemPreset[] = [
     id: 'komatsu',
     label: 'Komatsu',
     platform: 'My Komatsu / KOMTRAX',
-    authType: 'basic',
+    authType: 'oauth',
     docsUrl: 'https://www.mykomatsu.komatsu',
-    note: 'Request the ISO 15143-3 (AEMP 2.0) API in My Komatsu → Admin → API Access. Komatsu issues a Fleet URL + basic-auth credentials.',
+    note: 'Request the ISO 15143-3 (AEMP 2.0) API via your dealer / My Komatsu. Komatsu issues a Fleet URL, an account + password, and a TOKEN URL (isoapi.komtrax.komatsu/provider/token) — OAuth, not plain basic auth.',
   },
   {
     id: 'linkbelt',
@@ -104,7 +106,56 @@ export function presetFor(provider: string): OemPreset | undefined {
   return OEM_PRESETS.find((p) => p.id === provider)
 }
 
-function authHeaders(conn: OemConnectionConfig): Record<string, string> {
+// OAuth2 access-token cache — KOMTRAX-style feeds mint short-lived bearer
+// tokens from a token URL. Keyed per connection; refreshed 60s before expiry.
+// Module-level is fine: the cron runs in one lambda per invocation, and a cold
+// start just re-fetches.
+const tokenCache = new Map<string, { token: string; exp: number }>()
+
+async function fetchOauthToken(conn: OemConnectionConfig): Promise<string> {
+  const tokenUrl = conn.token_url
+  if (!tokenUrl) throw new Error(`${conn.provider}: auth_type 'oauth' requires token_url`)
+  const key = `${tokenUrl}|${conn.username ?? ''}`
+  const hit = tokenCache.get(key)
+  if (hit && Date.now() < hit.exp) return hit.token
+  const id = conn.username ?? ''
+  const secret = conn.secret ?? ''
+  const basic = Buffer.from(`${id}:${secret}`, 'utf8').toString('base64')
+  // Grant flavor differs by provider — try the credentials as an OAuth client
+  // (basic header, then body), then as a resource-owner password grant.
+  const attempts: { headers: Record<string, string>; body: string }[] = [
+    { headers: { Authorization: `Basic ${basic}` }, body: 'grant_type=client_credentials' },
+    { headers: {}, body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}` },
+    { headers: {}, body: `grant_type=password&username=${encodeURIComponent(id)}&password=${encodeURIComponent(secret)}` },
+  ]
+  let lastErr = 'no attempts ran'
+  for (const a of attempts) {
+    let res: Response
+    try {
+      res = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', ...a.headers },
+        body: a.body,
+        signal: AbortSignal.timeout(20_000),
+        cache: 'no-store',
+      })
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e)
+      continue
+    }
+    if (!res.ok) { lastErr = `token HTTP ${res.status}`; continue }
+    const j = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number | string } | null
+    if (j?.access_token) {
+      const ttl = Math.max(120, Math.min(24 * 3600, Number(j.expires_in) || 3600))
+      tokenCache.set(key, { token: j.access_token, exp: Date.now() + (ttl - 60) * 1000 })
+      return j.access_token
+    }
+    lastErr = 'token response missing access_token'
+  }
+  throw new Error(`${conn.provider} OAuth token fetch failed (${lastErr})`)
+}
+
+async function authHeaders(conn: OemConnectionConfig): Promise<Record<string, string>> {
   const h: Record<string, string> = { Accept: 'application/json' }
   const secret = conn.secret ?? ''
   switch (conn.auth_type) {
@@ -118,6 +169,9 @@ function authHeaders(conn: OemConnectionConfig): Record<string, string> {
       break
     case 'apikey':
       h[conn.header_name || 'x-api-key'] = secret
+      break
+    case 'oauth':
+      h.Authorization = `Bearer ${await fetchOauthToken(conn)}`
       break
   }
   return h
@@ -135,7 +189,7 @@ export interface AempFetchResult {
  * `last_status` and page the owner.
  */
 export async function fetchAempFleet(conn: OemConnectionConfig): Promise<AempFetchResult> {
-  const headers = authHeaders(conn)
+  const headers = await authHeaders(conn)
   const readings: AempReading[] = []
   let url: string | null = conn.base_url
   let pages = 0
