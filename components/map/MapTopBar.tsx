@@ -14,12 +14,11 @@ export function MapTopBar({ companyName, weatherPlace = null, weatherCoords = nu
   // Phones get a slimmer bar (h-8) — every vertical pixel is map space.
   return (
     <div className="flex items-center gap-2.5 md:gap-3 h-8 md:h-11 px-3 md:px-4 bg-navy-950 border-b border-navy-800 flex-none">
-      {/* Mobile: full branding (no sidebar there). Desktop: the sidebar already
-          says where you are — no page title, no double branding (owner ask,
-          Jul 21: "we don't need to show live map here"). */}
+      {/* Mobile: full branding (no sidebar there). Desktop: company name only —
+          no page title (owner ask, Jul 21), but not an empty strip either. */}
       <span className="md:hidden"><Logo size={22} href="/map" /></span>
       <span className="md:hidden h-4 w-px bg-navy-700" />
-      <span className="md:hidden font-mono text-[11px] uppercase tracking-[0.12em] text-faint truncate">{companyName}</span>
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint truncate">{companyName}</span>
       <span className="ml-auto flex-none">
         <TopBarWeather place={weatherPlace} coords={weatherCoords} />
       </span>

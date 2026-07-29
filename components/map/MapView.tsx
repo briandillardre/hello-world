@@ -728,7 +728,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // ── Basemap + weather layer state ─────────────────────────────────────────
   // Default to satellite — real aerial imagery reads as "the actual jobsite".
   // Kiosk wall opens on Dark with the radar sweep — the mission-control look.
-  const [base, setBase] = useState<BaseStyle>(lastState.base ?? (kiosk ? 'dark' : 'satellite'))
+  // Hybrid by default (owner ask, Jul 23) — imagery WITH road/label overlay,
+  // the view contractors actually navigate by. A user's choice still wins:
+  // last-state restore and saved default views override this.
+  const [base, setBase] = useState<BaseStyle>(lastState.base ?? (kiosk ? 'dark' : 'hybrid'))
   const baseRef = useRef(base)
   baseRef.current = base
   const [radarOn, setRadarOn] = useState(lastState.radar ?? kiosk)
@@ -919,6 +922,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       // memory than the default so revisited areas render instantly.
       maxTileCacheSize: 4096,
     })
+    // Debug/support handle — lets us inspect camera + style state on a live
+    // device ("map is blank" reports) without shipping a special build.
+    ;(window as unknown as { __htmap?: unknown }).__htmap = map.current
 
     // Kiosk: zoom/locate/fit ride bottom-left — top-right belongs to the event
     // rail on the wall display, and the two were stacked on top of each other.
@@ -997,7 +1003,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
-    map.current.on('load', () => {
+    // ALL app layers/handlers below used to hang off map 'load' — which waits
+    // for the FIRST TILES to settle. One hung tile request (weak job-site
+    // signal) and the map sat permanently blank: no zones, no markers, no
+    // opening fit — the recurring "map is broken until refresh" reports
+    // (reproduced ~50% of headless opens, Jul 23). The style itself is inline
+    // and ready almost immediately, so a watchdog runs the same setup as soon
+    // as the style is ready if 'load' is late. Guarded to run exactly once.
+    let setupRan = false
+    const initialSetup = () => {
+      if (setupRan || !map.current) return
+      setupRan = true
       const m = map.current!
 
       // Zoomed way out, Earth is a globe — MapLibre v5 renders it as one and
@@ -1598,9 +1614,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
 
       setMapReady(true)
-    })
+    }
+    map.current.on('load', initialSetup)
+    const loadWatchdog = window.setInterval(() => {
+      if (setupRan) { window.clearInterval(loadWatchdog); return }
+      if (map.current?.isStyleLoaded()) initialSetup()
+    }, 1500)
 
     return () => {
+      window.clearInterval(loadWatchdog)
       map.current?.remove()
       map.current = null
     }
