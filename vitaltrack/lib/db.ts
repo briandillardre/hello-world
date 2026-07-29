@@ -37,21 +37,32 @@ export async function getDailyMetrics(
 ): Promise<DailyMetrics[]> {
   if (isMock) return mockDailyMetrics(days);
   const supabase = createUserClient();
-  const { data, error } = await supabase
-    .from("metric_samples")
-    .select("ts, type, value")
-    .eq("user_id", userId)
-    .gte("ts", sinceIso(days))
-    .order("ts", { ascending: true })
-    .limit(20000);
-  if (error) throw error;
+  // Page newest-first: PostgREST caps responses (max-rows), and an
+  // ascending query silently truncates the NEWEST data on long ranges —
+  // exactly what the Today cards read.
+  const pageSize = 1000;
+  const maxRows = 40000;
+  const rows: Array<{ ts: string; type: string; value: number }> = [];
+  for (let from = 0; from < maxRows; from += pageSize) {
+    const { data, error } = await supabase
+      .from("metric_samples")
+      .select("ts, type, value")
+      .eq("user_id", userId)
+      .gte("ts", sinceIso(days))
+      .order("ts", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+  }
   const byDay = new Map<string, DailyMetrics>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     const date = String(row.ts).slice(0, 10);
     const day = byDay.get(date) ?? { date };
-    // Last write wins per day — daily summaries are one row per (day, type).
-    (day as unknown as Record<string, unknown>)[row.type as MetricType] =
-      Number(row.value);
+    const rec = day as unknown as Record<string, unknown>;
+    // Rows arrive newest-first; first value seen per (day, type) wins.
+    if (rec[row.type as MetricType] === undefined)
+      rec[row.type as MetricType] = Number(row.value);
     byDay.set(date, day);
   }
   return Array.from(byDay.values()).sort((a, b) =>

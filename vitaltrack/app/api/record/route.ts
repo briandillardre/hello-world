@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/supabase-server";
 import { insertRecordItem, insertEvent } from "@/lib/db";
+import { sameOriginOk } from "@/lib/security";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,8 @@ const FIELDS: Record<Table, string[]> = {
 };
 
 export async function POST(req: NextRequest) {
+  if (!sameOriginOk(req))
+    return NextResponse.json({ error: "cross-origin blocked" }, { status: 403 });
   const userId = await getUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

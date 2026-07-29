@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId, createUserClient } from "@/lib/supabase-server";
 import { isMock } from "@/lib/supabase";
+import { sameOriginOk } from "@/lib/security";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -24,14 +25,44 @@ const HEADER_MAP: Array<[RegExp, string]> = [
   [/weight/i, "weight"],
 ];
 
+// Quote-aware CSV line splitter — Garmin exports quote thousands-separated
+// numbers ("10,509"), which a naive split(",") shears into shifted columns.
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      out.push(cur.trim());
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
+
 function parseCsv(text: string): Array<Record<string, string>> {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
   if (lines.length < 2) return [];
-  const split = (line: string) =>
-    line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-  const headers = split(lines[0]);
+  const headers = splitCsvLine(lines[0]);
   return lines.slice(1).map((line) => {
-    const cells = split(line);
+    const cells = splitCsvLine(line);
     const row: Record<string, string> = {};
     headers.forEach((h, i) => (row[h] = cells[i] ?? ""));
     return row;
@@ -60,20 +91,24 @@ function csvToMetrics(text: string, userId: string): MetricRow[] {
   const headers = Object.keys(rows[0]);
   const dateCol = headers.find((h) => /date|day/i.test(h));
   if (!dateCol) return [];
+  // One column per metric type (first match wins) — e.g. "Calories" and
+  // "Active Calories" both match /calories/, and duplicate (ts, type) rows
+  // in a single upsert make Postgres reject the whole batch.
   const typedCols: Array<[string, string]> = [];
   for (const h of headers) {
     if (h === dateCol) continue;
     const match = HEADER_MAP.find(([re]) => re.test(h));
-    if (match) typedCols.push([h, match[1]]);
+    if (match && !typedCols.some(([, t]) => t === match[1]))
+      typedCols.push([h, match[1]]);
   }
-  const out: MetricRow[] = [];
+  const byKey = new Map<string, MetricRow>();
   for (const row of rows) {
     const date = parseDate(row[dateCol] ?? "");
     if (!date) continue;
     for (const [col, type] of typedCols) {
       const value = parseFloat(String(row[col]).replace(/[",]/g, ""));
       if (Number.isFinite(value)) {
-        out.push({
+        byKey.set(`${date}|${type}`, {
           user_id: userId,
           ts: `${date}T00:00:00.000Z`,
           type,
@@ -83,7 +118,7 @@ function csvToMetrics(text: string, userId: string): MetricRow[] {
       }
     }
   }
-  return out;
+  return Array.from(byKey.values());
 }
 
 async function fitToActivity(buf: Buffer, userId: string) {
@@ -122,7 +157,12 @@ async function fitToActivity(buf: Buffer, userId: string) {
   };
 }
 
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 100 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
+  if (!sameOriginOk(req))
+    return NextResponse.json({ error: "cross-origin blocked" }, { status: 403 });
   const userId = await getUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -131,6 +171,10 @@ export async function POST(req: NextRequest) {
       { error: "demo mode: imports are disabled (data would not persist)" },
       { status: 503 }
     );
+
+  const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+  if (!Number.isFinite(contentLength) || contentLength > MAX_REQUEST_BYTES)
+    return NextResponse.json({ error: "upload too large" }, { status: 413 });
 
   const form = await req.formData();
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
@@ -144,6 +188,10 @@ export async function POST(req: NextRequest) {
 
   for (const file of files) {
     const name = file.name.toLowerCase();
+    if (file.size > MAX_FILE_BYTES) {
+      errors.push(`${file.name}: over 25MB, skipped`);
+      continue;
+    }
     try {
       if (name.endsWith(".csv")) {
         const metrics = csvToMetrics(await file.text(), userId);

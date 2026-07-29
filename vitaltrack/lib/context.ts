@@ -12,6 +12,18 @@ import {
 } from "./db";
 import type { DailyMetrics } from "./types";
 
+// User-entered / document-derived strings go into the system prompt — strip
+// newlines and cap length so free text can't masquerade as new sections or
+// instructions (defense-in-depth alongside the <user_data> delimiting).
+function clean(s: string | null | undefined, max = 400): string {
+  if (!s) return "";
+  return String(s)
+    .replace(/\s+/g, " ")
+    .replace(/[<>]/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
 function avg(vals: Array<number | undefined>): number | null {
   const v = vals.filter((x): x is number => typeof x === "number");
   if (!v.length) return null;
@@ -58,19 +70,19 @@ export async function buildUserContext(userId: string): Promise<string> {
 
   ctx += "\n== HEALTH RECORD ==\n";
   for (const c of conditions) {
-    ctx += `- [${c.kind}/${c.status}] ${c.name}${c.onset ? ` (onset ${c.onset}${c.resolved_at ? `, resolved ${c.resolved_at}` : ""})` : ""}${c.notes ? ` — ${c.notes}` : ""}\n`;
+    ctx += `- [${c.kind}/${c.status}] ${clean(c.name, 160)}${c.onset ? ` (onset ${c.onset}${c.resolved_at ? `, resolved ${c.resolved_at}` : ""})` : ""}${c.notes ? ` — ${clean(c.notes)}` : ""}\n`;
   }
   if (!conditions.length) ctx += "- (none recorded)\n";
 
   ctx += "\n== MEDICATIONS / SUPPLEMENTS ==\n";
   for (const m of meds) {
-    ctx += `- ${m.name}${m.dose ? ` ${m.dose}` : ""} (${m.kind}${m.stopped ? `, stopped ${m.stopped}` : ""})${m.reason ? ` — ${m.reason}` : ""}\n`;
+    ctx += `- ${clean(m.name, 120)}${m.dose ? ` ${clean(m.dose, 40)}` : ""} (${m.kind}${m.stopped ? `, stopped ${m.stopped}` : ""})${m.reason ? ` — ${clean(m.reason)}` : ""}\n`;
   }
   if (!meds.length) ctx += "- (none recorded)\n";
 
   ctx += "\n== GOALS ==\n";
   for (const g of goals.filter((g) => g.status === "active")) {
-    ctx += `- ${g.title}${g.metric && g.target_value ? ` (tracking ${g.metric} ${g.direction} ${g.target_value})` : ""}\n`;
+    ctx += `- ${clean(g.title, 160)}${g.metric && g.target_value ? ` (tracking ${g.metric} ${g.direction} ${g.target_value})` : ""}\n`;
   }
 
   ctx += "\n== LAB HISTORY (by draw date) ==\n";
@@ -87,7 +99,9 @@ export async function buildUserContext(userId: string): Promise<string> {
         ? ` (ref ${b.ref_low ?? ""}–${b.ref_high ?? ""})`
         : "";
     const list = byDate.get(key) ?? [];
-    list.push(`${b.name}: ${b.value} ${b.unit ?? ""}${range}${flag}`);
+    list.push(
+      `${clean(b.name, 120)}: ${b.value} ${clean(b.unit, 20)}${range}${flag}`
+    );
     byDate.set(key, list);
   }
   for (const [date, list] of Array.from(byDate.entries()).sort()) {

@@ -107,12 +107,15 @@ create table if not exists lab_reports (
   collected_at date,
   file_path text,
   parsed_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- lets biomarkers FK on (report_id, user_id), preventing a user from
+  -- attaching rows to another user's report (FK checks bypass RLS)
+  unique (id, user_id)
 );
 
 create table if not exists biomarkers (
   id uuid primary key default gen_random_uuid(),
-  report_id uuid not null references lab_reports (id) on delete cascade,
+  report_id uuid not null,
   user_id uuid not null references auth.users (id) on delete cascade,
   name text not null,
   loinc text,
@@ -120,7 +123,9 @@ create table if not exists biomarkers (
   unit text,
   ref_low numeric,
   ref_high numeric,
-  collected_at date
+  collected_at date,
+  foreign key (report_id, user_id)
+    references lab_reports (id, user_id) on delete cascade
 );
 create index if not exists biomarkers_user_name
   on biomarkers (user_id, name, collected_at);
@@ -155,6 +160,14 @@ create table if not exists integrations (
   unique (provider, external_user_id)
 );
 
+-- Webhook replay protection: one row per processed svix delivery id.
+-- Service-role only (RLS enabled, no policies).
+create table if not exists webhook_deliveries (
+  svix_id text primary key,
+  received_at timestamptz not null default now()
+);
+alter table webhook_deliveries enable row level security;
+
 -- ── RLS: users see only their own rows ─────────────────────────────────
 do $$
 declare t text;
@@ -162,7 +175,7 @@ begin
   foreach t in array array[
     'profiles', 'metric_samples', 'sleep_sessions', 'activities',
     'conditions', 'medications', 'goals', 'lab_reports', 'biomarkers',
-    'events', 'ai_digests', 'integrations'
+    'events', 'ai_digests'
   ] loop
     execute format('alter table %I enable row level security', t);
     execute format(
@@ -176,3 +189,15 @@ begin
     );
   end loop;
 end $$;
+
+-- integrations: read/disconnect only. Rows are created exclusively
+-- server-side (service role) after verifying provider-account ownership —
+-- otherwise any user could claim another person's Junction user id and
+-- receive their health data stream.
+alter table integrations enable row level security;
+drop policy if exists integrations_select_own on integrations;
+create policy integrations_select_own on integrations
+  for select to authenticated using (user_id = auth.uid());
+drop policy if exists integrations_delete_own on integrations;
+create policy integrations_delete_own on integrations
+  for delete to authenticated using (user_id = auth.uid());

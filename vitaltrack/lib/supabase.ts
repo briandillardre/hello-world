@@ -1,13 +1,14 @@
+import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Demo mode: app works fully with zero env vars (same pattern as HammerTrack).
-export const isMock =
-  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL === "https://your-project.supabase.co";
+// Re-exported for existing server-side imports; client components must
+// import from lib/env instead (this module is server-only because it can
+// mint a service-role client).
+export { isMock, DEMO_USER_ID } from "./env";
+import { isMock } from "./env";
 
-export const DEMO_USER_ID = "00000000-0000-4000-8000-000000000001";
-
-/** Service-role client for webhook/ingest routes. Never import from client components. */
+/** Service-role client for webhook/ingest routes. Bypasses RLS — never let
+ *  values derived from user input choose the user_id it writes to. */
 export function createServiceClient(): SupabaseClient {
   if (isMock) throw new Error("Service client unavailable in demo mode");
   return createClient(

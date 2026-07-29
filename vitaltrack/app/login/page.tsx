@@ -2,10 +2,14 @@
 
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { isMock } from "@/lib/supabase";
+import { isMock } from "@/lib/env";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string };
+}) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
@@ -39,6 +43,12 @@ export default function LoginPage() {
         <p className="text-sm text-slate-500 mt-1 mb-6">
           Sign in with a magic link
         </p>
+        {searchParams?.error && (
+          <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-4">
+            Sign-in failed: {searchParams.error}. Request a fresh link below
+            (links must be opened in the same browser).
+          </p>
+        )}
         {isMock ? (
           <div className="text-sm text-slate-600">
             <p className="mb-4">

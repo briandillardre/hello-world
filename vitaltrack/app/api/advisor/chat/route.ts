@@ -29,10 +29,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     messages = (body.messages as ChatMessage[]) ?? [];
     if (!Array.isArray(messages) || !messages.length) throw new Error();
-    messages = messages.slice(-20).map((m) => ({
+    messages = messages.slice(-19).map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
       content: String(m.content).slice(0, 8000),
     }));
+    // Anthropic requires the conversation to start with a user turn.
+    while (messages.length && messages[0].role !== "user") messages.shift();
+    if (!messages.length || messages[messages.length - 1].role !== "user")
+      throw new Error();
   } catch {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }

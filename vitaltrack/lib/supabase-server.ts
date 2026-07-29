@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { isMock, DEMO_USER_ID } from "./supabase";
+import { isMock, DEMO_USER_ID } from "./env";
 
 /** Cookie-bound Supabase client for server components and route handlers. */
 export function createUserClient() {

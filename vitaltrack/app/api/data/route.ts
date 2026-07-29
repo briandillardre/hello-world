@@ -1,14 +1,17 @@
 // Data rights from day one (plan §6): GET = export everything as JSON,
 // DELETE = erase all health data for the signed-in user.
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getUserId, createUserClient } from "@/lib/supabase-server";
 import { isMock } from "@/lib/supabase";
+import { sameOriginOk } from "@/lib/security";
 import * as db from "@/lib/db";
 
 export const runtime = "nodejs";
 
 const TABLES = [
+  "profiles",
+  "ai_digests",
   "metric_samples",
   "sleep_sessions",
   "activities",
@@ -75,7 +78,9 @@ function exportResponse(payload: unknown) {
   });
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  if (!sameOriginOk(req))
+    return NextResponse.json({ error: "cross-origin blocked" }, { status: 403 });
   const userId = await getUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

@@ -37,6 +37,8 @@ function verifySvix(req: NextRequest, body: string): boolean {
   return false;
 }
 
+const MAX_BODY_BYTES = 1_000_000;
+
 export async function POST(req: NextRequest) {
   if (isMock)
     return NextResponse.json(
@@ -44,7 +46,13 @@ export async function POST(req: NextRequest) {
       { status: 503 }
     );
 
+  const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+  if (!Number.isFinite(contentLength) || contentLength > MAX_BODY_BYTES)
+    return NextResponse.json({ ok: false, error: "too large" }, { status: 413 });
+
   const body = await req.text();
+  if (body.length > MAX_BODY_BYTES)
+    return NextResponse.json({ ok: false, error: "too large" }, { status: 413 });
   if (!verifySvix(req, body))
     return NextResponse.json({ ok: false, error: "bad signature" }, { status: 401 });
 
@@ -60,6 +68,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: "no user id" });
 
   const supabase = createServiceClient();
+
+  // Replay protection: each svix delivery id is processed exactly once
+  // (signatures are only fresh for 5 minutes, but a capture can be
+  // replayed inside that window without this).
+  const svixId = req.headers.get("svix-id")!;
+  const { error: dupError } = await supabase
+    .from("webhook_deliveries")
+    .insert({ svix_id: svixId });
+  if (dupError)
+    return NextResponse.json({ ok: true, skipped: "duplicate delivery" });
 
   // Map Junction's user id → our user via integrations table.
   const { data: integration } = await supabase

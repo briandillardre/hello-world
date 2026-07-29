@@ -2,7 +2,7 @@
 // fictional user, plus health record, labs, and timeline. Deterministic
 // (seeded PRNG) so every load looks the same.
 
-import { DEMO_USER_ID } from "./supabase";
+import { DEMO_USER_ID } from "./env";
 import type {
   Biomarker,
   Condition,
@@ -26,10 +26,12 @@ function mulberry32(seed: number) {
 }
 
 function dateStr(daysAgo: number): string {
+  // Local calendar date — toISOString would shift a day on TZs ahead of UTC.
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - daysAgo);
-  return d.toISOString().slice(0, 10);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 interface DemoDay extends DailyMetrics {

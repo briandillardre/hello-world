@@ -40,14 +40,17 @@ below to go live.
    Settings → Account Management → Export Your Data. Upload the daily-summary
    CSVs and activity `.fit` files in **Settings → Backfill**.
 4. **Garmin live sync (Junction)** — sandbox is free for 50 users:
-   - Sign up at junction.com, create a team, grab the API key.
+   - Sign up at junction.com, create a team, and set `JUNCTION_API_KEY`
+     (plus `JUNCTION_API_BASE=https://api.tryvital.io` when you move off
+     sandbox).
    - Add a webhook pointing at `https://<your-app>/api/ingest/wearable`,
-     subscribe to daily/sleep/workout summary events, and copy the signing
-     secret into `JUNCTION_WEBHOOK_SECRET`.
-   - Use Junction Link to connect your Garmin account, then map the Junction
-     user id to your Supabase auth user id in the `integrations` table:
-     `insert into integrations (user_id, provider, external_user_id)
-      values ('<auth uid>', 'junction', '<junction user id>');`
+     subscribe to daily/sleep/workout summary events, and copy the svix
+     signing secret into `JUNCTION_WEBHOOK_SECRET`.
+   - In the app: **Settings → Connect Garmin**. That creates the Junction
+     user server-side, stores the id mapping, and opens Junction Link to
+     attach your watch. (The `integrations` table is deliberately not
+     client-writable — mappings are only created by the server so nobody
+     can claim someone else's Junction user id.)
 5. **Data rights** — Settings has export-all (JSON) and delete-all built in.
 
 ## Architecture

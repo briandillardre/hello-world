@@ -27,6 +27,7 @@ function MetricCard({
   label,
   value,
   unit,
+  sub,
   avg,
   series,
   goodDirection,
@@ -34,6 +35,7 @@ function MetricCard({
   label: string;
   value: number | null;
   unit: string;
+  sub?: string;
   avg: number | null;
   series: Array<number | undefined>;
   goodDirection?: "up" | "down";
@@ -53,6 +55,9 @@ function MetricCard({
       <p className="text-3xl font-bold mt-1">
         {value ?? "—"}
         <span className="text-base font-normal text-slate-400 ml-1">{unit}</span>
+        {sub && (
+          <span className="text-sm font-normal text-slate-400 ml-2">{sub}</span>
+        )}
       </p>
       <p className="text-xs text-slate-400 mt-0.5">
         {avg !== null ? `avg ${avg}${unit ? ` ${unit}` : ""} over range` : ""}
@@ -109,7 +114,8 @@ export default async function DashboardPage({
         <MetricCard
           label="Sleep score"
           value={lastSleep?.score ?? null}
-          unit={lastSleepH ? `· ${lastSleepH.toFixed(1)}h last night` : ""}
+          unit=""
+          sub={lastSleepH ? `${lastSleepH.toFixed(1)}h last night` : undefined}
           avg={avgScore}
           series={sleepScores}
           goodDirection="up"
@@ -162,8 +168,15 @@ export default async function DashboardPage({
           <div className="grid sm:grid-cols-3 gap-4">
             {goals.map((g) => {
               let current: number | null = null;
-              if (g.metric === "sleep_score") current = avgScore;
-              else if (g.metric)
+              if (g.metric === "sleep_score") {
+                const last7 = sleep
+                  .slice(-7)
+                  .map((s) => s.score)
+                  .filter((s): s is number => s !== null);
+                current = last7.length
+                  ? Math.round(last7.reduce((a, b) => a + b, 0) / last7.length)
+                  : null;
+              } else if (g.metric)
                 current = average(days.slice(-7), g.metric as keyof DailyMetrics);
               const hit =
                 current !== null &&
