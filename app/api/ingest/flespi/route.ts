@@ -105,11 +105,22 @@ export async function POST(request: NextRequest) {
     // Engine state as a REAL column (034) so the idle math can select it
     // cheaply — idle must mean engine ON, not merely device-awake.
     const ignition = vehiclePower(locRow.raw).engineOn
-    const { error: locErr } = await supabase.from('asset_locations').insert({ ...locRow, ignition })
-    if (locErr) await supabase.from('asset_locations').insert(locRow) // pre-034 DB
-    persisted++
-    if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
-    updated.get(asset.company_id)!.set(asset.id, r)
+    let { error: locErr } = await supabase.from('asset_locations').insert({ ...locRow, ignition })
+    // Retry without the column ONLY on a pre-034 schema (undefined column /
+    // stale schema cache). Any other failure is real — retrying it masked
+    // RLS/data errors and `persisted` over-counted (code review, Jul 21).
+    if (locErr && (locErr.code === '42703' || locErr.code === 'PGRST204')) {
+      ;({ error: locErr } = await supabase.from('asset_locations').insert(locRow))
+    }
+    if (locErr) {
+      // Beacon association below still runs — tools shouldn't lose their
+      // last-seen because one location row bounced.
+      console.error(`flespi: asset_locations insert failed for ${asset.id}: ${locErr.code} ${locErr.message}`)
+    } else {
+      persisted++
+      if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
+      updated.get(asset.company_id)!.set(asset.id, r)
+    }
 
     // Associate detected BLE beacons (tools) with this gateway asset.
     // Convention: a tool asset's `tracker_id` is set to its BLE beacon ID/MAC

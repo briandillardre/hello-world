@@ -74,6 +74,10 @@ export async function POST(request: NextRequest) {
     battery: battery ?? null,
     speed: speed ?? null,
     heading: null,
+    // Ignition powers the idle math (034) — the OBD payload's engine_on IS
+    // ignition; it was landing only in raw/metadata, so direct-OBD assets
+    // read as "phantom idle" all day (code review, Jul 21).
+    ignition: typeof engine_on === 'boolean' ? engine_on : null,
     timestamp: timestamp ?? new Date().toISOString(),
     raw: { speed, odometer, engine_on, ...body },
   })

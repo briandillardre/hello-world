@@ -65,7 +65,15 @@ export interface PairingLogRow {
  *  synthesized path kept riding the old carrier, painting the tool in two
  *  places at once (Tool A aboard the Ram AND "left here", Jul 17). A pairing
  *  is only true through its last confirmed sighting. */
-export interface PairingEpisode { member: string; carrier: string; startMs: number; endMs: number | null }
+export interface PairingEpisode {
+  member: string
+  carrier: string
+  startMs: number
+  endMs: number | null
+  /** True when ended_at was never written — endMs is the last SIGHTING, not a
+   *  drop-off, so consumers may extend it by a freshness grace. */
+  open: boolean
+}
 export async function getPairingEpisodes(companyId: string, sinceIso: string): Promise<PairingEpisode[]> {
   if (isMock) return []
   const { createClient } = await import('../supabase-server')
@@ -84,6 +92,7 @@ export async function getPairingEpisodes(companyId: string, sinceIso: string): P
       carrier: p.carrier_asset_id as string,
       startMs: new Date(p.started_at as string).getTime(),
       endMs: end ? new Date(end).getTime() : null,
+      open: p.ended_at == null,
     }
   })
 }
@@ -111,6 +120,10 @@ export async function getToolWindowRows(
     .eq('member_asset_id', toolId)
     .lte('started_at', toIso)
     .or(`ended_at.is.null,ended_at.gte.${fromIso}`)
+    // Chronological, and bounded newest-first if a tool somehow has >500
+    // episodes in the window — unordered limit dropped an arbitrary subset
+    // (code review, Jul 21).
+    .order('started_at', { ascending: true })
     .limit(500)
   const out: ToolWindowRow[] = []
   for (const ep of eps ?? []) {
@@ -125,7 +138,9 @@ export async function getToolWindowRows(
     while (out.length < cap) {
       const { data } = await supabase
         .from('asset_locations')
-        .select('lat, lng, speed, timestamp')
+        // ignition rides along so tool trails get the same honest idle/stop
+        // math as the carrier itself (code review, Jul 21).
+        .select('lat, lng, speed, timestamp, ignition')
         .eq('asset_id', ep.carrier_asset_id)
         .gte('timestamp', from)
         .lt('timestamp', to)

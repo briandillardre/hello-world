@@ -3,6 +3,9 @@ import { rangeWindow, DEFAULT_TZ, type TimeRangeKey } from '@/lib/dates'
 import { computeRangeStats, estMpgForSpecs } from '@/lib/asset-stats'
 
 export const dynamic = 'force-dynamic'
+// Paging up to 40k rows (and per-episode carrier stitching for tools) can
+// exceed the 10s default — same allowance as /api/history (review, Jul 21).
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'

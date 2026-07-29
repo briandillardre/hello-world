@@ -95,6 +95,9 @@ export async function applyAempReadings(
         altitude: r.altitude != null ? Math.round(r.altitude) : null,
         battery: null,
         accuracy: null,
+        // EngineStatus.Running → ignition, so OEM machines get honest
+        // idle/engine math instead of null-ignition guesses (review, Jul 21).
+        ignition: r.engineRunning,
         timestamp: r.timestamp,
         raw: { source: `aemp:${provider}`, ...r.params },
       })

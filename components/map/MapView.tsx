@@ -31,7 +31,7 @@ import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EAR
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
-import { synthesizeToolRows } from '@/lib/tools-resolve'
+import { synthesizeToolRows, TOOL_FRESH_MS } from '@/lib/tools-resolve'
 import { AssetPanel, type PanelStop } from './AssetPanel'
 import { MeasureTool } from './MeasureTool'
 import { POI_KIND_COLOR, POI_KIND_META } from '@/lib/poi'
@@ -1680,7 +1680,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       if (win) {
         const ts = win.from + t * (win.to - win.from)
         for (const ep of episodesRef.current ?? []) {
-          if (ep.startMs <= ts && (ep.endMs == null || ep.endMs >= ts)) {
+          // Open episodes end at the last SIGHTING, not a drop-off — BLE
+          // reports sparsely, so grant the same freshness grace as live
+          // resolution or badges vanish at the window's right edge (review).
+          const end = ep.endMs == null ? null : ep.open ? ep.endMs + TOOL_FRESH_MS : ep.endMs
+          if (ep.startMs <= ts && (end == null || end >= ts)) {
             counts[ep.carrier] = (counts[ep.carrier] ?? 0) + 1
           }
         }

@@ -17,6 +17,9 @@ export function buildActivityCurve(tracks: AssetTrack[], buckets = ACTIVITY_BUCK
   const counts = new Array<number>(buckets).fill(0)
   const moving = new Array<boolean>(buckets)
   for (const tr of tracks) {
+    // Tool tracks are the CARRIER's path re-keyed to the tool — counting them
+    // made one truck with three tags read as four assets moving (review, Jul 21).
+    if (tr.type === 'tool') continue
     moving.fill(false)
     const pts = tr.points
     for (let i = 1; i < pts.length; i++) {

@@ -5,6 +5,9 @@ import { classifyStops } from '@/lib/poi-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
 
 export const dynamic = 'force-dynamic'
+// Tool stops stitch carrier history per pairing episode — allow the same
+// budget as /api/history rather than the 10s default (review, Jul 21).
+export const maxDuration = 60
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
