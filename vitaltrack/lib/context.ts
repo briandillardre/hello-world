@@ -82,7 +82,7 @@ export async function buildUserContext(userId: string): Promise<string> {
 
   ctx += "\n== GOALS ==\n";
   for (const g of goals.filter((g) => g.status === "active")) {
-    ctx += `- ${clean(g.title, 160)}${g.metric && g.target_value ? ` (tracking ${g.metric} ${g.direction} ${g.target_value})` : ""}\n`;
+    ctx += `- ${clean(g.title, 160)}${g.metric && g.target_value ? ` (tracking ${clean(g.metric, 40)} ${g.direction} ${g.target_value})` : ""}\n`;
   }
 
   ctx += "\n== LAB HISTORY (by draw date) ==\n";

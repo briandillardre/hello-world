@@ -17,9 +17,35 @@ const FIELDS: Record<Table, string[]> = {
   goals: ["title", "metric", "target_value", "direction", "deadline", "status", "notes"],
 };
 
+// Enum-ish fields validated server-side: they flow into SQL check
+// constraints (fail late, ugly 500s) and into the AI system prompt
+// (goals.metric had no DB constraint at all — the injection vector).
+const ENUMS: Record<string, string[]> = {
+  "conditions.kind": ["injury", "condition", "surgery", "family_history"],
+  "conditions.status": ["active", "managed", "resolved"],
+  "medications.kind": ["medication", "supplement"],
+  "goals.status": ["active", "achieved", "abandoned"],
+  "goals.direction": ["above", "below"],
+  "goals.metric": [
+    "steps",
+    "resting_hr",
+    "hrv",
+    "stress",
+    "body_battery",
+    "sleep_score",
+    "spo2",
+    "respiration",
+    "weight",
+    "calories",
+  ],
+};
+
 export async function POST(req: NextRequest) {
   if (!sameOriginOk(req))
     return NextResponse.json({ error: "cross-origin blocked" }, { status: 403 });
+  const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+  if (!Number.isFinite(contentLength) || contentLength > 100_000)
+    return NextResponse.json({ error: "too large" }, { status: 413 });
   const userId = await getUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -38,7 +64,14 @@ export async function POST(req: NextRequest) {
   const values: Record<string, unknown> = {};
   for (const field of FIELDS[table]) {
     const v = (body.values as Record<string, unknown> | undefined)?.[field];
-    if (v !== undefined && v !== "") values[field] = v;
+    if (v === undefined || v === "") continue;
+    const allowed = ENUMS[`${table}.${field}`];
+    if (allowed && !allowed.includes(String(v)))
+      return NextResponse.json(
+        { error: `invalid ${field}` },
+        { status: 400 }
+      );
+    values[field] = v;
   }
   const label = String(values.name ?? values.title ?? "").trim();
   if (!label)

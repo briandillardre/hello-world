@@ -17,6 +17,7 @@ const API_BASE =
 async function junctionFetch(path: string, init?: RequestInit) {
   return fetch(`${API_BASE}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(15_000),
     headers: {
       "content-type": "application/json",
       "x-vital-api-key": process.env.JUNCTION_API_KEY!,

@@ -21,18 +21,26 @@ export function validateParsedLab(input: unknown): ParsedLab | null {
       loinc: typeof b.loinc === "string" ? b.loinc.slice(0, 20) : null,
       value: b.value as number,
       unit: typeof b.unit === "string" ? b.unit.slice(0, 30) : null,
-      ref_low: typeof b.ref_low === "number" ? b.ref_low : null,
-      ref_high: typeof b.ref_high === "number" ? b.ref_high : null,
+      ref_low:
+        typeof b.ref_low === "number" && Number.isFinite(b.ref_low)
+          ? b.ref_low
+          : null,
+      ref_high:
+        typeof b.ref_high === "number" && Number.isFinite(b.ref_high)
+          ? b.ref_high
+          : null,
     }));
   if (!biomarkers.length) return null;
+  const collected =
+    typeof obj.collected_at === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(obj.collected_at) &&
+    !Number.isNaN(Date.parse(obj.collected_at))
+      ? obj.collected_at
+      : null;
   return {
     source_lab:
       typeof obj.source_lab === "string" ? obj.source_lab.slice(0, 120) : null,
-    collected_at:
-      typeof obj.collected_at === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(obj.collected_at)
-        ? obj.collected_at
-        : null,
+    collected_at: collected,
     biomarkers,
   };
 }

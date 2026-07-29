@@ -31,9 +31,10 @@ below to go live.
 ## Go live (real data)
 
 1. **Supabase** — create a project, run
-   `supabase/migrations/001_initial.sql` in the SQL Editor, enable Email
-   (magic link) auth, then set `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+   `supabase/migrations/001_initial.sql` then `002_security_fixes.sql`
+   (idempotent) in the SQL Editor, enable Email (magic link) auth, then set
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`.
 2. **Anthropic** — set `ANTHROPIC_API_KEY` to enable the advisor and lab PDF
    parsing (`ANTHROPIC_MODEL` optional, defaults to Haiku for cost).
 3. **Garmin backfill (works today, no API)** — Garmin Connect → Account

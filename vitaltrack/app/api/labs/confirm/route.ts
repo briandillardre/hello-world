@@ -12,6 +12,9 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   if (!sameOriginOk(req))
     return NextResponse.json({ error: "cross-origin blocked" }, { status: 403 });
+  const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+  if (!Number.isFinite(contentLength) || contentLength > 512_000)
+    return NextResponse.json({ error: "too large" }, { status: 413 });
   const userId = await getUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

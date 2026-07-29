@@ -18,7 +18,7 @@ const HEADER_MAP: Array<[RegExp, string]> = [
   [/^hrv|heart.?rate.?variability/i, "hrv"],
   [/stress/i, "stress"],
   [/body.?battery/i, "body_battery"],
-  [/calories/i, "calories"],
+  [/^(total.?)?calories\b/i, "calories"],
   [/distance/i, "distance_m"],
   [/spo2|oxygen/i, "spo2"],
   [/respiration|breathing/i, "respiration"],

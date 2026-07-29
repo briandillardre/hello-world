@@ -69,15 +69,26 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Replay protection: each svix delivery id is processed exactly once
-  // (signatures are only fresh for 5 minutes, but a capture can be
-  // replayed inside that window without this).
+  // Replay protection: claim the svix delivery id up front; a replayed
+  // capture inside the 5-minute signature window hits the unique key and
+  // is skipped. If processing fails below, the claim is released so
+  // svix's legitimate retry is NOT swallowed (at-least-once, idempotent
+  // upserts make redelivery safe).
   const svixId = req.headers.get("svix-id")!;
-  const { error: dupError } = await supabase
+  const { error: claimError } = await supabase
     .from("webhook_deliveries")
     .insert({ svix_id: svixId });
-  if (dupError)
-    return NextResponse.json({ ok: true, skipped: "duplicate delivery" });
+  if (claimError) {
+    if ((claimError as { code?: string }).code === "23505")
+      return NextResponse.json({ ok: true, skipped: "duplicate delivery" });
+    return NextResponse.json(
+      { ok: false, error: claimError.message },
+      { status: 500 }
+    );
+  }
+  const releaseClaim = async () => {
+    await supabase.from("webhook_deliveries").delete().eq("svix_id", svixId);
+  };
 
   // Map Junction's user id → our user via integrations table.
   const { data: integration } = await supabase
@@ -102,8 +113,10 @@ export async function POST(req: NextRequest) {
     const { error } = await supabase
       .from("metric_samples")
       .upsert(rows, { onConflict: "user_id,ts,type" });
-    if (error)
+    if (error) {
+      await releaseClaim();
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
     wrote += rows.length;
   }
   if (normalized.sleep) {
@@ -115,8 +128,10 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "user_id,start_ts" }
     );
-    if (error)
+    if (error) {
+      await releaseClaim();
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
     wrote += 1;
   }
   if (normalized.activity) {
@@ -128,10 +143,19 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "user_id,start_ts" }
     );
-    if (error)
+    if (error) {
+      await releaseClaim();
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
     wrote += 1;
   }
+
+  // Opportunistic purge: delivery ids only matter within the 5-minute
+  // signature window, so the table stays tiny.
+  await supabase
+    .from("webhook_deliveries")
+    .delete()
+    .lt("received_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
 
   return NextResponse.json({ ok: true, wrote });
 }

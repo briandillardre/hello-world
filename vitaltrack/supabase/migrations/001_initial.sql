@@ -1,5 +1,7 @@
 -- VitalTrack 001: full schema with RLS.
--- Run in the Supabase SQL Editor (or via psql with SUPABASE_DB_URL).
+-- Run in the Supabase SQL Editor (or via psql with SUPABASE_DB_URL),
+-- then run 002_security_fixes.sql (idempotent; required for databases
+-- provisioned from the original pre-fix version of this file).
 
 create extension if not exists pgcrypto;
 
@@ -89,7 +91,12 @@ create table if not exists goals (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null,
-  metric text,
+  metric text check (
+    metric is null or metric in (
+      'steps', 'resting_hr', 'hrv', 'stress', 'body_battery',
+      'sleep_score', 'spo2', 'respiration', 'weight', 'calories'
+    )
+  ),
   target_value numeric,
   direction text check (direction in ('above', 'below')),
   deadline date,
