@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
-import { BRAND_NAME, BRAND_EMAIL_SUPPORT } from '@/lib/brand'
+import { BRAND_NAME, BRAND_EMAIL_SUPPORT, BRAND_SMS_NUMBER_DISPLAY } from '@/lib/brand'
 
 export const metadata: Metadata = {
   title: `${BRAND_NAME} — SMS Alerts Program`,
@@ -41,6 +41,10 @@ export default function SmsPage() {
               This is a notification program for existing customers about their own equipment. It
               is not marketing, and we never text people who aren&apos;t {BRAND_NAME} account
               holders.
+            </p>
+            <p className="mt-2">
+              Messages are sent from{' '}
+              <strong className="text-ink font-mono">{BRAND_SMS_NUMBER_DISPLAY}</strong>.
             </p>
           </section>
 

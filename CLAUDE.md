@@ -120,7 +120,7 @@ QBO_ENVIRONMENT=production
 # ── Alerts delivery (optional; unset = in-app only) ──
 TWILIO_ACCOUNT_SID=            # SMS theft alerts
 TWILIO_AUTH_TOKEN=
-TWILIO_FROM=                   # your Twilio number, E.164
+TWILIO_FROM=+18883739004       # toll-free alert sender, bought Jul 30 2026 (Voice enabled, no greeting yet)
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
 FCM_SERVER_KEY=               # optional: native push to the phone lock screen (Firebase → Cloud Messaging). Devices self-register via the Capacitor app → /api/push/register (migration 029). Unset = no push.
