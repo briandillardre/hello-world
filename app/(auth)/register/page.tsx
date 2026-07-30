@@ -123,6 +123,7 @@ export default function RegisterPage() {
 
           <SocialAuth next="/welcome" />
 
+          <p className="text-center text-[11.5px] text-faint mb-2">Free 30-day pilot · no credit card · cancel anytime</p>
           <p className="text-center text-sm text-muted">
             Already have an account?{' '}
             <Link href="/login" className="text-amber font-medium hover:underline">

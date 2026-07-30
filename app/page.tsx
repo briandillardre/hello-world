@@ -10,7 +10,7 @@ import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
 export const metadata: Metadata = {
   title: 'HammerTrack — Mission control for your entire fleet',
   description:
-    'Every truck, machine, and Bluetooth-tagged tool on one live map. Our AI texts you the second something moves when it shouldn\'t. Half the price of Tenna, live in a day.',
+    'Every truck, machine, and Bluetooth-tagged tool on one live map. HammerTrack alerts your phone the second something moves when it shouldn\'t. Half the price of Tenna, live in a day.',
 }
 
 const AI = [
@@ -72,7 +72,7 @@ export default function HomePage() {
           <AnimatedHeadline />
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[56ch] mx-auto">
             HammerTrack puts every truck, employee, machine, trailer, and Bluetooth-tagged tool on
-            one live map — and our AI texts you the second something moves when it shouldn&apos;t.
+            one live map — and it alerts your phone the second something moves when it shouldn&apos;t.
             Half the price of competitors. Live in a day.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">

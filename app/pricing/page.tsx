@@ -15,42 +15,58 @@ export const metadata: Metadata = {
     'Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price, with AI alerts and QuickBooks built in.',
 }
 
+// The REAL pricing model (docs/PRICING-TIERS.md): per-machine base + a
+// platform fee that splits the software tiers. The page previously showed an
+// invented $3/$5/custom scheme that matched neither the tier doc nor what
+// Stripe actually charges — the exact marketing/product drift this page is
+// supposed to prevent.
 const TIERS = [
   {
-    name: 'Starter',
-    price: '$3',
-    unit: '/asset/mo',
-    blurb: 'For small crews getting started.',
+    name: 'Track',
+    price: '$8',
+    unit: '/machine/mo',
+    sub: 'Tool tags $3/mo · no platform fee',
+    blurb: '“Where’s my stuff.”',
     cta: 'Start free pilot',
     highlight: false,
     features: [
-      'Live GPS map', 'Bluetooth tool tracking', 'Geofences & alerts',
-      'After-hours theft alerts', 'Up to 25 assets', 'Email support',
+      'Live map — trucks, equipment, Bluetooth tools',
+      'After-hours theft & left-site alerts',
+      'Geofenced job sites & yards',
+      'Site log, trips & utilization reports',
+      'Unlimited users — never per-seat',
     ],
   },
   {
-    name: 'Pro',
-    price: '$5',
-    unit: '/asset/mo',
-    blurb: 'For growing contractors.',
+    name: 'Operate',
+    price: '$8',
+    unit: '/machine/mo',
+    sub: '+ $49/mo platform · 25 tool tags included',
+    blurb: '“Run my crews on it.”',
     cta: 'Start free pilot',
     highlight: true,
     features: [
-      'Everything in Starter', 'AI anomaly & theft detection', 'QuickBooks integration',
-      'Maintenance & service records', 'Utilization & job-site reports', 'Unlimited assets', 'Priority support',
+      'Everything in Track',
+      'Time clock, daily logs & QR equipment checks',
+      'Maintenance schedules + service history',
+      'QuickBooks sync — invoices, expenses, receipts',
+      'Unlimited users — never per-seat',
     ],
   },
   {
-    name: 'Fleet',
-    price: 'Custom',
-    unit: '',
-    blurb: 'For large fleets & multi-site.',
-    cta: 'Contact us',
-    href: '/contact',
+    name: 'Run',
+    price: '$8',
+    unit: '/machine/mo',
+    sub: '+ $199/mo platform · 100 tags included, then $2',
+    blurb: '“Run the company on it.”',
+    cta: 'Start free pilot',
     highlight: false,
     features: [
-      'Everything in Pro', 'Dedicated onboarding', 'Custom integrations',
-      'SLA & phone support', 'Volume hardware pricing',
+      'Everything in Operate',
+      'AI assistant + daily digest',
+      'API access & exports',
+      'Priority support',
+      'Unlimited users — never per-seat',
     ],
   },
 ]
@@ -58,7 +74,7 @@ const TIERS = [
 const FAQ = [
   {
     q: 'What do the trackers cost?',
-    a: 'At-cost, no markup: OBD2 plug-ins for trucks run about $40–60, GPS units for equipment $60–90, and Bluetooth tool tags about $20. Free pilots include loaner trackers, and Fleet plans get volume hardware pricing.',
+    a: 'At-cost, no markup: OBD2 plug-ins for trucks are about $86, GPS units for equipment about $85, and Bluetooth tool tags about $20 — exactly what we pay our supplier. Free pilots include loaner trackers.',
   },
   {
     q: 'Is there a contract?',
@@ -84,7 +100,7 @@ const VS_TENNA = [
   ['AI alerts included', 'Tenna: enterprise only'],
   ['QuickBooks built in', 'Tenna: enterprise only'],
   ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
-  ['~$3–8/asset/mo', 'Tenna: $15–25/asset/mo'],
+  ['$8/machine · $3/tag', 'Tenna: $15–25/asset + setup'],
 ]
 
 export default function PricingPage() {
@@ -104,6 +120,23 @@ export default function PricingPage() {
           </p>
         </div>
 
+        {/* The offer that's actually live and purchasable right now. */}
+        <section className="mb-8 rounded-2xl border border-amber/50 bg-gradient-to-r from-amber/10 to-transparent p-6 sm:flex items-center gap-6">
+          <div className="flex-1">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber">Founding 25 — first 25 companies</p>
+            <h2 className="font-display font-extrabold text-xl mt-1">$6/machine + $3/tag. Operate features included. No platform fee.</h2>
+            <p className="text-[13px] text-muted mt-1.5 leading-relaxed">
+              Founder pricing locked for 12 months, hardware at cost, month-to-month, cancel anytime.
+              You&apos;re helping us build it — you keep the price.
+            </p>
+          </div>
+          <div className="flex-none mt-4 sm:mt-0">
+            <Link href="/register" className="inline-block font-display font-bold rounded-xl px-6 py-3 bg-amber text-[#1a1100] hover:bg-amber-600 transition-colors">
+              Claim a founding spot
+            </Link>
+          </div>
+        </section>
+
         <div className="grid md:grid-cols-3 gap-4">
           {TIERS.map((tier) => (
             <div
@@ -121,10 +154,11 @@ export default function PricingPage() {
               )}
               <h2 className="font-display font-extrabold text-lg">{tier.name}</h2>
               <p className="text-sm text-faint mb-4">{tier.blurb}</p>
-              <div className="mb-4">
+              <div className="mb-1">
                 <span className="font-display font-black text-4xl">{tier.price}</span>
                 <span className="text-faint">{tier.unit}</span>
               </div>
+              <p className="text-[12px] text-teal/90 font-medium mb-4">{(tier as { sub?: string }).sub}</p>
               <ul className="space-y-2.5 flex-1">
                 {tier.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm">
@@ -147,12 +181,17 @@ export default function PricingPage() {
           ))}
         </div>
 
+        <p className="text-center text-[12.5px] text-faint mt-4">
+          Typical customer — 8 machines, 12 tags: <span className="text-muted">Track $100/mo · Operate $113/mo · Run $263/mo.</span>{' '}
+          Tenna quotes the same fleet at $120–200/mo <em>plus</em> $500 setup.
+        </p>
+
         {/* Hardware — the question every prospect asks first */}
         <section className="mt-6 rounded-2xl border border-navy-800 bg-navy-900 p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
           <div className="flex-1">
             <h3 className="font-display font-bold text-[15px]">Hardware at cost — no markup, no rental games</h3>
             <p className="text-[13px] text-faint mt-1">
-              OBD2 plug-ins ~$40–60 · equipment GPS ~$60–90 · Bluetooth tool tags ~$20.
+              OBD2 plug-ins ~$86 · equipment GPS ~$85 · Bluetooth tool tags ~$20 — what we pay is what you pay.
               Yours to keep. Free pilots ship with loaner trackers.
             </p>
           </div>

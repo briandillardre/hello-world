@@ -51,7 +51,7 @@ export default function DemoLandingPage() {
               <span className="text-amber"> Would you know?</span>
             </h1>
             <p className="text-muted mt-5 text-lg">
-              HammerTrack puts every truck, machine, and power tool on one live map — and our AI texts you
+              HammerTrack puts every truck, machine, and power tool on one live map — and it alerts your phone
               the second something moves when it shouldn&apos;t. Half the price of the big telematics
               platforms. Set up in a day, no install crew.
             </p>
