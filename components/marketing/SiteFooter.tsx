@@ -30,6 +30,7 @@ export function SiteFooter() {
               <a href={`mailto:${BRAND_EMAIL_HELLO}`} className="text-muted hover:text-ink transition-colors">{BRAND_EMAIL_HELLO}</a>
               <Link href="/privacy" className="text-muted hover:text-ink transition-colors">Privacy policy</Link>
               <Link href="/terms" className="text-muted hover:text-ink transition-colors">Terms of service</Link>
+              <Link href="/sms" className="text-muted hover:text-ink transition-colors">SMS alerts</Link>
             </div>
           </div>
         </div>

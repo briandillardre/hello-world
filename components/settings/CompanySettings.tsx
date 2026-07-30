@@ -106,7 +106,18 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
                 <Input id="alert-email" type="email" placeholder="you@company.com" value={form.alert_email} onChange={(e) => setForm((f) => ({ ...f, alert_email: e.target.value }))} />
               </div>
             </div>
-            <p className="text-[11px] text-faint -mt-1">Where theft &amp; geofence alerts are sent. SMS requires the Twilio keys in your hosting env.</p>
+            {/* Carrier-required consent notice at the point of entry. Toll-Free
+                Verification reviewers look for exactly this language beside the
+                field where a number is collected — and the public /sms page
+                quotes it verbatim, so keep the two in sync. */}
+            <p className="text-[11px] text-faint -mt-1 leading-snug">
+              Where theft &amp; geofence alerts are sent. By entering a mobile number you agree to
+              receive equipment and security alert text messages from HammerTrack at that number.
+              Message frequency varies by alert activity. Message and data rates may apply. Reply
+              STOP to unsubscribe or HELP for help. See our{' '}
+              <a href="/sms" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">SMS alerts program</a>{' '}
+              and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">privacy policy</a>.
+            </p>
             {err && <p className="text-xs text-alert">{err}</p>}
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => { setEditing(false); setForm({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email }) }} disabled={saving}>Cancel</Button>
