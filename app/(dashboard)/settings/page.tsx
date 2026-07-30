@@ -11,8 +11,12 @@ import { BillingCard } from '@/components/settings/BillingCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
 import { getMyPermissions } from '@/lib/permissions-server'
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams?: { billing?: string } }) {
   const [co, perms] = await Promise.all([getCompanySettings(), getMyPermissions()])
+  // Checkout lands back here. The webhook is what actually records the
+  // subscription (may lag the redirect by a few seconds) — so this banner
+  // confirms the ACTION, and the card below catches up on refresh.
+  const billingReturn = searchParams?.billing
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
@@ -28,6 +32,18 @@ export default async function SettingsPage() {
           sms_consent_phone={co.sms_consent_phone} sms_consent_at={co.sms_consent_at}
           editable={co.isAdmin}
         />
+
+        {billingReturn === 'success' && (
+          <p className="rounded-xl border border-teal/40 bg-teal/10 px-4 py-3 text-[13px] text-teal leading-snug">
+            ✅ Subscription started — welcome to the Founding 25. If the card below still says
+            &quot;No subscription,&quot; give it a few seconds and refresh; Stripe confirms in the background.
+          </p>
+        )}
+        {billingReturn === 'canceled' && (
+          <p className="rounded-xl border border-navy-700 bg-navy-900 px-4 py-3 text-[13px] text-muted leading-snug">
+            Checkout was canceled — nothing was charged. Subscribe below whenever you&apos;re ready.
+          </p>
+        )}
 
         {/* Subscription state + the two buttons that matter */}
         <BillingCard
