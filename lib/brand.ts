@@ -11,11 +11,11 @@
  * commit that changes these constants. `grep -ri hammertrack` finds the rest.
  */
 export const BRAND_NAME = process.env.NEXT_PUBLIC_BRAND_NAME ?? 'HammerTrack'
-// The domain we actually OWN. hammertrack.ai is still unbought (see the
-// business plan) — defaulting to it silently pointed every public contact
-// address at a domain with no mailbox, so "email sales@…" bounced (Jul 30).
-// Flip this the day the .ai is purchased; the env var overrides for staging.
-export const BRAND_DOMAIN = process.env.NEXT_PUBLIC_BRAND_DOMAIN ?? 'hammertrackai.com'
+// hammertrack.ai is OWNED and runs Google Workspace (brian@hammertrack.ai,
+// confirmed Jul 30) — it's the real front door. hammertrackai.com is the
+// secondary/redirect domain. Public contact addresses (sales@ / hello@ /
+// support@) resolve here and must exist as Workspace aliases or groups.
+export const BRAND_DOMAIN = process.env.NEXT_PUBLIC_BRAND_DOMAIN ?? 'hammertrack.ai'
 export const BRAND_URL = `https://${BRAND_DOMAIN}`
 export const BRAND_EMAIL_HELLO = `hello@${BRAND_DOMAIN}`
 export const BRAND_EMAIL_SALES = `sales@${BRAND_DOMAIN}`

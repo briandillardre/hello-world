@@ -8,7 +8,7 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 ## Live Site (updated Jul 2026 — app moved to Vercel)
 - **Live app:** https://hammertrackjune28.vercel.app (Vercel — auto-deploys `master`)
 - **Database:** Supabase project **"Hammertrack 2026"** — 9 migrations: 001–005 applied Jul 6 2026, 006–009 pending in SQL Editor (see Pending); env vars set in Vercel (Production + Preview)
-- **hammertrackai.com** (Namecheap) still points at the OLD Netlify site (stately-heliotrope-0b2bff) — pending: add domain to the Vercel project
+- **hammertrack.ai** is the owned primary domain (Google Workspace live on it) — pending: add it to the Vercel project so the app answers there
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
 - **Dev branch convention:** `claude/...` branches, open PR → squash merge to master
@@ -94,11 +94,16 @@ Start with GPS/battery. Add J1939 CAN readers on high-value machines later for:
 true engine hours, fuel consumption, fault codes, accurate utilization billing.
 
 ## Domain & DNS
-- **Primary domain:** hammertrackai.com (Namecheap)
-- **Also owned:** hammertracks.com, hammertrax.com (redirect to primary)
-- **Deferred:** hammertrack.ai ($185.96 for 2yr min — buy when business is proven)
-- DNS: A record @ → 75.2.60.5, CNAME www → stately-heliotrope-0b2bff.netlify.app
-- SSL: Let's Encrypt via Netlify, auto-renews Aug 27
+- **PRIMARY domain: hammertrack.ai** — OWNED, and running **Google Workspace**
+  (brian@hammertrack.ai, "Managed by hammertrack.ai", confirmed Jul 30 2026).
+  This is the real front door: `BRAND_DOMAIN` in `lib/brand.ts`, the Capacitor
+  app's remote URL, and the Resend sender all resolve here.
+- **Secondary:** hammertrackai.com (Namecheap) — A @ → 216.150.1.1 (Namecheap
+  parking as of Jul 30), MAIL SETTINGS = Email Forwarding. Should end up a
+  301 redirect to hammertrack.ai. Also owned: hammertracks.com, hammertrax.com.
+- **Public addresses** (sales@ / hello@ / support@ @hammertrack.ai) must exist
+  as Workspace aliases or groups — the code points at them either way.
+- Old Netlify site (stately-heliotrope-0b2bff) is dead; ignore it.
 
 ## Env Vars Needed for Production
 ```
@@ -110,7 +115,7 @@ FLESPI_WEBHOOK_TOKEN=           # from flespi stream config (ingest fails closed
 INGEST_API_KEY=                 # x-api-key for /api/ingest/obd2 + location (random secret; NOT the service-role key)
 QBO_CLIENT_ID=                  # from developer.intuit.com
 QBO_CLIENT_SECRET=
-QBO_REDIRECT_URI=https://hammertrackai.com/api/qbo/callback
+QBO_REDIRECT_URI=https://hammertrack.ai/api/qbo/callback
 QBO_ENVIRONMENT=production
 # ── Alerts delivery (optional; unset = in-app only) ──
 TWILIO_ACCOUNT_SID=            # SMS theft alerts
@@ -150,16 +155,16 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
 2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), 009 (alert phone/email), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 9). See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
-4. **Point hammertrackai.com at Vercel** — add domain in Vercel project settings, update Namecheap DNS (currently still on Netlify)
+4. **Point hammertrack.ai at Vercel** — add the domain in Vercel project settings + DNS. CAUTION: leave the Google Workspace **MX records alone** or company email dies; only A/CNAME change. hammertrackai.com then 301s to it.
 5. **Remaining hardware** — install T1-b; order TAT141 + solar accessory (equipment), BC021 tool tags
 6. **After-hours theft alert live test** — move the truck outside work hours (07:00–17:00) and confirm the alert fires
 7. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
 8. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
-9. **hammertrack.ai domain** — buy when business proves out ($185.96/2yr at Namecheap)
+9. ~~hammertrack.ai domain~~ ✅ OWNED + Google Workspace live (confirmed Jul 30 2026)
 10. **Trails/playback timezone** — scrubber clock labels; see `docs/TRACKER-DATA.md` for tracker data reference + per-asset reporting-profile design
 
 ## Go-to-Market
-- Lead funnel: FB/IG theft-hook ad → hammertrackai.com/demo → /register
+- Lead funnel: FB/IG theft-hook ad → hammertrack.ai/demo → /register
 - Primary hook: after-hours theft alert ("Your excavator left at 2 AM")
 - Price position: $3-8/asset/mo vs Tenna $15-25/asset/mo + $500 setup
 - Beachhead: Nashville metro, local contractor Facebook groups + equipment dealer referrals
