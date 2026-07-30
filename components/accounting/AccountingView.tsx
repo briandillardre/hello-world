@@ -281,7 +281,14 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
             )}
 
             {error && (
-              <p className="text-xs text-alert bg-alert/10 border border-alert/30 rounded-lg p-3">{error}</p>
+              <p className="text-xs text-alert bg-alert/10 border border-alert/30 rounded-lg p-3">
+                {error}
+                {/* In-app support path — also the answer to Intuit's "can
+                    customers reach you from within the app" question. */}
+                <span className="block mt-1.5 text-muted">
+                  Stuck? Email <a href="mailto:support@hammertrack.ai" className="text-teal hover:underline">support@hammertrack.ai</a> and include this message.
+                </span>
+              </p>
             )}
 
             <div className="flex gap-3">

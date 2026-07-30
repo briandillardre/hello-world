@@ -41,6 +41,38 @@ entry/exit events → alerts → cost accrual → invoices. Any vertical that is
 | Traffic counts for contractors/civils (rent-a-sensor) | 7 | Real permit-study demand; hardware R&D; wrong to start solo | 10 civil engineers; <4 rent at $X/wk → dead |
 | Rental yard utilization | 7 | Cost engine pointed at their P&L; longer sales motion | 10 independent rental stores; <4 demo requests → dead |
 
+## QBO deep-sync (CDC / webhooks) — declined Jul 31, tracked here
+
+Intuit's CDC endpoint = "everything that changed since <timestamp>" in one
+call; webhooks = push on change. We answered **No** on the production
+questionnaire because today's integration is write-and-deep-link — QuickBooks
+stays the system of record and we mirror nothing.
+
+**Future use cases, in the order they'd earn their build:**
+1. **Invoice status in-app** — zone page shows "invoiced $4,200 · paid Jul 28."
+   GPS hours → invoice → cash on one screen. Run-tier feature.
+2. **Full job P&L per zone** — HammerTrack equipment/labor + QBO bills,
+   materials, subs against the same customer. The literal "run the company on
+   it." Tenna doesn't have this at any tier; Samsara can't (no QBO write depth).
+3. **Receipt dedup** — see expenses entered directly in QBO so receipt-chase
+   never double-posts.
+
+**Adoption rules when green-lit:** read-only mirror, QBO always authoritative,
+webhooks for freshness + nightly CDC sweep for reconciliation. Never two-way
+conflict resolution — corrupting a contractor's books is the one unrecoverable
+trust failure. Update the Intuit compliance questionnaire (CDC + webhooks
+answers) the same week it ships.
+
+**Competitive watch (review at each phase gate):**
+| Competitor | QBO depth today | If they add job-P&L sync |
+|---|---|---|
+| Tenna | export-style integration, enterprise tier | our window narrows — accelerate #2 |
+| Samsara/Motive | fleet-first, shallow accounting ties | unlikely; wrong buyer |
+| Linxup/one-truck apps | none | n/a |
+| EquipmentShare T3 | internal ERP ambitions | watch — they own the rental wedge |
+Also watch: Procore/Buildertrend adding equipment GPS (attack from the
+software side), and QuickBooks itself shipping native mileage/asset tracking.
+
 ## Parking lot (fun ≠ business — revisit only if the filter changes)
 - **ADS-B 3D plane map** — incumbents free & global (FR24, ADSB.exchange). Build once as a weekend engine demo, never as a company.
 - **King-of-the-hill road-trip game** — hit-driven consumer lottery; no revenue model; maybe a marketing feature someday.

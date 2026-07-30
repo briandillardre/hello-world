@@ -189,7 +189,13 @@ async function qboFetch(conn: LiveConnection, path: string, init?: RequestInit):
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`QBO ${init?.method ?? 'GET'} ${path} → ${res.status}: ${text.slice(0, 300)}`)
+    // intuit_tid is Intuit's per-request trace id — quoting it to their
+    // support is the difference between "it failed" and them finding the
+    // exact request in their logs. Keep it in ours (Vercel log retention)
+    // and in the thrown message the UI surfaces.
+    const tid = res.headers.get('intuit_tid') ?? 'none'
+    console.error('QBO API error', { path, status: res.status, intuit_tid: tid, body: text.slice(0, 500) })
+    throw new Error(`QBO ${init?.method ?? 'GET'} ${path} → ${res.status} (intuit_tid ${tid}): ${text.slice(0, 300)}`)
   }
   return res.json()
 }
