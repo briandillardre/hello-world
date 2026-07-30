@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   }
 
   const state = randomBytes(16).toString('hex')
-  const res = NextResponse.redirect(buildAuthorizeUrl(state))
+  const res = NextResponse.redirect(await buildAuthorizeUrl(state))
   // CSRF protection: store state in a short-lived cookie to verify on callback.
   res.cookies.set('qbo_oauth_state', state, {
     httpOnly: true,

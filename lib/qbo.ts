@@ -17,6 +17,8 @@ export const isQboConfigured = !!process.env.QBO_CLIENT_ID
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
+// Fallbacks only — the live endpoints come from Intuit's OAuth discovery
+// document (below), which is how Intuit communicates endpoint changes.
 const QBO_AUTH_BASE = 'https://appcenter.intuit.com/connect/oauth2'
 const QBO_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
 const QBO_SCOPES = 'com.intuit.quickbooks.accounting'
@@ -32,8 +34,39 @@ export function qboTxnUrl(kind: 'invoice' | 'expense', id: string): string {
   return `${host}/app/${kind}?txnId=${id}`
 }
 
-/** Build the Intuit OAuth2 authorization URL. */
-export function buildAuthorizeUrl(state: string): string {
+/**
+ * OAuth endpoints from Intuit's DISCOVERY DOCUMENT, cached 24h.
+ * https://developer.intuit.com/app/developer/qbo/docs/develop/authentication-and-authorization/oauth-openid-discovery-doc
+ *
+ * Intuit rotates/retires endpoints via this document rather than email, so
+ * reading it is the difference between surviving an endpoint migration and
+ * every customer's books silently disconnecting. Any failure falls back to
+ * the documented constants above — discovery being down must never take
+ * OAuth down with it.
+ */
+interface DiscoveryDoc { authorization_endpoint?: string; token_endpoint?: string }
+let discoveryCache: { doc: DiscoveryDoc; fetchedAt: number } | null = null
+
+async function discoverEndpoints(): Promise<{ authBase: string; tokenUrl: string }> {
+  const DISCOVERY_URL = sandbox
+    ? 'https://developer.api.intuit.com/.well-known/openid_sandbox_configuration'
+    : 'https://developer.api.intuit.com/.well-known/openid_configuration'
+  const DAY = 24 * 60 * 60_000
+  if (!discoveryCache || Date.now() - discoveryCache.fetchedAt > DAY) {
+    try {
+      const res = await fetch(DISCOVERY_URL, { signal: AbortSignal.timeout(5000) })
+      if (res.ok) discoveryCache = { doc: (await res.json()) as DiscoveryDoc, fetchedAt: Date.now() }
+    } catch { /* keep whatever cache exists; fall back below */ }
+  }
+  return {
+    authBase: discoveryCache?.doc.authorization_endpoint ?? QBO_AUTH_BASE,
+    tokenUrl: discoveryCache?.doc.token_endpoint ?? QBO_TOKEN_URL,
+  }
+}
+
+/** Build the Intuit OAuth2 authorization URL (endpoint from discovery). */
+export async function buildAuthorizeUrl(state: string): Promise<string> {
+  const { authBase } = await discoverEndpoints()
   const params = new URLSearchParams({
     client_id: process.env.QBO_CLIENT_ID ?? '',
     response_type: 'code',
@@ -41,7 +74,7 @@ export function buildAuthorizeUrl(state: string): string {
     redirect_uri: process.env.QBO_REDIRECT_URI ?? '',
     state,
   })
-  return `${QBO_AUTH_BASE}?${params.toString()}`
+  return `${authBase}?${params.toString()}`
 }
 
 export interface QboTokenResponse {
@@ -55,7 +88,8 @@ async function tokenGrant(body: Record<string, string>): Promise<QboTokenRespons
   const basic = Buffer.from(
     `${process.env.QBO_CLIENT_ID}:${process.env.QBO_CLIENT_SECRET}`
   ).toString('base64')
-  const res = await fetch(QBO_TOKEN_URL, {
+  const { tokenUrl } = await discoverEndpoints()
+  const res = await fetch(tokenUrl, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${basic}`,
