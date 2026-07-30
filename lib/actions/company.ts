@@ -143,6 +143,8 @@ export async function sendTestAlertAction(): Promise<{
   twilioConfigured: boolean
   webhookConfigured: boolean
   error?: string
+  /** Twilio's own rejection text when a configured send still fails. */
+  smsError?: string
 }> {
   const twilioConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM)
   const webhookConfigured = !!process.env.NOTIFY_WEBHOOK_URL
@@ -154,13 +156,30 @@ export async function sendTestAlertAction(): Promise<{
     const { data: co } = await createClient()
       .from('companies').select('*').eq('id', companyId).maybeSingle() // star: survives pre-009 DBs
 
-    const { dispatchAlerts } = await import('@/lib/notify')
+    const { dispatchAlerts, sendTestSms } = await import('@/lib/notify')
     const smsTo = co?.alert_phone || process.env.ALERT_SMS_TO || null
+    // Catch the most common self-inflicted failure before spending a message:
+    // a number typed without the country code. Twilio answers 21211 for this,
+    // which is not obvious from the console.
+    if (smsTo && !/^\+[1-9]\d{7,14}$/.test(smsTo)) {
+      return {
+        ok: false, smsAttempted: false, smsTo, twilioConfigured, webhookConfigured,
+        error: `"${smsTo}" isn't in E.164 format — Twilio needs the country code, e.g. +18645551234.`,
+      }
+    }
     const sent = await dispatchAlerts(co?.name ?? 'HammerTrack', { phone: co?.alert_phone }, [{
       severity: 'critical',
       reason: `TEST ALERT — this is what an after-hours theft alert looks like. Reply STOP never; reply nothing; it's just ${co?.name ?? 'your'} HammerTrack test. ✅`,
     }])
-    return { ok: true, smsAttempted: sent > 0, smsTo, twilioConfigured, webhookConfigured }
+    // Configured, addressed, and still nothing sent = Twilio rejected it.
+    // Ask once more through the same sender to capture WHY — "no SMS sent"
+    // with no reason is the state that wastes an evening. Only runs in the
+    // failure case, where nothing was delivered anyway.
+    let smsError: string | undefined
+    if (twilioConfigured && smsTo && sent === 0) {
+      smsError = (await sendTestSms(smsTo)).error
+    }
+    return { ok: true, smsAttempted: sent > 0, smsTo, twilioConfigured, webhookConfigured, smsError }
   } catch (e) {
     return { ok: false, smsAttempted: false, smsTo: null, twilioConfigured, webhookConfigured, error: e instanceof Error ? e.message : 'Failed.' }
   }

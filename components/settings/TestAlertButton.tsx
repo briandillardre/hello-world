@@ -23,6 +23,11 @@ export function TestAlertButton() {
       setMsg({ text: 'No SMS sent — add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM in Vercel env vars first.' + (r.webhookConfigured ? ' (Webhook fired.)' : ''), ok: false })
     } else if (!r.smsTo) {
       setMsg({ text: 'Twilio is configured but no recipient — set the Alert phone above (or ALERT_SMS_TO).', ok: false })
+    } else if (r.smsError) {
+      // Twilio's own words — the error code IS the diagnosis (30032 = toll-free
+      // verification still pending, 21606 = From can't send SMS, 21610 = the
+      // recipient replied STOP).
+      setMsg({ text: `Twilio rejected it — ${r.smsError}`, ok: false })
     } else {
       setMsg({ text: 'Attempted — check Vercel logs if nothing arrives.', ok: true })
     }
