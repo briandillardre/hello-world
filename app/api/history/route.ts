@@ -44,30 +44,34 @@ export async function GET(req: NextRequest) {
   const spanDays = (toMs - fromMs) / 86_400_000
   const maxAge = spanDays <= 2 ? 30 : spanDays <= 31 ? 240 : 600
 
-  // LONG windows (30d/YTD/All): one uniform-stride window scan (035) instead
-  // of paging dozens of full-res pages through deep PostgREST offsets. Once a
-  // month of OBD data outgrew the cap, the paged fetch ran past the timeout /
-  // errored, the client silently fell back to the thin newest-biased
-  // snapshot, and 30d drew LESS than 7d ("something broken on my timeline",
-  // Jul 30). Sampling covers the whole window evenly by construction.
-  if (spanDays > 10) {
-    // Sample budget shrinks as the span grows — a YTD trail at 12k points
-    // reads identically to 20k on screen, and the payload/parse cost is what
-    // the user feels ("took forever to load", Jul 30).
-    const budget = spanDays > 90 ? 12_000 : SHIP_CAP
-    const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
-      p_from: new Date(fromMs).toISOString(),
-      p_to: new Date(toMs).toISOString(),
-      p_max: budget,
-    })
-    if (!rpcErr && Array.isArray(sampled)) {
-      return NextResponse.json(
-        { rows: sampled, truncated: false },
-        { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
-      )
-    }
-    // Pre-035 DB (function missing) — fall through to the paged fetch.
+  // ── ONE PATH FOR EVERY RANGE ───────────────────────────────────────────
+  // Today / Yesterday / 7d / 30d / YTD / All / Custom all resolve through the
+  // SAME per-asset sampler (039). This is deliberate and is the permanent fix
+  // for "7d shows more than 30d, and YTD/All disagree with both": while short
+  // and long windows ran different code — different caps, different thinning,
+  // different silent fallbacks — the ranges could and did contradict each
+  // other. Now the only difference between ranges is the window itself.
+  //
+  // Density is bounded, not truncated: an asset whose rows already fit its
+  // slice of the budget comes back at FULL resolution (stride 1), so short
+  // windows lose nothing. Bigger windows simply stride wider, evenly across
+  // the whole span — never newest-biased.
+  const budget = spanDays <= 2 ? 30_000 : spanDays <= 31 ? 20_000 : 14_000
+  const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
+    p_from: new Date(fromMs).toISOString(),
+    p_to: new Date(toMs).toISOString(),
+    p_max: budget,
+  })
+  if (!rpcErr && Array.isArray(sampled)) {
+    return NextResponse.json(
+      // `source`/`count` are diagnostics: if a range ever looks wrong again,
+      // the Network tab says which path served it and how much it returned.
+      { rows: sampled, truncated: false, source: 'sampled', count: sampled.length },
+      { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
+    )
   }
+  // Pre-039 DB (function missing) — fall through to the legacy paged fetch.
+  const rpcNote = rpcErr?.message ?? 'sampled_history unavailable'
 
   // Fetch NEWEST-first in pages: Supabase's API "Max Rows" setting silently
   // caps a single .limit(40000) to as little as 1000 rows — which starved the
@@ -139,7 +143,7 @@ export async function GET(req: NextRequest) {
   // Cache big windows longer — their content barely changes minute to minute,
   // and the browser cache absorbs an over-eager poller between real re-pulls.
   return NextResponse.json(
-    { rows: thinned, truncated },
+    { rows: thinned, truncated, source: 'paged', count: thinned.length, note: rpcNote },
     { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
   )
 }

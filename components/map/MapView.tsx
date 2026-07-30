@@ -7,7 +7,7 @@ import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/t
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
-  defaultSpeedForWindow, tracksFromHistory, rangeWindowSeconds,
+  defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
 import {
@@ -585,11 +585,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const dayData = useMemo(() => {
     if (!historyRows) return null
     const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
-    const fetched = fetchedRows[`${w.from}-${w.to}`]
-    const rows = fetched ?? historyRows.filter((r) => {
+    // Snapshot slice + the window's own fetch, UNIONED (never replaced). The
+    // shipped snapshot is capped newest-first, so on its own it starves long
+    // ranges; the fetch is evenly sampled, so on its own it can be thinner
+    // than the snapshot in the recent days. Together they're monotonic — a
+    // wider range can never render less than a narrower one (Jul 30).
+    const snapshot = historyRows.filter((r) => {
       const ms = Date.parse(r.timestamp)
       return ms >= w.from && ms < w.to
     })
+    const fetched = fetchedRows[`${w.from}-${w.to}`]
+    const rows = fetched ? mergeHistoryRows(snapshot, fetched) : snapshot
     // Tool replay paths: the carrier's rows during each pairing episode,
     // re-keyed to the tool — a tag replays wherever its truck went while it
     // was aboard. Kept OUT of `rows` so cost/zone curves never double-count
@@ -1310,7 +1316,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         paint: {
           'circle-color': ['get', 'color'],
           'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 0.14],
-          'circle-radius': 24, 'circle-blur': 0.7,
+          // Scale with zoom — a fixed 24px halo turned into a county-sized
+          // blob at state zoom, which is what it looked like in the Jul 30
+          // screenshots. Small marker glow far out, full halo up close.
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 9, 10, 14, 14, 24],
+          'circle-blur': 0.7,
         },
       })
       m.addLayer({
@@ -1333,8 +1343,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       })
       // Name beside the dot (live mode) — same POI treatment as trail heads.
       m.addLayer({
+        // Same ladder as the zone labels — asset names appear at metro zoom,
+        // not while you're looking at half the state.
         id: 'unclustered-name', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
-        minzoom: 9,
+        minzoom: 10.5,
         layout: {
           'text-field': ['get', 'name'], 'text-size': 10.5,
           'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
@@ -1442,16 +1454,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         'text-color': ['get', 'color'],
         'text-halo-color': '#001016', 'text-halo-width': 2, 'text-opacity': 0.88,
       }
+      // Label ladder (owner ask, Jul 30 — "names should drop off while zooming
+      // out"): nothing at region/state scale, the short job code once you're
+      // metro-level, the full job name once you're actually looking at sites.
+      // A bare "25" floating over three counties is noise, not information.
       m.addLayer({
         id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
-        minzoom: 8, maxzoom: 11.5,
+        minzoom: 10.5, maxzoom: 12.5,
         layout: { ...zoneLabelLayout, 'text-field': ['get', 'short'], 'text-size': 10 },
         paint: zoneLabelPaint,
       })
       m.addLayer({
         id: 'geofence-labels-full', type: 'symbol', source: 'geofence-label-pts',
-        minzoom: 11.5,
-        layout: { ...zoneLabelLayout, 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 11.5, 11, 15, 13] },
+        minzoom: 12.5,
+        layout: { ...zoneLabelLayout, 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12.5, 11, 15, 13] },
         paint: zoneLabelPaint,
       })
 
@@ -1459,6 +1475,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.addSource(drawPreviewSource.current, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({ id: 'draw-fill', type: 'fill', source: drawPreviewSource.current, paint: { 'fill-color': '#ff9e16', 'fill-opacity': 0.15 } })
       m.addLayer({ id: 'draw-line', type: 'line', source: drawPreviewSource.current, paint: { 'line-color': '#ff9e16', 'line-width': 2 } })
+
+      // Address-search marker while drawing a zone (owner ask, Jul 30). Jumping
+      // to an address used to move the camera and leave nothing behind, so you
+      // lost the spot the moment you panned. Brand amber, teal ring — the same
+      // language as the measure vertices and the zone draw preview.
+      m.addSource('draw-search-pin', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'draw-search-halo', type: 'circle', source: 'draw-search-pin',
+        paint: { 'circle-color': '#ff9e16', 'circle-opacity': 0.22, 'circle-radius': 26, 'circle-blur': 0.65 },
+      })
+      m.addLayer({
+        id: 'draw-search-dot', type: 'circle', source: 'draw-search-pin',
+        paint: {
+          'circle-color': '#ff9e16', 'circle-radius': 7,
+          'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
+        },
+      })
+      m.addLayer({
+        id: 'draw-search-label', type: 'symbol', source: 'draw-search-pin',
+        layout: {
+          'text-field': ['get', 'label'], 'text-size': 11.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'bottom', 'text-offset': [0, -1.1],
+          'text-max-width': 22, 'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ffe0b0', 'text-halo-color': '#04121d', 'text-halo-width': 2 },
+      })
 
       // Click handlers — bind to both the pin and its glow so the whole dot is a
       // hit target (assets always win over the zone underneath).
@@ -3796,6 +3839,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     map.current.on('click', handleDrawClick)
   }, [handleDrawClick])
 
+  /** Drop (or clear) the amber marker on an address searched while drawing.
+   *  Declared BEFORE the draw callbacks that list it as a dependency — a
+   *  dependency array is evaluated during render, so a `const` defined further
+   *  down is still in its temporal dead zone and throws. */
+  const setSearchPin = useCallback((lng: number, lat: number, label: string) => {
+    const src = map.current?.getSource('draw-search-pin') as maplibregl.GeoJSONSource | undefined
+    src?.setData(lng === 0 && lat === 0 && !label
+      ? { type: 'FeatureCollection', features: [] }
+      : { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { label }, geometry: { type: 'Point', coordinates: [lng, lat] } }] })
+  }, [])
+  const clearSearchPin = useCallback(() => setSearchPin(0, 0, ''), [setSearchPin])
+
   const finishDrawing = useCallback((): GeoJSON.Polygon | null => {
     if (!map.current) return null
     map.current.off('click', handleDrawClick)
@@ -3805,9 +3860,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     drawCoords.current = []
     const src = map.current.getSource(drawPreviewSource.current) as maplibregl.GeoJSONSource | undefined
     src?.setData({ type: 'FeatureCollection', features: [] })
+    clearSearchPin()
     if (pts.length < 3) return null
     return { type: 'Polygon', coordinates: [[...pts, pts[0]]] }
-  }, [handleDrawClick])
+  }, [handleDrawClick, clearSearchPin])
 
   const cancelDrawing = useCallback(() => {
     if (!map.current) return
@@ -3817,7 +3873,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setIsDrawing(false)
     const src = map.current.getSource(drawPreviewSource.current) as maplibregl.GeoJSONSource | undefined
     src?.setData({ type: 'FeatureCollection', features: [] })
-  }, [handleDrawClick])
+    clearSearchPin()
+  }, [handleDrawClick, clearSearchPin])
 
   // One list + one handler serve both search surfaces (map pill + layers hub).
   const searchItems: SearchItem[] = [
@@ -3986,7 +4043,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           onFinishDraw={finishDrawing}
           onCancelDraw={cancelDrawing}
           onSave={onGeofenceSave}
-          onLocate={(lng, lat) => map.current?.flyTo({ center: [lng, lat], zoom: 17, duration: 1100 })}
+          onLocate={(lng, lat, label) => {
+            setSearchPin(lng, lat, label)
+            map.current?.flyTo({ center: [lng, lat], zoom: 17, duration: 1100 })
+          }}
         />
       )}
 

@@ -18,7 +18,9 @@ interface GeofenceDrawerProps {
   onCancelDraw: () => void
   onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean; folderUrl?: string }) => void
   /** Fly the map to an address hit so the user can draw around it. */
-  onLocate?: (lng: number, lat: number) => void
+  /** Fly to the hit AND drop a marker there, so the searched address stays
+   *  visible while you click out the corners around it. */
+  onLocate?: (lng: number, lat: number, label: string) => void
 }
 
 interface AddressHit { label: string; lng: number; lat: number }
@@ -132,7 +134,7 @@ export function GeofenceDrawer({
                 {hits.map((h, i) => (
                   <button
                     key={i}
-                    onMouseDown={(e) => { e.preventDefault(); onLocate?.(h.lng, h.lat); setAddr(''); setHits([]) }}
+                    onMouseDown={(e) => { e.preventDefault(); onLocate?.(h.lng, h.lat, h.label); setAddr(''); setHits([]) }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] text-muted hover:bg-navy-900 hover:text-ink"
                   >
                     <MapPin className="h-3 w-3 text-faint flex-none" />

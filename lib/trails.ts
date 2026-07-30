@@ -153,6 +153,27 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
 }
 
 /**
+ * Union two row sets, de-duped on (asset, timestamp), oldest-first.
+ *
+ * The map holds two sources for any window: the snapshot shipped with the page
+ * (capped and newest-biased) and the window's own /api/history fetch. Taking
+ * only the fetch meant a range could visibly LOSE points the client already
+ * had — the "30 days shows less than 7 days" class of bug. Merging makes the
+ * rendered set monotonic: whatever a range showed, a wider range still shows.
+ */
+export function mergeHistoryRows<T extends { asset_id: string; timestamp: string }>(
+  a: T[],
+  b: T[]
+): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const r of a) { const k = `${r.asset_id}|${r.timestamp}`; if (!seen.has(k)) { seen.add(k); out.push(r) } }
+  for (const r of b) { const k = `${r.asset_id}|${r.timestamp}`; if (!seen.has(k)) { seen.add(k); out.push(r) } }
+  out.sort((x, y) => x.timestamp.localeCompare(y.timestamp))
+  return out
+}
+
+/**
  * Build tracks from REAL location history (see getLocationHistory). Points are
  * normalized fleet-wide across the fetched window (first→last timestamp) so
  * playback heads move in sync. Assets with no history get an empty track —
