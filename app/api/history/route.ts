@@ -41,6 +41,34 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
+  const spanDays = (toMs - fromMs) / 86_400_000
+  const maxAge = spanDays <= 2 ? 30 : spanDays <= 31 ? 240 : 600
+
+  // LONG windows (30d/YTD/All): one uniform-stride window scan (035) instead
+  // of paging dozens of full-res pages through deep PostgREST offsets. Once a
+  // month of OBD data outgrew the cap, the paged fetch ran past the timeout /
+  // errored, the client silently fell back to the thin newest-biased
+  // snapshot, and 30d drew LESS than 7d ("something broken on my timeline",
+  // Jul 30). Sampling covers the whole window evenly by construction.
+  if (spanDays > 10) {
+    // Sample budget shrinks as the span grows — a YTD trail at 12k points
+    // reads identically to 20k on screen, and the payload/parse cost is what
+    // the user feels ("took forever to load", Jul 30).
+    const budget = spanDays > 90 ? 12_000 : SHIP_CAP
+    const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
+      p_from: new Date(fromMs).toISOString(),
+      p_to: new Date(toMs).toISOString(),
+      p_max: budget,
+    })
+    if (!rpcErr && Array.isArray(sampled)) {
+      return NextResponse.json(
+        { rows: sampled, truncated: false },
+        { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
+      )
+    }
+    // Pre-035 DB (function missing) — fall through to the paged fetch.
+  }
+
   // Fetch NEWEST-first in pages: Supabase's API "Max Rows" setting silently
   // caps a single .limit(40000) to as little as 1000 rows — which starved the
   // longer ranges (7d/30d/YTD "not working"). .range() paging gets past any
@@ -110,8 +138,6 @@ export async function GET(req: NextRequest) {
 
   // Cache big windows longer — their content barely changes minute to minute,
   // and the browser cache absorbs an over-eager poller between real re-pulls.
-  const spanDays = (toMs - fromMs) / 86_400_000
-  const maxAge = spanDays <= 2 ? 30 : spanDays <= 31 ? 240 : 600
   return NextResponse.json(
     { rows: thinned, truncated },
     { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
