@@ -15,6 +15,8 @@ export interface AssetFormData {
   category: string
   serial: string
   photo_url: string
+  /** Document folder (Dropbox/Drive/OneDrive) — same field zones carry. */
+  folder_url: string
   tracker_id: string
   metadata: Record<string, unknown>
   hourly_rate: number | null
@@ -90,7 +92,7 @@ interface AssetFormProps {
   onClose: () => void
   onSubmit: (data: AssetFormData, photos?: NewPhoto[]) => void
   saving?: boolean
-  initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string;
+  initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string; folder_url?: string | null;
     metadata?: Record<string, unknown>;
     hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_price?: number | null; purchase_value?: number | null }
   /** Existing gallery photos (edit mode). */
@@ -351,6 +353,9 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
     purchase_price: initial?.purchase_price != null ? String(initial.purchase_price) : '',
     purchase_value: initial?.purchase_value != null ? String(initial.purchase_value) : '',
   }))
+  // Document folder — rides the SAME save as the rest of the form, exactly
+  // like zones after the Jul 30 one-save consolidation.
+  const [folderUrl, setFolderUrl] = useState(initial?.folder_url ?? '')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -361,6 +366,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
       // Hero stays whatever it was; the server sets it from the first upload
       // when the asset has none. Keep legacy hero so edits don't wipe it.
       photo_url: initial?.photo_url ?? '',
+      folder_url: folderUrl.trim(),
       tracker_id: trackerId.trim(), metadata: specs,
       hourly_rate: parseCost(costs.hourly_rate ?? ''),
       mileage_rate: parseCost(costs.mileage_rate ?? ''),
@@ -560,6 +566,17 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               ))}
             </div>
             <p className="text-[10px] text-faint leading-tight">Used on the map dot, trail line, and radar dial. Auto assigns a stable color.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="asset-folder">Project folder link <span className="text-faint font-normal">(optional)</span></Label>
+            <Input
+              id="asset-folder" type="url" inputMode="url"
+              placeholder="Dropbox / Drive / OneDrive folder URL"
+              value={folderUrl}
+              onChange={(e) => setFolderUrl(e.target.value)}
+            />
+            <p className="text-[10.5px] text-faint -mt-1">Manuals, receipts, photos — one tap from this asset everywhere it appears.</p>
           </div>
 
           {/* Open-ended notes — the AI reads these, so "V6 engine, takes

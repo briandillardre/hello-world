@@ -133,6 +133,34 @@ customers without breaking anyone's grandfathered price.
    (the promise). New assets beyond the founding count join at list rate —
    growth converges everyone toward list without ever breaking a promise.
 
+## Users: how many, what kinds (kept deliberately boring)
+
+**Billing answer: users are free, unlimited, at every tier, forever.** The
+billable units are machines and tags — never people. This is the loudest
+anti-Tenna/Samsara line we have, and it's also self-interested: every worker
+with a login generates clock-ins, QR checks, and logs, which is the data the
+Operate habit is made of. Charging per seat would tax our own moat.
+
+**Crew phones are free too.** A person clocking in on /track appears on the
+map without being a billed asset — their phone costs us nothing (no SIM, no
+flespi), and a map with people on it sells the next tier better than any
+demo. If a company wants dedicated personnel GPS hardware, THAT device bills
+as a machine; the phone never does.
+
+**Four roles, contractor words, no custom-role builder:**
+
+| Role | Who it is | Can | Can't |
+|---|---|---|---|
+| **Owner** (admin) | Brian's counterpart | everything + billing + team | — |
+| **Office** (manager) | PM / bookkeeper | edit assets & zones, costs, reports, QBO | billing, team |
+| **Foreman** | field lead | crew clock, daily logs, QR checks, map | costs, editing setup |
+| **Crew** (viewer) | everyone else | clock in/out, see the map | everything else |
+
+These map 1:1 onto the roles already enforced in lib/permissions.ts —
+the work here is display language, not schema. Custom roles and per-feature
+toggles stay out until a customer with 50+ people demands them; every
+role-builder we don't ship is a support surface we don't carry.
+
 ## Tax posture (so billing doesn't create a liability)
 
 - Hardware: tangible personal property, plainly taxable in SC → hardware

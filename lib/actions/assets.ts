@@ -31,6 +31,8 @@ export interface CreateAssetInput {
   category?: string
   serial?: string
   photo_url?: string
+  /** Document folder URL — stored null when blank. */
+  folder_url?: string
   tracker_id?: string
   metadata?: Record<string, unknown>
   // Cost structure — numbers or null (form converts empty inputs to null)
@@ -122,6 +124,7 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
     tracker_id: orNull(input.tracker_id),
     category: orNull(input.category),
     serial: orNull(input.serial),
+    folder_url: orNull(input.folder_url),
     photo_url: photoUrl,
     hourly_rate: numOrNull(input.hourly_rate),
     mileage_rate: numOrNull(input.mileage_rate),
@@ -192,6 +195,7 @@ export async function updateAssetAction(
     ...(input.active !== undefined ? { active: input.active } : {}),
     ...(input.category !== undefined ? { category: orNull(input.category) } : {}),
     ...(input.serial !== undefined ? { serial: orNull(input.serial) } : {}),
+    ...(input.folder_url !== undefined ? { folder_url: orNull(input.folder_url) } : {}),
     ...(input.hourly_rate !== undefined ? { hourly_rate: numOrNull(input.hourly_rate) } : {}),
     ...(input.mileage_rate !== undefined ? { mileage_rate: numOrNull(input.mileage_rate) } : {}),
     ...(input.daily_cost !== undefined ? { daily_cost: numOrNull(input.daily_cost) } : {}),

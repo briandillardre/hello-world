@@ -81,6 +81,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
             category: asset.category ?? undefined,
             serial: asset.serial ?? undefined,
             photo_url: asset.photo_url ?? undefined,
+            folder_url: asset.folder_url ?? null,
             metadata: (asset.metadata ?? {}) as Record<string, unknown>,
             hourly_rate: asset.hourly_rate,
             mileage_rate: asset.mileage_rate,
