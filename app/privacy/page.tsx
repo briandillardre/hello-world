@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
+import { BRAND_EMAIL_HELLO } from '@/lib/brand'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Privacy Policy',
@@ -135,8 +136,8 @@ export default function PrivacyPage() {
             <h2>Contact</h2>
             <p className="mt-2">
               Questions or data requests:{' '}
-              <a href="mailto:hello@hammertrack.ai" className="text-amber hover:underline">
-                hello@hammertrack.ai
+              <a href={`mailto:${BRAND_EMAIL_HELLO}`} className="text-amber hover:underline">
+                {BRAND_EMAIL_HELLO}
               </a>
               .
             </p>

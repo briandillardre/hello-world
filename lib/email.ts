@@ -8,11 +8,13 @@
  *
  * Env:
  *   RESEND_API_KEY   — from resend.com (free tier: 3k emails/mo)
- *   EMAIL_FROM       — verified sender, e.g. "HammerTrack <team@hammertrack.ai>"
- *                      (defaults to that; the domain must be verified in Resend)
+ *   EMAIL_FROM       — verified sender; defaults to team@<brand domain>,
+ *                      which must be verified in Resend before it sends.
  */
 
-const FROM_DEFAULT = 'HammerTrack <team@hammertrack.ai>'
+import { BRAND_NAME, BRAND_DOMAIN } from './brand'
+
+const FROM_DEFAULT = `${BRAND_NAME} <team@${BRAND_DOMAIN}>`
 
 export function emailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY

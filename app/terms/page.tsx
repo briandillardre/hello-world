@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
+import { BRAND_EMAIL_HELLO } from '@/lib/brand'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Terms of Service',
@@ -91,8 +92,8 @@ export default function TermsPage() {
             <h2>Governing law &amp; contact</h2>
             <p className="mt-2">
               These terms are governed by the laws of the State of South Carolina. Questions:{' '}
-              <a href="mailto:hello@hammertrack.ai" className="text-amber hover:underline">
-                hello@hammertrack.ai
+              <a href={`mailto:${BRAND_EMAIL_HELLO}`} className="text-amber hover:underline">
+                {BRAND_EMAIL_HELLO}
               </a>
               .
             </p>
