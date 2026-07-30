@@ -127,13 +127,17 @@ export async function getCompanySettings(): Promise<{
   name: string; plan: string; work_start: string; work_end: string; work_days: number[];
   alert_phone: string; alert_email: string;
   sms_consent_phone: string | null; sms_consent_at: string | null;
+  stripe_customer_id: string | null; subscription_status: string | null;
+  current_period_end: string | null; cancel_at_period_end: boolean;
   isAdmin: boolean
 }> {
   const fallback = {
     name: MOCK_COMPANY.name, plan: MOCK_COMPANY.plan,
     work_start: MOCK_COMPANY.work_start, work_end: MOCK_COMPANY.work_end,
     work_days: MOCK_COMPANY.work_days, alert_phone: '', alert_email: '',
-    sms_consent_phone: null, sms_consent_at: null, isAdmin: false,
+    sms_consent_phone: null, sms_consent_at: null,
+    stripe_customer_id: null, subscription_status: null,
+    current_period_end: null, cancel_at_period_end: false, isAdmin: false,
   }
   if (isMock) return fallback
   try {
@@ -164,6 +168,11 @@ export async function getCompanySettings(): Promise<{
       // undefined until migration 041 lands — star-select tolerates that.
       sms_consent_phone: (c.sms_consent_phone as string | null) ?? null,
       sms_consent_at: (c.sms_consent_at as string | null) ?? null,
+      // undefined until migration 042 — star-select degrades instead of erroring.
+      stripe_customer_id: (c.stripe_customer_id as string | null) ?? null,
+      subscription_status: (c.subscription_status as string | null) ?? null,
+      current_period_end: (c.current_period_end as string | null) ?? null,
+      cancel_at_period_end: !!c.cancel_at_period_end,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {

@@ -7,9 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
+import { BillingCard } from '@/components/settings/BillingCard'
+import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
+import { getMyPermissions } from '@/lib/permissions-server'
 
 export default async function SettingsPage() {
-  const co = await getCompanySettings()
+  const [co, perms] = await Promise.all([getCompanySettings(), getMyPermissions()])
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
@@ -24,6 +27,18 @@ export default async function SettingsPage() {
           alert_phone={co.alert_phone} alert_email={co.alert_email}
           sms_consent_phone={co.sms_consent_phone} sms_consent_at={co.sms_consent_at}
           editable={co.isAdmin}
+        />
+
+        {/* Subscription state + the two buttons that matter */}
+        <BillingCard
+          configured={billingConfigured()}
+          canManage={perms.canManageBilling}
+          plan={co.plan}
+          status={co.subscription_status}
+          statusText={statusLabel(co.subscription_status, co.cancel_at_period_end)}
+          active={isActiveStatus(co.subscription_status)}
+          periodEnd={co.current_period_end}
+          hasCustomer={!!co.stripe_customer_id}
         />
 
         {/* Prove the alert pipeline any time — not at 2 AM */}

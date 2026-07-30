@@ -128,6 +128,11 @@ RESEND_API_KEY=                # optional: emails team invites (free at resend.c
 EMAIL_FROM=                    # optional sender override, default "HammerTrack <team@hammertrack.ai>"
 SUPABASE_DB_URL=               # optional: session-pooler Postgres URI — enables `npm run migrate` (auto-migrations)
 CRON_SECRET=                   # optional: locks /api/cron/digest (Vercel cron sends it automatically)
+# ── Stripe subscription billing (optional; unset = billing card says so, nothing throws) ──
+STRIPE_SECRET_KEY=             # sk_live_… (sk_test_… against test mode)
+STRIPE_WEBHOOK_SECRET=         # whsec_… from the /api/stripe/webhook endpoint in Stripe
+STRIPE_PRICE_MACHINE=          # price_… recurring $6/mo, "Tracked machine"
+STRIPE_PRICE_TAG=              # price_… recurring $3/mo, "Tool tag"
 SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
 WINDY_WEBCAMS_KEY=             # optional: Webcams map layer (free key at api.windy.com/webcams)
 NEXT_PUBLIC_TOMTOM_KEY=        # optional: Traffic map layer (free key at developer.tomtom.com, 2.5k tiles/day)
