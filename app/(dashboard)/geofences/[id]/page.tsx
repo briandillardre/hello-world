@@ -47,6 +47,19 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   const inside = !ring ? [] : assets.filter((a) => a.location && pointInPolygon([a.location.lng, a.location.lat], ring))
   const parent = fence.parent_id ? allFences.find((g) => g.id === fence.parent_id) : null
   const subZones = allFences.filter((g) => g.parent_id === fence.id)
+  // Parent candidates for the editor: every other zone that isn't this one or
+  // one of its descendants (nesting a zone under its own child would orphan it).
+  const descendants = new Set<string>([fence.id])
+  for (let grew = true; grew; ) {
+    grew = false
+    for (const g of allFences) {
+      if (g.parent_id && descendants.has(g.parent_id) && !descendants.has(g.id)) { descendants.add(g.id); grew = true }
+    }
+  }
+  const parentOptions = allFences
+    .filter((g) => !descendants.has(g.id))
+    .map((g) => ({ id: g.id, name: g.name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   // Job cockpit: what happened inside this zone over the window — same accrual
   // engine that prices QBO invoices, so the table IS the invoice preview.
@@ -134,6 +147,9 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             isOwnedByMe={!!fence.owner_id /* RLS only returns your own personal zones */}
             activeFrom={fence.active_from ?? null}
             activeUntil={fence.active_until ?? null}
+            folderUrl={fence.folder_url ?? null}
+            notes={fence.notes ?? null}
+            parentOptions={parentOptions}
           />
         )}
 
@@ -157,9 +173,15 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
         )}
 
-        {!isMock && <ZoneNotes id={fence.id} initial={fence.notes ?? ''} />}
-
-        {!isMock && <FolderLink kind="zone" id={fence.id} initial={fence.folder_url ?? null} />}
+        {/* Notes + folder ride the editor's single Save above. These standalone
+            cards remain ONLY for a zone whose ring is too degenerate to edit —
+            otherwise the page had three separate Save buttons for one zone. */}
+        {!isMock && !(ring && ring.length >= 3) && (
+          <>
+            <ZoneNotes id={fence.id} initial={fence.notes ?? ''} />
+            <FolderLink kind="zone" id={fence.id} initial={fence.folder_url ?? null} />
+          </>
+        )}
 
         <ZoneWeather rows={weather} />
 

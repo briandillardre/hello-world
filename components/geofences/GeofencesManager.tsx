@@ -235,6 +235,11 @@ function GeofenceRow({
             <X className="h-4 w-4" />
           </button>
         </div>
+        {/* This row is a QUICK edit, not the whole zone — say so, so nobody
+            goes looking here for notes, dates, or the boundary itself. */}
+        <Link href={`/geofences/${fence.id}`} className="block text-[11px] text-faint hover:text-amber">
+          Boundary, notes, project dates, visibility → full zone settings
+        </Link>
       </div>
     )
   }

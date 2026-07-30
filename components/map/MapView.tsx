@@ -270,7 +270,7 @@ interface MapViewProps {
   /** Floating AskAI button, rendered beside the collapsed layers pill
    *  (only the real /map passes one — demo + kiosk have no assistant). */
   askSlot?: React.ReactNode
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean; folderUrl?: string }) => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: import('@/lib/types').ZoneFormOpts) => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
@@ -4043,6 +4043,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           onFinishDraw={finishDrawing}
           onCancelDraw={cancelDrawing}
           onSave={onGeofenceSave}
+          zones={geofences.map((g) => ({ id: g.id, name: g.name }))}
           onLocate={(lng, lat, label) => {
             setSearchPin(lng, lat, label)
             map.current?.flyTo({ center: [lng, lat], zoom: 17, duration: 1100 })

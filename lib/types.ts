@@ -189,6 +189,25 @@ export interface Geofence {
   created_at: string
 }
 
+/**
+ * Everything a zone form can set beyond name/geometry/color/kind. ONE shape
+ * shared by the map's draw dialog and the zone-detail editor so the two can't
+ * drift apart again ("the edit screen has more functionality than the add
+ * screen" — owner, Jul 30). Adding a field here surfaces it in both.
+ */
+export interface ZoneFormOpts {
+  personal?: boolean
+  /** Nest under a parent site. undefined = leave as-is. */
+  parentId?: string | null
+  /** Project window, ISO. null clears. */
+  active_from?: string | null
+  active_until?: string | null
+  /** Document folder (Dropbox/Drive/OneDrive) URL. */
+  folderUrl?: string
+  /** Owner notes — the same field the zone page and the AI read. */
+  notes?: string
+}
+
 export interface ZoneEvent {
   id: string
   company_id: string

@@ -3,6 +3,39 @@
 import { revalidatePath } from 'next/cache'
 import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/geofences'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import type { AlertTrigger, ZoneFormOpts } from '@/lib/types'
+
+/**
+ * Rules every new global zone gets.
+ *
+ * enter/exit are the bookkeeping pair (info severity — logged, never paged).
+ * `left_site` is the theft posture and IS per-zone: the ingest route only fires
+ * it on a true inside→outside transition, so one rule per zone is exactly right.
+ *
+ * `after_hours_movement` is deliberately NOT in this list even though it's the
+ * marquee theft alert. The engine ignores the zone for that trigger (any moving
+ * asset outside work hours fires it), so a rule per zone would page the owner
+ * once per zone for the same truck. It's created ONCE per company instead —
+ * see ensureAfterHoursRule. Both theft rules were missing entirely until Jul 30,
+ * which is why the live theft test had nothing to fire; migration 040 backfills
+ * them onto zones drawn before this.
+ */
+const DEFAULT_ZONE_TRIGGERS: AlertTrigger[] = ['enter', 'exit', 'left_site']
+
+/**
+ * One company-wide after-hours rule, anchored to whatever zone is at hand
+ * (geofence_id is NOT NULL, and the trigger doesn't read the zone). Idempotent:
+ * a company that already has one keeps it, so drawing a fifth zone doesn't
+ * multiply 2 AM texts by five.
+ */
+async function ensureAfterHoursRule(companyId: string, anchorZoneId: string) {
+  const { getAlertRules, createAlertRule } = await import('../db/alerts')
+  const existing = await getAlertRules(companyId)
+  if (existing.some((r) => r.trigger === 'after_hours_movement')) return
+  await createAlertRule(companyId, {
+    geofence_id: anchorZoneId, asset_id: null, trigger: 'after_hours_movement', idle_minutes: null,
+  })
+}
 
 /** Who's performing the action, for the zone change log. */
 async function currentActor(): Promise<{ id: string | null; name: string }> {
@@ -16,37 +49,35 @@ async function currentActor(): Promise<{ id: string | null; name: string }> {
   } catch { return { id: null, name: 'User' } }
 }
 
-export interface ZoneLifecycleOpts {
-  personal?: boolean
-  active_from?: string | null
-  active_until?: string | null
-  /** Project document folder (Dropbox/Drive/OneDrive URL). */
-  folderUrl?: string
-}
+/** @deprecated Use ZoneFormOpts — kept as an alias so older call sites compile. */
+export type ZoneLifecycleOpts = ZoneFormOpts
 
 export async function createGeofenceAction(
   name: string, geometry: GeoJSON.Polygon, color: string,
-  kind: 'site' | 'boundary' | 'yard' = 'site', opts?: ZoneLifecycleOpts
+  kind: 'site' | 'boundary' | 'yard' = 'site', opts?: ZoneFormOpts
 ) {
   const companyId = await getCurrentCompanyId()
   const id = await createGeofence(companyId, {
-    name, geometry, color, kind,
+    name, geometry, color, kind, parent_id: opts?.parentId ?? null,
     personal: opts?.personal, active_from: opts?.active_from ?? null, active_until: opts?.active_until ?? null,
   })
   if (id) {
     // Personal zones are private reference only — they never drive company
-    // alerts, so skip the default enter/exit rules. Global zones get them:
+    // alerts, so skip the default rules. Global zones get the full set:
     // without a rule nothing ever fires (owner, Jul 14). Deletable on /alerts.
     if (!opts?.personal) {
       try {
         const { createAlertRule } = await import('../db/alerts')
-        await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'enter', idle_minutes: null })
-        await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger: 'exit', idle_minutes: null })
+        for (const trigger of DEFAULT_ZONE_TRIGGERS) {
+          await createAlertRule(companyId, { geofence_id: id, asset_id: null, trigger, idle_minutes: null })
+        }
+        await ensureAfterHoursRule(companyId, id)
       } catch { /* rules are additive — zone creation must not fail on them */ }
     }
     const actor = await currentActor()
     await logZoneEvent(companyId, id, actor.id, 'created', { by: actor.name, kind, personal: !!opts?.personal })
     if (opts?.folderUrl?.trim()) await saveZoneFolderAction(id, opts.folderUrl)
+    if (opts?.notes?.trim()) await saveZoneNotesAction(id, opts.notes)
   }
   revalidatePath('/geofences')
   revalidatePath('/map')
@@ -61,7 +92,7 @@ export async function saveGeofenceAction(
   parentId: string | null,
   geometry?: GeoJSON.Polygon,
   kind?: 'site' | 'boundary' | 'yard',
-  opts?: ZoneLifecycleOpts & { clear_dates?: boolean }
+  opts?: ZoneFormOpts & { clear_dates?: boolean }
 ) {
   const g = await getGeofence(id)
   if (!g) return
@@ -70,6 +101,10 @@ export async function saveGeofenceAction(
     name, color, geometry: geometry ?? g.geometry, parent_id: parentId, kind,
     personal: opts?.personal, active_from: opts?.active_from, active_until: opts?.active_until, clear_dates: opts?.clear_dates,
   })
+  // Folder + notes ride the SAME save (owner ask, Jul 30 — "the edit screen
+  // has multiple areas to save"). One button writes the whole zone.
+  if (opts?.folderUrl !== undefined) await saveZoneFolderAction(id, opts.folderUrl)
+  if (opts?.notes !== undefined) await saveZoneNotesAction(id, opts.notes)
 
   // Log what changed so the zone page can explain shifts in hours/acreage.
   const changed: string[] = []

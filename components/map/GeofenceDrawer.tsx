@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Check, Search, MapPin, Hexagon, Shield } from 'lucide-react'
+import { X, Check, Search, MapPin, Hexagon, Shield, ChevronDown, ChevronRight } from 'lucide-react'
+import type { ZoneFormOpts } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,11 +17,14 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: { personal?: boolean; folderUrl?: string }) => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: ZoneFormOpts) => void
   /** Fly the map to an address hit so the user can draw around it. */
   /** Fly to the hit AND drop a marker there, so the searched address stays
    *  visible while you click out the corners around it. */
   onLocate?: (lng: number, lat: number, label: string) => void
+  /** Existing zones, so a new one can be nested under a parent site — same
+   *  choice the zone-edit page offers (add/edit parity, owner ask Jul 30). */
+  zones?: { id: string; name: string }[]
 }
 
 interface AddressHit { label: string; lng: number; lat: number }
@@ -31,6 +35,7 @@ export function GeofenceDrawer({
   onCancelDraw,
   onSave,
   onLocate,
+  zones = [],
 }: GeofenceDrawerProps) {
   const [showDialog, setShowDialog] = useState(false)
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null)
@@ -41,6 +46,14 @@ export function GeofenceDrawer({
   // Project document folder (Dropbox/Drive/OneDrive) — one link per job, so
   // plans and photos are a tap from the zone everywhere it appears.
   const [folderUrl, setFolderUrl] = useState('')
+  // Everything the zone-edit page can set, set here too — the add and edit
+  // forms drifted apart and the owner caught it (Jul 30). Secondary fields sit
+  // behind a disclosure so the common "name it and go" path stays one screen.
+  const [notes, setNotes] = useState('')
+  const [parent, setParent] = useState('')
+  const [activeFrom, setActiveFrom] = useState('')
+  const [activeUntil, setActiveUntil] = useState('')
+  const [more, setMore] = useState(false)
 
   // Address search while drawing — type a street address, jump there, click
   // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
@@ -81,12 +94,24 @@ export function GeofenceDrawer({
 
   const handleSave = () => {
     if (!pendingGeom || !name.trim()) return
-    onSave?.(name.trim(), pendingGeom, color, kind, { personal, folderUrl: folderUrl.trim() || undefined })
+    onSave?.(name.trim(), pendingGeom, color, kind, {
+      personal,
+      folderUrl: folderUrl.trim() || undefined,
+      notes: notes.trim() || undefined,
+      parentId: parent || null,
+      active_from: activeFrom ? new Date(activeFrom + 'T00:00:00').toISOString() : null,
+      active_until: activeUntil ? new Date(activeUntil + 'T23:59:59').toISOString() : null,
+    })
     setShowDialog(false)
     setName('')
     setKind('site')
     setPersonal(false)
     setFolderUrl('')
+    setNotes('')
+    setParent('')
+    setActiveFrom('')
+    setActiveUntil('')
+    setMore(false)
     setPendingGeom(null)
   }
 
@@ -148,7 +173,9 @@ export function GeofenceDrawer({
       )}
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
+        {/* Cap the height: the form now carries every field the zone-edit page
+            has, which overflows a phone screen without this. */}
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Save Geofence</DialogTitle>
           </DialogHeader>
@@ -239,6 +266,64 @@ export function GeofenceDrawer({
                 </p>
               )}
             </div>
+            {/* Secondary settings — same ones the zone page offers. Collapsed by
+                default so naming a zone and hitting Save stays a two-tap job. */}
+            <div className="border-t border-navy-800 pt-3">
+              <button
+                type="button"
+                onClick={() => setMore((v) => !v)}
+                className="flex items-center gap-1.5 text-[12px] font-semibold text-muted hover:text-ink"
+              >
+                {more ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                More options
+                <span className="font-normal text-faint">(notes, project dates{zones.length ? ', parent zone' : ''})</span>
+              </button>
+              {more && (
+                <div className="space-y-3 pt-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="fence-notes">
+                      Notes <span className="text-faint font-normal">(gate codes, access — the AI reads these)</span>
+                    </Label>
+                    <textarea
+                      id="fence-notes" rows={3}
+                      placeholder="Gate code 4188 · call before 7am · no trucks on the east drive"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-sm text-ink placeholder:text-faint outline-none focus:border-amber resize-y"
+                    />
+                  </div>
+                  {kind !== 'boundary' && (
+                    <div className="space-y-2">
+                      <Label>Project window <span className="text-faint font-normal">(optional — blank = ongoing)</span></Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-faint">Start</span>
+                          <Input type="date" value={activeFrom} onChange={(e) => setActiveFrom(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-faint">End</span>
+                          <Input type="date" value={activeUntil} onChange={(e) => setActiveUntil(e.target.value)} />
+                        </div>
+                      </div>
+                      <p className="text-[10.5px] text-faint leading-snug">Job-cost totals count activity in this window; a past end date archives the zone off the live map.</p>
+                    </div>
+                  )}
+                  {zones.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="fence-parent">Parent zone <span className="text-faint font-normal">(optional — nest under a larger site)</span></Label>
+                      <select
+                        id="fence-parent" value={parent} onChange={(e) => setParent(e.target.value)}
+                        className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-sm text-ink outline-none focus:border-amber"
+                      >
+                        <option value="">None (top level)</option>
+                        {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex gap-3 pt-2">
               <Button variant="outline" onClick={() => setShowDialog(false)} className="flex-1">
                 Cancel

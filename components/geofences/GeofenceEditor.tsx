@@ -28,6 +28,12 @@ interface GeofenceEditorProps {
   isOwnedByMe?: boolean
   activeFrom?: string | null
   activeUntil?: string | null
+  /** Project document folder (Dropbox/Drive/OneDrive) URL. */
+  folderUrl?: string | null
+  /** Owner notes — gate codes, access, anything the AI should know. */
+  notes?: string | null
+  /** Other zones that may serve as a parent (self + descendants excluded). */
+  parentOptions?: { id: string; name: string }[]
   /** Closed ring [[lng,lat],…] (first == last). */
   ring: [number, number][]
 }
@@ -44,7 +50,7 @@ function dayInput(iso?: string | null): string {
  * move — works with touch for iPad. Midpoints (hollow dots) tap to add a
  * vertex. Tap a vertex to select it, then "Delete vertex" removes it (min 3).
  */
-export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ownerId = null, isOwnedByMe = false, activeFrom: initialActiveFrom = null, activeUntil: initialActiveUntil = null, ring: initialRing }: GeofenceEditorProps) {
+export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ownerId = null, isOwnedByMe = false, activeFrom: initialActiveFrom = null, activeUntil: initialActiveUntil = null, folderUrl: initialFolderUrl = null, notes: initialNotes = null, parentOptions = [], ring: initialRing }: GeofenceEditorProps) {
   const router = useRouter()
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -65,6 +71,12 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   const [personal, setPersonal] = useState<boolean>(!!ownerId)
   const [activeFrom, setActiveFrom] = useState<string>(dayInput(initialActiveFrom))
   const [activeUntil, setActiveUntil] = useState<string>(dayInput(initialActiveUntil))
+  // Folder + notes used to be two separate cards further down the page, each
+  // with its own Save. They're plain zone fields, so they belong here and go
+  // out with the one Save ("this needs to be more intuitive" — owner, Jul 30).
+  const [folderUrl, setFolderUrl] = useState(initialFolderUrl ?? '')
+  const [notes, setNotes] = useState(initialNotes ?? '')
+  const [parent, setParent] = useState<string>(parentId ?? '')
   const colorRef = useRef(color)
   colorRef.current = color
   const [saving, setSaving] = useState(false)
@@ -235,7 +247,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     setSaving(true)
     try {
       const closed = [...verts, verts[0]]
-      await saveGeofenceAction(id, name.trim() || initialName, color, parentId, {
+      await saveGeofenceAction(id, name.trim() || initialName, color, parent || null, {
         type: 'Polygon',
         coordinates: [closed],
       }, kind, {
@@ -245,6 +257,8 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
         active_from: activeFrom ? new Date(activeFrom + 'T00:00:00').toISOString() : null,
         active_until: activeUntil ? new Date(activeUntil + 'T23:59:59').toISOString() : null,
         clear_dates: !activeFrom && !activeUntil,
+        folderUrl: folderUrl.trim(),
+        notes,
       })
       setDirty(false)
       router.refresh()
@@ -359,6 +373,49 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
               <p className="text-[10.5px] text-faint leading-snug">Job-cost totals count activity within this window; a past end date archives the zone off the live map (history stays).</p>
             </div>
           )}
+
+          {/* Project folder + notes — same fields the map's save dialog offers,
+              so adding and editing a zone ask for the same things. */}
+          <div className="space-y-3 border-t border-navy-800 pt-3">
+            <div className="space-y-1">
+              <Label htmlFor="zone-folder" className="text-xs">
+                Project folder link <span className="text-faint font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="zone-folder" type="url" inputMode="url"
+                placeholder="Dropbox / Drive / OneDrive folder URL"
+                value={folderUrl}
+                onChange={(e) => { setFolderUrl(e.target.value); setDirty(true) }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="zone-notes" className="text-xs">
+                Notes <span className="text-faint font-normal">(gate codes, access, contacts — the AI reads these)</span>
+              </Label>
+              <textarea
+                id="zone-notes" rows={3}
+                placeholder="Gate code 4188 · call Nate before 7am · no trucks on the east drive"
+                value={notes}
+                onChange={(e) => { setNotes(e.target.value); setDirty(true) }}
+                className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-sm text-ink placeholder:text-faint outline-none focus:border-amber resize-y"
+              />
+            </div>
+            {parentOptions.length > 0 && (
+              <div className="space-y-1">
+                <Label htmlFor="zone-parent" className="text-xs">
+                  Parent zone <span className="text-faint font-normal">(optional — nest under a larger site)</span>
+                </Label>
+                <select
+                  id="zone-parent" value={parent}
+                  onChange={(e) => { setParent(e.target.value); setDirty(true) }}
+                  className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-sm text-ink outline-none focus:border-amber"
+                >
+                  <option value="">None (top level)</option>
+                  {parentOptions.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={save} disabled={saving || !dirty || verts.length < 3} className="gap-1.5">

@@ -78,7 +78,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
 
   // Show the new zone immediately (optimistic), and in real mode persist it to
   // the database so it survives a refresh and appears on every screen.
-  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site', opts?: { personal?: boolean; folderUrl?: string }) => {
+  const handleGeofenceSave = useCallback(async (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' = 'site', opts?: import('@/lib/types').ZoneFormOpts) => {
     const fence: Geofence = {
       id: `fence-${Date.now()}`,
       company_id: MOCK_COMPANY.id,
@@ -87,6 +87,10 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       color,
       kind,
       owner_id: opts?.personal ? 'me' : null,
+      parent_id: opts?.parentId ?? null,
+      active_from: opts?.active_from ?? null,
+      active_until: opts?.active_until ?? null,
+      notes: opts?.notes ?? null,
       created_at: new Date().toISOString(),
     }
     setGeofences((prev) => [...prev, fence])
@@ -94,7 +98,10 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       // Await + surface failure — this used to be fire-and-forget, so a failed
       // insert looked saved until the next page load quietly dropped it.
       try {
-        const id = await createGeofenceAction(name, geometry, color, kind, { personal: opts?.personal, folderUrl: opts?.folderUrl })
+        // Pass the whole opts bag straight through — the add dialog now
+        // collects every field the zone-edit page does, and dropping any of
+        // them here is exactly how the two forms drifted apart before.
+        const id = await createGeofenceAction(name, geometry, color, kind, opts)
         if (!id) throw new Error('no id returned')
       } catch (err) {
         console.error('Geofence save failed', err)
