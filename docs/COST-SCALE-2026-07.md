@@ -62,6 +62,15 @@ work (039) is what keeps read load flat as history grows.
   fixed Jul 31). At-cost pass-through only works if the quoted number is real.
 - **Stripe fees are the third-largest cost at scale** — behind SIMs and infra.
   ACH/bank debit for annual plans later cuts this ~60%.
+- **Measured, not modeled (first live charge, Jul 31):** $6.00 gross → $5.53
+  net. That's **7.9% effective** — the 30¢ fixed fee dominates small charges.
+  Effective rate is a function of invoice size, not headline rate:
+  $6 invoice → 7.9% · $84 (typical founder customer) → 3.26% · $263 (Run
+  tier) → 3.0%. Consequences: never bill per-asset as separate charges (one
+  subscription invoice per customer, which is how it's built); a 1-machine
+  customer at $6/mo is the worst case and argues for a small minimum or
+  annual prepay; and the scaling table's fee line assumes the $84 average —
+  a fleet of tiny customers would run ~2× that.
 - **Margin floor holds**: even 100% founder-priced cohort clears 70% GM; the
   platform fee ($49/$199) at list is nearly pure margin on top.
 

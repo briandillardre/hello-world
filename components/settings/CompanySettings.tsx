@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { updateCompanySettingsAction } from '@/lib/actions/company'
+import { normalizeUsPhone } from '@/lib/phone'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,10 +45,15 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
   // the number and it must be granted again — that's what makes the stored
   // record meaningful rather than a one-time formality.
   const phoneEntered = !!form.alert_phone.trim()
-  const consentOnFile = !!sms_consent_at && sms_consent_phone === form.alert_phone.trim()
+  const normalizedPhone = normalizeUsPhone(form.alert_phone)
+  const consentOnFile = !!sms_consent_at && !!normalizedPhone && sms_consent_phone === normalizedPhone
   const needsConsent = phoneEntered && !consentOnFile
 
   const save = async () => {
+    if (phoneEntered && !normalizedPhone) {
+      setErr("That phone number doesn't look right — a 10-digit US number like (864) 555-1234 works.")
+      return
+    }
     if (needsConsent && !smsConsent) {
       setErr('Tick the SMS consent box to save an alert phone number, or clear the number.')
       return
@@ -104,7 +110,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="alert-phone" className="text-xs">Alert phone (SMS)</Label>
-                <Input id="alert-phone" type="tel" placeholder="+18645551234" value={form.alert_phone} onChange={(e) => setForm((f) => ({ ...f, alert_phone: e.target.value }))} />
+                <Input id="alert-phone" type="tel" placeholder="(864) 555-1234" value={form.alert_phone} onChange={(e) => setForm((f) => ({ ...f, alert_phone: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="alert-email" className="text-xs">Alert email</Label>

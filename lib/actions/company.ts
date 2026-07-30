@@ -39,7 +39,14 @@ export async function updateCompanySettingsAction(input: {
   if (/^\d{2}:\d{2}$/.test(input.work_end ?? '')) patch.work_end = input.work_end
   if (Array.isArray(input.work_days)) patch.work_days = input.work_days.filter((d) => d >= 0 && d <= 6)
   if (typeof input.alert_phone === 'string') {
-    const phone = input.alert_phone.trim().slice(0, 32) || null
+    // Accept human formatting — "(864) 915-2351", "864-915-2351" — and store
+    // E.164, which is what Twilio dials. A non-empty entry that can't be
+    // normalized fails the save rather than storing a number that will bounce
+    // with error 21211 on the first real alert.
+    const rawPhone = input.alert_phone.trim().slice(0, 32)
+    const { normalizeUsPhone } = await import('@/lib/phone')
+    const phone = rawPhone ? normalizeUsPhone(rawPhone) : null
+    if (rawPhone && !phone) return false
     patch.alert_phone = phone
     // Consent is a RECORD, not just a UI gate — carriers can ask who agreed,
     // for which number, and when. It's tied to the specific number, so a new
@@ -161,10 +168,15 @@ export async function sendTestAlertAction(): Promise<{
     // Catch the most common self-inflicted failure before spending a message:
     // a number typed without the country code. Twilio answers 21211 for this,
     // which is not obvious from the console.
-    if (smsTo && !/^\+[1-9]\d{7,14}$/.test(smsTo)) {
+    // Normalize instead of rejecting — a pre-fix row may hold "8649152351",
+    // and the human already told us the number once; don't make them re-learn
+    // a phone format to run a test.
+    const { normalizeUsPhone } = await import('@/lib/phone')
+    const smsToNorm = smsTo ? normalizeUsPhone(smsTo) : null
+    if (smsTo && !smsToNorm) {
       return {
         ok: false, smsAttempted: false, smsTo, twilioConfigured, webhookConfigured,
-        error: `"${smsTo}" isn't in E.164 format — Twilio needs the country code, e.g. +18645551234.`,
+        error: `"${smsTo}" doesn't look like a phone number — re-enter it in Settings as a 10-digit US number.`,
       }
     }
     const sent = await dispatchAlerts(co?.name ?? 'HammerTrack', { phone: co?.alert_phone }, [{

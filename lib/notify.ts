@@ -137,7 +137,10 @@ export async function dispatchAlerts(
   companyId?: string
 ): Promise<number> {
   if (!alerts.length) return 0
-  const smsTo = recipients.phone || process.env.ALERT_SMS_TO
+  // Normalize at the point of dialing too — protects numbers stored before
+  // the settings form normalized on save (e.g. a bare "8649152351").
+  const { normalizeUsPhone } = await import('./phone')
+  const smsTo = normalizeUsPhone(recipients.phone) || normalizeUsPhone(process.env.ALERT_SMS_TO)
   let smsSent = 0
 
   await postWebhook({ company: companyName, alerts, at: new Date().toISOString() })
