@@ -27,6 +27,8 @@ export async function updateCompanySettingsAction(input: {
   work_days?: number[]
   alert_phone?: string
   alert_email?: string
+  /** Admin actively ticked the SMS consent box for this exact number. */
+  sms_consent?: boolean
 }): Promise<boolean> {
   const companyId = await requireAdminCompany()
   if (!companyId) return false
@@ -36,12 +38,35 @@ export async function updateCompanySettingsAction(input: {
   if (/^\d{2}:\d{2}$/.test(input.work_start ?? '')) patch.work_start = input.work_start
   if (/^\d{2}:\d{2}$/.test(input.work_end ?? '')) patch.work_end = input.work_end
   if (Array.isArray(input.work_days)) patch.work_days = input.work_days.filter((d) => d >= 0 && d <= 6)
-  if (typeof input.alert_phone === 'string') patch.alert_phone = input.alert_phone.trim().slice(0, 32) || null
+  if (typeof input.alert_phone === 'string') {
+    const phone = input.alert_phone.trim().slice(0, 32) || null
+    patch.alert_phone = phone
+    // Consent is a RECORD, not just a UI gate — carriers can ask who agreed,
+    // for which number, and when. It's tied to the specific number, so a new
+    // number needs a new tick and clearing the phone clears the record.
+    if (!phone) {
+      patch.sms_consent_at = null
+      patch.sms_consent_by = null
+      patch.sms_consent_phone = null
+    } else if (input.sms_consent) {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: { user } } = await createClient().auth.getUser()
+      patch.sms_consent_at = new Date().toISOString()
+      patch.sms_consent_by = user?.id ?? null
+      patch.sms_consent_phone = phone
+    }
+  }
   if (typeof input.alert_email === 'string') patch.alert_email = input.alert_email.trim().slice(0, 160) || null
   if (Object.keys(patch).length === 0) return false
 
   const { createServiceClient } = await import('@/lib/supabase-server')
-  const { error } = await createServiceClient().from('companies').update(patch).eq('id', companyId)
+  let { error } = await createServiceClient().from('companies').update(patch).eq('id', companyId)
+  // 42703 = consent columns missing (migration 041 not applied yet). Retry
+  // without them so saving settings never breaks on a lagging database.
+  if (error?.code === '42703') {
+    for (const k of ['sms_consent_at', 'sms_consent_by', 'sms_consent_phone']) delete patch[k]
+    ;({ error } = await createServiceClient().from('companies').update(patch).eq('id', companyId))
+  }
   if (error) { console.error('company settings update failed', error); return false }
   revalidatePath('/settings')
   revalidatePath('/map')

@@ -125,12 +125,15 @@ export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; 
  */
 export async function getCompanySettings(): Promise<{
   name: string; plan: string; work_start: string; work_end: string; work_days: number[];
-  alert_phone: string; alert_email: string; isAdmin: boolean
+  alert_phone: string; alert_email: string;
+  sms_consent_phone: string | null; sms_consent_at: string | null;
+  isAdmin: boolean
 }> {
   const fallback = {
     name: MOCK_COMPANY.name, plan: MOCK_COMPANY.plan,
     work_start: MOCK_COMPANY.work_start, work_end: MOCK_COMPANY.work_end,
-    work_days: MOCK_COMPANY.work_days, alert_phone: '', alert_email: '', isAdmin: false,
+    work_days: MOCK_COMPANY.work_days, alert_phone: '', alert_email: '',
+    sms_consent_phone: null, sms_consent_at: null, isAdmin: false,
   }
   if (isMock) return fallback
   try {
@@ -158,6 +161,9 @@ export async function getCompanySettings(): Promise<{
       work_days: c.work_days ?? [1, 2, 3, 4, 5, 6],
       alert_phone: c.alert_phone ?? '',
       alert_email: c.alert_email ?? '',
+      // undefined until migration 041 lands — star-select tolerates that.
+      sms_consent_phone: (c.sms_consent_phone as string | null) ?? null,
+      sms_consent_at: (c.sms_consent_at as string | null) ?? null,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {

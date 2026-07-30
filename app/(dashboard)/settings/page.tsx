@@ -22,6 +22,7 @@ export default async function SettingsPage() {
           name={co.name} plan={co.plan}
           work_start={co.work_start} work_end={co.work_end} work_days={co.work_days}
           alert_phone={co.alert_phone} alert_email={co.alert_email}
+          sms_consent_phone={co.sms_consent_phone} sms_consent_at={co.sms_consent_at}
           editable={co.isAdmin}
         />
 

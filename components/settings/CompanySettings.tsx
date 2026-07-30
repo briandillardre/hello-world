@@ -20,17 +20,23 @@ interface Props {
   work_days: number[]
   alert_phone: string
   alert_email: string
+  /** Number SMS consent was recorded for (migration 041); null = never given. */
+  sms_consent_phone?: string | null
+  sms_consent_at?: string | null
   editable: boolean
 }
 
 /** Editable company name + working hours. Work hours drive the after-hours
  *  theft alert, so this is operational, not cosmetic. */
-export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, editable }: Props) {
+export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, sms_consent_phone = null, sms_consent_at = null, editable }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [form, setForm] = useState({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email })
+  // Carrier rule: the box must be ticked by the user, never pre-checked. It
+  // starts false every time the form opens; the only way past it is a click.
+  const [smsConsent, setSmsConsent] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<AlertTestResult | null>(null)
 
@@ -46,10 +52,21 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
   const toggleDay = (d: number) =>
     setForm((f) => ({ ...f, work_days: f.work_days.includes(d) ? f.work_days.filter((x) => x !== d) : [...f.work_days, d].sort() }))
 
+  // Consent already on file covers only the number it was given for. Change
+  // the number and it must be granted again — that's what makes the stored
+  // record meaningful rather than a one-time formality.
+  const phoneEntered = !!form.alert_phone.trim()
+  const consentOnFile = !!sms_consent_at && sms_consent_phone === form.alert_phone.trim()
+  const needsConsent = phoneEntered && !consentOnFile
+
   const save = async () => {
+    if (needsConsent && !smsConsent) {
+      setErr('Tick the SMS consent box to save an alert phone number, or clear the number.')
+      return
+    }
     setSaving(true); setErr(null)
     try {
-      const ok = await updateCompanySettingsAction(form)
+      const ok = await updateCompanySettingsAction({ ...form, sms_consent: smsConsent || consentOnFile })
       if (!ok) { setErr('Could not save. You may not have admin rights, or the database rejected it.'); return }
       setEditing(false)
       router.refresh()
@@ -106,18 +123,37 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
                 <Input id="alert-email" type="email" placeholder="you@company.com" value={form.alert_email} onChange={(e) => setForm((f) => ({ ...f, alert_email: e.target.value }))} />
               </div>
             </div>
-            {/* Carrier-required consent notice at the point of entry. Toll-Free
-                Verification reviewers look for exactly this language beside the
-                field where a number is collected — and the public /sms page
-                quotes it verbatim, so keep the two in sync. */}
-            <p className="text-[11px] text-faint -mt-1 leading-snug">
-              Where theft &amp; geofence alerts are sent. By entering a mobile number you agree to
-              receive equipment and security alert text messages from HammerTrack at that number.
-              Message frequency varies by alert activity. Message and data rates may apply. Reply
-              STOP to unsubscribe or HELP for help. See our{' '}
-              <a href="/sms" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">SMS alerts program</a>{' '}
-              and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">privacy policy</a>.
-            </p>
+            <p className="text-[11px] text-faint -mt-1 leading-snug">Where theft &amp; geofence alerts are sent.</p>
+
+            {/* Carrier-required opt-in. The rule is explicit: the box must be
+                ACTIVELY ticked, never pre-checked — so `smsConsent` starts
+                false on every open and the save is gated on it. The wording
+                here is quoted verbatim on the public /sms page; keep the two
+                in sync, because that page is the evidence a reviewer reads. */}
+            {needsConsent && (
+              <label className="flex gap-2.5 items-start rounded-lg border border-amber/30 bg-amber/5 px-3 py-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 flex-none accent-amber cursor-pointer"
+                />
+                <span className="text-[11.5px] text-muted leading-snug">
+                  I agree to receive equipment and security alert text messages from HammerTrack at
+                  the number above. Message frequency varies by alert activity. Message and data
+                  rates may apply. Reply STOP to unsubscribe or HELP for help. See our{' '}
+                  <a href="/sms" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">SMS alerts program</a>{' '}
+                  and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline">privacy policy</a>.
+                </span>
+              </label>
+            )}
+            {consentOnFile && (
+              <p className="text-[11px] text-teal/90 leading-snug">
+                ✓ SMS consent on file for {sms_consent_phone} — recorded{' '}
+                {sms_consent_at ? new Date(sms_consent_at).toLocaleDateString() : ''}. Changing the
+                number requires agreeing again.
+              </p>
+            )}
             {err && <p className="text-xs text-alert">{err}</p>}
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => { setEditing(false); setForm({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email }) }} disabled={saving}>Cancel</Button>
