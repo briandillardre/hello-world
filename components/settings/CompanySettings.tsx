@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil } from 'lucide-react'
+import { Pencil, Send } from 'lucide-react'
 import { updateCompanySettingsAction } from '@/lib/actions/company'
+import { sendTestAlertAction, type AlertTestResult } from '@/lib/actions/alert-test'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,17 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [form, setForm] = useState({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email })
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<AlertTestResult | null>(null)
+
+  const sendTest = async () => {
+    setTesting(true); setTestResult(null)
+    try {
+      setTestResult(await sendTestAlertAction())
+    } catch {
+      setTestResult({ ok: false, message: 'The test could not run. Try again in a moment.' })
+    } finally { setTesting(false) }
+  }
 
   const toggleDay = (d: number) =>
     setForm((f) => ({ ...f, work_days: f.work_days.includes(d) ? f.work_days.filter((x) => x !== d) : [...f.work_days, d].sort() }))
@@ -107,6 +119,28 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
             <Row label="Plan" value={<Badge>{plan}</Badge>} />
             <Row label="Working hours" value={<span className="font-mono text-xs">{hoursLabel}</span>} />
             <Row label="Alerts to" value={<span className="font-mono text-xs">{alert_phone || alert_email || '— not set'}</span>} />
+            {/* Prove delivery works without waiting for a real 2 AM theft. Runs
+                the same sender the alert does and reports Twilio's own error. */}
+            {editable && (
+              <div className="pt-1 space-y-2">
+                <Button size="sm" variant="outline" onClick={sendTest} disabled={testing} className="gap-1.5">
+                  <Send className="h-3.5 w-3.5" /> {testing ? 'Sending…' : 'Send test alert'}
+                </Button>
+                {testResult && (
+                  <div
+                    className={
+                      'rounded-lg border px-3 py-2 text-[12px] leading-snug ' +
+                      (testResult.ok
+                        ? 'border-teal/40 bg-teal/10 text-teal'
+                        : 'border-alert/40 bg-alert/10 text-alert')
+                    }
+                  >
+                    {testResult.ok ? '✅ ' : '⚠️ '}{testResult.message}
+                    {testResult.sid && <span className="block font-mono text-[10.5px] opacity-70 mt-1">{testResult.sid}</span>}
+                  </div>
+                )}
+              </div>
+            )}
             {!editable && <p className="text-xs text-faint">Sign in to a live account to edit company settings.</p>}
           </div>
         )}

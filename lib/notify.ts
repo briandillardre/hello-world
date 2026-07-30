@@ -20,22 +20,76 @@ interface Recipients {
   email?: string | null
 }
 
-async function sendSms(to: string, body: string): Promise<void> {
+export interface SmsResult {
+  ok: boolean
+  /** Human-readable reason a send didn't happen or failed. */
+  error?: string
+  /** Twilio message SID on success — paste it into the Twilio console to trace. */
+  sid?: string
+}
+
+/**
+ * Send one SMS and SAY WHAT HAPPENED. The old version returned void and only
+ * console.error'd, so a misconfigured Twilio account looked identical to a
+ * quiet night — you'd sit waiting for a theft text that was never going to
+ * arrive. The caller decides whether anyone sees the reason.
+ */
+async function sendSms(to: string, body: string): Promise<SmsResult> {
   const sid = process.env.TWILIO_ACCOUNT_SID
   const token = process.env.TWILIO_AUTH_TOKEN
   const from = process.env.TWILIO_FROM
-  if (!sid || !token || !from) return
+  const missing = [
+    !sid && 'TWILIO_ACCOUNT_SID',
+    !token && 'TWILIO_AUTH_TOKEN',
+    !from && 'TWILIO_FROM',
+  ].filter(Boolean)
+  if (missing.length) return { ok: false, error: `Not configured — missing ${missing.join(', ')} in the hosting env.` }
   try {
     const auth = Buffer.from(`${sid}:${token}`).toString('base64')
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}`, 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
+      body: new URLSearchParams({ To: to, From: from as string, Body: body }).toString(),
     })
-    if (!res.ok) console.error('Twilio SMS failed', res.status, await res.text().catch(() => ''))
+    const text = await res.text().catch(() => '')
+    if (!res.ok) {
+      console.error('Twilio SMS failed', res.status, text)
+      // Twilio returns {code, message, more_info} — the code is the whole
+      // diagnosis (21608 = unverified number on a trial, 21606 = bad From,
+      // 30034 = unregistered A2P). Surface it verbatim rather than "failed".
+      let detail = text.slice(0, 300)
+      try {
+        const j = JSON.parse(text) as { code?: number; message?: string }
+        if (j.message) detail = j.code ? `${j.message} (Twilio code ${j.code})` : j.message
+      } catch { /* keep the raw body */ }
+      return { ok: false, error: `Twilio ${res.status}: ${detail}` }
+    }
+    let msgSid: string | undefined
+    try { msgSid = (JSON.parse(text) as { sid?: string }).sid } catch { /* optional */ }
+    return { ok: true, sid: msgSid }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : 'network error'
     console.error('Twilio SMS error', err)
+    return { ok: false, error: `Could not reach Twilio: ${msg}` }
   }
+}
+
+/** Which delivery channels are actually wired up right now. */
+export function notifyChannels(): { sms: boolean; webhook: boolean; from: string | null } {
+  return {
+    sms: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM),
+    webhook: !!process.env.NOTIFY_WEBHOOK_URL,
+    from: process.env.TWILIO_FROM ?? null,
+  }
+}
+
+/**
+ * Fire one deliberately-obvious alert down the real delivery path so the owner
+ * can prove SMS works without waiting for a 2 AM theft. Same code as a genuine
+ * critical alert — if this lands, the real one will too.
+ */
+export async function sendTestSms(to: string): Promise<SmsResult> {
+  return sendSms(to, 'HammerTrack test alert — if you got this, theft alerts will reach you. No action needed.')
 }
 
 async function postWebhook(payload: { company: string; alerts: AlertMessage[]; at: string }): Promise<void> {
@@ -99,8 +153,10 @@ export async function dispatchAlerts(
   if (smsTo) {
     for (const a of alerts) {
       if (a.severity !== 'critical') continue
-      await sendSms(smsTo, `HammerTrack: ${a.reason}`)
-      smsSent++
+      // Count what actually SENT, not what we attempted — the return value is
+      // reported by the ingest route, and an inflated count hid failures.
+      const r = await sendSms(smsTo, `HammerTrack: ${a.reason}`)
+      if (r.ok) smsSent++
     }
   }
   return smsSent
