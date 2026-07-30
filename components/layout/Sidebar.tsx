@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
@@ -21,6 +21,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/assets', label: 'Assets', icon: Package },
     { href: '/geofences', label: 'Zones', icon: Hexagon },
     { href: '/measurements', label: 'Measurements', icon: Ruler },
+    { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
     { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   ]},
   { title: 'Office', items: [
