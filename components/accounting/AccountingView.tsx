@@ -1,17 +1,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, FileText, RefreshCw, Link2, Building2, X, ExternalLink, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Check, FileText, RefreshCw, Link2, Building2, X, ExternalLink, Loader2, Unplug, ArrowLeftRight, FlaskConical } from 'lucide-react'
 import type { Asset, Geofence, QboConnection, QboInvoicePreview } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { formatRelativeTime } from '@/lib/utils'
-import { previewZoneInvoiceAction, pushZoneInvoiceAction, type ZoneInvoiceDraft } from '@/lib/actions/qbo'
+import { previewZoneInvoiceAction, pushZoneInvoiceAction, disconnectQboAction, type ZoneInvoiceDraft } from '@/lib/actions/qbo'
 
 interface AccountingViewProps {
   connection: QboConnection
   demo: boolean
+  /** Pointed at Intuit's SANDBOX — badge it loudly so test books are never
+   *  mistaken for the real company. */
+  sandbox?: boolean
   canPush?: boolean
   assets: Asset[]
   geofences: Geofence[]
@@ -30,10 +35,27 @@ const PERIODS = [
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-export function AccountingView({ connection, demo, canPush = true, assets, geofences, invoicesByFence }: AccountingViewProps) {
+type SiteSort = 'name' | 'newest'
+
+export function AccountingView({ connection, demo, sandbox = false, canPush = true, assets, geofences, invoicesByFence }: AccountingViewProps) {
+  const router = useRouter()
   const [preview, setPreview] = useState<QboInvoicePreview | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [synced, setSynced] = useState(false)
+  const [siteQuery, setSiteQuery] = useState('')
+  const [siteSort, setSiteSort] = useState<SiteSort>('name')
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [connError, setConnError] = useState<string | null>(null)
+
+  const disconnect = async () => {
+    if (!confirm(`Disconnect ${connection.company_name}? Nothing changes in QuickBooks — HammerTrack just forgets the link until you reconnect.`)) return
+    setDisconnecting(true)
+    setConnError(null)
+    const r = await disconnectQboAction()
+    setDisconnecting(false)
+    if ('error' in r) setConnError(r.error)
+    else router.refresh()
+  }
 
   // Real-mode invoice dialog: period → live draft from tracked usage → push.
   const [fence, setFence] = useState<Geofence | null>(null)
@@ -72,6 +94,12 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
 
   const billableAssets = assets.filter(a => a.type === 'vehicle' || a.type === 'equipment')
 
+  const sites = geofences
+    .filter((g) => !siteQuery || g.name.toLowerCase().includes(siteQuery.toLowerCase()))
+    .sort((a, b) => (siteSort === 'newest'
+      ? (b.created_at ?? '').localeCompare(a.created_at ?? '')
+      : a.name.localeCompare(b.name, undefined, { numeric: true })))
+
   const handleSync = () => {
     setSyncing(true)
     setTimeout(() => { setSyncing(false); setSynced(true) }, 900)
@@ -81,13 +109,20 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <h1 className="text-xl font-bold text-ink">Accounting</h1>
-        <Badge variant="success" className="flex items-center gap-1">
-          <Check className="h-3 w-3" /> QuickBooks {demo ? 'Connected (Demo)' : 'Connected'}
-        </Badge>
+        {sandbox && !demo ? (
+          <Badge variant="default" className="flex items-center gap-1 bg-amber/20 text-amber border-amber/40">
+            <FlaskConical className="h-3 w-3" /> QuickBooks Sandbox
+          </Badge>
+        ) : (
+          <Badge variant="success" className="flex items-center gap-1">
+            <Check className="h-3 w-3" /> QuickBooks {demo ? 'Connected (Demo)' : 'Connected'}
+          </Badge>
+        )}
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl">
-        {/* Connection card */}
+        {/* Connection card — which company, which environment, and the levers
+            to switch or cut it. This is Accounting's control panel for QBO. */}
         <section className="bg-navy-900 rounded-xl border border-navy-800 p-4">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-lg bg-[#34d399]/15 flex items-center justify-center flex-shrink-0">
@@ -104,6 +139,34 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
             <p className="mt-3 text-xs text-amber bg-amber/15 border border-amber/30 rounded-lg p-2">
               Demo connection. Add your Intuit app credentials (QBO_CLIENT_ID) to connect a real QuickBooks company.
             </p>
+          )}
+          {sandbox && !demo && (
+            <p className="mt-3 text-xs text-amber bg-amber/15 border border-amber/30 rounded-lg p-2 leading-relaxed">
+              This is Intuit&rsquo;s <span className="font-semibold">sandbox</span> — practice books, not your real company.
+              Invoices and expenses land in the fake &ldquo;{connection.company_name}&rdquo;. To connect your real
+              QuickBooks: set the production keys + <span className="font-mono">QBO_ENVIRONMENT=production</span> in
+              Vercel, redeploy, then tap Switch company below and sign in as the account that owns your books.
+            </p>
+          )}
+          {!demo && canPush && (
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <a
+                href="/api/qbo/connect"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2ca01c] hover:bg-[#248217] text-white font-semibold text-xs px-3 py-2 transition-colors"
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" /> Switch company / reconnect
+              </a>
+              <button
+                onClick={disconnect}
+                disabled={disconnecting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 text-faint hover:text-alert hover:border-alert/40 font-semibold text-xs px-3 py-2 transition-colors disabled:opacity-60"
+              >
+                {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unplug className="h-3.5 w-3.5" />} Disconnect
+              </button>
+            </div>
+          )}
+          {connError && (
+            <p className="mt-2 text-xs text-alert bg-alert/10 border border-alert/30 rounded-lg p-2">{connError}</p>
           )}
         </section>
 
@@ -135,11 +198,20 @@ export function AccountingView({ connection, demo, canPush = true, assets, geofe
         {/* Job sites → invoices */}
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Job Sites → Equipment Billing</h2>
+          {geofences.length > 3 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <SearchInput value={siteQuery} onChange={setSiteQuery} placeholder="Search job sites…" />
+              <SortPills<SiteSort> options={[['name', 'A → Z'], ['newest', 'Newest']]} value={siteSort} onChange={setSiteSort} />
+            </div>
+          )}
           <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {geofences.length === 0 && (
               <p className="p-4 text-sm text-faint">Draw a zone around a job site on the map first — invoices bill the usage tracked inside it.</p>
             )}
-            {geofences.map(g => {
+            {geofences.length > 0 && sites.length === 0 && (
+              <p className="p-4 text-sm text-faint">Nothing matches that search.</p>
+            )}
+            {sites.map(g => {
               const inv = invoicesByFence[g.id]
               const hasBillable = demo ? (inv && inv.lines.length > 0) : true
               return (

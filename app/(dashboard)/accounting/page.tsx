@@ -1,5 +1,5 @@
 import { AccountingView } from '@/components/accounting/AccountingView'
-import { getConnectionStatus, buildEquipmentUsageInvoice, isQboConfigured } from '@/lib/qbo'
+import { getConnectionStatus, buildEquipmentUsageInvoice, isQboConfigured, isQboSandbox } from '@/lib/qbo'
 import { getAssets } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -88,6 +88,7 @@ export default async function AccountingPage() {
     <AccountingView
       connection={status.connection}
       demo={status.demo}
+      sandbox={isQboSandbox && !status.demo}
       canPush={perms.canManageBilling}
       assets={assets}
       geofences={geofences}

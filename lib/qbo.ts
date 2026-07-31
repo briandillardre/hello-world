@@ -25,6 +25,9 @@ const QBO_SCOPES = 'com.intuit.quickbooks.accounting'
 const MINOR = 'minorversion=75'
 
 const sandbox = process.env.QBO_ENVIRONMENT !== 'production'
+/** True while pointed at Intuit's sandbox — the Accounting page badges it so
+ *  "why does this say Sandbox Company US" never needs asking again. */
+export const isQboSandbox = sandbox
 export const QBO_API_BASE = sandbox
   ? 'https://sandbox-quickbooks.api.intuit.com'
   : 'https://quickbooks.api.intuit.com'

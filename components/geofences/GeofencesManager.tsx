@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Search, Archive, RotateCcw, FolderOpen } from 'lucide-react'
+import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Archive, RotateCcw, FolderOpen } from 'lucide-react'
 import type { Geofence } from '@/lib/types'
 import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/geofences'
 import { parseJobName, compareJobs } from '@/lib/job-code'
-import { Input } from '@/components/ui/input'
+import { SearchInput, SortPills } from '@/components/ui/list-controls'
 
 const PALETTE = ['#ff9e16', '#2dd4bf', '#60a5fa', '#a78bfa', '#f87171', '#34d399', '#fbbf24', '#f472b6']
 
@@ -48,29 +48,13 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
   return (
     <div className="p-4 space-y-3">
       {geofences.length > 0 && (
-        <div className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
-            <Input
-              placeholder="Search zones…"
-              className="pl-9"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2">
-            {([['name', 'A → Z'], ['assets', 'Most assets']] as [SortKey, string][]).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setSort(k)}
-                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  sort === k ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted hover:bg-navy-700'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search zones…" />
+          <SortPills<SortKey>
+            options={[['name', 'A → Z'], ['assets', 'Most assets']]}
+            value={sort}
+            onChange={setSort}
+          />
         </div>
       )}
       {geofences.length === 0 && (

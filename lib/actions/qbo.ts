@@ -93,6 +93,28 @@ export async function previewZoneInvoiceAction(
   }
 }
 
+/**
+ * Drop the stored QuickBooks connection. Nothing in QuickBooks changes —
+ * HammerTrack just forgets the tokens; reconnecting (or picking a different
+ * company) is one OAuth pass away.
+ */
+export async function disconnectQboAction(): Promise<{ ok: true } | { error: string }> {
+  if (isMock) return { error: 'Demo mode — nothing to disconnect.' }
+  try {
+    const companyId = await getCurrentCompanyId()
+    if (!(await getMyPermissions()).canManageBilling) return { error: 'You need the Billing & QBO permission (Team page).' }
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    const supabase = createServiceClient()
+    const { error } = await supabase.from('qbo_connections').delete().eq('company_id', companyId)
+    if (error) return { error: error.message }
+    const { revalidatePath } = await import('next/cache')
+    revalidatePath('/accounting')
+    return { ok: true }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Disconnect failed.' }
+  }
+}
+
 export async function pushZoneInvoiceAction(
   fenceId: string,
   days: number

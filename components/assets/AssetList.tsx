@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Plus, Battery, Clock, ChevronRight } from 'lucide-react'
+import { Plus, Battery, Clock, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { createAssetAction } from '@/lib/actions/assets'
-import { Input } from '@/components/ui/input'
+import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
@@ -28,9 +28,12 @@ interface AssetListProps {
   onAdd?: (data: AssetFormData) => void
 }
 
+type AssetSort = 'name' | 'seen' | 'type'
+
 export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProps) {
   const router = useRouter()
   const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<AssetSort>('name')
   const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all')
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -59,14 +62,20 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
     }
   }
 
-  const filtered = assets.filter(a => {
-    const q = query.toLowerCase()
-    const matchesQ = a.name.toLowerCase().includes(q) ||
-      (a.tracker_id?.toLowerCase().includes(q) ?? false) ||
-      (a.category?.toLowerCase().includes(q) ?? false)
-    const matchesType = typeFilter === 'all' || a.type === typeFilter
-    return matchesQ && matchesType
-  })
+  const seenMs = (a: AssetWithLocation) => (a.location ? new Date(a.location.timestamp).getTime() : 0)
+  const filtered = assets
+    .filter(a => {
+      const q = query.toLowerCase()
+      const matchesQ = a.name.toLowerCase().includes(q) ||
+        (a.tracker_id?.toLowerCase().includes(q) ?? false) ||
+        (a.category?.toLowerCase().includes(q) ?? false)
+      const matchesType = typeFilter === 'all' || a.type === typeFilter
+      return matchesQ && matchesType
+    })
+    .sort((a, b) =>
+      sort === 'seen' ? seenMs(b) - seenMs(a)
+        : sort === 'type' ? a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
+          : a.name.localeCompare(b.name, undefined, { numeric: true }))
 
   return (
     <div className="flex flex-col h-full">
@@ -85,13 +94,12 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
           </p>
         )}
 
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
-          <Input
-            placeholder="Search assets or tracker ID…"
-            className="pl-9"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
+        <div className="flex items-center gap-2 flex-wrap">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search assets or tracker ID…" />
+          <SortPills<AssetSort>
+            options={[['name', 'A → Z'], ['seen', 'Last seen'], ['type', 'Type']]}
+            value={sort}
+            onChange={setSort}
           />
         </div>
 
