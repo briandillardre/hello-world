@@ -40,6 +40,8 @@ const navSections: { title: string | null; items: { href: string; label: string;
 interface SidebarProps {
   companyName?: string
   userName?: string | null
+  /** Client's own logo (Settings → Company) — shown above the company name. */
+  logoUrl?: string | null
   alertCount?: number
   latestAlertAt?: string | null
   onSignOut?: () => void
@@ -51,7 +53,7 @@ interface SidebarProps {
   fullCollapse?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
   if (fullCollapse && collapsed) {
@@ -81,6 +83,11 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, alertCount
         ) : (
           <div className="min-w-0">
             <Logo size={26} href="/map" />
+            {/* Client's own logo (Settings → Company) rides above their name. */}
+            {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt={companyName} className="mt-1.5 h-8 max-w-[160px] object-contain object-left rounded bg-white/95 p-0.5" />
+            )}
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
           </div>

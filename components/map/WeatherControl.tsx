@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, ChevronRight, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
@@ -165,27 +165,18 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
   )
 }
 
-function GroupSection({ gid, collapsed, onToggle, children }: {
-  gid: GroupId
-  collapsed: boolean
-  onToggle: () => void
-  children: ReactNode
-}) {
-  const g = GROUPS.find((x) => x.id === gid)!
-  const Icon = GROUP_ICON[gid]
+/** Flat, always-open section heading — the panel scrolls, sections don't hide. */
+function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; icon?: typeof Hexagon }) {
+  const g = gid ? GROUPS.find((x) => x.id === gid) : null
+  const Icon = icon ?? (gid ? GROUP_ICON[gid] : Hexagon)
   return (
-    <div className="border-b border-navy-800">
-      <button onClick={onToggle} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
-        <Icon className="h-3.5 w-3.5 text-teal flex-none" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">{g.label}</span>
-        {collapsed ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
-      </button>
-      {!collapsed && children}
+    <div className="flex items-center gap-2 px-3 pt-3 pb-1 border-t border-navy-800">
+      <Icon className="h-3 w-3 text-teal flex-none" />
+      <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{label ?? g?.label}</span>
     </div>
   )
 }
 
-const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
 export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
@@ -242,23 +233,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     if (v && onPlaceChange) onPlaceChange(v)
   }
 
-  // ── Collapsible groups, persisted per device ──────────────────────────────
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = { views: true }
-    for (const g of GROUPS) init[g.id] = !!g.defaultCollapsed
-    try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(GROUPS_LS) : null
-      if (raw) Object.assign(init, JSON.parse(raw))
-    } catch { /* fresh device */ }
-    return init
-  })
-  const toggleGroup = (gid: GroupId | 'views') => {
-    setCollapsed((c) => {
-      const next = { ...c, [gid]: !c[gid] }
-      try { localStorage.setItem(GROUPS_LS, JSON.stringify(next)) } catch { /* full */ }
-      return next
-    })
-  }
+  // ── Panel tabs: Layers (every toggle, flat + scannable) | Views (saved
+  //    looks). Accordions are gone — the redesign references (Jul 31) all show
+  //    their content instead of closed doors; one scroll beats six chevrons.
+  const [tab, setTab] = useState<'layers' | 'views'>('layers')
 
   // ── Feed freshness: layer effects broadcast when they fetch ───────────────
   const [feedAt, setFeedAt] = useState<Record<string, number>>({})
@@ -421,16 +399,31 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
     // the inner panel scrolls (overflow-y-auto) and would cut it in half.
-    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[224px]`}>
+    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[236px]`}>
       <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
       <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
 
-      {/* No header, no in-panel search (owner ask, Jul 22): the search button
-          beside the pill finds assets/zones, the protruding X closes — the
-          panel opens straight onto the controls. */}
+      {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
+          saved looks. Sticky so the tab bar survives the scroll. */}
+      <div className="sticky top-0 z-20 flex bg-navy-950/95 backdrop-blur border-b border-navy-800 rounded-t-xl">
+        <button
+          onClick={() => setTab('layers')}
+          className={'flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-display font-bold border-b-2 -mb-px transition-colors ' +
+            (tab === 'layers' ? 'border-teal text-ink' : 'border-transparent text-faint hover:text-muted')}
+        >
+          <Layers className="h-3.5 w-3.5" /> Layers
+        </button>
+        <button
+          onClick={() => setTab('views')}
+          className={'flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-display font-bold border-b-2 -mb-px transition-colors ' +
+            (tab === 'views' ? 'border-teal text-ink' : 'border-transparent text-faint hover:text-muted')}
+        >
+          <Bookmark className="h-3.5 w-3.5" /> Views
+        </button>
+      </div>
 
       {/* ── Show on map — the old chip row lives here now, zero scrolling ── */}
-      {filter && onFilter && (
+      {tab === 'layers' && filter && onFilter && (
         <div className="px-2 pb-1.5">
           <p className="px-1 pt-1 pb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Show on map</p>
           <div className="grid grid-cols-2 gap-1">
@@ -492,17 +485,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </div>
       )}
 
-      {/* named saveable views — one tap to a whole look; star = opens with it.
-          Collapsed by default like every other section; saved per USER (your
-          account across devices), not company-wide. */}
-      {views && onApplyView && (
-        <div className="border-b border-navy-800">
-          <button onClick={() => toggleGroup('views')} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-navy-900 transition-colors">
-            <Bookmark className="h-3.5 w-3.5 text-teal flex-none" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted flex-1 text-left">Preset maps</span>
-            {collapsed.views ? <ChevronRight className="h-3.5 w-3.5 text-faint" /> : <ChevronDown className="h-3.5 w-3.5 text-faint" />}
-          </button>
-          {!collapsed.views && (
+      {/* Views tab — preset looks + your saved views, promoted from an
+          accordion to a first-class tab (the reference tools' "My layers"). */}
+      {tab === 'views' && views && onApplyView && (
+        <div>
+          <p className="px-3 pt-2.5 pb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">One tap to a whole look</p>
           <div className="px-2 pb-2">
           <div className="px-1 flex items-center justify-between mb-1.5">
             <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">Saved to your account</span>
@@ -578,14 +565,51 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             </div>
           )}
           </div>
-          )}
         </div>
       )}
 
-      {/* ── Layer groups, contractor-first: Site · Weather · Basemap ·
-             Water & Terrain · Advanced (planetarium lives at the bottom) ── */}
-      <GroupSection gid="site" collapsed={!!collapsed.site} onToggle={() => toggleGroup('site')}>{rowsFor('site')}</GroupSection>
-      <GroupSection gid="weather" collapsed={!!collapsed.weather} onToggle={() => toggleGroup('weather')}>
+      {/* ── Layers tab: flat, scannable sections — Basemap in reach first,
+             then Site · Weather · 3D · Water & Terrain · Advanced. ── */}
+      {tab === 'layers' && (<>
+      <SectionLabel gid="basemap" />
+      {/* One swipe row of real tile thumbnails — the most-used control no
+          longer lives behind a door. */}
+      <div className="flex gap-1.5 px-2 pt-1 pb-2 overflow-x-auto no-scrollbar">
+        {BASEMAPS.map((b) => (
+          <button
+            key={b.id}
+            onClick={() => onBase(b.id)}
+            className={
+              'relative flex-none w-[54px] h-[54px] rounded-lg overflow-hidden border transition-all ' +
+              (base === b.id ? 'border-amber ring-2 ring-amber/50' : 'border-navy-700 hover:border-navy-500')
+            }
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={BASEMAP_TILE[b.id]}
+              alt={b.label}
+              loading="lazy"
+              className="absolute inset-0 w-full h-full object-cover"
+              style={BASEMAP_THUMB_FILTER[b.id] ? { filter: BASEMAP_THUMB_FILTER[b.id] } : undefined}
+            />
+            {b.id === 'hybrid' && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={BASEMAP_TILE.dark} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen" />
+            )}
+            <span className={
+              'absolute inset-x-0 bottom-0 text-[8.5px] font-semibold text-center py-0.5 ' +
+              (base === b.id ? 'bg-amber/90 text-[#1a1100]' : 'bg-black/55 text-white')
+            }>
+              {b.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <SectionLabel gid="site" />
+      {rowsFor('site')}
+
+      <SectionLabel gid="weather" />
         {/* weather location — editable so radar/temps can follow any site */}
         {onPlaceChange ? (
           <div className="relative border-b border-navy-800">
@@ -664,41 +688,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           </div>
         )}
         {rowsFor('weather')}
-      </GroupSection>
-      <GroupSection gid="basemap" collapsed={!!collapsed.basemap} onToggle={() => toggleGroup('basemap')}>
-        {/* FR24-style map-type grid: real tile thumbnails, current pick ringed */}
-        <div className="grid grid-cols-3 gap-1.5 p-1.5">
-          {BASEMAPS.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => onBase(b.id)}
-              className={
-                'relative rounded-lg overflow-hidden aspect-square border transition-all ' +
-                (base === b.id ? 'border-amber ring-2 ring-amber/50' : 'border-navy-700 hover:border-navy-500')
-              }
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BASEMAP_TILE[b.id]}
-                alt={b.label}
-                loading="lazy"
-                className="absolute inset-0 w-full h-full object-cover"
-                style={BASEMAP_THUMB_FILTER[b.id] ? { filter: BASEMAP_THUMB_FILTER[b.id] } : undefined}
-              />
-              {/* Hybrid preview = imagery + the label overlay it actually gets */}
-              {b.id === 'hybrid' && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={BASEMAP_TILE.dark} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover opacity-35 mix-blend-screen" />
-              )}
-              <span className={
-                'absolute inset-x-0 bottom-0 text-[9.5px] font-semibold text-center py-0.5 ' +
-                (base === b.id ? 'bg-amber/90 text-[#1a1100]' : 'bg-black/55 text-white')
-              }>
-                {b.label}
-              </span>
-            </button>
-          ))}
-        </div>
+
+      <SectionLabel label="3D" icon={Box} />
         {/* 3D buildings + tilt — layerable on any basemap */}
         <div className="border-t border-navy-800">
           <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
@@ -756,32 +747,31 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             )}
           </div>
         )}
-      </GroupSection>
 
-      <GroupSection gid="water" collapsed={!!collapsed.water} onToggle={() => toggleGroup('water')}>{rowsFor('water')}</GroupSection>
+      <SectionLabel gid="water" />
+      {rowsFor('water')}
 
       {/* ── Advanced: satellites, aircraft, night effects — the show-off
-             layers, out of the everyday path (owner ask, Jul 21). Earth's
-             real rotation needs no switch: with Satellites & sky on, the
-             globe simply turns with the timeline clock. ── */}
-      <GroupSection gid="advanced" collapsed={!!collapsed.advanced} onToggle={() => toggleGroup('advanced')}>
-        {rowsFor('advanced')}
-        {isOn('satellites') && (
-          <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-            ↳ zoom out to the globe — Earth turns in real time (and with the timeline in replays)
-          </p>
-        )}
-        {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
-        <div className="border-t border-navy-800">
-          <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
-          {rowsFor('advanced', true)}
-        </div>
-      </GroupSection>
+             layers at the bottom of the scroll. Earth's real rotation needs
+             no switch: with Satellites & sky on, the globe simply turns with
+             the timeline clock. ── */}
+      <SectionLabel gid="advanced" />
+      {rowsFor('advanced')}
+      {isOn('satellites') && (
+        <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+          ↳ zoom out to the globe — Earth turns in real time (and with the timeline in replays)
+        </p>
+      )}
+      {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
+      <div className="border-t border-navy-800">
+        <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
+        {rowsFor('advanced', true)}
+      </div>
 
       {onResetLayers && (
         <button
           onClick={onResetLayers}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-faint hover:text-ink transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 border-t border-navy-800 text-[11px] font-semibold text-faint hover:text-ink transition-colors"
         >
           <RotateCcw className="h-3 w-3" /> Reset layers to defaults
         </button>
@@ -791,6 +781,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         More layers = more live data. On weak job-site signal, turn a few off
         and the map loads noticeably faster.
       </p>
+      </>)}
       </div>
     </div>
   )

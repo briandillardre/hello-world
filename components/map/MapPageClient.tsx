@@ -54,9 +54,11 @@ interface MapPageClientProps {
   alerts?: import('@/lib/types').AlertEvent[]
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
+  /** Company branding for the Create-PDF button. */
+  brand?: { companyName: string; logoUrl: string | null } | null
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -144,6 +146,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
   return (
     <>
       <MapView
+        brand={brand}
         assets={assets}
         geofences={geofences}
         tracks={tracks}

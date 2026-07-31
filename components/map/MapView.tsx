@@ -7,7 +7,7 @@ import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/t
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
-  defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds,
+  defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds, RANGES,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
 import {
@@ -281,6 +281,8 @@ interface MapViewProps {
   alerts?: AlertEvent[]
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
+  /** Company branding for the Create-PDF button (logo + name on the header). */
+  brand?: { companyName: string; logoUrl: string | null } | null
   kiosk?: boolean
   /** Kiosk auto-tour (asset → asset camera glide). Off = the wall stays put. */
   tourOn?: boolean
@@ -302,7 +304,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -463,6 +465,56 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [terrainExag, setTerrainExag] = useState(lastState.terrainExag ?? 1.3)
   const terrainExagRef = useRef(terrainExag)
   terrainExagRef.current = terrainExag
+  // Create PDF — branded snapshot of the current view. Lives in a ref so the
+  // imperative MapLibre control (created once at init) always calls the
+  // freshest closure (assets/brand/range change between renders).
+  const makePdfRef = useRef<(() => Promise<void>) | null>(null)
+  makePdfRef.current = async () => {
+    const m = map.current
+    if (!m) return
+    try {
+      const { createBrandedPdf, captureMapCanvas, MARGIN } = await import('@/lib/pdf-brand')
+      const img = await captureMapCanvas(m)
+      const rangeLabelTxt = RANGES.find((r) => r.key === range)?.label ?? 'Live'
+      const pdf = await createBrandedPdf({
+        companyName: brand?.companyName ?? 'HammerTrack',
+        logoUrl: brand?.logoUrl ?? null,
+        title: kiosk ? 'Command Center' : 'Fleet map',
+        subtitle: `${rangeLabelTxt} view`,
+      })
+      const { doc, pw, ph, contentTop } = pdf
+      const canvas = m.getCanvas()
+      const ar = canvas.width / canvas.height
+      // Thought-out fit: full-bleed inside margins, one legend band below.
+      const legendH = 16
+      const availW = pw - MARGIN * 2
+      const availH = ph - contentTop - legendH - 12
+      let w = availW
+      let h = w / ar
+      if (h > availH) { h = availH; w = h * ar }
+      doc.addImage(img, 'JPEG', MARGIN + (availW - w) / 2, contentTop, w, h)
+      // Asset legend — the same identity colors the map uses.
+      const legendY = contentTop + h + 6
+      doc.setFontSize(8)
+      let lx = MARGIN
+      for (const a of assets.filter((x) => x.location && x.type !== 'tool')) {
+        const hex = /^#[0-9a-fA-F]{6}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS[a.type]
+        const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+        const label = a.name.length > 22 ? `${a.name.slice(0, 21)}…` : a.name
+        const wTxt = doc.getTextWidth(label) + 7
+        if (lx + wTxt > pw - MARGIN) break // one clean row — never spill the page
+        doc.setFillColor(...rgb)
+        doc.circle(lx + 1.6, legendY, 1.6, 'F')
+        doc.setTextColor(70, 85, 100)
+        doc.text(label, lx + 4.5, legendY + 1.1)
+        lx += wTxt + 4
+      }
+      pdf.finish(`hammertrack-${kiosk ? 'command' : 'map'}-${new Date().toISOString().slice(0, 10)}.pdf`)
+    } catch (e) {
+      console.error('PDF export failed', e)
+    }
+  }
+
   // Measure + takeoff tool overlay (off by default). Ref so the map's
   // click-to-select handlers can bail while measuring (clicks add vertices).
   const [measureOn, setMeasureOn] = useState(false)
@@ -1022,6 +1074,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       }
       map.current.addControl(measureControl, ctrlCorner)
     }
+
+    // Create PDF — a branded snapshot of exactly what's on screen (logo +
+    // company header, the map image, an asset legend). Same cluster.
+    const pdfControl: maplibregl.IControl = {
+      onAdd() {
+        const div = document.createElement('div')
+        div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.title = 'Create PDF — branded snapshot of this view'
+        btn.setAttribute('aria-label', 'Create PDF')
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>'
+        btn.onclick = () => { makePdfRef.current?.() }
+        div.appendChild(btn)
+        return div
+      },
+      onRemove() {},
+    }
+    map.current.addControl(pdfControl, ctrlCorner)
 
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 

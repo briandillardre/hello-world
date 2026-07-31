@@ -82,6 +82,46 @@ export async function updateCompanySettingsAction(input: {
 }
 
 /**
+ * Upload (or clear) the company logo — shown at the top of the sidebar and on
+ * every PDF the app generates. Stored in the public asset-photos bucket under
+ * the company id; pass an empty FormData (no `logo` file) to remove it.
+ */
+export async function saveCompanyLogoAction(form: FormData): Promise<{ ok: boolean; url?: string | null; error?: string }> {
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, error: 'Admins only.' }
+
+  const file = form.get('logo')
+  let url: string | null = null
+  if (file instanceof File && file.size > 0) {
+    if (!file.type.startsWith('image/')) return { ok: false, error: 'That file is not an image.' }
+    if (file.size > 2 * 1024 * 1024) return { ok: false, error: 'Keep the logo under 2 MB.' }
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const supabase = createServiceClient()
+      const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : file.type === 'image/svg+xml' ? 'svg' : 'jpg'
+      const path = `${companyId}/logo-${crypto.randomUUID()}.${ext}`
+      const { error } = await supabase.storage
+        .from('asset-photos')
+        .upload(path, file, { contentType: file.type, upsert: false })
+      if (error) return { ok: false, error: error.message }
+      url = supabase.storage.from('asset-photos').getPublicUrl(path).data.publicUrl
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Upload failed.' }
+    }
+  }
+
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const { error } = await createServiceClient().from('companies').update({ logo_url: url }).eq('id', companyId)
+  if (error) {
+    // Pre-044 schema — tell the truth instead of pretending it saved.
+    return { ok: false, error: 'Database migration 044 has not applied yet — redeploy and try again.' }
+  }
+  revalidatePath('/settings')
+  revalidatePath('/', 'layout')
+  return { ok: true, url }
+}
+
+/**
  * Persist the company-wide default weather location (admin only).
  * Verified server-side; written with the service client because 001 gave
  * companies no UPDATE policy for the anon role (008 adds one, but service

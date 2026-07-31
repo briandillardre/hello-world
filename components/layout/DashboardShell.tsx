@@ -16,12 +16,14 @@ export function DashboardShell({
   latestAlertAt = null,
   companyName,
   userName,
+  logoUrl = null,
   children,
 }: {
   alertCount: number
   latestAlertAt?: string | null
   companyName?: string
   userName?: string | null
+  logoUrl?: string | null
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -37,7 +39,7 @@ export function DashboardShell({
 
   return (
     <>
-      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} />
+      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} />
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200'}>
         {children}
       </main>

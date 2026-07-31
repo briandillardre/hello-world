@@ -63,6 +63,8 @@ interface CommandCenterProps {
   aboard?: Record<string, import('@/lib/tools-resolve').AboardTool[]>
   /** Tool-pairing episodes over the history window (replay-accurate badges). */
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
+  /** Company branding for the Create-PDF button. */
+  brand?: { companyName: string; logoUrl: string | null } | null
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -205,7 +207,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
@@ -286,6 +288,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           alerts={alerts}
           tourOn={tourOn}
           onTourInterrupt={() => setTourOn(false)}
+          brand={brand}
         />
       </div>
 

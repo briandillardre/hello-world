@@ -30,6 +30,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           work_start={co.work_start} work_end={co.work_end} work_days={co.work_days}
           alert_phone={co.alert_phone} alert_email={co.alert_email}
           sms_consent_phone={co.sms_consent_phone} sms_consent_at={co.sms_consent_at}
+          logo_url={co.logo_url}
           editable={co.isAdmin}
         />
 

@@ -37,14 +37,14 @@ export async function getCurrentCompanyId(): Promise<string> {
  * sidebar header. Demo mode shows the "HammerTrack Demo" label; real mode shows
  * the logged-in company and user.
  */
-export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null }> {
-  if (isMock) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
+export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null; logoUrl: string | null }> {
+  if (isMock) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null, logoUrl: null }
 
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null }
+    if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null, logoUrl: null }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -53,9 +53,11 @@ export async function getCurrentCompany(): Promise<{ id: string; name: string; u
       .single()
     const companyId = profile?.company_id ?? user.id
 
+    // Star-select: naming logo_url before migration 044 lands would error the
+    // whole query and demo-fallback the shell (same trap as alert_phone/009).
     const { data: company } = await supabase
       .from('companies')
-      .select('name')
+      .select('*')
       .eq('id', companyId)
       .single()
 
@@ -63,9 +65,10 @@ export async function getCurrentCompany(): Promise<{ id: string; name: string; u
       id: companyId,
       name: company?.name ?? 'HammerTrack',
       userName: profile?.name || user.email || null,
+      logoUrl: (company?.logo_url as string | null) ?? null,
     }
   } catch {
-    return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null }
+    return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null, logoUrl: null }
   }
 }
 
@@ -129,6 +132,7 @@ export async function getCompanySettings(): Promise<{
   sms_consent_phone: string | null; sms_consent_at: string | null;
   stripe_customer_id: string | null; subscription_status: string | null;
   current_period_end: string | null; cancel_at_period_end: boolean;
+  logo_url: string | null;
   isAdmin: boolean
 }> {
   const fallback = {
@@ -137,7 +141,8 @@ export async function getCompanySettings(): Promise<{
     work_days: MOCK_COMPANY.work_days, alert_phone: '', alert_email: '',
     sms_consent_phone: null, sms_consent_at: null,
     stripe_customer_id: null, subscription_status: null,
-    current_period_end: null, cancel_at_period_end: false, isAdmin: false,
+    current_period_end: null, cancel_at_period_end: false,
+    logo_url: null, isAdmin: false,
   }
   if (isMock) return fallback
   try {
@@ -173,6 +178,8 @@ export async function getCompanySettings(): Promise<{
       subscription_status: (c.subscription_status as string | null) ?? null,
       current_period_end: (c.current_period_end as string | null) ?? null,
       cancel_at_period_end: !!c.cancel_at_period_end,
+      // undefined until migration 044 — star-select degrades instead of erroring.
+      logo_url: (c.logo_url as string | null) ?? null,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {

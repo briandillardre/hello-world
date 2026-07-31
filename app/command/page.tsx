@@ -90,6 +90,7 @@ export default async function CommandPage() {
       alerts={alerts}
       aboard={toolsAboard(rawAssets, toolAssociations)}
       pairingEpisodes={await getPairingEpisodes(companyId, new Date(fullSince).toISOString())}
+      brand={{ companyName: company.name, logoUrl: company.logoUrl }}
     />
   )
 }

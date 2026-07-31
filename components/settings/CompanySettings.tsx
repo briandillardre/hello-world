@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
-import { updateCompanySettingsAction } from '@/lib/actions/company'
+import { updateCompanySettingsAction, saveCompanyLogoAction } from '@/lib/actions/company'
 import { normalizeUsPhone } from '@/lib/phone'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -23,16 +23,30 @@ interface Props {
   /** Number SMS consent was recorded for (migration 041); null = never given. */
   sms_consent_phone?: string | null
   sms_consent_at?: string | null
+  /** Company logo (044) — sidebar + every generated PDF wear it. */
+  logo_url?: string | null
   editable: boolean
 }
 
 /** Editable company name + working hours. Work hours drive the after-hours
  *  theft alert, so this is operational, not cosmetic. */
-export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, sms_consent_phone = null, sms_consent_at = null, editable }: Props) {
+export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, sms_consent_phone = null, sms_consent_at = null, logo_url = null, editable }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [logoBusy, setLogoBusy] = useState(false)
+
+  const uploadLogo = async (file: File | null) => {
+    setLogoBusy(true); setErr(null)
+    try {
+      const fd = new FormData()
+      if (file) fd.set('logo', file)
+      const r = await saveCompanyLogoAction(fd)
+      if (!r.ok) setErr(r.error ?? 'Logo upload failed.')
+      else router.refresh()
+    } finally { setLogoBusy(false) }
+  }
   const [form, setForm] = useState({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email })
   // Carrier rule: the box must be ticked by the user, never pre-checked. It
   // starts false every time the form opens; the only way past it is a click.
@@ -81,6 +95,32 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
         )}
       </div>
       <div className="p-4 space-y-3">
+        {/* Company logo — sidebar + every generated PDF wear it. Lives outside
+            the edit form: uploading is its own one-tap action. */}
+        <div className="flex items-center gap-3">
+          {logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logo_url} alt="Company logo" className="h-12 max-w-[160px] object-contain rounded-md bg-white/95 p-1" />
+          ) : (
+            <div className="h-12 w-24 rounded-md border border-dashed border-navy-700 grid place-items-center text-[10px] text-faint">No logo yet</div>
+          )}
+          {editable && (
+            <div className="flex items-center gap-2">
+              <label className={'inline-flex items-center rounded-lg border border-navy-700 text-muted text-xs font-medium px-3 py-1.5 hover:bg-navy-800 hover:text-ink transition-colors cursor-pointer ' + (logoBusy ? 'opacity-60 pointer-events-none' : '')}>
+                {logoBusy ? 'Uploading…' : logo_url ? 'Replace logo' : 'Upload logo'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = '' }} />
+              </label>
+              {logo_url && (
+                <button onClick={() => uploadLogo(null)} disabled={logoBusy} className="text-xs text-faint hover:text-alert transition-colors">Remove</button>
+              )}
+            </div>
+          )}
+          <p className="text-[10.5px] text-faint leading-snug max-w-[200px] ml-auto hidden sm:block">
+            Shows in your sidebar and on every PDF this app creates (map snapshots, fleet reports).
+          </p>
+        </div>
+
         {editing ? (
           <div className="space-y-4">
             <div className="space-y-1">

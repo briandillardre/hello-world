@@ -115,7 +115,15 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
             </a>
           ))}
         </div>
-        {scores.length > 0 && <div className="ml-auto"><ScorecardExport scores={scores} /></div>}
+        {scores.length > 0 && (
+          <div className="ml-auto">
+            <ScorecardExport
+              scores={scores}
+              brand={{ companyName: settings.name, logoUrl: settings.logo_url }}
+              rangeLabel={rangeSub}
+            />
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-6 max-w-2xl lg:max-w-6xl">

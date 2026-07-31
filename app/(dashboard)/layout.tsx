@@ -43,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // mobile browsers (URL bar chrome), leaving a white band + scrollable page.
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <TzCookie />
-      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName}>
+      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl}>
         {children}
       </DashboardShell>
     </div>
