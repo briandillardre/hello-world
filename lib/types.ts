@@ -1,5 +1,19 @@
 export type AssetType = 'vehicle' | 'equipment' | 'personnel' | 'tool'
-export type AlertTrigger = 'enter' | 'exit' | 'idle' | 'after_hours_movement' | 'left_site'
+export type AlertTrigger = 'enter' | 'exit' | 'idle' | 'after_hours_movement' | 'left_site' | 'speeding'
+
+/** Per-rule tuning (alert_rules.params, migration 043). All optional. */
+export interface AlertRuleParams {
+  /** 'speeding': fire when moving faster than this (mph) inside the zone. */
+  max_mph?: number
+  /** 'after_hours_movement': watch WINDOW ("22:00"→"05:00", wraps midnight)
+   *  instead of the default "outside company work hours". */
+  start?: string
+  end?: string
+  /** Watch-window days (0=Sun..6=Sat). Absent = every day. */
+  days?: number[]
+  /** Escalate an info/warning trigger to critical — rides the SMS path. */
+  critical?: boolean
+}
 export type UserRole = 'admin' | 'viewer'
 export type MaintenanceIntervalType = 'engine_hours' | 'mileage' | 'days'
 
@@ -225,6 +239,8 @@ export interface AlertRule {
   asset_id: string | null
   trigger: AlertTrigger
   idle_minutes: number | null
+  /** Optional tuning (043) — undefined on pre-migration rows. */
+  params?: AlertRuleParams | null
   active: boolean
 }
 

@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ColorSwatches } from '@/components/ui/color-swatches'
 
-// Last two are "boundary" colors — they render outline-only (no fill), for a
-// large perimeter around the whole yard/work area (anti-theft) that shouldn't
-// tint the map. Keep these in sync with OUTLINE_ONLY in MapView + ZonePanel.
-const COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#0a0a0a', '#9ca3af']
+// Swatches + custom well come from the shared picker (lib/colors) — one
+// palette for every zone/asset color choice in the app.
+const DEFAULT_COLOR = '#F59E0B'
 
 interface GeofenceDrawerProps {
   isDrawing: boolean
@@ -40,7 +40,7 @@ export function GeofenceDrawer({
   const [showDialog, setShowDialog] = useState(false)
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null)
   const [name, setName] = useState('')
-  const [color, setColor] = useState(COLORS[0])
+  const [color, setColor] = useState(DEFAULT_COLOR)
   const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>('site')
   const [personal, setPersonal] = useState(false)
   // Project document folder (Dropbox/Drive/OneDrive) — one link per job, so
@@ -232,20 +232,7 @@ export function GeofenceDrawer({
             </div>
             <div className="space-y-2">
               <Label>Color</Label>
-              <div className="flex gap-2">
-                {COLORS.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setColor(c)}
-                    className="w-8 h-8 rounded-full border-2 transition-transform hover:scale-110"
-                    style={{
-                      backgroundColor: c,
-                      borderColor: color === c ? '#e8f0f7' : 'rgba(255,255,255,0.18)',
-                    }}
-                    title={c === '#0a0a0a' ? 'Black outline (no fill)' : c === '#9ca3af' ? 'Gray outline (no fill)' : undefined}
-                  />
-                ))}
-              </div>
+              <ColorSwatches value={color} onChange={setColor} />
             </div>
             <div className="space-y-1.5">
               <Label>Visibility</Label>

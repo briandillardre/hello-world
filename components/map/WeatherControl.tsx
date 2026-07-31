@@ -20,6 +20,10 @@ interface WeatherControlProps {
   /** 3D terrain relief (the "3D map") — heavy, so it's a separate opt-in. */
   terrain3d?: boolean
   onTerrain3d?: (v: boolean) => void
+  /** Terrain vertical exaggeration (×). Boosting it makes creeks and ditches
+   *  read on flat ground. */
+  terrainExag?: number
+  onTerrainExag?: (v: number) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
   radarPaused?: boolean
@@ -184,7 +188,7 @@ function GroupSection({ gid, collapsed, onToggle, children }: {
 const GROUPS_LS = 'ht_layer_groups_v2'
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -720,9 +724,35 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               <Toggle on={terrain3d} />
             </button>
             {terrain3d && (
-              <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-                mountains rise · measure reads elevation · heavier on phones — turn off for everyday dispatch
-              </p>
+              <div className="px-3 pb-2 -mt-0.5 space-y-1.5">
+                <p className="font-mono text-[10px] text-teal">
+                  mountains rise · measure reads elevation · map renders lighter while this is on
+                </p>
+                {onTerrainExag && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[9px] text-faint flex-none w-16">height ×{(terrainExag ?? 1.3).toFixed(1)}</span>
+                      <input
+                        type="range" min={5} max={40}
+                        value={Math.round((terrainExag ?? 1.3) * 10)}
+                        onChange={(e) => onTerrainExag(Number(e.target.value) / 10)}
+                        className="flex-1 h-1 accent-teal cursor-pointer"
+                        aria-label="Terrain vertical exaggeration"
+                      />
+                      <button
+                        onClick={() => onTerrainExag(1.3)}
+                        className="font-mono text-[9px] text-faint hover:text-ink transition-colors flex-none"
+                        title="Back to natural (×1.3)"
+                      >
+                        reset
+                      </button>
+                    </div>
+                    <p className="font-mono text-[10px] text-faint">
+                      crank it on flat ground — creeks, ditches and grades pop
+                    </p>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}

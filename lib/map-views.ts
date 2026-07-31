@@ -24,6 +24,10 @@ export interface MapViewCfg {
   parcels: boolean
   trailMode: TrailMode
   zones: boolean
+  /** Terrain vertical exaggeration (×). Absent = 1.3. */
+  terrainExag?: number
+  /** Live marker style: colored dots (default) or direction arrows. */
+  markers?: 'dot' | 'arrow'
 }
 
 export interface SavedMapView {

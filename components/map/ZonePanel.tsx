@@ -9,9 +9,8 @@ import type { TimeRange } from '@/lib/trails'
 import type { SitePresence } from '@/lib/site-presence'
 import { PROJECTS, periodCost, presenceCost, moneyFull, RANGE_COST_LABEL } from '@/lib/projects'
 import { bucketSpanLabel } from '@/lib/activity'
+import { ColorSwatches } from '@/components/ui/color-swatches'
 
-// Last two are outline-only "boundary" colors (see MapView geofence-fill).
-const ZONE_COLORS = ['#F59E0B', '#3B82F6', '#10B981', '#EF4444', '#8B5CF6', '#EC4899', '#0a0a0a', '#9ca3af']
 
 export interface ZoneReal {
   total: number
@@ -89,16 +88,8 @@ export function ZonePanel({
           </div>
           <div>
             <label className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint">Color</label>
-            <div className="mt-1.5 flex gap-2">
-              {ZONE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  aria-label={`Color ${c}`}
-                  className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
-                  style={{ backgroundColor: c, borderColor: color === c ? '#e8f0f7' : 'transparent' }}
-                />
-              ))}
+            <div className="mt-1.5">
+              <ColorSwatches value={color} onChange={setColor} />
             </div>
           </div>
           <div className="flex gap-2 pt-1">

@@ -144,6 +144,8 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           // never feed the circle layers an unparseable paint value.
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS[a.type],
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
+          // Travel direction for the arrow marker style (null → arrow points N).
+          heading: a.location!.heading ?? 0,
           // Three glance-states: moving (fresh fix + speed), idle (device awake
           // and reporting — trackers sleep minutes after ignition-off, so fresh
           // data ≈ powered up), off (stale — asleep/parked).
@@ -357,9 +359,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   // Read once before the state initializers below; a starred saved view
   // still overrides after mount (an explicit choice beats a remembered one).
   const lastState = useRef<Partial<{
-    base: BaseStyle; threeD: boolean; terrain: boolean; radar: boolean; clouds: boolean; stormtops: boolean
+    base: BaseStyle; threeD: boolean; terrain: boolean; terrainExag: number; radar: boolean; clouds: boolean; stormtops: boolean
     precip: boolean; precipPeriod: string; parcels: boolean; zones: boolean
-    overlays: Record<string, boolean>; trailMode: TrailMode
+    overlays: Record<string, boolean>; trailMode: TrailMode; markers: 'dot' | 'arrow'
   }>>((() => {
     try {
       const raw = typeof window !== 'undefined'
@@ -448,9 +450,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   threeDRef.current = threeD
   // 3D terrain (the "3D map") — split from buildings & tilt (Jul 21): the
   // DEM is the expensive half and gets its own opt-in toggle.
+  // Marker style on the live view: plain colored dots (match the replay
+  // trail-head look — owner ask, Jul 31) or direction arrows: ground-aligned
+  // pucks in the asset's color, rotated to the travel heading, with the type
+  // emoji riding upright on top.
+  const [markerStyle, setMarkerStyle] = useState<'dot' | 'arrow'>(lastState.markers ?? 'dot')
   const [terrain3d, setTerrain3d] = useState(lastState.terrain ?? false)
   const terrain3dRef = useRef(terrain3d)
   terrain3dRef.current = terrain3d
+  // Vertical exaggeration for the DEM — 1.3 reads natural in the mountains;
+  // cranking it makes creek beds and ditches pop on flat lowcountry ground.
+  const [terrainExag, setTerrainExag] = useState(lastState.terrainExag ?? 1.3)
+  const terrainExagRef = useRef(terrainExag)
+  terrainExagRef.current = terrainExag
   // Measure + takeoff tool overlay (off by default). Ref so the map's
   // click-to-select handlers can bail while measuring (clicks add vertices).
   const [measureOn, setMeasureOn] = useState(false)
@@ -778,18 +790,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   useEffect(() => {
     try {
       localStorage.setItem(kiosk ? 'ht_last_state_command' : 'ht_last_state_map', JSON.stringify({
-        base, threeD, terrain: terrain3d, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
+        base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
         precip: precipOn, precipPeriod, parcels: parcelsOn, zones: showZones,
-        overlays: overlaysOn, trailMode,
+        overlays: overlaysOn, trailMode, markers: markerStyle,
       }))
     } catch { /* private mode */ }
-  }, [kiosk, base, threeD, terrain3d, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode])
+  }, [kiosk, base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode, markerStyle])
 
   // Factory reset for the whole panel — spec rule 6.
   const resetLayers = useCallback(() => {
     setBase(kiosk ? 'dark' : 'satellite')
     setThreeD(false)
     setTerrain3d(false)
+    setTerrainExag(1.3)
+    setMarkerStyle('dot')
     setRadarOn(kiosk)
     setRadarPaused(false)
     setCloudsOn(false)
@@ -812,6 +826,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setBase(c.base)
     setThreeD(c.threeD)
     setTerrain3d(c.terrain ?? false)
+    setTerrainExag(c.terrainExag ?? 1.3)
+    setMarkerStyle(c.markers ?? 'dot')
     setRadarOn(c.radar)
     setCloudsOn(c.clouds ?? false)
     setPrecipOn(c.precip)
@@ -845,13 +861,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       id: `v-${Date.now().toString(36)}`,
       name: name.trim().slice(0, 40) || 'My view',
       cfg: {
-        base, threeD, terrain: terrain3d, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
-        overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones,
+        base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
+        overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones, markers: markerStyle,
       },
     }
     persistViews({ views: [v, ...mapViews.views].slice(0, 20), defaultId: mapViews.defaultId })
     setActiveViewId(v.id)
-  }, [base, threeD, terrain3d, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, mapViews, persistViews])
+  }, [base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, markerStyle, mapViews, persistViews])
 
   const handleDeleteView = useCallback((id: string) => {
     persistViews({
@@ -1116,10 +1132,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           tiles: ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
           encoding: 'terrarium',
           tileSize: 256,
-          // z12 mesh over-scales beyond — 16× fewer DEM tiles at street zoom
-          // than z14 and visually identical at site scale ("terrain not
-          // usable, slows everything down", Jul 22).
-          maxzoom: 12,
+          // z10 mesh, over-scaled beyond — hills keep their SHAPE but the
+          // tile count collapses another 16× vs z12. "Dialed WAY back on the
+          // accuracy and/or detail" is the explicit ask (owner, Jul 31, after
+          // terrain still wouldn't load on the PC).
+          maxzoom: 10,
         })
       }
 
@@ -1327,10 +1344,50 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         id: 'unclustered-circle', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-radius': 14, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
+          // Slimmed to read like the replay trail-head dots — the emoji badge
+          // is gone from the default look ("drop the icon on the live map in
+          // favor of the colored dot", owner, Jul 31).
+          'circle-radius': 10, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
           // Parked is the NORMAL overnight state — read as calm, never absent.
           // (0.45 made trucks near-invisible on satellite at night.)
           'circle-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
+        },
+      })
+      // Direction arrows — the alternate marker style: a ground-aligned puck
+      // in the asset's color, nose pointing the travel heading. Drawn as an
+      // SDF alpha mask so ONE image tints per-feature via icon-color.
+      if (!m.hasImage('nav-arrow')) {
+        const c = document.createElement('canvas')
+        c.width = 64; c.height = 64
+        const ctx = c.getContext('2d')
+        if (ctx) {
+          ctx.beginPath()
+          ctx.moveTo(32, 4)
+          ctx.lineTo(56, 54)
+          ctx.quadraticCurveTo(32, 40, 8, 54)
+          ctx.closePath()
+          ctx.fillStyle = '#fff'
+          ctx.fill()
+          m.addImage('nav-arrow', ctx.getImageData(0, 0, 64, 64), { sdf: true })
+        }
+      }
+      m.addLayer({
+        id: 'asset-arrows', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        layout: {
+          'icon-image': 'nav-arrow',
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.32, 12, 0.46, 16, 0.6],
+          'icon-rotate': ['coalesce', ['get', 'heading'], 0],
+          // Map-aligned: the arrow lies ON the ground and foreshortens with
+          // tilt — the "3D directional" read — while the emoji stays upright.
+          'icon-rotation-alignment': 'map',
+          'icon-pitch-alignment': 'map',
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+          visibility: 'none',
+        },
+        paint: {
+          'icon-color': ['get', 'color'],
+          'icon-halo-color': '#04121d', 'icon-halo-width': 1.2,
+          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
         },
       })
       m.addLayer({
@@ -1339,6 +1396,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         layout: {
           'text-field': ['match', ['get', 'type'], 'vehicle', '🚛', 'equipment', '🏗️', 'personnel', '👷', 'tool', '🔧', '📍'],
           'text-size': 14, 'text-allow-overlap': true,
+          // Emoji rides only the ARROW style (type identity on the puck); the
+          // default dot stays clean.
+          visibility: 'none',
         },
       })
       // Name beside the dot (live mode) — same POI treatment as trail heads.
@@ -1517,6 +1577,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         }
       }
       m.on('click', 'unclustered-circle', selectAsset)
+      m.on('click', 'asset-arrows', selectAsset)
       m.on('click', 'asset-glow', selectAsset)
       m.on('click', 'tool-count-badge', selectAsset)
       m.on('click', 'tool-dots', selectAsset)
@@ -1556,7 +1617,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           [e.point.x - pad, e.point.y - pad],
           [e.point.x + pad, e.point.y + pad],
         ]
-        if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-glow', 'clusters', 'device-bg'] }).length) return
+        if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg'] }).length) return
         const id = e.features?.[0]?.properties?.id
         const fence = geofencesRef.current.find((g) => g.id === id)
         if (!fence) return
@@ -1567,7 +1628,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       m.on('click', 'geofence-fill', selectZoneAt)
       m.on('click', 'geofence-hit-line', selectZoneAt)
 
-      for (const layer of ['unclustered-circle', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill', 'geofence-hit-line']) {
+      for (const layer of ['unclustered-circle', 'asset-arrows', 'clusters', 'trail-heads', 'device-bg', 'device-icon', 'geofence-fill', 'geofence-hit-line']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
@@ -1584,7 +1645,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           [e.point.x - pad, e.point.y - pad],
           [e.point.x + pad, e.point.y + pad],
         ]
-        const layers = ['unclustered-circle', 'asset-glow', 'trail-heads'].filter((l) => m.getLayer(l))
+        const layers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads'].filter((l) => m.getLayer(l))
         const hits = m.queryRenderedFeatures(box, { layers })
         // Direct hits already handled by the layer handlers — this only fires
         // usefully when the tap landed NEAR a pin but on none. A direct hit in
@@ -1706,7 +1767,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const m = map.current
     if (!mapReady || !m) return
     const set = (l: string, v: boolean) => m.getLayer(l) && m.setLayoutProperty(l, 'visibility', v ? 'visible' : 'none')
-    LIVE_LAYERS.forEach((l) => set(l, trailMode === 'off'))
+    const live = trailMode === 'off'
+    LIVE_LAYERS.forEach((l) => set(l, live))
+    // Marker style splits the live view: dots (clean, matches replay heads)
+    // or direction arrows with the type emoji riding on top.
+    set('unclustered-circle', live && markerStyle === 'dot')
+    set('asset-arrows', live && markerStyle === 'arrow')
+    set('unclustered-label', live && markerStyle === 'arrow')
     set('trails-line', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
     set('heat3d-layer', trailMode === '3d')
@@ -1715,7 +1782,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     if (trailMode === '3d' && m.getPitch() < 25 && !followIdRef.current) {
       m.easeTo({ pitch: 55, duration: 800 })
     }
-  }, [mapReady, trailMode])
+  }, [mapReady, trailMode, markerStyle])
 
   // Write movement geometry straight into the map sources. Called from the
   // RAF loop during playback (bypassing React) and from the effect below for
@@ -2114,17 +2181,43 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
 
   // 3D terrain (the "3D map") — real DEM elevation relief; mountains rise and
   // the measure tool gets its elevation readout. The expensive one, opt-in.
+  // Two levers make it survivable on big screens ("will not even load on PC,
+  // makes everything shut down" — owner, Jul 31):
+  //  1. Render at 1× while the DEM is up. A 4K monitor at DPR 1.5–2 was
+  //     pushing a 4–8× larger framebuffer through the terrain pass; dropping
+  //     to CSS pixels is the difference between loads and dies.
+  //  2. Cap pitch at 60° while terrain is on. The map normally allows 85° for
+  //     the sky/satellite layers, but a near-horizon frustum over a DEM pulls
+  //     a monster tile pyramid along the horizon.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
     // Wrapped defensively — a DEM tile hiccup must never blank the map.
     try {
-      if (terrain3d && m.getSource('dem')) m.setTerrain({ source: 'dem', exaggeration: 1.3 })
-      else m.setTerrain(null)
+      if (terrain3d && m.getSource('dem')) {
+        m.setTerrain({ source: 'dem', exaggeration: terrainExagRef.current })
+        m.setPixelRatio(1)
+        m.setMaxPitch(60)
+        if (m.getPitch() > 60) m.setPitch(60)
+      } else {
+        m.setTerrain(null)
+        m.setMaxPitch(85)
+        m.setPixelRatio(window.devicePixelRatio || 1)
+      }
     } catch { /* terrain unsupported / source not ready — ignore */ }
     if (!followIdRef.current) m.easeTo({ pitch: terrain3d || threeD ? 55 : 0, duration: 600 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, terrain3d])
+
+  // Exaggeration slider (in the terrain legend) — live update, no re-toggle.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !terrain3d) return
+    try {
+      if (m.getSource('dem')) m.setTerrain({ source: 'dem', exaggeration: terrainExag })
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terrainExag])
 
   // Toggle visibility of all geofence layers at once
   useEffect(() => {
@@ -3987,6 +4080,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onThreeD={setThreeD}
         terrain3d={terrain3d}
         onTerrain3d={setTerrain3d}
+        terrainExag={terrainExag}
+        onTerrainExag={setTerrainExag}
         radarOn={radarOn}
         radarPaused={radarPaused}
         onRadarPause={setRadarPaused}
@@ -4059,6 +4154,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
           kiosk={kiosk}
           trailMode={trailMode}
           onTrailMode={setTrailMode}
+          markerStyle={markerStyle}
+          onMarkerStyle={setMarkerStyle}
           t={pbT}
           playing={pbPlaying}
           speed={pbSpeed}

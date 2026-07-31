@@ -13,6 +13,7 @@ const TRIGGER_LABELS: Record<AlertRule['trigger'], string> = {
   idle: 'Idle too long',
   after_hours_movement: 'THEFT ALERT',
   left_site: 'Left job site',
+  speeding: 'Speeding',
 }
 
 const TRIGGER_COLORS: Record<AlertRule['trigger'], 'default' | 'destructive' | 'secondary'> = {
@@ -21,6 +22,7 @@ const TRIGGER_COLORS: Record<AlertRule['trigger'], 'default' | 'destructive' | '
   idle: 'secondary',
   after_hours_movement: 'destructive',
   left_site: 'destructive',
+  speeding: 'secondary',
 }
 
 const CRITICAL_TRIGGERS: AlertRule['trigger'][] = ['after_hours_movement', 'left_site']

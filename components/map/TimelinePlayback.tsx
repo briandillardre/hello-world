@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -49,6 +49,10 @@ interface TimelinePlaybackProps {
   onRange: (r: TimeRange) => void
   trailMode: TrailMode
   onTrailMode: (m: TrailMode) => void
+  /** Live marker style: clean colored dots (default) or direction arrows —
+   *  ground-aligned pucks in asset color with the type emoji on top. */
+  markerStyle?: 'dot' | 'arrow'
+  onMarkerStyle?: (s: 'dot' | 'arrow') => void
   t: number
   playing: boolean
   speed: number
@@ -106,7 +110,7 @@ interface TimelinePlaybackProps {
 }
 
 export function TimelinePlayback({
-  range, onRange, trailMode, onTrailMode, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  range, onRange, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
@@ -570,6 +574,32 @@ export function TimelinePlayback({
             </button>
           ))}
         </div>
+
+        {/* Marker style — only meaningful while live pins show (trails off). */}
+        {onMarkerStyle && trailMode === 'off' && (
+          <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+            <button
+              onClick={() => onMarkerStyle('dot')}
+              title="Colored dots — clean, matches replay view"
+              className={
+                'flex items-center px-2 py-1 rounded-md transition-colors ' +
+                (markerStyle === 'dot' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+              }
+            >
+              <Circle className="h-3.5 w-3.5 fill-current" />
+            </button>
+            <button
+              onClick={() => onMarkerStyle('arrow')}
+              title="Direction arrows — asset-colored pucks pointing the way they're headed, type icon on top"
+              className={
+                'flex items-center px-2 py-1 rounded-md transition-colors ' +
+                (markerStyle === 'arrow' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+              }
+            >
+              <Navigation2 className="h-3.5 w-3.5 fill-current" />
+            </button>
+          </div>
+        )}
 
         {/* Cinematic camera-follow (menu itself renders above the bar — see top) */}
         {(followAssets.length > 0 || followZones.length > 0) && (

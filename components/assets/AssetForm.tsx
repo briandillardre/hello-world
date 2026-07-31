@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { TRAIL_PALETTE } from '@/lib/trails'
+import { ColorSwatches } from '@/components/ui/color-swatches'
 
 export interface AssetFormData {
   name: string
@@ -538,34 +538,25 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               Command Center radar blip. Auto = the stable per-asset palette. */}
           <div className="space-y-1.5">
             <Label>Dot &amp; trail color</Label>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSpecField('color', '')}
-                className={
-                  'h-7 px-2.5 rounded-full border text-[11px] font-semibold transition-colors ' +
-                  (!specs.color
-                    ? 'border-teal text-teal bg-teal/10'
-                    : 'border-navy-700 text-faint hover:text-muted')
-                }
-              >
-                Auto
-              </button>
-              {TRAIL_PALETTE.map((c) => (
+            <ColorSwatches
+              value={String(specs.color ?? '')}
+              onChange={(c) => setSpecField('color', c)}
+              leading={
                 <button
-                  key={c}
                   type="button"
-                  aria-label={`Use color ${c}`}
-                  onClick={() => setSpecField('color', c)}
+                  onClick={() => setSpecField('color', '')}
                   className={
-                    'h-7 w-7 rounded-full border-2 transition-transform ' +
-                    (specs.color === c ? 'border-white scale-110' : 'border-transparent hover:scale-105')
+                    'h-7 px-2.5 rounded-full border text-[11px] font-semibold transition-colors ' +
+                    (!specs.color
+                      ? 'border-teal text-teal bg-teal/10'
+                      : 'border-navy-700 text-faint hover:text-muted')
                   }
-                  style={{ background: c, boxShadow: specs.color === c ? `0 0 8px ${c}` : undefined }}
-                />
-              ))}
-            </div>
-            <p className="text-[10px] text-faint leading-tight">Used on the map dot, trail line, and radar dial. Auto assigns a stable color.</p>
+                >
+                  Auto
+                </button>
+              }
+            />
+            <p className="text-[10px] text-faint leading-tight">Used on the map dot, trail line, and radar dial. Auto assigns a stable color; the rainbow well picks anything.</p>
           </div>
 
           <div className="space-y-2">

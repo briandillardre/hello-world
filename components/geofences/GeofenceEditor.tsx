@@ -9,12 +9,9 @@ import { saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofence
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ColorSwatches } from '@/components/ui/color-swatches'
 
 const SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-
-// Last two are outline-only "boundary" colors (near-black / gray) — no fill,
-// for a large perimeter around the whole work area.
-const COLORS = ['#ff9e16', '#2dd4bf', '#a78bfa', '#f87171', '#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#0a0a0a', '#9ca3af']
 
 interface GeofenceEditorProps {
   id: string
@@ -320,17 +317,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
           </div>
             <div className="space-y-1">
               <Label className="text-xs">Color</Label>
-              <div className="flex gap-1.5">
-                {COLORS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => { setColor(c); setDirty(true) }}
-                    className={'w-7 h-7 rounded-full border-2 ' + (color === c ? 'border-ink scale-110' : 'border-transparent')}
-                    style={{ backgroundColor: c }}
-                    aria-label={`Color ${c}`}
-                  />
-                ))}
-              </div>
+              <ColorSwatches value={color} onChange={(c) => { setColor(c); setDirty(true) }} />
             </div>
           </div>
           {/* Visibility — global (everyone) vs personal (only me). */}
