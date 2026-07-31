@@ -28,15 +28,18 @@ export const POI_KIND_META: Record<PoiKind, { label: string; cls: string }> = {
   dealer:     { label: 'Dealer',     cls: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/40' },
   service:    { label: 'Service',    cls: 'bg-cyan-400/15 text-cyan-300 border-cyan-400/40' },
   store:      { label: 'Store',      cls: 'bg-pink-400/15 text-pink-300 border-pink-400/40' },
-  residence:  { label: 'Residence',  cls: 'bg-navy-700/60 text-muted border-navy-600' },
+  residence:  { label: 'Residence',  cls: 'bg-slate-200/15 text-slate-200 border-slate-300/40' },
   other:      { label: 'Stop',       cls: 'bg-navy-700/60 text-muted border-navy-600' },
 }
 
-/** Solid hex per kind — for map pins, where tailwind classes can't reach. */
+/** Solid hex per kind — for map pins, where tailwind classes can't reach.
+ *  Residence is LIGHT slate (not the 'other' gray): a truck parked at a house
+ *  mid-shift is exactly the stop that must not blend in. Lightness separates
+ *  it from 'other' under every color-vision type (ΔE 21.6+, validated). */
 export const POI_KIND_COLOR: Record<PoiKind, string> = {
   site: '#f5a623', supplier: '#2dd4bf', fuel: '#60a5fa', food: '#fb923c',
   government: '#c084fc', dealer: '#34d399', service: '#22d3ee', store: '#f472b6',
-  residence: '#8fa3b8', other: '#8fa3b8',
+  residence: '#e2e8f0', other: '#8fa3b8',
 }
 
 const SUPPLIER_SHOPS = new Set(['doityourself', 'hardware', 'trade', 'building_materials', 'electrical', 'plumbing', 'garden_centre', 'agrarian', 'wholesale', 'landscaping'])

@@ -3,6 +3,7 @@ import type {
   ToolAssociation, MaintenanceSchedule, ServiceRecord, AssetUtilization,
   QboConnection,
 } from './types'
+import type { DayRhythm, StopMix, VehicleScore } from './scorecard'
 
 // Nashville, TN construction site area
 export const MOCK_COMPANY: Company = {
@@ -402,4 +403,131 @@ export const MOCK_EQUIPMENT_RATES: Record<string, number> = {
   'asset-9': 95,  // JD 310L Backhoe
   'asset-1': 45,  // F-350 Truck
   'asset-6': 45,  // Ram 2500
+}
+
+// ── Fleet scorecard (demo) ───────────────────────────────────────────────────
+// Three personalities that SELL the report: the model employee, the yard
+// truck, and the one worth a conversation. Deterministic jitter (no RNG) so
+// the page is stable between refreshes.
+
+interface MockDayCfg {
+  first: number; onSite: number | null; last: number
+  active: number; idle: number; miles: number
+  satFactor: number   // how much of a day Saturday is (0 = off)
+}
+
+function mockDays(cfg: MockDayCfg, daysBack: number, extras?: (d: DayRhythm, weekday: number, i: number) => void): DayRhythm[] {
+  const out: DayRhythm[] = []
+  const today = new Date()
+  for (let i = daysBack - 1; i >= 0; i--) {
+    const dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i)
+    const weekday = dt.getDay()
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const workday = weekday >= 1 && weekday <= 6
+    const f = weekday === 6 ? cfg.satFactor : weekday === 0 ? 0 : 1
+    const jit = ((i * 7919) % 23) - 11 // ±11 min, deterministic
+    const d: DayRhythm = {
+      day: key,
+      firstMoveMin: f > 0 ? cfg.first + jit : null,
+      firstOnSiteMin: f > 0 && cfg.onSite != null ? cfg.onSite + jit : null,
+      lastMoveMin: f > 0 ? Math.round(cfg.first + (cfg.last - cfg.first) * f) + jit : null,
+      activeMin: Math.round(cfg.active * f),
+      idleMin: Math.round(cfg.idle * f),
+      miles: Math.round(cfg.miles * f),
+      afterHoursMiles: 0,
+      afterHoursMovingMin: 0,
+      workday,
+    }
+    extras?.(d, weekday, i)
+    out.push(d)
+  }
+  return out
+}
+
+function summarize(assetId: string, name: string, days: DayRhythm[], stops: StopMix[], siteHours: VehicleScore['siteHours']): VehicleScore {
+  const act = days.filter((d) => d.firstMoveMin != null)
+  const med = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : null)
+  const activeMin = days.reduce((s, d) => s + d.activeMin, 0)
+  const idleMin = days.reduce((s, d) => s + d.idleMin, 0)
+  return {
+    assetId, name,
+    daysActive: act.length, daysInRange: days.length,
+    medFirstMove: med(act.map((d) => d.firstMoveMin!)),
+    medFirstOnSite: med(act.map((d) => d.firstOnSiteMin).filter((x): x is number => x != null)),
+    medLastMove: med(act.map((d) => d.lastMoveMin).filter((x): x is number => x != null)),
+    activeHrs: Math.round(activeMin / 6) / 10,
+    idleHrs: Math.round(idleMin / 6) / 10,
+    idlePct: activeMin + idleMin > 0 ? Math.round((idleMin / (activeMin + idleMin)) * 100) : 0,
+    miles: days.reduce((s, d) => s + d.miles, 0),
+    afterHoursMiles: Math.round(days.reduce((s, d) => s + d.afterHoursMiles, 0)),
+    afterHoursHrs: Math.round(days.reduce((s, d) => s + d.afterHoursMovingMin, 0) / 6) / 10,
+    weekendMiles: days.filter((d) => !d.workday).reduce((s, d) => s + d.miles, 0),
+    days, stops, siteHours, pendingStops: [],
+  }
+}
+
+/** Demo scorecard over the trailing `daysBack` calendar days (min 1). */
+export function buildMockScorecard(daysBack: number): VehicleScore[] {
+  const n = Math.max(1, Math.min(45, Math.round(daysBack)))
+  const scale = (m: number) => Math.round((m * n) / 30) // 30d-shaped totals → range
+
+  // The model employee: rolling before 7, on site quick, home by 5.
+  const f350 = summarize('asset-1', 'F-350 Truck #1',
+    mockDays({ first: 6 * 60 + 38, onSite: 7 * 60 + 4, last: 17 * 60 + 6, active: 340, idle: 76, miles: 74, satFactor: 0.5 }, n),
+    [
+      { kind: 'site', count: scale(46), minutes: scale(5940), workMinutes: scale(5760), topName: 'Riverfront Tower', topMinutes: 260 },
+      { kind: 'supplier', count: scale(11), minutes: scale(430), workMinutes: scale(430), topName: '84 Lumber', topMinutes: 55 },
+      { kind: 'fuel', count: scale(8), minutes: scale(96), workMinutes: scale(80), topName: 'Shell — Charlotte Ave', topMinutes: 14 },
+      { kind: 'food', count: scale(9), minutes: scale(280), workMinutes: scale(280), topName: 'Chago’s Cantina', topMinutes: 38 },
+    ],
+    [
+      { id: 'fence-1', name: 'Riverfront Tower', hours: scale(96) },
+      { id: 'fence-2', name: 'Maple St Grading', hours: scale(41) },
+    ])
+
+  // The conversation: late starts, long lunches, a Sunday trip, midday hours
+  // at a residence. This card is the sales demo.
+  const silverado = summarize('asset-10', 'Silverado 1500 #3',
+    mockDays({ first: 8 * 60 + 12, onSite: 9 * 60 + 18, last: 16 * 60 + 24, active: 235, idle: 118, miles: 58, satFactor: 0 }, n,
+      (d, weekday, i) => {
+        if (weekday === 0 && i < 14) { // Sunday runs inside the last two weeks
+          d.firstMoveMin = 10 * 60 + 24
+          d.lastMoveMin = 14 * 60 + 42
+          d.activeMin = 95; d.idleMin = 24; d.miles = 52
+          d.afterHoursMiles = 52; d.afterHoursMovingMin = 95
+        } else if (weekday === 5) { // Fridays trail off early with an errand loop
+          d.lastMoveMin = 15 * 60 + 6
+          d.afterHoursMiles = 9; d.afterHoursMovingMin = 22
+        }
+      }),
+    [
+      { kind: 'site', count: scale(31), minutes: scale(3810), workMinutes: scale(3705), topName: 'Maple St Grading', topMinutes: 210 },
+      { kind: 'supplier', count: scale(6), minutes: scale(220), workMinutes: scale(220), topName: 'SiteOne Landscape', topMinutes: 48 },
+      { kind: 'fuel', count: scale(9), minutes: scale(112), workMinutes: scale(96), topName: 'QuikTrip #482', topMinutes: 16 },
+      { kind: 'food', count: scale(22), minutes: scale(1240), workMinutes: scale(1180), topName: 'Twin Peaks — Rivergate', topMinutes: 96 },
+      { kind: 'store', count: scale(12), minutes: scale(540), workMinutes: scale(505), topName: 'Bass Pro Shops', topMinutes: 88 },
+      { kind: 'residence', count: scale(8), minutes: scale(660), workMinutes: scale(610), topName: 'Stonebrook Dr', topMinutes: 145 },
+    ],
+    [{ id: 'fence-2', name: 'Maple St Grading', hours: scale(64) }])
+
+  // The yard truck: short hops, half its engine time idling at the gate.
+  const ram = summarize('asset-6', 'Ram 2500 #2',
+    mockDays({ first: 7 * 60 + 18, onSite: 7 * 60 + 32, last: 15 * 60 + 48, active: 120, idle: 96, miles: 21, satFactor: 0.4 }, n),
+    [
+      { kind: 'site', count: scale(38), minutes: scale(4620), workMinutes: scale(4540), topName: 'Equipment Yard', topMinutes: 240 },
+      { kind: 'supplier', count: scale(9), minutes: scale(310), workMinutes: scale(310), topName: 'Ferguson Waterworks', topMinutes: 42 },
+      { kind: 'fuel', count: scale(5), minutes: scale(60), workMinutes: scale(60), topName: 'Marathon — Dickerson Pk', topMinutes: 13 },
+    ],
+    [
+      { id: 'fence-3', name: 'Equipment Yard', hours: scale(88) },
+      { id: 'fence-1', name: 'Riverfront Tower', hours: scale(22) },
+    ])
+
+  // Equipment reads differently: no commute, the story is hours-on-site.
+  const cat = summarize('asset-2', 'CAT 336 Excavator',
+    mockDays({ first: 7 * 60 + 22, onSite: 7 * 60 + 22, last: 16 * 60 + 30, active: 355, idle: 128, miles: 1, satFactor: 0.3 }, n),
+    [{ kind: 'site', count: scale(26), minutes: scale(11040), workMinutes: scale(10520), topName: 'Riverfront Tower', topMinutes: 540 }],
+    [{ id: 'fence-1', name: 'Riverfront Tower', hours: scale(198) }])
+
+  return [silverado, f350, ram, cat].sort((a, b) => b.miles - a.miles)
 }
