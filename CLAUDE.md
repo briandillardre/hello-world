@@ -197,6 +197,17 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 - Verizon Connect: $20-35, sticky contracts, dated UX
 - GPS Trackit: $15-25, vehicle-centric, weak on tools/equipment
 
+## Sync rule (Brian, Aug 1 2026)
+Any change to the roadmap, to-do list, future/idea items, or cost picture —
+adding, building, declining, or re-scoping — must update the graphical views
+in the SAME commit:
+- `marketing/system-map.html` (the system-map infographic: built/in-progress/
+  grayed states, per-piece costs, the Growth Platform section) + republish the
+  Claude artifact so Brian's link stays current
+- the cost/growth metrics docs it draws from (`docs/COST-SCALE-2026-07.md`,
+  `docs/OPERATING-MODEL.md`) whenever a decision changes a dollar figure
+The infographic is a rendered view of the roadmap — never let them drift.
+
 ## Testing rule (Brian, Jul 2026)
 Any change touching the timeline, radar, or history data: click through EVERY
 time range (Live / Today / Yesterday / 7d / 30d / YTD / All) on BOTH /map and

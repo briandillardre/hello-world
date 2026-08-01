@@ -84,7 +84,7 @@
 
 <div class="wrap">
   <h1><span class="hm">Hammer</span>Track — the whole system on one page</h1>
-  <p class="sub">Every piece that exists today, what each costs to run, what's been discussed but not built, and who it's all for. Jul 31, 2026 · pilot live in Greenville, SC (T1-a in the Chevy 1500 since Jul 6).</p>
+  <p class="sub">Every piece that exists today, what each costs to run, what's been discussed but not built, and who it's all for. Aug 1, 2026 · pilot live in Greenville, SC (T1-a in the Chevy 1500 since Jul 6).</p>
   <div class="legend">
     <span><span class="dotb"></span> Built &amp; running</span>
     <span><span class="dotp"></span> In progress / waiting on a third party</span>
@@ -130,6 +130,7 @@
       <div class="card live"><b>Fleet Reports</b><div class="c">scorecard infographic + CSV/PDF</div></div>
       <div class="card live"><b>Field ops</b><div class="c">time clock, daily logs, QR checks, site log</div></div>
       <div class="card live"><b>Maintenance</b><div class="c">intervals from real hours/miles</div></div>
+      <div class="card live"><b>Project Hub per zone</b><div class="c">punch list, milestones, budget burn (Aug 1)</div><div class="cost">included</div></div>
       <div class="card part"><b>Native apps</b><div class="c">Capacitor shell committed — store accounts wait on D-U-N-S</div><div class="cost">$99+$25/yr when live</div></div>
     </div>
     <div class="stage">
@@ -139,7 +140,7 @@
       <div class="card part"><b>QuickBooks</b><div class="c">invoices + expenses built; production connect in flight</div><div class="cost">$0/mo</div></div>
       <div class="card part"><b>SMS theft alerts</b><div class="c">+1 888 373 9004 bought; verification in review</div><div class="cost">$2.15/mo + $0.008/msg</div></div>
       <div class="card live"><b>Phone push</b><div class="c">ntfy now; FCM lock-screen ready</div><div class="cost">$0</div></div>
-      <div class="card part"><b>Plaid receipts</b><div class="c">missing-receipt chase built; keys pending</div><div class="cost">~$0.30/linked acct</div></div>
+      <div class="card part"><b>Instant receipt chase</b><div class="c">card-alert email → push in seconds → magic capture link (Aug 1); Brian to flip on Resend inbound</div><div class="cost">$0 — Plaid's $1,000/mo quote declined</div></div>
     </div>
   </div>
 
@@ -185,8 +186,23 @@
       <div><b>Region zones / divisional rollups</b><br><span class="why">Built at the first multi-metro customer. A solo GC never needs it.</span></div>
       <div><b>Per-asset mini-map on the asset page</b><br><span class="why">Queued. The full map's isolate mode covers it meanwhile.</span></div>
       <div><b>Admin view of AI questions</b><br><span class="why">Org-wide "who asked what" — waits for a customer with enough seats to care.</span></div>
-      <div><b>Hardware financing ("free tracker, 3-yr contract")</b><br><span class="why">Deliberately never — it's the competitor model we position against. Revisit only if pilots die on upfront cash.</span></div>
+      <div><b>Hardware financing ("free tracker, 3-yr contract")</b><br><span class="why">Still never as a lock-in gimmick. But real lending is now ON the roadmap — see the Growth Platform below.</span></div>
       <div><b>Custom roles &amp; per-feature permissions</b><br><span class="why">Four contractor-shaped roles ship. A role-builder waits for a 50-person company that demands it.</span></div>
+      <div><b>PM Tier 1 — the money loop</b><br><span class="why">Estimates → e-sign proposals (magic link, no DocuSign) → change orders → AIA-style pay apps + lien waivers. Next big build when Brian calls it. docs/PROJECT-MANAGEMENT.md</span></div>
+      <div><b>PM Tier 2 — daily ops</b><br><span class="why">Files/photos hub per zone, crew schedule board, safety pack, sub COI tracking w/ expiry alerts, T&amp;M tickets with tracked hours auto-attached.</span></div>
+    </div>
+  </div>
+
+  <h2>3b · The Growth Platform — grow, manage, sell, protect (recorded Aug 1)</h2>
+  <div class="panelbox">
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px">The endgame: one place for construction &amp; service companies to grow, manage, and sell — with AI guidance on the next lever (hires, equipment, yard, geography). The tracking product is the data moat the financial layer sits on (Toast → Toast Capital playbook). All partner-first, never balance-sheet risk. Full gates: <span class="mono">docs/GROWTH-PLATFORM.md</span></p>
+    <div class="grayrow">
+      <div><b>1 · Charts &amp; industry benchmarks</b><br><span class="why">Growth dashboard, equipment ROI, QBO benchmarking ("your idle % vs top-quartile paving"). ~60% of plumbing exists. Starts after PM Tier 1.</span></div>
+      <div><b>2 · HammerTrack Card (Ramp-style)</b><br><span class="why">Per-job limits, swipe-time receipt chase native, interchange revenue (a 10-truck GC's $50k/mo spend ≈ $750–1,250/mo to us). Gated: Mercury + Stripe live, ~25 companies.</span></div>
+      <div><b>3 · Lending — partner-first</b><br><span class="why">Equipment-finance referrals (1–2% fee, zero capital) → capital-partner working-capital advances. Our utilization data underwrites better than any bank.</span></div>
+      <div><b>4 · Valuation &amp; exit suite</b><br><span class="why">Live "your company is worth ~$X" card, exit-readiness score, one-click buyer data room. Needs 12+ months of data; ship early with wide bands.</span></div>
+      <div><b>5 · Insurance arm</b><br><span class="why">Discount referrals ("tracked fleet" rate — sub part-pays for itself) → embedded agency (P&amp;C license, SC) → maybe MGA. Theft/recovery/geofence data IS the underwriting file. Never carry risk.</span></div>
+      <div><b>The AI lever advisor</b><br><span class="why">The thread through all five: when to hire, buy vs rent, where the yard goes, which metro next, what raises the exit multiple.</span></div>
     </div>
   </div>
 
@@ -230,5 +246,5 @@
     </div>
   </div>
 
-  <p class="foot">HammerTrack LLC · figures from the live cost/ops docs (Jul 2026): hardware at KORE quotes, fees measured on real Stripe charges, margins from the operating model. Grayed items are recorded decisions with build triggers — not forgotten ideas.</p>
+  <p class="foot">HammerTrack LLC · updated Aug 1 2026 · figures from the live cost/ops docs: hardware at KORE quotes, fees measured on real Stripe charges, margins from the operating model. Grayed items are recorded decisions with build triggers — not forgotten ideas. This page is kept in sync with the roadmap by standing rule (CLAUDE.md).</p>
 </div>
