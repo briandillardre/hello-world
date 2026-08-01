@@ -65,6 +65,83 @@ small GC writes on a legal pad today:
 | Change orders | QBO already handles the money side for our size | Multiple customers ask |
 | Crew scheduling / dispatch | Adjacent product; AI dispatcher may cover it | Revisit with the AI roadmap |
 
+## Competitive roadmap (added Aug 1 2026 — Brian: "everyone hates Procore")
+
+Procore isn't hated for missing features — it's the $10–50k/yr price, 6-week
+onboarding, and the back-office babysitter it needs. We win by covering the
+20% a 5–50 person contractor actually opens, flat per-asset, zero onboarding,
+on data that feeds itself. Build order (effort roughly ascending within tier):
+
+**Tier 1 — the money loop (wins deals):**
+1. **Estimates → proposals → e-sign** — line-item estimate, branded PDF,
+   client signs via magic link (no DocuSign fee), winner converts to a zone
+   with budget pre-filled.
+2. **Change orders with e-sign** — the #1 place small GCs lose money; scope +
+   price + tap-to-sign, auto-added to zone budget and the QBO invoice.
+3. **Pay apps (AIA G702/703-style) + lien waiver tracking** — continuation
+   sheet PDF off the cost data we already accrue.
+
+**Tier 2 — daily operations (keeps them):**
+4. **Files & photos hub per zone** — native uploads (plans, contracts,
+   permits) + auto-filed field photos; kills the CompanyCam sub.
+5. **Crew schedule board** — week-view who's-on-which-job grid feeding the
+   existing clock-in/geofence loop; AI dispatcher reads/writes it.
+6. **Safety pack** — toolbox-talk log + incident reports w/ photos, tied to
+   daily logs (insurance-premium talking point).
+7. **Sub compliance / COI tracking** — per-sub folder: certificate of
+   insurance w/ expiry alerts ("GL expires in 30 days — don't let them on
+   site"), W-9, license, lien waivers received. A table + reminder cron, not
+   a product; agents charge $100+/mo for this alone (myCOI, SmartCompliance).
+8. **T&M tickets** — time-and-materials extras signed in the field. UNFAIR
+   ADVANTAGE: our ticket attaches tracked machine hours + operator time +
+   weather automatically — evidence Procore can't generate.
+
+**Tier 3 — build when a customer demands it:**
+9. RFIs / submittals-lite — first commercial GC >$10M.
+10. Inspections/checklists with templates (QR equipment checks already exist;
+    extend to site checklists).
+11. **Closeout / turnover package** — one-click branded PDF binder: photos,
+    daily logs, weather record, punch history, warranty list. Mostly
+    assembled from data we already have; great "wow" demo.
+12. Delay-notice letters backed by our per-zone weather receipts — automatic
+    documentation for weather-delay claims. Differentiator nobody else has.
+13. Sub directory + "send scope, collect quotes" — the most of
+    BuildingConnected we'd ever build. Never the network itself.
+
+**Never build:** drawings/BIM viewer + markup (Fieldwire/Autodesk moat), bid
+network (can't out-network Autodesk), accounting (QBO is the ledger, forever).
+
+## The full Procore GC-side inventory (so nothing surprises us in a demo-off)
+
+Have ✅ / roadmap ⬜ (tier above) / skip ✖:
+project directory ✅ · daily logs ✅(self-feeding) · photos ✅→⬜4 · punch ✅ ·
+schedule ⬜5 (P6/MS Project sync ✖) · budget ✅ · prime contract ✖(QBO) ·
+commitments/subcontracts + POs ⬜(thin table, Tier 2–3) · change events/orders
+⬜2 · pay apps/invoicing ⬜3 · direct costs ✅(receipts/expenses) · cash-flow
+forecast ✖(QBO) · estimating/bidding ⬜1/13 · prequalification ✖ · COI &
+compliance ⬜7 · RFIs ⬜9 · submittals ⬜9 · transmittals ✖ · meeting minutes
+✖(notes cover it) · correspondence/notices ⬜12 (weather-backed only) ·
+drawings + specs ✖ · inspections ⬜10 · observations ✖(punch covers it) ·
+incidents ⬜6 · T&M tickets ⬜8 · action plans ✖ · closeout/warranty/O&M ⬜11 ·
+Procore Pay (sub payments + waiver exchange) ✖(waiver *tracking* only) ·
+analytics ✅(reports/scorecard) · equipment tracking ✅(we're better) ·
+timesheets ✅ · workforce planning ⬜5.
+
+## Who Procore serves (Brian's question, Aug 1)
+
+Three personas, priced separately, all annual contracts on construction volume:
+1. **General contractors** — the core (what everything above maps).
+2. **Specialty contractors / subs** — field + financials sold downstream,
+   often because their GC forced Procore on them (resentment = our opening:
+   subs who hate the seat they were forced to buy).
+3. **Owners / developers** — "Procore for Owners": capital-program portfolio,
+   funding sources, owner-side budgets, portfolio analytics. Real but
+   secondary; owners often just get logins to the GC's instance.
+
+Implication for us: stay GC/sub-side. The owner/developer angle for
+HammerTrack (an owner watching their GC's live site) is a share-link feature,
+not a product line.
+
 ## Fit by client size (mirrors the system-map infographic)
 
 - **Owner-operator (1–5 people):** punch list on the phone replaces the legal
