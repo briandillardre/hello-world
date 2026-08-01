@@ -57,6 +57,8 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - QuickBooks Online integration (OAuth2, asset sync, job-cost invoices, expenses)
 - flespi connector — Teltonika FMM series + Digital Matter normalized to same schema
 - OEM telematics ingestion — ISO 15143-3 / AEMP 2.0 pull of Komatsu/Link-Belt/Cat/CNH/Bomag/Wirtgen (hours, GPS, fuel, idle, faults) into the same map/timeline/maintenance, no hardware (`docs/OEM-TELEMATICS.md`)
+- Instant receipt chase — card-alert email forwarding (Chase/CapOne/Amex parsers) → expense within seconds of the swipe → push to the mapped cardholder → magic capture link /r/{token} (camera, no login) → nag ladder (+1 h, +4 h, nightly) — migration 045, `docs/RECEIPT-CHASE.md`
+- Project Hub per zone — punch list (assignee/due/priority), milestones with schedule strip, budget vs tracked actuals — migration 046, `docs/PROJECT-MANAGEMENT.md` (competitor deep dive + scope-by-client-size)
 - Pricing page with Tenna comparison
 - Demo landing page at /demo (ad funnel landing page)
 - PWA (manifest.json)
@@ -125,6 +127,7 @@ ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
 FCM_SERVER_KEY=               # optional: native push to the phone lock screen (Firebase → Cloud Messaging). Devices self-register via the Capacitor app → /api/push/register (migration 029). Unset = no push.
 RESEND_API_KEY=                # optional: emails team invites (free at resend.com; verify hammertrack.ai domain)
+RESEND_INBOUND_SECRET=         # optional: whsec_… signing secret for the Resend inbound webhook → /api/inbound/receipts (instant receipt chase; fails closed unset)
 EMAIL_FROM=                    # optional sender override, default "HammerTrack <team@hammertrack.ai>"
 SUPABASE_DB_URL=               # optional: session-pooler Postgres URI — enables `npm run migrate` (auto-migrations)
 CRON_SECRET=                   # optional: locks /api/cron/digest (Vercel cron sends it automatically)

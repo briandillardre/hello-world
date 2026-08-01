@@ -197,6 +197,8 @@ export interface Geofence {
   completed_at?: string | null
   /** Paired QuickBooks customer id — complete/reopen renames both systems. */
   qbo_customer_id?: string | null
+  /** Project budget ($). Tracked costs + job-coded receipts burn against it. */
+  budget?: number | null
   /** Optional job-site window. NULL = perpetual. Scopes cost totals + archive. */
   active_from?: string | null
   active_until?: string | null

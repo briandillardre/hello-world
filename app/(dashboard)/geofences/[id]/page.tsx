@@ -13,6 +13,8 @@ import { ZoneUsage } from '@/components/geofences/ZoneUsage'
 import { ZoneVisits } from '@/components/geofences/ZoneVisits'
 import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
 import { ZoneNotes } from '@/components/geofences/ZoneNotes'
+import { ProjectHub } from '@/components/geofences/ProjectHub'
+import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
 import { segmentVisits, type Visit } from '@/lib/visits'
 import { DEFAULT_TZ } from '@/lib/dates'
@@ -101,6 +103,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       .limit(14)
     weather = (wx ?? []) as SiteWeatherRow[]
   }
+  // Project Hub (punch list / milestones / budget) — site zones only.
+  const hub = !isBoundary ? await getProjectHubData(companyId, fence.id) : null
+  const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
+
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
   // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
@@ -159,6 +165,25 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             exit and after-hours alerts. Usage hours, invoicing, and the site log are tracked on job-site zones.
           </p>
         )}
+
+        {hub && (hub.available ? (
+          <ProjectHub
+            zoneId={fence.id}
+            tasks={hub.tasks}
+            milestones={hub.milestones}
+            members={hub.members}
+            budget={fence.budget ?? null}
+            trackedCost={trackedCost}
+            trackedDays={USAGE_DAYS}
+            receiptsTotal={hub.receiptsTotal}
+            canViewCosts={perms.canViewCosts}
+          />
+        ) : !isMock ? (
+          <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
+            Punch list, milestones, and budget unlock with one database update — run migration{' '}
+            <span className="font-mono text-teal">046_project_management.sql</span> in the Supabase SQL Editor.
+          </p>
+        ) : null)}
 
         {usage !== null && (
           <ZoneUsage

@@ -92,6 +92,11 @@ export async function sendTestSms(to: string): Promise<SmsResult> {
   return sendSms(to, 'HammerTrack test alert — if you got this, theft alerts will reach you. No action needed.')
 }
 
+/** One arbitrary SMS down the same gated Twilio path (receipt-chase pings). */
+export async function sendAlertSms(to: string, body: string): Promise<SmsResult> {
+  return sendSms(to, body.slice(0, 320))
+}
+
 async function postWebhook(payload: { company: string; alerts: AlertMessage[]; at: string }): Promise<void> {
   const url = process.env.NOTIFY_WEBHOOK_URL
   if (!url) return

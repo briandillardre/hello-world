@@ -2,8 +2,11 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/geofences'
 import { getExpenses } from '@/lib/db/expenses'
 import { suggestMatchesAction } from '@/lib/actions/expenses'
+import { getInstantChaseSetup } from '@/lib/actions/cards'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { ReceiptsInbox } from '@/components/receipts/ReceiptsInbox'
 import { MissingReceipts } from '@/components/receipts/MissingReceipts'
+import { InstantChase } from '@/components/receipts/InstantChase'
 import type { ReceiptRow } from '@/lib/actions/receipts'
 
 export const dynamic = 'force-dynamic'
@@ -45,6 +48,8 @@ export default async function ReceiptsPage() {
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
 
+  const [chase, perms] = await Promise.all([getInstantChaseSetup(), getMyPermissions()])
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
       <div>
@@ -62,6 +67,7 @@ export default async function ReceiptsPage() {
         </div>
       ) : (
         <>
+          <InstantChase address={chase.address} cards={chase.cards} members={chase.members} canManage={perms.canManageBilling} />
           <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} />
           <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
         </>

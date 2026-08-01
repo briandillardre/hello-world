@@ -4,10 +4,14 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 /**
- * Receipt chase — nightly nudge for charges that still have no receipt. A charge
- * older than GRACE_DAYS with no matching receipt gets the owner a reminder (and
- * a push), then we stamp chased_at so we don't nag about the same one daily.
- * The point: receipts get logged while the memory is fresh, not at tax time.
+ * Receipt chase — runs HOURLY (was nightly) to drive two loops:
+ *
+ * 1. The card-alert nag ladder. A swipe-time charge (source 'card_alert') got
+ *    its instant ping at ingest (nag_level 1). Still no photo → re-ping the
+ *    cardholder at +1 h (level 2) and +4 h (level 3, sharper tone). After
+ *    that it folds into the nightly digest like everything else.
+ * 2. The nightly digest for ALL aging unreceipted charges — unchanged
+ *    behavior, gated to the 22:xx UTC run so it stays once-a-day.
  *
  * Manual test: GET with Authorization: Bearer $CRON_SECRET.
  */
@@ -27,6 +31,42 @@ export async function GET(req: NextRequest) {
 
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
+
+  // ── Loop 1: card-alert nag ladder (every run) ──────────────────────────
+  let laddered = 0
+  try {
+    const { data: fresh } = await db
+      .from('expenses')
+      .select('id, company_id, merchant, amount, last4, cardholder_user_id, capture_token, nag_level, created_at')
+      .eq('source', 'card_alert')
+      .eq('status', 'needs_receipt')
+      .in('nag_level', [1, 2])
+      .gte('created_at', new Date(Date.now() - 86_400_000).toISOString())
+    if (fresh?.length) {
+      const { sendPushToUser } = await import('@/lib/push')
+      const { BRAND_URL } = await import('@/lib/brand')
+      for (const e of fresh) {
+        const ageMs = Date.now() - Date.parse(e.created_at)
+        const due = (e.nag_level === 1 && ageMs >= 3_600_000) || (e.nag_level === 2 && ageMs >= 4 * 3_600_000)
+        if (!due || !e.capture_token) continue
+        const where = e.merchant ? ` at ${e.merchant}` : ''
+        const link = `${BRAND_URL}/r/${e.capture_token}`
+        const body = e.nag_level === 1
+          ? `Still waiting on the receipt for $${Number(e.amount).toFixed(2)}${where}: ${link}`
+          : `That $${Number(e.amount).toFixed(2)}${where} receipt is 4 hours old. 20 seconds now beats a write-off in April: ${link}`
+        await sendPushToUser(e.company_id, e.cardholder_user_id, { title: '🧾 Receipt still missing', body })
+        await db.from('expenses')
+          .update({ nag_level: e.nag_level + 1, chased_at: new Date().toISOString() })
+          .eq('id', e.id)
+        laddered++
+      }
+    }
+  } catch { /* pre-045 DB — ladder columns absent; nightly loop still works */ }
+
+  // ── Loop 2: nightly digest — only on the 22:xx UTC run ─────────────────
+  if (new Date().getUTCHours() !== 22) {
+    return NextResponse.json({ ok: true, laddered, digest: 'skipped (not the nightly run)' })
+  }
 
   const olderThan = new Date(Date.now() - GRACE_DAYS * 86_400_000).toISOString().slice(0, 10)
   const rechaseBefore = new Date(Date.now() - RECHASE_DAYS * 86_400_000).toISOString()
@@ -63,5 +103,5 @@ export async function GET(req: NextRequest) {
     notified++
   }
 
-  return NextResponse.json({ ok: true, companies: notified, charges: rows.length })
+  return NextResponse.json({ ok: true, laddered, companies: notified, charges: rows.length })
 }

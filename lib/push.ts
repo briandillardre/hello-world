@@ -35,6 +35,37 @@ async function fcmSend(serverKey: string, tokens: string[], msg: PushMsg): Promi
 }
 
 /**
+ * Push to ONE person's devices (receipt chase pings the cardholder, not the
+ * whole company). No user mapped — or the user has no registered device —
+ * falls back to every company device so the ping still lands somewhere.
+ */
+export async function sendPushToUser(
+  companyId: string,
+  userId: string | null,
+  msg: PushMsg
+): Promise<number> {
+  const serverKey = process.env.FCM_SERVER_KEY
+  if (!serverKey) return 0
+  try {
+    const { createServiceClient } = await import('./supabase-server')
+    const db = createServiceClient()
+    let tokens: string[] = []
+    if (userId) {
+      const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId).eq('user_id', userId)
+      tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)
+    }
+    if (!tokens.length) {
+      const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId)
+      tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)
+    }
+    if (!tokens.length) return 0
+    return await fcmSend(serverKey, tokens, msg)
+  } catch {
+    return 0
+  }
+}
+
+/**
  * Push a batch of alerts to every registered device in a company. Critical
  * alerts lead with the THEFT framing. Returns the number of pushes delivered
  * (0 when unconfigured or no devices).
