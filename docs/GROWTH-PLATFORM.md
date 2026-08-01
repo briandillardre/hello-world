@@ -68,7 +68,27 @@ Shopify Capital, Square → Square Loans. All started as ops tools.)
 - Gates: needs 12+ months of customer data to be honest. Ship the card early
   with wide confidence bands; tighten as data accrues.
 
-## THE AI ADVISOR — the thread through all four ("what lever next")
+### 5. INSURANCE ARM — "protect" (one day, if it makes sense — Brian, Aug 1)
+- The data case is the strongest of all five layers: theft alerts + geofenced
+  overnight storage + recovery rate + engine hours + driving behavior +
+  maintenance compliance is EXACTLY what an equipment (inland marine) and
+  commercial-auto underwriter prices on — and we can prove it per customer.
+- Path, strictly in order: (a) **discount referrals** — "HammerTrack-tracked
+  fleet" gets negotiated rates with a partner carrier/broker, we take a
+  referral fee (this doubles as a sales hook: the subscription part-pays for
+  itself in premium savings); (b) **embedded agency** — quotes inside the app
+  via an embedded-insurance partner (e.g. the Pie/Next/bolttech pattern),
+  commission revenue, requires a P&C producer license (SC first — licensing
+  an LLC + one producer is cheap and bounded); (c) **MGA with underwriting
+  authority** — our loss data prices the risk, a carrier holds it. Years out.
+- NEVER carry risk on our own balance sheet — same rule as lending.
+- Claims edge nobody else has: a theft claim ships with the replay link,
+  geofence log, and recovery timeline attached. Faster claims = happier
+  customers = carrier loves us.
+- Gates: 12+ months of fleet loss/recovery data, meaningful customer count,
+  partner-first; revisit at Founding-25 full.
+
+## THE AI ADVISOR — the thread through all five ("what lever next")
 Grounded in telemetry + QBO + benchmarks, proactive not reactive:
 - **Hire**: "Crews averaged 54 hrs/wk for 6 weeks and you declined 2 jobs —
   a 4th crew pays for itself at your current close rate."
@@ -80,13 +100,16 @@ Grounded in telemetry + QBO + benchmarks, proactive not reactive:
   ran 8% higher margin."
 - **Sell/scale**: "Your multiple improves 0.8x if owner-attributed revenue
   drops below 30% — here's the delegation plan."
+- **Protect**: "Your zero-theft year + geofenced yard qualifies you for the
+  partner rate — renewing at your current premium leaves $4.2k on the table."
 - v0 exists (Ask-AI + digests + anomaly agenda). Each layer above adds levers
   it can pull. The advisor is WHY the platform retains — the levers are why
   it expands.
 
 ## Sequencing & the honest gates
 1 (charts/benchmarks) → 4-lite (valuation card, wide bands) → 2 (card) →
-3 (referral lending) → 3b (capital advances) → 4-full (exit suite).
+3 (referral lending) → 5a (insurance discount referrals) → 3b (capital
+advances) → 5b (embedded agency) → 4-full (exit suite) → 5c (MGA, maybe).
 Nothing here starts before: PM Tier 1 shipped, Founding-25 filling, Mercury +
 Stripe live. Fintech kills startups through compliance shortcuts — partner
 structures only, no balance-sheet risk, no licensing gambles.
