@@ -60,7 +60,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - Instant receipt chase — card-alert email forwarding (Chase/CapOne/Amex parsers) → expense within seconds of the swipe → push to the mapped cardholder → magic capture link /r/{token} (camera, no login) → nag ladder (+1 h, +4 h, nightly) — migration 045, `docs/RECEIPT-CHASE.md`
 - Project Hub per zone — punch list (assignee/due/priority), milestones with schedule strip, budget vs tracked actuals — migration 046, `docs/PROJECT-MANAGEMENT.md` (competitor deep dive + scope-by-client-size)
 - Weekly owner digests — Friday wrap-up (email/SMS) + Sunday week-ahead email, per-company day/hour/channel/tz editable in Settings → Weekly summaries — migration 047, hourly Fri/Sat/Sun cron `/api/cron/weekly`
-- Financials page (/finance, cost-permission gated) — LY/YTD revenue, revenue/employee + net margin vs trade benchmark bands, 3-method valuation (income=SDE×multiple, market=revenue comps, asset=fleet+assets−debt) with blended range — migration 048, `lib/valuation.ts` (Growth Platform layer 1 v1; QBO auto-fill later)
+- Financials page (/finance, cost-permission gated) — LY/YTD revenue, revenue/employee + net margin vs trade benchmark bands (17 trades incl. trucking/ag/rental/field services), 3-method valuation (income=SDE×multiple, market=revenue comps, asset=fleet+assets−debt) with blended range. Owner types a plain-English company description → AI (Haiku) classifies the benchmark trade, keyword fallback without a key — migration 048, `lib/valuation.ts` (Growth Platform layer 1 v1; QBO auto-fill later)
 - Pricing page with Tenna comparison
 - Demo landing page at /demo (ad funnel landing page)
 - PWA (manifest.json)

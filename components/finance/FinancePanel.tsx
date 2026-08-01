@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react'
 import { Building2, Scale, TrendingUp, Landmark } from 'lucide-react'
 import { TRADES, tradeByKey, computeValuation, fmtMoney, type FinanceProfile } from '@/lib/valuation'
-import { saveFinanceProfileAction } from '@/lib/actions/finance'
+import { saveFinanceProfileAction, classifyCompanyAction } from '@/lib/actions/finance'
 
 /** Where a value sits inside a benchmark band, clamped for the bar UI. */
 const pos = (v: number, lo: number, hi: number) => Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)))
@@ -57,6 +57,21 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
+  const [classifying, setClassifying] = useState(false)
+  const [manualTrade, setManualTrade] = useState(false)
+
+  function classify() {
+    if (!p.description || p.description.trim().length < 8) { setError('Describe the company in a sentence or two first.'); return }
+    setClassifying(true); setError(null)
+    start(async () => {
+      const r = await classifyCompanyAction(p.description!)
+      setClassifying(false)
+      if (r.ok && r.key) {
+        setP((x) => ({ ...x, industry: r.key, industryLabel: r.label ?? tradeByKey(r.key).label }))
+        setManualTrade(false)
+      } else setError(r.error ?? 'Could not classify — pick the trade manually.')
+    })
+  }
 
   const bm = tradeByKey(p.industry)
   const employees = p.employees || teamCount || undefined
@@ -102,13 +117,42 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
           {saved && <span className="text-[11px] text-teal">Saved ✓</span>}
           {canEdit && <button type="button" onClick={save} className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5">Save</button>}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <label className="col-span-2 md:col-span-1"><span className={lbl}>Trade</span>
-            <select className={inp} disabled={!canEdit} value={p.industry ?? 'gc'}
-              onChange={(e) => setP((x) => ({ ...x, industry: e.target.value }))}>
+        <div className="mb-3">
+          <span className={lbl}>What does the company do?</span>
+          <div className="flex gap-2 items-start">
+            <textarea
+              className={`${inp} min-h-[58px] resize-y`}
+              disabled={!canEdit}
+              placeholder="e.g. We do residential grading, septic installs, and some asphalt patching around Greenville"
+              value={p.description ?? ''}
+              onChange={(e) => setP((x) => ({ ...x, description: e.target.value }))}
+            />
+            {canEdit && (
+              <button type="button" onClick={classify} disabled={classifying}
+                className="rounded-lg bg-navy-700 text-ink font-semibold text-xs px-3 py-2 flex-none disabled:opacity-40">
+                {classifying ? 'Reading…' : '✨ Detect'}
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] mt-1.5">
+            <span className="text-faint">Benchmarked as: </span>
+            <span className="text-teal font-semibold">{p.industryLabel || tradeByKey(p.industry).label}</span>
+            <span className="text-faint"> (comps: {tradeByKey(p.industry).label.toLowerCase()})</span>
+            {canEdit && (
+              <button type="button" className="ml-2 text-faint underline decoration-dotted hover:text-muted"
+                onClick={() => setManualTrade((m) => !m)}>
+                {manualTrade ? 'done' : 'change'}
+              </button>
+            )}
+          </p>
+          {manualTrade && (
+            <select className={`${inp} mt-1.5`} value={p.industry ?? 'specialty'}
+              onChange={(e) => setP((x) => ({ ...x, industry: e.target.value, industryLabel: tradeByKey(e.target.value).label }))}>
               {TRADES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
-          </label>
+          )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <label><span className={lbl}>Last year revenue $</span><input className={inp} {...num('lastYearRevenue')} placeholder="2400000" /></label>
           <label><span className={lbl}>Revenue YTD $</span><input className={inp} {...num('ytdRevenue')} placeholder="1500000" /></label>
           <label><span className={lbl}>Last year net profit $</span><input className={inp} {...num('lastYearProfit')} placeholder="180000" /></label>

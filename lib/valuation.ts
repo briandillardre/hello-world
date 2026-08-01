@@ -30,21 +30,59 @@ export interface TradeBenchmark {
 }
 
 export const TRADES: TradeBenchmark[] = [
-  { key: 'gc',        label: 'General contractor',        marginLo: .02, marginHi: .05, revPerEmpLo: 350_000, revPerEmpHi: 500_000, sdeMultLo: 2.0, sdeMultHi: 3.0, revMultLo: .30, revMultHi: .50 },
-  { key: 'sitework',  label: 'Sitework / excavation',     marginLo: .05, marginHi: .09, revPerEmpLo: 250_000, revPerEmpHi: 350_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .45, revMultHi: .75 },
-  { key: 'paving',    label: 'Paving / asphalt',          marginLo: .05, marginHi: .08, revPerEmpLo: 250_000, revPerEmpHi: 400_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .50, revMultHi: .80 },
-  { key: 'concrete',  label: 'Concrete',                  marginLo: .04, marginHi: .08, revPerEmpLo: 220_000, revPerEmpHi: 320_000, sdeMultLo: 2.3, sdeMultHi: 3.3, revMultLo: .40, revMultHi: .65 },
-  { key: 'electrical',label: 'Electrical',                marginLo: .05, marginHi: .08, revPerEmpLo: 200_000, revPerEmpHi: 280_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .40, revMultHi: .60 },
-  { key: 'mech',      label: 'Plumbing / HVAC',           marginLo: .06, marginHi: .10, revPerEmpLo: 180_000, revPerEmpHi: 260_000, sdeMultLo: 3.0, sdeMultHi: 4.0, revMultLo: .50, revMultHi: .90 },
-  { key: 'landscape', label: 'Landscaping / site services', marginLo: .06, marginHi: .10, revPerEmpLo: 120_000, revPerEmpHi: 180_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .45, revMultHi: .70 },
-  { key: 'specialty', label: 'Other specialty trade',     marginLo: .05, marginHi: .08, revPerEmpLo: 200_000, revPerEmpHi: 300_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .40, revMultHi: .70 },
+  { key: 'gc',        label: 'General contractor (commercial)', marginLo: .02, marginHi: .05, revPerEmpLo: 350_000, revPerEmpHi: 500_000, sdeMultLo: 2.0, sdeMultHi: 3.0, revMultLo: .30, revMultHi: .50 },
+  { key: 'homebuild', label: 'Homebuilder / remodeler',       marginLo: .04, marginHi: .08, revPerEmpLo: 300_000, revPerEmpHi: 450_000, sdeMultLo: 2.2, sdeMultHi: 3.2, revMultLo: .30, revMultHi: .55 },
+  { key: 'sitework',  label: 'Sitework / excavation',         marginLo: .05, marginHi: .09, revPerEmpLo: 250_000, revPerEmpHi: 350_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .45, revMultHi: .75 },
+  { key: 'paving',    label: 'Paving / asphalt',              marginLo: .05, marginHi: .08, revPerEmpLo: 250_000, revPerEmpHi: 400_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .50, revMultHi: .80 },
+  { key: 'concrete',  label: 'Concrete',                      marginLo: .04, marginHi: .08, revPerEmpLo: 220_000, revPerEmpHi: 320_000, sdeMultLo: 2.3, sdeMultHi: 3.3, revMultLo: .40, revMultHi: .65 },
+  { key: 'roofing',   label: 'Roofing / exteriors',           marginLo: .06, marginHi: .10, revPerEmpLo: 200_000, revPerEmpHi: 300_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .40, revMultHi: .65 },
+  { key: 'framing',   label: 'Framing / carpentry / drywall', marginLo: .04, marginHi: .07, revPerEmpLo: 150_000, revPerEmpHi: 230_000, sdeMultLo: 2.0, sdeMultHi: 3.0, revMultLo: .30, revMultHi: .55 },
+  { key: 'electrical',label: 'Electrical',                    marginLo: .05, marginHi: .08, revPerEmpLo: 200_000, revPerEmpHi: 280_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .40, revMultHi: .60 },
+  { key: 'mech',      label: 'Plumbing / HVAC / mechanical',  marginLo: .06, marginHi: .10, revPerEmpLo: 180_000, revPerEmpHi: 260_000, sdeMultLo: 3.0, sdeMultHi: 4.0, revMultLo: .50, revMultHi: .90 },
+  { key: 'utility',   label: 'Utility / septic / directional boring', marginLo: .06, marginHi: .10, revPerEmpLo: 250_000, revPerEmpHi: 380_000, sdeMultLo: 2.5, sdeMultHi: 3.6, revMultLo: .45, revMultHi: .75 },
+  { key: 'demolition',label: 'Demolition / environmental',    marginLo: .05, marginHi: .09, revPerEmpLo: 230_000, revPerEmpHi: 340_000, sdeMultLo: 2.3, sdeMultHi: 3.3, revMultLo: .40, revMultHi: .70 },
+  { key: 'landscape', label: 'Landscaping / site services',   marginLo: .06, marginHi: .10, revPerEmpLo: 120_000, revPerEmpHi: 180_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .45, revMultHi: .70 },
+  { key: 'trucking',  label: 'Trucking / hauling / aggregates', marginLo: .03, marginHi: .07, revPerEmpLo: 200_000, revPerEmpHi: 300_000, sdeMultLo: 2.0, sdeMultHi: 3.0, revMultLo: .35, revMultHi: .60 },
+  { key: 'ag',        label: 'Ag / land services',            marginLo: .05, marginHi: .10, revPerEmpLo: 180_000, revPerEmpHi: 300_000, sdeMultLo: 2.2, sdeMultHi: 3.2, revMultLo: .40, revMultHi: .70 },
+  { key: 'rental',    label: 'Equipment rental / dealer',     marginLo: .08, marginHi: .15, revPerEmpLo: 250_000, revPerEmpHi: 450_000, sdeMultLo: 3.0, sdeMultHi: 4.5, revMultLo: .60, revMultHi: 1.10 },
+  { key: 'fieldsvc',  label: 'Field services (pest, pools, property care…)', marginLo: .08, marginHi: .14, revPerEmpLo: 100_000, revPerEmpHi: 170_000, sdeMultLo: 2.8, sdeMultHi: 4.0, revMultLo: .50, revMultHi: .90 },
+  { key: 'specialty', label: 'Other specialty contractor',    marginLo: .05, marginHi: .08, revPerEmpLo: 200_000, revPerEmpHi: 300_000, sdeMultLo: 2.5, sdeMultHi: 3.5, revMultLo: .40, revMultHi: .70 },
 ]
 
 export const tradeByKey = (k: string | undefined | null): TradeBenchmark =>
-  TRADES.find((t) => t.key === k) ?? TRADES[0]
+  TRADES.find((t) => t.key === k) ?? TRADES[TRADES.length - 1]
+
+/** Keyword fallback when no AI key is configured — best-effort, never wrong-ish. */
+export function matchTradeByKeywords(description: string): TradeBenchmark {
+  const d = description.toLowerCase()
+  const rules: [RegExp, string][] = [
+    [/pav|asphalt|seal ?coat|striping/, 'paving'],
+    [/excavat|grading|sitework|site work|dirt|earthwork|land clear/, 'sitework'],
+    [/septic|utility|utilities|water line|sewer|boring|trench/, 'utility'],
+    [/concrete|flatwork|foundation/, 'concrete'],
+    [/roof|siding|gutter|exterior/, 'roofing'],
+    [/fram|carpent|drywall|paint|trim|finish/, 'framing'],
+    [/electric/, 'electrical'],
+    [/plumb|hvac|mechanical|heating|cooling|air condition/, 'mech'],
+    [/demoli|abatement|environmental/, 'demolition'],
+    [/landscap|lawn|irrigation|tree|hardscape|mow/, 'landscape'],
+    [/truck|haul|aggregate|dump|freight|logistic/, 'trucking'],
+    [/farm|agricult|harvest|custom operat|ranch/, 'ag'],
+    [/rental|rent equipment|dealer/, 'rental'],
+    [/pest|pool|property (care|maintenance)|janitorial|clean|snow/, 'fieldsvc'],
+    [/remodel|home ?build|residential|custom home/, 'homebuild'],
+    [/general contract|\bgc\b|commercial build/, 'gc'],
+  ]
+  for (const [re, key] of rules) if (re.test(d)) return tradeByKey(key)
+  return tradeByKey('specialty')
+}
 
 export interface FinanceProfile {
   industry?: string
+  /** Owner's plain-English "what we do" — the AI classifies it into a trade. */
+  description?: string
+  /** Display label from the classification ("Sitework & septic contractor"). */
+  industryLabel?: string
   lastYearRevenue?: number
   ytdRevenue?: number
   lastYearProfit?: number
