@@ -5,6 +5,8 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
+import { WeeklyDigests } from '@/components/settings/WeeklyDigests'
+import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
 import { BillingCard } from '@/components/settings/BillingCard'
@@ -33,6 +35,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           logo_url={co.logo_url}
           editable={co.isAdmin}
         />
+
+        {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
+        <WeeklyDigests initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
 
         {billingReturn === 'success' && (
           <p className="rounded-xl border border-teal/40 bg-teal/10 px-4 py-3 text-[13px] text-teal leading-snug">

@@ -59,6 +59,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - OEM telematics ingestion — ISO 15143-3 / AEMP 2.0 pull of Komatsu/Link-Belt/Cat/CNH/Bomag/Wirtgen (hours, GPS, fuel, idle, faults) into the same map/timeline/maintenance, no hardware (`docs/OEM-TELEMATICS.md`)
 - Instant receipt chase — card-alert email forwarding (Chase/CapOne/Amex parsers) → expense within seconds of the swipe → push to the mapped cardholder → magic capture link /r/{token} (camera, no login) → nag ladder (+1 h, +4 h, nightly) — migration 045, `docs/RECEIPT-CHASE.md`
 - Project Hub per zone — punch list (assignee/due/priority), milestones with schedule strip, budget vs tracked actuals — migration 046, `docs/PROJECT-MANAGEMENT.md` (competitor deep dive + scope-by-client-size)
+- Weekly owner digests — Friday wrap-up (email/SMS) + Sunday week-ahead email, per-company day/hour/channel/tz editable in Settings → Weekly summaries — migration 047, hourly Fri/Sat/Sun cron `/api/cron/weekly`
 - Pricing page with Tenna comparison
 - Demo landing page at /demo (ad funnel landing page)
 - PWA (manifest.json)

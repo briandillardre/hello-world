@@ -86,6 +86,27 @@ export async function updateCompanySettingsAction(input: {
  * every PDF the app generates. Stored in the public asset-photos bucket under
  * the company id; pass an empty FormData (no `logo` file) to remove it.
  */
+/** Weekly digest schedule (Friday recap / Sunday week-ahead) — Settings card. */
+export async function saveDigestPrefsAction(prefs: {
+  friday: { enabled: boolean; email: boolean; sms: boolean; hour: number }
+  sunday: { enabled: boolean; hour: number }
+  tz: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, error: 'Admins only.' }
+  const hour = (h: number, fallback: number) => Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback
+  const clean = {
+    friday: { enabled: !!prefs.friday?.enabled, email: !!prefs.friday?.email, sms: !!prefs.friday?.sms, hour: hour(prefs.friday?.hour, 16) },
+    sunday: { enabled: !!prefs.sunday?.enabled, hour: hour(prefs.sunday?.hour, 18) },
+    tz: typeof prefs.tz === 'string' && /^[A-Za-z_]+\/[A-Za-z_]+$/.test(prefs.tz) ? prefs.tz : 'America/New_York',
+  }
+  const { createClient } = await import('@/lib/supabase-server')
+  const { error } = await createClient().from('companies').update({ digest_prefs: clean }).eq('id', companyId)
+  if (error) return { ok: false, error: 'Save failed — run migration 047 in the Supabase SQL Editor first.' }
+  revalidatePath('/settings')
+  return { ok: true }
+}
+
 export async function saveCompanyLogoAction(form: FormData): Promise<{ ok: boolean; url?: string | null; error?: string }> {
   const companyId = await requireAdminCompany()
   if (!companyId) return { ok: false, error: 'Admins only.' }

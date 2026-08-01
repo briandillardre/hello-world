@@ -133,6 +133,7 @@ export async function getCompanySettings(): Promise<{
   stripe_customer_id: string | null; subscription_status: string | null;
   current_period_end: string | null; cancel_at_period_end: boolean;
   logo_url: string | null;
+  digest_prefs: Record<string, unknown> | null;
   isAdmin: boolean
 }> {
   const fallback = {
@@ -142,7 +143,7 @@ export async function getCompanySettings(): Promise<{
     sms_consent_phone: null, sms_consent_at: null,
     stripe_customer_id: null, subscription_status: null,
     current_period_end: null, cancel_at_period_end: false,
-    logo_url: null, isAdmin: false,
+    logo_url: null, digest_prefs: null, isAdmin: false,
   }
   if (isMock) return fallback
   try {
@@ -180,6 +181,8 @@ export async function getCompanySettings(): Promise<{
       cancel_at_period_end: !!c.cancel_at_period_end,
       // undefined until migration 044 — star-select degrades instead of erroring.
       logo_url: (c.logo_url as string | null) ?? null,
+      // undefined until migration 047 — resolver applies defaults over null.
+      digest_prefs: (c.digest_prefs as Record<string, unknown> | null) ?? null,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {
