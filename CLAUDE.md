@@ -176,6 +176,8 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 8. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
 9. ~~hammertrack.ai domain~~ ✅ OWNED + Google Workspace live (confirmed Jul 30 2026)
 10. **Trails/playback timezone** — scrubber clock labels; see `docs/TRACKER-DATA.md` for tracker data reference + per-asset reporting-profile design
+11. **Move ALL vendor payments to Mercury + the Mercury IO credit card** once the account is approved — Vercel, Supabase, Twilio, Hologram, Google Workspace, Namecheap, Resend, KORE, Anthropic, MapTiler/TomTom/Windy keys. Nothing stays on Brian's personal cards (clean books; the $3,000 opening deposit is owner capital contribution, not income).
+12. **Real-time receipt chase via card-alert email forwarding** — SKIP Plaid ($1,000/mo quoted Aug 1; declined). Instead: per-company inbound address (e.g. receipts-dillard@hammertrack.ai via Resend inbound), customer points Chase/Capital One instant transaction alert emails at it, we parse merchant/amount/last-4 → instant push to cardholder ("snap the receipt?") → reconcile later when the transaction posts in QBO (or CSV). Issuer-speed with zero Plaid cost; Plaid stays sandbox-only unless a non-QuickBooks customer demands it (then pay-as-you-go tier only, never a committed contract).
 
 ## Go-to-Market
 - Lead funnel: FB/IG theft-hook ad → hammertrack.ai/demo → /register
