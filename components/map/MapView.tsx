@@ -807,6 +807,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
   const [radarOn, setRadarOn] = useState(lastState.radar ?? kiosk)
   // Manual freeze for the live radar loop (map stays put, sky stops moving).
   const [radarPaused, setRadarPaused] = useState(false)
+  // The right-rail radar button (native map control) — appearance synced to
+  // radarOn by an effect, since IControls are built once outside React.
+  const radarBtnEl = useRef<HTMLButtonElement | null>(null)
   // GOES-East GeoColor clouds (NASA GIBS WMTS, keyless, ~10-min cadence).
   const [cloudsOn, setCloudsOn] = useState(lastState.clouds ?? false)
   // Storm tops — GOES Band 13 clean IR (cold = high tops). The ForeFlight view.
@@ -1005,28 +1008,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     const ctrlCorner = kiosk ? 'bottom-left' : 'top-right'
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), ctrlCorner)
 
-    // Rotate 90° either way, right under the compass — the compass itself is
-    // the Google-style "north up, no tilt" reset (owner ask, Jul 21).
-    const rotateControl: maplibregl.IControl = {
+    // Weather radar toggle, right under the compass — replaced the two 90°
+    // rotate buttons (owner ask, Aug 1; drag-to-rotate still works). Same
+    // switch as the Layers panel row; the effect below paints its on-state.
+    const radarControl: maplibregl.IControl = {
       onAdd() {
         const div = document.createElement('div')
         div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-        const mk = (dir: 1 | -1, title: string, svg: string) => {
-          const b = document.createElement('button')
-          b.type = 'button'
-          b.title = title
-          b.setAttribute('aria-label', title)
-          b.innerHTML = svg
-          b.onclick = () => { const m2 = map.current; if (m2) m2.easeTo({ bearing: m2.getBearing() + 90 * dir, duration: 450 }) }
-          div.appendChild(b)
-        }
-        mk(-1, 'Rotate 90° left', '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>')
-        mk(1, 'Rotate 90° right', '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>')
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.title = 'Weather radar'
+        b.setAttribute('aria-label', 'Toggle weather radar')
+        b.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62a10 10 0 1 0 19.02-1.27"/><path d="M16.24 7.76a6 6 0 1 0-8.01 8.91"/><path d="M12 18h.01"/><path d="M17.99 11.66a6 6 0 0 1-2.22 4.58"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg>'
+        b.onclick = () => setRadarOn((v) => !v)
+        radarBtnEl.current = b
+        div.appendChild(b)
         return div
       },
-      onRemove() {},
+      onRemove() { radarBtnEl.current = null },
     }
-    map.current.addControl(rotateControl, ctrlCorner)
+    map.current.addControl(radarControl, ctrlCorner)
 
     // "Show your location" follows the convention every Google Maps user
     // already knows: the moment you locate, the map goes north-up, no tilt.
@@ -3444,6 +3445,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     setRadarFrames(buildRadarFrames(10, 5))
     setRadarIdx(0)
   }, [radarOn])
+
+  // Paint the right-rail radar button's on-state (the IControl lives outside
+  // React, so state → DOM by hand: amber icon + tinted background when live).
+  useEffect(() => {
+    const b = radarBtnEl.current
+    if (!b) return
+    b.style.backgroundColor = radarOn ? 'rgba(255,158,22,0.22)' : ''
+    const svg = b.querySelector('svg')
+    if (svg) svg.setAttribute('stroke', radarOn ? '#ff9e16' : '#9fb6cc')
+  }, [radarOn, mapReady])
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
   // beat longer so the loop "lands" on now. The loop runs ONLY on the Live
