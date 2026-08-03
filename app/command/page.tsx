@@ -22,24 +22,26 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 export default async function CommandPage() {
+  // Speed: one company hop, then everything in a single batch — this page
+  // used to await history, then earliestMs, then full history in sequence.
   const company = await getCurrentCompany()
   const companyId = company.id
-  const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [rawAssets, geofences, alerts, toolAssociations, history, earliestMs] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getAlertEvents(companyId),
     getToolAssociations(companyId),
+    // Real mode: trails from actual history; demo mode: synthetic walks.
+    getLocationHistory(companyId, since),
+    getEarliestLocationTime(companyId),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  // Real mode: trails from actual history; demo mode: synthetic walks.
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const history = await getLocationHistory(companyId, since)
   const tracks = history ? tracksFromHistory(assets, history) : generateTracks(assets)
 
   // SAME history feed as the live map page, so the kiosk timeline shows
   // identical data (ranges, scrubber, /api/history refetches) — it was
   // running on a private 24h snapshot and disagreed with /map.
-  const earliestMs = await getEarliestLocationTime(companyId)
   const fullSince = earliestMs ?? Date.now() - 30 * 86_400_000
   const fullHistory = earliestMs !== null
     ? await getLocationHistory(companyId, new Date(fullSince).toISOString(), 12000)
