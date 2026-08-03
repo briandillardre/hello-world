@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const db = createServiceClient()
     const { data, error } = await db
-      .from('locations')
+      .from('asset_locations') // the real table — 'locations' never existed, so every hourly check cried wolf
       .select('timestamp')
       .order('timestamp', { ascending: false })
       .limit(1)
