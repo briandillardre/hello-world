@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
   const hour = new Date().getUTCHours()
   const out: Record<string, unknown> = {}
 
-  // 1 + 2 — DB reachable, ingest fresh.
+  // 1 + 2 — DB reachable, ingest fresh. Two clocks matter: `timestamp` is the
+  // DEVICE's GPS time (a backlog replay or skewed clock makes it old while
+  // data pours in), `created_at` (049) is when rows actually ARRIVE. Silence
+  // is judged on arrival; a big gap between the two is its own message.
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const db = createServiceClient()
@@ -47,17 +50,36 @@ export async function GET(req: NextRequest) {
       .order('timestamp', { ascending: false })
       .limit(1)
     if (error) throw new Error(error.message)
-    const newest = data?.[0]?.timestamp ? new Date(data[0].timestamp).getTime() : 0
-    const ageH = newest ? (Date.now() - newest) / 3_600_000 : Infinity
+    const newestDevice = data?.[0]?.timestamp ? new Date(data[0].timestamp).getTime() : 0
+
+    // Pre-049 schema: no created_at → fall back to judging on device time.
+    let newestArrival = 0
+    const arrivalQ = await db.from('asset_locations')
+      .select('created_at').order('created_at', { ascending: false }).limit(1)
+    if (!arrivalQ.error && arrivalQ.data?.[0]?.created_at) {
+      newestArrival = new Date(arrivalQ.data[0].created_at as string).getTime()
+    }
+    const judgeMs = newestArrival || newestDevice
+    const ageH = judgeMs ? (Date.now() - judgeMs) / 3_600_000 : Infinity
+    const deviceAgeH = newestDevice ? (Date.now() - newestDevice) / 3_600_000 : Infinity
     out.ingestAgeHours = Number.isFinite(ageH) ? Math.round(ageH * 10) / 10 : null
+    out.deviceAgeHours = Number.isFinite(deviceAgeH) ? Math.round(deviceAgeH * 10) / 10 : null
+
     if (ageH > STALE_HOURS && REMIND_HOURS_UTC.includes(hour)) {
       await notifySystem(
         'trackers silent',
-        newest
+        judgeMs
           ? `No tracker data for ${Math.round(ageH)}h (fleet-wide). Check flespi webhook + device power.`
           : 'No location rows found at all — ingest pipeline never ran today.'
       )
       out.notified = 'ingest-stale'
+    } else if (newestArrival && deviceAgeH - ageH > STALE_HOURS && REMIND_HOURS_UTC.includes(hour)) {
+      // Data is arriving but stamped hours in the past — clock/backlog, not an outage.
+      await notifySystem(
+        'tracker clock behind',
+        `Data is arriving fine, but the newest GPS timestamp is ${Math.round(deviceAgeH)}h old — a tracker is replaying a backlog or has a bad clock. Trails may look stale until it catches up.`
+      )
+      out.notified = 'device-clock-behind'
     }
   } catch (err) {
     await notifySystem('database check failed', err instanceof Error ? err.message : 'unknown DB error')

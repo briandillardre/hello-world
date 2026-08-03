@@ -22,13 +22,34 @@ export function pointInPolygon(point: [number, number], polygon: [number, number
   return inside
 }
 
+/** Company timezone for work-hour math. Vercel's runtime clock is UTC, so
+ *  naive getHours() shifted "work ends at 17:00" to 1 PM Eastern — every
+ *  afternoon drive fired a THEFT ALERT (Brian's phone, Aug 3). Until zones
+ *  carry per-company timezones (reporting-profile design), all customers are
+ *  Eastern. */
+const COMPANY_TZ = 'America/New_York'
+
+/** Weekday (0=Sun) + minutes-since-midnight of `date` IN the company tz. */
+function localClock(date: Date, tz = COMPANY_TZ): { day: number; mins: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
+    }).formatToParts(date)
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'))
+    const mins = (Number(get('hour')) % 24) * 60 + Number(get('minute'))
+    return { day: day < 0 ? date.getDay() : day, mins: Number.isFinite(mins) ? mins : 0 }
+  } catch {
+    return { day: date.getDay(), mins: date.getHours() * 60 + date.getMinutes() }
+  }
+}
+
 /** True when `date` falls outside the company's configured working hours. */
 export function isAfterHours(date: Date, company: Pick<Company, 'work_start' | 'work_end' | 'work_days'>): boolean {
-  const day = date.getDay()
+  const { day, mins } = localClock(date)
   if (!company.work_days.includes(day)) return true
   const [sh, sm] = company.work_start.split(':').map(Number)
   const [eh, em] = company.work_end.split(':').map(Number)
-  const mins = date.getHours() * 60 + date.getMinutes()
   return mins < sh * 60 + sm || mins >= eh * 60 + em
 }
 
@@ -39,14 +60,14 @@ export function inWatchWindow(date: Date, start: string, end: string, days?: num
   const [eh, em] = end.split(':').map(Number)
   const s = (sh || 0) * 60 + (sm || 0)
   const e = (eh || 0) * 60 + (em || 0)
-  const mins = date.getHours() * 60 + date.getMinutes()
+  const { day: today, mins } = localClock(date)
   const wraps = e <= s
   const inside = wraps ? mins >= s || mins < e : mins >= s && mins < e
   if (!inside) return false
   if (!days?.length) return true
   // For a wrapped window, minutes past midnight belong to the PREVIOUS day's
   // watch (Fri 22:00–Sat 05:00 is "Friday's" watch).
-  const day = wraps && mins < e ? (date.getDay() + 6) % 7 : date.getDay()
+  const day = wraps && mins < e ? (today + 6) % 7 : today
   return days.includes(day)
 }
 
