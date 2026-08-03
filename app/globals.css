@@ -1,0 +1,299 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* MapLibre GL overrides — touch-friendly + on-brand navy glass (not stark white) */
+.maplibregl-ctrl-group {
+  background: rgba(0, 21, 35, 0.82) !important;
+  border: 1px solid #14506f !important;
+  border-radius: 12px !important;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.7) !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button {
+  width: 44px !important;
+  height: 44px !important;
+  background-color: transparent !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid #0d3a52 !important;
+}
+/* Phones: the 44px touch targets read huge on a 400px screen — tighten the
+   whole cluster (still comfortably tappable, still top-right). */
+@media (max-width: 767px) {
+  .maplibregl-ctrl-group {
+    border-radius: 10px !important;
+  }
+  .maplibregl-ctrl-group button {
+    width: 34px !important;
+    height: 34px !important;
+  }
+  .maplibregl-ctrl-top-right .maplibregl-ctrl {
+    margin: 8px 8px 0 0;
+  }
+}
+.maplibregl-ctrl-group button:hover {
+  background-color: rgba(45, 212, 191, 0.12) !important;
+}
+/* Default control icons are dark (made for white bg) — invert to light teal-ish */
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(78%) sepia(12%) saturate(380%) hue-rotate(150deg) brightness(95%);
+}
+.maplibregl-ctrl-icon.maplibregl-ctrl-geolocate-active {
+  filter: invert(64%) sepia(86%) saturate(420%) hue-rotate(120deg) brightness(102%);
+}
+/* Measure toggle rides in the ctrl cluster; amber = actively measuring.
+   !important because the base ctrl-group button forces transparent. */
+.maplibregl-ctrl-group button.ht-measure-btn.on {
+  background-color: #ff9e16 !important;
+}
+/* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden */
+.kiosk-map .maplibregl-ctrl-top-right {
+  margin-top: 60px;
+}
+/* Kiosk: zoom/locate/fit controls mount bottom-left — clear the ticker below
+   and the slim nav arrow at the left edge. */
+.kiosk-map .maplibregl-ctrl-bottom-left {
+  margin-bottom: 44px;
+  margin-left: 30px;
+}
+/* Screen menu "Map zoom buttons" off → hide the whole control cluster
+   (attribution stays — it lives bottom-right). */
+.ht-hide-zoom .maplibregl-ctrl-bottom-left,
+.ht-hide-zoom .maplibregl-ctrl-top-right {
+  display: none;
+}
+/* Kiosk: the desktop selection sheet must clear the 56px HUD bar (its close
+   button was buried underneath — "can't get out of the asset popup") and the
+   bottom ticker, and sit above the z-40 tactical instrument. */
+.kiosk-map .map-sheet-desktop {
+  top: 56px;
+  bottom: 36px;
+  z-index: 50;
+}
+
+/* Dark-themed map popovers (override MapLibre's default white) */
+.maplibregl-popup-content {
+  background: #001a2e !important;
+  color: #e8f0f7 !important;
+  border: 1px solid #14506f;
+  border-radius: 12px;
+  padding: 0 !important;
+  overflow: hidden;
+  box-shadow: 0 24px 50px -20px rgba(0, 0, 0, 0.85);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: #001a2e; }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: #001a2e; }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: #001a2e; }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: #001a2e; }
+.maplibregl-popup-close-button { color: #9fb6cc; font-size: 17px; padding: 2px 7px; }
+.maplibregl-popup-close-button:hover { background: transparent; color: #e8f0f7; }
+
+.maplibregl-ctrl-bottom-right {
+  bottom: 4px !important;
+  right: 4px !important;
+}
+
+/* Attribution: dark glass instead of the default white pill (it sat glaring on
+   top of the translucent timeline bar). */
+.maplibregl-ctrl-attrib {
+  background: rgba(0, 21, 35, 0.75) !important;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib a {
+  color: #7f9bb3 !important;
+  font-size: 10px !important;
+}
+.maplibregl-ctrl-attrib-button {
+  filter: invert(78%) sepia(12%) saturate(380%) hue-rotate(150deg) brightness(95%);
+}
+
+/* Safe area for iOS notch / home indicator */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Prevent overscroll bounce on iOS */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Full-height layout without scroll bounce */
+html {
+  height: -webkit-fill-available;
+}
+body {
+  min-height: -webkit-fill-available;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Brand: white version of the navy logo mark for dark surfaces */
+  .mark-white {
+    filter: brightness(0) invert(1);
+  }
+  /* Subtle ambient brand glow behind dark marketing sections */
+  .brand-glow {
+    background:
+      radial-gradient(55% 45% at 82% -5%, rgba(255, 158, 22, 0.09), transparent 60%),
+      radial-gradient(45% 40% at 6% 6%, rgba(45, 212, 191, 0.08), transparent 60%);
+  }
+  /* Hide scrollbar on the timeline range pills */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  /* Map grid texture used in marketing map mocks */
+  .map-grid {
+    background-image:
+      linear-gradient(rgba(111, 136, 160, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(111, 136, 160, 0.07) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+/* Timeline heat slider: the gradient div behind it is the track, so the input
+   itself is invisible except for the thumb (kept native for a11y + touch). */
+input[type='range'].slider-heat {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  outline: none;
+}
+input[type='range'].slider-heat::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+input[type='range'].slider-heat::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  background: #e8f0f7;
+  border: 3px solid #ff9e16;
+  box-shadow: 0 0 10px rgba(255, 158, 22, 0.55);
+  cursor: pointer;
+}
+input[type='range'].slider-heat::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+input[type='range'].slider-heat::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  background: #e8f0f7;
+  border: 3px solid #ff9e16;
+  box-shadow: 0 0 10px rgba(255, 158, 22, 0.55);
+  cursor: pointer;
+}
+
+/* Command Center event ticker — seamless marquee (content is duplicated once,
+   so -50% loops cleanly) */
+.ticker-track {
+  width: max-content;
+  animation: ticker 45s linear infinite;
+}
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Motion polish ──────────────────────────────────────────────────────── */
+
+/* Scroll-reveal: elements fade-up when they enter the viewport (Reveal.tsx) */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* Loading shimmer for skeleton screens */
+.skeleton-shimmer {
+  background: linear-gradient(100deg, #04121d 40%, #0a2438 50%, #04121d 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer { animation: none; }
+}
+
+/* ── Cinematic demo theater (/demo hero) ────────────────────────────────── */
+.demo-cinema-dot {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  background: rgba(0, 21, 35, 0.85);
+  border: 2px solid #ff9e16;
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(255, 158, 22, 0.55), 0 0 44px rgba(255, 158, 22, 0.25);
+}
+.demo-card {
+  animation: cardIn 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.demo-sms {
+  animation: smsIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) 0.7s both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes smsIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.92); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-card, .demo-sms { animation: none; }
+}
+
+/* Word-by-word dramatic reveal for the rotating hero headline */
+.anim-word {
+  opacity: 0;
+  animation: wordIn 0.52s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+@keyframes wordIn {
+  from { opacity: 0; transform: translateY(0.5em) scale(0.96); filter: blur(8px); }
+  to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-word { animation: none; opacity: 1; filter: none; transform: none; }
+}
+
+/* Live map: layers pill + AskAI now hover top-right — push the zoom cluster
+   down so nothing stacks on it. */
+.map-live .maplibregl-ctrl-top-right {
+  margin-top: 52px;
+}
