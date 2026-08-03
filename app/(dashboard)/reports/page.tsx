@@ -13,7 +13,7 @@ import { RANGES } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { POI_KIND_META } from '@/lib/poi'
 import { CountUp } from '@/components/ui/count-up'
-import { DayStrip, FleetRhythm, SplitBar, StopMixBar, fmtHM } from '@/components/reports/Scorecard'
+import { DailyBars, DayStrip, FleetRhythm, SplitBar, StopMixBar, fmtHM } from '@/components/reports/Scorecard'
 import { ScorecardExport } from '@/components/reports/ScorecardExport'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
@@ -202,8 +202,11 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                     </div>
 
                     {s.daysActive > 0 && (
-                      <DayStrip days={s.days} windowFrom={window.from} windowTo={window.to} tz={tz}
-                        workStart={work.work_start} workEnd={work.work_end} />
+                      <>
+                        <DailyBars days={s.days} windowFrom={window.from} windowTo={window.to} tz={tz} />
+                        <DayStrip days={s.days} windowFrom={window.from} windowTo={window.to} tz={tz}
+                          workStart={work.work_start} workEnd={work.work_end} />
+                      </>
                     )}
 
                     <div>

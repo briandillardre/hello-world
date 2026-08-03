@@ -134,6 +134,115 @@ export function DayStrip({ days, windowFrom, windowTo, tz, workStart, workEnd, m
 
 const BAR_KINDS: PoiKind[] = ['site', 'supplier', 'fuel', 'food', 'store', 'residence', 'other']
 
+/**
+ * Daily bars — the waste/fraud/abuse view (Brian, Aug 3): miles per day and
+ * hours per day, side by side, one column per calendar day. After-hours
+ * miles stack in alert red on the miles chart (status flag, not a series);
+ * hours split working teal / idle amber. Non-workdays get a dim column
+ * well so weekend use pops. Two measures = two small multiples — never a
+ * second y-axis. Server-rendered; per-bar title tooltips need no JS.
+ */
+export function DailyBars({ days, windowFrom, windowTo, tz, maxDays = 31 }: {
+  days: DayRhythm[]
+  windowFrom: number
+  windowTo: number
+  tz: string
+  maxDays?: number
+}) {
+  const byKey = new Map(days.map((d) => [d.day, d]))
+  // Walk calendar days oldest→newest so time reads left→right.
+  const cols: { key: string; label: string; d?: DayRhythm }[] = []
+  for (let t = Math.min(windowTo, Date.now()); t >= windowFrom && cols.length < maxDays; t -= 86_400_000) {
+    const key = dayKey(t, tz)
+    if (cols.some((c) => c.key === key)) continue
+    const label = new Date(t).toLocaleDateString('en-US', { timeZone: tz, weekday: 'narrow' })
+    cols.unshift({ key, label, d: byKey.get(key) })
+  }
+  if (cols.length < 2) return null
+  const clipped = (windowTo - windowFrom) / 86_400_000 > maxDays + 1
+
+  const maxMiles = Math.max(1, ...cols.map((c) => c.d?.miles ?? 0))
+  const maxMin = Math.max(30, ...cols.map((c) => (c.d ? c.d.activeMin + c.d.idleMin : 0)))
+  // Selective labels: exactly ONE peak value per chart (ties — common in
+  // sparse data — would otherwise caption every column).
+  const peakMilesKey = cols.find((c) => (c.d?.miles ?? 0) === maxMiles)?.key
+  const peakMinKey = cols.find((c) => (c.d ? c.d.activeMin + c.d.idleMin : 0) === maxMin)?.key
+  const H = 56 // px plot height
+
+  const chart = (
+    title: string,
+    render: (d: DayRhythm, key: string) => { segs: { px: number; cls: string }[]; tip: string; top: string | null }
+  ) => (
+    <div className="min-w-0 flex-1">
+      <p className="text-[10px] text-faint uppercase tracking-wider mb-1">{title}</p>
+      <div className="flex items-end gap-[2px]" style={{ height: H + 14 }}>
+        {cols.map((c) => {
+          const r = c.d ? render(c.d, c.key) : null
+          const workday = c.d ? c.d.workday : !['S'].includes(c.label)
+          return (
+            <div key={c.key} title={r?.tip ?? `${c.key} — no activity`}
+              className={`flex-1 min-w-0 flex flex-col justify-end items-stretch rounded-sm ${workday ? '' : 'bg-navy-800/60'}`}
+              style={{ height: H + 14 }}>
+              {r?.top && <span className="text-[8.5px] leading-none text-muted text-center mb-0.5 truncate">{r.top}</span>}
+              {(r?.segs ?? []).map((s, i) => (
+                <div key={i} className={`${s.cls} ${i === 0 ? 'rounded-t-sm' : ''}`}
+                  style={{ height: Math.max(s.px > 0 ? 2 : 0, s.px), marginTop: i > 0 ? 1 : 0 }} />
+              ))}
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex gap-[2px] mt-0.5">
+        {cols.map((c) => <span key={c.key} className="flex-1 text-center text-[8.5px] text-faint">{c.label}</span>)}
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row gap-4">
+        {chart('Miles / day', (d, key) => {
+          const ah = Math.min(d.afterHoursMiles, d.miles)
+          const reg = d.miles - ah
+          return {
+            segs: [
+              // Top of stack first (flex-col justify-end): after-hours in alert red.
+              { px: (ah / maxMiles) * H, cls: 'bg-red-400' },
+              { px: (reg / maxMiles) * H, cls: 'bg-teal' },
+            ].filter((s) => s.px > 0),
+            tip: `${c2(d.day)} — ${d.miles.toFixed(1)} mi${ah >= 0.5 ? ` (${ah.toFixed(1)} after hours)` : ''}`,
+            top: key === peakMilesKey && d.miles > 0 ? `${Math.round(d.miles)}` : null,
+          }
+        })}
+        {chart('Hours / day', (d, key) => {
+          const tot = d.activeMin + d.idleMin
+          return {
+            segs: [
+              { px: (d.idleMin / maxMin) * H, cls: 'bg-amber' },
+              { px: (d.activeMin / maxMin) * H, cls: 'bg-teal' },
+            ].filter((s) => s.px > 0),
+            tip: `${c2(d.day)} — ${fmtHM(d.activeMin)} working · ${fmtHM(d.idleMin)} idle`,
+            top: key === peakMinKey && tot > 0 ? `${Math.round(tot / 60)}h` : null,
+          }
+        })}
+      </div>
+      <p className="text-[10px] text-faint mt-1">
+        <span className="inline-block w-2 h-2 rounded-sm bg-teal align-middle mr-1" />working
+        <span className="inline-block w-2 h-2 rounded-sm bg-amber align-middle ml-2.5 mr-1" />idle
+        <span className="inline-block w-2 h-2 rounded-sm bg-red-400 align-middle ml-2.5 mr-1" />after-hours miles
+        <span className="ml-2.5">dim column = non-workday</span>
+        {clipped ? <span className="ml-2.5">· last {cols.length} days shown</span> : null}
+      </p>
+    </div>
+  )
+}
+
+/** "Mon 7/28" from a YYYY-MM-DD key (tooltips). */
+function c2(dayIso: string): string {
+  const d = new Date(dayIso + 'T12:00:00')
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
+}
+
 export function foldForBar(stops: StopMix[]): StopMix[] {
   const out = new Map<PoiKind, StopMix>()
   for (const s of stops) {
