@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -466,6 +466,43 @@ export function TimelinePlayback({
             </span>
           )}
         </div>
+        {/* Day stepper — flip through calendar days one at a time (Brian, Aug 3).
+            Appears whenever the view IS a single day (Today, Yesterday, or a
+            one-day Custom); ◀ walks back through history as single-day Custom
+            windows, ▶ walks forward and snaps back onto the named Yesterday/
+            Today pills at the boundary. Live and multi-day ranges untouched. */}
+        {(() => {
+          let base: number | null = null
+          if (range === 'today') base = Date.now()
+          else if (range === 'yesterday') base = Date.now() - 86_400_000
+          else if (custom && toDateInput(customFrom) === toDateInput(customTo)) base = customFrom + 12 * 3_600_000
+          if (base == null) return null
+          const key = toDateInput(base)
+          const todayKey = toDateInput(Date.now())
+          const isToday = key === todayKey
+          const label = new Date(dayStartMs(key) + 12 * 3_600_000)
+            .toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
+          const step = (delta: number) => {
+            const targetKey = toDateInput(dayStartMs(key) + 12 * 3_600_000 + delta * 86_400_000)
+            if (targetKey >= todayKey) { onRange('today'); return }
+            if (targetKey === toDateInput(Date.now() - 86_400_000)) { onRange('yesterday'); return }
+            onCustom(dayStartMs(targetKey), dayEndMs(targetKey))
+            onRange('custom')
+          }
+          return (
+            <div className="flex-none flex items-center gap-0.5 rounded-full bg-navy-900 border border-navy-700 px-1 py-0.5">
+              <button type="button" onClick={() => step(-1)} title="Previous day" aria-label="Previous day"
+                className="p-0.5 text-faint hover:text-ink">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <span className="font-mono text-[10.5px] text-muted whitespace-nowrap px-0.5">{isToday ? 'Today' : label}</span>
+              <button type="button" onClick={() => step(1)} disabled={isToday} title="Next day" aria-label="Next day"
+                className="p-0.5 text-faint hover:text-ink disabled:opacity-30">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )
+        })()}
         {/* Custom pill — pinned outside the scroll area so its panel isn't clipped */}
         <button
           onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
