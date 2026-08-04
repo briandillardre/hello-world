@@ -68,6 +68,18 @@ export interface VehicleScore {
   siteHours: { id: string; name: string; hours: number }[]
   /** Raw non-zone stops still needing a name (page classifies top N). */
   pendingStops: { lat: number; lng: number; minutes: number; fromMs: number; inWorkHours: boolean }[]
+  /** Driver-safety read from the speed stream (Samsara-lane, no dashcam).
+   *  null/absent = not enough driving in range to grade honestly. */
+  safety?: {
+    score: number
+    grade: 'A' | 'B' | 'C' | 'D' | 'F'
+    maxMph: number
+    /** Shares of MOVING time, 0–1. */
+    over70Pct: number
+    over80Pct: number
+    /** Moving minutes between 10 PM and 4 AM local. */
+    nightMin: number
+  } | null
 }
 
 /** Zone ring with identity, so site time can be attributed BY zone. */
@@ -143,6 +155,9 @@ export function scoreVehicle(
   }
 
   const siteMin = new Map<string, number>()
+  // Safety accumulators — shares of moving time, not ping counts, so a
+  // fast-reporting tracker doesn't look "more dangerous" than a slow one.
+  let movingMin = 0, over70Min = 0, over80Min = 0, nightMovingMin = 0, maxMph = 0
   let prev: (ScoreRow & { ms: number }) | null = null
   for (const p of pts) {
     const lt = localParts(p.ms, opts.tz)
@@ -166,6 +181,14 @@ export function scoreVehicle(
       if (gapMin > 0) {
         if (engineOn && moving) d.activeMin += gapMin
         else if (engineOn) d.idleMin += gapMin
+        if (moving) {
+          movingMin += gapMin
+          const mph = p.speed ?? 0
+          if (mph > maxMph && mph < 120) maxMph = mph // >120 on a work truck = GPS glitch
+          if (mph >= 70) over70Min += gapMin
+          if (mph >= 80) over80Min += gapMin
+          if (lt.minutes >= 22 * 60 || lt.minutes < 4 * 60) nightMovingMin += gapMin
+        }
         if (inRing) siteMin.set(inRing.id, (siteMin.get(inRing.id) ?? 0) + gapMin)
         const stepMiles = metersBetween(prev, p) / 1609.34
         if (stepMiles < 5) { // teleports (GPS glitch/tunnel) don't count
@@ -227,6 +250,30 @@ export function scoreVehicle(
       .map((r) => ({ id: r.id, name: r.name, hours: Math.round(((siteMin.get(r.id) ?? 0) / 60) * 10) / 10 }))
       .sort((a, b) => b.hours - a.hours),
     pendingStops,
+    safety: (() => {
+      // Under half an hour of driving, a grade is noise — show nothing.
+      if (movingMin < 30) return null
+      const over70Pct = over70Min / movingMin
+      const over80Pct = over80Min / movingMin
+      const nightShare = nightMovingMin / movingMin
+      // Explainable deductions, worst-first: sustained 80+ hurts most, then
+      // 70+ share, a top-speed spike, then night exposure. Clamped 0–100.
+      const score = Math.max(0, Math.min(100, Math.round(
+        100
+        - Math.min(45, over80Pct * 300)
+        - Math.min(25, over70Pct * 100)
+        - (maxMph > 85 ? Math.min(15, (maxMph - 85) * 1.5) : 0)
+        - Math.min(15, nightShare * 60)
+      )))
+      const grade = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F'
+      return {
+        score, grade: grade as 'A' | 'B' | 'C' | 'D' | 'F',
+        maxMph: Math.round(maxMph),
+        over70Pct: Math.round(over70Pct * 1000) / 1000,
+        over80Pct: Math.round(over80Pct * 1000) / 1000,
+        nightMin: Math.round(nightMovingMin),
+      }
+    })(),
   }
 }
 

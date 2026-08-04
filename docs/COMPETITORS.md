@@ -31,7 +31,10 @@ network + parts-inventory depth at 500-machine scale (their maintenance
 *workflow* lead closed Aug 3: we now do schedule → auto work order →
 assign → costs → history, with the WO's reading pulled off the machine
 itself and costs landing in the same books as everything else). Samsara —
-dashcams/ELD/driver safety for road fleets. Deliberately outside our lane.
+dashcam HARDWARE and ELD compliance for regulated trucking (their
+driver-safety *scoring* lead narrowed Aug 3: we grade A–F per vehicle from
+the speed stream — speeding share, top-speed spikes, night driving — plus
+zone speed alerts; cameras and ELD remain deliberately theirs).
 
 **The kill shot:** one subscription replaces tracker + Fieldwire
 ($54/user/mo) + time-clock app + CompanyCam + receipt chaos. Nobody else

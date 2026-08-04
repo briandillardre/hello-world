@@ -44,7 +44,22 @@ function flagsFor(s: VehicleScore, workStartMin: number): Flag[] {
   if (s.idlePct >= 40 && s.activeHrs + s.idleHrs >= 5) {
     out.push({ severity: 2, assetName: s.name, text: `${s.idlePct}% of engine time idling` })
   }
+  // Driver safety (speed stream): a top-speed spike or a real share of time
+  // at 80+ is a conversation, not a footnote.
+  if (s.safety && s.safety.maxMph >= 85) {
+    out.push({ severity: 0, assetName: s.name, text: `hit ${s.safety.maxMph} mph` })
+  } else if (s.safety && s.safety.over80Pct >= 0.05) {
+    out.push({ severity: 1, assetName: s.name, text: `${Math.round(s.safety.over80Pct * 100)}% of drive time over 80 mph` })
+  }
   return out
+}
+
+const GRADE_CLS: Record<string, string> = {
+  A: 'border-teal/40 text-teal bg-teal/10',
+  B: 'border-teal/40 text-teal bg-teal/10',
+  C: 'border-amber/40 text-amber bg-amber/10',
+  D: 'border-amber/40 text-amber bg-amber/10',
+  F: 'border-alert/40 text-alert bg-alert/10',
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
@@ -188,6 +203,14 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                         {TYPE_EMOJI[typeOf(s.assetId)]} {s.name}
                       </Link>
                       <span className="text-[11px] text-faint font-mono">moved {s.daysActive} of {Math.min(s.daysInRange, spanDays)} days</span>
+                      {s.safety && (
+                        <span
+                          className={`text-[10.5px] px-1.5 py-0.5 rounded-full border font-bold ${GRADE_CLS[s.safety.grade]}`}
+                          title={`Driver safety ${s.safety.score}/100 — top speed ${s.safety.maxMph} mph · ${Math.round(s.safety.over70Pct * 100)}% of driving over 70 · ${s.safety.nightMin}m at night (10 PM–4 AM)`}
+                        >
+                          safety {s.safety.grade}
+                        </span>
+                      )}
                       {flags.slice(0, 2).map((f, i) => (
                         <span key={i} className={`text-[10.5px] px-1.5 py-0.5 rounded-full border ${f.severity === 0 ? 'border-alert/40 text-alert bg-alert/10' : 'border-amber/40 text-amber bg-amber/10'}`}>
                           {f.severity === 0 ? 'after hours' : f.severity === 1 ? 'personal time' : f.text.includes('idling') ? 'high idle' : 'late starts'}

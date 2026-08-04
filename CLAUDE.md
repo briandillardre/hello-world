@@ -55,6 +55,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - Maintenance schedules (engine hours / mileage / days) + service history
 - Work orders (migration 050) — auto-opened from overdue schedules with the machine's live reading, assign/status/priority/due, parts+labor costs, complete → service record + schedule clock reset. Fault-code → WO wiring is the recorded next step
 - Utilization reports (engine hours, idle %, miles, hours per job site)
+- Driver safety grades (A–F per vehicle on /reports) from the speed stream — sustained 70+/80+ share, top-speed spikes, night driving; feeds "Worth a look" flags. Zone speeding alerts separate (043). Harsh accel/brake needs Teltonika Green Driving IO enabled — recorded next step
 - QuickBooks Online integration (OAuth2, asset sync, job-cost invoices, expenses)
 - flespi connector — Teltonika FMM series + Digital Matter normalized to same schema
 - OEM telematics ingestion — ISO 15143-3 / AEMP 2.0 pull of Komatsu/Link-Belt/Cat/CNH/Bomag/Wirtgen (hours, GPS, fuel, idle, faults) into the same map/timeline/maintenance, no hardware (`docs/OEM-TELEMATICS.md`)
