@@ -272,7 +272,7 @@ interface MapViewProps {
   /** Floating AskAI button, rendered beside the collapsed layers pill
    *  (only the real /map passes one — demo + kiosk have no assistant). */
   askSlot?: React.ReactNode
-  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: import('@/lib/types').ZoneFormOpts) => void
+  onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' | 'vendor', opts?: import('@/lib/types').ZoneFormOpts) => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
   /** Delete a zone from its map sheet. */
@@ -1231,7 +1231,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         filter: ['!=', ['get', 'kind'], 'boundary'],
         paint: {
           'fill-color': ['get', 'color'],
-          'fill-opacity': ['case', ['==', ['get', 'kind'], 'yard'], 0.06, 0.14],
+          'fill-opacity': ['case', ['==', ['get', 'kind'], 'yard'], 0.06, ['==', ['get', 'kind'], 'vendor'], 0.05, 0.14],
         },
       })
       // Boundaries stay tappable on the BORDER only: a fat, near-invisible

@@ -66,6 +66,9 @@ export interface VehicleScore {
   stops: StopMix[]
   /** Time present per company zone (drives usage billing — see Accounting). */
   siteHours: { id: string; name: string; hours: number }[]
+  /** Vendor-zone runs (TEC, Gossett, Northern Tool…) — work errands, never
+   *  job time. Deterministic names; feeds the procurement-waste read. */
+  vendorRuns?: { id: string; name: string; visits: number; minutes: number }[]
   /** Raw non-zone stops still needing a name (page classifies top N). */
   pendingStops: { lat: number; lng: number; minutes: number; fromMs: number; inWorkHours: boolean }[]
   /** Driver-safety read from the speed stream (Samsara-lane, no dashcam).
@@ -130,8 +133,9 @@ export function scoreVehicle(
   name: string,
   rows: ScoreRow[],
   rings: ScoreRing[],
-  opts: { tz: string; workStart: string; workEnd: string; workDays: number[]; fromMs: number; toMs: number }
+  opts: { tz: string; workStart: string; workEnd: string; workDays: number[]; fromMs: number; toMs: number; vendorRings?: ScoreRing[] }
 ): VehicleScore {
+  const vendorRings = opts.vendorRings ?? []
   const ws = toMin(opts.workStart)
   const we = toMin(opts.workEnd)
   const isWorkday = (weekday: number) => opts.workDays.includes(weekday)
@@ -212,6 +216,11 @@ export function scoreVehicle(
   const pendingStops: VehicleScore['pendingStops'] = []
   let siteCount = 0, siteStopMin = 0, siteWorkMin = 0
   let topSite = { name: '', minutes: 0 }
+  // Vendor stops classify DETERMINISTICALLY from the drawn zone — no geocode
+  // guessing, and they never reach pendingStops.
+  const vendorAgg = new Map<string, { id: string; name: string; visits: number; minutes: number }>()
+  let vendCount = 0, vendMin = 0, vendWorkMin = 0
+  let topVend = { name: '', minutes: 0 }
   for (const s of raw) {
     const lt = localParts(s.fromMs, opts.tz)
     const inside = rings.find((r) => pointInPolygon([s.lng, s.lat], r.ring))
@@ -219,12 +228,28 @@ export function scoreVehicle(
       siteCount++; siteStopMin += s.minutes
       if (inWork(lt)) siteWorkMin += s.minutes
       if (s.minutes > topSite.minutes) topSite = { name: inside.name, minutes: s.minutes }
+      continue
     }
-    else pendingStops.push({ lat: s.lat, lng: s.lng, minutes: s.minutes, fromMs: s.fromMs, inWorkHours: inWork(lt) })
+    const vend = vendorRings.find((r) => pointInPolygon([s.lng, s.lat], r.ring))
+    if (vend) {
+      const v = vendorAgg.get(vend.id) ?? { id: vend.id, name: vend.name, visits: 0, minutes: 0 }
+      v.visits++; v.minutes += s.minutes
+      vendorAgg.set(vend.id, v)
+      vendCount++; vendMin += s.minutes
+      if (inWork(lt)) vendWorkMin += s.minutes
+      if (s.minutes > topVend.minutes) topVend = { name: vend.name, minutes: s.minutes }
+      continue
+    }
+    pendingStops.push({ lat: s.lat, lng: s.lng, minutes: s.minutes, fromMs: s.fromMs, inWorkHours: inWork(lt) })
   }
-  const stops: StopMix[] = siteCount
-    ? [{ kind: 'site', count: siteCount, minutes: siteStopMin, workMinutes: siteWorkMin, topName: topSite.name || 'your job sites', topMinutes: topSite.minutes }]
-    : []
+  const stops: StopMix[] = [
+    ...(siteCount
+      ? [{ kind: 'site' as PoiKind, count: siteCount, minutes: siteStopMin, workMinutes: siteWorkMin, topName: topSite.name || 'your job sites', topMinutes: topSite.minutes }]
+      : []),
+    ...(vendCount
+      ? [{ kind: 'supplier' as PoiKind, count: vendCount, minutes: vendMin, workMinutes: vendWorkMin, topName: topVend.name, topMinutes: topVend.minutes }]
+      : []),
+  ]
 
   const activeMin = days.reduce((s, d) => s + d.activeMin, 0)
   const idleMin = days.reduce((s, d) => s + d.idleMin, 0)
@@ -249,6 +274,7 @@ export function scoreVehicle(
       .filter((r) => (siteMin.get(r.id) ?? 0) >= 3)
       .map((r) => ({ id: r.id, name: r.name, hours: Math.round(((siteMin.get(r.id) ?? 0) / 60) * 10) / 10 }))
       .sort((a, b) => b.hours - a.hours),
+    vendorRuns: Array.from(vendorAgg.values()).sort((a, b) => b.minutes - a.minutes),
     pendingStops,
     safety: (() => {
       // Under half an hour of driving, a grade is noise — show nothing.

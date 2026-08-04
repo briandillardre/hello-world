@@ -50,7 +50,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 ## Features Built
 - Live map with clustering (MapLibre GL JS)
 - BLE tool tracking — tools inherit location of truck/equipment that detects them
-- Geofences (draw on map) + alerts engine
+- Geofences (draw on map) + alerts engine — kinds: site, boundary, yard, vendor (supply houses: deterministic stop names, never job time, receipt handshake — migration 051 pre-fills the capture page's job from the truck's vendor visit + last site)
 - After-hours theft alerts + left-site alerts (red "THEFT ALERT" styling)
 - Maintenance schedules (engine hours / mileage / days) + service history
 - Work orders (migration 050) — auto-opened from overdue schedules with the machine's live reading, assign/status/priority/due, parts+labor costs, complete → service record + schedule clock reset. Fault-code → WO wiring is the recorded next step

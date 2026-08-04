@@ -86,11 +86,18 @@ export async function getFleetScorecard(
   }
 
   // Zones that mean "at work": job sites + yards. Boundaries aren't places,
-  // and personal zones stay out so a stop at the owner's home reads honestly
-  // as a residence instead of laundering into "site time".
+  // personal zones stay out so a stop at the owner's home reads honestly as
+  // a residence, and VENDORS are their own lane — real work errands that
+  // must never count as site time (they get named deterministically below).
+  const toRing = (g: Geofence): ScoreRing =>
+    ({ id: g.id, name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] })
   const rings: ScoreRing[] = geofences
-    .filter((g) => g.kind !== 'boundary' && !g.owner_id)
-    .map((g) => ({ id: g.id, name: g.name, ring: (g.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
+    .filter((g) => g.kind !== 'boundary' && g.kind !== 'vendor' && !g.owner_id)
+    .map(toRing)
+    .filter((g) => g.ring.length >= 3)
+  const vendorRings: ScoreRing[] = geofences
+    .filter((g) => g.kind === 'vendor')
+    .map(toRing)
     .filter((g) => g.ring.length >= 3)
 
   const byAsset = new Map<string, ScoreRow[]>()
@@ -109,7 +116,7 @@ export async function getFleetScorecard(
     if (!assetRows || assetRows.length < 2) continue
     scores.push(scoreVehicle(a.id, a.name, assetRows, rings, {
       tz, workStart: work.work_start, workEnd: work.work_end, workDays: work.work_days,
-      fromMs: window.from, toMs: window.to,
+      fromMs: window.from, toMs: window.to, vendorRings,
     }))
   }
 

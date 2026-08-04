@@ -54,7 +54,7 @@ export type ZoneLifecycleOpts = ZoneFormOpts
 
 export async function createGeofenceAction(
   name: string, geometry: GeoJSON.Polygon, color: string,
-  kind: 'site' | 'boundary' | 'yard' = 'site', opts?: ZoneFormOpts
+  kind: 'site' | 'boundary' | 'yard' | 'vendor' = 'site', opts?: ZoneFormOpts
 ) {
   const companyId = await getCurrentCompanyId()
   const id = await createGeofence(companyId, {
@@ -91,7 +91,7 @@ export async function saveGeofenceAction(
   color: string,
   parentId: string | null,
   geometry?: GeoJSON.Polygon,
-  kind?: 'site' | 'boundary' | 'yard',
+  kind?: 'site' | 'boundary' | 'yard' | 'vendor',
   opts?: ZoneFormOpts & { clear_dates?: boolean }
 ) {
   const g = await getGeofence(id)

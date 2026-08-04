@@ -17,7 +17,7 @@ interface GeofenceDrawerProps {
   isDrawing: boolean
   onFinishDraw: () => GeoJSON.Polygon | null
   onCancelDraw: () => void
-  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard', opts?: ZoneFormOpts) => void
+  onSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' | 'vendor', opts?: ZoneFormOpts) => void
   /** Fly the map to an address hit so the user can draw around it. */
   /** Fly to the hit AND drop a marker there, so the searched address stays
    *  visible while you click out the corners around it. */
@@ -41,7 +41,7 @@ export function GeofenceDrawer({
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null)
   const [name, setName] = useState('')
   const [color, setColor] = useState(DEFAULT_COLOR)
-  const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>('site')
+  const [kind, setKind] = useState<'site' | 'boundary' | 'yard' | 'vendor'>('site')
   const [personal, setPersonal] = useState(false)
   // Project document folder (Dropbox/Drive/OneDrive) — one link per job, so
   // plans and photos are a tap from the zone everywhere it appears.
@@ -227,6 +227,14 @@ export function GeofenceDrawer({
                 >
                   <span className="block text-[12.5px] font-semibold text-ink">Yard / storage</span>
                   <span className="block text-[10.5px] text-faint mt-0.5">Where iron sleeps — presence &amp; alerts, no job costs</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKind('vendor')}
+                  className={'rounded-lg border p-2.5 text-left transition-colors ' + (kind === 'vendor' ? 'border-[#a78bfa] bg-[#a78bfa]/10' : 'border-navy-700 hover:border-navy-600')}
+                >
+                  <span className="block text-[12.5px] font-semibold text-ink">Vendor / supplier</span>
+                  <span className="block text-[10.5px] text-faint mt-0.5">Supply house — names every stop, never job time</span>
                 </button>
               </div>
             </div>

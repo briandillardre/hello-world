@@ -66,6 +66,9 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   // Job cockpit: what happened inside this zone over the window — same accrual
   // engine that prices QBO invoices, so the table IS the invoice preview.
   const isBoundary = (fence.kind ?? (fence.color === '#0a0a0a' || fence.color === '#9ca3af' ? 'boundary' : 'site')) === 'boundary'
+  // Vendors: real places worth a visit log, but NEVER job time — no usage,
+  // no invoicing, no Project Hub.
+  const isVendor = fence.kind === 'vendor'
   let usage: ZoneAssetUsage[] | null = null
   let visits: Visit[] | null = null
   let weather: SiteWeatherRow[] = []
@@ -92,7 +95,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       if (data.length < PAGE) break
     }
     const rows = fetched.reverse() // chronological — zoneAssetUsage tracks last-per-asset in order
-    usage = zoneAssetUsage(ring, assets, rows, from, Date.now())
+    usage = isVendor ? null : zoneAssetUsage(ring, assets, rows, from, Date.now())
     visits = segmentVisits(rows, ring)
     // Weather log (migration 019 + nightly cron) — tolerate the table missing.
     const { data: wx } = await supabase
@@ -104,7 +107,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     weather = (wx ?? []) as SiteWeatherRow[]
   }
   // Project Hub (punch list / milestones / budget) — site zones only.
-  const hub = !isBoundary ? await getProjectHubData(companyId, fence.id) : null
+  const hub = !isBoundary && !isVendor ? await getProjectHubData(companyId, fence.id) : null
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
@@ -157,6 +160,15 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             notes={fence.notes ?? null}
             parentOptions={parentOptions}
           />
+        )}
+
+        {isVendor && (
+          <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
+            This is a <span className="text-[#c4b5fd] font-semibold">vendor</span> — a supply house.
+            Every stop here is named in logs and reports, and the time never counts as job-site
+            hours or billing. Receipts swiped while a truck is here auto-suggest the job it was
+            buying for.
+          </p>
         )}
 
         {isBoundary && (

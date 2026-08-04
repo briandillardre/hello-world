@@ -16,18 +16,22 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export default async function CapturePage({ params }: { params: { token: string } }) {
   let charge: { merchant: string | null; amount: number; txn_date: string; last4: string | null; captured: boolean } | null = null
   let zones: { id: string; name: string }[] = []
+  let suggestedJobId: string | null = null
+  let vendorName: string | null = null
 
   if (!isMock && /^[A-Za-z0-9_-]{16,64}$/.test(params.token)) {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const db = createServiceClient()
+    // select('*') tolerates a pre-051 schema (no handshake columns yet).
     const { data: exp } = await db.from('expenses')
-      .select('company_id, merchant, amount, txn_date, last4, status')
+      .select('*')
       .eq('capture_token', params.token).maybeSingle()
     if (exp) {
       charge = {
         merchant: exp.merchant, amount: Number(exp.amount), txn_date: exp.txn_date,
         last4: exp.last4, captured: exp.status !== 'needs_receipt',
       }
+      suggestedJobId = (exp.suggested_job_id as string | null) ?? null
       // Job picker: active site zones only — this choice IS the job costing.
       const { data: gs } = await db.from('geofences')
         .select('id, name, kind, completed_at, active_until')
@@ -37,6 +41,8 @@ export default async function CapturePage({ params }: { params: { token: string 
           (!g.active_until || Date.parse(g.active_until) > Date.now()))
         .map((g) => ({ id: g.id, name: g.name }))
         .sort((a, b) => a.name.localeCompare(b.name))
+      const vendorId = (exp.vendor_geofence_id as string | null) ?? null
+      if (vendorId) vendorName = (gs ?? []).find((g) => g.id === vendorId)?.name ?? null
     }
   }
 
@@ -67,6 +73,8 @@ export default async function CapturePage({ params }: { params: { token: string 
             amount={charge.amount}
             last4={charge.last4}
             zones={zones}
+            suggestedJobId={suggestedJobId}
+            vendorName={vendorName}
           />
         )}
       </div>

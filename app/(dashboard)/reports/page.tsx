@@ -44,6 +44,12 @@ function flagsFor(s: VehicleScore, workStartMin: number): Flag[] {
   if (s.idlePct >= 40 && s.activeHrs + s.idleHrs >= 5) {
     out.push({ severity: 2, assetName: s.name, text: `${s.idlePct}% of engine time idling` })
   }
+  // Procurement waste: lots of separate supply-house runs = windshield time.
+  const vendVisits = (s.vendorRuns ?? []).reduce((n, v) => n + v.visits, 0)
+  if (vendVisits >= 4) {
+    const top = s.vendorRuns![0]
+    out.push({ severity: 2, assetName: s.name, text: `${vendVisits} vendor runs (${top.name} ×${top.visits}) — consolidate trips?` })
+  }
   // Driver safety (speed stream): a top-speed spike or a real share of time
   // at 80+ is a conversation, not a footnote.
   if (s.safety && s.safety.maxMph >= 85) {
@@ -239,6 +245,13 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                       </div>
                       <SplitBar activeHrs={s.activeHrs} idleHrs={s.idleHrs} />
                     </div>
+
+                    {(s.vendorRuns?.length ?? 0) > 0 && (
+                      <p className="text-[12px] text-muted">
+                        <span className="text-[11px] text-faint uppercase tracking-wider">Vendor runs · </span>
+                        {s.vendorRuns!.slice(0, 3).map((v) => `${v.name} ×${v.visits} (${fmtHM(v.minutes)})`).join(' · ')}
+                      </p>
+                    )}
 
                     <div>
                       <p className="text-[11px] text-faint uppercase tracking-wider mb-1.5">Where the stopped time went</p>

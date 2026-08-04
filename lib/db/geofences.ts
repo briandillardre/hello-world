@@ -41,7 +41,7 @@ export async function getGeofence(id: string): Promise<Geofence | null> {
 
 export async function createGeofence(
   _companyId: string,
-  payload: Pick<Geofence, 'name' | 'geometry' | 'color'> & { parent_id?: string | null; kind?: 'site' | 'boundary' | 'yard';
+  payload: Pick<Geofence, 'name' | 'geometry' | 'color'> & { parent_id?: string | null; kind?: 'site' | 'boundary' | 'yard' | 'vendor';
     personal?: boolean; active_from?: string | null; active_until?: string | null }
 ): Promise<string | null> {
   if (isMock) return null
@@ -73,7 +73,7 @@ export async function createGeofence(
 
 export async function updateGeofence(
   id: string,
-  payload: { name: string; color: string; geometry: GeoJSON.Polygon; parent_id?: string | null; kind?: 'site' | 'boundary' | 'yard';
+  payload: { name: string; color: string; geometry: GeoJSON.Polygon; parent_id?: string | null; kind?: 'site' | 'boundary' | 'yard' | 'vendor';
     personal?: boolean; active_from?: string | null; active_until?: string | null; clear_dates?: boolean }
 ): Promise<void> {
   if (isMock) return

@@ -18,7 +18,7 @@ interface GeofenceEditorProps {
   name: string
   color: string
   parentId: string | null
-  kind?: 'site' | 'boundary' | 'yard'
+  kind?: 'site' | 'boundary' | 'yard' | 'vendor'
   /** Personal zone owner (this user sees it only); null = global. */
   ownerId?: string | null
   /** Whether the current viewer owns this personal zone (can keep it personal). */
@@ -64,7 +64,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   selectedRef.current = selected
   const [name, setName] = useState(initialName)
   const [color, setColor] = useState(initialColor)
-  const [kind, setKind] = useState<'site' | 'boundary' | 'yard'>(initialKind)
+  const [kind, setKind] = useState<'site' | 'boundary' | 'yard' | 'vendor'>(initialKind)
   const [personal, setPersonal] = useState<boolean>(!!ownerId)
   const [activeFrom, setActiveFrom] = useState<string>(dayInput(initialActiveFrom))
   const [activeUntil, setActiveUntil] = useState<string>(dayInput(initialActiveUntil))
@@ -312,8 +312,15 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
           >
             Yard
           </button>
+          <button
+            type="button"
+            onClick={() => { setKind('vendor'); setDirty(true) }}
+            className={'px-2.5 py-1.5 rounded-lg border text-[11.5px] font-semibold transition-colors ' + (kind === 'vendor' ? 'border-[#a78bfa] bg-[#a78bfa]/10 text-[#c4b5fd]' : 'border-navy-700 text-faint hover:text-ink')}
+          >
+            Vendor
+          </button>
             </div>
-            <p className="text-[10.5px] text-faint leading-snug">Boundaries draw outline-only and skip usage/invoicing — use for theft perimeters.</p>
+            <p className="text-[10.5px] text-faint leading-snug">Boundaries draw outline-only and skip usage/invoicing — use for theft perimeters. Vendors (supply houses) name every stop there and never count as job time.</p>
           </div>
             <div className="space-y-1">
               <Label className="text-xs">Color</Label>

@@ -188,7 +188,7 @@ export interface Geofence {
   parent_id?: string | null   // nest a sub-zone under a parent site
   /** 'site' = job site (usage, invoicing, site log); 'boundary' = perimeter
    *  (outline-only, exit/after-hours alerts, excluded from usage metrics). */
-  kind?: 'site' | 'boundary' | 'yard'
+  kind?: 'site' | 'boundary' | 'yard' | 'vendor'
   /** Owner-written free text ("gate code 4188") — shown on the zone, read by the AI. */
   notes?: string | null
   /** Link to the zone's document folder (Dropbox/Drive/…). */

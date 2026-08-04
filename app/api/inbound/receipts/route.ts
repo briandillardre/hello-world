@@ -96,6 +96,53 @@ export async function POST(req: NextRequest) {
     cardLabel = card?.label ?? null
   }
 
+  // Vendor handshake: which vehicle was AT a vendor zone at swipe time, and
+  // which job site did that truck last visit? Both become suggestions the
+  // capture page pre-fills. Entirely best-effort — pre-051 schemas, no
+  // vendor zones, or no matching truck all degrade to "no hint".
+  let vendorZoneId: string | null = null
+  let suggestedJobId: string | null = null
+  try {
+    const { pointInPolygon } = await import('@/lib/alerts-engine')
+    const { data: zones } = await db.from('geofences_json')
+      .select('id, kind, geometry').eq('company_id', company.id).is('owner_id', null)
+    const vendors = (zones ?? []).filter((z) => z.kind === 'vendor')
+      .map((z) => ({ id: z.id as string, ring: ((z.geometry as { coordinates?: number[][][] })?.coordinates?.[0] ?? []) as [number, number][] }))
+      .filter((z) => z.ring.length >= 3)
+    if (vendors.length) {
+      const { data: recent } = await db.from('asset_locations')
+        .select('asset_id, lat, lng, timestamp')
+        .eq('company_id', company.id)
+        .gte('timestamp', new Date(Date.now() - 20 * 60_000).toISOString())
+        .order('timestamp', { ascending: false }).limit(400)
+      const seen = new Set<string>()
+      let vendorAsset: string | null = null
+      for (const r of recent ?? []) {
+        if (seen.has(r.asset_id)) continue
+        seen.add(r.asset_id)
+        const hit = vendors.find((v) => pointInPolygon([r.lng, r.lat], v.ring))
+        if (hit) { vendorZoneId = hit.id; vendorAsset = r.asset_id; break }
+      }
+      if (vendorAsset) {
+        // The job this run was FOR: that truck's last fix inside a site zone
+        // over the prior 4 hours.
+        const sites = (zones ?? []).filter((z) => (z.kind ?? 'site') === 'site')
+          .map((z) => ({ id: z.id as string, ring: ((z.geometry as { coordinates?: number[][][] })?.coordinates?.[0] ?? []) as [number, number][] }))
+          .filter((z) => z.ring.length >= 3)
+        if (sites.length) {
+          const { data: trail } = await db.from('asset_locations')
+            .select('lat, lng, timestamp').eq('asset_id', vendorAsset)
+            .gte('timestamp', new Date(Date.now() - 4 * 3_600_000).toISOString())
+            .order('timestamp', { ascending: false }).limit(600)
+          for (const r of trail ?? []) {
+            const hit = sites.find((s) => pointInPolygon([r.lng, r.lat], s.ring))
+            if (hit) { suggestedJobId = hit.id; break }
+          }
+        }
+      }
+    }
+  } catch { /* hint only */ }
+
   const captureToken = randomBytes(18).toString('base64url')
   const { data: inserted, error } = await db.from('expenses').insert({
     company_id: company.id,
@@ -116,6 +163,13 @@ export async function POST(req: NextRequest) {
     if (error.code === '23505') return NextResponse.json({ ok: true, deduped: true })
     console.error('card-alert insert failed', error)
     return NextResponse.json({ ok: true, skipped: 'insert failed' })
+  }
+  // Handshake columns are 051 — write separately so a pre-051 schema still
+  // gets the expense + ping above.
+  if (inserted?.id && (vendorZoneId || suggestedJobId)) {
+    await db.from('expenses')
+      .update({ vendor_geofence_id: vendorZoneId, suggested_job_id: suggestedJobId })
+      .eq('id', inserted.id)
   }
 
   // The instant ping. Push to the cardholder (falls back to all company

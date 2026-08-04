@@ -243,6 +243,10 @@ function GeofenceRow({
           {/* legacy dark/gray colors predate the kind column — treat as boundary */}
           {(fence.kind === 'boundary' || (!fence.kind && (fence.color === '#0a0a0a' || fence.color === '#9ca3af'))) ? (
             <span className="text-teal/80 font-mono text-[10px] uppercase tracking-[0.08em]">Boundary</span>
+          ) : fence.kind === 'vendor' ? (
+            <span className="text-[#c4b5fd] font-mono text-[10px] uppercase tracking-[0.08em]">Vendor</span>
+          ) : fence.kind === 'yard' ? (
+            <span className="text-[#60a5fa] font-mono text-[10px] uppercase tracking-[0.08em]">Yard</span>
           ) : (
             <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Job site</span>
           )}

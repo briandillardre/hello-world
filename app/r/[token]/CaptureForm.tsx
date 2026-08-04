@@ -6,16 +6,19 @@ import { useRef, useState } from 'react'
  * One-tap receipt capture: camera → optional job → done. Posts to
  * /api/r/[token]; the token scopes everything, no session involved.
  */
-export function CaptureForm({ token, merchant, amount, last4, zones }: {
+export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJobId = null, vendorName = null }: {
   token: string
   merchant: string | null
   amount: number
   last4: string | null
   zones: { id: string; name: string }[]
+  /** Vendor-handshake hints: the truck was at a vendor zone at swipe time. */
+  suggestedJobId?: string | null
+  vendorName?: string | null
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const [zone, setZone] = useState('')
+  const [zone, setZone] = useState(suggestedJobId && zones.some((z) => z.id === suggestedJobId) ? suggestedJobId : '')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +61,9 @@ export function CaptureForm({ token, merchant, amount, last4, zones }: {
           {merchant && <> at <span className="text-ink font-semibold">{merchant}</span></>}
           {last4 && <span className="text-faint"> · card …{last4}</span>}
         </p>
+        {vendorName && (
+          <p className="text-[11.5px] text-teal mt-1">📍 Truck seen at {vendorName}{zone ? ' — job pre-filled from its last site' : ''}</p>
+        )}
       </div>
 
       <input
