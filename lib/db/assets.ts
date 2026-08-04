@@ -108,17 +108,20 @@ export async function createAsset(
   companyId: string,
   payload: Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata'> &
     Partial<Pick<Asset, 'category' | 'serial' | 'photo_url' | 'folder_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'>>
-): Promise<Asset | null> {
-  if (isMock) return null
+): Promise<{ asset: Asset | null; error: { code?: string; message: string } | null }> {
+  if (isMock) return { asset: null, error: null }
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { data } = await supabase
+  // The error must travel up — swallowing it here made a failed save (e.g. a
+  // duplicate tracker ID hitting the UNIQUE constraint) close the form as if
+  // it worked, and the asset silently never existed.
+  const { data, error } = await supabase
     .from('assets')
     .insert({ ...payload, company_id: companyId, active: true })
     .select()
     .single()
-  return data
+  return { asset: data, error: error ? { code: error.code, message: error.message } : null }
 }
 
 /** All photos for an asset, hero-first (sort asc). Empty in demo mode or when
@@ -200,16 +203,16 @@ export async function updateAsset(
   id: string,
   payload: Partial<Pick<Asset, 'name' | 'type' | 'tracker_id' | 'metadata' | 'active' |
     'category' | 'serial' | 'photo_url' | 'folder_url' | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'>>
-): Promise<Asset | null> {
-  if (isMock) return null
+): Promise<{ asset: Asset | null; error: { code?: string; message: string } | null }> {
+  if (isMock) return { asset: null, error: null }
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('assets')
     .update(payload)
     .eq('id', id)
     .select()
     .single()
-  return data
+  return { asset: data, error: error ? { code: error.code, message: error.message } : null }
 }

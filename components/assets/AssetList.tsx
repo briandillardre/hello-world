@@ -51,7 +51,13 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
     try {
       // Blobs can't ride in a plain server-action argument — wrap in FormData.
       const photoForm = photosToFormData(photos ?? [])
-      await createAssetAction(data, photoForm)
+      const result = await createAssetAction(data, photoForm)
+      if (!result.ok) {
+        // Keep the form open so nothing typed is lost — the message says why
+        // (most commonly a tracker/tag ID that's already on another asset).
+        setError(result.error ?? 'Could not save asset. Please try again.')
+        return
+      }
       setShowForm(false)
       router.refresh()
     } catch (err) {

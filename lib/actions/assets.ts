@@ -110,7 +110,16 @@ async function uploadPhotoSet(companyId: string, photoForm?: FormData): Promise<
   return out
 }
 
-export async function createAssetAction(input: CreateAssetInput, photoForm?: FormData) {
+/** Translate raw Postgres failures into words a user can act on. */
+function friendlyAssetError(err: { code?: string; message: string }): string {
+  if (err.code === '23505') {
+    return 'That tracker/tag ID is already on another asset — each ID can only live on one. Search your Assets list for it (it may be on an inactive asset).'
+  }
+  return `Could not save: ${err.message}`
+}
+
+export async function createAssetAction(input: CreateAssetInput, photoForm?: FormData):
+  Promise<{ ok: boolean; asset?: import('@/lib/types').Asset | null; error?: string }> {
   const companyId = await getCurrentCompanyId()
 
   // Captured/chosen photos win over a pasted URL. The first uploaded photo
@@ -118,7 +127,7 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
   const uploaded = await uploadPhotoSet(companyId, photoForm)
   const photoUrl = orNull(input.photo_url) ?? uploaded[0]?.url ?? null
 
-  const asset = await createAsset(companyId, {
+  const { asset, error } = await createAsset(companyId, {
     name: input.name.trim(),
     type: input.type,
     tracker_id: orNull(input.tracker_id),
@@ -134,11 +143,13 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
     metadata: input.metadata ?? {},
   })
 
+  if (error) return { ok: false, error: friendlyAssetError(error) }
+
   if (asset && uploaded.length) await addAssetPhotos(companyId, asset.id, uploaded)
 
   revalidatePath('/assets')
   revalidatePath('/map')
-  return asset
+  return { ok: true, asset }
 }
 
 /** Remove one gallery photo, then set the hero/thumbnail to whatever is now
@@ -148,7 +159,7 @@ export async function deleteAssetPhotoAction(assetId: string, photoId: string) {
   const companyId = await getCurrentCompanyId()
   await deleteAssetPhoto(companyId, photoId)
   const remaining = await getAssetPhotos(assetId)
-  await updateAsset(assetId, { photo_url: remaining[0]?.url ?? null })
+  await updateAsset(assetId, { photo_url: remaining[0]?.url ?? null }) // best-effort hero re-pick
   revalidatePath('/assets')
   revalidatePath(`/assets/${assetId}`)
   revalidatePath('/map')
@@ -170,7 +181,7 @@ export async function updateAssetAction(
   id: string,
   input: Partial<CreateAssetInput> & { active?: boolean },
   photoForm?: FormData
-) {
+): Promise<{ ok: boolean; asset?: import('@/lib/types').Asset | null; error?: string }> {
   const companyId = await getCurrentCompanyId()
 
   // New photos append to the gallery. Hero is NOT taken from the form (the
@@ -187,7 +198,7 @@ export async function updateAssetAction(
     }
   }
 
-  const asset = await updateAsset(id, {
+  const { asset, error } = await updateAsset(id, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.type !== undefined ? { type: input.type } : {}),
     ...(input.tracker_id !== undefined ? { tracker_id: orNull(input.tracker_id) } : {}),
@@ -204,10 +215,12 @@ export async function updateAssetAction(
     ...heroPatch,
   })
 
+  if (error) return { ok: false, error: friendlyAssetError(error) }
+
   revalidatePath('/assets')
   revalidatePath(`/assets/${id}`)
   revalidatePath('/map')
-  return asset
+  return { ok: true, asset }
 }
 
 

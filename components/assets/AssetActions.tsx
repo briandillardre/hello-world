@@ -17,7 +17,11 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
   const handleSave = async (data: AssetFormData, newPhotos?: NewPhoto[]) => {
     setSaving(true)
     try {
-      await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
+      const result = await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
+      if (!result.ok) {
+        alert(result.error ?? 'Could not save changes. Please try again.')
+        return
+      }
       setEditing(false)
       router.refresh()
     } catch (err) {

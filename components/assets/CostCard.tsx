@@ -28,13 +28,17 @@ export function CostCard({ asset }: { asset: Asset }) {
     setSaving(true)
     setError(null)
     try {
-      await updateAssetAction(asset.id, {
+      const result = await updateAssetAction(asset.id, {
         hourly_rate: parseCost(values.hourly_rate ?? ''),
         mileage_rate: parseCost(values.mileage_rate ?? ''),
         daily_cost: parseCost(values.daily_cost ?? ''),
         purchase_price: parseCost(values.purchase_price ?? ''),
         purchase_value: parseCost(values.purchase_value ?? ''),
       })
+      if (!result.ok) {
+        setError(result.error ?? 'Could not save. Please try again.')
+        return
+      }
       setEditing(false)
       router.refresh()
     } catch (err) {
