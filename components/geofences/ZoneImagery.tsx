@@ -1,8 +1,16 @@
 'use client'
 
 import { useMemo, useRef, useState, useTransition } from 'react'
-import { Camera, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import { uploadZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
+import type { Corners } from '@/components/geofences/OverlayPlacer'
+
+// MapLibre needs the browser — load the placer only when opened.
+const OverlayPlacer = dynamic(
+  () => import('@/components/geofences/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
+  { ssr: false }
+)
 
 const SOURCE_LABEL: Record<ZoneImage['source'], string> = {
   drone: '🛩 drone', aerial: '✈ aerial', satellite: '🛰 satellite', ground: '📷 ground',
@@ -14,16 +22,19 @@ const SOURCE_LABEL: Record<ZoneImage['source'], string> = {
  * Feeds the closeout binder and pay-app proof; the before/after IS the
  * dispute defense.
  */
-export function ZoneImagery({ zoneId, initial, canEdit }: {
+export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   zoneId: string
   initial: ZoneImage[]
   canEdit: boolean
+  /** Zone ring ([lng,lat][]) — reference outline + framing for "Place on map". */
+  ring?: [number, number][] | null
 }) {
   const [images, setImages] = useState(initial)
   const [idx, setIdx] = useState(0) // index into DATES (newest first)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [placing, setPlacing] = useState<ZoneImage | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
   const [caption, setCaption] = useState('')
@@ -125,6 +136,18 @@ export function ZoneImagery({ zoneId, initial, canEdit }: {
                 <ChevronRight className="h-4 w-4" />
               </button>
               {canEdit && (
+                <button type="button"
+                  onClick={() => setPlacing(current[1][Math.min(shot, current[1].length - 1)])}
+                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-semibold ${
+                    current[1][Math.min(shot, current[1].length - 1)].bounds
+                      ? 'border-teal/50 text-teal'
+                      : 'border-navy-700 text-muted hover:text-ink'
+                  }`}>
+                  <MapPin className="h-3 w-3" />
+                  {current[1][Math.min(shot, current[1].length - 1)].bounds ? 'Placed ✓' : 'Place on map'}
+                </button>
+              )}
+              {canEdit && (
                 <button type="button" aria-label="Delete this photo"
                   onClick={() => {
                     const im = current[1][Math.min(shot, current[1].length - 1)]
@@ -159,6 +182,20 @@ export function ZoneImagery({ zoneId, initial, canEdit }: {
         </div>
       ) : null}
       {error && <p className="text-sm text-red-400 mt-1">{error}</p>}
+      {placing && (
+        <OverlayPlacer
+          zoneId={zoneId}
+          imageId={placing.id}
+          imageUrl={placing.url}
+          ring={ring}
+          initialBounds={(placing.bounds ?? null) as Corners | null}
+          onClose={() => setPlacing(null)}
+          onSaved={(b) => {
+            setImages((xs) => xs.map((x) => (x.id === placing.id ? { ...x, bounds: b } : x)))
+            setPlacing(null)
+          }}
+        />
+      )}
     </section>
   )
 }

@@ -2,6 +2,7 @@ import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } f
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
+import { getPlacedSiteOverlays } from '@/lib/db/imagery'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
@@ -22,7 +23,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const { getMeasurement } = await import('@/lib/db/measurements')
   const [
     focusMeasurement, prefs, perms, savedMapViews,
-    rawAssets, geofences, toolAssociations, earliestMs, alerts,
+    rawAssets, geofences, toolAssociations, earliestMs, alerts, siteOverlays,
   ] = await Promise.all([
     // ?m=<id> — deep link from /measurements: draw it and fly the camera to it.
     searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
@@ -34,6 +35,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     getToolAssociations(companyId),
     getEarliestLocationTime(companyId),
     getAlertEvents(companyId),
+    getPlacedSiteOverlays(companyId),
   ])
 
   // Tools have no GPS of their own — resolve their position from the gateway
@@ -82,6 +84,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           geofences={geofences}
           tracks={demoTracks}
           historyRows={history ? historyRows : null}
+          siteOverlays={siteOverlays}
           earliestMs={earliestMs}
           tz={tz}
           toolGateways={toolGateways}

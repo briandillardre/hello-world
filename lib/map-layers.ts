@@ -88,6 +88,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
   { id: 'webcams', label: 'Webcams', group: 'site', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see webcams', hint: 'public traffic & area cams · tap for the picture' },
   { id: 'parcels', label: 'Parcel lines', group: 'site', status: 'live', minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels & numbers' },
+  { id: 'siteimg', label: 'Site imagery', group: 'site', status: 'live', hasOpacity: true, hint: 'your placed drone shots pinned to the ground · latest per site' },
 
   // ── Weather ───────────────────────────────────────────────────────────────
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays' },

@@ -36,6 +36,8 @@ interface MapPageClientProps {
   tracks: AssetTrack[]
   /** Raw location history (real mode). MapView builds per-range datasets from it. */
   historyRows?: LocationHistoryRow[] | null
+  /** Placed drone/site imagery (latest per zone) for the 'Site imagery' layer. */
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]] }[]
   earliestMs?: number | null
   tz?: string
   toolGateways: Record<string, { name: string; lastSeen: string }>
@@ -58,7 +60,7 @@ interface MapPageClientProps {
   brand?: { companyName: string; logoUrl: string | null } | null
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -151,6 +153,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         geofences={geofences}
         tracks={tracks}
         historyRows={historyRows}
+        siteOverlays={siteOverlays}
         earliestMs={earliestMs}
         tz={tz}
         toolGateways={toolGateways}

@@ -259,6 +259,9 @@ interface MapViewProps {
   tracks?: AssetTrack[]
   /** Raw location history (real mode). Per-range tracks/cost/zones built here. */
   historyRows?: import('@/lib/db/assets').LocationHistoryRow[] | null
+  /** Placed drone/site imagery (052/053): latest per zone, ground corners in
+   *  MapLibre image-source order. Drawn under the 'siteimg' layer toggle. */
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]] }[]
   /** First-ever fix (ms), for the "All time" window. */
   earliestMs?: number | null
   /** Viewer IANA timezone for local-calendar-day range windows. */
@@ -304,7 +307,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -2400,6 +2403,45 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, overlaysOn, rtmaNames])
 
+  // ── Placed site imagery (052/053): drone shots pinned to ground corners ──
+  // One image source per placed shot (latest per zone, server picks), all
+  // riding the single 'siteimg' toggle + opacity slider. Drawn under zone
+  // fills so rings/labels stay readable on top of the photo.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.siteimg
+    const want = new Set((siteOverlays ?? []).map((ov) => `simg-${ov.id}`))
+    for (const ov of siteOverlays ?? []) {
+      const srcId = `simg-${ov.id}`
+      const lid = `${srcId}-layer`
+      if (on && !m.getSource(srcId)) {
+        try {
+          m.addSource(srcId, { type: 'image', url: ov.url, coordinates: ov.coords })
+          const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+          m.addLayer(
+            { id: lid, type: 'raster', source: srcId, paint: { 'raster-opacity': overlayOpacity.siteimg ?? 0.92, 'raster-fade-duration': 0 } },
+            beforeId
+          )
+        } catch { /* bad corners or unreachable image — skip this one */ }
+      } else if (m.getSource(srcId)) {
+        // Same shot re-placed: nudge the corners in place.
+        const src = m.getSource(srcId) as maplibregl.ImageSource
+        try { src.setCoordinates(ov.coords) } catch { /* ignore */ }
+      }
+      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+    }
+    // A re-place (new corners / newer photo) changes the row — drop strays.
+    for (const lyr of m.getStyle()?.layers ?? []) {
+      if (lyr.id.startsWith('simg-') && lyr.id.endsWith('-layer') && !want.has(lyr.id.slice(0, -6))) {
+        m.removeLayer(lyr.id)
+        const sid = lyr.id.slice(0, -6)
+        if (m.getSource(sid)) m.removeSource(sid)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, overlaysOn, siteOverlays])
+
   // Raster tiles that fail to load (moved WMS layer, dead service, blocked
   // request) used to die in silence — the row looked on, the map drew
   // nothing. Surface each failing overlay ONCE per session on its panel row.
@@ -2429,6 +2471,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
       const v = overlayOpacity[o.key]
       const layerId = `ovl-${o.key}-layer`
       if (v != null && m.getLayer(layerId)) m.setPaintProperty(layerId, 'raster-opacity', v)
+    }
+    // Site imagery: one slider drives every placed image.
+    const sv = overlayOpacity.siteimg
+    if (sv != null) {
+      for (const ov of siteOverlays ?? []) {
+        const lid = `simg-${ov.id}-layer`
+        if (m.getLayer(lid)) m.setPaintProperty(lid, 'raster-opacity', sv)
+      }
     }
     // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
     const rv = overlayOpacity.radar
@@ -4183,7 +4233,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, ea
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}

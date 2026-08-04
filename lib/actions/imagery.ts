@@ -13,6 +13,9 @@ export interface ZoneImage {
   caption: string | null
   source: 'drone' | 'aerial' | 'satellite' | 'ground'
   created_at: string
+  /** 053: ground corners [[TL],[TR],[BR],[BL]] as [lng,lat] once the shot is
+   *  placed on the map — null/undefined = timeline-only (not on the map). */
+  bounds?: [[number, number], [number, number], [number, number], [number, number]] | null
 }
 
 /**
@@ -66,6 +69,37 @@ export async function uploadZoneImageryAction(form: FormData): Promise<{ ok: boo
   if (error) return { ok: false, error: 'Run migration 052_zone_imagery.sql in the Supabase SQL Editor first.' }
   revalidatePath(`/geofences/${zoneId}`)
   return { ok: true, image: data as ZoneImage }
+}
+
+/**
+ * Save (or clear) a shot's ground corners — the "Place on map" tool's commit.
+ * bounds = [[TL],[TR],[BR],[BL]] as [lng,lat] (MapLibre image-source order);
+ * null removes the placement (shot stays on the zone timeline).
+ */
+export async function saveOverlayBoundsAction(
+  zoneId: string,
+  imageId: string,
+  bounds: [[number, number], [number, number], [number, number], [number, number]] | null
+): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  if (!/^[0-9a-f-]{36}$/i.test(imageId)) return { ok: false, error: 'Bad image' }
+  if (bounds !== null) {
+    const sane = Array.isArray(bounds) && bounds.length === 4 && bounds.every((c) =>
+      Array.isArray(c) && c.length === 2 &&
+      Number.isFinite(c[0]) && Math.abs(c[0]) <= 180 &&
+      Number.isFinite(c[1]) && Math.abs(c[1]) <= 90)
+    if (!sane) return { ok: false, error: 'Bad placement — try again.' }
+  }
+  const companyId = await getCurrentCompanyId()
+  const { createClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+  const { error } = await supabase.from('zone_imagery')
+    .update({ bounds })
+    .eq('id', imageId).eq('company_id', companyId)
+  if (error) return { ok: false, error: 'Run migration 053_imagery_bounds.sql in the Supabase SQL Editor first.' }
+  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath('/map')
+  return { ok: true }
 }
 
 export async function deleteZoneImageryAction(zoneId: string, imageId: string): Promise<{ ok: boolean; error?: string }> {

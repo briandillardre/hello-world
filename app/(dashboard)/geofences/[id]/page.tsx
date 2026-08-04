@@ -117,13 +117,18 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   if (!isMock && !isBoundary) {
     try {
       const { createClient } = await import('@/lib/supabase-server')
-      const { data: imgs, error: imgErr } = await createClient()
+      const supabase = createClient()
+      // Try with the 053 bounds column first; a pre-053 database still gets
+      // the timeline (just no "Place on map" state).
+      const q = (cols: string) => supabase
         .from('zone_imagery')
-        .select('id, url, taken_on, caption, source, created_at')
+        .select(cols)
         .eq('geofence_id', fence.id)
         .order('taken_on', { ascending: false })
         .limit(400)
-      if (!imgErr) { zoneImages = (imgs ?? []) as ZoneImage[]; imageryAvailable = true }
+      let { data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds')
+      if (imgErr) ({ data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at'))
+      if (!imgErr) { zoneImages = (imgs ?? []) as unknown as ZoneImage[]; imageryAvailable = true }
     } catch { /* pre-052 */ }
   }
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
@@ -239,7 +244,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         )}
 
         {!isBoundary && imageryAvailable && (
-          <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} />
+          <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} ring={ring ?? null} />
         )}
 
         <ZoneWeather rows={weather} />
