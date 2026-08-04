@@ -2,8 +2,10 @@ import { getMaintenanceSchedules, getServiceRecords, getCurrentReadings, compute
 import { getAssets } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getConnectionStatus } from '@/lib/qbo'
+import { getWorkOrders, ensureScheduleWorkOrders } from '@/lib/db/workorders'
 import { Badge } from '@/components/ui/badge'
 import { MaintenanceLists } from '@/components/maintenance/MaintenanceLists'
+import { WorkOrders } from '@/components/maintenance/WorkOrders'
 
 export default async function MaintenancePage() {
   const companyId = await getCurrentCompanyId()
@@ -22,6 +24,14 @@ export default async function MaintenancePage() {
   const statuses = schedules
     .map(s => ({ ...computeStatus(s, readings[s.asset_id] ?? s.last_service_value), name: assetName(s.asset_id) }))
 
+  // Every overdue schedule gets exactly one open work order (idempotent),
+  // stamped with the machine's live reading — then the board is loaded.
+  await ensureScheduleWorkOrders(companyId, statuses.filter(s => s.status === 'overdue'), readings)
+  const woData = await getWorkOrders(companyId)
+  const assetNames = Object.fromEntries(
+    assets.filter(a => a.type === 'vehicle' || a.type === 'equipment').map(a => [a.id, a.name])
+  )
+
   const overdueCount = statuses.filter(s => s.status === 'overdue').length
   const totalSpent = services.reduce((sum, r) => sum + r.cost, 0)
 
@@ -34,6 +44,13 @@ export default async function MaintenancePage() {
           ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })} YTD
         </span>
       </div>
+
+      <WorkOrders
+        orders={woData.orders}
+        members={woData.members}
+        assetNames={assetNames}
+        available={woData.available}
+      />
 
       <MaintenanceLists
         statuses={statuses}

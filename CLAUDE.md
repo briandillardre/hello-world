@@ -53,6 +53,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - Geofences (draw on map) + alerts engine
 - After-hours theft alerts + left-site alerts (red "THEFT ALERT" styling)
 - Maintenance schedules (engine hours / mileage / days) + service history
+- Work orders (migration 050) — auto-opened from overdue schedules with the machine's live reading, assign/status/priority/due, parts+labor costs, complete → service record + schedule clock reset. Fault-code → WO wiring is the recorded next step
 - Utilization reports (engine hours, idle %, miles, hours per job site)
 - QuickBooks Online integration (OAuth2, asset sync, job-cost invoices, expenses)
 - flespi connector — Teltonika FMM series + Digital Matter normalized to same schema

@@ -26,10 +26,12 @@ one-pagers. Update when a rival changes pricing or we ship a row.*
 contract. Tenna ≈ $160–200/mo machines-only + ~$500 setup + annual term,
 tools untrackable. Samsara ≈ $240+/mo on a 3–5 yr term, no tools/PM/QBO.
 
-**Where they honestly beat us (don't bluff in a demo):** Tenna — enterprise
-maintenance workflows + dealer network at 500-machine scale. Samsara —
-dashcams/ELD/driver safety for road fleets. Both are deliberately outside
-our lane (docs/PROJECT-MANAGEMENT.md tier gates).
+**Where they honestly beat us (don't bluff in a demo):** Tenna — dealer
+network + parts-inventory depth at 500-machine scale (their maintenance
+*workflow* lead closed Aug 3: we now do schedule → auto work order →
+assign → costs → history, with the WO's reading pulled off the machine
+itself and costs landing in the same books as everything else). Samsara —
+dashcams/ELD/driver safety for road fleets. Deliberately outside our lane.
 
 **The kill shot:** one subscription replaces tracker + Fieldwire
 ($54/user/mo) + time-clock app + CompanyCam + receipt chaos. Nobody else
