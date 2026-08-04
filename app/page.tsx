@@ -4,7 +4,7 @@ import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, 
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { MapConsole } from '@/components/marketing/MapConsole'
-import { FollowCinema } from '@/components/marketing/FollowCinema'
+import { RealCinema } from '@/components/marketing/RealCinema'
 import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
 
 export const metadata: Metadata = {
@@ -97,9 +97,10 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Follow-mode cinematic hero — self-contained 3D dark-topo flythrough */}
+        {/* Follow-mode cinematic — the REAL map engine on real satellite tiles,
+            so the hero shows exactly what a customer gets (Brian, Aug 3). */}
         <section className="max-w-5xl mx-auto px-6">
-          <FollowCinema />
+          <RealCinema />
         </section>
 
         {/* Live activity console */}
