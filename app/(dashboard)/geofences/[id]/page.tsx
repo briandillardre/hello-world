@@ -14,6 +14,8 @@ import { ZoneVisits } from '@/components/geofences/ZoneVisits'
 import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
 import { ZoneNotes } from '@/components/geofences/ZoneNotes'
 import { ProjectHub } from '@/components/geofences/ProjectHub'
+import { ZoneImagery } from '@/components/geofences/ZoneImagery'
+import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
 import { segmentVisits, type Visit } from '@/lib/visits'
@@ -108,6 +110,22 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   }
   // Project Hub (punch list / milestones / budget) — site zones only.
   const hub = !isBoundary && !isVendor ? await getProjectHubData(companyId, fence.id) : null
+
+  // Site imagery timeline (052) — tolerate the table not existing yet.
+  let zoneImages: ZoneImage[] = []
+  let imageryAvailable = isMock
+  if (!isMock && !isBoundary) {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: imgs, error: imgErr } = await createClient()
+        .from('zone_imagery')
+        .select('id, url, taken_on, caption, source, created_at')
+        .eq('geofence_id', fence.id)
+        .order('taken_on', { ascending: false })
+        .limit(400)
+      if (!imgErr) { zoneImages = (imgs ?? []) as ZoneImage[]; imageryAvailable = true }
+    } catch { /* pre-052 */ }
+  }
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
@@ -218,6 +236,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             <ZoneNotes id={fence.id} initial={fence.notes ?? ''} />
             <FolderLink kind="zone" id={fence.id} initial={fence.folder_url ?? null} />
           </>
+        )}
+
+        {!isBoundary && imageryAvailable && (
+          <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} />
         )}
 
         <ZoneWeather rows={weather} />
