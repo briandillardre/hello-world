@@ -81,6 +81,44 @@ export async function GET(req: NextRequest) {
       )
       out.notified = 'device-clock-behind'
     }
+
+    // Per-device silence — the fleet-wide check goes green the moment ANY
+    // source reports (e.g. a phone tracker), which masks a dead hardware
+    // unit. Watch each IMEI unit (15-digit tracker_id) individually; phones
+    // and BLE tags are sporadic by nature and are not outages.
+    if (REMIND_HOURS_UTC.includes(hour) && out.notified !== 'ingest-stale') {
+      const { data: hw } = await db
+        .from('assets')
+        .select('id, name, tracker_id')
+        .eq('active', true)
+        .not('tracker_id', 'is', null)
+        .limit(100)
+      const units = (hw ?? []).filter((a) => /^\d{15}$/.test(String(a.tracker_id ?? ''))).slice(0, 25)
+      const stale: string[] = []
+      for (const u of units) {
+        const { data: last } = await db
+          .from('asset_locations')
+          .select('timestamp, created_at')
+          .eq('asset_id', u.id)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+        const row = last?.[0] as { timestamp: string; created_at?: string | null } | undefined
+        // A unit that has NEVER reported is mid-setup, not an outage.
+        if (!row) continue
+        const t = Date.parse(row.created_at ?? row.timestamp)
+        if (!Number.isFinite(t)) continue
+        const h = (Date.now() - t) / 3_600_000
+        if (h > STALE_HOURS) stale.push(`${u.name}: ${Math.round(h)}h`)
+      }
+      out.staleUnits = stale
+      if (stale.length) {
+        await notifySystem(
+          'tracker silent',
+          `${stale.length === 1 ? 'A hardware tracker is' : `${stale.length} hardware trackers are`} silent while other sources report fine — ${stale.join(' · ')}. Check that unit's power/SIM (Hologram balance, OBD seated, flespi last-message).`
+        )
+        out.notified = out.notified ?? 'device-stale'
+      }
+    }
   } catch (err) {
     await notifySystem('database check failed', err instanceof Error ? err.message : 'unknown DB error')
     out.db = 'error'
