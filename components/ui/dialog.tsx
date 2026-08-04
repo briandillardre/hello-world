@@ -25,7 +25,14 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => {
+  // Tell floating chrome (the Ask launcher) a dialog is up — it sits at a
+  // higher z-index than the overlay and was hovering over edit forms.
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: true } }))
+    return () => { window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: false } })) }
+  }, [])
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -42,7 +49,8 @@ const DialogContent = React.forwardRef<
       </DialogClose>
     </DialogPrimitive.Content>
   </DialogPortal>
-))
+  )
+})
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

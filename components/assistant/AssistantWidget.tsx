@@ -57,6 +57,19 @@ export function AssistantWidget() {
     return () => window.removeEventListener('ht:ask', openIt)
   }, [])
 
+  // Edit dialogs announce themselves (ht:dialog from DialogContent). The
+  // launcher sits ABOVE the dialog z-index and was floating over edit forms,
+  // covering fields — get out of the way while any dialog is open.
+  const [dialogDepth, setDialogDepth] = useState(0)
+  useEffect(() => {
+    const onDialog = (e: Event) => {
+      const isOpen = !!(e as CustomEvent).detail?.open
+      setDialogDepth((d) => Math.max(0, d + (isOpen ? 1 : -1)))
+    }
+    window.addEventListener('ht:dialog', onDialog)
+    return () => window.removeEventListener('ht:dialog', onDialog)
+  }, [])
+
   // First open: pull the persisted thread so the conversation survives
   // reloads and devices (empty when history isn't set up — same UX as before).
   useEffect(() => {
@@ -140,8 +153,9 @@ export function AssistantWidget() {
 
   return (
     <>
-      {/* Floating launcher (hidden on the map — it lives in the banner there) */}
-      {!open && !hideLauncher && (
+      {/* Floating launcher (hidden on the map — it lives in the banner there —
+          and while any edit dialog is open, so it never covers a form) */}
+      {!open && !hideLauncher && dialogDepth === 0 && (
         <button
           onClick={() => setOpen(true)}
           className={`fixed ${launcherPos} z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}

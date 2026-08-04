@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       thinking: { type: 'adaptive' },
       system:
         'You advise a US construction fleet owner on ONE asset. Be a careful estimator: derive every cost from a consistent method so two similar vehicles get similar numbers. Return ONLY a JSON object:\n' +
-        '{"service":{"oil":"","oil_filter":"","air_filter":"","tires":""},' +
+        '{"service":{"oil":"","oil_capacity":"","oil_filter":"","air_filter":"","fuel_filter":"","hydraulic_oil":"","hydraulic_filter":"","coolant":"","tires":""},' +
         '"costs":{"hourly_rate":0,"mileage_rate":0,"daily_cost":0,"purchase_value":0},' +
         '"value_range":"$X–$Y","note":"assumptions in one or two sentences"}\n' +
         '\nAnchors (mid-2026 US): diesel ≈ $4.00/gal, gasoline ≈ $3.30/gal, IRS standard mileage ≈ $0.70/mi. Round money to sensible increments.\n' +
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
         '• mileage_rate ($/mi, on-road vehicles only) = fuel/mi (fuel price ÷ real MPG) + maintenance&tires/mi (~$0.10–0.20 light truck) + depreciation/mi. A DEPRECIATED older truck has LOW depreciation/mi, so its $/mi should be LOWER than a newer same-class truck, not higher. Typical light-truck all-in lands $0.55–0.95/mi; keep near the IRS anchor unless MPG/price justifies otherwise.\n' +
         '• hourly_rate ($/operating-hr) = fuel burn/hr (pickups ~2–4 gal/hr; bigger diesels more) × fuel price + wear. Most pickups land ~$10–18/hr; do not output $5 for one truck and $18 for a similar one.\n' +
         '• daily_cost ($/day ownership) = (annual depreciation + insurance + registration + financing IF likely financed) ÷ 365. A cheap paid-off older truck is low ($8–20); a newer/financed one is higher ($30–60). Scale it to purchase_value, not at random.\n' +
-        '• service specs: real factory numbers for THIS engine (correct oil grade e.g. diesel 15W-40 or the spec low-ash oil, a real OE filter part #, the OE tire size). Never invent a part number — null it if unknown.\n' +
+        '• service specs: real factory numbers for THIS machine. oil = grade (e.g. diesel 15W-40 or the spec low-ash oil); oil_capacity = crankcase fill with filter (e.g. "9.5 qt"); fuel_filter/oil_filter/air_filter = real OE part #s; hydraulic_oil = the spec fluid for equipment (e.g. ISO 46 / Kubota UDT2 / Cat HYDO); hydraulic_filter = OE part # if known; coolant = spec type; tires = OE size. Vehicles usually have no hydraulic entries; small tools usually have none of these. NEVER invent a part number or capacity — null anything you cannot ground for this exact engine/machine.\n' +
         '\nField applicability: equipment has NO mileage_rate; personnel only hourly_rate (loaded labor = wage + burden); tools only purchase_value. Use null for anything you cannot ground. In "note", state the key assumptions you used (MPG, fuel, whether financed) so the owner can sanity-check.',
       messages: [{
         role: 'user',
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     // Sanitize: keep only strings for service, non-negative finite numbers for costs.
     const service: Record<string, string> = {}
-    for (const k of ['oil', 'oil_filter', 'air_filter', 'tires']) {
+    for (const k of ['oil', 'oil_capacity', 'oil_filter', 'air_filter', 'fuel_filter', 'hydraulic_oil', 'hydraulic_filter', 'coolant', 'tires']) {
       const v = parsed.service?.[k]
       if (typeof v === 'string' && v.trim() && v.toLowerCase() !== 'null') service[k] = v.trim()
     }

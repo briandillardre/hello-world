@@ -241,13 +241,13 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
       if (scope === 'service') {
         setSpecs((prev) => {
           const next = { ...prev }
-          for (const k of ['oil', 'oil_filter', 'air_filter', 'tires']) {
+          for (const k of ['oil', 'oil_capacity', 'oil_filter', 'air_filter', 'fuel_filter', 'hydraulic_oil', 'hydraulic_filter', 'coolant', 'tires']) {
             if (j.service?.[k] && !String(next[k] ?? '').trim()) next[k] = j.service[k]
           }
           if (j.value_range && !next.value_range) next.value_range = j.value_range
           return next
         })
-        setDecodeMsg(Object.keys(j.service ?? {}).length ? `✓ Service specs suggested — review${j.note ? `. ${j.note}` : ''}` : 'No confident service specs for this one.')
+        setDecodeMsg(Object.keys(j.service ?? {}).length ? `⚠ Service specs suggested — AI can make mistakes. Confirm oils, capacities, and part numbers against the operator's manual before servicing.${j.note ? ` ${j.note}` : ''}` : 'No confident service specs for this one.')
       } else {
         setCosts((prev) => {
           const next = { ...prev }
@@ -612,7 +612,13 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {([['oil', 'Oil (e.g. 15W-40 diesel)'], ['oil_filter', 'Oil filter #'], ['air_filter', 'Air filter #'], ['tires', 'Tire size']] as const).map(([key, ph]) => (
+              {([
+                ['oil', 'Oil (e.g. 15W-40 diesel)'], ['oil_capacity', 'Oil capacity (e.g. 9.5 qt)'],
+                ['oil_filter', 'Oil filter #'], ['air_filter', 'Air filter #'],
+                ['fuel_filter', 'Fuel filter #'], ['hydraulic_oil', 'Hydraulic oil (e.g. ISO 46)'],
+                ['hydraulic_filter', 'Hydraulic filter #'], ['coolant', 'Coolant type'],
+                ['tires', 'Tire size'],
+              ] as const).map(([key, ph]) => (
                 <input
                   key={key}
                   value={String(specs[key] ?? '')}
@@ -627,6 +633,10 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                 />
               ))}
             </div>
+            <p className="text-[10.5px] text-faint">
+              AI-filled values are suggestions and can be wrong — confirm oils, capacities, and
+              part numbers against the operator&apos;s manual before servicing.
+            </p>
           </div>
 
           {/* Photos — the whole set: truck shot, GVWR sticker, VIN plate,

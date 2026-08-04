@@ -171,11 +171,13 @@ export default async function AssetDetailPage({ params }: { params: { id: string
           ) : (
             <div className="text-xl w-10 h-10 grid place-items-center bg-navy-800 rounded-lg flex-none">{TYPE_EMOJI[asset.type]}</div>
           )}
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <h1 className="text-[15px] sm:text-lg font-bold text-ink leading-tight truncate">{asset.name}</h1>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <Badge variant="secondary">{TYPE_LABEL[asset.type]}</Badge>
-              {asset.category && <Badge variant="outline">{asset.category}</Badge>}
+            {/* overflow-hidden + wrap: badges used to paint OVER the action
+                buttons on phones when the type + category didn't fit. */}
+            <div className="flex flex-wrap items-center gap-1 mt-0.5 overflow-hidden">
+              <Badge variant="secondary" className="whitespace-nowrap">{TYPE_LABEL[asset.type]}</Badge>
+              {asset.category && <Badge variant="outline" className="max-w-full truncate">{asset.category}</Badge>}
             </div>
           </div>
           <div className="flex-none flex items-center gap-1.5">

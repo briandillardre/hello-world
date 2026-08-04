@@ -439,9 +439,13 @@ const SPEC_ROWS: [string, string][] = [
   ['year', 'Year'], ['make', 'Make'], ['model', 'Model'], ['trim', 'Trim'],
   ['body', 'Body'], ['engine', 'Engine'], ['horsepower', 'Horsepower'],
   ['fuel', 'Fuel'], ['drive', 'Drive'], ['gvwr', 'GVWR'],
-  ['oil', 'Oil'], ['oil_filter', 'Oil filter'], ['air_filter', 'Air filter'],
-  ['tires', 'Tires'], ['value_range', 'Market value*'],
+  ['oil', 'Oil'], ['oil_capacity', 'Oil capacity'], ['oil_filter', 'Oil filter'],
+  ['air_filter', 'Air filter'], ['fuel_filter', 'Fuel filter'],
+  ['hydraulic_oil', 'Hydraulic oil'], ['hydraulic_filter', 'Hydraulic filter'],
+  ['coolant', 'Coolant'], ['tires', 'Tires'], ['value_range', 'Market value*'],
 ]
+/** Keys the AI advisor can fill — their presence earns the confirm-first note. */
+const AI_SERVICE_KEYS = ['oil', 'oil_capacity', 'oil_filter', 'air_filter', 'fuel_filter', 'hydraulic_oil', 'hydraulic_filter', 'coolant']
 function SpecSheet({ meta, mpg }: { meta: Record<string, unknown>; mpg?: number }) {
   const src = ((meta.specs as Record<string, unknown> | undefined) ?? meta)
   const rows = SPEC_ROWS.filter(([k]) => src[k] != null && String(src[k]).trim() !== '')
@@ -465,6 +469,11 @@ function SpecSheet({ meta, mpg }: { meta: Record<string, unknown>; mpg?: number 
       </div>
       {src.value_range != null && (
         <p className="mt-1.5 text-[10px] text-faint">*AI-estimated range — not an appraisal.</p>
+      )}
+      {AI_SERVICE_KEYS.some((k) => src[k] != null && String(src[k]).trim() !== '') && (
+        <p className="mt-1.5 text-[10px] text-faint">
+          Fluids, capacities &amp; part numbers may be AI-suggested — confirm against the operator&apos;s manual before servicing.
+        </p>
       )}
     </div>
   )
