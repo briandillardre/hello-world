@@ -12,8 +12,9 @@ pucks. Times are realistic once you've done one.*
 Assets page open.
 
 1. **Pick the next Minor number.** We use one shared UUID + Major, and the
-   Minor is the tool's identity. Taken so far: `1` (Tool A), `2` (TOOL B).
-   Next puck = `3`, then `4`, etc. Keep a simple list going.
+   Minor is the tool's identity. Taken so far: `1` (Tool A), `2` (TOOL B);
+   `3`–`5` reserved for the Aug 4 batch (2 large pucks = 3 & 4, small = 5).
+   Next new puck = `6`. Keep this list current.
 2. **Configure the puck** in the FeasyBeacon app (connect → PIN `000000`):
    - Slot 1 = iBeacon with:
      - UUID: `FDA50693-A4E2-4FB1-AFCF-C6EB07647825` (factory default — leave it)
