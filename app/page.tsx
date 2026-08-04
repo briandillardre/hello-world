@@ -34,19 +34,19 @@ const AI = [
   },
   {
     icon: TrendingUp,
-    title: 'Utilization insights',
-    body: "Spots the idle machine you're paying for and the job that's eating equipment cost — in plain English.",
-    tag: 'ROADMAP',
+    title: 'Utilization & safety insights',
+    body: 'Daily miles and hours per machine, idle share, and an A–F driver-safety grade per truck — waste and abuse read at a glance.',
+    tag: 'LIVE',
   },
 ]
 
 const FEATURES = [
-  { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live and clustered.' },
-  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site.' },
-  { icon: Users, title: 'Track crews, not just machines', body: 'Phone clock-in with GPS that follows the crew all shift — people and equipment on one map.' },
-  { icon: Banknote, title: 'Live job-site cost', body: 'Watch labor + equipment dollars stack up on each job in real time, against budget.' },
-  { icon: Wrench, title: 'Maintenance built in', body: 'Service by engine hours, mileage, or days. Never miss an oil change.' },
-  { icon: Calculator, title: 'QuickBooks native', body: 'Auto-allocate equipment cost to jobs and bill usage automatically.' },
+  { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, Bluetooth-tagged tools, and crews — live, with full replay of any day.' },
+  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site — with the replay link as evidence.' },
+  { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and geofence-verified daily logs.' },
+  { icon: Banknote, title: 'Books that keep themselves', body: 'QuickBooks two-way sync, live job cost, and a "snap the receipt?" ping seconds after a company card swipes.' },
+  { icon: Wrench, title: 'A shop that stays ahead', body: 'Service intervals from real engine hours auto-open work orders — assign, track parts & labor, done.' },
+  { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
 ]
 
 const PRICE = [
@@ -154,6 +154,63 @@ export default function HomePage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* The ladder — cheap & simple in, whole company eventually (Brian, Aug 3) */}
+        <section id="path" className="max-w-6xl mx-auto px-6 mt-16">
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Start simple. Grow when you&apos;re ready.</p>
+          <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center max-w-[30ch] mx-auto">
+            From &ldquo;where&apos;s my excavator&rdquo; to running the whole company
+          </h2>
+          <p className="text-faint text-center mt-2 max-w-[58ch] mx-auto text-[14px]">
+            Every tier is month-to-month with unlimited users and $0 setup. Start with theft
+            protection for a few machines; turn on the rest when it earns its keep.
+          </p>
+          <div className="grid md:grid-cols-4 gap-4 mt-7">
+            {[
+              {
+                step: '1', name: 'Track', price: '$8/machine · $3/tag', fee: '$0 platform fee',
+                who: '“Just tell me where my stuff is.”',
+                items: ['Live map + full replay', 'After-hours theft alerts', 'Geofenced job sites', 'Utilization reports'],
+                hot: false,
+              },
+              {
+                step: '2', name: 'Operate', price: 'adds $49/mo', fee: '25 tool tags included',
+                who: '“Run my crews and jobs on it.”',
+                items: ['Crew clock-in + daily logs', 'Punch lists, milestones, budgets', 'Maintenance → auto work orders', 'QuickBooks + receipt chase'],
+                hot: true,
+              },
+              {
+                step: '3', name: 'Run', price: 'talk to us', fee: '100 tags included',
+                who: '“Run the company on it.”',
+                items: ['AI assistant + owner digests', 'Driver safety grades', 'Who-ran-what attribution', 'API + exports'],
+                hot: false,
+              },
+              {
+                step: '4', name: 'Fully integrated', price: 'the endgame', fee: 'everything connected',
+                who: 'The company runs itself on the data.',
+                items: ['Factory feeds from Cat/Komatsu — no hardware', 'Margins vs your trade + live valuation', 'Estimates → invoices → paid (coming)', 'One system instead of five subscriptions'],
+                hot: false,
+              },
+            ].map((t) => (
+              <div key={t.name} className={`rounded-2xl border p-5 flex flex-col ${t.hot ? 'border-amber bg-amber/[0.06] shadow-glow-amber' : 'border-navy-800 bg-navy-900'}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`grid place-items-center w-7 h-7 rounded-lg font-display font-black text-sm ${t.hot ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted'}`}>{t.step}</span>
+                  <h3 className="font-display font-extrabold text-lg">{t.name}</h3>
+                  {t.hot && <span className="ml-auto font-mono text-[9.5px] uppercase tracking-[0.08em] text-amber border border-amber/40 rounded-full px-2 py-0.5">most popular</span>}
+                </div>
+                <p className="font-display font-bold text-amber text-[15px] mt-2">{t.price}</p>
+                <p className="font-mono text-[10.5px] text-faint">{t.fee}</p>
+                <p className="text-[12.5px] text-muted italic mt-2">{t.who}</p>
+                <ul className="mt-3 space-y-1.5 text-[12.5px] text-faint">
+                  {t.items.map((i) => <li key={i} className="flex gap-1.5"><span className="text-teal">✓</span>{i}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className="text-center font-mono text-[12.5px] text-faint mt-5">
+            Founding 25: <span className="text-amber">$6/machine + $3/tag with Operate included</span> — 12-month price lock, hardware at cost, cancel anytime. <Link href="/pricing" className="text-teal underline decoration-dotted">Full pricing →</Link>
+          </p>
         </section>
 
         {/* Site IoT */}
