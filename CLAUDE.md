@@ -203,9 +203,9 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
 2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), 009 (alert phone/email), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 9). See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
-4. **Point hammertrack.ai at Vercel** — add the domain in Vercel project settings + DNS. CAUTION: leave the Google Workspace **MX records alone** or company email dies; only A/CNAME change. hammertrackai.com then 301s to it.
-5. **Remaining hardware** — install T1-b; connect the 3 remaining FeasyBeacon pucks on hand (2 large + 1 small → Minors 3–5, see `docs/DEVICE-ONBOARDING.md`); order TAT141s for equipment (wire to aux 12/24V — KORE says no solar accessory, Jul 13)
-6. **After-hours theft alert live test** — move the truck outside work hours (07:00–17:00) and confirm the alert fires
+4. **Point hammertrack.ai at Vercel** (task 173) — CONFIRMED NOT DONE Aug 5: domain resolves to Namecheap 216.150.1.1 (masked-forwarding trick serves the app — breaks PWA/auth). Add domain in Vercel + swap only A/CNAME at Namecheap. CAUTION: leave the Google Workspace **MX records alone** or company email dies. hammertrackai.com then 301s to it. Blocks final QBO_REDIRECT_URI + app-store remote URL.
+5. **Remaining hardware** — ~~install T1-b~~ ✅ reporting since Aug 4 (…00200); finish pucks (task 160: Minors 3+5 configured, tool assets created; last puck = Minor 4); KORE order #1 in fulfillment (see Hardware section) — on arrival: SuperSIM APN settings ≠ Hologram (task 171)
+6. ~~After-hours theft alert live test~~ ✅ verified in production Aug 4–5 — real after-hours alerts fired on the RAM 3500 (phone tracker) at 6:33 AM/7:01 PM
 7. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
 8. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
 9. ~~hammertrack.ai domain~~ ✅ OWNED + Google Workspace live (confirmed Jul 30 2026)
