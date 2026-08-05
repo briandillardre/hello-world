@@ -37,47 +37,53 @@ export async function GET(req: NextRequest) {
   const hour = new Date().getUTCHours()
   const out: Record<string, unknown> = {}
 
-  // 1 + 2 — DB reachable, ingest fresh. Two clocks matter: `timestamp` is the
-  // DEVICE's GPS time (a backlog replay or skewed clock makes it old while
-  // data pours in), `created_at` (049) is when rows actually ARRIVE. Silence
-  // is judged on arrival; a big gap between the two is its own message.
+  // 1 + 2 — DB reachable, ingest fresh. Freshness is judged by COUNTING rows
+  // inside the window, never by "fetch the newest row": an order-by-desc
+  // fetch returns NULLs first in Postgres and is fooled by type quirks — on
+  // Aug 5 it swore "39h silent" 28 minutes AFTER a theft alert processed
+  // live data from the very same table. A count cannot be tricked.
+  // Two clocks still matter: `timestamp` is the DEVICE's GPS time (backlog
+  // replays stamp old), `created_at` (049) is when rows actually ARRIVED.
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const db = createServiceClient()
-    const { data, error } = await db
-      .from('asset_locations') // the real table — 'locations' never existed, so every hourly check cried wolf
-      .select('timestamp')
-      .order('timestamp', { ascending: false })
-      .limit(1)
-    if (error) throw new Error(error.message)
-    const newestDevice = data?.[0]?.timestamp ? new Date(data[0].timestamp).getTime() : 0
+    const sinceIso = new Date(Date.now() - STALE_HOURS * 3_600_000).toISOString()
 
-    // Pre-049 schema: no created_at → fall back to judging on device time.
-    let newestArrival = 0
-    const arrivalQ = await db.from('asset_locations')
-      .select('created_at').order('created_at', { ascending: false }).limit(1)
-    if (!arrivalQ.error && arrivalQ.data?.[0]?.created_at) {
-      newestArrival = new Date(arrivalQ.data[0].created_at as string).getTime()
-    }
-    const judgeMs = newestArrival || newestDevice
-    const ageH = judgeMs ? (Date.now() - judgeMs) / 3_600_000 : Infinity
-    const deviceAgeH = newestDevice ? (Date.now() - newestDevice) / 3_600_000 : Infinity
-    out.ingestAgeHours = Number.isFinite(ageH) ? Math.round(ageH * 10) / 10 : null
-    out.deviceAgeHours = Number.isFinite(deviceAgeH) ? Math.round(deviceAgeH * 10) / 10 : null
+    const devQ = await db.from('asset_locations')
+      .select('id', { count: 'exact', head: true }).gte('timestamp', sinceIso)
+    if (devQ.error) throw new Error(devQ.error.message)
+    const recentByDevice = devQ.count ?? 0
 
-    if (ageH > STALE_HOURS && REMIND_HOURS_UTC.includes(hour)) {
+    // Pre-049 schema: no created_at → device-time count is the only signal.
+    let recentByArrival: number | null = null
+    const arrQ = await db.from('asset_locations')
+      .select('id', { count: 'exact', head: true }).gte('created_at', sinceIso)
+    if (!arrQ.error) recentByArrival = arrQ.count ?? 0
+
+    out.recentByDevice = recentByDevice
+    out.recentByArrival = recentByArrival
+
+    const fresh = recentByDevice > 0 || (recentByArrival ?? 0) > 0
+    if (!fresh && REMIND_HOURS_UTC.includes(hour)) {
+      // For the human-readable age, fetch the newest NON-NULL stamps (report
+      // only — the verdict above came from the counts).
+      const newest = await db.from('asset_locations')
+        .select('timestamp').not('timestamp', 'is', null)
+        .order('timestamp', { ascending: false, nullsFirst: false }).limit(1)
+      const newestIso = newest.data?.[0]?.timestamp as string | undefined
+      const ageH = newestIso ? Math.round((Date.now() - Date.parse(newestIso)) / 3_600_000) : null
       await notifySystem(
         'trackers silent',
-        judgeMs
-          ? `No tracker data for ${Math.round(ageH)}h (fleet-wide). Check flespi webhook + device power.`
+        ageH != null
+          ? `No tracker data in the last ${STALE_HOURS}h (fleet-wide); newest row is ${ageH}h old (${newestIso}). Check flespi webhook + device power.`
           : 'No location rows found at all — ingest pipeline never ran today.'
       )
       out.notified = 'ingest-stale'
-    } else if (newestArrival && deviceAgeH - ageH > STALE_HOURS && REMIND_HOURS_UTC.includes(hour)) {
-      // Data is arriving but stamped hours in the past — clock/backlog, not an outage.
+    } else if ((recentByArrival ?? 0) > 0 && recentByDevice === 0 && REMIND_HOURS_UTC.includes(hour)) {
+      // Rows are arriving but every device timestamp is old — clock/backlog.
       await notifySystem(
         'tracker clock behind',
-        `Data is arriving fine, but the newest GPS timestamp is ${Math.round(deviceAgeH)}h old — a tracker is replaying a backlog or has a bad clock. Trails may look stale until it catches up.`
+        `Data is arriving fine (${recentByArrival} rows in ${STALE_HOURS}h), but none carry a recent GPS timestamp — a tracker is replaying a backlog or has a bad clock. Trails may look stale until it catches up.`
       )
       out.notified = 'device-clock-behind'
     }
@@ -94,21 +100,23 @@ export async function GET(req: NextRequest) {
         .not('tracker_id', 'is', null)
         .limit(100)
       const units = (hw ?? []).filter((a) => /^\d{15}$/.test(String(a.tracker_id ?? ''))).slice(0, 25)
+      const sinceIso = new Date(Date.now() - STALE_HOURS * 3_600_000).toISOString()
       const stale: string[] = []
       for (const u of units) {
-        const { data: last } = await db
-          .from('asset_locations')
-          .select('timestamp, created_at')
-          .eq('asset_id', u.id)
-          .order('timestamp', { ascending: false })
-          .limit(1)
-        const row = last?.[0] as { timestamp: string; created_at?: string | null } | undefined
+        // Count in the window — same reasoning as the fleet check above.
+        const recent = await db.from('asset_locations')
+          .select('id', { count: 'exact', head: true })
+          .eq('asset_id', u.id).gte('timestamp', sinceIso)
+        if (recent.error || (recent.count ?? 0) > 0) continue
         // A unit that has NEVER reported is mid-setup, not an outage.
-        if (!row) continue
-        const t = Date.parse(row.created_at ?? row.timestamp)
-        if (!Number.isFinite(t)) continue
-        const h = (Date.now() - t) / 3_600_000
-        if (h > STALE_HOURS) stale.push(`${u.name}: ${Math.round(h)}h`)
+        const ever = await db.from('asset_locations')
+          .select('id', { count: 'exact', head: true }).eq('asset_id', u.id)
+        if (ever.error || (ever.count ?? 0) === 0) continue
+        const newest = await db.from('asset_locations')
+          .select('timestamp').eq('asset_id', u.id).not('timestamp', 'is', null)
+          .order('timestamp', { ascending: false, nullsFirst: false }).limit(1)
+        const t = newest.data?.[0]?.timestamp ? Date.parse(newest.data[0].timestamp as string) : NaN
+        stale.push(Number.isFinite(t) ? `${u.name}: ${Math.round((Date.now() - t) / 3_600_000)}h` : u.name)
       }
       out.staleUnits = stale
       if (stale.length) {
