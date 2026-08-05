@@ -27,11 +27,14 @@ const ZONE: [number, number][] = [
   [-86.7846, 36.1614], [-86.7794, 36.1612], [-86.7790, 36.1646],
   [-86.7842, 36.1650], [-86.7846, 36.1614],
 ]
-const IDLE_DOTS: { c: [number, number]; color: string }[] = [
-  { c: [-86.7830, 36.1631], color: '#2dd4bf' }, // excavator on site
-  { c: [-86.7807, 36.1624], color: '#a78bfa' }, // roller
-  { c: [-86.7818, 36.1641], color: '#f472b6' }, // tool kit aboard
+const IDLE_DOTS: { c: [number, number]; color: string; name: string }[] = [
+  { c: [-86.7830, 36.1631], color: '#2dd4bf', name: 'Link-Belt 130X2' },
+  { c: [-86.7807, 36.1624], color: '#a78bfa', name: 'Sakai SW990' },
+  { c: [-86.7818, 36.1641], color: '#f472b6', name: 'Drill Kit A' },
 ]
+
+// Shared marker-label look — same name chips the real map draws on dots.
+const LABEL_CSS = 'position:absolute;top:15px;left:50%;transform:translateX(-50%);white-space:nowrap;font:600 10px/1.2 ui-monospace,SFMono-Regular,monospace;color:#e8f1f8;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 6px rgba(0,0,0,.8);pointer-events:none'
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 function pointAt(t: number): { p: [number, number]; bearing: number } {
@@ -91,15 +94,52 @@ export function RealCinema() {
         map.addSource('trail', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: PATH.concat([PATH[0]]) } } })
         map.addLayer({ id: 'trail', type: 'line', source: 'trail', paint: { 'line-color': '#ff9e16', 'line-width': 3, 'line-opacity': 0.85 }, layout: { 'line-cap': 'round', 'line-join': 'round' } })
 
-        // Idle machines — steady product dots.
+        // 3D buildings over the imagery (Brian, Aug 5) — the same free
+        // OpenFreeMap extrusions the real map's 3D toggle uses.
+        map.addSource('ofm', { type: 'vector', url: 'https://tiles.openfreemap.org/planet' })
+        map.addLayer({
+          id: 'buildings-3d', type: 'fill-extrusion', source: 'ofm', 'source-layer': 'building', minzoom: 13,
+          paint: {
+            'fill-extrusion-color': '#3a4f67',
+            'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
+            'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+            'fill-extrusion-opacity': 0.55,
+          },
+        }, 'zone-fill')
+        // Live traffic flow when the TomTom key is configured (site layer).
+        const tomtom = process.env.NEXT_PUBLIC_TOMTOM_KEY
+        if (tomtom) {
+          map.addSource('traffic', {
+            type: 'raster', tileSize: 256,
+            tiles: [`https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=${tomtom}`],
+          })
+          map.addLayer({ id: 'traffic', type: 'raster', source: 'traffic', paint: { 'raster-opacity': 0.75 } }, 'zone-fill')
+        }
+
+        // Idle machines — steady product dots, name-labeled like the real map.
         for (const d of IDLE_DOTS) {
+          const wrap = document.createElement('div')
+          wrap.style.cssText = 'position:relative'
           const dot = document.createElement('div')
           dot.style.cssText = `width:13px;height:13px;border-radius:50%;background:${d.color};border:2px solid rgba(2,12,21,.9);box-shadow:0 0 10px ${d.color}aa`
-          new maplibregl.Marker({ element: dot }).setLngLat(d.c).addTo(map!)
+          const lbl = document.createElement('span')
+          lbl.textContent = d.name
+          lbl.style.cssText = LABEL_CSS
+          wrap.appendChild(dot)
+          wrap.appendChild(lbl)
+          new maplibregl.Marker({ element: wrap }).setLngLat(d.c).addTo(map!)
         }
-        // The moving truck — the pulsing live dot.
+        // The moving truck — the pulsing live dot, labeled (label on the
+        // wrapper so it doesn't pulse with the dot).
         truckEl = document.createElement('div')
-        truckEl.style.cssText = 'width:15px;height:15px;border-radius:50%;background:#ff9e16;border:2px solid rgba(2,12,21,.9);box-shadow:0 0 14px #ff9e16;animation:ht-pulse 1.6s ease-in-out infinite'
+        truckEl.style.cssText = 'position:relative'
+        const truckDot = document.createElement('div')
+        truckDot.style.cssText = 'width:15px;height:15px;border-radius:50%;background:#ff9e16;border:2px solid rgba(2,12,21,.9);box-shadow:0 0 14px #ff9e16;animation:ht-pulse 1.6s ease-in-out infinite'
+        const truckLbl = document.createElement('span')
+        truckLbl.textContent = 'RAM 3500 Dump'
+        truckLbl.style.cssText = LABEL_CSS
+        truckEl.appendChild(truckDot)
+        truckEl.appendChild(truckLbl)
         const styleTag = document.createElement('style')
         styleTag.textContent = '@keyframes ht-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}'
         document.head.appendChild(styleTag)

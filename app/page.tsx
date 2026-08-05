@@ -93,7 +93,8 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
-            Free 30 days · no credit card · we ship the trackers · cancel anytime
+            Founding 25 — first 25 companies: free 30-day pilot · we ship the trackers ·
+            founder pricing locked · cancel anytime
           </p>
         </section>
 
@@ -126,9 +127,16 @@ export default function HomePage() {
                   </div>
                   <h3 className="font-display font-bold text-[15px]">{title}</h3>
                   <p className="text-[13px] text-faint mt-1.5">{body}</p>
-                  <span className="inline-block mt-2.5 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5">
-                    {tag}
-                  </span>
+                  {tag === 'LIVE' ? (
+                    // LIVE tag = a door, not a badge: straight into the map.
+                    <Link href="/live" className="inline-flex items-center gap-1 mt-2.5 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5 hover:bg-amber/10 transition-colors">
+                      <span className="w-1 h-1 rounded-full bg-amber animate-blink" /> LIVE — see it on the map
+                    </Link>
+                  ) : (
+                    <span className="inline-block mt-2.5 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5">
+                      {tag}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

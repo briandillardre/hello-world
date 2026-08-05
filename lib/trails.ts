@@ -1,6 +1,6 @@
 import type { AssetWithLocation, AssetType } from './types'
 import { simplifyPoints } from './simplify'
-import { DEMO_MAP_CENTER } from './mock-data'
+import { DEMO_MAP_CENTER, MOCK_PATHS } from './mock-data'
 
 /**
  * Equipment Trails + Timeline Playback data.
@@ -98,6 +98,23 @@ export function trailColor(id: string): string {
   return TRAIL_PALETTE[hashId(id) % TRAIL_PALETTE.length]
 }
 
+// How many times an asset traverses its authored loop across the demo day.
+const PATH_LOOPS: Record<AssetType, number> = { vehicle: 2, equipment: 3, personnel: 2, tool: 1 }
+
+/** Point at distance d (wrapping) along a closed waypoint loop. Distances are
+ *  in raw degrees — fine for a demo stage a couple of km across. */
+function pathPointAt(path: [number, number][], cum: number[], total: number, d: number): [number, number] {
+  const dd = ((d % total) + total) % total
+  for (let s = 0; s < cum.length - 1; s++) {
+    if (dd <= cum[s + 1]) {
+      const segLen = cum[s + 1] - cum[s]
+      const f = segLen > 0 ? (dd - cum[s]) / segLen : 0
+      return [path[s][0] + (path[s + 1][0] - path[s][0]) * f, path[s][1] + (path[s + 1][1] - path[s][1]) * f]
+    }
+  }
+  return path[path.length - 1]
+}
+
 export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
   return assets.map((a) => {
     const rng = mulberry32(hashId(a.id))
@@ -116,6 +133,35 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
       if (on) { if (rng() < 0.05 + (1 - p) * 0.13) on = false }
       else { if (rng() < 0.02 + p * 0.17) on = true }
       active[i] = on
+    }
+
+    // Assets with an authored path FOLLOW it (yard↔site circuits, on-site
+    // serpentines) instead of random-walking — the walk sent demo trucks
+    // across the river off-bridge (Brian, Aug 5). Walk backward from the live
+    // position (path[0]), advancing along the loop only during active blocks.
+    const path = MOCK_PATHS[a.id]
+    if (path && path.length >= 2) {
+      const cum: number[] = [0]
+      for (let s = 1; s < path.length; s++) {
+        cum.push(cum[s - 1] + Math.hypot(path[s][0] - path[s - 1][0], path[s][1] - path[s - 1][1]))
+      }
+      const total = cum[cum.length - 1] || 1
+      const activeCount = active.filter(Boolean).length
+      const step = (total * PATH_LOOPS[a.type]) / Math.max(1, activeCount)
+      const pathPts: TrackPoint[] = new Array(N_POINTS)
+      let d = 0 // distance along loop; 0 = live position (path[0])
+      for (let i = N_POINTS - 1; i >= 0; i--) {
+        const [plng, plat] = pathPointAt(path, cum, total, d)
+        pathPts[i] = { lng: plng, lat: plat, t: i / (N_POINTS - 1) }
+        if (active[i]) d -= step
+      }
+      return {
+        assetId: a.id,
+        name: a.name,
+        type: a.type,
+        color: (a.metadata?.color as string | undefined) || TRAIL_PALETTE[hashId(a.id) % TRAIL_PALETTE.length],
+        points: pathPts,
+      }
     }
 
     // Smooth random walk backward from the live position: velocity has momentum

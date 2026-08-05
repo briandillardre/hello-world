@@ -19,13 +19,13 @@ export const MOCK_COMPANY: Company = {
 
 export const MOCK_ASSETS: AssetWithLocation[] = [
   {
-    id: 'asset-1', company_id: 'mock-company-1', name: 'F-350 Truck #1',
+    id: 'asset-1', company_id: 'mock-company-1', name: 'Chevy 1500 — Owner',
     type: 'vehicle', tracker_id: 'obd-001', active: true,
-    metadata: { make: 'Ford', model: 'F-350', year: 2022, license: 'TN-ACM-001' },
+    metadata: { make: 'Chevrolet', model: 'Silverado 1500', year: 2021, license: 'SC-DCG-001' },
     created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-1', asset_id: 'asset-1', company_id: 'mock-company-1',
-      lat: 36.1627, lng: -86.7816, accuracy: 5, battery: 88, speed: 0, heading: 0,
+      lat: 36.1627, lng: -86.7838, accuracy: 5, battery: 88, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 12 * 60000).toISOString(),
       raw: {
         source: 'flespi',
@@ -51,13 +51,13 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     },
   },
   {
-    id: 'asset-2', company_id: 'mock-company-1', name: 'CAT 336 Excavator',
+    id: 'asset-2', company_id: 'mock-company-1', name: 'Link-Belt 130X2 Excavator',
     type: 'equipment', tracker_id: 'gps-002', active: true,
-    metadata: { make: 'Caterpillar', model: '336', year: 2020 },
+    metadata: { make: 'Link-Belt', model: '130X2', year: 2019 },
     created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-2', asset_id: 'asset-2', company_id: 'mock-company-1',
-      lat: 36.1650, lng: -86.7800, accuracy: 8, battery: 42, speed: 0, heading: 0,
+      lat: 36.1640, lng: -86.7830, accuracy: 8, battery: 42, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
       raw: {
         source: 'flespi',
@@ -86,7 +86,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-3', asset_id: 'asset-3', company_id: 'mock-company-1',
-      lat: 36.1610, lng: -86.7830, accuracy: 10, battery: 71, speed: 0, heading: 0,
+      lat: 36.1610, lng: -86.7828, accuracy: 10, battery: 71, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 3 * 60000).toISOString(), raw: null,
     },
   },
@@ -97,29 +97,29 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-4', asset_id: 'asset-4', company_id: 'mock-company-1',
-      lat: 36.1640, lng: -86.7790, accuracy: 15, battery: 31, speed: 0, heading: 0,
+      lat: 36.1626, lng: -86.7837, accuracy: 15, battery: 31, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 47 * 60000).toISOString(), raw: null,
     },
   },
   {
-    id: 'asset-5', company_id: 'mock-company-1', name: 'Concrete Mixer M200',
+    id: 'asset-5', company_id: 'mock-company-1', name: 'Sakai SW990 Roller',
     type: 'equipment', tracker_id: 'gps-005', active: true,
-    metadata: { make: 'Multiquip', model: 'MC94PH', capacity: '9 cu ft' },
+    metadata: { make: 'Sakai', model: 'SW990', year: 2012 },
     created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-5', asset_id: 'asset-5', company_id: 'mock-company-1',
-      lat: 36.1620, lng: -86.7850, accuracy: 6, battery: null, speed: 0, heading: 0,
+      lat: 36.1612, lng: -86.7900, accuracy: 6, battery: null, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), raw: null,
     },
   },
   {
-    id: 'asset-6', company_id: 'mock-company-1', name: 'Ram 2500 #2',
+    id: 'asset-6', company_id: 'mock-company-1', name: 'RAM 3500 Dump',
     type: 'vehicle', tracker_id: 'obd-006', active: true,
-    metadata: { make: 'Ram', model: '2500', year: 2023, license: 'TN-ACM-002' },
+    metadata: { make: 'Ram', model: '3500', year: 2022, license: 'SC-DCG-002' },
     created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-6', asset_id: 'asset-6', company_id: 'mock-company-1',
-      lat: 36.1660, lng: -86.7780, accuracy: 4, battery: 95, speed: 45, heading: 270,
+      lat: 36.1650, lng: -86.7860, accuracy: 4, battery: 95, speed: 45, heading: 270,
       timestamp: new Date(Date.now() - 2 * 60000).toISOString(), raw: null,
     },
   },
@@ -130,7 +130,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-7', asset_id: 'asset-7', company_id: 'mock-company-1',
-      lat: 36.1635, lng: -86.7820, accuracy: 12, battery: 56, speed: 0, heading: 0,
+      lat: 36.1600, lng: -86.7890, accuracy: 12, battery: 56, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 8 * 60000).toISOString(), raw: null,
     },
   },
@@ -141,29 +141,29 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-8', asset_id: 'asset-8', company_id: 'mock-company-1',
-      lat: 36.1655, lng: -86.7810, accuracy: 20, battery: 62, speed: 0, heading: 0,
+      lat: 36.1598, lng: -86.7884, accuracy: 20, battery: 62, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 90 * 60000).toISOString(), raw: null,
     },
   },
   {
-    id: 'asset-9', company_id: 'mock-company-1', name: 'JD 310L Backhoe',
+    id: 'asset-9', company_id: 'mock-company-1', name: 'Takeuchi TB235 Mini-Ex',
     type: 'equipment', tracker_id: 'gps-009', active: true,
-    metadata: { make: 'John Deere', model: '310L', year: 2021 },
+    metadata: { make: 'Takeuchi', model: 'TB235', year: 2014 },
     created_at: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-9', asset_id: 'asset-9', company_id: 'mock-company-1',
-      lat: 36.1615, lng: -86.7770, accuracy: 7, battery: 78, speed: 0, heading: 0,
+      lat: 36.1598, lng: -86.7885, accuracy: 7, battery: 78, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 30 * 60000).toISOString(), raw: null,
     },
   },
   {
-    id: 'asset-10', company_id: 'mock-company-1', name: 'Silverado 1500 #3',
+    id: 'asset-10', company_id: 'mock-company-1', name: 'Peterbilt 567 Tri-Axle',
     type: 'vehicle', tracker_id: 'obd-010', active: true,
-    metadata: { make: 'Chevrolet', model: 'Silverado 1500', year: 2021, license: 'TN-ACM-003' },
+    metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'SC-DCG-003' },
     created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-10', asset_id: 'asset-10', company_id: 'mock-company-1',
-      lat: 36.1645, lng: -86.7840, accuracy: 5, battery: 83, speed: 0, heading: 0,
+      lat: 36.1663, lng: -86.7890, accuracy: 5, battery: 83, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 18 * 60000).toISOString(), raw: null,
     },
   },
@@ -184,32 +184,93 @@ export const MOCK_GEOFENCES: Geofence[] = [
     },
   },
   {
+    // Moved WEST of the Cumberland (old ring straddled the river, so demo
+    // trails "drove across water" — Brian, Aug 5). Everything now stages on
+    // the downtown grid side.
     id: 'fence-2', company_id: 'mock-company-1', name: 'Maple St Grading',
     color: '#2dd4bf',
     created_at: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7811, 36.1605], [-86.7762, 36.1605],
-        [-86.7762, 36.1668], [-86.7811, 36.1668],
-        [-86.7811, 36.1605],
+        [-86.7930, 36.1585], [-86.7875, 36.1585],
+        [-86.7875, 36.1640], [-86.7930, 36.1640],
+        [-86.7930, 36.1585],
       ]],
     },
   },
   {
     id: 'fence-3', company_id: 'mock-company-1', name: 'Equipment Yard',
-    color: '#60a5fa',
+    color: '#60a5fa', kind: 'yard',
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7788, 36.1656], [-86.7768, 36.1656],
-        [-86.7768, 36.1667], [-86.7788, 36.1667],
-        [-86.7788, 36.1656],
+        [-86.7905, 36.1655], [-86.7875, 36.1655],
+        [-86.7875, 36.1675], [-86.7905, 36.1675],
+        [-86.7905, 36.1655],
+      ]],
+    },
+  },
+  {
+    // Black outline around the whole demo stage (Brian, Aug 5) — shows the
+    // boundary zone kind: perimeter alerts, no job-time accrual.
+    id: 'fence-4', company_id: 'mock-company-1', name: 'Property Boundary',
+    color: '#0a0a0a', kind: 'boundary',
+    created_at: new Date(Date.now() - 85 * 24 * 60 * 60 * 1000).toISOString(),
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-86.7945, 36.1572], [-86.7790, 36.1572],
+        [-86.7790, 36.1688], [-86.7945, 36.1688],
+        [-86.7945, 36.1572],
       ]],
     },
   },
 ]
+
+// Hand-authored waypoint loops the demo vehicles/equipment FOLLOW instead of
+// random-walking (which sent trucks across the river off-bridge). Paths are
+// closed loops; index 0 must equal the asset's live position. Trucks run
+// yard↔site circuits; machines serpentine INSIDE their site. Edit these to
+// change the demo's movement story.
+export const MOCK_PATHS: Record<string, [number, number][]> = {
+  // Chevy 1500 — Riverfront Tower ↔ Equipment Yard circuit
+  'asset-1': [
+    [-86.7838, 36.1627], [-86.7820, 36.1627], [-86.7820, 36.1660],
+    [-86.7890, 36.1660], [-86.7890, 36.1627], [-86.7838, 36.1627],
+  ],
+  // Link-Belt excavator — working passes inside Riverfront Tower
+  'asset-2': [
+    [-86.7830, 36.1640], [-86.7855, 36.1640], [-86.7855, 36.1632],
+    [-86.7820, 36.1632], [-86.7820, 36.1622], [-86.7855, 36.1622],
+    [-86.7855, 36.1612], [-86.7820, 36.1612], [-86.7820, 36.1645],
+    [-86.7830, 36.1645], [-86.7830, 36.1640],
+  ],
+  // Sakai roller — compaction passes inside Maple St Grading
+  'asset-5': [
+    [-86.7900, 36.1612], [-86.7925, 36.1612], [-86.7925, 36.1603],
+    [-86.7880, 36.1603], [-86.7880, 36.1594], [-86.7925, 36.1594],
+    [-86.7925, 36.1588], [-86.7900, 36.1588], [-86.7900, 36.1612],
+  ],
+  // RAM 3500 — the busy dump loop: Maple St ↔ Riverfront via the yard block
+  'asset-6': [
+    [-86.7860, 36.1650], [-86.7890, 36.1650], [-86.7890, 36.1600],
+    [-86.7838, 36.1600], [-86.7838, 36.1627], [-86.7820, 36.1627],
+    [-86.7820, 36.1660], [-86.7890, 36.1660], [-86.7890, 36.1650],
+    [-86.7860, 36.1650],
+  ],
+  // Takeuchi mini-ex — trench passes inside Maple St Grading
+  'asset-9': [
+    [-86.7885, 36.1598], [-86.7905, 36.1598], [-86.7905, 36.1591],
+    [-86.7882, 36.1591], [-86.7882, 36.1598], [-86.7885, 36.1598],
+  ],
+  // Peterbilt 567 — yard ↔ Maple St hauls
+  'asset-10': [
+    [-86.7890, 36.1663], [-86.7890, 36.1600], [-86.7910, 36.1600],
+    [-86.7910, 36.1640], [-86.7890, 36.1640], [-86.7890, 36.1663],
+  ],
+}
 
 export const MOCK_ALERT_RULES: AlertRule[] = [
   {
@@ -290,7 +351,7 @@ export const MOCK_ALERTS: AlertEvent[] = [
   },
 ]
 
-export const DEMO_MAP_CENTER: [number, number] = [-86.7816, 36.1635]
+export const DEMO_MAP_CENTER: [number, number] = [-86.7867, 36.1628]
 export const DEMO_MAP_ZOOM = 14.5
 
 // ── v2: Bluetooth tool associations ──────────────────────────────────────────

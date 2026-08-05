@@ -2,11 +2,36 @@
 
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ArrowRight, X } from 'lucide-react'
+import {
+  ArrowRight, X, MonitorPlay, Map as MapIcon, Bell, Clock, ClipboardList,
+  Package, Hexagon, Ruler, Bluetooth, Wrench, BarChart3, Calculator,
+  Receipt, Banknote, TrendingUp, Lock,
+} from 'lucide-react'
 import { MOCK_ASSETS, MOCK_GEOFENCES, MOCK_TOOL_ASSOCIATIONS } from '@/lib/mock-data'
 import { generateTracks } from '@/lib/trails'
 import { resolveToolLocations, toolsAboard } from '@/lib/tools-resolve'
 import { Logo } from '@/components/brand/Logo'
+
+// The REAL product nav, mirrored — visitors see everything the app does as
+// features land (Brian, Aug 5: "clients need to see functionality as we
+// add/edit features"). Every item routes to the pilot signup.
+const DEMO_NAV: { label: string; icon: typeof MapIcon; section?: string; active?: boolean }[] = [
+  { label: 'Command Center', icon: MonitorPlay },
+  { label: 'Live Map', icon: MapIcon, active: true },
+  { label: 'Alerts', icon: Bell },
+  { label: 'Time clock', icon: Clock, section: 'FIELD' },
+  { label: 'Daily logs', icon: ClipboardList },
+  { label: 'Assets', icon: Package },
+  { label: 'Zones', icon: Hexagon },
+  { label: 'Measurements', icon: Ruler },
+  { label: 'Tag scanner', icon: Bluetooth },
+  { label: 'Maintenance', icon: Wrench },
+  { label: 'Reports', icon: BarChart3, section: 'OFFICE' },
+  { label: 'Accounting', icon: Calculator },
+  { label: 'Receipts', icon: Receipt },
+  { label: 'Financials', icon: Banknote },
+  { label: 'Op model', icon: TrendingUp },
+]
 
 const MapView = dynamic(
   () => import('@/components/map/MapView').then((m) => ({ default: m.MapView })),
@@ -59,19 +84,52 @@ export function LiveDemoClient() {
           </Link>
         </div>
       </header>
-      <div className="flex-1 relative min-h-0">
-        <MapView
-          assets={assets}
-          geofences={MOCK_GEOFENCES}
-          tracks={tracks}
-          toolGateways={toolGateways}
-          aboard={toolsAboard(MOCK_ASSETS, MOCK_TOOL_ASSOCIATIONS)}
-        />
-        {/* mobile gets the honest label as a floating chip (header is tight) —
-            parked under the layers pill so it never covers the type filters */}
-        <span className="sm:hidden absolute top-[110px] left-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-teal">
-          <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" /> demo · simulated fleet
-        </span>
+      <div className="flex-1 flex min-h-0">
+        {/* The product sidebar, for real — locked items funnel to the pilot. */}
+        <aside className="hidden md:flex w-52 flex-none flex-col border-r border-navy-800 bg-navy-950/90 overflow-y-auto">
+          <nav className="flex-1 py-2">
+            {DEMO_NAV.map(({ label, icon: Icon, section, active }) => (
+              <div key={label}>
+                {section && (
+                  <p className="px-4 pt-3 pb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{section}</p>
+                )}
+                {active ? (
+                  <span className="flex items-center gap-2.5 mx-2 px-2.5 py-2 rounded-lg bg-amber/15 text-amber font-semibold text-[13px]">
+                    <Icon className="h-4 w-4" /> {label}
+                  </span>
+                ) : (
+                  <Link
+                    href="/register"
+                    title={`${label} — included in the free pilot`}
+                    className="group/item flex items-center gap-2.5 mx-2 px-2.5 py-2 rounded-lg text-muted hover:bg-navy-800 hover:text-ink text-[13px]"
+                  >
+                    <Icon className="h-4 w-4" /> {label}
+                    <Lock className="h-3 w-3 ml-auto text-faint opacity-0 group-hover/item:opacity-100" />
+                  </Link>
+                )}
+              </div>
+            ))}
+          </nav>
+          <div className="p-3 border-t border-navy-800">
+            <p className="text-[10.5px] text-faint leading-snug">
+              This is the real product nav — every page opens in the free pilot.
+            </p>
+          </div>
+        </aside>
+        <div className="flex-1 relative min-h-0">
+          <MapView
+            assets={assets}
+            geofences={MOCK_GEOFENCES}
+            tracks={tracks}
+            toolGateways={toolGateways}
+            aboard={toolsAboard(MOCK_ASSETS, MOCK_TOOL_ASSOCIATIONS)}
+          />
+          {/* mobile gets the honest label as a floating chip (header is tight) —
+              parked under the layers pill so it never covers the type filters */}
+          <span className="sm:hidden absolute top-[110px] left-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-teal">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" /> demo · simulated fleet
+          </span>
+        </div>
       </div>
     </div>
   )

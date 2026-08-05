@@ -57,7 +57,7 @@ const TIERS = [
     name: 'Run',
     price: '$8',
     unit: '/machine/mo',
-    sub: '+ $199/mo platform · 100 tags included, then $2',
+    sub: 'platform priced with you — talk to us · 100 tags included',
     blurb: '“Run the company on it.”',
     cta: 'Start free pilot',
     highlight: false,

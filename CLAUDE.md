@@ -22,8 +22,19 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 - Vercel deployment (moved from Netlify Jul 2026; netlify.toml remains for the old site)
 
 ## Demo Mode
-App works fully with zero env vars — 10 mock assets at a Nashville construction site.
-`isMock` flag checks `NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
+App works fully with zero env vars — 10 mock assets mirroring the DCG fleet
+(Chevy 1500, RAM 3500 Dump, Peterbilt 567, Link-Belt 130X2, Sakai SW990,
+Takeuchi TB235…) staged WEST of the river on the Nashville grid. Vehicles/
+equipment follow hand-authored waypoint loops (`MOCK_PATHS` in lib/mock-data.ts
+— edit there to change the demo story; no more random walks across water).
+Black 'Property Boundary' zone rings the stage. /live shows the real product
+sidebar (locked rows → /register). `isMock` flag checks
+`NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
+
+## Pricing sync rule (Brian, Aug 5)
+Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
+/pricing, the splash ladder + hero microcopy, docs/PRICING-TIERS.md — in the
+SAME commit. Run tier platform price stays UNPUBLISHED ("talk to us").
 
 ## Key Files
 - `lib/types.ts` — all TypeScript types

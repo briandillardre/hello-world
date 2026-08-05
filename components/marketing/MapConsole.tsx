@@ -7,19 +7,19 @@ import Link from 'next/link'
 import { ArrowRight, Maximize2 } from 'lucide-react'
 
 const PINS = [
-  { c: 'amber', top: '38%', left: '22%' },
-  { c: 'teal', top: '56%', left: '36%' },
-  { c: 'amber', top: '64%', left: '66%' },
-  { c: 'teal', top: '40%', left: '76%' },
-  { c: 'teal', top: '50%', left: '52%' },
-  { c: 'amber', top: '70%', left: '27%' },
+  { c: 'amber', top: '38%', left: '22%', name: 'Chevy 1500' },
+  { c: 'teal', top: '56%', left: '36%', name: 'Link-Belt 130X2' },
+  { c: 'amber', top: '64%', left: '66%', name: 'Peterbilt 567' },
+  { c: 'teal', top: '40%', left: '76%', name: 'Sakai SW990' },
+  { c: 'teal', top: '50%', left: '52%', name: 'TB235 Mini-Ex' },
+  { c: 'amber', top: '70%', left: '27%', name: 'RAM 3500' },
 ] as const
 
 const FEED = [
-  { dot: 'bg-alert', name: 'Skid Steer #3', status: '2:14 AM ⚠', alert: true },
-  { dot: 'bg-teal', name: 'Excavator 320', status: 'idle 4h' },
-  { dot: 'bg-amber', name: 'F-250 · Crew 2', status: 'moving' },
-  { dot: 'bg-teal', name: 'Dozer D6', status: 'service due' },
+  { dot: 'bg-alert', name: 'TB235 Mini-Ex', status: '2:14 AM ⚠', alert: true },
+  { dot: 'bg-teal', name: 'Link-Belt 130X2', status: 'idle 4h' },
+  { dot: 'bg-amber', name: 'RAM 3500 · Crew 2', status: 'moving' },
+  { dot: 'bg-teal', name: 'Sakai SW990', status: 'service due' },
   { dot: 'bg-amber', name: 'Tool kit · Bay A', status: '5 tags' },
 ]
 
@@ -57,7 +57,7 @@ export function MapConsole() {
           </svg>
           {/* asset popup chip — shows the product actually does something */}
           <div className="absolute bg-[#001a2e] border border-[#14506f] rounded-lg px-2.5 py-1.5 shadow-xl" style={{ top: '57%', left: '30%' }}>
-            <p className="font-display font-bold text-[10.5px] text-ink leading-tight">CAT 336 Excavator</p>
+            <p className="font-display font-bold text-[10.5px] text-ink leading-tight">Link-Belt 130X2 Excavator</p>
             <p className="font-mono text-[9px] text-teal leading-tight mt-0.5">on site · 42% batt · 4h idle</p>
           </div>
           <div className="absolute top-3.5 left-3.5 flex items-center gap-2 bg-[rgba(0,17,32,0.8)] backdrop-blur border border-teal/30 rounded-[10px] px-3 py-2 font-mono text-[11px] text-teal">
@@ -68,11 +68,15 @@ export function MapConsole() {
             <Maximize2 className="h-3 w-3" /> Tap to open
           </span>
           {PINS.map((p, i) => (
-            <span
-              key={i}
-              className={`absolute w-[13px] h-[13px] rounded-full border-2 border-[rgba(0,17,32,0.6)] ${p.c === 'amber' ? 'bg-amber shadow-[0_0_12px_-1px_#ff9e16]' : 'bg-teal shadow-[0_0_12px_-1px_#2dd4bf]'}`}
-              style={{ top: p.top, left: p.left }}
-            />
+            <span key={i} className="absolute" style={{ top: p.top, left: p.left }}>
+              <span
+                className={`block w-[13px] h-[13px] rounded-full border-2 border-[rgba(0,17,32,0.6)] ${p.c === 'amber' ? 'bg-amber shadow-[0_0_12px_-1px_#ff9e16]' : 'bg-teal shadow-[0_0_12px_-1px_#2dd4bf]'}`}
+              />
+              {/* named dots — reads like the real map (Brian, Aug 5) */}
+              <span className="absolute left-1/2 -translate-x-1/2 top-[15px] whitespace-nowrap font-mono text-[8.5px] font-semibold text-ink/90 [text-shadow:0_1px_3px_rgba(0,10,20,.95)]">
+                {p.name}
+              </span>
+            </span>
           ))}
           <span
             className="absolute w-[18px] h-[18px] rounded-full bg-alert shadow-[0_0_0_6px_rgba(251,93,93,0.2),0_0_16px_#fb5d5d] animate-pulse-ring"
