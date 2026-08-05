@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Plus, Battery, Clock, ChevronRight } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
+import { toolIsFresh } from '@/lib/tools-resolve'
 import { createAssetAction } from '@/lib/actions/assets'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { Button } from '@/components/ui/button'
@@ -23,8 +24,9 @@ interface AssetListProps {
   assets: AssetWithLocation[]
   /** Gateway id → # tools riding ("🔧 2 aboard" chip on trucks/machines). */
   toolCounts?: Record<string, number>
-  /** Tool id → carrier name ("with Chevy 1500" chip on tools). */
-  carriers?: Record<string, string>
+  /** Tool id → current/last carrier ("with Chevy 1500" chip on tools; stale
+   *  sightings render as "last seen with", never a live custody claim). */
+  carriers?: Record<string, { name: string; lastSeen: string }>
   onAdd?: (data: AssetFormData) => void
 }
 
@@ -172,7 +174,7 @@ export function AssetList({ assets, toolCounts, carriers, onAdd }: AssetListProp
   )
 }
 
-function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; toolCount?: number; carrier?: string }) {
+function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string } }) {
   return (
     <Link href={`/assets/${asset.id}`} className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
       {asset.photo_url ? (
@@ -194,11 +196,17 @@ function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; too
               🔧 {toolCount} aboard
             </span>
           )}
-          {carrier && (
+          {carrier && (toolIsFresh(carrier.lastSeen) ? (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[11px] font-semibold px-2 py-0.5 max-w-[160px] truncate">
-              with {carrier}
+              with {carrier.name}
             </span>
-          )}
+          ) : (
+            // No Bluetooth ping in 25+ min — it was LEFT somewhere. Say so
+            // instead of claiming it's still riding the truck.
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-navy-800/70 border border-navy-700 text-faint text-[11px] font-medium px-2 py-0.5 max-w-[180px] truncate">
+              last seen with {carrier.name}
+            </span>
+          ))}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs text-faint">
           {asset.tracker_id && <span className="truncate">ID: {asset.tracker_id}</span>}

@@ -14,10 +14,13 @@ export default async function AssetsPage() {
   // Chips both directions: trucks show "🔧 N aboard", tools show their ride.
   const aboard = toolsAboard(rawAssets, toolAssociations)
   const toolCounts = Object.fromEntries(Object.entries(aboard).map(([id, list]) => [id, list.length]))
-  const carriers: Record<string, string> = {}
+  // Carry lastSeen so the list can tell "riding right now" from "left behind
+  // hours ago" — a stale pairing must never claim the tool is WITH the truck
+  // (Brian, Aug 4: tools left at the jobsite showed "with 2003 Chevy").
+  const carriers: Record<string, { name: string; lastSeen: string }> = {}
   for (const assoc of toolAssociations) {
     const gw = rawAssets.find(a => a.id === assoc.gateway_asset_id)
-    if (gw) carriers[assoc.tool_asset_id] = gw.name
+    if (gw) carriers[assoc.tool_asset_id] = { name: gw.name, lastSeen: assoc.last_seen }
   }
 
   return (

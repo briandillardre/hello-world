@@ -25,10 +25,11 @@ export function MapSheet({
   onClose: () => void
   children: ReactNode
 }) {
-  // Mobile only, three drag stops (owner ask, Jul 16 — "a drag-down stop so I
-  // can see more of the map with an asset selected"):
-  //   0 mini (~24dvh: handle + title + status) · 1 peek (~42dvh) · 2 full.
-  const [level, setLevel] = useState(1)
+  // Mobile only, three drag stops (owner ask, Aug 4 — "just show the title,
+  // draggable up to full screen"):
+  //   0 title-only (header, no body — the map stays the star)
+  //   1 peek (~42dvh) · 2 full screen (100dvh, covers the tab bar).
+  const [level, setLevel] = useState(0)
   const expanded = level === 2
   // Live drag: pull the handle down to step down/close, up to step up.
   const [dragY, setDragY] = useState(0)
@@ -52,14 +53,16 @@ export function MapSheet({
     const dy = dragY
     setDragY(0)
     if (Math.abs(dy) < 8) { setLevel((l) => (l === 2 ? 1 : l + 1)); return } // tap = step up (full → peek)
+    if (dy < -140) { setLevel(2); return }                                   // big pull up → straight to full
     if (dy < -40) { setLevel((l) => Math.min(2, l + 1)); return }            // pull up → step up
     if (dy > 220) { onClose(); return }                                      // hard pull → close from anywhere
     if (dy > 80) {
-      if (level === 0) onClose()                                             // already mini → close
+      if (level === 0) onClose()                                             // already title-only → close
       else setLevel((l) => l - 1)                                            // step down one stop
     }
   }
-  const MAX_H = ['24dvh', '42dvh', '85dvh'][level]
+  // Level 0 has no body, so the sheet sizes to its header — no fixed height.
+  const MAX_H = [undefined, '42dvh', '100dvh'][level]
 
   const header = (showMobileClose = false) => (
     <div className="flex items-start justify-between gap-3">
@@ -94,10 +97,10 @@ export function MapSheet({
           or 85dvh + lift would push its top off-screen. */}
       <div
         className="absolute left-0 right-0 z-[71] md:hidden"
-        style={{ bottom: expanded ? '54px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
+        style={{ bottom: expanded ? '0px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
       >
         <div
-          className="bg-navy-900 rounded-t-2xl shadow-2xl mx-2 border border-navy-800 flex flex-col"
+          className={`bg-navy-900 shadow-2xl border border-navy-800 flex flex-col ${expanded ? 'mx-0 rounded-none h-[100dvh]' : 'mx-2 rounded-t-2xl'}`}
           style={{
             maxHeight: MAX_H,
             transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
@@ -118,7 +121,9 @@ export function MapSheet({
             </div>
             {header(true)}
           </div>
-          <div className="overflow-y-auto px-5 pb-6 mt-3 flex-1 overscroll-contain">{children}</div>
+          {/* Body stays MOUNTED at title-only (hidden) so its state — fetched
+              stops, opened cards — survives collapsing and re-expanding. */}
+          <div className={`overflow-y-auto px-5 pb-6 mt-3 flex-1 overscroll-contain ${level === 0 ? 'hidden' : ''}`}>{children}</div>
         </div>
       </div>
 
