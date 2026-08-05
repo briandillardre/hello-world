@@ -2,10 +2,11 @@
 const nextConfig = {
   experimental: {
     serverActions: {
-      // Asset photos are resized client-side (~200-500 KB), but zone site
-      // imagery uploads drone JPEGs as-is for evidence quality — Mavic shots
-      // run 5-9 MB and the imagery action caps at 12 MB, so allow headroom.
-      bodySizeLimit: '15mb',
+      // Asset photos are resized client-side (~200-500 KB) before riding a
+      // server action; anything big (zone site imagery, up to 50 MB) goes
+      // direct to Supabase Storage via signed URL instead — Vercel hard-caps
+      // serverless request bodies at ~4.5 MB, so raising this can't help.
+      bodySizeLimit: '4mb',
     },
   },
   webpack: (config) => {

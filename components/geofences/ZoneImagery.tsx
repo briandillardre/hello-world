@@ -3,7 +3,8 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
 import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
-import { uploadZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
+import { createImageryUploadAction, finalizeZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
+import { createClient } from '@/lib/supabase'
 import type { Corners } from '@/components/geofences/OverlayPlacer'
 
 // MapLibre needs the browser — load the placer only when opened.
@@ -58,15 +59,25 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   async function upload() {
     const f = fileRef.current?.files?.[0]
     if (!f) { setError('Attach the photo first.'); return }
-    if (f.size > 12 * 1024 * 1024) {
-      setError(`Photo is ${(f.size / 1024 / 1024).toFixed(1)} MB — 12 MB max. Export a smaller JPEG and retry.`)
+    if (f.size > 50 * 1024 * 1024) {
+      setError(`Photo is ${(f.size / 1024 / 1024).toFixed(1)} MB — 50 MB max. Export a smaller file and retry.`)
       return
     }
     setBusy(true); setError(null)
-    const form = new FormData()
-    form.set('photo', f); form.set('zoneId', zoneId); form.set('takenOn', takenOn); form.set('caption', caption)
-    // A rejected/oversized POST resolves to nothing — never crash on r.ok.
-    const r = await uploadZoneImageryAction(form).catch(() => null)
+    const type = f.type || 'image/jpeg'
+    // Three steps so the file itself never rides through a server action
+    // (Vercel caps those request bodies): mint a signed URL, stream the photo
+    // straight to storage, then record it. .catch(null) — never crash on r.ok.
+    const pre = await createImageryUploadAction(zoneId, type, f.size).catch(() => null)
+    if (!pre?.ok || !pre.path || !pre.token) {
+      setBusy(false); setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); return
+    }
+    const { error: upErr } = await createClient().storage.from('field-photos')
+      .uploadToSignedUrl(pre.path, pre.token, f, { contentType: type })
+    if (upErr) {
+      setBusy(false); setError('Upload didn’t go through — check signal and try again.'); return
+    }
+    const r = await finalizeZoneImageryAction({ zoneId, path: pre.path, takenOn, caption }).catch(() => null)
     setBusy(false)
     if (r?.ok && r.image) {
       setImages((xs) => [r.image!, ...xs])

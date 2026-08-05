@@ -18,44 +18,80 @@ export interface ZoneImage {
   bounds?: [[number, number], [number, number], [number, number], [number, number]] | null
 }
 
+// Site imagery upload cap (mirrored client-side in ZoneImagery). Drone shots
+// go direct to Supabase Storage via a signed URL — Vercel's ~4.5 MB serverless
+// request cap never sees the file. ('use server' forbids exporting consts.)
+const IMAGERY_MAX_BYTES = 50 * 1024 * 1024
+
+const IMAGERY_EXT: Record<string, string> = {
+  'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif',
+}
+
 /**
- * Upload one dated site photo to a zone's imagery timeline.
- * FormData: photo (file), zoneId, takenOn (YYYY-MM-DD), caption?, source?
- * Mavic JPEGs run 5–9 MB — capped at 12 MB, stored as-is (evidence quality
- * beats bandwidth here; the viewer lazy-loads).
+ * Step 1 of the site-photo upload: validate + mint a one-time signed upload
+ * URL so the device streams the file straight to Supabase Storage. Mavic
+ * JPEGs run 5–9 MB and pano/ortho exports more — capped at 50 MB.
  */
-export async function uploadZoneImageryAction(form: FormData): Promise<{ ok: boolean; image?: ZoneImage; error?: string }> {
+export async function createImageryUploadAction(zoneId: string, contentType: string, size: number): Promise<{
+  ok: boolean; path?: string; token?: string; error?: string
+}> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const zoneId = String(form.get('zoneId') ?? '')
-  const takenOn = String(form.get('takenOn') ?? '')
-  const caption = String(form.get('caption') ?? '').trim().slice(0, 200)
-  const sourceRaw = String(form.get('source') ?? 'drone')
-  const source = ['drone', 'aerial', 'satellite', 'ground'].includes(sourceRaw) ? sourceRaw : 'drone'
-  const photo = form.get('photo')
   if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(takenOn)) return { ok: false, error: 'Pick the date it was taken.' }
-  if (!(photo instanceof File) || !photo.size || !photo.type.startsWith('image/')) {
-    return { ok: false, error: 'Attach the photo first.' }
-  }
-  if (photo.size > 12 * 1024 * 1024) return { ok: false, error: 'Photo too large (12 MB max).' }
+  if (!contentType.startsWith('image/')) return { ok: false, error: 'That file isn’t an image.' }
+  if (!size || size > IMAGERY_MAX_BYTES) return { ok: false, error: 'Photo too large (50 MB max).' }
 
   const companyId = await getCurrentCompanyId()
-  const { createClient } = await import('@/lib/supabase-server')
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const supabase = createClient()
-  // Zone must be this company's — the insert's RLS would catch it, but the
-  // storage upload happens first and shouldn't orphan files.
+  // Zone must be this company's — RLS would catch the insert later, but the
+  // storage object lands first and shouldn't orphan under someone else's zone.
   const { data: zone } = await supabase.from('geofences').select('id').eq('id', zoneId).maybeSingle()
   if (!zone) return { ok: false, error: 'Zone not found' }
 
-  const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()
-  const ext = photo.type === 'image/png' ? 'png' : photo.type === 'image/webp' ? 'webp' : 'jpg'
+  const ext = IMAGERY_EXT[contentType] ?? 'jpg'
   const path = `${companyId}/imagery/${zoneId}/${crypto.randomUUID()}.${ext}`
-  const { error: upErr } = await svc.storage.from('field-photos')
-    .upload(path, photo, { contentType: photo.type, upsert: false })
-  if (upErr) return { ok: false, error: 'Upload failed — try again.' }
+  const { data, error } = await svc.storage.from('field-photos').createSignedUploadUrl(path)
+  if (error || !data) return { ok: false, error: 'Couldn’t start the upload — try again.' }
+  return { ok: true, path: data.path, token: data.token }
+}
+
+/**
+ * Step 2: after the device has uploaded to the signed URL, record the shot on
+ * the zone's imagery timeline. Verifies the object actually landed (and its
+ * size) before inserting — the path shape pins it to this company + zone.
+ */
+export async function finalizeZoneImageryAction(input: {
+  zoneId: string; path: string; takenOn: string; caption?: string; source?: string
+}): Promise<{ ok: boolean; image?: ZoneImage; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const { zoneId, path, takenOn } = input
+  const caption = String(input.caption ?? '').trim().slice(0, 200)
+  const source = ['drone', 'aerial', 'satellite', 'ground'].includes(input.source ?? '') ? input.source! : 'drone'
+  if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(takenOn)) return { ok: false, error: 'Pick the date it was taken.' }
+
+  const companyId = await getCurrentCompanyId()
+  const prefix = `${companyId}/imagery/${zoneId}/`
+  if (!path.startsWith(prefix) || !/^[0-9a-f-]{36}\.[a-z0-9]{3,4}$/i.test(path.slice(prefix.length))) {
+    return { ok: false, error: 'Bad upload path' }
+  }
+
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  const svc = createServiceClient()
+  const filename = path.slice(prefix.length)
+  const { data: objects } = await svc.storage.from('field-photos')
+    .list(prefix.slice(0, -1), { search: filename })
+  const obj = objects?.find((o) => o.name === filename)
+  if (!obj) return { ok: false, error: 'Upload didn’t finish — try again.' }
+  const bytes = (obj.metadata as { size?: number } | null)?.size ?? 0
+  if (bytes > IMAGERY_MAX_BYTES) {
+    await svc.storage.from('field-photos').remove([path])
+    return { ok: false, error: 'Photo too large (50 MB max).' }
+  }
   const url = svc.storage.from('field-photos').getPublicUrl(path).data.publicUrl
 
+  const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data, error } = await supabase.from('zone_imagery').insert({
     company_id: companyId,
