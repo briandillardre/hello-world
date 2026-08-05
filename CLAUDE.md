@@ -48,7 +48,7 @@ App works fully with zero env vars — 10 mock assets at a Nashville constructio
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
 
 ## Features Built
-- Live map with clustering (MapLibre GL JS)
+- Live map with clustering (MapLibre GL JS) — Google-Maps parity: double-tap-hold one-finger zoom, Navigate/Street View/share-pin handoffs on asset+zone panels, imperial scale bar, tap-a-parcel owner/address/acreage from free county ArcGIS data (`NEXT_PUBLIC_PARCEL_SERVICE_URL`). Future (tasks 161–166): KMZ/shapefile import, map markup, offline areas, drive-time ETA, long-press pin, county auto-discovery + owner search
 - BLE tool tracking — tools inherit location of truck/equipment that detects them
 - Geofences (draw on map) + alerts engine — kinds: site, boundary, yard, vendor (supply houses: deterministic stop names, never job time, receipt handshake — migration 051 pre-fills the capture page's job from the truck's vendor visit + last site)
 - After-hours theft alerts + left-site alerts (red "THEFT ALERT" styling)
@@ -144,6 +144,7 @@ STRIPE_PRICE_TAG=              # price_… recurring $3/mo, "Tool tag"
 SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
 WINDY_WEBCAMS_KEY=             # optional: Webcams map layer (free key at api.windy.com/webcams)
 NEXT_PUBLIC_TOMTOM_KEY=        # optional: Traffic map layer (free key at developer.tomtom.com, 2.5k tiles/day)
+NEXT_PUBLIC_PARCEL_SERVICE_URL= # optional: county ArcGIS parcel layer URL (…/MapServer/<n>); enables Parcel lines + tap-for-owner. Greenville SC: gcgis.org ArcGIS REST directory
 # ── Home weather station (optional; unset = hidden) ──
 PWS_PROVIDER=                  # ambient | tempest | wunderground (inferred from keys if unset)
 PWS_API_KEY=                   # ambient + wunderground

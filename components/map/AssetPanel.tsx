@@ -423,16 +423,37 @@ function AssetDetails({
         </div>
       )}
 
-      {/* Google-Maps-style handoff: open the phone's turn-by-turn straight to
-          the machine's last fix. Daily-use ask (Brian, Aug 4). */}
+      {/* Google-Maps-style handoffs: turn-by-turn to the machine's last fix,
+          Street View of that spot, and share-the-pin (Brian, Aug 4). */}
       {loc && (
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
-          target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
-        >
-          🧭 Navigate to it
-        </a>
+        <div className="flex gap-2">
+          <a
+            href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
+            target="_blank" rel="noopener noreferrer"
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+          >
+            🧭 Navigate to it
+          </a>
+          <a
+            href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc.lat},${loc.lng}`}
+            target="_blank" rel="noopener noreferrer" title="Street View here" aria-label="Street View here"
+            className="grid place-items-center w-11 rounded-lg bg-navy-800 border border-navy-700 text-base hover:bg-navy-700 transition-colors"
+          >
+            👁
+          </a>
+          <button
+            type="button" title="Share this spot" aria-label="Share this spot"
+            onClick={() => {
+              const url = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`
+              const payload = { title: asset.name, text: `${asset.name} — last seen here`, url }
+              if (navigator.share) navigator.share(payload).catch(() => { /* user canceled */ })
+              else { navigator.clipboard?.writeText(url); alert('Location link copied.') }
+            }}
+            className="grid place-items-center w-11 rounded-lg bg-navy-800 border border-navy-700 text-base hover:bg-navy-700 transition-colors"
+          >
+            📤
+          </button>
+        </div>
       )}
       <Link
         href={`/assets/${asset.id}`}

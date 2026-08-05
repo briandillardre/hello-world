@@ -3453,6 +3453,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (!m.getSource('parcels')) {
         m.addSource('parcels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
         const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        // Near-invisible fill makes every parcel TAPPABLE (LandGlide-style
+        // identify) — a bare line layer has no hit area.
+        m.addLayer({
+          id: 'parcels-fill', type: 'fill', source: 'parcels', minzoom: PARCEL_MIN_ZOOM,
+          paint: { 'fill-color': '#ffd166', 'fill-opacity': 0.03 },
+        }, beforeId)
         m.addLayer({
           id: 'parcels-line', type: 'line', source: 'parcels', minzoom: PARCEL_MIN_ZOOM,
           paint: { 'line-color': '#ffd166', 'line-width': 1, 'line-opacity': 0.85 },
@@ -3464,6 +3470,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }, beforeId)
       }
     }
+
+    // Tap a parcel → who owns it, where it is, how big (free county data).
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const onParcelClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      const p = e.features?.[0]?.properties as { parcel_label?: string; owner?: string; situs?: string; acres?: number } | undefined
+      if (!p) return
+      const rows = [
+        p.parcel_label ? `<div style="font-weight:700;font-size:12.5px">Parcel ${esc(String(p.parcel_label))}</div>` : '<div style="font-weight:700;font-size:12.5px">Parcel</div>',
+        p.owner ? `<div style="font-size:11.5px;color:#e8f1f8">${esc(String(p.owner))}</div>` : '',
+        p.situs ? `<div style="font-size:11px;color:#9fb6cc">${esc(String(p.situs))}</div>` : '',
+        p.acres ? `<div style="font-size:11px;color:#9fb6cc">${p.acres} ac</div>` : '',
+        (!p.owner && !p.situs) ? '<div style="font-size:10.5px;color:#6c8299">This county layer doesn’t publish owner details.</div>' : '',
+      ].join('')
+      new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
+        .setLngLat(e.lngLat)
+        .setHTML(`<div style="padding:8px 12px">${rows}</div>`)
+        .addTo(m)
+    }
+    const parcelCursor = () => { m.getCanvas().style.cursor = 'pointer' }
+    const parcelCursorOff = () => { m.getCanvas().style.cursor = '' }
 
     const refresh = async () => {
       if (!parcelsOn || m.getZoom() < PARCEL_MIN_ZOOM) {
@@ -3483,12 +3509,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
     if (parcelsOn) {
       ensureLayers()
-      for (const id of ['parcels-line', 'parcels-label']) m.setLayoutProperty(id, 'visibility', 'visible')
+      for (const id of ['parcels-fill', 'parcels-line', 'parcels-label']) m.setLayoutProperty(id, 'visibility', 'visible')
       refresh()
       m.on('moveend', refresh)
-      return () => { m.off('moveend', refresh); parcelAbort.current?.abort() }
+      m.on('click', 'parcels-fill', onParcelClick)
+      m.on('mouseenter', 'parcels-fill', parcelCursor)
+      m.on('mouseleave', 'parcels-fill', parcelCursorOff)
+      return () => {
+        m.off('moveend', refresh)
+        m.off('click', 'parcels-fill', onParcelClick)
+        m.off('mouseenter', 'parcels-fill', parcelCursor)
+        m.off('mouseleave', 'parcels-fill', parcelCursorOff)
+        parcelAbort.current?.abort()
+      }
     }
-    for (const id of ['parcels-line', 'parcels-label']) {
+    for (const id of ['parcels-fill', 'parcels-line', 'parcels-label']) {
       if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', 'none')
     }
   }, [mapReady, parcelsOn])

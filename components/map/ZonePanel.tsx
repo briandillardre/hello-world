@@ -182,13 +182,22 @@ export function ZonePanel({
             const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
             const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
             return (
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${cy},${cx}`}
-                target="_blank" rel="noopener noreferrer"
-                className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
-              >
-                🧭 Navigate to site
-              </a>
+              <div className="mt-2 flex gap-2">
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${cy},${cx}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+                >
+                  🧭 Navigate to site
+                </a>
+                <a
+                  href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${cy},${cx}`}
+                  target="_blank" rel="noopener noreferrer" title="Street View at the site" aria-label="Street View at the site"
+                  className="grid place-items-center w-11 rounded-lg bg-navy-800 border border-navy-700 text-base hover:bg-navy-700 transition-colors"
+                >
+                  👁
+                </a>
+              </div>
             )
           })()}
 
