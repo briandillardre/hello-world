@@ -1,6 +1,6 @@
 import type { AssetWithLocation, AssetType } from './types'
 import { simplifyPoints } from './simplify'
-import { DEMO_MAP_CENTER, MOCK_PATHS } from './mock-data'
+import { DEMO_MAP_CENTER, MOCK_PATHS, DEMO_BOUNDS } from './mock-data'
 
 /**
  * Equipment Trails + Timeline Playback data.
@@ -62,9 +62,10 @@ function mulberry32(seed: number) {
   }
 }
 
-// Demo movement: a smooth random wander anchored at the asset's live position.
-// Roam amplitude varies by asset class (trucks range wide; tools barely move).
-const AMP: Record<AssetType, number> = { vehicle: 0.012, equipment: 0.004, personnel: 0.0024, tool: 0.0016 }
+// Demo movement: a smooth random wander anchored at the asset's live position
+// (only assets WITHOUT an authored MOCK_PATHS loop — today that's people and
+// tools). Small amplitudes: they move within a site, not across town.
+const AMP: Record<AssetType, number> = { vehicle: 0.012, equipment: 0.004, personnel: 0.0012, tool: 0.0006 }
 
 // How busy each class is across a work day — scales the odds an asset is moving
 // (vs. parked) at any moment. Tools mostly sit; trucks run all day. This is what
@@ -182,6 +183,10 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
         lat -= vLat
         lng += (endLng - lng) * 0.02
         lat += (endLat - lat) * 0.02
+        // Never wander off the demo stage (the black Property Boundary) —
+        // pre-clamp walks sent people/tools across the river & across town.
+        lng = Math.min(DEMO_BOUNDS.east, Math.max(DEMO_BOUNDS.west, lng))
+        lat = Math.min(DEMO_BOUNDS.north, Math.max(DEMO_BOUNDS.south, lat))
       } else {
         vLng = 0
         vLat = 0

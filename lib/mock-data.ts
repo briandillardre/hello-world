@@ -352,6 +352,9 @@ export const MOCK_ALERTS: AlertEvent[] = [
 ]
 
 export const DEMO_MAP_CENTER: [number, number] = [-86.7867, 36.1628]
+/** Demo stage bounds (just inside the Property Boundary) — random-walk demo
+ *  movement must stay inside; nothing wanders across town or the river. */
+export const DEMO_BOUNDS = { west: -86.7940, east: -86.7795, south: 36.1576, north: 36.1684 }
 export const DEMO_MAP_ZOOM = 14.5
 
 // ── v2: Bluetooth tool associations ──────────────────────────────────────────
