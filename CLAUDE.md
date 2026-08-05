@@ -95,7 +95,13 @@ re-audits the splash claims in the same commit.
 | Equipment | Teltonika TAT141 | Cat-M1, BLE 5.2, IP68, battery, $83 (KORE) |
 | Equipment (CAN, Phase 2) | Teltonika FMM650 + CAN adapter | wired 8-32V, J1939 true hours/fuel/faults, $112+$118 (KORE) |
 | Tool tags | BlueCharm BC021 / Feasycom / Teltonika BLE | BLE iBeacon, ~$20 (Amazon or KORE) |
-| SIM cards | Hologram (pilot) / KORE pooled | Cat-M1; KORE quoted $0.70-1.56/mo (Jul 13, Felix — docs/HARDWARE-PRICING.md, confidential) |
+| SIM cards | Hologram (pilot T1-a/b) / KORE **SuperSIM** (Aug 2026 order) | Multi-carrier triple-punch (2FF/3FF/4FF); KORE quoted $0.70-1.56/mo (Jul 13, Felix — docs/HARDWARE-PRICING.md, confidential). ⚠ SuperSIM APN/config ≠ Hologram — confirm settings with Matt before the 13 new SIMs arrive |
+
+### KORE order #1 (signed via DocuSign, PAID $1,818 Aug 5 2026 — in fulfillment)
+5× FMM00A ($86) · 6× TAT141 ($83) · 2× FMM650 ($112) · 2× ALL-CAN300 ($118) · 10× Eye Beacon BLE ($20) · 13× SuperSIM. Connectivity agreement still pending in KORE's system. **Matt confirmed KORE will PRE-CONFIGURE devices before shipping** (SIMs enabled+tested, connectivity verified, plug-and-play) — the zero-touch provisioning ask is agreed in principle; supply them our flespi config profile. Contacts: Matt Ferrans (Channel Partner Relationship Director, runs point; 470-237-4658, mferrans@korewireless.com, team OEM@korewireless.com) · Felix Alfaro OOO until Aug 10 · Billy Stalder, Teltonika Regional Mgr Telematics, 682-480-3782. KORE Console account created (login = brian@dillardconstructiongroup.com; port to brian@hammertrack.ai requested — KORE must change it server-side).
+
+### White-label (Teltonika, Billy — Aug 4 2026)
+Possible at **200-unit MOQ**; first run +2–3 weeks lead, then ~4 weeks per run. The gray regulatory text on the device top CANNOT change (else recertification ≈ $10k + months). Options sheet attached to Billy's Aug 4 email. Decision deferred to Founding-25 scale.
 
 ### Live pilot units (T1 = FMM00A OBD units, deployed Jul 2026)
 | Unit | IMEI suffix | Hologram SIM | Installed in |
