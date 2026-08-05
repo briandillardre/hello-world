@@ -170,7 +170,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 | Account | State | Notes |
 |---|---|---|
 | **Twilio** | toll-free **+1 888 373 9004** bought; compliance profile **approved**; Toll-Free Verification **In Review** | Use case Security Alert + Account Notifications, 100 msg/mo. Opt-in proof = https://hammertrack.ai/sms + the consent checkbox on Settings → Company. Verdict emails brian@hammertrack.ai. Voice is enabled and needs no registration, but has **no greeting** — don't publish the number until it does (inbound toll-free minutes are billed to us). |
-| **Mercury** | application **submitted**, awaiting approval | Partner bank Column N.A. $3,000 first deposit scheduled from Brian's personal account — book it as an **owner capital contribution, not income**. IO card issued. No cash deposits ever; paper checks go to a mail-in lockbox. |
+| **Mercury** | **APPROVED — live Aug 5 2026**; vendor migration underway (KORE first, via per-vendor virtual cards on the IO) | Partner bank Column N.A. $3,000 first deposit = **owner capital contribution, not income**. IO card issued. Rule: one named virtual card per vendor, limit set per vendor. No cash deposits ever; paper checks go to a mail-in lockbox. |
 | **Supabase** | Pro; billing entity **HAMMERTRACK LLC**, EIN on file | |
 | **Google Workspace** | live on hammertrack.ai | sales@ / hello@ / support@ all verified receiving (Jul 30) |
 | **D-U-N-S** | refiled, awaiting number | Gates Apple + Google **organization** developer accounts. D&B does not require an EIN — the thing that must match Apple's enrollment exactly is legal name + address. Verify the record when the number lands; never file a third time (duplicate records are slow to merge). |
