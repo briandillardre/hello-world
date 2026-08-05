@@ -38,7 +38,7 @@ Ford F-650). Light pickups use the **FMM00A** OBD-II plug-in.
 | LeeBoy 420 roller | **FMM650 + CAN** | Kubota Tier-4; verify bus |
 | Ford F-650 (Cat C7) | **FMM650 + CAN — partial** | full data on Cat proprietary CDL (unreadable); pre-DEF; bench-verify |
 | International LF627 day cab | **FMM650 + CAN** | clean MaxxForce J1939 |
-| Peterbilt 579 dump | **FMM650 + CAN** | clean PACCAR MX J1939; SmartLinq VIN-dependent |
+| Peterbilt 567 tri-axle dump (2015) | **FMM650 + CAN** | PACCAR MX-13 12.9L, clean J1939. Bought Aug 4 2026 at STA auction, $37,065 all-in, VIN 1NPCXPEX8FD247526, 341k mi, Allison auto, ECU report on file. Replaces the 579 (being sold — archive its asset, don't delete; move its tracker via Reassign Tracker). Class-8 dash port is 9-pin Deutsch J1939, NOT OBD-II — an FMM00A won't plug in; FMM650 + ALL-CAN300 (or 9-pin harness) is the right fit. |
 | Bomag BMP8500 trench roller | **TAT141** | 19 hp Kubota mechanical — no CAN |
 | LeeBoy 300B roller (2004) | **TAT141** | Vanguard gas — no CAN |
 | Multiquip AR13HA roller ×2 | **TAT141 / BLE** | Honda gas — no ECU |
