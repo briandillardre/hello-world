@@ -6,9 +6,9 @@ Tracks vehicles (OBD2), heavy equipment (GPS), personnel, small tools (Bluetooth
 Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 
 ## Live Site (updated Jul 2026 — app moved to Vercel)
-- **Live app:** https://hammertrackjune28.vercel.app (Vercel — auto-deploys `master`)
+- **Live app:** https://hammertrack.ai (Vercel — auto-deploys `master`; hammertrackjune28.vercel.app is the same deployment)
 - **Database:** Supabase project **"Hammertrack 2026"** — 9 migrations: 001–005 applied Jul 6 2026, 006–009 pending in SQL Editor (see Pending); env vars set in Vercel (Production + Preview)
-- **hammertrack.ai** is the owned primary domain (Google Workspace live on it) — pending: add it to the Vercel project so the app answers there
+- **hammertrack.ai** DNS cutover ✅ DONE Aug 5 2026 — apex + www on Vercel (Valid Configuration), hammertrackai.com 301s to it, Google Workspace MX (smtp.google.com) verified intact post-cutover
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
 - **Dev branch convention:** `claude/...` branches, open PR → squash merge to master
@@ -130,9 +130,8 @@ true engine hours, fuel consumption, fault codes, accurate utilization billing.
   (brian@hammertrack.ai, "Managed by hammertrack.ai", confirmed Jul 30 2026).
   This is the real front door: `BRAND_DOMAIN` in `lib/brand.ts`, the Capacitor
   app's remote URL, and the Resend sender all resolve here.
-- **Secondary:** hammertrackai.com (Namecheap) — A @ → 216.150.1.1 (Namecheap
-  parking as of Jul 30), MAIL SETTINGS = Email Forwarding. Should end up a
-  301 redirect to hammertrack.ai. Also owned: hammertracks.com, hammertrax.com.
+- **Secondary:** hammertrackai.com — ✅ 301 → hammertrack.ai via Vercel
+  (Aug 5 2026). Also owned: hammertracks.com, hammertrax.com.
 - **Public addresses** (sales@ / hello@ / support@ @hammertrack.ai) must exist
   as Workspace aliases or groups — the code points at them either way.
 - Old Netlify site (stately-heliotrope-0b2bff) is dead; ignore it.
@@ -203,7 +202,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
 2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), 009 (alert phone/email), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 9). See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
-4. **Point hammertrack.ai at Vercel** (task 173) — CONFIRMED NOT DONE Aug 5: domain resolves to Namecheap 216.150.1.1 (masked-forwarding trick serves the app — breaks PWA/auth). Add domain in Vercel + swap only A/CNAME at Namecheap. CAUTION: leave the Google Workspace **MX records alone** or company email dies. hammertrackai.com then 301s to it. Blocks final QBO_REDIRECT_URI + app-store remote URL.
+4. ~~Point hammertrack.ai at Vercel~~ ✅ DONE Aug 5 2026 (task 173) — apex A → Vercel (216.150.1.1 is Vercel's current anycast IP), www CNAME → cname.vercel-dns.com, hammertrackai.com 301 → hammertrack.ai, Workspace MX intact. Unblocks final QBO_REDIRECT_URI + app-store remote URL. Follow-up: set Supabase Auth → URL Configuration Site URL to https://hammertrack.ai (else auth emails/redirects still point at vercel.app).
 5. **Remaining hardware** — ~~install T1-b~~ ✅ reporting since Aug 4 (…00200); finish pucks (task 160: Minors 3+5 configured, tool assets created; last puck = Minor 4); KORE order #1 in fulfillment (see Hardware section) — on arrival: SuperSIM APN settings ≠ Hologram (task 171)
 6. ~~After-hours theft alert live test~~ ✅ verified in production Aug 4–5 — real after-hours alerts fired on the RAM 3500 (phone tracker) at 6:33 AM/7:01 PM
 7. **QuickBooks** — create app at developer.intuit.com, add QBO_ env vars
