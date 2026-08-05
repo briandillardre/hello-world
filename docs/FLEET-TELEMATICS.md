@@ -33,7 +33,7 @@ Ford F-650). Light pickups use the **FMM00A** OBD-II plug-in.
 | Weiler P385A paver | **API + TAT141** | Cat VisionLink AEMP |
 | Hamm HD12VV roller | **API if WITOS-equipped**, else TAT141 | plain HD12VV = non-intelligent |
 | Sany PQ190 grader | **FMM650 + CAN** | Cummins J1939; verify older vs PQ190III |
-| Sakai SW990 roller | **FMM650 + CAN** | Deutz J1939; AEMP unclear |
+| Sakai SW990 roller | **FMM650 + CAN** | Deutz J1939; AEMP unclear. Unit on record: 2012 double-drum, 84" smooth, S/N VSW41-10141, 7,570 hrs — bought Jul 20 2026 at Rebel Auction, $6,859.46 all-in incl. $231.96 card fee (auction card surcharges ≈3.5% — pay auction houses by wire/ACH from Mercury going forward) |
 | LeeBoy 8500C paver | **FMM650 + CAN** | no LeeBoy telematics (Guardian = Astec, not LeeBoy) |
 | LeeBoy 420 roller | **FMM650 + CAN** | Kubota Tier-4; verify bus |
 | Ford F-650 (Cat C7) | **FMM650 + CAN — partial** | full data on Cat proprietary CDL (unreadable); pre-DEF; bench-verify |
