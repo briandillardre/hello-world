@@ -73,64 +73,92 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   const isVendor = fence.kind === 'vendor'
   let usage: ZoneAssetUsage[] | null = null
   let visits: Visit[] | null = null
-  let weather: SiteWeatherRow[] = []
-  if (!isMock && !isBoundary && ring && ring.length >= 3) {
-    const { createClient } = await import('@/lib/supabase-server')
-    const supabase = createClient()
-    const from = Date.now() - USAGE_DAYS * 86_400_000
-    // Page NEWEST-first so recent visits survive the cap. A bare
-    // .order(ascending).limit(40k) returned the OLDEST 40k rows for a busy
-    // fleet — dropping yesterday's trucks and showing "no activity" on a zone
-    // that was clearly used. Reverse to chronological for the accrual engines.
-    const PAGE = 1000, CAP = 40_000
-    const fetched: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
-    while (fetched.length < CAP) {
-      const { data } = await supabase
-        .from('asset_locations')
-        .select('asset_id, lat, lng, speed, timestamp')
-        .eq('company_id', companyId)
-        .gte('timestamp', new Date(from).toISOString())
-        .order('timestamp', { ascending: false })
-        .range(fetched.length, fetched.length + PAGE - 1)
-      if (!data || data.length === 0) break
-      fetched.push(...data)
-      if (data.length < PAGE) break
-    }
-    const rows = fetched.reverse() // chronological — zoneAssetUsage tracks last-per-asset in order
-    usage = isVendor ? null : zoneAssetUsage(ring, assets, rows, from, Date.now())
-    visits = segmentVisits(rows, ring)
-    // Weather log (migration 019 + nightly cron) — tolerate the table missing.
-    const { data: wx } = await supabase
-      .from('site_weather')
-      .select('day, temp_hi, temp_lo, rain_in, wind_max')
-      .eq('geofence_id', fence.id)
-      .order('day', { ascending: false })
-      .limit(14)
-    weather = (wx ?? []) as SiteWeatherRow[]
-  }
-  // Project Hub (punch list / milestones / budget) — site zones only.
-  const hub = !isBoundary && !isVendor ? await getProjectHubData(companyId, fence.id) : null
+  const wantActivity = !isMock && !isBoundary && !!ring && ring.length >= 3
 
-  // Site imagery timeline (052) — tolerate the table not existing yet.
-  let zoneImages: ZoneImage[] = []
-  let imageryAvailable = isMock
-  if (!isMock && !isBoundary) {
-    try {
+  // The four data families load CONCURRENTLY. This page used to await a
+  // 40-round-trip SERIAL page loop over asset_locations, then weather, then
+  // the hub, then imagery — with live trackers streaming every few seconds,
+  // a month of data made the page take 10s+ ("taking forever", Brian Aug 5).
+  const [sweepRows, weather, hub, imageryRes] = await Promise.all([
+    // 30-day location sweep: one cheap COUNT sizes the job, then pages fetch
+    // in parallel batches. NEWEST-first so recent visits survive the cap
+    // (a bare ascending .limit(40k) once hid yesterday's trucks); reversed to
+    // chronological for the accrual engines. Rows inserted mid-fetch can
+    // shift ranges by a handful of rows — immaterial to 30-day accruals.
+    (async () => {
+      if (!wantActivity) return null
       const { createClient } = await import('@/lib/supabase-server')
       const supabase = createClient()
-      // Try with the 053 bounds column first; a pre-053 database still gets
-      // the timeline (just no "Place on map" state).
-      const q = (cols: string) => supabase
-        .from('zone_imagery')
-        .select(cols)
+      const fromIso = new Date(Date.now() - USAGE_DAYS * 86_400_000).toISOString()
+      const PAGE = 1000, CAP = 40_000, BATCH = 8
+      const head = await supabase
+        .from('asset_locations')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .gte('timestamp', fromIso)
+      const total = Math.min(head.count ?? 0, CAP)
+      const pages = Math.ceil(total / PAGE)
+      const fetched: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+      for (let p = 0; p < pages; p += BATCH) {
+        const chunk = await Promise.all(
+          Array.from({ length: Math.min(BATCH, pages - p) }, (_, i) => {
+            const start = (p + i) * PAGE
+            return supabase
+              .from('asset_locations')
+              .select('asset_id, lat, lng, speed, timestamp')
+              .eq('company_id', companyId)
+              .gte('timestamp', fromIso)
+              .order('timestamp', { ascending: false })
+              .range(start, Math.min(start + PAGE, total) - 1)
+          })
+        )
+        for (const r of chunk) fetched.push(...(r.data ?? []))
+      }
+      return fetched.reverse() // chronological — zoneAssetUsage tracks last-per-asset in order
+    })(),
+    // Weather log (migration 019 + nightly cron) — tolerate the table missing.
+    (async () => {
+      if (!wantActivity) return [] as SiteWeatherRow[]
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: wx } = await createClient()
+        .from('site_weather')
+        .select('day, temp_hi, temp_lo, rain_in, wind_max')
         .eq('geofence_id', fence.id)
-        .order('taken_on', { ascending: false })
-        .limit(400)
-      let { data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds')
-      if (imgErr) ({ data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at'))
-      if (!imgErr) { zoneImages = (imgs ?? []) as unknown as ZoneImage[]; imageryAvailable = true }
-    } catch { /* pre-052 */ }
+        .order('day', { ascending: false })
+        .limit(14)
+      return (wx ?? []) as SiteWeatherRow[]
+    })(),
+    // Project Hub (punch list / milestones / budget) — site zones only.
+    !isBoundary && !isVendor ? getProjectHubData(companyId, fence.id) : Promise.resolve(null),
+    // Site imagery timeline (052) — tolerate the table not existing yet.
+    (async () => {
+      if (isMock || isBoundary) return { images: [] as ZoneImage[], available: isMock }
+      try {
+        const { createClient } = await import('@/lib/supabase-server')
+        const supabase = createClient()
+        // Try with the 053 bounds column first; a pre-053 database still gets
+        // the timeline (just no "Place on map" state).
+        const q = (cols: string) => supabase
+          .from('zone_imagery')
+          .select(cols)
+          .eq('geofence_id', fence.id)
+          .order('taken_on', { ascending: false })
+          .limit(400)
+        let { data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds')
+        if (imgErr) ({ data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at'))
+        if (!imgErr) return { images: (imgs ?? []) as unknown as ZoneImage[], available: true }
+      } catch { /* pre-052 */ }
+      return { images: [] as ZoneImage[], available: false }
+    })(),
+  ])
+
+  if (sweepRows) {
+    const from = Date.now() - USAGE_DAYS * 86_400_000
+    usage = isVendor ? null : zoneAssetUsage(ring!, assets, sweepRows, from, Date.now())
+    visits = segmentVisits(sweepRows, ring!)
   }
+  const zoneImages = imageryRes.images
+  const imageryAvailable = imageryRes.available
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))

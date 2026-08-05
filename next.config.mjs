@@ -2,10 +2,10 @@
 const nextConfig = {
   experimental: {
     serverActions: {
-      // Asset photos travel through a server action as FormData. They're
-      // resized client-side to ≤1600px JPEG (~200-500 KB), so 4 MB is
-      // generous headroom without inviting abuse.
-      bodySizeLimit: '4mb',
+      // Asset photos are resized client-side (~200-500 KB), but zone site
+      // imagery uploads drone JPEGs as-is for evidence quality — Mavic shots
+      // run 5-9 MB and the imagery action caps at 12 MB, so allow headroom.
+      bodySizeLimit: '15mb',
     },
   },
   webpack: (config) => {

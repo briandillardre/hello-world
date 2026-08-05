@@ -58,16 +58,21 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   async function upload() {
     const f = fileRef.current?.files?.[0]
     if (!f) { setError('Attach the photo first.'); return }
+    if (f.size > 12 * 1024 * 1024) {
+      setError(`Photo is ${(f.size / 1024 / 1024).toFixed(1)} MB — 12 MB max. Export a smaller JPEG and retry.`)
+      return
+    }
     setBusy(true); setError(null)
     const form = new FormData()
     form.set('photo', f); form.set('zoneId', zoneId); form.set('takenOn', takenOn); form.set('caption', caption)
-    const r = await uploadZoneImageryAction(form)
+    // A rejected/oversized POST resolves to nothing — never crash on r.ok.
+    const r = await uploadZoneImageryAction(form).catch(() => null)
     setBusy(false)
-    if (r.ok && r.image) {
+    if (r?.ok && r.image) {
       setImages((xs) => [r.image!, ...xs])
       setIdx(0); setShot(0); setCaption(''); setShowUpload(false)
       if (fileRef.current) fileRef.current.value = ''
-    } else setError(r.error ?? 'Upload failed')
+    } else setError(r?.error ?? 'Upload didn’t go through — check signal and try again.')
   }
 
   return (
