@@ -36,6 +36,13 @@ Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
 /pricing, the splash ladder + hero microcopy, docs/PRICING-TIERS.md — in the
 SAME commit. Run tier platform price stays UNPUBLISHED ("talk to us").
 
+## Splash truth rule (Brian, Aug 5)
+Nothing on the splash/marketing pages may depict or claim functionality that
+doesn't exist. Mocked product screens are banned (the CSS "console" is gone —
+RealCinema + /live are the real thing). Roadmap items must be labeled ROADMAP;
+shipped items may say LIVE. Every session that ships or re-scopes a feature
+re-audits the splash claims in the same commit.
+
 ## Key Files
 - `lib/types.ts` — all TypeScript types
 - `lib/mock-data.ts` — demo data (Dillard Construction Group)

@@ -3,7 +3,6 @@ import type { Metadata } from 'next'
 import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, Users, Sparkles, Banknote, Package } from 'lucide-react'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
-import { MapConsole } from '@/components/marketing/MapConsole'
 import { RealCinema } from '@/components/marketing/RealCinema'
 import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
 
@@ -67,7 +66,7 @@ export default function HomePage() {
         <section className="max-w-3xl mx-auto px-6 pt-14 pb-8 text-center">
           <span className="inline-flex items-center gap-2.5 bg-teal/[0.08] border border-teal/25 text-teal px-4 py-1.5 rounded-full font-mono text-[12px] font-semibold uppercase tracking-[0.08em]">
             <span className="w-[7px] h-[7px] rounded-full bg-teal shadow-glow-teal animate-blink" />
-            AI watching 38 assets · 2 sites · live now
+            A working fleet is on the map right now — open the live demo
           </span>
           <AnimatedHeadline />
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[56ch] mx-auto">
@@ -104,10 +103,12 @@ export default function HomePage() {
           <RealCinema />
         </section>
 
-        {/* Live activity console */}
+        {/* (The old CSS-mock "console" is gone — it faked a product screen.
+            RealCinema above IS the real engine, and /live is one tap away.
+            Nothing on this page may depict functionality that doesn't exist —
+            splash truth rule, Brian, Aug 5.) */}
         <section className="max-w-6xl mx-auto px-6 mt-6">
-          <MapConsole />
-          <p className="text-center font-mono text-[12.5px] text-faint mt-6 max-w-3xl mx-auto">
+          <p className="text-center font-mono text-[12.5px] text-faint max-w-3xl mx-auto">
             We ship the trackers — plug-in OBD units for trucks, rugged GPS units for equipment &amp; Bluetooth tool tags. Built in South Carolina by a working contractor.
           </p>
         </section>
@@ -224,22 +225,33 @@ export default function HomePage() {
 
         {/* Site IoT */}
         <section className="max-w-6xl mx-auto px-6 mt-16">
-          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking · <span className="text-amber">on the roadmap</span></p>
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking · <span className="text-teal">live today</span> + <span className="text-amber">roadmap</span></p>
           <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center max-w-[26ch] mx-auto">Your whole jobsite on one map — not just what moves</h2>
           <p className="text-faint text-center mt-2 max-w-[54ch] mx-auto text-[14px]">
-            Where we&rsquo;re headed: cameras, fuel tanks, generators, pumps, and an on-site weather station — live on the same map as your fleet. One pane of glass for the entire site. <span className="text-muted">(Live weather is shipping today; the rest is coming.)</span>
+            Already live: your own on-site weather station, public webcams, live radar and
+            per-site forecasts — on the same map as your fleet. Coming next: your own gate
+            cameras, fuel tank levels, generators &amp; pumps.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-7">
             {[
-              { e: '📷', t: 'Site cameras', d: 'Gate + perimeter feeds pinned right on the map.' },
-              { e: '⛽', t: 'Fuel tank levels', d: 'Diesel & genset fill %, with low-fuel alerts.' },
-              { e: '⚡', t: 'Generators & pumps', d: 'Runtime, fuel, and dewatering flow at a glance.' },
-              { e: '🌤️', t: 'Weather station', d: 'Real on-site temp, wind & rain — not just a forecast.' },
-            ].map(({ e, t, d }) => (
+              { e: '🌤️', t: 'Weather station', d: 'Your Ambient/Tempest/WU station live on the map — real on-site temp, wind & rain.', live: true },
+              { e: '📷', t: 'Webcams', d: 'Public traffic & area cams around your sites, pinned on the map — tap for the picture.', live: true },
+              { e: '⛽', t: 'Fuel tank levels', d: 'Diesel & genset fill %, with low-fuel alerts.', live: false },
+              { e: '⚡', t: 'Generators & pumps', d: 'Runtime, fuel, and dewatering flow at a glance.', live: false },
+            ].map(({ e, t, d, live }) => (
               <div key={t} className="bg-navy-900 border border-navy-800 rounded-2xl p-5">
                 <div className="text-2xl mb-2">{e}</div>
                 <h3 className="font-display font-bold text-[15px]">{t}</h3>
                 <p className="text-[13px] text-faint mt-1">{d}</p>
+                {live ? (
+                  <span className="inline-flex items-center gap-1 mt-2.5 font-mono text-[10px] text-teal border border-teal/30 rounded-md px-1.5 py-0.5">
+                    <span className="w-1 h-1 rounded-full bg-teal animate-blink" /> LIVE
+                  </span>
+                ) : (
+                  <span className="inline-block mt-2.5 font-mono text-[10px] text-faint border border-navy-700 rounded-md px-1.5 py-0.5">
+                    ROADMAP
+                  </span>
+                )}
               </div>
             ))}
           </div>
