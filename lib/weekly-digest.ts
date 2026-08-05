@@ -15,12 +15,15 @@ import { BRAND_NAME, BRAND_URL } from './brand'
 export interface DigestPrefs {
   friday: { enabled: boolean; email: boolean; sms: boolean; hour: number }
   sunday: { enabled: boolean; hour: number }
+  /** Daily site briefing (054) — weekday mornings; weekends optional. */
+  briefing: { enabled: boolean; email: boolean; sms: boolean; hour: number; weekdaysOnly: boolean }
   tz: string
 }
 
 export const DIGEST_DEFAULTS: DigestPrefs = {
   friday: { enabled: true, email: true, sms: false, hour: 16 },
   sunday: { enabled: true, hour: 18 },
+  briefing: { enabled: true, email: true, sms: false, hour: 6, weekdaysOnly: true },
   tz: 'America/New_York',
 }
 
@@ -30,6 +33,7 @@ export function resolveDigestPrefs(raw: unknown): DigestPrefs {
   return {
     friday: { ...DIGEST_DEFAULTS.friday, ...(p.friday ?? {}) },
     sunday: { ...DIGEST_DEFAULTS.sunday, ...(p.sunday ?? {}) },
+    briefing: { ...DIGEST_DEFAULTS.briefing, ...(p.briefing ?? {}) },
     tz: typeof p.tz === 'string' && p.tz ? p.tz : DIGEST_DEFAULTS.tz,
   }
 }
@@ -151,9 +155,9 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
 
 // ── Composition ────────────────────────────────────────────────────────────
 
-const day = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'no date'
+export const day = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'no date'
 
-function shell(title: string, inner: string): string {
+export function shell(title: string, inner: string): string {
   return `
   <div style="background:#001523;padding:28px 14px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif">
     <div style="max-width:520px;margin:0 auto;background:#00243d;border:1px solid #0e3a5c;border-radius:14px;padding:24px">
@@ -166,9 +170,9 @@ function shell(title: string, inner: string): string {
   </div>`
 }
 
-const h2 = (t: string) => `<p style="margin:16px 0 6px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#7fa3bd;font-weight:700">${t}</p>`
-const li = (t: string) => `<p style="margin:0 0 4px;font-size:13px;line-height:1.5;color:#b8cadb">• ${t}</p>`
-const none = (t: string) => `<p style="margin:0;font-size:13px;color:#6f88a0">${t}</p>`
+export const h2 = (t: string) => `<p style="margin:16px 0 6px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#7fa3bd;font-weight:700">${t}</p>`
+export const li = (t: string) => `<p style="margin:0 0 4px;font-size:13px;line-height:1.5;color:#b8cadb">• ${t}</p>`
+export const none = (t: string) => `<p style="margin:0;font-size:13px;color:#6f88a0">${t}</p>`
 
 /** Friday afternoon — the week that just happened. */
 export function fridayEmailHtml(f: WeeklyFacts): string {

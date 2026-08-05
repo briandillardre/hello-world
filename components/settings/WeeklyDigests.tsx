@@ -10,6 +10,12 @@ const HOURS: { v: number; l: string }[] = Array.from({ length: 12 }, (_, i) => {
   return { v, l: `${((v + 11) % 12) + 1}:00 ${v < 12 ? 'AM' : 'PM'}` }
 })
 
+// Briefing sends in the early morning — a different window than the digests.
+const MORNING_HOURS: { v: number; l: string }[] = Array.from({ length: 7 }, (_, i) => {
+  const v = i + 4 // 4:00–10:00 AM
+  return { v, l: `${v}:00 AM` }
+})
+
 const TZS = [
   { v: 'America/New_York', l: 'Eastern' },
   { v: 'America/Chicago', l: 'Central' },
@@ -94,6 +100,38 @@ export function WeeklyDigests({ initial, editable }: { initial: DigestPrefs; edi
         <span className="text-xs text-faint">Email only</span>
       </div>
       <p className="text-[11px] text-faint -mt-2 pl-6">What needs to happen this week: open punch items, milestones due, maintenance, receipts to chase.</p>
+
+      <div className={row}>
+        <label className="flex items-center gap-2 text-sm text-ink font-medium min-w-[190px]">
+          <input type="checkbox" className={chk} disabled={!editable}
+            checked={p.briefing.enabled}
+            onChange={(e) => save({ ...p, briefing: { ...p.briefing, enabled: e.target.checked } })} />
+          Morning site briefing
+        </label>
+        <select className={sel} disabled={!editable || !p.briefing.enabled} value={p.briefing.hour}
+          onChange={(e) => save({ ...p, briefing: { ...p.briefing, hour: Number(e.target.value) } })}>
+          {MORNING_HOURS.map((h) => <option key={h.v} value={h.v}>{h.l}</option>)}
+        </select>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" className={chk} disabled={!editable || !p.briefing.enabled}
+            checked={p.briefing.email}
+            onChange={(e) => save({ ...p, briefing: { ...p.briefing, email: e.target.checked } })} />
+          Email
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" className={chk} disabled={!editable || !p.briefing.enabled}
+            checked={p.briefing.sms}
+            onChange={(e) => save({ ...p, briefing: { ...p.briefing, sms: e.target.checked } })} />
+          Text
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" className={chk} disabled={!editable || !p.briefing.enabled}
+            checked={p.briefing.weekdaysOnly}
+            onChange={(e) => save({ ...p, briefing: { ...p.briefing, weekdaysOnly: e.target.checked } })} />
+          Weekdays only
+        </label>
+      </div>
+      <p className="text-[11px] text-faint -mt-2 pl-6">Every workday morning: weather at each active site, yesterday&apos;s hours &amp; cost per job, punch items due today, silent trackers &amp; overdue service.</p>
 
       <div className={row}>
         <span className="text-xs text-muted min-w-[190px] pl-6">Timezone</span>
