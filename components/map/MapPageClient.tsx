@@ -37,7 +37,7 @@ interface MapPageClientProps {
   /** Raw location history (real mode). MapView builds per-range datasets from it. */
   historyRows?: LocationHistoryRow[] | null
   /** Placed drone/site imagery (latest per zone) for the 'Site imagery' layer. */
-  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]] }[]
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
   earliestMs?: number | null
   tz?: string
   toolGateways: Record<string, { name: string; lastSeen: string }>

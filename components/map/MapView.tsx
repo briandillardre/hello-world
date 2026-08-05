@@ -259,9 +259,10 @@ interface MapViewProps {
   tracks?: AssetTrack[]
   /** Raw location history (real mode). Per-range tracks/cost/zones built here. */
   historyRows?: import('@/lib/db/assets').LocationHistoryRow[] | null
-  /** Placed drone/site imagery (052/053): latest per zone, ground corners in
-   *  MapLibre image-source order. Drawn under the 'siteimg' layer toggle. */
-  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]] }[]
+  /** Placed drone/site imagery (052/053/055): every placed photo (the map
+   *  timeline picks the frame) + each zone's active plan sheet. Photos ride
+   *  the 'siteimg' toggle, plans ride 'siteplans'. */
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
   /** First-ever fix (ms), for the "All time" window. */
   earliestMs?: number | null
   /** Viewer IANA timezone for local-calendar-day range windows. */
@@ -2407,24 +2408,55 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, overlaysOn, rtmaNames])
 
-  // ── Placed site imagery (052/053): drone shots pinned to ground corners ──
-  // One image source per placed shot (latest per zone, server picks), all
-  // riding the single 'siteimg' toggle + opacity slider. Drawn under zone
-  // fills so rings/labels stay readable on top of the photo.
+  // ── Placed site imagery (052/053/055): drone shots + plan sheets pinned to
+  // ground corners. Photos follow the TIMELINE: at any scrub position each
+  // zone shows its newest shot taken on/before that day (Live = newest,
+  // period) — a daily flier gets site playback for free. Plans are timeless
+  // and ride their own 'siteplans' toggle. The active-frame set is a memoed
+  // string key so the layer effect only fires when the scrubber actually
+  // crosses a capture date, not on every playback tick.
+  const siteImgActiveKey = useMemo(() => {
+    const photos = (siteOverlays ?? []).filter((o) => o.kind !== 'plan')
+    if (!photos.length) return ''
+    const cutoff = range !== 'live' && realWindowEff
+      ? realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from)
+      : Infinity
+    const byZone = new Map<string, { id: string; takenOn: string }>()
+    for (const o of photos) {
+      // A shot represents the site from the start of its capture day onward.
+      const shotMs = new Date(o.takenOn + 'T00:00:00').getTime()
+      if (!Number.isFinite(shotMs) || shotMs > cutoff) continue
+      const cur = byZone.get(o.zoneId)
+      if (!cur || o.takenOn >= cur.takenOn) byZone.set(o.zoneId, { id: o.id, takenOn: o.takenOn })
+    }
+    return Array.from(byZone.values()).map((v) => v.id).sort().join(',')
+  }, [siteOverlays, range, realWindowEff, pbT])
+
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    const on = !!overlaysOn.siteimg
-    const want = new Set((siteOverlays ?? []).map((ov) => `simg-${ov.id}`))
+    const photoOn = !!overlaysOn.siteimg
+    const planOn = !!overlaysOn.siteplans
+    const active = new Set(siteImgActiveKey ? siteImgActiveKey.split(',') : [])
+    const known = new Set<string>()
     for (const ov of siteOverlays ?? []) {
+      const isPlan = ov.kind === 'plan'
+      const show = isPlan ? planOn : photoOn && active.has(ov.id)
       const srcId = `simg-${ov.id}`
       const lid = `${srcId}-layer`
-      if (on && !m.getSource(srcId)) {
+      known.add(lid)
+      if (show && !m.getSource(srcId)) {
         try {
           m.addSource(srcId, { type: 'image', url: ov.url, coordinates: ov.coords })
           const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
           m.addLayer(
-            { id: lid, type: 'raster', source: srcId, paint: { 'raster-opacity': overlayOpacity.siteimg ?? 0.92, 'raster-fade-duration': 0 } },
+            {
+              id: lid, type: 'raster', source: srcId,
+              paint: {
+                'raster-opacity': (isPlan ? overlayOpacity.siteplans ?? 0.85 : overlayOpacity.siteimg ?? 0.92),
+                'raster-fade-duration': 0,
+              },
+            },
             beforeId
           )
         } catch { /* bad corners or unreachable image — skip this one */ }
@@ -2433,18 +2465,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         const src = m.getSource(srcId) as maplibregl.ImageSource
         try { src.setCoordinates(ov.coords) } catch { /* ignore */ }
       }
-      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
+      // Inactive frames stay mounted but hidden — scrubbing swaps instantly.
+      if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', show ? 'visible' : 'none')
     }
-    // A re-place (new corners / newer photo) changes the row — drop strays.
+    // A re-place (new corners / newer photo) or delete changes the row set —
+    // drop layers for rows the server no longer returns.
     for (const lyr of m.getStyle()?.layers ?? []) {
-      if (lyr.id.startsWith('simg-') && lyr.id.endsWith('-layer') && !want.has(lyr.id.slice(0, -6))) {
+      if (lyr.id.startsWith('simg-') && lyr.id.endsWith('-layer') && !known.has(lyr.id)) {
         m.removeLayer(lyr.id)
         const sid = lyr.id.slice(0, -6)
         if (m.getSource(sid)) m.removeSource(sid)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, overlaysOn, siteOverlays])
+  }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey])
 
   // Raster tiles that fail to load (moved WMS layer, dead service, blocked
   // request) used to die in silence — the row looked on, the map drew
@@ -2476,13 +2510,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       const layerId = `ovl-${o.key}-layer`
       if (v != null && m.getLayer(layerId)) m.setPaintProperty(layerId, 'raster-opacity', v)
     }
-    // Site imagery: one slider drives every placed image.
+    // Site imagery / Scaled plans: one slider per kind drives its images.
     const sv = overlayOpacity.siteimg
-    if (sv != null) {
-      for (const ov of siteOverlays ?? []) {
-        const lid = `simg-${ov.id}-layer`
-        if (m.getLayer(lid)) m.setPaintProperty(lid, 'raster-opacity', sv)
-      }
+    const pv = overlayOpacity.siteplans
+    for (const ov of siteOverlays ?? []) {
+      const v = ov.kind === 'plan' ? pv : sv
+      if (v == null) continue
+      const lid = `simg-${ov.id}-layer`
+      if (m.getLayer(lid)) m.setPaintProperty(lid, 'raster-opacity', v)
     }
     // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
     const rv = overlayOpacity.radar
@@ -4272,7 +4307,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}

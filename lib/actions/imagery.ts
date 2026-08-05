@@ -16,7 +16,16 @@ export interface ZoneImage {
   /** 053: ground corners [[TL],[TR],[BR],[BL]] as [lng,lat] once the shot is
    *  placed on the map — null/undefined = timeline-only (not on the map). */
   bounds?: [[number, number], [number, number], [number, number], [number, number]] | null
+  /** 055: 'photo' (dated timeline shot) vs 'plan' (rasterized plan sheet). */
+  kind?: 'photo' | 'plan'
+  plan_category?: string | null
+  /** 055: plans only — the one sheet per zone shown on the live map. */
+  map_active?: boolean
 }
+
+// Valid plan_category values ('use server' forbids exporting the const —
+// the ZonePlans component keeps the user-facing list; keep them in sync).
+const PLAN_CATEGORIES = ['Existing', 'Site plan', 'Utilities', 'Grading', 'Landscape', 'Erosion control', 'Other']
 
 // Site imagery upload cap (mirrored client-side in ZoneImagery). Drone shots
 // go direct to Supabase Storage via a signed URL — Vercel's ~4.5 MB serverless
@@ -63,11 +72,17 @@ export async function createImageryUploadAction(zoneId: string, contentType: str
  */
 export async function finalizeZoneImageryAction(input: {
   zoneId: string; path: string; takenOn: string; caption?: string; source?: string
+  /** 055: 'plan' records a Scaled Plans sheet instead of a timeline photo. */
+  kind?: 'photo' | 'plan'; planCategory?: string
 }): Promise<{ ok: boolean; image?: ZoneImage; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { zoneId, path, takenOn } = input
   const caption = String(input.caption ?? '').trim().slice(0, 200)
   const source = ['drone', 'aerial', 'satellite', 'ground'].includes(input.source ?? '') ? input.source! : 'drone'
+  const isPlan = input.kind === 'plan'
+  const planCategory = isPlan
+    ? (PLAN_CATEGORIES.includes(input.planCategory ?? '') ? input.planCategory! : 'Other')
+    : null
   if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(takenOn)) return { ok: false, error: 'Pick the date it was taken.' }
 
@@ -93,7 +108,7 @@ export async function finalizeZoneImageryAction(input: {
 
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { data, error } = await supabase.from('zone_imagery').insert({
+  const base = {
     company_id: companyId,
     geofence_id: zoneId,
     url,
@@ -101,10 +116,51 @@ export async function finalizeZoneImageryAction(input: {
     caption: caption || null,
     source,
     created_by: user?.id ?? null,
-  }).select('id, url, taken_on, caption, source, created_at').single()
-  if (error) return { ok: false, error: 'Run migration 052_zone_imagery.sql in the Supabase SQL Editor first.' }
+  }
+  // Plans need the 055 columns; the photo insert stays column-compatible with
+  // 052 so pre-055 installs keep their working timeline.
+  const { data, error } = isPlan
+    ? await supabase.from('zone_imagery').insert({ ...base, kind: 'plan', plan_category: planCategory })
+        .select('id, url, taken_on, caption, source, created_at, kind, plan_category, map_active').single()
+    : await supabase.from('zone_imagery').insert(base)
+        .select('id, url, taken_on, caption, source, created_at').single()
+  if (error) {
+    return {
+      ok: false,
+      error: isPlan
+        ? 'Run migration 055_scaled_plans.sql in the Supabase SQL Editor first.'
+        : 'Run migration 052_zone_imagery.sql in the Supabase SQL Editor first.',
+    }
+  }
   revalidatePath(`/geofences/${zoneId}`)
   return { ok: true, image: data as ZoneImage }
+}
+
+/**
+ * Scaled Plans radio: mark ONE plan sheet per zone as the map-visible one
+ * (imageId = null hides them all). Photos are untouched — their map
+ * visibility is the timeline's job.
+ */
+export async function setActivePlanAction(zoneId: string, imageId: string | null): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
+  if (imageId !== null && !/^[0-9a-f-]{36}$/i.test(imageId)) return { ok: false, error: 'Bad plan' }
+  const companyId = await getCurrentCompanyId()
+  const { createClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+  const { error: clearErr } = await supabase.from('zone_imagery')
+    .update({ map_active: false })
+    .eq('geofence_id', zoneId).eq('company_id', companyId).eq('kind', 'plan')
+  if (clearErr) return { ok: false, error: 'Run migration 055_scaled_plans.sql in the Supabase SQL Editor first.' }
+  if (imageId) {
+    const { error } = await supabase.from('zone_imagery')
+      .update({ map_active: true })
+      .eq('id', imageId).eq('company_id', companyId).eq('kind', 'plan')
+    if (error) return { ok: false, error: 'Couldn’t set that plan — try again.' }
+  }
+  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath('/map')
+  return { ok: true }
 }
 
 /**

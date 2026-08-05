@@ -15,6 +15,7 @@ import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWea
 import { ZoneNotes } from '@/components/geofences/ZoneNotes'
 import { ProjectHub } from '@/components/geofences/ProjectHub'
 import { ZoneImagery } from '@/components/geofences/ZoneImagery'
+import { ZonePlans } from '@/components/geofences/ZonePlans'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
@@ -130,25 +131,33 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     })(),
     // Project Hub (punch list / milestones / budget) — site zones only.
     !isBoundary && !isVendor ? getProjectHubData(companyId, fence.id) : Promise.resolve(null),
-    // Site imagery timeline (052) — tolerate the table not existing yet.
+    // Site imagery timeline (052) + Scaled Plans (055) — tolerate older
+    // schemas: pre-055 gets photos only, pre-053 gets no placement state.
     (async () => {
-      if (isMock || isBoundary) return { images: [] as ZoneImage[], available: isMock }
+      if (isMock || isBoundary) return { images: [] as ZoneImage[], plans: [] as ZoneImage[], available: isMock, plansAvailable: false }
       try {
         const { createClient } = await import('@/lib/supabase-server')
         const supabase = createClient()
-        // Try with the 053 bounds column first; a pre-053 database still gets
-        // the timeline (just no "Place on map" state).
         const q = (cols: string) => supabase
           .from('zone_imagery')
           .select(cols)
           .eq('geofence_id', fence.id)
           .order('taken_on', { ascending: false })
           .limit(400)
-        let { data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds')
+        let { data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds, kind, plan_category, map_active')
+        if (!imgErr) {
+          const rows = (imgs ?? []) as unknown as ZoneImage[]
+          return {
+            images: rows.filter((r) => r.kind !== 'plan'),
+            plans: rows.filter((r) => r.kind === 'plan'),
+            available: true, plansAvailable: true,
+          }
+        }
+        ;({ data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at, bounds'))
         if (imgErr) ({ data: imgs, error: imgErr } = await q('id, url, taken_on, caption, source, created_at'))
-        if (!imgErr) return { images: (imgs ?? []) as unknown as ZoneImage[], available: true }
+        if (!imgErr) return { images: (imgs ?? []) as unknown as ZoneImage[], plans: [] as ZoneImage[], available: true, plansAvailable: false }
       } catch { /* pre-052 */ }
-      return { images: [] as ZoneImage[], available: false }
+      return { images: [] as ZoneImage[], plans: [] as ZoneImage[], available: false, plansAvailable: false }
     })(),
   ])
 
@@ -159,6 +168,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   }
   const zoneImages = imageryRes.images
   const imageryAvailable = imageryRes.available
+  const zonePlans = imageryRes.plans
+  const plansAvailable = imageryRes.plansAvailable
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
@@ -273,6 +284,9 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
         {!isBoundary && imageryAvailable && (
           <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} ring={ring ?? null} />
+        )}
+        {!isBoundary && !isVendor && plansAvailable && (
+          <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />
         )}
 
         <ZoneWeather rows={weather} />

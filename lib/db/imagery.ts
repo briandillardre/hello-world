@@ -6,6 +6,11 @@ export interface SiteOverlay {
   url: string
   /** Ground corners in MapLibre image-source order: [[TL],[TR],[BR],[BL]], each [lng, lat]. */
   coords: [[number, number], [number, number], [number, number], [number, number]]
+  zoneId: string
+  /** taken_on (YYYY-MM-DD) — drives the map timeline for photos. */
+  takenOn: string
+  /** 'photo' rides the Site imagery toggle + timeline; 'plan' rides Scaled plans. */
+  kind: 'photo' | 'plan'
 }
 
 type Corner = [number, number]
@@ -17,34 +22,66 @@ function validCorners(b: unknown): b is [Corner, Corner, Corner, Corner] {
 }
 
 /**
- * Placed site imagery for the map's 'Site imagery' layer: the NEWEST placed
- * shot per zone (053 bounds set via the zone page's "Place on map" tool).
- * One image per zone keeps the layer readable — the zone page timeline still
- * holds every date. Tolerates the table/column not existing yet (pre-052/053).
+ * Placed site imagery for the live map:
+ *   photos — EVERY placed shot (053 bounds), so the map timeline can play the
+ *            site back: the scrubber shows each zone's newest shot taken on or
+ *            before the scrubbed day; Live shows the newest, period.
+ *   plans  — only each zone's map_active sheet (055 radio; one per zone).
+ * Photos sort before plans so plans mount later → draw on top when both
+ * toggles are on. Tolerates pre-055 (no kind column → all rows are photos)
+ * and pre-052/053 (table/column missing → empty).
  */
 export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOverlay[]> {
   if (isMock) return []
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
-    const { data, error } = await supabase
-      .from('zone_imagery')
-      .select('id, url, bounds, geofence_id, taken_on, created_at')
-      .eq('company_id', companyId)
-      .not('bounds', 'is', null)
-      .order('taken_on', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(200)
-    if (error) return []
-    const seen = new Set<string>()
-    const out: SiteOverlay[] = []
-    for (const row of data ?? []) {
-      if (seen.has(row.geofence_id)) continue
-      if (!validCorners(row.bounds)) continue
-      seen.add(row.geofence_id)
-      out.push({ id: row.id, url: row.url, coords: row.bounds })
+    const base = 'id, url, bounds, geofence_id, taken_on, created_at'
+    let rows: Record<string, unknown>[] | null = null
+    let has055 = true
+    {
+      const { data, error } = await supabase
+        .from('zone_imagery')
+        .select(`${base}, kind, map_active`)
+        .eq('company_id', companyId)
+        .not('bounds', 'is', null)
+        .order('taken_on', { ascending: true })
+        .order('created_at', { ascending: true })
+        .limit(500)
+      if (error) has055 = false
+      else rows = data
     }
-    return out
+    if (!has055) {
+      const { data, error } = await supabase
+        .from('zone_imagery')
+        .select(base)
+        .eq('company_id', companyId)
+        .not('bounds', 'is', null)
+        .order('taken_on', { ascending: true })
+        .order('created_at', { ascending: true })
+        .limit(500)
+      if (error) return []
+      rows = data
+    }
+    const photos: SiteOverlay[] = []
+    const plans: SiteOverlay[] = []
+    for (const row of rows ?? []) {
+      if (!validCorners(row.bounds)) continue
+      const item: SiteOverlay = {
+        id: String(row.id),
+        url: String(row.url),
+        coords: row.bounds,
+        zoneId: String(row.geofence_id),
+        takenOn: String(row.taken_on ?? ''),
+        kind: row.kind === 'plan' ? 'plan' : 'photo',
+      }
+      if (item.kind === 'plan') {
+        if (row.map_active === true) plans.push(item)
+      } else {
+        photos.push(item)
+      }
+    }
+    return [...photos, ...plans]
   } catch {
     return []
   }

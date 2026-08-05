@@ -49,13 +49,15 @@ function paramsFrom(c: Corners) {
  * satellite base. Save writes the 4 ground corners (053) and the shot appears
  * on /map under the Site imagery layer.
  */
-export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, onClose, onSaved }: {
+export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, hint = null, onClose, onSaved }: {
   zoneId: string
   imageId: string
   imageUrl: string
   /** Zone ring for reference + initial framing. */
   ring: Corner[] | null
   initialBounds: Corners | null
+  /** One-line context above the instructions (e.g. smart-placement notice). */
+  hint?: string | null
   onClose: () => void
   onSaved: (bounds: Corners | null) => void
 }) {
@@ -175,6 +177,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-amber text-lg leading-none select-none">+</div>
         </div>
         <div className="p-4 space-y-3">
+          {hint && <p className="text-[11.5px] font-semibold text-teal">{hint}</p>}
           <p className="text-[11.5px] text-faint">
             Drag the map until the photo sits over the site, then size and rotate it until
             fences and roads line up with the satellite view underneath.

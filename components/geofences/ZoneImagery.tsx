@@ -39,6 +39,10 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   const fileRef = useRef<HTMLInputElement>(null)
   const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
   const [caption, setCaption] = useState('')
+  // '90° top-down drone' shots become map overlays (auto pre-placed from the
+  // drone's EXIF/XMP when present); 'site photo' stays timeline-only.
+  const [viewType, setViewType] = useState<'drone' | 'ground'>('drone')
+  const [smartHint, setSmartHint] = useState<string | null>(null)
   const [, start] = useTransition()
 
   // Group by capture date, newest first — the slider steps DATES, and a date
@@ -77,12 +81,22 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
     if (upErr) {
       setBusy(false); setError('Upload didn’t go through — check signal and try again.'); return
     }
-    const r = await finalizeZoneImageryAction({ zoneId, path: pre.path, takenOn, caption }).catch(() => null)
+    const r = await finalizeZoneImageryAction({ zoneId, path: pre.path, takenOn, caption, source: viewType }).catch(() => null)
     setBusy(false)
     if (r?.ok && r.image) {
       setImages((xs) => [r.image!, ...xs])
       setIdx(0); setShot(0); setCaption(''); setShowUpload(false)
       if (fileRef.current) fileRef.current.value = ''
+      // Smart placement (drone shots): read GPS + gimbal yaw + altitude from
+      // the file's EXIF/XMP and open the placer pre-positioned — nudge + Save.
+      if (viewType === 'drone') {
+        const { droneShotCorners } = await import('@/lib/drone-meta')
+        const corners = await droneShotCorners(f)
+        setSmartHint(corners
+          ? 'Pre-placed from the drone’s flight data — nudge if needed, then Save.'
+          : null)
+        setPlacing({ ...r.image, bounds: corners ?? r.image.bounds ?? null })
+      }
     } else setError(r?.error ?? 'Upload didn’t go through — check signal and try again.')
   }
 
@@ -103,6 +117,19 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
 
       {showUpload && (
         <div className="rounded-xl border border-navy-700 bg-navy-900 p-3 mb-2 flex flex-wrap items-center gap-2">
+          <div className="w-full flex gap-1.5">
+            {([['drone', '🛩 90° top-down drone'], ['ground', '📷 Site photo']] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => setViewType(v)}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold ${
+                  viewType === v ? 'border-amber text-amber bg-amber/10' : 'border-navy-700 text-muted hover:text-ink'
+                }`}>
+                {label}
+              </button>
+            ))}
+            <span className="self-center text-[10.5px] text-faint">
+              {viewType === 'drone' ? 'goes on the map — auto-placed from the drone’s flight data' : 'timeline only'}
+            </span>
+          </div>
           <input ref={fileRef} type="file" accept="image/*"
             className="text-[11.5px] text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-navy-700 file:text-ink file:px-2.5 file:py-1.5 file:text-xs" />
           <input type="date" value={takenOn} max={new Date().toISOString().slice(0, 10)}
@@ -205,10 +232,11 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
           imageUrl={placing.url}
           ring={ring}
           initialBounds={(placing.bounds ?? null) as Corners | null}
-          onClose={() => setPlacing(null)}
+          hint={smartHint}
+          onClose={() => { setPlacing(null); setSmartHint(null) }}
           onSaved={(b) => {
             setImages((xs) => xs.map((x) => (x.id === placing.id ? { ...x, bounds: b } : x)))
-            setPlacing(null)
+            setPlacing(null); setSmartHint(null)
           }}
         />
       )}
