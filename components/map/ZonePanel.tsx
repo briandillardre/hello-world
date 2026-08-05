@@ -174,6 +174,24 @@ export function ZonePanel({
             📊 See full details — hours, costs, charts, history
           </Link>
 
+          {/* Turn-by-turn handoff to the site — "send the new guy the job" in
+              one tap (destination = zone centroid). */}
+          {(() => {
+            const ring = fence.geometry?.coordinates?.[0] as [number, number][] | undefined
+            if (!ring?.length) return null
+            const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
+            const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
+            return (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${cy},${cx}`}
+                target="_blank" rel="noopener noreferrer"
+                className="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+              >
+                🧭 Navigate to site
+              </a>
+            )
+          })()}
+
           {canEdit && (
             <button
               onClick={() => setEditing(true)}

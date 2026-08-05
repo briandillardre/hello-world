@@ -423,6 +423,17 @@ function AssetDetails({
         </div>
       )}
 
+      {/* Google-Maps-style handoff: open the phone's turn-by-turn straight to
+          the machine's last fix. Daily-use ask (Brian, Aug 4). */}
+      {loc && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
+          target="_blank" rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+        >
+          🧭 Navigate to it
+        </a>
+      )}
       <Link
         href={`/assets/${asset.id}`}
         className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-navy-800 border border-navy-700 text-ink text-sm font-medium py-2.5 hover:bg-navy-700 transition-colors"

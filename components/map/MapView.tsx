@@ -1032,6 +1032,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
     map.current.addControl(radarControl, ctrlCorner)
 
+    // Scale bar (Google Maps staple) — feet/miles, bottom-left, out of the
+    // way of the timeline. Doubles as a sanity check on drone-overlay sizing.
+    map.current.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left')
+
     // "Show your location" follows the convention every Google Maps user
     // already knows: the moment you locate, the map goes north-up, no tilt.
     const geoCtrl = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true })
