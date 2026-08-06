@@ -91,6 +91,17 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       const { createClient } = await import('@/lib/supabase-server')
       const supabase = createClient()
       const fromIso = new Date(Date.now() - USAGE_DAYS * 86_400_000).toISOString()
+      // Per-asset uniform sampling in the DB (039) — the raw-ping sweep below
+      // hits its 40k cap after ~a week of live streaming and silently drops
+      // the older weeks, so 30-day hours read as a fraction of reality
+      // ("hours and costs are way off", Aug 6). Same RPC the map ranges use.
+      const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
+        p_from: fromIso, p_to: new Date().toISOString(), p_max: 40_000,
+      })
+      if (!rpcErr && Array.isArray(sampled)) {
+        return sampled as { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[]
+      }
+      // Pre-039 fallback: parallel paged fetch (newest-first, capped).
       const PAGE = 1000, CAP = 40_000, BATCH = 8
       const head = await supabase
         .from('asset_locations')
