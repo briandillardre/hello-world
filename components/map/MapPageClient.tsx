@@ -133,6 +133,10 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         // them here is exactly how the two forms drifted apart before.
         const id = await createGeofenceAction(name, geometry, color, kind, opts)
         if (!id) throw new Error('no id returned')
+        // Swap the optimistic temp id for the database's real one — until
+        // this lands, "See full details" would 404 (the id only refreshed on
+        // the next full page load before, Aug 6).
+        setGeofences((prev) => prev.map((g) => (g.id === fence.id ? { ...g, id } : g)))
       } catch (err) {
         console.error('Geofence save failed', err)
         setGeofences((prev) => prev.filter((g) => g.id !== fence.id))

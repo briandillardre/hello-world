@@ -167,12 +167,24 @@ export function ZonePanel({
                 </div>
               )}
 
-          <Link
-            href={`/geofences/${fence.id}`}
-            className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-teal/50 text-teal text-sm font-semibold py-2.5 hover:bg-teal/10 transition-colors"
-          >
-            📊 See full details — hours, costs, charts, history
-          </Link>
+          {/* A just-drawn zone still carries its temporary local id until the
+              save round-trip swaps in the real one — linking then 404'd
+              ("note that the zone is being created", Aug 6). */}
+          {/* Temp ids are fence-<Date.now()> (13 digits); demo zones are
+              fence-1..4 and stay clickable. */}
+          {/^fence-\d{10,}$/.test(fence.id) ? (
+            <div className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy-800 text-faint text-sm font-semibold py-2.5">
+              <span className="w-3.5 h-3.5 border-2 border-teal border-t-transparent rounded-full animate-spin" />
+              Setting this zone up — details ready in a moment…
+            </div>
+          ) : (
+            <Link
+              href={`/geofences/${fence.id}`}
+              className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal text-navy-950 text-sm font-bold py-2.5 hover:brightness-110 transition"
+            >
+              📊 See full details
+            </Link>
+          )}
 
           {/* Turn-by-turn handoff to the site — "send the new guy the job" in
               one tap (destination = zone centroid). */}
