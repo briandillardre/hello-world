@@ -55,6 +55,7 @@ export async function fetchParcels(
   bounds: { west: number; south: number; east: number; north: number },
   signal?: AbortSignal
 ): Promise<GeoJSON.FeatureCollection> {
+  // (reporting helper defined below the guard — demo/no-URL calls stay silent)
   const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
   if (!serviceUrl) return empty
 
@@ -71,11 +72,24 @@ export async function fetchParcels(
     resultRecordCount: String(MAX_FEATURES),
   })
 
+  // Failures used to collapse silently into "no parcels here" — a wrong URL,
+  // a CORS block, and a real empty viewport all looked identical ("still not
+  // seeing a response", Aug 6). Report through the layer-row event channel.
+  const report = (msg: string | null) => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(msg
+      ? new CustomEvent('ht:layer-error', { detail: { key: 'parcels', msg } })
+      : new CustomEvent('ht:layer-updated', { detail: { key: 'parcels', at: Date.now() } }))
+  }
+
   try {
     const r = await fetch(`${serviceUrl.replace(/\/$/, '')}/query?${params}`, { signal })
-    if (!r.ok) return empty
+    if (!r.ok) { report(`county service returned HTTP ${r.status} — check the layer URL`); return empty }
     const j = await r.json()
-    if (!Array.isArray(j?.features)) return empty
+    // ArcGIS answers 200 with {error:{...}} for a wrong layer path.
+    if (j?.error) { report(`county service error: ${j.error.message ?? j.error.code ?? 'bad request'}`); return empty }
+    if (!Array.isArray(j?.features)) { report('county service sent no features — is the URL a parcel LAYER (…/MapServer/0)?'); return empty }
+    report(null)
     for (const f of j.features) {
       // Keep the LandGlide-style tap payload (owner, address, acreage) —
       // outFields=* already downloaded it; dropping it wasted the best part
@@ -91,7 +105,11 @@ export async function fetchParcels(
       }
     }
     return j as GeoJSON.FeatureCollection
-  } catch {
+  } catch (err) {
+    // Aborted pans are routine; anything else is network/CORS worth showing.
+    if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      report('can’t reach the county service (network or CORS) — check the URL in /diag')
+    }
     return empty
   }
 }

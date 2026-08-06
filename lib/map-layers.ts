@@ -87,7 +87,9 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'alertpins', label: 'Alert pins', group: 'site', status: 'live', isLive: true, hint: 'where alerts fired · last 7 days · on the zone involved, or the asset itself for company-wide rules' },
   { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
   { id: 'webcams', label: 'Webcams', group: 'site', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see webcams', hint: 'public traffic & area cams · tap for the picture' },
-  { id: 'parcels', label: 'Parcel lines', group: 'site', status: 'live', minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels · tap one for owner, address & acreage' },
+  // Honest gating: without the county service URL the toggle was a silent
+  // no-op ("still not seeing a response" — Aug 6). Coming-soon until set.
+  { id: 'parcels', label: 'Parcel lines', group: 'site', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels · tap one for owner, address & acreage' },
   { id: 'siteimg', label: 'Site imagery', group: 'site', status: 'live', hasOpacity: true, hint: 'placed drone shots pinned to the ground · follows the timeline — scrub to see the site that day' },
   { id: 'siteplans', label: 'Scaled plans', group: 'site', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
 
