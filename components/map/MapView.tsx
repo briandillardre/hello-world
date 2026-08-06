@@ -478,26 +478,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const m = map.current
     if (!m) return
     try {
-      const { createBrandedPdf, captureMapCanvas, MARGIN } = await import('@/lib/pdf-brand')
-      const img = await captureMapCanvas(m)
+      const { createBrandedPdf, captureMapCanvas, coverCrop, MARGIN } = await import('@/lib/pdf-brand')
+      const raw = await captureMapCanvas(m)
       const rangeLabelTxt = RANGES.find((r) => r.key === range)?.label ?? 'Live'
+      // 8.5x11 PORTRAIT by default (owner ask, Aug 6) — the standard sheet in
+      // a job binder. The capture center-crops to FILL the content box, so
+      // phone (tall) and PC (wide) exports both come out full-page.
       const pdf = await createBrandedPdf({
         companyName: brand?.companyName ?? 'HammerTrack',
         logoUrl: brand?.logoUrl ?? null,
         title: kiosk ? 'Command Center' : 'Fleet map',
         subtitle: `${rangeLabelTxt} view`,
-      })
+      }, 'portrait')
       const { doc, pw, ph, contentTop } = pdf
-      const canvas = m.getCanvas()
-      const ar = canvas.width / canvas.height
-      // Thought-out fit: full-bleed inside margins, one legend band below.
       const legendH = 16
       const availW = pw - MARGIN * 2
       const availH = ph - contentTop - legendH - 12
-      let w = availW
-      let h = w / ar
-      if (h > availH) { h = availH; w = h * ar }
-      doc.addImage(img, 'JPEG', MARGIN + (availW - w) / 2, contentTop, w, h)
+      const img = await coverCrop(raw, availW / availH)
+      const w = availW
+      const h = availH
+      doc.addImage(img, 'JPEG', MARGIN, contentTop, w, h)
       // Asset legend — the same identity colors the map uses.
       const legendY = contentTop + h + 6
       doc.setFontSize(8)

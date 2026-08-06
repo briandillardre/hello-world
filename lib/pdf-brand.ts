@@ -93,6 +93,33 @@ export async function createBrandedPdf(brand: PdfBrand, orientation: 'landscape'
   }
 }
 
+/**
+ * Center-crop an image dataURL to a target aspect (w/h) — the map snapshot
+ * FILLS the letter-portrait page instead of floating as a skinny strip
+ * (owner ask, Aug 6). Phone captures (tall) lose a little top/bottom, PC
+ * captures (wide) lose a little left/right; the framed center survives.
+ */
+export function coverCrop(dataUrl: string, targetAspect: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const sw = img.naturalWidth, sh = img.naturalHeight
+      const srcAspect = sw / sh
+      let cw = sw, ch = sh
+      if (srcAspect > targetAspect) cw = Math.round(sh * targetAspect)
+      else ch = Math.round(sw / targetAspect)
+      const canvas = document.createElement('canvas')
+      canvas.width = cw; canvas.height = ch
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { resolve(dataUrl); return }
+      ctx.drawImage(img, (sw - cw) / 2, (sh - ch) / 2, cw, ch, 0, 0, cw, ch)
+      resolve(canvas.toDataURL('image/jpeg', 0.92))
+    }
+    img.onerror = () => resolve(dataUrl) // crop is cosmetic — never block the PDF
+    img.src = dataUrl
+  })
+}
+
 /** Capture a MapLibre canvas without preserveDrawingBuffer: snap inside a
  *  render callback so the frame buffer is still intact. */
 export function captureMapCanvas(map: { getCanvas(): HTMLCanvasElement; once(ev: string, cb: () => void): unknown; triggerRepaint(): void }): Promise<string> {
