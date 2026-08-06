@@ -228,52 +228,62 @@ function GeofenceRow({
     )
   }
 
+  // Kind chip + count — one line, never wraps (phones were stacking
+  // "JOB SITE / · 0 / assets / inside" into a four-line column, Aug 5).
+  const kindChip = (fence.kind === 'boundary' || (!fence.kind && (fence.color === '#0a0a0a' || fence.color === '#9ca3af')))
+    ? <span className="text-teal/80 font-mono text-[10px] uppercase tracking-[0.08em]">Boundary</span>
+    : fence.kind === 'vendor'
+    ? <span className="text-[#c4b5fd] font-mono text-[10px] uppercase tracking-[0.08em]">Vendor</span>
+    : fence.kind === 'yard'
+    ? <span className="text-[#60a5fa] font-mono text-[10px] uppercase tracking-[0.08em]">Yard</span>
+    : <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Job site</span>
+
+  const actions = editable && (
+    <>
+      <button
+        onClick={flip}
+        disabled={pending}
+        title={done ? 'Reopen job (remove the Z)' : 'Mark job complete (Z-rename here + QuickBooks)'}
+        className={'grid place-items-center w-8 h-8 rounded-lg hover:bg-navy-800 ' + (done ? 'text-teal hover:text-teal' : 'text-faint hover:text-amber')}
+      >
+        {done ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+      </button>
+      <button onClick={() => setEditing(true)} title="Edit" className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink hover:bg-navy-800">
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button onClick={remove} disabled={pending} title="Delete" className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-alert hover:bg-navy-800">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </>
+  )
+
   return (
     <div>
-    <div className="bg-navy-900 rounded-xl border border-navy-800 p-4 flex items-center gap-3">
-      <div
-        className="w-11 h-11 rounded-lg grid place-items-center flex-none"
-        style={{ backgroundColor: fence.color + '22', border: `2px solid ${fence.color}` }}
-      >
-        <Hexagon className="h-5 w-5" style={{ color: fence.color }} />
+    {/* Phones: the name owns the full line; actions drop to their own row.
+        Desktop (md+): everything inline like before. */}
+    <div className="bg-navy-900 rounded-xl border border-navy-800 p-3 md:p-4">
+      <div className="flex items-center gap-2.5 md:gap-3">
+        <div
+          className="w-10 h-10 md:w-11 md:h-11 rounded-lg grid place-items-center flex-none"
+          style={{ backgroundColor: fence.color + '22', border: `2px solid ${fence.color}` }}
+        >
+          <Hexagon className="h-5 w-5" style={{ color: fence.color }} />
+        </div>
+        <Link href={`/geofences/${fence.id}`} className="flex-1 min-w-0 group">
+          <p className="font-semibold text-[13.5px] md:text-base text-ink group-hover:text-amber transition-colors truncate">{fence.name}</p>
+          <p className="text-xs text-faint mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+            {kindChip}
+            <span className="truncate">· {count} asset{count !== 1 ? 's' : ''} inside</span>
+          </p>
+        </Link>
+        <div className="hidden md:flex items-center gap-1">{actions}</div>
+        <Link href={`/geofences/${fence.id}`} className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink flex-none">
+          <ChevronRight className="h-4 w-4" />
+        </Link>
       </div>
-      <Link href={`/geofences/${fence.id}`} className="flex-1 min-w-0 group">
-        <p className="font-semibold text-ink group-hover:text-amber transition-colors truncate">{fence.name}</p>
-        <p className="text-xs text-faint mt-0.5 flex items-center gap-1.5">
-          {/* legacy dark/gray colors predate the kind column — treat as boundary */}
-          {(fence.kind === 'boundary' || (!fence.kind && (fence.color === '#0a0a0a' || fence.color === '#9ca3af'))) ? (
-            <span className="text-teal/80 font-mono text-[10px] uppercase tracking-[0.08em]">Boundary</span>
-          ) : fence.kind === 'vendor' ? (
-            <span className="text-[#c4b5fd] font-mono text-[10px] uppercase tracking-[0.08em]">Vendor</span>
-          ) : fence.kind === 'yard' ? (
-            <span className="text-[#60a5fa] font-mono text-[10px] uppercase tracking-[0.08em]">Yard</span>
-          ) : (
-            <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Job site</span>
-          )}
-          <span>· {count} asset{count !== 1 ? 's' : ''} inside</span>
-        </p>
-      </Link>
       {editable && (
-        <>
-          <button
-            onClick={flip}
-            disabled={pending}
-            title={done ? 'Reopen job (remove the Z)' : 'Mark job complete (Z-rename here + QuickBooks)'}
-            className={'grid place-items-center w-8 h-8 rounded-lg hover:bg-navy-800 ' + (done ? 'text-teal hover:text-teal' : 'text-faint hover:text-amber')}
-          >
-            {done ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-          </button>
-          <button onClick={() => setEditing(true)} title="Edit" className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink hover:bg-navy-800">
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button onClick={remove} disabled={pending} title="Delete" className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-alert hover:bg-navy-800">
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </>
+        <div className="flex md:hidden items-center justify-end gap-1 mt-1 -mb-1">{actions}</div>
       )}
-      <Link href={`/geofences/${fence.id}`} className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink">
-        <ChevronRight className="h-4 w-4" />
-      </Link>
     </div>
     {flipNote && <p className="px-4 pt-1 text-[10.5px] text-faint">{flipNote}</p>}
     </div>
