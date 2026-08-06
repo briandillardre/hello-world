@@ -66,8 +66,6 @@ interface WeatherControlProps {
   /** Asset-type visibility (the old chip row, folded in here). */
   filter?: Set<AssetType>
   onFilter?: (f: Set<AssetType>) => void
-  /** Start drawing a new zone. */
-  onDrawZone?: () => void
   /** Demo-only Site IoT toggle. */
   showDevices?: boolean
   onToggleDevices?: () => void
@@ -166,7 +164,7 @@ function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; ico
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -512,16 +510,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           </button>
         ))}
       </div>
-      {onDrawZone && (
-        <div className="px-2 pb-2">
-          <button
-            onClick={() => { setOpen(false); onDrawZone() }}
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border border-dashed border-teal/60 text-teal hover:bg-teal/10 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" /> New zone
-          </button>
-        </div>
-      )}
+      {/* New zone moved to the map's right-side control rail (Aug 6) —
+          drawing is a map action, this panel is what-you-see toggles. */}
 
       {/* ── Show on map — asset types as the same toggle rows as every other
              layer (the old chip grid read as buttons, not switches). ── */}

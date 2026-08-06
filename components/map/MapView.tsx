@@ -471,6 +471,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // imperative MapLibre control (created once at init) always calls the
   // freshest closure (assets/brand/range change between renders).
   const makePdfRef = useRef<(() => Promise<void>) | null>(null)
+  // Control-rail "New zone" handler — assigned after handleRange/startDrawing
+  // exist (they're declared much later in this file).
+  const drawZoneRef = useRef<(() => void) | null>(null)
   makePdfRef.current = async () => {
     const m = map.current
     if (!m) return
@@ -1076,6 +1079,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         onRemove() { measureBtnRef.current = null },
       }
       map.current.addControl(measureControl, ctrlCorner)
+    }
+
+    // New zone — drawing is a MAP ACTION, so it lives with measure/PDF in
+    // the control rail, not in the Layers panel (owner ask, Aug 6). Handler
+    // rides a ref because range/drawing callbacks are defined later.
+    if (!kiosk && onGeofenceSave) {
+      const drawControl: maplibregl.IControl = {
+        onAdd() {
+          const div = document.createElement('div')
+          div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+          const btn = document.createElement('button')
+          btn.type = 'button'
+          btn.title = 'New zone — draw a job site, yard or boundary'
+          btn.setAttribute('aria-label', 'New zone')
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M21 16.05V7.95a2 2 0 0 0-1-1.73l-7-4.05a2 2 0 0 0-2 0l-7 4.05a2 2 0 0 0-1 1.73v8.1a2 2 0 0 0 1 1.73l7 4.05a2 2 0 0 0 2 0l7-4.05a2 2 0 0 0 1-1.73z"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>'
+          btn.onclick = () => { drawZoneRef.current?.() }
+          div.appendChild(btn)
+          return div
+        },
+        onRemove() {},
+      }
+      map.current.addControl(drawControl, ctrlCorner)
     }
 
     // Create PDF — a branded snapshot of exactly what's on screen (logo +
@@ -4139,6 +4164,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     map.current.getCanvas().style.cursor = 'crosshair'
     map.current.on('click', handleDrawClick)
   }, [handleDrawClick])
+  // Rail button → same behavior the Layers-panel button had: drawing from a
+  // replay snaps back to Live first so clicks mean corners, not scrubbing.
+  drawZoneRef.current = () => {
+    if (rangeRef.current !== 'live') handleRange('live')
+    startDrawing()
+  }
 
   /** Drop (or clear) the amber marker on an address searched while drawing.
    *  Declared BEFORE the draw callbacks that list it as a dependency — a
@@ -4326,10 +4357,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         z={kiosk ? 45 : 15}
         filter={filter}
         onFilter={setFilter}
-        // Always available (was hidden during replays — "where did add zones
-        // go?", Jul 23). Drawing from a replay snaps the timeline back to
-        // Live first so clicks mean corners, not scrubbing.
-        onDrawZone={!kiosk && onGeofenceSave ? () => { if (rangeRef.current !== 'live') handleRange('live'); startDrawing() } : undefined}
         showDevices={showDevices}
         onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
