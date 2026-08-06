@@ -8,7 +8,7 @@ import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
-import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
+import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
 import { saveMapViewsAction } from '@/lib/actions/profile'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||

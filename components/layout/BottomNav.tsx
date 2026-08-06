@@ -14,7 +14,7 @@ const primaryItems = [
 ]
 
 const moreItems = [
-  { href: '/geofences', label: 'Zones', icon: Hexagon },
+  { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/measurements', label: 'Measurements', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
   { href: '/command', label: 'Command Center', icon: MonitorPlay },

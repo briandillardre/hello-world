@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Trash2, Save } from 'lucide-react'
-import { saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
+import { saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -271,7 +271,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     if (!confirm(`Delete zone "${initialName}"? Alert rules attached to it are removed too.`)) return
     try {
       await deleteGeofenceAction(id)
-      router.push('/geofences')
+      router.push('/zones')
       router.refresh()
     } catch (err) {
       console.error('Zone delete failed', err)

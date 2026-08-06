@@ -8,10 +8,10 @@ import {
   setActivePlanAction, saveOverlayBoundsAction, type ZoneImage,
 } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
-import type { Corners } from '@/components/geofences/OverlayPlacer'
+import type { Corners } from '@/components/zones/OverlayPlacer'
 
 const OverlayPlacer = dynamic(
-  () => import('@/components/geofences/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
+  () => import('@/components/zones/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
   { ssr: false }
 )
 

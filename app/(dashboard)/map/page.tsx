@@ -1,5 +1,5 @@
 import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'

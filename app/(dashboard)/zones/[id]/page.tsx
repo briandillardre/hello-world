@@ -1,21 +1,21 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Hexagon, MapPin, CornerDownRight } from 'lucide-react'
-import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/geofences'
+import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { zoneAssetUsage, type ZoneAssetUsage } from '@/lib/costs'
 import type { AssetType } from '@/lib/types'
-import { GeofenceEditor } from '@/components/geofences/GeofenceEditor'
-import { ZoneUsage } from '@/components/geofences/ZoneUsage'
-import { ZoneVisits } from '@/components/geofences/ZoneVisits'
-import { ZoneWeather, type SiteWeatherRow } from '@/components/geofences/ZoneWeather'
-import { ZoneNotes } from '@/components/geofences/ZoneNotes'
-import { ProjectHub } from '@/components/geofences/ProjectHub'
-import { ZoneImagery } from '@/components/geofences/ZoneImagery'
-import { ZonePlans } from '@/components/geofences/ZonePlans'
+import { GeofenceEditor } from '@/components/zones/GeofenceEditor'
+import { ZoneUsage } from '@/components/zones/ZoneUsage'
+import { ZoneVisits } from '@/components/zones/ZoneVisits'
+import { ZoneWeather, type SiteWeatherRow } from '@/components/zones/ZoneWeather'
+import { ZoneNotes } from '@/components/zones/ZoneNotes'
+import { ProjectHub } from '@/components/zones/ProjectHub'
+import { ZoneImagery } from '@/components/zones/ZoneImagery'
+import { ZonePlans } from '@/components/zones/ZonePlans'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
@@ -190,7 +190,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
-        <Link href="/geofences" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-3">
+        <Link href="/zones" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink mb-3">
           <ArrowLeft className="h-4 w-4" /> All zones
         </Link>
         <div className="flex items-center gap-3">
@@ -201,7 +201,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             <h1 className="text-xl font-bold text-ink truncate">{fence.name}</h1>
             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
               {parent && (
-                <Link href={`/geofences/${parent.id}`} className="text-xs text-faint hover:text-amber">
+                <Link href={`/zones/${parent.id}`} className="text-xs text-faint hover:text-amber">
                   Sub-zone of {parent.name}
                 </Link>
               )}
@@ -348,7 +348,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Sub-zones ({subZones.length})</h2>
             <div className="space-y-2">
               {subZones.map((s) => (
-                <Link key={s.id} href={`/geofences/${s.id}`} className="flex items-center gap-2 rounded-xl border border-navy-800 bg-navy-900 p-3 hover:bg-navy-800 transition-colors">
+                <Link key={s.id} href={`/zones/${s.id}`} className="flex items-center gap-2 rounded-xl border border-navy-800 bg-navy-900 p-3 hover:bg-navy-800 transition-colors">
                   <CornerDownRight className="h-4 w-4 text-faint" />
                   <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: s.color }} />
                   <span className="flex-1 font-medium text-ink truncate">{s.name}</span>

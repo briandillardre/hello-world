@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Hexagon, Pencil, Trash2, Check, X, ChevronRight, CornerDownRight, Archive, RotateCcw, FolderOpen } from 'lucide-react'
 import type { Geofence } from '@/lib/types'
-import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/geofences'
+import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/zones'
 import { parseJobName, compareJobs } from '@/lib/job-code'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
 
@@ -221,7 +221,7 @@ function GeofenceRow({
         </div>
         {/* This row is a QUICK edit, not the whole zone — say so, so nobody
             goes looking here for notes, dates, or the boundary itself. */}
-        <Link href={`/geofences/${fence.id}`} className="block text-[11px] text-faint hover:text-amber">
+        <Link href={`/zones/${fence.id}`} className="block text-[11px] text-faint hover:text-amber">
           Boundary, notes, project dates, visibility → full zone settings
         </Link>
       </div>
@@ -269,7 +269,7 @@ function GeofenceRow({
         >
           <Hexagon className="h-5 w-5" style={{ color: fence.color }} />
         </div>
-        <Link href={`/geofences/${fence.id}`} className="flex-1 min-w-0 group">
+        <Link href={`/zones/${fence.id}`} className="flex-1 min-w-0 group">
           <p className="font-semibold text-[13.5px] md:text-base text-ink group-hover:text-amber transition-colors truncate">{fence.name}</p>
           <p className="text-xs text-faint mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
             {kindChip}
@@ -277,7 +277,7 @@ function GeofenceRow({
           </p>
         </Link>
         <div className="hidden md:flex items-center gap-1">{actions}</div>
-        <Link href={`/geofences/${fence.id}`} className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink flex-none">
+        <Link href={`/zones/${fence.id}`} className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink flex-none">
           <ChevronRight className="h-4 w-4" />
         </Link>
       </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { FolderOpen, Check, ExternalLink, Pencil } from 'lucide-react'
 import { saveAssetFolderAction } from '@/lib/actions/assets'
-import { saveZoneFolderAction } from '@/lib/actions/geofences'
+import { saveZoneFolderAction } from '@/lib/actions/zones'
 
 /**
  * Document-folder link for an asset or zone — a URL to the record's folder in

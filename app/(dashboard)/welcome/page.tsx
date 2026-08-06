@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Check, Plus, Hexagon, UserPlus, Radio, ArrowRight, BellRing, Clock } from 'lucide-react'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { getCurrentCompany, getCompanySettings } from '@/lib/db/company'
 import { getTeam } from '@/lib/db/team'
 import { getRecentFieldDays } from '@/lib/db/fieldops'

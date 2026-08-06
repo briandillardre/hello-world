@@ -101,7 +101,7 @@ export function ZonePanel({
             </button>
           </div>
           <Link
-            href={`/geofences/${fence.id}`}
+            href={`/zones/${fence.id}`}
             className="flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 text-teal text-sm font-medium py-2.5 hover:bg-navy-800 transition-colors"
           >
             <PenTool className="h-3.5 w-3.5" /> Reshape corners · full editor
@@ -181,7 +181,7 @@ export function ZonePanel({
             </div>
           ) : (
             <Link
-              href={`/geofences/${fence.id}`}
+              href={`/zones/${fence.id}`}
               className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal text-navy-950 text-sm font-bold py-2.5 hover:brightness-110 transition"
             >
               📊 See full details

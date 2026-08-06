@@ -1,6 +1,6 @@
 import { getMyClockState } from '@/lib/db/fieldops'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { ClockCard } from '@/components/field/ClockCard'
 
 export const dynamic = 'force-dynamic'

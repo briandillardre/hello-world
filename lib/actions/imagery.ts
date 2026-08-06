@@ -132,7 +132,7 @@ export async function finalizeZoneImageryAction(input: {
         : 'Run migration 052_zone_imagery.sql in the Supabase SQL Editor first.',
     }
   }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true, image: data as ZoneImage }
 }
 
@@ -158,7 +158,7 @@ export async function setActivePlanAction(zoneId: string, imageId: string | null
       .eq('id', imageId).eq('company_id', companyId).eq('kind', 'plan')
     if (error) return { ok: false, error: 'Couldn’t set that plan — try again.' }
   }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   revalidatePath('/map')
   return { ok: true }
 }
@@ -189,7 +189,7 @@ export async function saveOverlayBoundsAction(
     .update({ bounds })
     .eq('id', imageId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Run migration 053_imagery_bounds.sql in the Supabase SQL Editor first.' }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   revalidatePath('/map')
   return { ok: true }
 }
@@ -202,6 +202,6 @@ export async function deleteZoneImageryAction(zoneId: string, imageId: string): 
   const { error } = await supabase.from('zone_imagery')
     .delete().eq('id', imageId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Delete failed' }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }

@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/geofences'
+import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import type { AlertTrigger, ZoneFormOpts } from '@/lib/types'
 
@@ -79,7 +79,7 @@ export async function createGeofenceAction(
     if (opts?.folderUrl?.trim()) await saveZoneFolderAction(id, opts.folderUrl)
     if (opts?.notes?.trim()) await saveZoneNotesAction(id, opts.notes)
   }
-  revalidatePath('/geofences')
+  revalidatePath('/zones')
   revalidatePath('/map')
   // Null = the insert didn't happen (RPC error / RLS) — callers surface it.
   return id
@@ -123,14 +123,14 @@ export async function saveGeofenceAction(
       to: { name, color, kind: kind ?? g.kind ?? 'site' },
     })
   }
-  revalidatePath('/geofences')
-  revalidatePath(`/geofences/${id}`)
+  revalidatePath('/zones')
+  revalidatePath(`/zones/${id}`)
   revalidatePath('/map')
 }
 
 export async function deleteGeofenceAction(id: string) {
   await deleteGeofence(id)
-  revalidatePath('/geofences')
+  revalidatePath('/zones')
   revalidatePath('/map')
 }
 
@@ -149,8 +149,8 @@ export async function saveZoneNotesAction(id: string, notes: string): Promise<{ 
       if (error.code === '42703') return { ok: false, error: 'Run migration 020_notes.sql first.' }
       return { ok: false, error: error.message }
     }
-    revalidatePath(`/geofences/${id}`)
-    revalidatePath('/geofences')
+    revalidatePath(`/zones/${id}`)
+    revalidatePath('/zones')
     revalidatePath('/map')
     return { ok: true }
   } catch (err) {
@@ -212,8 +212,8 @@ export async function setZoneCompletedAction(id: string, completed: boolean): Pr
       qboNote = `Zone updated; QuickBooks rename failed (${qboErr instanceof Error ? qboErr.message.slice(0, 120) : 'error'}).`
     }
 
-    revalidatePath(`/geofences/${id}`)
-    revalidatePath('/geofences')
+    revalidatePath(`/zones/${id}`)
+    revalidatePath('/zones')
     revalidatePath('/map')
     return { ok: true, qbo: qboNote }
   } catch (err) {
@@ -236,7 +236,7 @@ export async function saveZoneFolderAction(id: string, folderUrl: string): Promi
       if (error.code === '42703') return { ok: false, error: 'Run migration 032 first.' }
       return { ok: false, error: error.message }
     }
-    revalidatePath(`/geofences/${id}`)
+    revalidatePath(`/zones/${id}`)
     revalidatePath('/map')
     return { ok: true }
   } catch (err) {

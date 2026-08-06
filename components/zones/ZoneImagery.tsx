@@ -5,11 +5,11 @@ import dynamic from 'next/dynamic'
 import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import { createImageryUploadAction, finalizeZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
-import type { Corners } from '@/components/geofences/OverlayPlacer'
+import type { Corners } from '@/components/zones/OverlayPlacer'
 
 // MapLibre needs the browser — load the placer only when opened.
 const OverlayPlacer = dynamic(
-  () => import('@/components/geofences/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
+  () => import('@/components/zones/OverlayPlacer').then((m) => ({ default: m.OverlayPlacer })),
   { ssr: false }
 )
 

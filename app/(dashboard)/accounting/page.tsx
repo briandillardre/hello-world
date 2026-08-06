@@ -1,7 +1,7 @@
 import { AccountingView } from '@/components/accounting/AccountingView'
 import { getConnectionStatus, buildEquipmentUsageInvoice, isQboConfigured, isQboSandbox } from '@/lib/qbo'
 import { getAssets } from '@/lib/db/assets'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import type { QboInvoicePreview } from '@/lib/types'

@@ -48,7 +48,7 @@ export async function addTaskAction(zoneId: string, input: { title: string; assi
     created_by: user?.id ?? null,
   }).select('id, title, status, priority, assignee_id, due_date, created_at, done_at').single()
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true, task: data as ProjectTask }
 }
 
@@ -59,7 +59,7 @@ export async function toggleTaskAction(zoneId: string, taskId: string, done: boo
     .update({ status: done ? 'done' : 'open', done_at: done ? new Date().toISOString() : null })
     .eq('id', taskId).eq('company_id', companyId)
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }
 
@@ -68,7 +68,7 @@ export async function deleteTaskAction(zoneId: string, taskId: string): Promise<
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_tasks').delete().eq('id', taskId).eq('company_id', companyId)
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }
 
@@ -84,7 +84,7 @@ export async function addMilestoneAction(zoneId: string, input: { name: string; 
     target_date: input.targetDate || null,
   }).select('id, name, target_date, done_at').single()
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true, milestone: data as ProjectMilestone }
 }
 
@@ -95,7 +95,7 @@ export async function toggleMilestoneAction(zoneId: string, milestoneId: string,
     .update({ done_at: done ? new Date().toISOString() : null })
     .eq('id', milestoneId).eq('company_id', companyId)
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }
 
@@ -104,7 +104,7 @@ export async function deleteMilestoneAction(zoneId: string, milestoneId: string)
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_milestones').delete().eq('id', milestoneId).eq('company_id', companyId)
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }
 
@@ -117,6 +117,6 @@ export async function saveBudgetAction(zoneId: string, budget: number | null): P
   const { error } = await supabase.from('geofences')
     .update({ budget }).eq('id', zoneId).eq('company_id', companyId)
   if (error) return { ok: false, error: MIGRATION_HINT }
-  revalidatePath(`/geofences/${zoneId}`)
+  revalidatePath(`/zones/${zoneId}`)
   return { ok: true }
 }

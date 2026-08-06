@@ -1,6 +1,6 @@
 import { AlertsView } from '@/components/alerts/AlertsView'
 import { getAlertEvents, getAlertRules } from '@/lib/db/alerts'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
 

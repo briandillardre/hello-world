@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Check, StickyNote } from 'lucide-react'
-import { saveZoneNotesAction } from '@/lib/actions/geofences'
+import { saveZoneNotesAction } from '@/lib/actions/zones'
 
 /**
  * Open-ended zone notes — gate codes, ground conditions, "GC is picky about

@@ -19,7 +19,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/clock', label: 'Time clock', icon: Clock },
     { href: '/logs', label: 'Daily logs', icon: ClipboardList },
     { href: '/assets', label: 'Assets', icon: Package },
-    { href: '/geofences', label: 'Zones', icon: Hexagon },
+    { href: '/zones', label: 'Zones', icon: Hexagon },
     { href: '/measurements', label: 'Measurements', icon: Ruler },
     { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
     { href: '/maintenance', label: 'Maintenance', icon: Wrench },

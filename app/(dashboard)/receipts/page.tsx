@@ -1,5 +1,5 @@
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getGeofences } from '@/lib/db/geofences'
+import { getGeofences } from '@/lib/db/zones'
 import { getExpenses } from '@/lib/db/expenses'
 import { suggestMatchesAction } from '@/lib/actions/expenses'
 import { getInstantChaseSetup } from '@/lib/actions/cards'

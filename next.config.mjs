@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The zones pages lived at /geofences until Aug 6 2026 — keep old links,
+  // bookmarks, and AI deep links working forever.
+  async redirects() {
+    return [
+      { source: '/geofences', destination: '/zones', permanent: true },
+      { source: '/geofences/:path*', destination: '/zones/:path*', permanent: true },
+    ]
+  },
   experimental: {
     serverActions: {
       // Asset photos are resized client-side (~200-500 KB) before riding a
