@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { FileText, Trash2, MapPin } from 'lucide-react'
 import {
   createImageryUploadAction, finalizeZoneImageryAction, deleteZoneImageryAction,
-  setActivePlanAction, type ZoneImage,
+  setActivePlanAction, saveOverlayBoundsAction, type ZoneImage,
 } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
 import type { Corners } from '@/components/geofences/OverlayPlacer'
@@ -16,22 +16,24 @@ const OverlayPlacer = dynamic(
 )
 
 // Keep in sync with PLAN_CATEGORIES in lib/actions/imagery.ts.
-const CATEGORIES = ['Existing', 'Site plan', 'Utilities', 'Grading', 'Landscape', 'Erosion control', 'Other']
+const CATEGORIES = ['Site plan', 'Existing', 'Utilities', 'Grading', 'Landscape', 'Erosion control', 'Other']
 
-/** Rasterize one PDF page to a PNG blob in the browser (pdf.js). */
-async function rasterizePdfPage(file: File, pageNum: number): Promise<Blob> {
-  // pdf.js is served from /public and loaded with a NATIVE dynamic import —
-  // webpack cannot parse its bundles (build fails), so it must never see
-  // them. The files under public/pdfjs/ are copies of
-  // node_modules/pdfjs-dist/legacy/build/ — refresh them on version bumps.
-  const pdfjs = await import(/* webpackIgnore: true */ '/pdfjs/pdf.min.mjs' as string) as typeof import('pdfjs-dist')
+type PdfjsModule = typeof import('pdfjs-dist')
+type PdfDoc = import('pdfjs-dist').PDFDocumentProxy
+
+/** pdf.js is served from /public with a NATIVE dynamic import — webpack can't
+ *  parse its bundles (build breaks), so it must never see them. The files
+ *  under public/pdfjs/ mirror node_modules/pdfjs-dist/legacy/build/. */
+async function loadPdfjs(): Promise<PdfjsModule> {
+  const pdfjs = await import(/* webpackIgnore: true */ '/pdfjs/pdf.min.mjs' as string) as PdfjsModule
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs'
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
-  const page = await doc.getPage(Math.min(Math.max(1, pageNum), doc.numPages))
+  return pdfjs
+}
+
+async function renderPage(doc: PdfDoc, pageNum: number, longEdgePx: number, asBlob: boolean): Promise<Blob | string> {
+  const page = await doc.getPage(pageNum)
   const base = page.getViewport({ scale: 1 })
-  // ~3000px on the long edge keeps dimension text legible without blowing
-  // the upload cap; plan sheets compress well as PNG line art.
-  const scale = Math.min(6, 3000 / Math.max(base.width, base.height))
+  const scale = Math.min(6, longEdgePx / Math.max(base.width, base.height))
   const vp = page.getViewport({ scale })
   const canvas = document.createElement('canvas')
   canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height)
@@ -39,16 +41,19 @@ async function rasterizePdfPage(file: File, pageNum: number): Promise<Blob> {
   if (!ctx) throw new Error('no canvas')
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
   await page.render({ canvas, canvasContext: ctx, viewport: vp }).promise
+  if (!asBlob) return canvas.toDataURL('image/jpeg', 0.7)
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
   if (!blob) throw new Error('rasterize failed')
   return blob
 }
 
 /**
- * Scaled Plans — plan sheets (PDF or image) placed on the site like aerials.
- * Categories act as a radio: exactly one sheet per zone can be "on the map",
- * shown on /map under the Scaled plans layer toggle. Sheets from one plan set
- * share the site's frame — place the first, and reuse its footprint by eye.
+ * Scaled Plans — plan sheets placed on the site like aerials. Full-planset
+ * import (owner ask, Aug 6): pick a PDF, check the sheets you want, name
+ * each one, and place ONCE — civil sets share scale/orientation/title-block,
+ * so the first sheet's placement is stamped onto every sheet in the batch.
+ * Exactly one sheet per zone shows on the live map (radio → Scaled plans
+ * layer).
  */
 export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
   zoneId: string
@@ -58,52 +63,100 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
 }) {
   const [plans, setPlans] = useState(initial)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [showUpload, setShowUpload] = useState(false)
-  const [category, setCategory] = useState('Site plan')
-  const [pdfPage, setPdfPage] = useState(1)
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'picking' | 'importing'>('idle')
+  const [progress, setProgress] = useState('')
+  const [thumbs, setThumbs] = useState<string[]>([])
+  const [pageCount, setPageCount] = useState(0)
+  const [sel, setSel] = useState<Record<number, string>>({}) // page → category
   const [placing, setPlacing] = useState<ZoneImage | null>(null)
+  // Sheets uploaded in the same batch as `placing` — the saved placement is
+  // stamped onto all of them.
+  const batchRest = useRef<ZoneImage[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
+  const docRef = useRef<PdfDoc | null>(null)
+  const fileNameRef = useRef('')
 
-  async function upload() {
+  const resetPicker = () => {
+    setPhase('idle'); setThumbs([]); setSel({}); setPageCount(0); setProgress('')
+    ;(docRef.current as unknown as { destroy?: () => Promise<void> })?.destroy?.().catch(() => {})
+    docRef.current = null
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  async function onFilePicked() {
     const f = fileRef.current?.files?.[0]
-    if (!f) { setError('Attach the plan first (PDF or image).'); return }
-    setBusy(true); setError(null)
-    let payload: Blob = f
-    let type = f.type || 'application/octet-stream'
-    if (type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+    if (!f) return
+    setError(null)
+    fileNameRef.current = f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 100)
+    if (!(f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) {
+      // Plain image → single-sheet path, straight to upload.
+      await importBlobs([{ blob: f, category: 'Site plan', label: fileNameRef.current }])
+      return
+    }
+    setPhase('loading')
+    try {
+      const pdfjs = await loadPdfjs()
+      const doc = await pdfjs.getDocument({ data: await f.arrayBuffer() }).promise as PdfDoc
+      docRef.current = doc
+      setPageCount(doc.numPages)
+      setPhase('picking')
+      // Thumbnails render sequentially so a 40-sheet set doesn't blow memory.
+      for (let i = 1; i <= doc.numPages; i++) {
+        const url = await renderPage(doc, i, 220, false) as string
+        setThumbs((prev) => [...prev, url])
+      }
+    } catch {
+      resetPicker()
+      setError('Couldn’t read that PDF — export the sheets as images and upload those instead.')
+    }
+  }
+
+  async function importSelected() {
+    const doc = docRef.current
+    const pages = Object.keys(sel).map(Number).sort((a, b) => a - b)
+    if (!doc || pages.length === 0) { setError('Check at least one sheet.'); return }
+    setPhase('importing'); setError(null)
+    const items: { blob: Blob; category: string; label: string }[] = []
+    for (let i = 0; i < pages.length; i++) {
+      setProgress(`Converting sheet ${i + 1} of ${pages.length}…`)
       try {
-        payload = await rasterizePdfPage(f, pdfPage)
-        type = 'image/png'
+        const blob = await renderPage(doc, pages[i], 3000, true) as Blob
+        items.push({ blob, category: sel[pages[i]], label: `${fileNameRef.current} — p${pages[i]}` })
       } catch {
-        setBusy(false)
-        setError('Couldn’t read that PDF — export the sheet as a PNG/JPEG and upload that instead.')
-        return
+        setError(`Page ${pages[i]} wouldn’t convert — skipped.`)
       }
     }
-    if (!type.startsWith('image/')) { setBusy(false); setError('That file isn’t a PDF or image.'); return }
-    if (payload.size > 50 * 1024 * 1024) { setBusy(false); setError('Sheet too large (50 MB max after conversion).'); return }
+    await importBlobs(items)
+  }
 
-    const pre = await createImageryUploadAction(zoneId, type, payload.size).catch(() => null)
-    if (!pre?.ok || !pre.path || !pre.token) {
-      setBusy(false); setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); return
+  async function importBlobs(items: { blob: Blob; category: string; label: string }[]) {
+    if (!items.length) { resetPicker(); return }
+    setPhase('importing')
+    const uploaded: ZoneImage[] = []
+    for (let i = 0; i < items.length; i++) {
+      const { blob, category, label } = items[i]
+      setProgress(`Uploading sheet ${i + 1} of ${items.length}…`)
+      const type = blob.type || 'image/png'
+      if (blob.size > 50 * 1024 * 1024) { setError(`"${label}" is over 50 MB — skipped.`); continue }
+      const pre = await createImageryUploadAction(zoneId, type, blob.size).catch(() => null)
+      if (!pre?.ok || !pre.path || !pre.token) { setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); break }
+      const { error: upErr } = await createClient().storage.from('field-photos')
+        .uploadToSignedUrl(pre.path, pre.token, blob, { contentType: type })
+      if (upErr) { setError('Upload didn’t go through — check signal and try again.'); break }
+      const r = await finalizeZoneImageryAction({
+        zoneId, path: pre.path,
+        takenOn: new Date().toISOString().slice(0, 10),
+        caption: label, kind: 'plan', planCategory: category,
+      }).catch(() => null)
+      if (r?.ok && r.image) uploaded.push(r.image)
+      else { setError(r?.error ?? 'Upload didn’t go through — check signal and try again.'); break }
     }
-    const { error: upErr } = await createClient().storage.from('field-photos')
-      .uploadToSignedUrl(pre.path, pre.token, payload, { contentType: type })
-    if (upErr) { setBusy(false); setError('Upload didn’t go through — check signal and try again.'); return }
-    const r = await finalizeZoneImageryAction({
-      zoneId, path: pre.path,
-      takenOn: new Date().toISOString().slice(0, 10),
-      caption: f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 120),
-      kind: 'plan', planCategory: category,
-    }).catch(() => null)
-    setBusy(false)
-    if (r?.ok && r.image) {
-      setPlans((xs) => [r.image!, ...xs])
-      setShowUpload(false)
-      if (fileRef.current) fileRef.current.value = ''
-      setPlacing(r.image) // a plan is useless until it's on the ground — place now
-    } else setError(r?.error ?? 'Upload didn’t go through — check signal and try again.')
+    resetPicker()
+    if (!uploaded.length) return
+    setPlans((xs) => [...uploaded, ...xs])
+    // Place the FIRST sheet; the batch inherits its corners on save.
+    batchRest.current = uploaded.slice(1)
+    setPlacing(uploaded[0])
   }
 
   async function setActive(id: string | null) {
@@ -113,6 +166,8 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     if (!r?.ok) { setPlans(prev); setError(r?.error ?? 'Couldn’t update — try again.') }
   }
 
+  const busy = phase === 'loading' || phase === 'importing'
+
   return (
     <section>
       <div className="flex items-center gap-2 mb-2">
@@ -120,43 +175,85 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
           <FileText className="h-3.5 w-3.5" /> Scaled plans
           {plans.length > 0 && <span className="normal-case tracking-normal">· {plans.length} sheet{plans.length === 1 ? '' : 's'}</span>}
         </h2>
-        {canEdit && (
-          <button type="button" onClick={() => setShowUpload((s) => !s)}
-            className="rounded-lg bg-navy-800 border border-navy-700 text-muted hover:text-ink text-[11px] font-semibold px-2.5 py-1">
-            + Add sheet
-          </button>
+        {canEdit && phase === 'idle' && (
+          <label className="rounded-lg bg-navy-800 border border-navy-700 text-muted hover:text-ink text-[11px] font-semibold px-2.5 py-1 cursor-pointer">
+            + Add planset
+            <input ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={onFilePicked} />
+          </label>
         )}
       </div>
 
-      {showUpload && (
-        <div className="rounded-xl border border-navy-700 bg-navy-900 p-3 mb-2 flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept="application/pdf,image/*"
-            className="text-[11.5px] text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-navy-700 file:text-ink file:px-2.5 file:py-1.5 file:text-xs" />
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
-            className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-ink">
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <label className="text-[11px] text-muted flex items-center gap-1.5">
-            PDF page
-            <input type="number" min={1} value={pdfPage} onChange={(e) => setPdfPage(Math.max(1, Number(e.target.value) || 1))}
-              className="w-14 rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-ink" />
-          </label>
-          <button type="button" disabled={busy} onClick={upload}
-            className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 disabled:opacity-40">
-            {busy ? 'Converting…' : 'Save'}
-          </button>
-          <p className="w-full text-[10.5px] text-faint">
-            PDF sheets convert to an image, then you scale + rotate them onto the site — same as placing a drone shot.
-          </p>
+      {phase === 'loading' && (
+        <div className="rounded-xl border border-navy-700 bg-navy-900 p-3 mb-2">
+          <div className="h-[3px] rounded-full bg-navy-800 overflow-hidden mb-2">
+            <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
+          </div>
+          <p className="text-[11.5px] text-faint">Reading the planset…</p>
         </div>
       )}
 
-      {plans.length === 0 ? (
+      {phase === 'picking' && (
+        <div className="rounded-xl border border-navy-700 bg-navy-900 p-3 mb-2">
+          <p className="text-[11.5px] text-muted mb-2">
+            <b className="text-ink">{pageCount} page{pageCount === 1 ? '' : 's'}</b> — check the sheets to import and name each one.
+            You’ll place the first sheet once; every sheet in this batch gets the same scale, rotation and position.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+            {Array.from({ length: pageCount }, (_, i) => i + 1).map((pg) => {
+              const checked = pg in sel
+              return (
+                <div key={pg} className={'rounded-lg border p-1.5 ' + (checked ? 'border-teal/60 bg-teal/5' : 'border-navy-700')}>
+                  <button type="button" className="relative w-full" onClick={() => {
+                    setSel((s) => {
+                      const next = { ...s }
+                      if (checked) delete next[pg]
+                      else next[pg] = 'Site plan'
+                      return next
+                    })
+                  }}>
+                    {thumbs[pg - 1]
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={thumbs[pg - 1]} alt={`Page ${pg}`} className="w-full rounded bg-white" />
+                      : <div className="w-full aspect-[4/3] rounded bg-navy-800 animate-pulse" />}
+                    <span className={'absolute top-1 left-1 grid place-items-center w-5 h-5 rounded text-[10px] font-bold ' + (checked ? 'bg-teal text-navy-950' : 'bg-navy-950/80 text-faint border border-navy-600')}>
+                      {checked ? '✓' : pg}
+                    </span>
+                  </button>
+                  {checked && (
+                    <select value={sel[pg]} onChange={(e) => setSel((s) => ({ ...s, [pg]: e.target.value }))}
+                      className="mt-1 w-full rounded bg-navy-950 border border-navy-700 px-1 py-1 text-[10.5px] text-ink">
+                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <button type="button" disabled={busy || Object.keys(sel).length === 0} onClick={importSelected}
+              className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 disabled:opacity-40">
+              Import {Object.keys(sel).length || ''} sheet{Object.keys(sel).length === 1 ? '' : 's'}
+            </button>
+            <button type="button" onClick={resetPicker} className="text-xs text-faint hover:text-ink">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'importing' && (
+        <div className="rounded-xl border border-navy-700 bg-navy-900 p-3 mb-2">
+          <div className="h-[3px] rounded-full bg-navy-800 overflow-hidden mb-2">
+            <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
+          </div>
+          <p className="text-[11.5px] text-faint">{progress}</p>
+        </div>
+      )}
+
+      {plans.length === 0 && phase === 'idle' ? (
         <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
-          No plan sheets yet. Add the siteplan, utilities, or grading sheet as a PDF —
-          it converts to an overlay you scale and rotate onto the real site.
+          No plan sheets yet. Add the whole planset PDF — pick the sheets you want
+          (siteplan, utilities, grading…), place the first one, and the rest line up automatically.
         </p>
-      ) : (
+      ) : plans.length > 0 && (
         <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
           {canEdit && (
             <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer">
@@ -181,7 +278,7 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
               </div>
               {canEdit && (
                 <button type="button"
-                  onClick={() => setPlacing(p)}
+                  onClick={() => { batchRest.current = []; setPlacing(p) }}
                   className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10.5px] font-semibold ${
                     p.bounds ? 'border-teal/50 text-teal' : 'border-navy-700 text-muted hover:text-ink'
                   }`}>
@@ -210,11 +307,22 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
           imageUrl={placing.url}
           ring={ring}
           initialBounds={(placing.bounds ?? null) as Corners | null}
-          hint="Line the sheet’s property corners up with the satellite view — the drawn scale carries over."
-          onClose={() => setPlacing(null)}
-          onSaved={(b) => {
-            setPlans((xs) => xs.map((x) => (x.id === placing.id ? { ...x, bounds: b, map_active: b ? x.map_active : false } : x)))
+          hint={batchRest.current.length > 0
+            ? `Place this sheet — the other ${batchRest.current.length} in this batch will copy the same placement.`
+            : 'Line the sheet’s property corners up with the satellite view — the drawn scale carries over.'}
+          onClose={() => { batchRest.current = []; setPlacing(null) }}
+          onSaved={async (b) => {
+            const rest = batchRest.current
+            batchRest.current = []
+            const ids = new Set([placing.id, ...rest.map((r) => r.id)])
+            setPlans((xs) => xs.map((x) => (ids.has(x.id) ? { ...x, bounds: b, map_active: b ? x.map_active : false } : x)))
             setPlacing(null)
+            // Stamp the batch: same corners for every sheet in the set.
+            if (b) {
+              for (const r of rest) {
+                await saveOverlayBoundsAction(zoneId, r.id, b).catch(() => null)
+              }
+            }
           }}
         />
       )}
