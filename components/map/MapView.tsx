@@ -2539,18 +2539,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!on) return
     const cutoff = Date.now() - 7 * 86_400_000
     // Group by zone so five alerts at the yard become one pin with a count.
+    // Company-wide rules (after-hours theft — THE headline alert) have no
+    // zone, so those pin to the asset's current position instead of being
+    // silently dropped ("I don't think I am seeing anything", Aug 5).
     const byZone = new Map<string, { cx: number; cy: number; lines: string[] }>()
     for (const a of alertsRef.current) {
       if (new Date(a.triggered_at).getTime() < cutoff) continue
       const g = a.rule?.geofence
       const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
-      if (!g || !ring?.length) continue
-      let e = byZone.get(g.id)
-      if (!e) {
-        const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
-        const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
-        byZone.set(g.id, (e = { cx, cy, lines: [] }))
+      let key: string, cx: number, cy: number
+      if (g && ring?.length) {
+        key = g.id
+        cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
+        cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
+      } else {
+        const asset = assetsRef.current.find((x) => x.id === a.asset?.id)
+        if (!asset?.location) continue
+        key = `asset-${asset.id}`
+        cx = asset.location.lng
+        cy = asset.location.lat
       }
+      let e = byZone.get(key)
+      if (!e) byZone.set(key, (e = { cx, cy, lines: [] }))
       e.lines.push(`${a.asset?.name ?? 'Asset'} · ${(a.rule?.trigger ?? 'alert').replace(/_/g, ' ')}`)
     }
     const data: GeoJSON.FeatureCollection = {

@@ -14,7 +14,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
     .select(`
       *,
       asset:assets(id, name, type),
-      rule:alert_rules(*, geofence:geofences(id, name, color))
+      rule:alert_rules(*, geofence:geofences(id, name, color, geometry))
     `)
     .eq('company_id', companyId)
     .order('triggered_at', { ascending: false })

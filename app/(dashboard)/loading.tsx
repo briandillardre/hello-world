@@ -4,7 +4,13 @@
  */
 export default function DashboardLoading() {
   return (
-    <div className="h-full overflow-hidden p-4 space-y-4">
+    <div className="h-full overflow-hidden">
+      {/* Same thin teal sweep as the map timeline + layers panel — one
+          loading language everywhere (owner ask, Aug 5). */}
+      <div className="h-[3px] bg-navy-800 overflow-hidden">
+        <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
+      </div>
+      <div className="h-full overflow-hidden p-4 space-y-4">
       <div className="flex items-center gap-3">
         <div className="h-7 w-40 rounded-lg skeleton-shimmer" />
         <div className="h-5 w-20 rounded-full skeleton-shimmer ml-auto" />
@@ -18,6 +24,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-16 rounded-xl skeleton-shimmer" style={{ opacity: 1 - i * 0.15 }} />
         ))}
+      </div>
       </div>
     </div>
   )

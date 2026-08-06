@@ -173,7 +173,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   const [viewName, setViewName] = useState('')
   // Two-tap confirm for deleting a personal preset — first × arms it, second removes.
   const [confirmDelId, setConfirmDelId] = useState<string | null>(null)
-  const activeView = views?.find((v) => v.id === activeViewId) ?? null
   const submitSaveView = (e: React.FormEvent) => {
     e.preventDefault()
     onSaveView?.(viewName)
@@ -190,11 +189,19 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // Layer effects report failures here (missing key, dead feed, tiles not
   // rendering) — the row says WHY instead of sitting silently empty.
   const [feedErr, setFeedErr] = useState<Record<string, string>>({})
+  // Live feeds still downloading after their toggle flipped on — drives the
+  // thin sweep bar at the top of the panel (same branding as the timeline's).
+  const [pendingFeeds, setPendingFeeds] = useState<Set<string>>(new Set())
   const [, setTick] = useState(0)
   useEffect(() => {
+    const settle = (key: string) => setPendingFeeds((p) => {
+      if (!p.has(key)) return p
+      const next = new Set(p); next.delete(key); return next
+    })
     const onUpd = (e: Event) => {
       const d = (e as CustomEvent<{ key: string; at: number }>).detail
       if (!d?.key) return
+      settle(d.key)
       setFeedAt((f) => ({ ...f, [d.key]: d.at }))
       // A successful update clears any earlier failure note.
       setFeedErr((f) => {
@@ -206,7 +213,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     }
     const onErr = (e: Event) => {
       const d = (e as CustomEvent<{ key: string; msg: string }>).detail
-      if (d?.key && d?.msg) setFeedErr((f) => ({ ...f, [d.key]: d.msg }))
+      if (d?.key && d?.msg) { settle(d.key); setFeedErr((f) => ({ ...f, [d.key]: d.msg })) }
     }
     window.addEventListener('ht:layer-updated', onUpd)
     window.addEventListener('ht:layer-error', onErr)
@@ -217,6 +224,13 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       clearInterval(id)
     }
   }, [])
+  // A feed that never reports (dead endpoint with no error path) shouldn't
+  // sweep forever — give up quietly after 20 s.
+  useEffect(() => {
+    if (!pendingFeeds.size) return
+    const id = setTimeout(() => setPendingFeeds(new Set()), 20_000)
+    return () => clearTimeout(id)
+  }, [pendingFeeds])
   const stamp = (key: string): { text: string; stale: boolean } | null => {
     const at = feedAt[key]
     if (!at) return null
@@ -242,6 +256,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     }
   }
   const toggle = (id: string) => {
+    // Turning a LIVE feed on = a download starts — sweep until it reports.
+    if (!isOn(id) && LAYER_ROWS.find((d) => d.id === id)?.isLive) {
+      setPendingFeeds((p) => new Set(p).add(id))
+    }
     switch (id) {
       case 'zones': return onShowZones?.(!showZones)
       case 'radar': return onRadar(!radarOn)
@@ -369,66 +387,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </button>
       </div>
 
-      {/* ── Show on map — the old chip row lives here now, zero scrolling ── */}
-      {tab === 'layers' && filter && onFilter && (
-        <div className="px-2 pb-1.5">
-          <p className="px-1 pt-1 pb-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Show on map</p>
-          <div className="grid grid-cols-2 gap-1">
-            {([
-              ['vehicle', '🚛', 'Vehicles'],
-              ['equipment', '🏗️', 'Equipment'],
-              ['personnel', '👷', 'People'],
-              ['tool', '🔧', 'Tools'],
-            ] as [AssetType, string, string][]).map(([t, emoji, label]) => {
-              const on = filter.has(t)
-              return (
-                <button
-                  key={t}
-                  onClick={() => {
-                    const next = new Set(filter)
-                    if (on) next.delete(t); else next.add(t)
-                    onFilter(next)
-                  }}
-                  className={
-                    'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
-                    (on ? 'bg-teal/15 border-teal/40 text-ink' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
-                  }
-                >
-                  <span>{emoji}</span>{label}
-                </button>
-              )
-            })}
-            {onShowZones && (
-              <button
-                onClick={() => onShowZones(!showZones)}
-                className={
-                  'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
-                  (showZones ? 'bg-amber/15 border-amber/40 text-amber' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
-                }
-              >
-                <Hexagon className="h-3.5 w-3.5" /> Zones
-              </button>
-            )}
-            {onDrawZone && (
-              <button
-                onClick={() => { setOpen(false); onDrawZone() }}
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border border-dashed border-teal/60 text-teal hover:bg-teal/10 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" /> New zone
-              </button>
-            )}
-            {onToggleDevices && (
-              <button
-                onClick={onToggleDevices}
-                className={
-                  'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border transition-colors ' +
-                  (showDevices ? 'bg-teal/15 border-teal/40 text-teal' : 'bg-navy-900 border-navy-800 text-faint hover:text-ink')
-                }
-              >
-                <Cctv className="h-3.5 w-3.5" /> Site IoT
-              </button>
-            )}
-          </div>
+      {/* Something just toggled on and its feed is still downloading — the
+          same thin sweep the timeline uses (one loading language everywhere). */}
+      {pendingFeeds.size > 0 && (
+        <div className="sticky top-[37px] z-10 h-[3px] bg-navy-800 overflow-hidden" aria-label="Loading layers">
+          <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
         </div>
       )}
 
@@ -436,10 +399,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           accordion to a first-class tab (the reference tools' "My layers"). */}
       {tab === 'views' && views && onApplyView && (
         <div>
-          <p className="px-3 pt-2.5 pb-1 font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">One tap to a whole look</p>
-          <div className="px-2 pb-2">
-          <div className="px-1 flex items-center justify-between mb-1.5">
-            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">Saved to your account</span>
+          {/* Same row + switch language as the Layers tab (owner ask, Aug 5):
+              a view is a look you turn ON — and only one can be on at a time. */}
+          <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+            <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">One tap to a whole look</span>
             {onSaveView && !savingView && (
               <button
                 onClick={() => setSavingView(true)}
@@ -450,7 +413,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             )}
           </div>
           {savingView && (
-            <form onSubmit={submitSaveView} className="flex items-center gap-1 mb-1.5 px-1">
+            <form onSubmit={submitSaveView} className="flex items-center gap-1 px-3 pb-2">
               <input
                 autoFocus
                 value={viewName}
@@ -463,59 +426,54 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               </button>
             </form>
           )}
-          <div className="flex flex-wrap gap-1 px-1">
-            {views.map((v) => {
-              const active = activeViewId === v.id
-              return (
-                <span
-                  key={v.id}
-                  className={
-                    'group inline-flex items-center rounded-md text-[10.5px] font-semibold transition-colors border ' +
-                    (active ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700 hover:text-ink hover:border-navy-600')
-                  }
-                >
-                  <button onClick={() => onApplyView(v.id)} className="flex items-center gap-1 pl-2 py-1 pr-1.5">
-                    {defaultViewId === v.id && <Star className="h-2.5 w-2.5 fill-current text-amber" />}
-                    {v.name}
+          {views.map((v) => {
+            const active = activeViewId === v.id
+            return (
+              <div key={v.id} className="border-t border-navy-800">
+                <div className="flex items-center hover:bg-navy-900 transition-colors">
+                  <button
+                    onClick={() => onApplyView(v.id)}
+                    className="flex-1 min-w-0 flex items-center gap-1.5 px-3 py-2 text-left"
+                  >
+                    <span className={'text-[12px] font-semibold truncate ' + (active ? 'text-ink' : 'text-faint')}>{v.name}</span>
+                    {defaultViewId === v.id && <Star className="h-3 w-3 flex-none fill-current text-amber" />}
                   </button>
-                  {/* Personal presets get an inline × — presets ship with the
-                      app and can't be removed. */}
+                  {/* Personal views get an inline × (two-tap confirm) — presets
+                      ship with the app and can't be removed. */}
                   {!v.preset && onDeleteView && (
                     <button
                       onClick={() => { if (confirmDelId === v.id) { onDeleteView(v.id); setConfirmDelId(null) } else setConfirmDelId(v.id) }}
                       onBlur={() => setConfirmDelId((c) => (c === v.id ? null : c))}
                       title={confirmDelId === v.id ? 'Tap again to delete' : `Delete "${v.name}"`}
-                      className={'grid place-items-center h-full pr-1.5 pl-0.5 ' + (confirmDelId === v.id ? 'text-alert' : 'text-faint/60 hover:text-alert')}
+                      className={'grid place-items-center px-1.5 py-2 flex-none ' + (confirmDelId === v.id ? 'text-alert' : 'text-faint/60 hover:text-alert')}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   )}
-                </span>
-              )
-            })}
-          </div>
-          {activeView && (
-            <div className="flex items-center gap-2 mt-1.5 px-1">
-              {onSetDefaultView && (
-                <button
-                  onClick={() => onSetDefaultView(activeView.id)}
-                  className={
-                    'flex items-center gap-1 text-[10.5px] font-semibold transition-colors ' +
-                    (defaultViewId === activeView.id ? 'text-amber' : 'text-faint hover:text-amber')
-                  }
-                >
-                  <Star className={'h-3 w-3' + (defaultViewId === activeView.id ? ' fill-current' : '')} />
-                  {defaultViewId === activeView.id ? 'Opens with this view' : 'Use on open'}
-                </button>
-              )}
-              {!activeView.preset && <span className="ml-auto text-[10px] text-faint/70">× on a chip to delete</span>}
-            </div>
-          )}
-          </div>
+                  <button onClick={() => onApplyView(v.id)} className="pr-3 pl-1 py-2 flex-none" aria-label={`Apply view ${v.name}`}>
+                    <Toggle on={active} />
+                  </button>
+                </div>
+                {active && onSetDefaultView && (
+                  <button
+                    onClick={() => onSetDefaultView(v.id)}
+                    className={
+                      'flex items-center gap-1 px-3 pb-2 -mt-0.5 text-[10.5px] font-semibold transition-colors ' +
+                      (defaultViewId === v.id ? 'text-amber' : 'text-faint hover:text-amber')
+                    }
+                  >
+                    <Star className={'h-3 w-3' + (defaultViewId === v.id ? ' fill-current' : '')} />
+                    {defaultViewId === v.id ? 'Opens with this view' : 'Use on open'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* ── Layers tab: flat, scannable sections — Basemap in reach first,
+      {/* ── Layers tab: flat, scannable sections — Basemap first (owner ask,
+             Aug 5), New zone right under it, then Show-on-map toggles,
              then Site · Weather · 3D · Water & Terrain · Advanced. ── */}
       {tab === 'layers' && (<>
       <SectionLabel gid="basemap" />
@@ -552,6 +510,62 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           </button>
         ))}
       </div>
+      {onDrawZone && (
+        <div className="px-2 pb-2">
+          <button
+            onClick={() => { setOpen(false); onDrawZone() }}
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11.5px] font-semibold border border-dashed border-teal/60 text-teal hover:bg-teal/10 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" /> New zone
+          </button>
+        </div>
+      )}
+
+      {/* ── Show on map — asset types as the same toggle rows as every other
+             layer (the old chip grid read as buttons, not switches). ── */}
+      {filter && onFilter && (
+        <>
+          <SectionLabel label="Show on map" icon={Layers} />
+          {([
+            ['vehicle', '🚛', 'Vehicles'],
+            ['equipment', '🏗️', 'Equipment'],
+            ['personnel', '👷', 'People'],
+            ['tool', '🔧', 'Tools'],
+          ] as [AssetType, string, string][]).map(([t, emoji, label]) => {
+            const on = filter.has(t)
+            return (
+              <div key={t} className="border-t border-navy-800 first:border-t-0">
+                <button
+                  onClick={() => {
+                    const next = new Set(filter)
+                    if (on) next.delete(t); else next.add(t)
+                    onFilter(next)
+                  }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+                >
+                  <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (on ? 'text-ink' : 'text-faint')}>
+                    <span>{emoji}</span>{label}
+                  </span>
+                  <Toggle on={on} />
+                </button>
+              </div>
+            )
+          })}
+          {onToggleDevices && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={onToggleDevices}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showDevices ? 'text-ink' : 'text-faint')}>
+                  <Cctv className={'h-3.5 w-3.5 ' + (showDevices ? 'text-teal' : 'text-faint')} /> Site IoT
+                </span>
+                <Toggle on={showDevices} />
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       <SectionLabel gid="site" />
       {rowsFor('site')}

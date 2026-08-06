@@ -61,13 +61,24 @@ export function SpeedControl({
             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Speed</span>
             <span className="font-display font-bold text-amber text-[13px] tabular-nums">{formatSpeed(value)}</span>
           </div>
-          <input
-            type="range" min={0} max={STEPS} step={1} value={toPos(value)}
-            onChange={(e) => onChange(fromPos(Number(e.target.value)))}
-            className="slider-heat w-full h-[22px] cursor-pointer touch-none"
-            aria-label="Playback speed"
-            aria-valuetext={formatSpeed(value)}
-          />
+          {/* slider-heat's track is transparent (it expects a heat gradient
+              behind it on the timeline) — give this one a visible rail with
+              an amber fill up to the thumb ("hard to see", Aug 5). */}
+          <div className="relative h-[22px] flex items-center">
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[7px] rounded-full bg-navy-700 border border-navy-600/60 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber/45 to-amber"
+                style={{ width: `${Math.max(3, (toPos(value) / STEPS) * 100)}%` }}
+              />
+            </div>
+            <input
+              type="range" min={0} max={STEPS} step={1} value={toPos(value)}
+              onChange={(e) => onChange(fromPos(Number(e.target.value)))}
+              className="slider-heat relative w-full h-[22px] cursor-pointer touch-none"
+              aria-label="Playback speed"
+              aria-valuetext={formatSpeed(value)}
+            />
+          </div>
           {/* Preset ticks — one-tap jumps to the window's canonical speeds */}
           <div className="flex justify-between mt-0.5">
             {speeds.map((s) => (
