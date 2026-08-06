@@ -388,7 +388,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
               </Label>
               <textarea
                 id="zone-notes" rows={3}
-                placeholder="Gate code 4188 · call Nate before 7am · no trucks on the east drive"
+                placeholder="Gate code 4188 · call the super before 7am · no trucks on the east drive"
                 value={notes}
                 onChange={(e) => { setNotes(e.target.value); setDirty(true) }}
                 className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-sm text-ink placeholder:text-faint outline-none focus:border-amber resize-y"
