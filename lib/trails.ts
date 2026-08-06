@@ -406,8 +406,10 @@ export function speedsForWindow(windowSeconds: number): number[] {
 
 /** Default = the ~45-second full sweep. */
 export function defaultSpeedForWindow(windowSeconds: number): number {
+  // Default lands mid-slider (geometric middle of the log range) — the old
+  // second-slowest preset parked the thumb near the left edge (Brian, Aug 6).
   const s = speedsForWindow(windowSeconds)
-  return s[Math.min(1, s.length - 1)]
+  return niceSpeed(Math.sqrt(s[0] * s[s.length - 1]))
 }
 
 /** Speed options scale with the range — long windows need much bigger multipliers. */

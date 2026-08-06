@@ -56,7 +56,7 @@ export function SpeedControl({
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 z-30 w-[248px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2">
+        <div className="absolute bottom-full right-0 mb-2 z-[90] w-[248px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2">
           <div className="flex items-baseline justify-between mb-1">
             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Speed</span>
             <span className="font-display font-bold text-amber text-[13px] tabular-nums">{formatSpeed(value)}</span>
