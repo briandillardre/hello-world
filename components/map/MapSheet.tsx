@@ -74,8 +74,14 @@ export function MapSheet({
         {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
         {badge && <div className="mt-1.5">{badge}</div>}
       </div>
+      {/* The X sits inside the touch-none drag header — claim the pointer
+          before the drag handlers eat it, and close on pointerup directly
+          (the synthesized click never arrives on touch — "X doesn't appear
+          to be working", Aug 6). */}
       <button
         onClick={onClose}
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => { e.stopPropagation(); onClose() }}
         aria-label="Close"
         className={(showMobileClose ? 'grid' : 'hidden md:grid') + ' place-items-center w-9 h-9 rounded-full bg-navy-800 border border-navy-700 text-faint hover:text-ink active:scale-95 flex-none'}
       >
