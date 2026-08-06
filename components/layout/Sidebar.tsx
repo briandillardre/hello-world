@@ -79,7 +79,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
       )}
     >
       {/* brand */}
-      <div className={cn('border-b border-navy-800 flex items-center min-h-[68px]', collapsed ? 'justify-center px-2' : 'px-4')}>
+      <div className={cn('border-b border-navy-800 flex items-center min-h-[54px]', collapsed ? 'justify-center px-2' : 'px-4')}>
         {collapsed ? (
           <Logo wordmark={false} size={26} href="/map" />
         ) : (
@@ -108,14 +108,14 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         </button>
       )}
 
-      <nav className="flex-1 p-2 overflow-y-auto">
+      <nav className="flex-1 p-1.5 overflow-y-auto">
         {navSections.map((section, si) => (
-        <div key={si} className={si > 0 ? 'mt-2' : ''}>
+        <div key={si} className={si > 0 ? 'mt-1' : ''}>
         {section.title && !collapsed && (
-          <p className="px-3 pt-1.5 pb-1 font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint/70">{section.title}</p>
+          <p className="px-3 pt-1 pb-0.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint/70">{section.title}</p>
         )}
-        {section.title && collapsed && <div className="mx-3 my-2 border-t border-navy-800" />}
-        <div className="space-y-1">
+        {section.title && collapsed && <div className="mx-3 my-1.5 border-t border-navy-800" />}
+        <div className="space-y-0.5">
         {section.items.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href)
           const isAlerts = href === '/alerts'
@@ -125,8 +125,8 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
               href={href}
               title={collapsed ? label : undefined}
               className={cn(
-                'relative flex items-center rounded-lg text-sm font-medium transition-colors',
-                collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5',
+                'relative flex items-center rounded-lg text-[13px] font-medium transition-colors',
+                collapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-[6px]',
                 active
                   ? 'bg-amber/15 text-amber border border-amber/30'
                   : 'text-muted hover:text-ink hover:bg-navy-900'
@@ -160,7 +160,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             title={collapsed ? 'Sign out' : undefined}
             className={cn(
               'flex items-center rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-navy-900 w-full transition-colors',
-              collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2.5'
+              collapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-[6px]'
             )}
           >
             <LogOut className="h-4 w-4" />
