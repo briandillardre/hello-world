@@ -35,6 +35,9 @@ interface MapPageClientProps {
   tracks: AssetTrack[]
   /** Raw location history (real mode). MapView builds per-range datasets from it. */
   historyRows?: LocationHistoryRow[] | null
+  /** Real mode: the page ships WITHOUT history so the map paints fast; this
+   *  flag makes the client pull the recent baseline right after mount. */
+  deferHistory?: boolean
   /** Placed drone/site imagery (latest per zone) for the 'Site imagery' layer. */
   siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
   earliestMs?: number | null
@@ -58,9 +61,34 @@ interface MapPageClientProps {
   brand?: { companyName: string; logoUrl: string | null } | null
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
+
+  // Deferred history baseline: the server no longer blocks first paint on the
+  // GPS-history sweep. Pull the last 2 days here (feeds Live/Today trails);
+  // every longer range fetches its exact window on demand already, behind the
+  // timeline's loading bar. Refreshed every 3 min so live trails keep growing.
+  const [baselineRows, setBaselineRows] = useState<LocationHistoryRow[] | null>(null)
+  useEffect(() => {
+    if (!deferHistory) return
+    let cancelled = false
+    const load = () => {
+      if (document.visibilityState !== 'visible') return
+      const from = new Date(Date.now() - 2 * 86_400_000).toISOString()
+      const to = new Date().toISOString()
+      fetch(`/api/history?from=${from}&to=${to}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!cancelled && j && Array.isArray(j.rows)) setBaselineRows(j.rows)
+        })
+        .catch(() => { /* offline — dots still render, ranges self-fetch */ })
+    }
+    load()
+    const iv = setInterval(load, 3 * 60_000)
+    return () => { cancelled = true; clearInterval(iv) }
+  }, [deferHistory])
+  const effectiveHistory = deferHistory ? (baselineRows ?? historyRows) : historyRows
 
   // Keep the fleet map live: re-pull server data on an interval so trackers (and
   // a teammate's shared phone) visibly move without a manual refresh. The map
@@ -150,7 +178,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         assets={assets}
         geofences={geofences}
         tracks={tracks}
-        historyRows={historyRows}
+        historyRows={effectiveHistory}
         siteOverlays={siteOverlays}
         earliestMs={earliestMs}
         tz={tz}

@@ -1,4 +1,4 @@
-import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
+import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/geofences'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
@@ -44,28 +44,19 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
 
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
 
-  // Real mode: fetch ALL history (from the first-ever fix, capped) once and
-  // hand the raw rows to the client, which builds tracks + cost + zone curves
-  // per selected range (Today … All time … Custom). MapView is client-only
-  // (ssr:false) so this computation naturally lives there, keyed on the range.
+  // Real mode: history is NOT awaited here anymore — it was the bulk of the
+  // "loading your fleet…" stall (the whole page blocked on a 12k-row sweep
+  // before first paint, Aug 5). The map ships with live positions only;
+  // MapPageClient pulls the recent-history baseline from /api/history right
+  // after mount, and longer ranges already fetch on demand behind the
+  // timeline's loading bar.
   const sinceMs = earliestMs ?? Date.now() - 30 * 86_400_000
-  // History + pairing both key off sinceMs — fetch them together, not in turn.
-  const [history, pairingEpisodes] = await Promise.all([
-    earliestMs !== null
-      ? getLocationHistory(companyId, new Date(sinceMs).toISOString(), 12000)
-      : getLocationHistory(companyId, new Date(Date.now() - 2 * 86_400_000).toISOString()),
-    getPairingEpisodes(companyId, new Date(sinceMs).toISOString()),
-  ])
-
-  // Thin the shipped payload: OBD units report every few seconds, so cap at a
-  // few thousand evenly-strided rows. tracksFromHistory thins further per range.
-  const MAX_SHIP = 20000
-  const rows = history ?? []
-  const { simplifyHistoryRows } = await import('@/lib/simplify')
-  const historyRows = rows.length > MAX_SHIP ? simplifyHistoryRows(rows, 12, MAX_SHIP) : rows
+  const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
+  const pairingEpisodes = await getPairingEpisodes(companyId, new Date(sinceMs).toISOString())
 
   // Demo mode keeps the synthetic cinematic trails.
-  const demoTracks = history ? [] : generateTracks(assets)
+  const demoTracks = isRealMode ? [] : generateTracks(assets)
 
   // Map each tool to the gateway holding it, for the asset detail panel.
   const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
@@ -83,7 +74,8 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           assets={assets}
           geofences={geofences}
           tracks={demoTracks}
-          historyRows={history ? historyRows : null}
+          historyRows={isRealMode ? [] : null}
+          deferHistory={isRealMode}
           siteOverlays={siteOverlays}
           earliestMs={earliestMs}
           tz={tz}

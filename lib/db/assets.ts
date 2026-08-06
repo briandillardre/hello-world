@@ -71,18 +71,26 @@ export async function getLocationHistory(
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
+  // Pages fetch in PARALLEL — the old serial while-loop cost up to 12
+  // sequential round-trips and was the bulk of the map page's first-load
+  // stall once live trackers started streaming ("taking a LONG time", Aug 5).
   const PAGE = 1000
+  const pages = Math.ceil(limit / PAGE)
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      supabase
+        .from('asset_locations')
+        .select('asset_id, lat, lng, speed, timestamp')
+        .eq('company_id', companyId)
+        .gte('timestamp', sinceIso)
+        .order('timestamp', { ascending: false })
+        .range(i * PAGE, Math.min((i + 1) * PAGE, limit) - 1)
+    )
+  )
   const rows: LocationHistoryRow[] = []
-  while (rows.length < limit) {
-    const { data } = await supabase
-      .from('asset_locations')
-      .select('asset_id, lat, lng, speed, timestamp')
-      .eq('company_id', companyId)
-      .gte('timestamp', sinceIso)
-      .order('timestamp', { ascending: false })
-      .range(rows.length, Math.min(rows.length + PAGE, limit) - 1)
-    rows.push(...(data ?? []))
-    if (!data || data.length < PAGE || rows.length >= limit) break
+  for (const r of results) {
+    rows.push(...(r.data ?? []))
+    if (!r.data || r.data.length < PAGE) break // past the end — later pages are empty
   }
   return rows.reverse()
 }
