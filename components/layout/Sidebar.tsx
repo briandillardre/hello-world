@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Activity } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
@@ -11,8 +11,8 @@ import { Logo } from '@/components/brand/Logo'
 // awareness), Field (the crew's day), Office (money + people), Setup.
 const navSections: { title: string | null; items: { href: string; label: string; icon: typeof Map }[] }[] = [
   { title: null, items: [
-    { href: '/command', label: 'Command Center', icon: MonitorPlay },
     { href: '/map', label: 'Live Map', icon: Map },
+    { href: '/command', label: 'Command Center', icon: MonitorPlay },
     { href: '/alerts', label: 'Alerts', icon: Bell },
   ]},
   { title: 'Field', items: [
@@ -31,6 +31,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/finance', label: 'Financials', icon: Scale },
     { href: '/model', label: 'Op model', icon: TrendingUp },
     { href: '/team', label: 'Team', icon: Users },
+    { href: '/activity', label: 'Team activity', icon: Activity },
   ]},
   { title: 'Setup', items: [
     { href: '/settings', label: 'Settings', icon: Settings },

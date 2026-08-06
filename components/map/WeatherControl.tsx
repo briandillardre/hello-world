@@ -433,9 +433,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
                 <div className="flex items-center hover:bg-navy-900 transition-colors">
                   <button
                     onClick={() => onApplyView(v.id)}
-                    className="flex-1 min-w-0 flex items-center gap-1.5 px-3 py-2 text-left"
+                    className="flex-1 min-w-0 overflow-hidden flex items-center gap-1.5 px-3 py-2 text-left"
                   >
-                    <span className={'text-[12px] font-semibold truncate ' + (active ? 'text-ink' : 'text-faint')}>{v.name}</span>
+                    <span className={'block min-w-0 text-[12px] font-semibold truncate ' + (active ? 'text-ink' : 'text-faint')}>{v.name}</span>
                     {defaultViewId === v.id && <Star className="h-3 w-3 flex-none fill-current text-amber" />}
                   </button>
                   {/* Personal views get an inline × (two-tap confirm) — presets
@@ -450,7 +450,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
                       <X className="h-3.5 w-3.5" />
                     </button>
                   )}
-                  <button onClick={() => onApplyView(v.id)} className="pr-3 pl-1 py-2 flex-none" aria-label={`Apply view ${v.name}`}>
+                  {/* flex on the button matters: Toggle's w-9 span only sizes
+                      as a flex item — inline it collapses to just the knob. */}
+                  <button onClick={() => onApplyView(v.id)} className="flex items-center pr-3 pl-1 py-2 flex-none shrink-0" aria-label={`Apply view ${v.name}`}>
                     <Toggle on={active} />
                   </button>
                 </div>

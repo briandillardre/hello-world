@@ -152,6 +152,14 @@ export function AlertRulesManager({ rules, geofences, assets, editable }: {
           Draw a zone on the map first — rules watch zones.
         </p>
       ) : (
+        <>
+        {/* Cell-state legend — the desktop tooltips don't exist on touch. */}
+        <p className="mb-1.5 font-mono text-[10.5px] text-faint flex items-center gap-3">
+          <span className="flex items-center gap-1"><span className="inline-grid place-items-center w-4 h-4 rounded-full border border-dashed border-navy-600 text-navy-500 text-[9px] leading-none">+</span> not set</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-teal/50" /> paused</span>
+          <span className="flex items-center gap-1 text-amber/90">✓ on</span>
+          <span className="text-faint/70">· tap a cell to cycle</span>
+        </p>
         <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -221,6 +229,7 @@ export function AlertRulesManager({ rules, geofences, assets, editable }: {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Special rules — one asset, custom windows, speed limits */}
