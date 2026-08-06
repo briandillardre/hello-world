@@ -1,0 +1,100 @@
+# Brain Ball 🧠⚽ — Kids' Adaptive Learning Game
+
+Live at **https://hammertrackai.com/play** (unlisted — not indexed, not linked from the site).
+
+Built for Marshall (b. 2020-09-15) and Lincoln (b. 2022-02-10). Roll a smiley ball into the
+right answer bubble and it eats it and grows (hole.io style). Wrong answers gently reveal the
+correct bubble and shrink nothing — encouragement only.
+
+**Whalehogs theming** (the Dillard crew name — Marshall misheard Avicii's "wild heart" as
+"whalehog"): the picker is badged "A Whalehogs Game", selecting a kid runs the family ritual
+("Dada says: Today's going to be a…" → tap → **GREAT DAY!!!** with confetti and a spoken yell),
+encouragement lines include "We don't say can't!" and "Whalehogs never quit!", and there's an
+unlockable Whalehog ball skin in the shop.
+
+## How it works
+
+| Piece | File | What it does |
+|---|---|---|
+| Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards |
+| App shell | `components/game/PlayApp.tsx` | Picker → GREAT DAY ritual → home (quests, streaks) → game → spoken summary; shop; review; grown-ups gate |
+| Miss review | `components/game/MissReview.tsx` | Missed questions replayed one at a time, read aloud, with the "why" spoken on success |
+| Personality quiz | `components/game/PersonalityQuiz.tsx` | "Who Am I?" four-temperaments animals, saved with history |
+| Parent dashboard | `components/game/ParentDashboard.tsx` | Kids: age-norm bell curves + US/TN/Global benchmarks. Adults: IQ-style 3-signal scores, consistency, speed |
+| Parent accounts | `components/game/AccountSync.tsx` + `lib/game/sync.ts` | Google/email sign-in, cloud profile sync (Supabase) |
+| Question banks | `lib/game/questions.ts` | Kid bank (7 skills, pre-K→1st) + adult bank (mental math, sequences, vocab, analogies, logic, spelling) |
+| Adaptive engine | `lib/game/adaptive.ts` | Elo/IRT ability per skill (kids cap 99, adults 120), speed-weighted updates, age norms, adult adjusted scores |
+| Speech | `lib/game/speech.ts` | Best-available voice ranking (novelty voices blacklisted), natural rate |
+| Persistence | `lib/game/storage.ts` | localStorage profiles (Marshall, Lincoln + Brian/Leslie testers), review queue, habit-loop fields |
+
+**Skills:** counting, numbers, math (add/subtract/missing addend), letters, sounds (phonics/rhymes),
+shapes & patterns, sight words / CVC reading.
+
+**Adaptive:** every answer updates a 1–99 ability estimate (`theta`) per skill; the next question is
+drawn near it (with periodic easy confidence questions). Correct on hard questions moves theta up
+fast; the game gets harder or easier automatically.
+
+**Bell curve:** the grown-ups report converts theta to a percentile against heuristic age
+expectations (age 4 ≈ 30, age 5 ≈ 50, age 6 ≈ 70, SD 15) computed from each kid's exact birthdate.
+It's framed as encouragement, not a clinical assessment.
+
+**Rewards:** 2 coins per correct (+streak bonus), stars per round, coins buy ball skins.
+Web Speech API reads every question aloud for pre-readers.
+
+## App Store / Google Play plan
+
+The game is **local-first**: with no Supabase env vars it runs fully on-device (no server calls,
+no ads, no tracking). There IS an optional **parent account** (Google/email via Supabase) that
+syncs kid profiles to the family's own database — so the store data-safety answers depend on
+whether accounts are enabled in the shipped build:
+- **Accounts disabled** (no env vars): declare "no data collected."
+- **Accounts enabled**: declare account info (parent email) + app activity (game progress),
+  collected optionally, not shared, not used for ads. Kids never sign in themselves; the
+  account lives behind the grown-ups gate. Still no third-party ads/analytics either way.
+
+Already in place:
+- `public/brainball.webmanifest` — standalone PWA manifest scoped to `/play` (id, icons, portrait)
+- `public/icons/brainball-{192,512,maskable-512}.png` — app icons
+- Safe-area insets + `viewport-fit=cover` for notched phones
+- Works offline after first load except fonts (add a service worker at packaging time if desired)
+
+### Google Play (easiest, do first)
+1. Use **Bubblewrap** (`npm i -g @bubblewrap/cli`) or https://pwabuilder.com against
+   `https://hammertrackai.com/brainball.webmanifest` to generate a **Trusted Web Activity** APK/AAB.
+2. Host the generated `assetlinks.json` at `https://hammertrackai.com/.well-known/assetlinks.json`.
+3. Play Console: one-time $25 developer fee, fill Data Safety form per the note above,
+   target audience = kids → complete the Families policy questionnaire.
+
+### Apple App Store
+Apple doesn't accept plain PWAs; wrap with **Capacitor** in a separate repo:
+1. `npm create @capacitor/app brain-ball` → point it at the deployed URL (or export `/play`
+   statically and bundle it for full offline).
+2. `npx cap add ios`, set bundle id (e.g. `com.hammertrack.brainball`), icons from
+   `public/icons/brainball-512.png`.
+3. Apple Developer Program $99/yr; for the **Kids Category**: no third-party ads/analytics
+   (we have none), parental gate before external links (the grown-ups math gate already exists).
+4. Native niceties to add inside the wrapper later: haptics on correct answers, App Store
+   in-app-purchase if the coin shop ever goes paid.
+
+## Parent accounts & cloud sync
+
+Built and wired, activates when the production Supabase project is connected (same env vars as
+the main app — see CLAUDE.md):
+
+- **Sign-in options:** Google OAuth ("Continue with Google") + email/password, via the site's
+  existing Supabase auth. The card lives at the top of the Grown-ups Progress Report.
+- **Sync:** kid profiles auto-push (debounced) whenever progress changes; on sign-in, cloud and
+  local copies merge per kid (whichever has more recorded answers wins), so a new phone picks up
+  where the old one left off.
+- **Storage:** `supabase/migrations/003_brainball.sql` — one row per parent
+  (`brainball_profiles`), RLS locked to `auth.uid()`.
+- **Google provider setup (one-time):** create an OAuth client at console.cloud.google.com with
+  redirect `https://<project-ref>.supabase.co/auth/v1/callback`, paste ID + secret into Supabase →
+  Authentication → Providers → Google, and add `https://hammertrackai.com/play` to the auth
+  redirect allow-list. (Steps also in the migration file header.)
+- **Demo mode:** without env vars the card explains sync is coming and play stays local-only.
+
+### Down the road
+- Move profiles from localStorage to Supabase (already in the stack) for multi-device sync.
+- Replace Web Speech API with recorded voice for consistent narration in store builds.
+- More question banks (time, money, spelling) — just add a generator in `lib/game/questions.ts`.

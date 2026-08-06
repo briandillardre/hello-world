@@ -64,6 +64,7 @@ re-audits the splash claims in the same commit.
 - `docs/BUSINESS-PLAN.md` — full operating plan: pricing, phases, hires, cash curve, exit scenarios (update at phase gates)
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
+- `app/play/page.tsx` + `components/game/` + `lib/game/` — Brain Ball, kids' adaptive learning game (Brian's kids; unlisted; local-first with optional parent cloud sync; app-store packaging plan in docs/BRAIN_BALL.md)
 
 ## Features Built
 - Live map with clustering (MapLibre GL JS) — Google-Maps parity: double-tap-hold one-finger zoom, Navigate/Street View/share-pin handoffs on asset+zone panels, imperial scale bar, tap-a-parcel owner/address/acreage from free county ArcGIS data (`NEXT_PUBLIC_PARCEL_SERVICE_URL`). Future (tasks 161–166): KMZ/shapefile import, map markup, offline areas, drive-time ETA, long-press pin, county auto-discovery + owner search
