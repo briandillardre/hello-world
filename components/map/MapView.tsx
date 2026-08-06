@@ -1004,9 +1004,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // device ("map is blank" reports) without shipping a special build.
     ;(window as unknown as { __htmap?: unknown }).__htmap = map.current
 
-    // Kiosk: zoom/locate/fit ride bottom-left — top-right belongs to the event
-    // rail on the wall display, and the two were stacked on top of each other.
-    const ctrlCorner = kiosk ? 'bottom-left' : 'top-right'
+    // Both surfaces stack controls top-right like the main map (owner ask,
+    // Aug 6 — bottom-left collided with the kiosk's left rail); the kiosk's
+    // event rail shifts left to leave this column clear.
+    const ctrlCorner = 'top-right' as const
     map.current.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), ctrlCorner)
 
     // Weather radar toggle, right under the compass — replaced the two 90°

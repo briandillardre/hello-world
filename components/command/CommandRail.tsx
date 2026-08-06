@@ -1,12 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { ChevronDown, ChevronLeft, X } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { buildActivityCurve, areaPath } from '@/lib/activity'
 import { pointInPolygon } from '@/lib/alerts-engine'
-import { fetchConditions, weatherEmoji, type Conditions } from '@/lib/weather'
 import type { PanelKey, PanelState } from './CommandCenter'
 
 /**
@@ -93,20 +92,7 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
     return { moving, still, dark, weakest: batts.slice(0, 3) }
   }, [assets])
 
-  // ── on-site weather at the fleet centroid, refreshed every 10 min ──
-  const [wx, setWx] = useState<Conditions | null>(null)
-  useEffect(() => {
-    const located = assets.filter((a) => a.location)
-    if (!located.length) return
-    const lat = located.reduce((s, a) => s + a.location!.lat, 0) / located.length
-    const lng = located.reduce((s, a) => s + a.location!.lng, 0) / located.length
-    let cancelled = false
-    const load = () => fetchConditions(lat, lng).then((c) => { if (!cancelled && c) setWx(c) })
-    load()
-    const id = setInterval(load, 600_000)
-    return () => { cancelled = true; clearInterval(id) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assets.length])
+  // On-site weather moved to the header chip (TopBarWeather, Aug 6).
 
   return (
     <div className="w-52 flex flex-col gap-2.5 overflow-y-auto no-scrollbar">
@@ -182,21 +168,6 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
           </div>
         )}
       </Module>
-
-      {wx && (
-        <Module k="weather" title="On-site weather" state={panels.weather} onPanel={onPanel}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl leading-none">{weatherEmoji(wx.code)}</span>
-            <div className="flex-1">
-              <p className="font-display font-black text-[17px] text-ink leading-none tabular-nums">{wx.tempF}°</p>
-              <p className="font-mono text-[9px] text-faint mt-0.5 tabular-nums">wind {wx.windMph} mph{wx.precip > 0 ? ` · ${wx.precip}" rain` : ''}</p>
-            </div>
-            {wx.isThunder && (
-              <span className="font-mono text-[9px] text-alert tracking-wide animate-blink">▲ STORM</span>
-            )}
-          </div>
-        </Module>
-      )}
 
       <button
         onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}

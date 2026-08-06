@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { signOutAction } from '@/lib/actions/auth'
 import { TacticalHud } from './TacticalHud'
 import { CommandRail } from './CommandRail'
+import { TopBarWeather } from '@/components/map/TopBarWeather'
 import { EventRail } from './EventRail'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 
@@ -39,7 +40,7 @@ export interface CommandKpis {
 export type PanelState = 'open' | 'min' | 'hidden'
 export type PanelKey = 'activity' | 'sites' | 'status' | 'weather' | 'events' | 'fleet' | 'hud' | 'chips' | 'ticker' | 'zoom'
 
-const LEFT_KEYS: PanelKey[] = ['activity', 'sites', 'status', 'weather']
+const LEFT_KEYS: PanelKey[] = ['activity', 'sites', 'status']
 const RIGHT_KEYS: PanelKey[] = ['events', 'fleet']
 const DEFAULT_PANELS: Record<PanelKey, PanelState> = {
   activity: 'open', sites: 'open', status: 'open', weather: 'open',
@@ -335,7 +336,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {rightVisible ? (
         // Same pointer-events split as the left rail — empty wrapper area
         // must never block the map.
-        <div className="absolute right-4 top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
+        <div className="absolute right-[58px] top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
           <div className="pointer-events-auto max-h-full">
             <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={historyRows} panels={panels} onPanel={onPanel} />
           </div>
@@ -395,6 +396,9 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         )}
 
         <div className="flex items-center gap-2 md:gap-4 flex-none">
+          {/* On-site weather moved up here from the left rail (owner ask,
+              Aug 6) — same chip + dropdown as the main map's top bar. */}
+          <span className="hidden xl:block"><TopBarWeather /></span>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
             className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
