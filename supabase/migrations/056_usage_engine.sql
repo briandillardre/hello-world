@@ -130,5 +130,5 @@ BEGIN
   END LOOP;
 END $$;
 
--- ONE-TIME BACKFILL (auto-migrate runs this on deploy; ~90 days of history):
-SELECT rebuild_all_usage(now() - INTERVAL '90 days', now());
+-- ONE-TIME BACKFILL (auto-migrate runs this on deploy; up to 1 year of history):
+SELECT rebuild_all_usage(now() - INTERVAL '1 year', now());

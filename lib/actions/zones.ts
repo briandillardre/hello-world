@@ -78,14 +78,14 @@ export async function createGeofenceAction(
     await logZoneEvent(companyId, id, actor.id, 'created', { by: actor.name, kind, personal: !!opts?.personal })
     if (opts?.folderUrl?.trim()) await saveZoneFolderAction(id, opts.folderUrl)
     if (opts?.notes?.trim()) await saveZoneNotesAction(id, opts.notes)
-    // 056: backfill the usage ledger for this zone's PAST — a zone drawn
+    // 056: backfill the usage ledger for this zone's PAST (1 year) — a zone drawn
     // mid-project replays stored pings so weeks before it existed still bill
     // (hard requirement, Aug 6). Fire-and-forget; creation never blocks.
     try {
       const { createServiceClient } = await import('../supabase-server')
       void createServiceClient().rpc('rebuild_zone_usage', {
         p_geofence: id,
-        p_from: new Date(Date.now() - 90 * 86_400_000).toISOString(),
+        p_from: new Date(Date.now() - 365 * 86_400_000).toISOString(),
         p_to: new Date().toISOString(),
       })
     } catch { /* pre-056 DB — hourly cron picks it up once migrated */ }
@@ -123,7 +123,7 @@ export async function saveGeofenceAction(
       const { createServiceClient } = await import('../supabase-server')
       void createServiceClient().rpc('rebuild_zone_usage', {
         p_geofence: id,
-        p_from: new Date(Date.now() - 90 * 86_400_000).toISOString(),
+        p_from: new Date(Date.now() - 365 * 86_400_000).toISOString(),
         p_to: new Date().toISOString(),
       })
     } catch { /* pre-056 DB */ }
