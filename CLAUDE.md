@@ -1,5 +1,11 @@
 # HammerTrack — Project Handoff
 
+> **Side project in this repo:** `vitaltrack/` — VitalTrack, a standalone
+> preventative-health app (Garmin data + health record + labs + AI advisor).
+> Plan/verdict: `docs/HEALTH-APP-PLAN.md` · app docs: `vitaltrack/README.md`.
+> Deploys as its own Vercel project (Root Directory = `vitaltrack`). Runs in
+> demo mode with zero env vars. Everything below this note is HammerTrack.
+
 ## What This Is
 Mobile-first asset tracking SaaS for construction companies. Competes with Tenna at lower price.
 Tracks vehicles (OBD2), heavy equipment (GPS), personnel, small tools (Bluetooth) on a live map.
