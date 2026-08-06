@@ -9,7 +9,6 @@ import type { AssetTrack } from '@/lib/trails'
 import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/geofences'
-import { setWeatherDefaultAction } from '@/lib/actions/company'
 import { saveMapViewsAction } from '@/lib/actions/profile'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -47,7 +46,6 @@ interface MapPageClientProps {
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   defaultWeatherPlace?: string | null
   defaultWeatherCoords?: { lat: number; lng: number } | null
-  canSetWeatherDefault?: boolean
   /** User's saved map views from their profile (null = none / demo). */
   savedMapViews?: { views: unknown[]; defaultId: string | null } | null
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
@@ -60,7 +58,7 @@ interface MapPageClientProps {
   brand?: { companyName: string; logoUrl: string | null } | null
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canSetWeatherDefault = false, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -172,7 +170,6 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         onGeofenceDelete={handleGeofenceDelete}
         defaultWeatherPlace={defaultWeatherPlace}
         defaultWeatherCoords={defaultWeatherCoords}
-        onSaveWeatherDefault={canSetWeatherDefault ? setWeatherDefaultAction : undefined}
         savedMapViews={savedMapViews as import('@/lib/map-views').MapViewsState | null}
         onSaveMapViews={isMock ? undefined : saveMapViewsAction}
         canViewCosts={canViewCosts}

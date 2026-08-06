@@ -47,6 +47,9 @@ const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
 interface TimelinePlaybackProps {
   range: TimeRange
   onRange: (r: TimeRange) => void
+  /** True while the selected window's full-resolution history is still
+   *  downloading — draws a thin sweep bar above the scrubber. */
+  loading?: boolean
   trailMode: TrailMode
   onTrailMode: (m: TrailMode) => void
   /** Live marker style: clean colored dots (default) or direction arrows —
@@ -110,7 +113,7 @@ interface TimelinePlaybackProps {
 }
 
 export function TimelinePlayback({
-  range, onRange, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  range, onRange, loading = false, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
@@ -703,6 +706,13 @@ export function TimelinePlayback({
           </button>
 
           <div className="flex-1 min-w-0">
+            {/* Long ranges re-fetch full-resolution history — a thin sweep
+                right above the scrubber says "still filling in" (Aug 5). */}
+            {loading && (
+              <div className="h-[3px] mb-[3px] rounded-full bg-navy-800 overflow-hidden" aria-label="Loading history">
+                <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
+              </div>
+            )}
             {/* Heat-mapped track: color = # assets moving at that moment
                 (blue = nobody moving, teal→amber→red = busier). */}
             <div className="relative h-[17px] flex items-center">

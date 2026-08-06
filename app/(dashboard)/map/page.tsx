@@ -77,7 +77,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const aboard = toolsAboard(rawAssets, toolAssociations)
   return (
     <div className="h-full flex flex-col pb-[54px] md:pb-0">
-      <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} />
+      <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient
           assets={assets}
@@ -92,7 +92,6 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           pairingEpisodes={pairingEpisodes}
           defaultWeatherPlace={prefs.weatherPlace}
           defaultWeatherCoords={prefs.weatherCoords}
-          canSetWeatherDefault={prefs.isAdmin}
           canViewCosts={perms.canViewCosts}
           savedMapViews={savedMapViews}
           alerts={alerts}

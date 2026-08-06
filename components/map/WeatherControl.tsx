@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Wind, Map as MapIcon, Satellite, Layers, ChevronDown, MapPin, Box, Search, Star, Check, Waves, Home, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
-import type { PwsConditions } from '@/lib/pws'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
 import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
@@ -36,11 +35,7 @@ interface WeatherControlProps {
   onPrecip?: (v: boolean) => void
   precipPeriod?: string
   onPrecipPeriod?: (k: string) => void
-  pws?: PwsConditions | null
   frameTime: string | null
-  place?: string
-  onPlaceChange?: (name: string, lat?: number, lng?: number) => void
-  onSaveDefault?: (place: string) => Promise<boolean | void>
   parcelsOn?: boolean
   onParcels?: (v: boolean) => void
   /** On/off state for every registry overlay, keyed by persisted layer id. */
@@ -78,14 +73,6 @@ interface WeatherControlProps {
   onToggleDevices?: () => void
   /** Rendered to the RIGHT of the collapsed pill (the map search button). */
   searchSlot?: ReactNode
-}
-
-/** "2m ago" style age for the station reading — stations report every 16s–5min. */
-function pwsAge(iso: string): string {
-  const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000))
-  if (mins < 1) return 'live'
-  if (mins < 60) return `${mins}m ago`
-  return `${Math.round(mins / 60)}h ago`
 }
 
 function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
@@ -179,7 +166,7 @@ function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; ico
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, pws = null, frameTime, place, onPlaceChange, onSaveDefault, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, onDrawZone, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -193,46 +180,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     setViewName('')
     setSavingView(false)
   }
-  const [placeInput, setPlaceInput] = useState(place ?? '')
-  useEffect(() => { setPlaceInput(place ?? '') }, [place])
-
-  // Live place autocomplete (free geocoder), debounced.
-  type Place = { name: string; admin1?: string; country_code?: string; latitude?: number; longitude?: number }
-  const [suggestions, setSuggestions] = useState<Place[]>([])
-  const [sugOpen, setSugOpen] = useState(false)
-  useEffect(() => {
-    const q = placeInput.trim()
-    if (q.length < 2) { setSuggestions([]); return }
-    const id = setTimeout(() => {
-      fetch(`https://geocoding-api.open-meteo.com/v1/search?count=5&name=${encodeURIComponent(q)}`)
-        .then((r) => r.json())
-        .then((j) => setSuggestions(Array.isArray(j?.results) ? j.results : []))
-        .catch(() => setSuggestions([]))
-    }, 250)
-    return () => clearTimeout(id)
-  }, [placeInput])
-  const placeLabel = (s: Place) => [s.name, s.admin1, s.country_code].filter(Boolean).join(', ')
-  const pickPlace = (s: Place) => {
-    setSugOpen(false)
-    setSuggestions([])
-    onPlaceChange?.([s.name, s.admin1].filter(Boolean).join(', '), s.latitude, s.longitude)
-  }
-
-  const [savedDefault, setSavedDefault] = useState(false)
-  const saveDefault = async () => {
-    if (!place || !onSaveDefault) return
-    try { await onSaveDefault(place) } catch { /* handled upstream */ }
-    setSavedDefault(true)
-    setTimeout(() => setSavedDefault(false), 2000)
-  }
-
-  const submitPlace = (e: React.FormEvent) => {
-    e.preventDefault()
-    setSugOpen(false)
-    const v = placeInput.trim()
-    if (v && onPlaceChange) onPlaceChange(v)
-  }
-
   // ── Panel tabs: Layers (every toggle, flat + scannable) | Views (saved
   //    looks). Accordions are gone — the redesign references (Jul 31) all show
   //    their content instead of closed doors; one scroll beats six chevrons.
@@ -610,83 +557,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       {rowsFor('site')}
 
       <SectionLabel gid="weather" />
-        {/* weather location — editable so radar/temps can follow any site */}
-        {onPlaceChange ? (
-          <div className="relative border-b border-navy-800">
-            <form onSubmit={submitPlace} className="flex items-center gap-1 px-2 py-2">
-              <MapPin className="h-3 w-3 text-teal flex-none" />
-              <input
-                value={placeInput}
-                onChange={(e) => setPlaceInput(e.target.value)}
-                onFocus={() => setSugOpen(true)}
-                onBlur={() => setTimeout(() => setSugOpen(false), 150)}
-                placeholder="Weather location — city or place…"
-                className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
-              />
-              <button type="submit" title="Update weather location" className="grid place-items-center w-5 h-5 rounded text-faint hover:text-teal flex-none">
-                <Search className="h-3 w-3" />
-              </button>
-              {onSaveDefault && (
-                <button
-                  type="button"
-                  onClick={saveDefault}
-                  title="Save as company default location"
-                  className="grid place-items-center w-5 h-5 rounded text-faint hover:text-amber flex-none"
-                >
-                  {savedDefault ? <Check className="h-3 w-3 text-amber" /> : <Star className="h-3 w-3" />}
-                </button>
-              )}
-            </form>
-            {sugOpen && suggestions.length > 0 && (
-              <ul className="absolute left-2 right-2 top-full mt-1 z-30 rounded-lg bg-navy-900 border border-navy-700 shadow-panel overflow-hidden">
-                {suggestions.map((s, i) => (
-                  <li key={i}>
-                    <button
-                      onMouseDown={(e) => { e.preventDefault(); pickPlace(s) }}
-                      className="w-full text-left px-2.5 py-1.5 text-[11px] text-ink hover:bg-navy-800 flex items-center gap-1.5"
-                    >
-                      <MapPin className="h-3 w-3 text-faint flex-none" />
-                      <span className="truncate">{placeLabel(s)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : place ? (
-          <div className="px-3 py-2 border-b border-navy-800 font-mono text-[10px] uppercase tracking-[0.1em] text-faint flex items-center gap-1">
-            <MapPin className="h-3 w-3 text-teal" /> {place}
-          </div>
-        ) : null}
-        {/* home weather station — live hyper-local reading from the owner's PWS */}
-        {pws && (
-          <div className="px-3 py-2 border-b border-navy-800 bg-amber/[0.04]">
-            <div className="flex items-center justify-between mb-1">
-              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-amber">
-                <Home className="h-3 w-3" /> Home station
-              </span>
-              <span className="font-mono text-[9.5px] text-faint">{pwsAge(pws.at)}</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display font-bold text-[18px] text-ink">{pws.tempF}°</span>
-              {pws.feelsF != null && Math.abs(pws.feelsF - pws.tempF) >= 2 && (
-                <span className="font-mono text-[10px] text-muted">feels {Math.round(pws.feelsF)}°</span>
-              )}
-              <span className="ml-auto font-mono text-[10.5px] text-muted flex items-center gap-1">
-                <Wind className="h-3 w-3" />
-                {pws.windDir ? `${pws.windDir} ` : ''}{pws.windMph}
-                {pws.gustMph != null && pws.gustMph > pws.windMph + 2 ? ` g${Math.round(pws.gustMph)}` : ''}
-              </span>
-            </div>
-            <div className="mt-1 font-mono text-[10px] text-faint flex items-center gap-3">
-              {pws.humidity != null && <span>{Math.round(pws.humidity)}% rh</span>}
-              {pws.rainTodayIn != null && (
-                <span className={pws.rainTodayIn > 0 ? 'text-teal' : ''}>{pws.rainTodayIn}&quot; today</span>
-              )}
-              {pws.pressureInHg != null && <span>{pws.pressureInHg} inHg</span>}
-            </div>
-          </div>
-        )}
+        {/* Location + home-station readout moved to the TOP BAR dropdown —
+            tap the temperature (owner ask, Aug 5). Only actual layers here. */}
         {rowsFor('weather')}
 
       <SectionLabel label="3D" icon={Box} />

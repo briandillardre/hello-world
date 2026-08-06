@@ -6,10 +6,11 @@ import { TopBarWeather } from './TopBarWeather'
 /** Slim banner above the Live Map: brand + company on the left, current
  *  conditions on the right (weather moved up out of the layers menu — owner
  *  ask, Jul 21). The AskAI button floats over the map beside the layers pill. */
-export function MapTopBar({ companyName, weatherPlace = null, weatherCoords = null }: {
+export function MapTopBar({ companyName, weatherPlace = null, weatherCoords = null, canSetWeatherDefault = false }: {
   companyName: string
   weatherPlace?: string | null
   weatherCoords?: { lat: number; lng: number } | null
+  canSetWeatherDefault?: boolean
 }) {
   // Phones get a slimmer bar (h-8) — every vertical pixel is map space.
   return (
@@ -20,7 +21,7 @@ export function MapTopBar({ companyName, weatherPlace = null, weatherCoords = nu
       <span className="md:hidden h-4 w-px bg-navy-700" />
       <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint truncate">{companyName}</span>
       <span className="ml-auto flex-none">
-        <TopBarWeather place={weatherPlace} coords={weatherCoords} />
+        <TopBarWeather place={weatherPlace} coords={weatherCoords} canSetDefault={canSetWeatherDefault} />
       </span>
     </div>
   )

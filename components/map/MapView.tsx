@@ -15,7 +15,6 @@ import {
   fetchConditions, buildRadarFrames, iemRadarUrl, iemTsForMs,
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
-import { fetchPws, type PwsConditions } from '@/lib/pws'
 import { measureSummary } from '@/lib/measure'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
@@ -299,7 +298,6 @@ interface MapViewProps {
    *  present they win everywhere (no re-geocode, no per-device drift). */
   defaultWeatherCoords?: { lat: number; lng: number } | null
   /** Show the admin-only "save as company default" control in the weather panel. */
-  onSaveWeatherDefault?: (place: string, lat?: number, lng?: number) => Promise<boolean | void>
   /** False hides every dollar figure (timeline chip, $ chart mode, zone $). */
   canViewCosts?: boolean
   /** User's saved map views from their profile (DB copy wins over device). */
@@ -308,7 +306,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, onSaveWeatherDefault, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -602,6 +600,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // truncated \u2014 "yesterday's track lost data"), so once a replay range is
   // picked we fetch EXACTLY that window from /api/history and swap it in.
   const [fetchedRows, setFetchedRows] = useState<Record<string, import('@/lib/db/assets').LocationHistoryRow[]>>({})
+  // Window key currently downloading its FIRST full-resolution fetch — drives
+  // the thin sweep bar above the scrubber (background re-pulls stay silent).
+  const [historyLoadingKey, setHistoryLoadingKey] = useState<string | null>(null)
   useEffect(() => {
     if (!historyRows || range === 'live') return
     const w = rangeWindow(tz, range, { earliestMs, customFrom, customTo })
@@ -619,6 +620,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const spanDays = (w.to - w.from) / 86_400_000
     const repullMs = spanDays <= 2 ? 60_000 : spanDays <= 31 ? 5 * 60_000 : 15 * 60_000
     if (fetchedRows[key] && !windowIsLive) return
+    if (!fetchedRows[key]) setHistoryLoadingKey(key)
     const ctrl = new AbortController()
     const load = () => {
       fetch(`/api/history?from=${new Date(w.from).toISOString()}&to=${new Date(w.to).toISOString()}`, { signal: ctrl.signal })
@@ -639,6 +641,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           setFetchedRows((prev) => ({ ...prev, [key]: rows as NonNullable<typeof historyRows> }))
         })
         .catch(() => { /* offline / aborted \u2014 the shipped snapshot still renders */ })
+        .finally(() => setHistoryLoadingKey((k) => (k === key ? null : k)))
     }
     load()
     const iv = windowIsLive ? setInterval(load, repullMs) : null
@@ -943,16 +946,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // MapView still resolves the weather PLACE (wxPlace/wxCoordsRef drive the
   // radar/layers) and keeps the fetch warm for the same 10-min cache.
   const [, setConditions] = useState<Conditions | null>(null)
-  // Home weather station (owner's PWS) — polled every 5 min; null when not set up.
-  const [pws, setPws] = useState<PwsConditions | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    const load = () => fetchPws().then((p) => { if (!cancelled) setPws(p) })
-    load()
-    const id = setInterval(load, 5 * 60_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [])
-  const [wxPlace, setWxPlace] = useState('Nashville, TN')
+  const [, setWxPlace] = useState('Nashville, TN')
   // Current weather coords [lng, lat] — saved with the default so reopening
   // uses the exact point, not a name re-geocode (which picked the wrong
   // "Greenville" — NC outranks SC by population).
@@ -2182,21 +2176,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultWeatherPlace, defaultWeatherCoords])
 
-  // Save the current weather location as the default. Persists the exact coords
-  // on THIS device (survives redeploys + avoids the wrong-Greenville re-geocode),
-  // and — for admins — the name to the company row so the whole team inherits it.
-  const handleSaveWeatherDefault = useCallback(async (place: string): Promise<boolean> => {
-    const c = wxCoordsRef.current
-    try {
-      if (c) localStorage.setItem('ht_weather_default', JSON.stringify({ name: place, lng: c[0], lat: c[1] }))
-    } catch { /* private mode */ }
-    if (onSaveWeatherDefault) {
-      // Ship the exact coords to the company row too, so every other device
-      // (and every domain — localStorage is per-origin) lands on this point.
-      try { await onSaveWeatherDefault(place, c?.[1], c?.[0]) } catch { /* device save already stuck */ }
-    }
-    return true
-  }, [onSaveWeatherDefault])
+  // Default-location SAVING moved to the top bar's weather dropdown (Aug 5) —
+  // TopBarWeather persists device localStorage + the company row itself.
 
   // Change the weather location: geocode the name (free Open-Meteo geocoder),
   // refetch conditions for it, and fly the map there.
@@ -2226,6 +2207,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       /* ignore geocode failures */
     }
   }, [])
+
+  // The weather location editor lives in the TOP BAR now (tap the temp —
+  // owner ask, Aug 5). Picks arrive as a window event; the map follows.
+  useEffect(() => {
+    const onPlace = (e: Event) => {
+      const d = (e as CustomEvent<{ name: string; lat: number; lng: number }>).detail
+      if (d?.name && Number.isFinite(d.lat) && Number.isFinite(d.lng)) handlePlaceChange(d.name, d.lat, d.lng)
+    }
+    window.addEventListener('ht:weather-place', onPlace)
+    return () => window.removeEventListener('ht:weather-place', onPlace)
+  }, [handlePlaceChange])
 
   // Switch basemap layers. 'dark' is the underlying style; every other flavor
   // is a raster layer toggled over it (B/W + Aubergine are paint-transformed
@@ -4300,11 +4292,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         onPrecip={setPrecipOn}
         precipPeriod={precipPeriod}
         onPrecipPeriod={setPrecipPeriod}
-        pws={pws}
         frameTime={radarLabel}
-        place={wxPlace}
-        onPlaceChange={handlePlaceChange}
-        onSaveDefault={handleSaveWeatherDefault}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
         overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
@@ -4356,6 +4344,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         <TimelinePlayback
           range={range}
           onRange={handleRange}
+          loading={historyLoadingKey !== null}
           tz={tz}
           kiosk={kiosk}
           trailMode={trailMode}
