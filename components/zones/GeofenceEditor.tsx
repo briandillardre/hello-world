@@ -283,11 +283,25 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     <section>
       <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Edit zone</h2>
       <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
-        <div ref={mapContainer} className="h-[320px] w-full" />
+        <div className="relative">
+          <div ref={mapContainer} className="h-[320px] w-full" />
+          {/* Delete vertex rides ON the mini map — you tap a corner up here,
+              the delete belongs up here too (owner ask, Aug 6). */}
+          {selected !== null && (
+            <button
+              type="button"
+              onClick={deleteVertex}
+              disabled={verts.length <= 3}
+              className="absolute top-2 right-2 z-10 rounded-lg bg-navy-950/90 backdrop-blur border border-red-500/50 text-red-400 text-xs font-semibold px-2.5 py-1.5 shadow-md disabled:opacity-40 hover:bg-red-500/15"
+            >
+              Delete vertex #{selected + 1}
+            </button>
+          )}
+        </div>
         <div className="p-3 space-y-3">
           <p className="text-[11px] text-faint">
             Drag a <span className="text-ink font-semibold">solid dot</span> to move a corner · tap a{' '}
-            <span className="text-ink font-semibold">hollow dot</span> to add one · tap a corner then Delete vertex to remove it.
+            <span className="text-ink font-semibold">hollow dot</span> to add one · tap a corner and a Delete button appears on the map.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1 flex-1 min-w-[160px]">
@@ -414,9 +428,6 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={save} disabled={saving || !dirty || verts.length < 3} className="gap-1.5">
               <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save changes'}
-            </Button>
-            <Button size="sm" variant="outline" onClick={deleteVertex} disabled={selected === null || verts.length <= 3}>
-              Delete vertex{selected !== null ? ` #${selected + 1}` : ''}
             </Button>
             <Button size="sm" variant="outline" onClick={removeZone} className="ml-auto text-alert border-alert/40 hover:bg-alert/10 gap-1.5">
               <Trash2 className="h-4 w-4" /> Delete zone

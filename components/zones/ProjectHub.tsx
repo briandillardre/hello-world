@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from 'react'
 import { ClipboardList, Flag, Trash2, CircleDollarSign } from 'lucide-react'
 import {
-  addTaskAction, toggleTaskAction, deleteTaskAction,
-  addMilestoneAction, toggleMilestoneAction, deleteMilestoneAction,
+  addTaskAction, toggleTaskAction, deleteTaskAction, updateTaskAction,
+  addMilestoneAction, toggleMilestoneAction, deleteMilestoneAction, updateMilestoneAction,
   saveBudgetAction, type ProjectTask, type ProjectMilestone,
 } from '@/lib/actions/projects'
 
@@ -41,8 +41,49 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
   const [due, setDue] = useState('')
   const [high, setHigh] = useState(false)
   const [showDone, setShowDone] = useState(false)
-  const open = tasks.filter((t) => t.status === 'open')
+  // High-priority floats to the top (that's what the flag DOES), then by due
+  // date — soonest deadline first, undated items last.
+  const open = useMemo(() =>
+    tasks.filter((t) => t.status === 'open').sort((a, b) =>
+      (b.priority === 'high' ? 1 : 0) - (a.priority === 'high' ? 1 : 0) ||
+      (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999')
+    ), [tasks])
   const done = tasks.filter((t) => t.status === 'done')
+
+  // ── Inline edit (tap a row to retitle / reassign / redate / reprioritize) ──
+  const [editId, setEditId] = useState<string | null>(null)
+  const [et, setEt] = useState(''); const [ea, setEa] = useState(''); const [ed, setEd] = useState(''); const [eh, setEh] = useState(false)
+  function openEdit(t: ProjectTask) {
+    setEditId(t.id); setEt(t.title); setEa(t.assignee_id ?? ''); setEd(t.due_date ?? ''); setEh(t.priority === 'high')
+  }
+  function saveEdit() {
+    const id = editId
+    if (!id || !et.trim()) return
+    const prev = tasks
+    setTasks((ts) => ts.map((x) => x.id === id
+      ? { ...x, title: et.trim(), assignee_id: ea || null, due_date: ed || null, priority: eh ? 'high' as const : 'normal' as const }
+      : x))
+    setEditId(null)
+    start(async () => {
+      const r = await updateTaskAction(zoneId, id, { title: et, assigneeId: ea || undefined, dueDate: ed || undefined, high: eh })
+      if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+    })
+  }
+
+  const [editMsId, setEditMsId] = useState<string | null>(null)
+  const [emName, setEmName] = useState(''); const [emDate, setEmDate] = useState('')
+  function saveMsEdit() {
+    const id = editMsId
+    if (!id || !emName.trim()) return
+    const prev = milestones
+    setMilestones((ms) => ms.map((x) => x.id === id ? { ...x, name: emName.trim(), target_date: emDate || null } : x)
+      .sort((a, b) => (a.target_date ?? '9999').localeCompare(b.target_date ?? '9999')))
+    setEditMsId(null)
+    start(async () => {
+      const r = await updateMilestoneAction(zoneId, id, { name: emName, targetDate: emDate || undefined })
+      if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+    })
+  }
 
   function addTask() {
     if (!title.trim()) return
@@ -109,6 +150,38 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
             <div className="divide-y divide-navy-800">
               {open.map((t) => {
                 const overdue = t.due_date && t.due_date < today
+                if (editId === t.id) {
+                  return (
+                    <div key={t.id} className="px-3 py-2.5 space-y-2 bg-navy-950/40">
+                      <input
+                        value={et} autoFocus
+                        onChange={(e) => setEt(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditId(null) }}
+                        className="w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select value={ea} onChange={(e) => setEa(e.target.value)}
+                          className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-muted">
+                          <option value="">Unassigned</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                        <input type="date" value={ed} onChange={(e) => setEd(e.target.value)}
+                          className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-muted" />
+                        <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer select-none">
+                          <input type="checkbox" checked={eh} onChange={(e) => setEh(e.target.checked)} className="accent-red-500" />
+                          High priority
+                        </label>
+                        <span className="ml-auto flex items-center gap-2">
+                          <button type="button" onClick={() => setEditId(null)} className="text-xs text-faint hover:text-muted">Cancel</button>
+                          <button type="button" onClick={saveEdit} disabled={!et.trim()}
+                            className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 disabled:opacity-40">
+                            Save
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  )
+                }
                 return (
                   <div key={t.id} className="flex items-start gap-2.5 px-3 py-2.5">
                     <input
@@ -120,7 +193,8 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       }}
                       aria-label={`Mark done: ${t.title}`}
                     />
-                    <div className="min-w-0 flex-1">
+                    <button type="button" onClick={() => openEdit(t)} className="min-w-0 flex-1 text-left"
+                      aria-label={`Edit: ${t.title}`}>
                       <p className="text-sm text-ink">
                         {t.priority === 'high' && <span className="text-red-400 font-bold mr-1">!</span>}
                         {t.title}
@@ -128,8 +202,9 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       <p className="text-[11px] text-faint">
                         {memberName(t.assignee_id) ?? 'Unassigned'}
                         {t.due_date && <span className={overdue ? 'text-red-400 font-semibold' : ''}> · due {fmtDay(t.due_date)}{overdue ? ' — overdue' : ''}</span>}
+                        <span className="text-faint/60"> · tap to edit</span>
                       </p>
-                    </div>
+                    </button>
                     <button type="button" className="text-faint hover:text-red-400 mt-0.5"
                       onClick={() => {
                         setTasks((ts) => ts.filter((x) => x.id !== t.id))
@@ -188,6 +263,25 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
           <div className="divide-y divide-navy-800">
             {milestones.map((m) => {
               const slipped = !m.done_at && m.target_date && m.target_date < today
+              if (editMsId === m.id) {
+                return (
+                  <div key={m.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-navy-950/40">
+                    <input
+                      value={emName} autoFocus
+                      onChange={(e) => setEmName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveMsEdit(); if (e.key === 'Escape') setEditMsId(null) }}
+                      className="flex-1 min-w-[140px] rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink"
+                    />
+                    <input type="date" value={emDate} onChange={(e) => setEmDate(e.target.value)}
+                      className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-muted" />
+                    <button type="button" onClick={() => setEditMsId(null)} className="text-xs text-faint hover:text-muted">Cancel</button>
+                    <button type="button" onClick={saveMsEdit} disabled={!emName.trim()}
+                      className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 disabled:opacity-40">
+                      Save
+                    </button>
+                  </div>
+                )
+              }
               return (
                 <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5">
                   <input
@@ -200,7 +294,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                     }}
                     aria-label={`Toggle milestone: ${m.name}`}
                   />
-                  <span className={`text-sm flex-1 ${m.done_at ? 'text-muted line-through' : 'text-ink'}`}>{m.name}</span>
+                  <button type="button"
+                    onClick={() => { setEditMsId(m.id); setEmName(m.name); setEmDate(m.target_date ?? '') }}
+                    className={`text-sm flex-1 text-left ${m.done_at ? 'text-muted line-through' : 'text-ink'}`}
+                    aria-label={`Edit milestone: ${m.name}`}>
+                    {m.name}
+                  </button>
                   {m.target_date && (
                     <span className={`text-[11px] ${slipped ? 'text-red-400 font-semibold' : 'text-faint'}`}>{fmtDay(m.target_date)}</span>
                   )}

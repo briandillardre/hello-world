@@ -52,6 +52,39 @@ export async function addTaskAction(zoneId: string, input: { title: string; assi
   return { ok: true, task: data as ProjectTask }
 }
 
+/** Edit a punch item in place — reassign, retitle, redate, reprioritize
+ *  ("need to be able to click and edit these", Aug 6). */
+export async function updateTaskAction(zoneId: string, taskId: string, input: { title: string; assigneeId?: string; dueDate?: string; high?: boolean }): Promise<Result> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const title = input.title.trim().slice(0, 300)
+  if (!title) return { ok: false, error: 'The task needs a name.' }
+  const { supabase, companyId } = await client()
+  const { error } = await supabase.from('project_tasks')
+    .update({
+      title,
+      priority: input.high ? 'high' : 'normal',
+      assignee_id: input.assigneeId || null,
+      due_date: input.dueDate || null,
+    })
+    .eq('id', taskId).eq('company_id', companyId)
+  if (error) return { ok: false, error: 'Save failed — try again.' }
+  revalidatePath(`/zones/${zoneId}`)
+  return { ok: true }
+}
+
+export async function updateMilestoneAction(zoneId: string, milestoneId: string, input: { name: string; targetDate?: string }): Promise<Result> {
+  if (isMock) return { ok: false, error: 'Demo mode' }
+  const name = input.name.trim().slice(0, 200)
+  if (!name) return { ok: false, error: 'The milestone needs a name.' }
+  const { supabase, companyId } = await client()
+  const { error } = await supabase.from('project_milestones')
+    .update({ name, target_date: input.targetDate || null })
+    .eq('id', milestoneId).eq('company_id', companyId)
+  if (error) return { ok: false, error: 'Save failed — try again.' }
+  revalidatePath(`/zones/${zoneId}`)
+  return { ok: true }
+}
+
 export async function toggleTaskAction(zoneId: string, taskId: string, done: boolean): Promise<Result> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()

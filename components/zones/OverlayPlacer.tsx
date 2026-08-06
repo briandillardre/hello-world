@@ -150,38 +150,80 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
 
   // Photo pick surface — created when a photo stage opens, torn down with the
   // align flow. Image pixels live at [x*PX_SCALE, (H-y)*PX_SCALE].
+  //
+  // The image is fetched HERE and handed to MapLibre as an object URL, never
+  // as the raw storage URL: the plan list's plain <img> thumbnails cache the
+  // sheet WITHOUT CORS headers, and MapLibre's cors-mode fetch of the same
+  // URL then hits that cache entry and fails silently — blank navy pane, no
+  // error ("plan not showing up for 2 point alignment", Aug 6). An object URL
+  // is same-origin, so the pane is exactly as reliable as the thumbnail. It
+  // also gives us true pixel dimensions before the camera math runs.
   useEffect(() => {
     if (alignStage !== 0 && alignStage !== 2) return
     if (!photoEl.current || photoMapRef.current) return
-    const { w, h } = natural.current
-    const pm = new maplibregl.Map({
-      container: photoEl.current,
-      style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#04121d' } }] },
-      center: [(w * PX_SCALE) / 2, (h * PX_SCALE) / 2],
-      zoom: 10,
-      maxZoom: 24,
-      attributionControl: false,
-      dragRotate: false,
-      pitchWithRotate: false,
-      renderWorldCopies: false,
-    })
-    pm.touchZoomRotate.disableRotation()
-    pm.on('load', () => {
-      pm.addSource('photo', {
-        type: 'image', url: imageUrl,
-        coordinates: [[0, h * PX_SCALE], [w * PX_SCALE, h * PX_SCALE], [w * PX_SCALE, 0], [0, 0]],
+    let dead = false
+    let objUrl: string | null = null
+    const build = (src: string, w: number, h: number) => {
+      if (dead || !photoEl.current || photoMapRef.current) return
+      const pm = new maplibregl.Map({
+        container: photoEl.current,
+        style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#04121d' } }] },
+        center: [(w * PX_SCALE) / 2, (h * PX_SCALE) / 2],
+        zoom: 10,
+        maxZoom: 24,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        renderWorldCopies: false,
       })
-      pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
-      pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
-      // Point A stays visible while picking B.
-      if (alignPts.current.img[0]) {
-        const [ax, ay] = alignPts.current.img[0]
-        const el = document.createElement('div')
-        el.innerHTML = '<div style="width:22px;height:22px;border-radius:50%;background:#ff9e16;color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523">A</div>'
-        new maplibregl.Marker({ element: el }).setLngLat([ax * PX_SCALE, (h - ay) * PX_SCALE]).addTo(pm)
+      pm.touchZoomRotate.disableRotation()
+      pm.on('error', (e) => {
+        // Never fail into a silent void again — say what broke.
+        if (!dead) setError(`The sheet couldn’t render in the picker${e?.error?.message ? ` (${e.error.message})` : ''} — try the sliders, or reopen and retry.`)
+      })
+      pm.on('load', () => {
+        pm.addSource('photo', {
+          type: 'image', url: src,
+          coordinates: [[0, h * PX_SCALE], [w * PX_SCALE, h * PX_SCALE], [w * PX_SCALE, 0], [0, 0]],
+        })
+        pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
+        pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
+        // Point A stays visible while picking B.
+        if (alignPts.current.img[0]) {
+          const [ax, ay] = alignPts.current.img[0]
+          const el = document.createElement('div')
+          el.innerHTML = '<div style="width:22px;height:22px;border-radius:50%;background:#ff9e16;color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523">A</div>'
+          new maplibregl.Marker({ element: el }).setLngLat([ax * PX_SCALE, (h - ay) * PX_SCALE]).addTo(pm)
+        }
+      })
+      photoMapRef.current = pm
+    }
+    ;(async () => {
+      try {
+        let res = await fetch(imageUrl, { mode: 'cors' }).catch(() => null)
+        if (!res || !res.ok) {
+          // Poisoned-cache or transient miss — force a fresh network hit.
+          res = await fetch(imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'nocache=1', { mode: 'cors', cache: 'reload' })
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const blob = await res.blob()
+        const bmp = await createImageBitmap(blob)
+        if (dead) { bmp.close(); return }
+        natural.current = { w: bmp.width, h: bmp.height }
+        setAspect(bmp.height / bmp.width)
+        bmp.close()
+        objUrl = URL.createObjectURL(blob)
+        build(objUrl, natural.current.w, natural.current.h)
+      } catch {
+        if (!dead) setError('The sheet couldn’t load for point-picking — check signal and try again, or line it up with the sliders.')
       }
-    })
-    photoMapRef.current = pm
+    })()
+    return () => {
+      dead = true
+      // pm is torn down by setAlignPoint/clearAlign before this runs, so the
+      // object URL is safe to release here.
+      if (objUrl) URL.revokeObjectURL(objUrl)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alignStage, imageUrl])
 
@@ -345,8 +387,9 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           )}
 
           {/* ── 2-point align: photo pick surface (own pan/zoom engine) ── */}
+          {/* z-10 keeps the placer map's zoom buttons from bleeding through */}
           {(alignStage === 0 || alignStage === 2) && (
-            <div className="absolute inset-0 bg-navy-950">
+            <div className="absolute inset-0 z-10 bg-navy-950">
               <div ref={photoEl} className="absolute inset-0" />
             </div>
           )}
@@ -354,7 +397,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           {/* Fixed center crosshair during every pick stage — pan/pinch the
               surface under it, then press Set. Big thin lines beat a thumb. */}
           {alignStage !== null && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
               {(() => {
                 const c = alignStage < 2 ? '#ff9e16' : '#2dd4bf'
                 return (
@@ -373,7 +416,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
             <button
               type="button"
               onClick={setAlignPoint}
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-xl px-4 py-2.5 text-[13px] font-display font-bold text-[#001523] shadow-panel"
+              className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-xl px-4 py-2.5 text-[13px] font-display font-bold text-[#001523] shadow-panel"
               style={{ backgroundColor: alignStage < 2 ? '#ff9e16' : '#2dd4bf' }}
             >
               ✓ Set point {alignStage < 2 ? 'A' : 'B'} here
@@ -383,7 +426,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           {/* Step banner — screams which surface you're picking on. */}
           {alignStage !== null && (
             <div className={
-              'absolute top-2 left-2 right-2 rounded-lg px-3 py-2 text-[12px] font-bold text-center border ' +
+              'absolute top-2 left-2 right-2 z-20 rounded-lg px-3 py-2 text-[12px] font-bold text-center border ' +
               (alignStage === 0 || alignStage === 2
                 ? 'bg-navy-900/95 border-amber/60 text-amber'
                 : 'bg-navy-900/95 border-teal/60 text-teal')
