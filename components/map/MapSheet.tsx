@@ -62,7 +62,7 @@ export function MapSheet({
     }
   }
   // Level 0 has no body, so the sheet sizes to its header — no fixed height.
-  const MAX_H = [undefined, '42dvh', '100dvh'][level]
+  const MAX_H = [undefined, '42dvh', '100%'][level]
 
   const header = (showMobileClose = false) => (
     <div className="flex items-start justify-between gap-3">
@@ -95,12 +95,16 @@ export function MapSheet({
           scrubber stays operable with an asset selected (owner ask, Jul 23).
           Fully expanded, the sheet takes the screen (dimmed map) — no lift,
           or 85dvh + lift would push its top off-screen. */}
+      {/* Expanded pins to the MAP AREA (top-0 of this container), not to
+          100dvh — the sheet lives below the app header, so a viewport-height
+          box shoved its title under the browser chrome ("can't read the
+          top", Aug 6). */}
       <div
-        className="absolute left-0 right-0 z-[71] md:hidden"
+        className={'absolute left-0 right-0 z-[71] md:hidden ' + (expanded ? 'top-0' : '')}
         style={{ bottom: expanded ? '0px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
       >
         <div
-          className={`bg-navy-900 shadow-2xl border border-navy-800 flex flex-col ${expanded ? 'mx-0 rounded-none h-[100dvh]' : 'mx-2 rounded-t-2xl'}`}
+          className={`bg-navy-900 shadow-2xl border border-navy-800 flex flex-col ${expanded ? 'mx-0 rounded-none h-full' : 'mx-2 rounded-t-2xl'}`}
           style={{
             maxHeight: MAX_H,
             transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,

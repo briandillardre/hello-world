@@ -108,13 +108,23 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   const natural = useRef({ w: 4000, h: 3000 })
 
   // ── 2-point alignment (owner ask, Aug 6): stages 0..3 —
-  //    0 = tap point A on the PHOTO, 1 = tap point A on the MAP,
-  //    2 = tap point B on the PHOTO, 3 = tap point B on the MAP.
+  //    0 = point A on the PHOTO, 1 = point A on the MAP,
+  //    2 = point B on the PHOTO, 3 = point B on the MAP.
+  // Precision model (Aug 6 rev 2): no direct tapping — pan/pinch the photo or
+  // map UNDER a fixed center crosshair, then press "Set point". Thumb-taps
+  // were too coarse zoomed out, and you couldn't zoom while picking.
   const [alignStage, setAlignStage] = useState<number | null>(null)
   const alignPts = useRef<{ img: [number, number][]; map: [number, number][] }>({ img: [], map: [] })
   const alignMarkers = useRef<maplibregl.Marker[]>([])
   const stageRef = useRef<number | null>(null)
   stageRef.current = alignStage
+  // The photo pick surface is its own tiny MapLibre instance (blank
+  // background + the photo as an image source) — free pinch/zoom/inertia at
+  // any depth, same feel as the basemap. PX_SCALE maps pixels → synthetic
+  // degrees, small enough that a 20k-px pano stays inside the world.
+  const photoEl = useRef<HTMLDivElement>(null)
+  const photoMapRef = useRef<maplibregl.Map | null>(null)
+  const PX_SCALE = 0.0001
 
   useEffect(() => {
     const img = new Image()
@@ -132,8 +142,78 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     alignMarkers.current = []
     alignPts.current = { img: [], map: [] }
     setAlignStage(null)
+    photoMapRef.current?.remove()
+    photoMapRef.current = null
     const mm = m ?? mapRef.current
     if (mm?.getLayer('place-layer')) mm.setLayoutProperty('place-layer', 'visibility', 'visible')
+  }
+
+  // Photo pick surface — created when a photo stage opens, torn down with the
+  // align flow. Image pixels live at [x*PX_SCALE, (H-y)*PX_SCALE].
+  useEffect(() => {
+    if (alignStage !== 0 && alignStage !== 2) return
+    if (!photoEl.current || photoMapRef.current) return
+    const { w, h } = natural.current
+    const pm = new maplibregl.Map({
+      container: photoEl.current,
+      style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#04121d' } }] },
+      center: [(w * PX_SCALE) / 2, (h * PX_SCALE) / 2],
+      zoom: 10,
+      maxZoom: 24,
+      attributionControl: false,
+      dragRotate: false,
+      pitchWithRotate: false,
+      renderWorldCopies: false,
+    })
+    pm.touchZoomRotate.disableRotation()
+    pm.on('load', () => {
+      pm.addSource('photo', {
+        type: 'image', url: imageUrl,
+        coordinates: [[0, h * PX_SCALE], [w * PX_SCALE, h * PX_SCALE], [w * PX_SCALE, 0], [0, 0]],
+      })
+      pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
+      pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
+      // Point A stays visible while picking B.
+      if (alignPts.current.img[0]) {
+        const [ax, ay] = alignPts.current.img[0]
+        const el = document.createElement('div')
+        el.innerHTML = '<div style="width:22px;height:22px;border-radius:50%;background:#ff9e16;color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523">A</div>'
+        new maplibregl.Marker({ element: el }).setLngLat([ax * PX_SCALE, (h - ay) * PX_SCALE]).addTo(pm)
+      }
+    })
+    photoMapRef.current = pm
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alignStage, imageUrl])
+
+  // "Set point" — reads whichever surface the stage is on at its crosshair.
+  const setAlignPoint = () => {
+    const st = stageRef.current
+    if (st === 0 || st === 2) {
+      const pm = photoMapRef.current
+      if (!pm) return
+      const c = pm.getCenter()
+      const { w, h } = natural.current
+      const px = Math.max(0, Math.min(w, c.lng / PX_SCALE))
+      const py = Math.max(0, Math.min(h, h - c.lat / PX_SCALE))
+      alignPts.current.img.push([px, py])
+      // Tear down so the next photo stage rebuilds fresh (and shows A).
+      pm.remove()
+      photoMapRef.current = null
+      setAlignStage(st === 0 ? 1 : 3)
+    } else if (st === 1 || st === 3) {
+      const m = mapRef.current
+      if (!m) return
+      const c = m.getCenter()
+      alignPts.current.map.push([c.lng, c.lat])
+      const el = document.createElement('div')
+      const label = st === 1 ? 'A' : 'B'
+      const color = st === 1 ? '#ff9e16' : '#2dd4bf'
+      el.innerHTML = `<div style="width:22px;height:22px;border-radius:50%;background:${color};color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523;box-shadow:0 0 0 2px ${color}55">${label}</div>`
+      const mk = new maplibregl.Marker({ element: el }).setLngLat(c).addTo(m)
+      alignMarkers.current.push(mk)
+      if (st === 1) setAlignStage(2)
+      else finishAlign()
+    }
   }
 
   const startAlign = () => {
@@ -165,24 +245,6 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     src?.setCoordinates(cornersFrom(p.center, p.widthM, live.current.aspect, p.rotDeg))
   }
 
-  // Map-side picks (stages 1 and 3). The listener is bound once in the map
-  // init effect and dispatches through this ref so it always sees the
-  // current stage + handlers.
-  const onAlignMapClickRef = useRef<((e: maplibregl.MapMouseEvent) => void) | null>(null)
-  onAlignMapClickRef.current = (e) => {
-    const m = mapRef.current
-    const st = stageRef.current
-    if (!m || (st !== 1 && st !== 3)) return
-    alignPts.current.map.push([e.lngLat.lng, e.lngLat.lat])
-    const el = document.createElement('div')
-    const label = st === 1 ? 'A' : 'B'
-    const color = st === 1 ? '#ff9e16' : '#2dd4bf'
-    el.innerHTML = `<div style="width:22px;height:22px;border-radius:50%;background:${color};color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523;box-shadow:0 0 0 2px ${color}55">${label}</div>`
-    const mk = new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(m)
-    alignMarkers.current.push(mk)
-    if (st === 1) setAlignStage(2)
-    else finishAlign()
-  }
 
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return
@@ -228,7 +290,6 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
       const c = m.getCenter()
       src.setCoordinates(cornersFrom([c.lng, c.lat], live.current.widthM, live.current.aspect, live.current.rotDeg))
     })
-    m.on('click', (e) => onAlignMapClickRef.current?.(e))
     mapRef.current = m
     return () => { m.remove(); mapRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -283,39 +344,40 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
             <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-amber text-lg leading-none select-none">+</div>
           )}
 
-          {/* ── 2-point align: photo pane covers the map during image picks ── */}
+          {/* ── 2-point align: photo pick surface (own pan/zoom engine) ── */}
           {(alignStage === 0 || alignStage === 2) && (
-            <div className="absolute inset-0 bg-navy-950/95 flex items-center justify-center p-2">
-              <div className="relative max-w-full max-h-full">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={imageUrl}
-                  alt="Pick an alignment point"
-                  className="max-w-full max-h-[292px] md:max-h-[372px] block cursor-crosshair select-none"
-                  draggable={false}
-                  onClick={(e) => {
-                    const el = e.currentTarget
-                    const r = el.getBoundingClientRect()
-                    const px = ((e.clientX - r.left) / r.width) * natural.current.w
-                    const py = ((e.clientY - r.top) / r.height) * natural.current.h
-                    alignPts.current.img.push([px, py])
-                    setAlignStage((s) => (s === 0 ? 1 : 3))
-                  }}
-                />
-                {/* already-picked photo point(s), shown at their spot */}
-                {alignPts.current.img.map(([x, y], i) => (
-                  <span
-                    key={i}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 grid place-items-center w-[22px] h-[22px] rounded-full text-[12px] font-extrabold text-navy-950 border-2 border-navy-950"
-                    style={{
-                      left: `${(x / natural.current.w) * 100}%`,
-                      top: `${(y / natural.current.h) * 100}%`,
-                      backgroundColor: i === 0 ? '#ff9e16' : '#2dd4bf',
-                    }}
-                  >{i === 0 ? 'A' : 'B'}</span>
-                ))}
-              </div>
+            <div className="absolute inset-0 bg-navy-950">
+              <div ref={photoEl} className="absolute inset-0" />
             </div>
+          )}
+
+          {/* Fixed center crosshair during every pick stage — pan/pinch the
+              surface under it, then press Set. Big thin lines beat a thumb. */}
+          {alignStage !== null && (
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              {(() => {
+                const c = alignStage < 2 ? '#ff9e16' : '#2dd4bf'
+                return (
+                  <span className="relative block w-[46px] h-[46px]">
+                    <span className="absolute left-1/2 top-0 bottom-0 w-px -translate-x-1/2" style={{ background: c }} />
+                    <span className="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2" style={{ background: c }} />
+                    <span className="absolute left-1/2 top-1/2 w-[10px] h-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2" style={{ borderColor: c }} />
+                  </span>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Set-point button — the precise commit, instead of a thumb tap. */}
+          {alignStage !== null && (
+            <button
+              type="button"
+              onClick={setAlignPoint}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-xl px-4 py-2.5 text-[13px] font-display font-bold text-[#001523] shadow-panel"
+              style={{ backgroundColor: alignStage < 2 ? '#ff9e16' : '#2dd4bf' }}
+            >
+              ✓ Set point {alignStage < 2 ? 'A' : 'B'} here
+            </button>
           )}
 
           {/* Step banner — screams which surface you're picking on. */}
@@ -326,10 +388,10 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
                 ? 'bg-navy-900/95 border-amber/60 text-amber'
                 : 'bg-navy-900/95 border-teal/60 text-teal')
             }>
-              {alignStage === 0 && <>Point <span className="text-[#ff9e16]">A</span> · 1 of 4 — tap a recognizable spot ON THE PHOTO</>}
-              {alignStage === 1 && <>Point <span className="text-[#ff9e16]">A</span> · 2 of 4 — now tap that SAME SPOT on the map</>}
-              {alignStage === 2 && <>Point <span className="text-[#2dd4bf]">B</span> · 3 of 4 — tap a SECOND spot ON THE PHOTO (far from A)</>}
-              {alignStage === 3 && <>Point <span className="text-[#2dd4bf]">B</span> · 4 of 4 — tap that SAME SPOT on the map</>}
+              {alignStage === 0 && <>Point <span className="text-[#ff9e16]">A</span> · 1 of 4 — ON THE PHOTO: pinch/pan a landmark under the crosshair</>}
+              {alignStage === 1 && <>Point <span className="text-[#ff9e16]">A</span> · 2 of 4 — ON THE MAP: center that SAME spot under the crosshair</>}
+              {alignStage === 2 && <>Point <span className="text-[#2dd4bf]">B</span> · 3 of 4 — ON THE PHOTO: a second landmark, far from A</>}
+              {alignStage === 3 && <>Point <span className="text-[#2dd4bf]">B</span> · 4 of 4 — ON THE MAP: center that SAME spot</>}
               <button
                 type="button"
                 onClick={() => clearAlign()}

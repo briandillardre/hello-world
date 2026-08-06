@@ -120,11 +120,13 @@ export function ZonePanel({
         </div>
       ) : (
         <>
-          <div className="space-y-1.5">
+          {/* 2-up grid — four full-width count rows ate half the sheet on
+              phones (owner ask, Aug 6). */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
             {STAT.map((s) => (
-              <div key={s.key} className="flex items-center gap-2 font-mono text-[12px] text-muted">
+              <div key={s.key} className="flex items-center gap-1.5 font-mono text-[12px] text-muted">
                 <span>{s.emoji}</span>
-                <span className="flex-1">{s.label}</span>
+                <span className="flex-1 truncate">{s.label}</span>
                 <span className="text-ink font-bold">{presence.byType[s.key]}</span>
               </div>
             ))}
