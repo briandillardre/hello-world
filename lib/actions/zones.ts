@@ -78,6 +78,17 @@ export async function createGeofenceAction(
     await logZoneEvent(companyId, id, actor.id, 'created', { by: actor.name, kind, personal: !!opts?.personal })
     if (opts?.folderUrl?.trim()) await saveZoneFolderAction(id, opts.folderUrl)
     if (opts?.notes?.trim()) await saveZoneNotesAction(id, opts.notes)
+    // 056: backfill the usage ledger for this zone's PAST — a zone drawn
+    // mid-project replays stored pings so weeks before it existed still bill
+    // (hard requirement, Aug 6). Fire-and-forget; creation never blocks.
+    try {
+      const { createServiceClient } = await import('../supabase-server')
+      void createServiceClient().rpc('rebuild_zone_usage', {
+        p_geofence: id,
+        p_from: new Date(Date.now() - 90 * 86_400_000).toISOString(),
+        p_to: new Date().toISOString(),
+      })
+    } catch { /* pre-056 DB — hourly cron picks it up once migrated */ }
   }
   revalidatePath('/zones')
   revalidatePath('/map')
@@ -105,6 +116,18 @@ export async function saveGeofenceAction(
   // has multiple areas to save"). One button writes the whole zone.
   if (opts?.folderUrl !== undefined) await saveZoneFolderAction(id, opts.folderUrl)
   if (opts?.notes !== undefined) await saveZoneNotesAction(id, opts.notes)
+
+  // 056: a reshaped boundary changes what history falls inside — replay it.
+  if (geomChanged) {
+    try {
+      const { createServiceClient } = await import('../supabase-server')
+      void createServiceClient().rpc('rebuild_zone_usage', {
+        p_geofence: id,
+        p_from: new Date(Date.now() - 90 * 86_400_000).toISOString(),
+        p_to: new Date().toISOString(),
+      })
+    } catch { /* pre-056 DB */ }
+  }
 
   // Log what changed so the zone page can explain shifts in hours/acreage.
   const changed: string[] = []
