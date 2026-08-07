@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 // "Blue Ridge Sitework Co." served from the build cache.
 export const dynamic = 'force-dynamic'
 import { DashboardShell } from '@/components/layout/DashboardShell'
+import { BusyBar } from '@/components/layout/BusyBar'
 import { TzCookie } from '@/components/TzCookie'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompany } from '@/lib/db/company'
@@ -43,6 +44,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // mobile browsers (URL bar chrome), leaving a white band + scrollable page.
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <TzCookie />
+      <BusyBar />
       <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl}>
         {children}
       </DashboardShell>

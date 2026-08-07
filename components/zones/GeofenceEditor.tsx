@@ -6,6 +6,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Trash2, Save } from 'lucide-react'
 import { saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
+import { busy as globalBusy } from '@/lib/busy'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -242,6 +243,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   const save = async () => {
     if (verts.length < 3) return
     setSaving(true)
+    const done = globalBusy('Saving zone…')
     try {
       const closed = [...verts, verts[0]]
       await saveGeofenceAction(id, name.trim() || initialName, color, parent || null, {
@@ -264,11 +266,13 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
       alert('Could not save the zone. Please try again.')
     } finally {
       setSaving(false)
+      done()
     }
   }
 
   const removeZone = async () => {
     if (!confirm(`Delete zone "${initialName}"? Alert rules attached to it are removed too.`)) return
+    const done = globalBusy('Deleting zone…')
     try {
       await deleteGeofenceAction(id)
       router.push('/zones')
@@ -276,6 +280,8 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
     } catch (err) {
       console.error('Zone delete failed', err)
       alert('Could not delete the zone. Please try again.')
+    } finally {
+      done()
     }
   }
 

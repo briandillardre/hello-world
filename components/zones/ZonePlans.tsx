@@ -8,6 +8,7 @@ import {
   setActivePlanAction, saveOverlayBoundsAction, type ZoneImage,
 } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
+import { busy as globalBusy } from '@/lib/busy'
 import type { Corners } from '@/components/zones/OverlayPlacer'
 
 const OverlayPlacer = dynamic(
@@ -103,6 +104,7 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
       return
     }
     setPhase('loading')
+    const done = globalBusy(`Reading ${f.name.slice(0, 40)}…`)
     try {
       const pdfjs = await loadPdfjs()
       const doc = await pdfjs.getDocument({ data: await f.arrayBuffer() }).promise as PdfDoc
@@ -117,6 +119,8 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     } catch {
       resetPicker()
       setError('Couldn’t read that PDF — export the sheets as images and upload those instead.')
+    } finally {
+      done()
     }
   }
 
@@ -162,18 +166,28 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     setThumbs([]) // free the picker thumbnails before the heavy work
     const uploaded: ZoneImage[] = []
     for (let i = 0; i < pages.length; i++) {
-      setProgress(`Sheet ${i + 1} of ${pages.length} — converting…`)
+      const converting = `Sheet ${i + 1} of ${pages.length} — converting…`
+      setProgress(converting)
+      const dConv = globalBusy(converting)
       let blob: Blob
       try {
         blob = await renderPage(doc, pages[i], 3000, true) as Blob
       } catch {
         setError(`Page ${pages[i]} wouldn’t convert — skipped.`)
         continue
+      } finally {
+        dConv()
       }
-      setProgress(`Sheet ${i + 1} of ${pages.length} — uploading…`)
-      const res = await uploadOne(blob, sel[pages[i]], `${fileNameRef.current} — p${pages[i]}`)
-      if (res.img) uploaded.push(res.img)
-      else if (res.fatal) break
+      const uploading = `Sheet ${i + 1} of ${pages.length} — uploading…`
+      setProgress(uploading)
+      const dUp = globalBusy(uploading)
+      try {
+        const res = await uploadOne(blob, sel[pages[i]], `${fileNameRef.current} — p${pages[i]}`)
+        if (res.img) uploaded.push(res.img)
+        else if (res.fatal) break
+      } finally {
+        dUp()
+      }
     }
     finishBatch(uploaded)
   }
@@ -183,10 +197,16 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     setPhase('importing')
     const uploaded: ZoneImage[] = []
     for (let i = 0; i < items.length; i++) {
-      setProgress(`Uploading sheet ${i + 1} of ${items.length}…`)
-      const res = await uploadOne(items[i].blob, items[i].category, items[i].label)
-      if (res.img) uploaded.push(res.img)
-      else if (res.fatal) break
+      const label = `Uploading sheet ${i + 1} of ${items.length}…`
+      setProgress(label)
+      const done = globalBusy(label)
+      try {
+        const res = await uploadOne(items[i].blob, items[i].category, items[i].label)
+        if (res.img) uploaded.push(res.img)
+        else if (res.fatal) break
+      } finally {
+        done()
+      }
     }
     finishBatch(uploaded)
   }
@@ -349,10 +369,17 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
             const ids = new Set([placing.id, ...rest.map((r) => r.id)])
             setPlans((xs) => xs.map((x) => (ids.has(x.id) ? { ...x, bounds: b, map_active: b ? x.map_active : false } : x)))
             setPlacing(null)
-            // Stamp the batch: same corners for every sheet in the set.
+            // Stamp the batch: same corners for every sheet in the set. This
+            // ran dead silent and read as a frozen page ("it froze", Aug 7) —
+            // every copy now announces itself on the global BusyBar.
             if (b) {
-              for (const r of rest) {
-                await saveOverlayBoundsAction(zoneId, r.id, b).catch(() => null)
+              for (let i = 0; i < rest.length; i++) {
+                const done = globalBusy(`Copying placement — sheet ${i + 2} of ${rest.length + 1}…`)
+                try {
+                  await saveOverlayBoundsAction(zoneId, rest[i].id, b).catch(() => null)
+                } finally {
+                  done()
+                }
               }
             }
           }}

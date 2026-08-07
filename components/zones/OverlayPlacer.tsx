@@ -5,6 +5,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { X } from 'lucide-react'
 import { saveOverlayBoundsAction } from '@/lib/actions/imagery'
+import { busy as globalBusy } from '@/lib/busy'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -391,20 +392,30 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     const m = mapRef.current
     if (!m) return
     setBusy(true); setError(null)
-    const c = m.getCenter()
-    const bounds = cornersFrom([c.lng, c.lat], widthM, aspect, rotDeg)
-    const r = await saveOverlayBoundsAction(zoneId, imageId, bounds)
-    setBusy(false)
-    if (r.ok) onSaved(bounds)
-    else setError(r.error ?? 'Save failed')
+    const done = globalBusy('Saving placement…')
+    try {
+      const c = m.getCenter()
+      const bounds = cornersFrom([c.lng, c.lat], widthM, aspect, rotDeg)
+      const r = await saveOverlayBoundsAction(zoneId, imageId, bounds)
+      if (r.ok) onSaved(bounds)
+      else setError(r.error ?? 'Save failed')
+    } finally {
+      setBusy(false)
+      done()
+    }
   }
 
   async function removePlacement() {
     setBusy(true); setError(null)
-    const r = await saveOverlayBoundsAction(zoneId, imageId, null)
-    setBusy(false)
-    if (r.ok) onSaved(null)
-    else setError(r.error ?? 'Save failed')
+    const done = globalBusy('Removing from map…')
+    try {
+      const r = await saveOverlayBoundsAction(zoneId, imageId, null)
+      if (r.ok) onSaved(null)
+      else setError(r.error ?? 'Save failed')
+    } finally {
+      setBusy(false)
+      done()
+    }
   }
 
   return (
