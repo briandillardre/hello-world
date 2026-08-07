@@ -118,17 +118,86 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   const alignMarkers = useRef<maplibregl.Marker[]>([])
   const stageRef = useRef<number | null>(null)
   stageRef.current = alignStage
-  // The photo pick surface is its own tiny MapLibre instance (blank
-  // background + the photo as an image source) — free pinch/zoom/inertia at
-  // any depth, same feel as the basemap. PX_SCALE maps pixels → synthetic
-  // degrees, small enough that a 20k-px pano stays inside the world.
+  // The photo pick surface is a PLAIN <img> under a CSS transform with our
+  // own pan/pinch handlers — no WebGL. It started as a mini MapLibre
+  // instance, but iPad WebKit composited it to nothing while swearing it had
+  // painted ("photo 3000×2143 · painted" over a blank pane, Aug 7). An <img>
+  // is the same rendering path as the thumbnails that work on every device.
   const photoEl = useRef<HTMLDivElement>(null)
-  const photoMapRef = useRef<maplibregl.Map | null>(null)
-  const PX_SCALE = 0.0001
+  const viewRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const badgeRef = useRef<HTMLDivElement>(null)
+  const tRef = useRef({ s: 1, tx: 0, ty: 0 })
+  const panePtrs = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ d: number; s: number } | null>(null)
+  const [paneImgUrl, setPaneImgUrl] = useState<string | null>(null)
   // Live diagnostic shown in the pane's corner — if the photo ever fails to
   // appear again, the stuck step names the culprit (and the badge existing at
   // all proves the device is running current code, not a stale tab).
   const [paneStatus, setPaneStatus] = useState('')
+
+  const applyT = () => {
+    const { s, tx, ty } = tRef.current
+    if (viewRef.current) viewRef.current.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`
+    // The A badge lives in image space — inverse-scale it so it stays 22px.
+    if (badgeRef.current) badgeRef.current.style.transform = `translate(-50%, -50%) scale(${1 / s})`
+  }
+
+  /** Fit + center the photo in the pane once its pixels are known. */
+  const initPaneFit = () => {
+    const pane = photoEl.current, img = imgRef.current
+    if (!pane || !img || !img.naturalWidth) return
+    natural.current = { w: img.naturalWidth, h: img.naturalHeight }
+    setAspect(img.naturalHeight / img.naturalWidth)
+    const s = Math.min(pane.clientWidth / img.naturalWidth, pane.clientHeight / img.naturalHeight) * 0.96
+    tRef.current = { s, tx: (pane.clientWidth - img.naturalWidth * s) / 2, ty: (pane.clientHeight - img.naturalHeight * s) / 2 }
+    applyT()
+    setPaneStatus(`photo ${img.naturalWidth}×${img.naturalHeight} · shown`)
+  }
+
+  const zoomPaneAt = (mx: number, my: number, ns: number) => {
+    const t = tRef.current
+    const clamped = Math.min(12, Math.max(0.02, ns))
+    t.tx = mx - ((mx - t.tx) / t.s) * clamped
+    t.ty = my - ((my - t.ty) / t.s) * clamped
+    t.s = clamped
+    applyT()
+  }
+
+  const onPanePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    panePtrs.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (panePtrs.current.size === 2) {
+      const [a, b] = Array.from(panePtrs.current.values())
+      pinchRef.current = { d: Math.hypot(a.x - b.x, a.y - b.y), s: tRef.current.s }
+    }
+  }
+  const onPanePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const prev = panePtrs.current.get(e.pointerId)
+    if (!prev) return
+    const np = { x: e.clientX, y: e.clientY }
+    panePtrs.current.set(e.pointerId, np)
+    if (panePtrs.current.size === 1) {
+      tRef.current.tx += np.x - prev.x
+      tRef.current.ty += np.y - prev.y
+      applyT()
+    } else if (panePtrs.current.size === 2 && pinchRef.current && photoEl.current) {
+      const [a, b] = Array.from(panePtrs.current.values())
+      const d = Math.hypot(a.x - b.x, a.y - b.y)
+      if (d < 1) return
+      const rect = photoEl.current.getBoundingClientRect()
+      zoomPaneAt((a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top, pinchRef.current.s * (d / pinchRef.current.d))
+    }
+  }
+  const onPanePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    panePtrs.current.delete(e.pointerId)
+    pinchRef.current = null
+  }
+  const onPaneWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!photoEl.current) return
+    const rect = photoEl.current.getBoundingClientRect()
+    zoomPaneAt(e.clientX - rect.left, e.clientY - rect.top, tRef.current.s * Math.exp(-e.deltaY * 0.002))
+  }
 
   useEffect(() => {
     const img = new Image()
@@ -146,67 +215,19 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     alignMarkers.current = []
     alignPts.current = { img: [], map: [] }
     setAlignStage(null)
-    photoMapRef.current?.remove()
-    photoMapRef.current = null
     const mm = m ?? mapRef.current
     if (mm?.getLayer('place-layer')) mm.setLayoutProperty('place-layer', 'visibility', 'visible')
   }
 
-  // Photo pick surface — created when a photo stage opens, torn down with the
-  // align flow. Image pixels live at [x*PX_SCALE, (H-y)*PX_SCALE].
-  //
-  // The image is fetched and decoded HERE, then handed to MapLibre as a
-  // CANVAS SOURCE — never as a URL. Two silent killers live on the URL path
-  // ("not seeing image", Aug 6–7, Android + iPad):
-  //  1. the list's plain <img> thumbnails cache the file WITHOUT CORS
-  //     headers, and MapLibre's cors-mode refetch of the same URL dies on
-  //     that cache entry with no error;
-  //  2. a 48 MP drone shot (8000×6000) exceeds many devices' GPU texture
-  //     limit (iPad Safari included) — the layer just never paints.
-  // A pre-decoded canvas capped at 4096 px sidesteps both, and failures now
-  // surface as a visible error instead of a navy void.
+  // Photo pick surface loader — runs when a photo stage opens, torn down
+  // with the align flow. The blob is fetched here (not left to the <img>
+  // tag) so a poisoned no-CORS cache entry or a transient miss gets a forced
+  // network retry, and a hard failure surfaces as a visible error instead of
+  // a navy void.
   useEffect(() => {
     if (alignStage !== 0 && alignStage !== 2) return
-    if (!photoEl.current || photoMapRef.current) return
     let dead = false
     let objUrl: string | null = null
-    const build = (cv: HTMLCanvasElement, w: number, h: number) => {
-      if (dead || !photoEl.current || photoMapRef.current) return
-      const pm = new maplibregl.Map({
-        container: photoEl.current,
-        style: { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#04121d' } }] },
-        center: [(w * PX_SCALE) / 2, (h * PX_SCALE) / 2],
-        zoom: 10,
-        maxZoom: 24,
-        attributionControl: false,
-        dragRotate: false,
-        pitchWithRotate: false,
-        renderWorldCopies: false,
-      })
-      pm.touchZoomRotate.disableRotation()
-      pm.on('error', (e) => {
-        // Never fail into a silent void again — say what broke.
-        if (!dead) setError(`The sheet couldn’t render in the picker${e?.error?.message ? ` (${e.error.message})` : ''} — try the sliders, or reopen and retry.`)
-      })
-      pm.on('load', () => {
-        pm.addSource('photo', {
-          type: 'canvas', canvas: cv, animate: false,
-          coordinates: [[0, h * PX_SCALE], [w * PX_SCALE, h * PX_SCALE], [w * PX_SCALE, 0], [0, 0]],
-        } as unknown as maplibregl.SourceSpecification)
-        pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
-        pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
-        setPaneStatus(`photo ${w}×${h}`)
-        pm.once('idle', () => { if (!dead) setPaneStatus(`photo ${w}×${h} · painted`) })
-        // Point A stays visible while picking B.
-        if (alignPts.current.img[0]) {
-          const [ax, ay] = alignPts.current.img[0]
-          const el = document.createElement('div')
-          el.innerHTML = '<div style="width:22px;height:22px;border-radius:50%;background:#ff9e16;color:#001523;font:800 12px system-ui;display:grid;place-items:center;border:2px solid #001523">A</div>'
-          new maplibregl.Marker({ element: el }).setLngLat([ax * PX_SCALE, (h - ay) * PX_SCALE]).addTo(pm)
-        }
-      })
-      photoMapRef.current = pm
-    }
     ;(async () => {
       try {
         setPaneStatus('loading photo…')
@@ -216,36 +237,10 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           res = await fetch(imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'nocache=1', { mode: 'cors', cache: 'reload' })
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        setPaneStatus('decoding…')
         const blob = await res.blob()
-        // Decode with createImageBitmap where it exists, <img> elsewhere.
-        let src: ImageBitmap | HTMLImageElement
-        try {
-          src = await createImageBitmap(blob)
-        } catch {
-          const img = new Image()
-          objUrl = URL.createObjectURL(blob)
-          img.src = objUrl
-          await img.decode()
-          src = img
-        }
-        const iw = 'naturalWidth' in src ? src.naturalWidth : src.width
-        const ih = 'naturalHeight' in src ? src.naturalHeight : src.height
-        if (dead || !iw || !ih) return
-        // Cap at 4096 px — under every device's GPU texture limit.
-        const scale = Math.min(1, 4096 / Math.max(iw, ih))
-        const cw = Math.round(iw * scale), ch = Math.round(ih * scale)
-        const cv = document.createElement('canvas')
-        cv.width = cw; cv.height = ch
-        const ctx = cv.getContext('2d')
-        if (!ctx) throw new Error('no canvas')
-        ctx.drawImage(src, 0, 0, cw, ch)
-        if ('close' in src) src.close()
-        // Point math runs in FULL-RES pixel space — keep natural at the real
-        // dimensions; only the pane's texture is downscaled.
-        natural.current = { w: iw, h: ih }
-        setAspect(ih / iw)
-        build(cv, iw, ih)
+        if (dead) return
+        objUrl = URL.createObjectURL(blob)
+        setPaneImgUrl(objUrl) // <img onLoad={initPaneFit}> takes it from here
       } catch {
         if (!dead) {
           setPaneStatus('load failed')
@@ -255,8 +250,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     })()
     return () => {
       dead = true
-      // pm is torn down by setAlignPoint/clearAlign before this runs, so the
-      // object URL is safe to release here.
+      setPaneImgUrl(null)
       if (objUrl) URL.revokeObjectURL(objUrl)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -266,16 +260,14 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   const setAlignPoint = () => {
     const st = stageRef.current
     if (st === 0 || st === 2) {
-      const pm = photoMapRef.current
-      if (!pm) return
-      const c = pm.getCenter()
+      const pane = photoEl.current
+      if (!pane || !paneImgUrl) return
+      // Whatever image pixel sits under the fixed center crosshair.
+      const { s, tx, ty } = tRef.current
       const { w, h } = natural.current
-      const px = Math.max(0, Math.min(w, c.lng / PX_SCALE))
-      const py = Math.max(0, Math.min(h, h - c.lat / PX_SCALE))
+      const px = Math.max(0, Math.min(w, (pane.clientWidth / 2 - tx) / s))
+      const py = Math.max(0, Math.min(h, (pane.clientHeight / 2 - ty) / s))
       alignPts.current.img.push([px, py])
-      // Tear down so the next photo stage rebuilds fresh (and shows A).
-      pm.remove()
-      photoMapRef.current = null
       setAlignStage(st === 0 ? 1 : 3)
     } else if (st === 1 || st === 3) {
       const m = mapRef.current
@@ -424,8 +416,35 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           {/* ── 2-point align: photo pick surface (own pan/zoom engine) ── */}
           {/* z-10 keeps the placer map's zoom buttons from bleeding through */}
           {(alignStage === 0 || alignStage === 2) && (
-            <div className="absolute inset-0 z-10 bg-navy-950">
-              <div ref={photoEl} className="absolute inset-0" />
+            <div
+              ref={photoEl}
+              className="absolute inset-0 z-10 overflow-hidden bg-navy-950 touch-none cursor-grab"
+              onPointerDown={onPanePointerDown}
+              onPointerMove={onPanePointerMove}
+              onPointerUp={onPanePointerEnd}
+              onPointerCancel={onPanePointerEnd}
+              onWheel={onPaneWheel}
+            >
+              <div ref={viewRef} className="absolute left-0 top-0 origin-top-left will-change-transform">
+                {paneImgUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    ref={imgRef} src={paneImgUrl} alt="" draggable={false}
+                    onLoad={initPaneFit}
+                    className="block max-w-none select-none pointer-events-none"
+                  />
+                )}
+                {/* Point A stays visible in image space while picking B */}
+                {alignStage === 2 && alignPts.current.img[0] && (
+                  <div
+                    ref={badgeRef}
+                    className="absolute"
+                    style={{ left: alignPts.current.img[0][0], top: alignPts.current.img[0][1], transform: 'translate(-50%, -50%)' }}
+                  >
+                    <div className="grid h-[22px] w-[22px] place-items-center rounded-full border-2 border-[#001523] bg-amber text-[12px] font-extrabold text-[#001523]">A</div>
+                  </div>
+                )}
+              </div>
               <span className="absolute bottom-1.5 left-2 z-20 font-mono text-[9px] text-faint/80 pointer-events-none select-none">{paneStatus}</span>
             </div>
           )}
