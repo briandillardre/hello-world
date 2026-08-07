@@ -151,19 +151,22 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   // Photo pick surface — created when a photo stage opens, torn down with the
   // align flow. Image pixels live at [x*PX_SCALE, (H-y)*PX_SCALE].
   //
-  // The image is fetched HERE and handed to MapLibre as an object URL, never
-  // as the raw storage URL: the plan list's plain <img> thumbnails cache the
-  // sheet WITHOUT CORS headers, and MapLibre's cors-mode fetch of the same
-  // URL then hits that cache entry and fails silently — blank navy pane, no
-  // error ("plan not showing up for 2 point alignment", Aug 6). An object URL
-  // is same-origin, so the pane is exactly as reliable as the thumbnail. It
-  // also gives us true pixel dimensions before the camera math runs.
+  // The image is fetched and decoded HERE, then handed to MapLibre as a
+  // CANVAS SOURCE — never as a URL. Two silent killers live on the URL path
+  // ("not seeing image", Aug 6–7, Android + iPad):
+  //  1. the list's plain <img> thumbnails cache the file WITHOUT CORS
+  //     headers, and MapLibre's cors-mode refetch of the same URL dies on
+  //     that cache entry with no error;
+  //  2. a 48 MP drone shot (8000×6000) exceeds many devices' GPU texture
+  //     limit (iPad Safari included) — the layer just never paints.
+  // A pre-decoded canvas capped at 4096 px sidesteps both, and failures now
+  // surface as a visible error instead of a navy void.
   useEffect(() => {
     if (alignStage !== 0 && alignStage !== 2) return
     if (!photoEl.current || photoMapRef.current) return
     let dead = false
     let objUrl: string | null = null
-    const build = (src: string, w: number, h: number) => {
+    const build = (cv: HTMLCanvasElement, w: number, h: number) => {
       if (dead || !photoEl.current || photoMapRef.current) return
       const pm = new maplibregl.Map({
         container: photoEl.current,
@@ -183,9 +186,9 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
       })
       pm.on('load', () => {
         pm.addSource('photo', {
-          type: 'image', url: src,
+          type: 'canvas', canvas: cv, animate: false,
           coordinates: [[0, h * PX_SCALE], [w * PX_SCALE, h * PX_SCALE], [w * PX_SCALE, 0], [0, 0]],
-        })
+        } as unknown as maplibregl.SourceSpecification)
         pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
         pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
         // Point A stays visible while picking B.
@@ -207,15 +210,36 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const blob = await res.blob()
-        const bmp = await createImageBitmap(blob)
-        if (dead) { bmp.close(); return }
-        natural.current = { w: bmp.width, h: bmp.height }
-        setAspect(bmp.height / bmp.width)
-        bmp.close()
-        objUrl = URL.createObjectURL(blob)
-        build(objUrl, natural.current.w, natural.current.h)
+        // Decode with createImageBitmap where it exists, <img> elsewhere.
+        let src: ImageBitmap | HTMLImageElement
+        try {
+          src = await createImageBitmap(blob)
+        } catch {
+          const img = new Image()
+          objUrl = URL.createObjectURL(blob)
+          img.src = objUrl
+          await img.decode()
+          src = img
+        }
+        const iw = 'naturalWidth' in src ? src.naturalWidth : src.width
+        const ih = 'naturalHeight' in src ? src.naturalHeight : src.height
+        if (dead || !iw || !ih) return
+        // Cap at 4096 px — under every device's GPU texture limit.
+        const scale = Math.min(1, 4096 / Math.max(iw, ih))
+        const cw = Math.round(iw * scale), ch = Math.round(ih * scale)
+        const cv = document.createElement('canvas')
+        cv.width = cw; cv.height = ch
+        const ctx = cv.getContext('2d')
+        if (!ctx) throw new Error('no canvas')
+        ctx.drawImage(src, 0, 0, cw, ch)
+        if ('close' in src) src.close()
+        // Point math runs in FULL-RES pixel space — keep natural at the real
+        // dimensions; only the pane's texture is downscaled.
+        natural.current = { w: iw, h: ih }
+        setAspect(ih / iw)
+        build(cv, iw, ih)
       } catch {
-        if (!dead) setError('The sheet couldn’t load for point-picking — check signal and try again, or line it up with the sliders.')
+        if (!dead) setError('The image couldn’t load for point-picking — check signal and try again, or line it up with the sliders.')
       }
     })()
     return () => {
