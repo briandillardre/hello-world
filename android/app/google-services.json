@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "196760115191",
+    "project_id": "hammertrack-app",
+    "storage_bucket": "hammertrack-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:196760115191:android:2b2567e002c1cfcb9700f2",
+        "android_client_info": {
+          "package_name": "com.hammertrack.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjg8Y_OKU2BjAgD5QKs6N1ghFy_gs85Pg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
