@@ -100,7 +100,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
         <div className="flex items-center gap-3">
           {logo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo_url} alt="Company logo" className="h-12 max-w-[160px] object-contain rounded-md bg-white/95 p-1" />
+            <img src={logo_url} alt="Company logo" className="h-12 max-w-[160px] object-contain" />
           ) : (
             <div className="h-12 w-24 rounded-md border border-dashed border-navy-700 grid place-items-center text-[10px] text-faint">No logo yet</div>
           )}

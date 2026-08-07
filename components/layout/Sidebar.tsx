@@ -85,10 +85,12 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         ) : (
           <div className="min-w-0">
             <Logo size={26} href="/map" />
-            {/* Client's own logo (Settings → Company) rides above their name. */}
+            {/* Client's own logo (Settings → Company) rides above their name,
+                rendered AS UPLOADED — no forced white backing; a transparent
+                logo sits straight on the navy (owner ask, Aug 7). */}
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt={companyName} className="mt-1.5 h-8 max-w-[160px] object-contain object-left rounded bg-white/95 p-0.5" />
+              <img src={logoUrl} alt={companyName} className="mt-1.5 h-8 max-w-[160px] object-contain object-left" />
             )}
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
