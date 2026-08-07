@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HammerTrack — To Do</title>
+<style>
+  :root {
+    --bg: #001523; --panel: #04202f; --line: #14364f;
+    --ink: #e8f0f7; --muted: #9fb6cc; --faint: #6f88a0;
+    --amber: #ff9e16; --teal: #2dd4bf; --alert: #fb5d5d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 20px 14px 60px; max-width: 760px; margin: 0 auto;
+  }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+  .sub { color: var(--faint); font-size: 12.5px; font-family: ui-monospace, monospace; margin-top: 2px; }
+  .progress { position: sticky; top: 0; background: var(--bg); padding: 10px 0 8px; z-index: 5; }
+  .bar { height: 6px; border-radius: 99px; background: var(--panel); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--teal), var(--amber)); transition: width .25s ease; }
+  .count { font: 600 11px ui-monospace, monospace; color: var(--muted); margin-top: 5px; letter-spacing: .08em; text-transform: uppercase; }
+  h2 {
+    font: 800 11.5px ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase;
+    margin: 26px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line);
+  }
+  h2 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+  .t1 .dot { background: var(--alert); } .t1 { color: #ffb3b3; }
+  .t2 .dot { background: var(--amber); } .t2 { color: #ffd9a0; }
+  .t3 .dot { background: #fbbf24; } .t3 { color: #fde68a; }
+  .t4 .dot { background: #60a5fa; } .t4 { color: #bfdbfe; }
+  .t5 .dot { background: var(--faint); } .t5 { color: var(--muted); }
+  label.item {
+    display: flex; gap: 11px; align-items: flex-start;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 13px; margin: 7px 0; cursor: pointer; transition: opacity .2s ease;
+  }
+  label.item:active { transform: scale(0.995); }
+  input[type=checkbox] {
+    appearance: none; width: 20px; height: 20px; flex: none; margin-top: 1px;
+    border: 2px solid var(--faint); border-radius: 6px; cursor: pointer; position: relative;
+  }
+  input[type=checkbox]:checked { border-color: var(--teal); background: var(--teal); }
+  input[type=checkbox]:checked::after {
+    content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+    color: #04202f; font-weight: 900; font-size: 13px;
+  }
+  .done { opacity: .45; }
+  .done .name { text-decoration: line-through; }
+  .name { font-weight: 700; font-size: 14.5px; }
+  .why { color: var(--muted); font-size: 12.5px; margin-top: 2px; display: block; }
+  .why b { color: var(--ink); }
+  .why code { font: 600 11.5px ui-monospace, monospace; color: var(--teal); }
+  .chip {
+    display: inline-block; font: 700 10px ui-monospace, monospace; letter-spacing: .06em;
+    color: var(--teal); border: 1px solid rgba(45,212,191,.35); border-radius: 99px;
+    padding: 1px 7px; margin-left: 7px; vertical-align: 1px; white-space: nowrap;
+  }
+  .warn { color: var(--amber); border-color: rgba(255,158,22,.4); }
+  .shipped { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; margin: 7px 0; color: var(--muted); font-size: 12.5px; }
+  .shipped b { color: var(--teal); }
+  footer { margin-top: 34px; color: var(--faint); font-size: 11.5px; font-family: ui-monospace, monospace; }
+  button.reset { background: none; border: 1px solid var(--line); color: var(--faint); border-radius: 8px; padding: 4px 10px; font: 600 11px ui-monospace, monospace; cursor: pointer; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>HammerTrack — To&nbsp;Do</h1>
+  <p class="sub">Brian's board · updated Aug 7 2026 · mission: GET THE APPS LIVE · checks save on this device</p>
+</header>
+<div class="progress"><div class="bar"><i id="fill"></i></div><p class="count" id="count"></p></div>
+
+<h2 class="t1"><span class="dot"></span>Tier 1 — The apps (in this order)</h2>
+<label class="item"><input type="checkbox" data-k="appleid"><span><span class="name">Apple ID on brian@hammertrack.ai <span class="chip warn">doing now</span></span><span class="why">Turn on <b>two-factor authentication</b> during setup — the Developer Program requires it — and use your real cell as the trusted number. This Apple ID becomes the org account holder, so treat it like a root credential.</span></span></label>
+<label class="item"><input type="checkbox" data-k="firebase"><span><span class="name">Firebase project <span class="chip">today · no D-U-N-S needed</span></span><span class="why">console.firebase.google.com (as brian@hammertrack.ai) → Create project "HammerTrack" → add an <b>Android app</b> with package <code>com.hammertrack.app</code> and an <b>iOS app</b> with bundle ID <code>com.hammertrack.app</code> → download <code>google-services.json</code> + <code>GoogleService-Info.plist</code> and get them to Claude. Then Project settings → Cloud Messaging → copy the server key into Vercel as <code>FCM_SERVER_KEY</code>. This is lock-screen theft alerts AND our Apple "minimum functionality" defense.</span></span></label>
+<label class="item"><input type="checkbox" data-k="duns"><span><span class="name">D-U-N-S — case 10732284, win on response speed <span class="chip warn">gates both stores</span></span><span class="why">Whitelist <code>research@iresearch.dnb.com</code>, check spam daily, answer 864 calls — an unanswered time-boxed follow-up is how round one died. When the number lands: verify the record reads <b>HAMMERTRACK LLC / 185 Hawkins Road</b> exactly (Apple matches against it), and never file again — duplicates take months to merge.</span></span></label>
+<label class="item"><input type="checkbox" data-k="appledev"><span><span class="name">Apple Developer Program — enroll as ORGANIZATION <span class="chip">$99/yr · after D-U-N-S</span></span><span class="why">developer.apple.com/programs/enroll with the new Apple ID. Pick <b>Organization</b>, not Individual — legal entity HAMMERTRACK LLC, the D-U-N-S number, and brian@hammertrack.ai. Approval usually takes a phone verification call from Apple.</span></span></label>
+<label class="item"><input type="checkbox" data-k="play"><span><span class="name">Google Play Console — Organization account <span class="chip">$25 once · after D-U-N-S</span></span><span class="why">play.google.com/console → sign up as an <b>Organization</b> with brian@hammertrack.ai — it wants the D-U-N-S too, plus a website on the same domain (hammertrack.ai ✓).</span></span></label>
+<label class="item"><input type="checkbox" data-k="mac"><span><span class="name">Tell Claude: Mac or no Mac? <span class="chip">one text</span></span><span class="why">iOS builds need Xcode on a Mac. No Mac = Claude sets up a cloud build service instead (Codemagic/similar) — it just changes which path gets built first. Either answer unblocks the next step.</span></span></label>
+<label class="item"><input type="checkbox" data-k="listing"><span><span class="name">Say "go" on the store listing pack</span><span class="why">Claude prepares it any time, no accounts needed: app icons in every required size, phone + tablet screenshots, description copy, privacy policy page, data-safety answers. Ready to paste the day the accounts open.</span></span></label>
+
+<h2 class="t2"><span class="dot"></span>Tier 2 — Five-minute unblockers (finished features waiting on you)</h2>
+<label class="item"><input type="checkbox" data-k="qbo"><span><span class="name">QuickBooks connect <span class="chip">5 min</span></span><span class="why">Set <code>QBO_REDIRECT_URI=https://hammertrack.ai/api/qbo/callback</code> in Vercel AND paste the exact same URI in the Intuit app's <b>Production</b> Keys tab → redeploy → retry from /accounting. The "redirect_uri invalid" error is a character-for-character mismatch, nothing more.</span></span></label>
+<label class="item"><input type="checkbox" data-k="parcels"><span><span class="name">Parcel lines on the map <span class="chip">5 min</span></span><span class="why">Vercel → <code>NEXT_PUBLIC_PARCEL_SERVICE_URL</code> = the Greenville County ArcGIS parcel layer URL from gcgis.org (ends in <code>/MapServer/&lt;number&gt;</code>) → redeploy. Zoom to 15+ and tap a parcel for owner/acreage; failures now show on the layer row.</span></span></label>
+<label class="item"><input type="checkbox" data-k="siteurl"><span><span class="name">Supabase Auth Site URL <span class="chip">2 min</span></span><span class="why">Supabase → Authentication → URL Configuration → Site URL = <code>https://hammertrack.ai</code>. Until then, auth emails still point at the vercel.app address.</span></span></label>
+<label class="item"><input type="checkbox" data-k="receipts"><span><span class="name">Turn on the instant receipt chase</span><span class="why">(a) Resend dashboard → enable inbound on hammertrack.ai → webhook to <code>https://hammertrackjune28.vercel.app/api/inbound/receipts</code> → copy the <code>whsec_…</code> secret into Vercel as <code>RESEND_INBOUND_SECRET</code> + redeploy. (b) /receipts → Enable, map card last-4 → cardholder. (c) Chase/CapOne per-transaction alerts at $0 threshold to the inbound address. (d) Swipe a card, watch the push + capture link round-trip.</span></span></label>
+<label class="item"><input type="checkbox" data-k="twilio"><span><span class="name">Twilio SMS — when verification approves <span class="chip">waiting on Twilio</span></span><span class="why">Verdict emails brian@hammertrack.ai. On approval: <code>TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM=+18883739004</code> in Vercel → redeploy → Settings → Send test alert. Don't publish the number anywhere until the voice line has a greeting (inbound minutes bill us).</span></span></label>
+
+<h2 class="t3"><span class="dot"></span>Tier 3 — Hardware &amp; field</h2>
+<label class="item"><input type="checkbox" data-k="minor4"><span><span class="name">Last BLE puck — Minor 4</span><span class="why">Minors 3 + 5 are configured with tool assets created. One puck left and the tool fleet is fully tagged — and tool hours now bank into zone ledgers automatically via the pairing log.</span></span></label>
+<label class="item"><input type="checkbox" data-k="kore"><span><span class="name">KORE box arrival prep <span class="chip warn">APN gotcha</span></span><span class="why">Order #1 paid, in fulfillment, devices pre-configured (plug-and-play agreed with Matt). Before installing: <b>SuperSIM APN/config ≠ Hologram</b> — confirm settings with Matt (470-237-4658). Also chase the KORE Console login port to brian@hammertrack.ai.</span></span></label>
+<label class="item"><input type="checkbox" data-k="solar"><span><span class="name">TAT141 solar accessory answer</span><span class="why">For equipment parked outside: battery alone won't hold at active tracking rates. Ask via Matt/Billy, or Teltonika Americas directly if KORE comes back empty.</span></span></label>
+<label class="item"><input type="checkbox" data-k="webodm"><span><span class="name">WebODM trial on one Creekside grid</span><span class="why">Fly a grid (Dronelink/Litchi — the Mavic Air 2 has no DJI Fly waypoints), run it through WebODM manually. If the ortho comes out clean, it green-lights HammerTrack Aerial ($10–25/flight vs DroneDeploy's $329/mo).</span></span></label>
+
+<h2 class="t4"><span class="dot"></span>Tier 4 — Money &amp; office hygiene</h2>
+<label class="item"><input type="checkbox" data-k="vendors"><span><span class="name">Vendor payments → Mercury virtual cards</span><span class="why">One named virtual card per vendor, limit set per vendor: Vercel, Supabase, Twilio, Hologram, Google Workspace, Namecheap, Resend, KORE, Anthropic. Nothing stays on personal cards — clean books before the app-store receipts start.</span></span></label>
+<label class="item"><input type="checkbox" data-k="stripetest"><span><span class="name">Refund the $6 Stripe self-test + SC sales-tax question</span><span class="why">Two leftovers from billing go-live: refund the July self-charge, and get an answer on SC SaaS sales tax before the first outside-customer invoice.</span></span></label>
+<label class="item"><input type="checkbox" data-k="archive"><span><span class="name">Drop the Supabase <code>archive</code> schema</span><span class="why">The pre-Jul-12 archived data was due for deletion "around Aug 6" — if nothing's been missed, drop it and reclaim the space.</span></span></label>
+
+<h2 class="t5"><span class="dot"></span>Tier 5 — Watch / later</h2>
+<label class="item"><input type="checkbox" data-k="holycity"><span><span class="name">Holy City Paving pilot offer</span><span class="why">Send when the KORE hardware ships — the 3 OBD + 6 tags one-pager is ready and waiting.</span></span></label>
+<label class="item"><input type="checkbox" data-k="whitelabel"><span><span class="name">Teltonika white-label decision</span><span class="why">200-unit MOQ, +2–3 weeks first run, regulatory text can't change. Deferred to Founding-25 scale by design — revisit at ~25 customers.</span></span></label>
+
+<h2 class="t5" style="color: var(--teal)"><span class="dot" style="background: var(--teal)"></span>Done this week (for morale)</h2>
+<div class="shipped">
+  <b>Aug 4–7:</b> T1-b reporting · after-hours theft alerts verified live on the RAM 3500 · DNS cutover to hammertrack.ai · Mercury approved · exact-hours ledger live + verified (zone pages read it — 15-20&nbsp;s loads now instant) · Scaled Plans + full-planset import + 2-point alignment (iPad-proof, fine nudges) · zone activity chart · tool presence hours · punch list tap-to-edit · site-wide working bar · email brand kit · Team activity page · cost-code master list pulled from Nate's sheet for the Financials build.
+</div>
+
+<footer>
+  App-side work (reports on the ledger, zone financials + cost codes, store listing pack) is on Claude's queue — this board is yours.
+  <br><button class="reset" onclick="if(confirm('Clear all checks?')){localStorage.removeItem('ht_todo_v2');location.reload()}">Reset checks</button>
+</footer>
+
+<script>
+  const KEY = 'ht_todo_v2'
+  const state = JSON.parse(localStorage.getItem(KEY) || '{}')
+  const boxes = [...document.querySelectorAll('input[type=checkbox]')]
+  const sync = () => {
+    let done = 0
+    boxes.forEach(b => { b.closest('.item').classList.toggle('done', b.checked); if (b.checked) done++ })
+    document.getElementById('fill').style.width = (100 * done / boxes.length) + '%'
+    document.getElementById('count').textContent = done + ' of ' + boxes.length + ' done'
+  }
+  boxes.forEach(b => {
+    b.checked = !!state[b.dataset.k]
+    b.addEventListener('change', () => {
+      state[b.dataset.k] = b.checked
+      localStorage.setItem(KEY, JSON.stringify(state))
+      sync()
+    })
+  })
+  sync()
+</script>
+</body>
+</html>
