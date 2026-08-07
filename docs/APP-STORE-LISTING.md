@@ -105,7 +105,7 @@ the fleet on the company map — never for advertising, never sold.
 ## Pre-submission gaps to close (real to-dos)
 1. **In-app "Delete my account"** — Apple 5.1.1(v) requires an in-app deletion
    entry point for account-based apps. Add a button in Settings.
-2. **Firebase project + `FCM_SERVER_KEY`** in Vercel — turns on the push that
+2. **Firebase project + `FCM_SERVICE_ACCOUNT`** (full service-account JSON) in Vercel — turns on the push that
    the listing/4.2 story leans on.
 3. **A dedicated review login** with seeded data (don't hand over a real one).
 4. Confirm the app loads `https://hammertrack.ai` (add the domain to Vercel —

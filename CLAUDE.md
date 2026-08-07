@@ -154,7 +154,7 @@ TWILIO_AUTH_TOKEN=
 TWILIO_FROM=+18883739004       # toll-free alert sender, bought Jul 30 2026 (Voice enabled, no greeting yet)
 ALERT_SMS_TO=                  # fallback recipient if company alert_phone unset
 NOTIFY_WEBHOOK_URL=            # optional: POST every alert to any URL
-FCM_SERVER_KEY=               # optional: native push to the phone lock screen (Firebase → Cloud Messaging). Devices self-register via the Capacitor app → /api/push/register (migration 029). Unset = no push.
+FCM_SERVICE_ACCOUNT=          # optional: native push to the phone lock screen — FULL JSON of a Firebase service-account key (Project settings → Service accounts). New projects MUST use this (Google retired the legacy server key); FCM_SERVER_KEY still works as legacy fallback. Devices self-register via the Capacitor app → /api/push/register (migration 029). Unset = no push.
 RESEND_API_KEY=                # optional: emails team invites (free at resend.com; verify hammertrack.ai domain)
 RESEND_INBOUND_SECRET=         # optional: whsec_… signing secret for the Resend inbound webhook → /api/inbound/receipts (instant receipt chase; fails closed unset)
 EMAIL_FROM=                    # optional sender override, default "HammerTrack <team@hammertrack.ai>"
