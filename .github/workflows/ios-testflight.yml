@@ -1,0 +1,50 @@
+# iOS build + TestFlight upload — runs on GitHub's macOS machines, so no Mac
+# is ever needed on our side (owner has no Mac, Aug 7).
+#
+# DISABLED until the Apple Developer ORGANIZATION account exists (blocked on
+# D-U-N-S). To arm it, add these repo secrets (Settings → Secrets → Actions):
+#   ASC_KEY_ID       App Store Connect API key ID
+#   ASC_ISSUER_ID    App Store Connect issuer ID
+#   ASC_KEY_P8       contents of the .p8 API key file
+# fastlane creates/renews certs + profiles through the API key (match-less),
+# builds the Capacitor shell, and pushes to TestFlight. The full runbook
+# lives in docs/APP-STORE-PLAYBOOK.md.
+name: ios-testflight
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Guard — secrets present?
+        run: |
+          if [ -z "${{ secrets.ASC_KEY_ID }}" ]; then
+            echo "::error::App Store Connect secrets not set — this workflow arms after Apple Developer enrollment (see docs/APP-STORE-PLAYBOOK.md)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - run: npx cap sync ios
+
+      - name: Build + upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          # fastlane ships on GitHub macOS runners. Lane config arrives with
+          # the Apple account (cert/profile creation needs the ASC API key to
+          # exist first) — authored as part of enrollment-day setup.
+          echo "fastlane lane to be added on Apple-account day"
+          exit 1

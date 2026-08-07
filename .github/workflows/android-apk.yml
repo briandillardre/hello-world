@@ -1,0 +1,52 @@
+# Android APK build — no Mac, no Play Console needed.
+#
+# Produces a DEBUG apk (sideload-installable on any Android phone: download,
+# open, allow "install unknown apps") on every manual run or when the native
+# shell changes. The shell loads hammertrack.ai remotely, so this only needs
+# to re-run when plugins/config change — web deploys update the app content
+# instantly without a rebuild.
+#
+# The release/Play-Store build gets its own signing step once the Play
+# Console org account exists (needs an upload keystore secret).
+name: android-apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - 'mobile-shell/**'
+      - '.github/workflows/android-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Full install: capacitor CLI needs the project's plugin deps to sync.
+      - run: npm ci --ignore-scripts
+
+      - run: npx cap sync android
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hammertrack-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
