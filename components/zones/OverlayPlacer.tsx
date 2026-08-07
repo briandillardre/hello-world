@@ -125,6 +125,10 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   const photoEl = useRef<HTMLDivElement>(null)
   const photoMapRef = useRef<maplibregl.Map | null>(null)
   const PX_SCALE = 0.0001
+  // Live diagnostic shown in the pane's corner — if the photo ever fails to
+  // appear again, the stuck step names the culprit (and the badge existing at
+  // all proves the device is running current code, not a stale tab).
+  const [paneStatus, setPaneStatus] = useState('')
 
   useEffect(() => {
     const img = new Image()
@@ -191,6 +195,8 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
         } as unknown as maplibregl.SourceSpecification)
         pm.addLayer({ id: 'photo-layer', type: 'raster', source: 'photo', paint: { 'raster-fade-duration': 0 } })
         pm.fitBounds([[0, 0], [w * PX_SCALE, h * PX_SCALE]], { padding: 20, duration: 0 })
+        setPaneStatus(`photo ${w}×${h}`)
+        pm.once('idle', () => { if (!dead) setPaneStatus(`photo ${w}×${h} · painted`) })
         // Point A stays visible while picking B.
         if (alignPts.current.img[0]) {
           const [ax, ay] = alignPts.current.img[0]
@@ -203,12 +209,14 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     }
     ;(async () => {
       try {
+        setPaneStatus('loading photo…')
         let res = await fetch(imageUrl, { mode: 'cors' }).catch(() => null)
         if (!res || !res.ok) {
           // Poisoned-cache or transient miss — force a fresh network hit.
           res = await fetch(imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'nocache=1', { mode: 'cors', cache: 'reload' })
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setPaneStatus('decoding…')
         const blob = await res.blob()
         // Decode with createImageBitmap where it exists, <img> elsewhere.
         let src: ImageBitmap | HTMLImageElement
@@ -239,7 +247,10 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
         setAspect(ih / iw)
         build(cv, iw, ih)
       } catch {
-        if (!dead) setError('The image couldn’t load for point-picking — check signal and try again, or line it up with the sliders.')
+        if (!dead) {
+          setPaneStatus('load failed')
+          setError('The image couldn’t load for point-picking — check signal and try again, or line it up with the sliders.')
+        }
       }
     })()
     return () => {
@@ -415,6 +426,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
           {(alignStage === 0 || alignStage === 2) && (
             <div className="absolute inset-0 z-10 bg-navy-950">
               <div ref={photoEl} className="absolute inset-0" />
+              <span className="absolute bottom-1.5 left-2 z-20 font-mono text-[9px] text-faint/80 pointer-events-none select-none">{paneStatus}</span>
             </div>
           )}
 
