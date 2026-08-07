@@ -98,7 +98,15 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
   const [aspect, setAspect] = useState(0.75) // h/w until the real image loads
   const init = initialBounds ? paramsFrom(initialBounds) : null
   const [widthM, setWidthM] = useState(init?.widthM ?? 150)
-  const [rotDeg, setRotDeg] = useState(Math.round(init?.rotDeg ?? 0))
+  const [rotDeg, setRotDeg] = useState(Math.round((init?.rotDeg ?? 0) * 10) / 10)
+  /** Fine-adjust helpers — tenth-of-a-degree / fraction-of-a-percent taps. */
+  const nudgeW = (pct: number) => setWidthM((w) => Math.min(5000, Math.max(5, Math.round(w * (1 + pct / 100) * 10) / 10)))
+  const nudgeRot = (d: number) => setRotDeg((r) => {
+    let v = Math.round((r + d) * 10) / 10
+    if (v > 180) v -= 360
+    if (v < -180) v += 360
+    return v
+  })
   const [opacity, setOpacity] = useState(0.85)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -307,7 +315,9 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     setError(null)
     const p = paramsFrom(corners)
     setWidthM(p.widthM)
-    setRotDeg(Math.round(p.rotDeg))
+    // Keep the solve's precision — rounding to whole degrees visibly skews
+    // a 250 m sheet.
+    setRotDeg(Math.round(p.rotDeg * 10) / 10)
     m.jumpTo({ center: p.center })
     // The image rides the map center, so re-pin with the solved params now.
     const src = m.getSource('place') as maplibregl.ImageSource | undefined
@@ -504,18 +514,40 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
             Drag the map until the photo sits over the site, then size and rotate it until
             fences and roads line up with the satellite view underneath.
           </p>
+          {/* Sliders are the coarse pass; the nudge buttons under Size and
+              Rotate are the fine pass — a finger-width of slider travel is
+              ~2°/2%, way too blunt to seat a planset ("need to be more
+              granular", Aug 7). */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="text-[11px] text-muted">
-              Size <span className="text-faint">· {widthM >= 1000 ? `${(widthM / 1000).toFixed(1)} km` : `${Math.round(widthM)} m`} wide</span>
+              Size <span className="text-faint">· {widthM >= 1000 ? `${(widthM / 1000).toFixed(2)} km` : `${widthM < 300 ? widthM.toFixed(1) : Math.round(widthM)} m`} wide</span>
               <input type="range" min={0} max={100} value={Math.round(Math.log(widthM / 20) / Math.log(3000 / 20) * 100)}
                 onChange={(e) => setWidthM(20 * Math.pow(3000 / 20, Number(e.target.value) / 100))}
                 className="w-full accent-amber" aria-label="Photo width" />
+              <span className="mt-0.5 flex justify-center gap-1">
+                {[-1, -0.1, 0.1, 1].map((p) => (
+                  <button key={p} type="button"
+                    onClick={(e) => { e.preventDefault(); nudgeW(p) }}
+                    className="rounded border border-navy-700 px-2 py-1 font-mono text-[10.5px] text-muted hover:border-amber/60 hover:text-ink">
+                    {p > 0 ? `+${p}` : p}%
+                  </button>
+                ))}
+              </span>
             </label>
             <label className="text-[11px] text-muted">
-              Rotate <span className="text-faint">· {rotDeg}°</span>
-              <input type="range" min={-180} max={180} value={rotDeg}
+              Rotate <span className="text-faint">· {Number.isInteger(rotDeg) ? rotDeg : rotDeg.toFixed(1)}°</span>
+              <input type="range" min={-180} max={180} step={1} value={rotDeg}
                 onChange={(e) => setRotDeg(Number(e.target.value))}
                 className="w-full accent-amber" aria-label="Photo rotation" />
+              <span className="mt-0.5 flex justify-center gap-1">
+                {[-1, -0.1, 0.1, 1].map((d) => (
+                  <button key={d} type="button"
+                    onClick={(e) => { e.preventDefault(); nudgeRot(d) }}
+                    className="rounded border border-navy-700 px-2 py-1 font-mono text-[10.5px] text-muted hover:border-amber/60 hover:text-ink">
+                    {d > 0 ? `+${d}` : d}°
+                  </button>
+                ))}
+              </span>
             </label>
             <label className="text-[11px] text-muted">
               See-through <span className="text-faint">· {Math.round(opacity * 100)}%</span>
