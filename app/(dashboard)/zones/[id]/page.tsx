@@ -6,7 +6,7 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
-import { zoneAssetUsage, type ZoneAssetUsage } from '@/lib/costs'
+import { zoneAssetUsage, usageFromLedger, type ZoneAssetUsage } from '@/lib/costs'
 import type { AssetType } from '@/lib/types'
 import { GeofenceEditor } from '@/components/zones/GeofenceEditor'
 import { ZoneUsage } from '@/components/zones/ZoneUsage'
@@ -80,28 +80,44 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   // 40-round-trip SERIAL page loop over asset_locations, then weather, then
   // the hub, then imagery — with live trackers streaming every few seconds,
   // a month of data made the page take 10s+ ("taking forever", Brian Aug 5).
-  const [sweepRows, weather, hub, imageryRes] = await Promise.all([
-    // 30-day location sweep: one cheap COUNT sizes the job, then pages fetch
-    // in parallel batches. NEWEST-first so recent visits survive the cap
-    // (a bare ascending .limit(40k) once hid yesterday's trucks); reversed to
-    // chronological for the accrual engines. Rows inserted mid-fetch can
-    // shift ranges by a handful of rows — immaterial to 30-day accruals.
+  const [activity, weather, hub, imageryRes] = await Promise.all([
+    // Hours/cost/visits come from the EXACT LEDGER (zone_sessions +
+    // usage_daily, migration 056): a few hundred pre-aggregated rows. The old
+    // 40k-row sampled_history sweep — the single await behind the 15-20 s
+    // zone page load ("that is not reasonable", Aug 7) — survives only as
+    // the fallback for installs that haven't run 056 yet.
     (async () => {
       if (!wantActivity) return null
       const { createClient } = await import('@/lib/supabase-server')
       const supabase = createClient()
       const fromIso = new Date(Date.now() - USAGE_DAYS * 86_400_000).toISOString()
-      // Per-asset uniform sampling in the DB (039) — the raw-ping sweep below
-      // hits its 40k cap after ~a week of live streaming and silently drops
-      // the older weeks, so 30-day hours read as a fraction of reality
-      // ("hours and costs are way off", Aug 6). Same RPC the map ranges use.
+      const [ud, zs] = await Promise.all([
+        supabase.from('usage_daily')
+          .select('asset_id, on_site_secs, active_secs')
+          .eq('geofence_id', fence.id)
+          .gte('day', fromIso.slice(0, 10)),
+        supabase.from('zone_sessions')
+          .select('asset_id, entered_at, exited_at')
+          .eq('geofence_id', fence.id)
+          .gte('entered_at', fromIso)
+          .order('entered_at', { ascending: false })
+          .limit(400),
+      ])
+      if (!ud.error && !zs.error) {
+        return {
+          kind: 'ledger' as const,
+          daily: (ud.data ?? []) as { asset_id: string; on_site_secs: number; active_secs: number }[],
+          sessions: (zs.data ?? []) as { asset_id: string; entered_at: string; exited_at: string }[],
+        }
+      }
+      // Pre-056 fallback: per-asset uniform sampling in the DB (039), then
+      // the parallel paged raw sweep (pre-039).
       const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
         p_from: fromIso, p_to: new Date().toISOString(), p_max: 40_000,
       })
       if (!rpcErr && Array.isArray(sampled)) {
-        return sampled as { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[]
+        return { kind: 'sweep' as const, rows: sampled as { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] }
       }
-      // Pre-039 fallback: parallel paged fetch (newest-first, capped).
       const PAGE = 1000, CAP = 40_000, BATCH = 8
       const head = await supabase
         .from('asset_locations')
@@ -126,7 +142,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         )
         for (const r of chunk) fetched.push(...(r.data ?? []))
       }
-      return fetched.reverse() // chronological — zoneAssetUsage tracks last-per-asset in order
+      // chronological — zoneAssetUsage tracks last-per-asset in order
+      return { kind: 'sweep' as const, rows: fetched.reverse() }
     })(),
     // Weather log (migration 019 + nightly cron) — tolerate the table missing.
     (async () => {
@@ -172,10 +189,23 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     })(),
   ])
 
-  if (sweepRows) {
+  if (activity?.kind === 'ledger') {
+    usage = isVendor ? null : usageFromLedger(activity.daily, assets)
+    // Sessions are closed intervals (the sessionizer stamps exited_at at the
+    // last processed fix, and the cron runs hourly) — a session whose end is
+    // within the last ~75 min is "still on site", not "left".
+    const now = Date.now()
+    const STILL_MS = 75 * 60_000
+    visits = activity.sessions.map((s) => {
+      const enterMs = new Date(s.entered_at).getTime()
+      const exited = new Date(s.exited_at).getTime()
+      const still = now - exited < STILL_MS
+      return { assetId: s.asset_id, enterMs, exitMs: still ? null : exited, minutes: Math.round(((still ? now : exited) - enterMs) / 60_000) }
+    })
+  } else if (activity?.kind === 'sweep') {
     const from = Date.now() - USAGE_DAYS * 86_400_000
-    usage = isVendor ? null : zoneAssetUsage(ring!, assets, sweepRows, from, Date.now())
-    visits = segmentVisits(sweepRows, ring!)
+    usage = isVendor ? null : zoneAssetUsage(ring!, assets, activity.rows, from, Date.now())
+    visits = segmentVisits(activity.rows, ring!)
   }
   const zoneImages = imageryRes.images
   const imageryAvailable = imageryRes.available

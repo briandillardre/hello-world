@@ -238,6 +238,46 @@ export function zoneAssetUsage(
     .sort((x, y) => y.amount - x.amount)
 }
 
+/**
+ * ZoneAssetUsage rows straight from the exact-hours ledger (usage_daily,
+ * migration 056) — same billing policy as zoneAssetUsage, but reading a few
+ * hundred pre-aggregated rows instead of re-deriving from a 40k-ping sweep.
+ * Mileage lives only in the raw stream (not the ledger yet), so `miles` is 0
+ * here; the QBO invoice engine still prices miles from the full stream.
+ */
+export function usageFromLedger(
+  rows: { asset_id: string; on_site_secs: number; active_secs: number }[],
+  assets: (Asset | CostInput | { id: string; name?: string; type?: AssetType })[]
+): ZoneAssetUsage[] {
+  const meta = new Map(assets.map((a) => [a.id, a as Asset]))
+  const acc = new Map<string, ZoneAssetUsage>()
+  for (const r of rows) {
+    const a = meta.get(r.asset_id)
+    if (!a) continue
+    let u = acc.get(r.asset_id)
+    if (!u) acc.set(r.asset_id, (u = {
+      assetId: r.asset_id, name: a.name ?? 'Asset', type: (a.type ?? 'vehicle') as AssetType,
+      activeHours: 0, presentHours: 0, miles: 0, amount: 0,
+    }))
+    const presH = r.on_site_secs / 3600
+    const actH = r.active_secs / 3600
+    const pol = ZONE_POLICY[a.type ?? 'vehicle']
+    u.presentHours += presH
+    u.activeHours += pol.laborAllPresent ? presH : actH
+    let cost = 0
+    if (pol.laborAllPresent) {
+      if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * presH
+    } else if (pol.operatingWhileMoving) {
+      if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * actH
+    }
+    if (pol.ownership && (a.daily_cost ?? 0) > 0) cost += a.daily_cost! * (presH / 24)
+    u.amount += cost
+  }
+  return Array.from(acc.values())
+    .map((u) => ({ ...u, amount: Math.round(u.amount * 100) / 100 }))
+    .sort((x, y) => y.amount - x.amount)
+}
+
 export function zoneCostsFromHistory(
   geofences: { id: string; geometry: { coordinates: unknown[] }; kind?: string | null }[],
   assets: (Asset | CostInput)[],

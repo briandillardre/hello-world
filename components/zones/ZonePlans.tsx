@@ -9,6 +9,7 @@ import {
 } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
+import { thumbUrl, fallbackToRaw } from '@/lib/img'
 import type { Corners } from '@/components/zones/OverlayPlacer'
 
 const OverlayPlacer = dynamic(
@@ -323,7 +324,7 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
                   title={p.bounds ? 'Show this sheet on the live map' : 'Place it on the map first'} />
               )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt="" loading="lazy" className="h-10 w-14 object-cover rounded border border-navy-700 bg-white" />
+              <img src={thumbUrl(p.url, 160)} onError={(e) => fallbackToRaw(e, p.url)} alt="" loading="lazy" className="h-10 w-14 object-cover rounded border border-navy-700 bg-white" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-ink truncate">{p.plan_category ?? 'Plan'}</p>
                 {p.caption && <p className="text-[10.5px] text-faint truncate">{p.caption}</p>}

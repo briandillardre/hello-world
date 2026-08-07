@@ -6,6 +6,7 @@ import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 import { createImageryUploadAction, finalizeZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
+import { thumbUrl, fallbackToRaw } from '@/lib/img'
 import type { Corners } from '@/components/zones/OverlayPlacer'
 
 // MapLibre needs the browser — load the placer only when opened.
@@ -153,9 +154,12 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
         </p>
       ) : current ? (
         <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
+          {/* Hero rides a 1600px transform, never the raw 48 MP file — full-
+              res decodes froze iPads ("zone page is freezing", Aug 7). */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={(current[1][Math.min(shot, current[1].length - 1)]).url}
+            src={thumbUrl((current[1][Math.min(shot, current[1].length - 1)]).url, 1600, 78)}
+            onError={(e) => fallbackToRaw(e, (current[1][Math.min(shot, current[1].length - 1)]).url)}
             alt={`Site on ${current[0]}`}
             loading="lazy"
             className="w-full max-h-[420px] object-contain bg-navy-950"
@@ -218,7 +222,7 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
               <div className="flex gap-1.5 overflow-x-auto">
                 {current[1].map((im, i) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={im.id} src={im.url} alt="" loading="lazy" onClick={() => setShot(i)}
+                  <img key={im.id} src={thumbUrl(im.url, 160)} onError={(e) => fallbackToRaw(e, im.url)} alt="" loading="lazy" onClick={() => setShot(i)}
                     className={`h-12 w-16 object-cover rounded cursor-pointer border ${i === Math.min(shot, current[1].length - 1) ? 'border-amber' : 'border-navy-700 opacity-60'}`} />
                 ))}
               </div>
