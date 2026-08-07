@@ -41,8 +41,17 @@ async function renderPage(doc: PdfDoc, pageNum: number, longEdgePx: number, asBl
   if (!ctx) throw new Error('no canvas')
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height)
   await page.render({ canvas, canvasContext: ctx, viewport: vp }).promise
-  if (!asBlob) return canvas.toDataURL('image/jpeg', 0.7)
+  // Free the page's decoded resources immediately — sheets with embedded
+  // aerials hold 100+ MP bitmaps, and iPad Safari crash-reloads the tab when
+  // peak memory spikes ("page refreshes mid-import", Aug 7).
+  page.cleanup()
+  if (!asBlob) {
+    const url = canvas.toDataURL('image/jpeg', 0.7)
+    canvas.width = 0; canvas.height = 0
+    return url
+  }
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
+  canvas.width = 0; canvas.height = 0
   if (!blob) throw new Error('rasterize failed')
   return blob
 }
@@ -111,22 +120,62 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     }
   }
 
+  /** Upload one sheet. fatal=true means stop the batch (network/server
+   *  trouble); fatal=false means this sheet was skipped, keep going. */
+  async function uploadOne(blob: Blob, category: string, label: string): Promise<{ img?: ZoneImage; fatal?: boolean }> {
+    const type = blob.type || 'image/png'
+    if (blob.size > 50 * 1024 * 1024) { setError(`"${label}" is over 50 MB — skipped.`); return {} }
+    const pre = await createImageryUploadAction(zoneId, type, blob.size).catch(() => null)
+    if (!pre?.ok || !pre.path || !pre.token) { setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); return { fatal: true } }
+    const { error: upErr } = await createClient().storage.from('field-photos')
+      .uploadToSignedUrl(pre.path, pre.token, blob, { contentType: type })
+    if (upErr) { setError('Upload didn’t go through — check signal and try again.'); return { fatal: true } }
+    const r = await finalizeZoneImageryAction({
+      zoneId, path: pre.path,
+      takenOn: new Date().toISOString().slice(0, 10),
+      caption: label, kind: 'plan', planCategory: category,
+    }).catch(() => null)
+    if (r?.ok && r.image) return { img: r.image }
+    setError(r?.error ?? 'Upload didn’t go through — check signal and try again.')
+    return { fatal: true }
+  }
+
+  /** Hand the uploaded batch off to placement (first sheet places, the rest
+   *  inherit its corners on save). */
+  function finishBatch(uploaded: ZoneImage[]) {
+    resetPicker()
+    if (!uploaded.length) return
+    setPlans((xs) => [...uploaded, ...xs])
+    batchRest.current = uploaded.slice(1)
+    setPlacing(uploaded[0])
+  }
+
+  // Convert → upload ONE sheet at a time, never the whole set: holding every
+  // full-res blob at once (the old flow) blew iPad Safari's memory ceiling on
+  // big plansets and the tab crash-reloaded mid-import ("page refreshes and
+  // it doesn't allow an upload", Aug 7 — coroner's office set).
   async function importSelected() {
     const doc = docRef.current
     const pages = Object.keys(sel).map(Number).sort((a, b) => a - b)
     if (!doc || pages.length === 0) { setError('Check at least one sheet.'); return }
     setPhase('importing'); setError(null)
-    const items: { blob: Blob; category: string; label: string }[] = []
+    setThumbs([]) // free the picker thumbnails before the heavy work
+    const uploaded: ZoneImage[] = []
     for (let i = 0; i < pages.length; i++) {
-      setProgress(`Converting sheet ${i + 1} of ${pages.length}…`)
+      setProgress(`Sheet ${i + 1} of ${pages.length} — converting…`)
+      let blob: Blob
       try {
-        const blob = await renderPage(doc, pages[i], 3000, true) as Blob
-        items.push({ blob, category: sel[pages[i]], label: `${fileNameRef.current} — p${pages[i]}` })
+        blob = await renderPage(doc, pages[i], 3000, true) as Blob
       } catch {
         setError(`Page ${pages[i]} wouldn’t convert — skipped.`)
+        continue
       }
+      setProgress(`Sheet ${i + 1} of ${pages.length} — uploading…`)
+      const res = await uploadOne(blob, sel[pages[i]], `${fileNameRef.current} — p${pages[i]}`)
+      if (res.img) uploaded.push(res.img)
+      else if (res.fatal) break
     }
-    await importBlobs(items)
+    finishBatch(uploaded)
   }
 
   async function importBlobs(items: { blob: Blob; category: string; label: string }[]) {
@@ -134,29 +183,12 @@ export function ZonePlans({ zoneId, initial, canEdit, ring = null }: {
     setPhase('importing')
     const uploaded: ZoneImage[] = []
     for (let i = 0; i < items.length; i++) {
-      const { blob, category, label } = items[i]
       setProgress(`Uploading sheet ${i + 1} of ${items.length}…`)
-      const type = blob.type || 'image/png'
-      if (blob.size > 50 * 1024 * 1024) { setError(`"${label}" is over 50 MB — skipped.`); continue }
-      const pre = await createImageryUploadAction(zoneId, type, blob.size).catch(() => null)
-      if (!pre?.ok || !pre.path || !pre.token) { setError(pre?.error ?? 'Upload didn’t go through — check signal and try again.'); break }
-      const { error: upErr } = await createClient().storage.from('field-photos')
-        .uploadToSignedUrl(pre.path, pre.token, blob, { contentType: type })
-      if (upErr) { setError('Upload didn’t go through — check signal and try again.'); break }
-      const r = await finalizeZoneImageryAction({
-        zoneId, path: pre.path,
-        takenOn: new Date().toISOString().slice(0, 10),
-        caption: label, kind: 'plan', planCategory: category,
-      }).catch(() => null)
-      if (r?.ok && r.image) uploaded.push(r.image)
-      else { setError(r?.error ?? 'Upload didn’t go through — check signal and try again.'); break }
+      const res = await uploadOne(items[i].blob, items[i].category, items[i].label)
+      if (res.img) uploaded.push(res.img)
+      else if (res.fatal) break
     }
-    resetPicker()
-    if (!uploaded.length) return
-    setPlans((xs) => [...uploaded, ...xs])
-    // Place the FIRST sheet; the batch inherits its corners on save.
-    batchRest.current = uploaded.slice(1)
-    setPlacing(uploaded[0])
+    finishBatch(uploaded)
   }
 
   async function setActive(id: string | null) {
