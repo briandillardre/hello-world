@@ -245,6 +245,27 @@ export function zoneAssetUsage(
  * Mileage lives only in the raw stream (not the ledger yet), so `miles` is 0
  * here; the QBO invoice engine still prices miles from the full stream.
  */
+/** Dollar cost of ONE ledger row (asset-day) under the zone billing policy —
+ *  the chart and the usage card price days identically because both call
+ *  this. */
+export function ledgerRowCost(
+  a: { type?: AssetType | null; hourly_rate?: number | null; daily_cost?: number | null },
+  onSecs: number,
+  activeSecs: number
+): number {
+  const presH = onSecs / 3600
+  const actH = activeSecs / 3600
+  const pol = ZONE_POLICY[a.type ?? 'vehicle']
+  let cost = 0
+  if (pol.laborAllPresent) {
+    if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * presH
+  } else if (pol.operatingWhileMoving) {
+    if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * actH
+  }
+  if (pol.ownership && (a.daily_cost ?? 0) > 0) cost += a.daily_cost! * (presH / 24)
+  return cost
+}
+
 export function usageFromLedger(
   rows: { asset_id: string; on_site_secs: number; active_secs: number }[],
   assets: (Asset | CostInput | { id: string; name?: string; type?: AssetType })[]
@@ -264,14 +285,7 @@ export function usageFromLedger(
     const pol = ZONE_POLICY[a.type ?? 'vehicle']
     u.presentHours += presH
     u.activeHours += pol.laborAllPresent ? presH : actH
-    let cost = 0
-    if (pol.laborAllPresent) {
-      if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * presH
-    } else if (pol.operatingWhileMoving) {
-      if ((a.hourly_rate ?? 0) > 0) cost += a.hourly_rate! * actH
-    }
-    if (pol.ownership && (a.daily_cost ?? 0) > 0) cost += a.daily_cost! * (presH / 24)
-    u.amount += cost
+    u.amount += ledgerRowCost(a, r.on_site_secs, r.active_secs)
   }
   return Array.from(acc.values())
     .map((u) => ({ ...u, amount: Math.round(u.amount * 100) / 100 }))

@@ -6,7 +6,8 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
-import { zoneAssetUsage, usageFromLedger, type ZoneAssetUsage } from '@/lib/costs'
+import { zoneAssetUsage, usageFromLedger, ledgerRowCost, type ZoneAssetUsage } from '@/lib/costs'
+import { ZoneActivityChart, type ChartRow } from '@/components/zones/ZoneActivityChart'
 import type { AssetType } from '@/lib/types'
 import { GeofenceEditor } from '@/components/zones/GeofenceEditor'
 import { ZoneUsage } from '@/components/zones/ZoneUsage'
@@ -91,11 +92,17 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       const { createClient } = await import('@/lib/supabase-server')
       const supabase = createClient()
       const fromIso = new Date(Date.now() - USAGE_DAYS * 86_400_000).toISOString()
+      // Daily rows come back a full year deep — the activity chart's YTD/All
+      // ranges read them; the 30-day usage card filters down below. A year of
+      // asset-days is a few thousand tiny rows.
+      const chartFrom = new Date(Date.now() - 370 * 86_400_000).toISOString().slice(0, 10)
       const [ud, zs] = await Promise.all([
         supabase.from('usage_daily')
-          .select('asset_id, on_site_secs, active_secs')
+          .select('asset_id, day, on_site_secs, active_secs')
           .eq('geofence_id', fence.id)
-          .gte('day', fromIso.slice(0, 10)),
+          .gte('day', chartFrom)
+          .order('day', { ascending: true })
+          .limit(20_000),
         supabase.from('zone_sessions')
           .select('asset_id, entered_at, exited_at')
           .eq('geofence_id', fence.id)
@@ -106,7 +113,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       if (!ud.error && !zs.error) {
         return {
           kind: 'ledger' as const,
-          daily: (ud.data ?? []) as { asset_id: string; on_site_secs: number; active_secs: number }[],
+          daily: (ud.data ?? []) as { asset_id: string; day: string; on_site_secs: number; active_secs: number }[],
           sessions: (zs.data ?? []) as { asset_id: string; entered_at: string; exited_at: string }[],
         }
       }
@@ -189,8 +196,22 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     })(),
   ])
 
+  let chartRows: ChartRow[] | null = null
   if (activity?.kind === 'ledger') {
-    usage = isVendor ? null : usageFromLedger(activity.daily, assets)
+    const cardFrom = new Date(Date.now() - USAGE_DAYS * 86_400_000).toISOString().slice(0, 10)
+    usage = isVendor ? null : usageFromLedger(activity.daily.filter((d) => d.day >= cardFrom), assets)
+    if (!isVendor) {
+      const meta = new Map(assets.map((a) => [a.id, a]))
+      chartRows = activity.daily.flatMap((d) => {
+        const a = meta.get(d.asset_id)
+        if (!a) return []
+        return [{
+          day: d.day, assetId: d.asset_id, name: a.name, type: a.type,
+          hours: d.on_site_secs / 3600, active: d.active_secs / 3600,
+          cost: ledgerRowCost(a, d.on_site_secs, d.active_secs),
+        }]
+      })
+    }
     // Sessions are closed intervals (the sessionizer stamps exited_at at the
     // last processed fix, and the cron runs hourly) — a session whose end is
     // within the last ~75 min is "still on site", not "left".
@@ -299,6 +320,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             <span className="font-mono text-teal">046_project_management.sql</span> in the Supabase SQL Editor.
           </p>
         ) : null)}
+
+        {chartRows !== null && chartRows.length > 0 && (
+          <ZoneActivityChart rows={chartRows} showCosts={perms.canViewCosts} />
+        )}
 
         {usage !== null && (
           <ZoneUsage

@@ -72,9 +72,14 @@ export function ZoneUsage({
                     <Link href={`/assets/${u.assetId}`} className="flex items-center gap-2 text-ink hover:text-amber transition-colors">
                       <span>{TYPE_EMOJI[u.type]}</span>
                       <span className="truncate max-w-[160px]">{u.name}</span>
+                      {/* Tool hours ride the carrier's BLE pairing — presence,
+                          not engine time (057). */}
+                      {u.type === 'tool' && (
+                        <span className="flex-none rounded-full border border-teal/40 bg-teal/10 px-1.5 text-[9px] font-semibold text-teal">presence</span>
+                      )}
                     </Link>
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted">{h1(u.activeHours)}h</td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted">{u.type === 'tool' ? '—' : `${h1(u.activeHours)}h`}</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted">{h1(u.presentHours)}h</td>
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums text-muted">{u.miles >= 0.05 ? h1(u.miles) : '—'}</td>
                   {showCosts && (
