@@ -420,15 +420,20 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3">
-      <div className="w-full max-w-2xl rounded-2xl border border-navy-700 bg-navy-950 shadow-panel overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-navy-800">
+      {/* Column capped to the viewport: header + map stay put, the controls
+          strip scrolls. Without the cap the centered card overflowed short
+          phone screens with overflow-hidden — Save placement was stranded
+          below the fold and unreachable ("cannot select save or scroll",
+          Aug 9). dvh, not vh: mobile URL bars eat real vh pixels. */}
+      <div className="w-full max-w-2xl rounded-2xl border border-navy-700 bg-navy-950 shadow-panel overflow-hidden flex flex-col max-h-[calc(100dvh-24px)]">
+        <div className="flex-none flex items-center gap-2 px-4 py-3 border-b border-navy-800">
           <p className="font-display font-bold text-ink text-sm flex-1">Place on map</p>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg border border-navy-700 p-1 text-muted hover:text-ink">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="relative">
-          <div ref={mapEl} className="h-[300px] md:h-[380px] w-full" style={alignStage === 1 || alignStage === 3 ? { cursor: 'crosshair' } : undefined} />
+        <div className="relative flex-none">
+          <div ref={mapEl} className="h-[260px] md:h-[380px] w-full" style={alignStage === 1 || alignStage === 3 ? { cursor: 'crosshair' } : undefined} />
           {/* Crosshair — the photo is pinned here; pan the map to move it. */}
           {alignStage === null && (
             <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-amber text-lg leading-none select-none">+</div>
@@ -519,7 +524,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
             </div>
           )}
         </div>
-        <div className="p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3">
           {hint && <p className="text-[11.5px] font-semibold text-teal">{hint}</p>}
           <p className="text-[11.5px] text-faint">
             Drag the map until the photo sits over the site, then size and rotate it until
@@ -577,19 +582,21 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
             </button>
           )}
           {error && <p className="text-sm text-red-400">{error}</p>}
-          <div className="flex items-center gap-2">
-            <button type="button" disabled={busy} onClick={save}
-              className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3.5 py-2 disabled:opacity-40">
-              {busy ? 'Saving…' : 'Save placement'}
+        </div>
+        {/* Action row pinned OUTSIDE the scroll area — Save is always on
+            screen, whatever the phone height. */}
+        <div className="flex-none flex items-center gap-2 px-4 py-3 border-t border-navy-800">
+          <button type="button" disabled={busy} onClick={save}
+            className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3.5 py-2 disabled:opacity-40">
+            {busy ? 'Saving…' : 'Save placement'}
+          </button>
+          {initialBounds && (
+            <button type="button" disabled={busy} onClick={removePlacement}
+              className="rounded-lg border border-navy-700 text-muted hover:text-red-400 text-xs px-3 py-2 disabled:opacity-40">
+              Remove from map
             </button>
-            {initialBounds && (
-              <button type="button" disabled={busy} onClick={removePlacement}
-                className="rounded-lg border border-navy-700 text-muted hover:text-red-400 text-xs px-3 py-2 disabled:opacity-40">
-                Remove from map
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="ml-auto text-xs text-faint hover:text-ink">Cancel</button>
-          </div>
+          )}
+          <button type="button" onClick={onClose} className="ml-auto text-xs text-faint hover:text-ink">Cancel</button>
         </div>
       </div>
     </div>
