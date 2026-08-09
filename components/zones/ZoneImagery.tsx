@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
-import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { Camera, Trash2, ChevronLeft, ChevronRight, MapPin, Maximize2 } from 'lucide-react'
+import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
 import { createImageryUploadAction, finalizeZoneImageryAction, deleteZoneImageryAction, type ZoneImage } from '@/lib/actions/imagery'
 import { createClient } from '@/lib/supabase'
 import { busy as globalBusy } from '@/lib/busy'
@@ -38,6 +39,7 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   const [busy, setBusy] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [placing, setPlacing] = useState<ZoneImage | null>(null)
+  const [viewing, setViewing] = useState<ZoneImage | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
   // Preview of the picked file with the date it was TAKEN (EXIF) — a gallery
@@ -189,15 +191,25 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
       ) : current ? (
         <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
           {/* Hero rides a 1600px transform, never the raw 48 MP file — full-
-              res decodes froze iPads ("zone page is freezing", Aug 7). */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={thumbUrl((current[1][Math.min(shot, current[1].length - 1)]).url, 1600, 78)}
-            onError={(e) => fallbackToRaw(e, (current[1][Math.min(shot, current[1].length - 1)]).url)}
-            alt={`Site on ${current[0]}`}
-            loading="lazy"
-            className="w-full max-h-[420px] object-contain bg-navy-950"
-          />
+              res decodes froze iPads ("zone page is freezing", Aug 7). Tap
+              opens the full-screen pinch-zoom viewer — tall stitched panos
+              letterbox down to a sliver in this 420px box and need a real
+              look ("full images not showing", Aug 9). */}
+          <button type="button" className="relative block w-full cursor-zoom-in"
+            onClick={() => setViewing(current[1][Math.min(shot, current[1].length - 1)])}
+            aria-label="View photo full screen">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={thumbUrl((current[1][Math.min(shot, current[1].length - 1)]).url, 1600, 78)}
+              onError={(e) => fallbackToRaw(e, (current[1][Math.min(shot, current[1].length - 1)]).url)}
+              alt={`Site on ${current[0]}`}
+              loading="lazy"
+              className="w-full max-h-[420px] object-contain bg-navy-950"
+            />
+            <span className="absolute right-2 top-2 rounded-lg bg-navy-950/80 border border-navy-700 p-1.5 text-muted">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </span>
+          </button>
           <div className="p-3 space-y-2">
             <div className="flex items-center gap-2">
               <button type="button" aria-label="Older date" disabled={idx >= dates.length - 1}
@@ -265,6 +277,13 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
         </div>
       ) : null}
       {error && <p className="text-sm text-red-400 mt-1">{error}</p>}
+      {viewing && (
+        <PhotoLightbox
+          url={viewing.url}
+          caption={[fmt(viewing.taken_on), viewing.caption].filter(Boolean).join(' · ')}
+          onClose={() => setViewing(null)}
+        />
+      )}
       {placing && (
         <OverlayPlacer
           zoneId={zoneId}
