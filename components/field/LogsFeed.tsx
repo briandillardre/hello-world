@@ -264,6 +264,20 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
                             {log.equipment_fueled !== null && <span className={log.equipment_fueled ? '' : 'text-amber'}>equipment {log.equipment_fueled ? 'fueled' : 'NOT fueled'}</span>}
                           </p>
                         )}
+                        {/* Custom form answers (admin-built questions, 059) —
+                            self-describing {label, value} pairs. */}
+                        {Array.isArray(log.answers) && log.answers.length > 0 && (
+                          <div className="mt-1.5 space-y-0.5">
+                            {log.answers.map((a) => (
+                              <p key={a.id} className="text-[11.5px] text-muted">
+                                <span className="text-faint">{a.label}:</span>{' '}
+                                {typeof a.value === 'boolean' ? (a.value ? 'Yes' : 'No')
+                                  : Array.isArray(a.value) ? a.value.join(', ')
+                                  : String(a.value)}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                         {log.photos.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {log.photos.map((p, i) => (

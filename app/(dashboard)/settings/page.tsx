@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { WeeklyDigests } from '@/components/settings/WeeklyDigests'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
+import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
+import { resolveLogForm } from '@/lib/log-form'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
 import { BillingCard } from '@/components/settings/BillingCard'
@@ -39,6 +41,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
 
         {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
         <WeeklyDigests initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
+
+        {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}
+        <DailyLogBuilder initial={resolveLogForm(co.log_form)} editable={co.isAdmin} />
 
         {billingReturn === 'success' && (
           <p className="rounded-xl border border-teal/40 bg-teal/10 px-4 py-3 text-[13px] text-teal leading-snug">

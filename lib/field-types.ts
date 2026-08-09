@@ -26,6 +26,11 @@ export interface DailyLog {
   trucks_fueled: boolean | null
   equipment_fueled: boolean | null
   photos: { url: string; kind: 'photo' | 'receipt' }[]
+  /** Custom-question answers, self-describing (migration 059). */
+  answers?: { id: string; label: string; value: string | number | boolean | string[] }[]
+  /** Where the phone was when the log was submitted (migration 059). */
+  lat?: number | null
+  lng?: number | null
   created_at: string
 }
 

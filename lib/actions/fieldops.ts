@@ -20,10 +20,21 @@ async function requireUser() {
   }
 }
 
+/** PostgREST signals an unknown column as PGRST204 (schema cache) or 42703 —
+ *  both just mean migration 059 hasn't run; callers retry without the new
+ *  columns so field ops never breaks on a lagging database. */
+function missingColumn(error: { code?: string; message?: string } | null): boolean {
+  return !!error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message ?? ''))
+}
+
+const validCoord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
 export async function clockInAction(input: {
   category: ClockCategory
   projectGeofenceId?: string | null
   plan?: string
+  lat?: number | null
+  lng?: number | null
 }): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock in.' }
   try {
@@ -32,14 +43,19 @@ export async function clockInAction(input: {
     const { data: open } = await supabase
       .from('time_entries').select('id').eq('user_id', userId).is('clock_out_at', null).limit(1)
     if (open?.length) return { ok: true }
-    const { error } = await supabase.from('time_entries').insert({
+    const base = {
       company_id: companyId,
       user_id: userId,
       person_name: personName,
       category: input.category,
       project_geofence_id: input.category === 'project' ? (input.projectGeofenceId ?? null) : null,
       plan: (input.plan ?? '').slice(0, 500),
-    })
+    }
+    const withPos = validCoord(input.lat) && validCoord(input.lng)
+      ? { ...base, in_lat: input.lat, in_lng: input.lng }
+      : base
+    let { error } = await supabase.from('time_entries').insert(withPos)
+    if (missingColumn(error) && withPos !== base) ({ error } = await supabase.from('time_entries').insert(base))
     if (error) return { ok: false, error: error.message }
     revalidatePath('/clock')
     return { ok: true }
@@ -82,8 +98,18 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock out.' }
   try {
     const { supabase, userId, companyId, personName } = await requireUser()
+
+    // The company's form drives validation + which answers exist. Tolerant:
+    // any read failure falls back to the default form (pre-059 behavior).
+    const { resolveLogForm } = await import('@/lib/log-form')
+    const { data: co } = await supabase.from('companies').select('log_form').eq('id', companyId).single()
+    const items = resolveLogForm(co?.log_form ?? null).filter((it) => it.enabled)
+
+    const writeupItem = items.find((it) => it.std === 'writeup')
     const writeup = String(form.get('writeup') ?? '').trim().slice(0, 4000)
-    if (writeup.length < 10) return { ok: false, error: 'Write up the day first — a couple of sentences minimum.' }
+    if (writeupItem?.required && writeup.length < 10) {
+      return { ok: false, error: 'Write up the day first — a couple of sentences minimum.' }
+    }
 
     const { data: open } = await supabase
       .from('time_entries').select('id, project_geofence_id').eq('user_id', userId).is('clock_out_at', null)
@@ -92,18 +118,54 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const entryProject = (open?.[0]?.project_geofence_id as string | null) ?? null
     if (!entryId) return { ok: false, error: "You aren't clocked in." }
 
+    // Uploads + custom answers, walked from the form definition.
     const photos: { url: string; kind: 'photo' | 'receipt' }[] = []
-    for (const kind of ['photos', 'receipts'] as const) {
-      for (const f of form.getAll(kind)) {
-        if (!(f instanceof File)) continue
-        const url = await uploadFieldPhoto(companyId, f)
-        if (url) photos.push({ url, kind: kind === 'receipts' ? 'receipt' : 'photo' })
+    const answers: { id: string; label: string; value: string | number | boolean | string[] }[] = []
+    for (const it of items) {
+      if (it.std === 'writeup' || it.std === 'safety') continue // legacy columns below
+      if (it.type === 'photos') {
+        const name = it.std === 'photos' ? 'photos' : it.std === 'receipts' ? 'receipts' : `f_${it.id}`
+        let uploaded = 0
+        for (const f of form.getAll(name)) {
+          if (!(f instanceof File)) continue
+          const url = await uploadFieldPhoto(companyId, f)
+          if (url) { photos.push({ url, kind: it.std === 'receipts' ? 'receipt' : 'photo' }); uploaded++ }
+        }
+        if (it.required && !uploaded) return { ok: false, error: `“${it.label}” needs at least one photo.` }
+        continue
+      }
+      if (it.std === 'trucks_fueled' || it.std === 'equipment_fueled') {
+        const v = form.get(it.std === 'trucks_fueled' ? 'trucksFueled' : 'equipmentFueled')
+        if (it.required && v === null) return { ok: false, error: `Answer “${it.label}” first.` }
+        continue // written to its legacy column below
+      }
+      // Custom items → answers array
+      const name = `a_${it.id}`
+      if (it.type === 'checklist') {
+        const vals = form.getAll(name).map((v) => String(v).slice(0, 120)).filter(Boolean).slice(0, 24)
+        if (it.required && !vals.length) return { ok: false, error: `Check at least one option on “${it.label}”.` }
+        if (vals.length) answers.push({ id: it.id, label: it.label, value: vals })
+        continue
+      }
+      const raw = String(form.get(name) ?? '').trim()
+      if (it.required && !raw) return { ok: false, error: `“${it.label}” is required.` }
+      if (!raw) continue
+      if (it.type === 'number') {
+        const n = Number(raw)
+        if (!Number.isFinite(n)) return { ok: false, error: `“${it.label}” needs a number.` }
+        answers.push({ id: it.id, label: it.label, value: n })
+      } else if (it.type === 'yesno') {
+        answers.push({ id: it.id, label: it.label, value: raw === 'yes' })
+      } else {
+        answers.push({ id: it.id, label: it.label, value: raw.slice(0, 2000) })
       }
     }
 
     const safety = String(form.get('safety') ?? '').trim().slice(0, 2000)
+    const lat = Number(form.get('lat')), lng = Number(form.get('lng'))
+    const hasPos = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null
 
-    const { data: logRow, error: logErr } = await supabase.from('daily_logs').insert({
+    const baseRow = {
       company_id: companyId,
       user_id: userId,
       time_entry_id: entryId,
@@ -112,7 +174,13 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       trucks_fueled: form.get('trucksFueled') === null ? null : form.get('trucksFueled') === 'yes',
       equipment_fueled: form.get('equipmentFueled') === null ? null : form.get('equipmentFueled') === 'yes',
       photos,
-    }).select('id').single()
+    }
+    const fullRow = { ...baseRow, answers, ...(hasPos ? { lat, lng } : {}) }
+    let { data: logRow, error: logErr } = await supabase.from('daily_logs').insert(fullRow).select('id').single()
+    // Migration 059 not applied yet → store what the schema knows.
+    if (missingColumn(logErr)) {
+      ({ data: logRow, error: logErr } = await supabase.from('daily_logs').insert(baseRow).select('id').single())
+    }
     if (logErr) return { ok: false, error: logErr.message }
 
     // Receipt photos also land in the receipts inbox (migration 017) so the
@@ -132,11 +200,21 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       if (rcptErr) console.error('Receipt indexing skipped:', rcptErr.message)
     }
 
-    const { error: outErr } = await supabase
+    const outPatch = hasPos
+      ? { clock_out_at: new Date().toISOString(), out_lat: lat, out_lng: lng }
+      : { clock_out_at: new Date().toISOString() }
+    let { error: outErr } = await supabase
       .from('time_entries')
-      .update({ clock_out_at: new Date().toISOString() })
+      .update(outPatch)
       .eq('id', entryId)
       .eq('user_id', userId)
+    if (missingColumn(outErr) && hasPos) {
+      ({ error: outErr } = await supabase
+        .from('time_entries')
+        .update({ clock_out_at: new Date().toISOString() })
+        .eq('id', entryId)
+        .eq('user_id', userId))
+    }
     if (outErr) return { ok: false, error: outErr.message }
 
     // Safety triage (stage 3 of the AI ladder): anything written in the

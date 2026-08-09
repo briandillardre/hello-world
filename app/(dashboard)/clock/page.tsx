@@ -1,7 +1,8 @@
-import { getMyClockState } from '@/lib/db/fieldops'
+import { getMyClockState, getLogFormRaw } from '@/lib/db/fieldops'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { ClockCard } from '@/components/field/ClockCard'
+import { resolveLogForm } from '@/lib/log-form'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export default async function ClockPage() {
     getMyClockState(),
     getCurrentCompanyId(),
   ])
-  const geofences = await getGeofences(companyId)
+  const [geofences, logFormRaw] = await Promise.all([getGeofences(companyId), getLogFormRaw(companyId)])
   // Job sites only — boundary outlines aren't chargeable places.
   const zones = geofences
     .filter((g) => g.kind !== 'boundary')
@@ -29,7 +30,8 @@ export default async function ClockPage() {
         <h1 className="font-display font-bold text-xl text-ink">Time clock</h1>
         <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
       </div>
-      <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock} />
+      <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock}
+        form={resolveLogForm(logFormRaw).filter((it) => it.enabled)} />
     </div>
   )
 }

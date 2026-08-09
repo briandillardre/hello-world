@@ -107,6 +107,21 @@ export async function saveDigestPrefsAction(prefs: {
   return { ok: true }
 }
 
+/** Daily-log form builder (Settings card) — replaces companies.log_form
+ *  wholesale with a server-sanitized copy. Never trusts the client blob. */
+export async function saveLogFormAction(items: unknown): Promise<{ ok: boolean; error?: string }> {
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, error: 'Admins only.' }
+  const { resolveLogForm } = await import('@/lib/log-form')
+  const clean = resolveLogForm(items)
+  const { createClient } = await import('@/lib/supabase-server')
+  const { error } = await createClient().from('companies').update({ log_form: clean }).eq('id', companyId)
+  if (error) return { ok: false, error: 'Save failed — run migration 059 in the Supabase SQL Editor first.' }
+  revalidatePath('/settings')
+  revalidatePath('/clock')
+  return { ok: true }
+}
+
 export async function saveCompanyLogoAction(form: FormData): Promise<{ ok: boolean; url?: string | null; error?: string }> {
   const companyId = await requireAdminCompany()
   if (!companyId) return { ok: false, error: 'Admins only.' }

@@ -3372,6 +3372,67 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.webcams])
 
+  // ── Field activity (crew clock-ins + daily logs, GPS-stamped — mig 059) ──
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.fieldops
+    if (m.getLayer('fieldops-dots')) {
+      m.setLayoutProperty('fieldops-dots', 'visibility', on ? 'visible' : 'none')
+      m.setLayoutProperty('fieldops-mark', 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('fieldops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'fieldops-dots', type: 'circle', source: 'fieldops',
+        paint: {
+          'circle-radius': 9,
+          'circle-color': ['match', ['get', 'kind'], 'clockin', '#2dd4bf', '#ff9e16'],
+          'circle-stroke-color': '#0b1523', 'circle-stroke-width': 2,
+        },
+      }, beforeId)
+      m.addLayer({
+        id: 'fieldops-mark', type: 'symbol', source: 'fieldops',
+        layout: { 'text-field': ['get', 'tag'], 'text-size': 7.5, 'text-allow-overlap': true },
+        paint: { 'text-color': '#001523' },
+      }, beforeId)
+      m.on('click', 'fieldops-dots', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        const title = p.kind === 'clockin' ? 'Clocked in' : 'Daily log'
+        const color = p.kind === 'clockin' ? '#2dd4bf' : '#ff9e16'
+        new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">` +
+            `<div style="font-weight:700;color:${color}">${title} · ${p.person}</div>` +
+            `<div style="color:#9fb6cc">${p.at}${p.zone ? ` · ${p.zone}` : ''}</div>` +
+            (p.text ? `<div style="margin-top:4px;color:#e8f0f7;white-space:normal;overflow-wrap:break-word">${String(p.text).replace(/</g, '&lt;')}</div>` : '') +
+            `<a href="/logs" style="color:#2dd4bf;font-size:11px">open daily logs →</a></div>`
+          )
+          .addTo(m)
+      })
+      m.on('mouseenter', 'fieldops-dots', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'fieldops-dots', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    fetch('/api/field-activity')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { events?: { kind: string; lat: number; lng: number; person: string; at: string; zone: string | null; text: string }[] } | null) => {
+        if (cancelled || !j?.events) return
+        const features = j.events.map((ev) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [ev.lng, ev.lat] },
+          properties: { kind: ev.kind, tag: ev.kind === 'clockin' ? 'IN' : 'LOG', person: ev.person, at: ev.at, zone: ev.zone ?? '', text: ev.text },
+        }))
+        ;(m.getSource('fieldops') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'fieldops', at: Date.now() } }))
+      })
+      .catch(() => { /* pre-059 database or offline — layer stays empty */ })
+    return () => { cancelled = true }
+  }, [mapReady, overlaysOn.fieldops])
+
   // ── Day/night, the realistic way: whatever basemap is up shows in daylight,
   // then the map fades through graduated twilight bands (sun 0/−6/−12/−18°
   // below the horizon) into night — and real cities glow on the dark side,
@@ -4337,7 +4398,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
         showZones={showZones}

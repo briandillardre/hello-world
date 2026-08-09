@@ -5,6 +5,22 @@ import { useRouter } from 'next/navigation'
 import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel } from 'lucide-react'
 import { clockInAction, clockOutAction } from '@/lib/actions/fieldops'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
+import type { LogFormItem } from '@/lib/log-form'
+
+/** Best-effort phone GPS — resolves null on denial/timeout, never blocks the
+ *  crew from clocking. Every field event carries where it happened. */
+function getPos(timeoutMs = 6000): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return resolve(null)
+    const done = (v: { lat: number; lng: number } | null) => { clearTimeout(t); resolve(v) }
+    const t = setTimeout(() => resolve(null), timeoutMs + 500)
+    navigator.geolocation.getCurrentPosition(
+      (p) => done({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => done(null),
+      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60_000 }
+    )
+  })
+}
 
 /**
  * The crew's whole day in one card: clock in (project + plan), live timer,
@@ -24,13 +40,15 @@ function elapsedLabel(sinceIso: string, now: number): string {
   return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
 }
 
-export function ClockCard({ openEntry, zones, available, personName, demo = false }: {
+export function ClockCard({ openEntry, zones, available, personName, demo = false, form = [] }: {
   openEntry: TimeEntry | null
   zones: { id: string; name: string }[]
   available: boolean
   personName: string
   /** Demo mode: show the pitch, not internal setup instructions. */
   demo?: boolean
+  /** The admin-built daily-log form (enabled items only, in order). */
+  form?: LogFormItem[]
 }) {
   const router = useRouter()
   const [category, setCategory] = useState<ClockCategory>('project')
@@ -41,8 +59,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const [loggingOut, setLoggingOut] = useState(false)
   const [now, setNow] = useState(Date.now())
   const formRef = useRef<HTMLFormElement>(null)
-  const [photoCount, setPhotoCount] = useState(0)
-  const [receiptCount, setReceiptCount] = useState(0)
+  const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000)
@@ -76,10 +93,13 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     if (busy) return
     setBusy(true)
     setError(null)
+    const pos = await getPos()
     const res = await clockInAction({
       category,
       projectGeofenceId: category === 'project' ? zoneId || null : null,
       plan,
+      lat: pos?.lat ?? null,
+      lng: pos?.lng ?? null,
     })
     setBusy(false)
     if (!res.ok) setError(res.error ?? 'Clock-in failed')
@@ -91,7 +111,10 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     if (busy) return
     setBusy(true)
     setError(null)
-    const res = await clockOutAction(new FormData(e.currentTarget))
+    const fd = new FormData(e.currentTarget)
+    const pos = await getPos()
+    if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
+    const res = await clockOutAction(fd)
     setBusy(false)
     if (!res.ok) setError(res.error ?? 'Clock-out failed')
     else {
@@ -193,55 +216,113 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
         <form ref={formRef} onSubmit={submitLog} className="space-y-3">
           <p className="font-display font-bold text-ink">Daily log first — then you&apos;re out.</p>
 
-          <textarea
-            name="writeup"
-            rows={4}
-            required
-            placeholder="What got done today? Problems? What's queued for tomorrow?"
-            className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50 resize-none"
-          />
+          {/* The admin-built form (Settings → Daily log form). Standard items
+              keep their legacy field names so the whole downstream pipeline
+              (safety push, receipts inbox, digests) is untouched; custom
+              items post as a_<id> / f_<id>. */}
+          {form.map((it) => {
+            const name = it.std === 'writeup' ? 'writeup'
+              : it.std === 'safety' ? 'safety'
+              : it.std === 'trucks_fueled' ? 'trucksFueled'
+              : it.std === 'equipment_fueled' ? 'equipmentFueled'
+              : it.std === 'photos' ? 'photos'
+              : it.std === 'receipts' ? 'receipts'
+              : it.type === 'photos' ? `f_${it.id}` : `a_${it.id}`
+            const req = it.required
+            const label = it.label + (req ? '' : '')
 
-          <div className="flex items-start gap-2">
-            <ShieldAlert className="h-4 w-4 text-alert mt-2.5 flex-none" />
-            <textarea
-              name="safety"
-              rows={1}
-              placeholder="Safety issues? (leave blank if none)"
-              className="flex-1 bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-alert/50 resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[13px]">
-            {([['trucksFueled', 'Trucks fueled?'], ['equipmentFueled', 'Equipment fueled?']] as const).map(([name, label]) => (
-              <fieldset key={name} className="rounded-lg border border-navy-700 bg-navy-900 px-3 py-2">
-                <legend className="sr-only">{label}</legend>
-                <p className="text-faint flex items-center gap-1 mb-1"><Fuel className="h-3.5 w-3.5" /> {label}</p>
-                <div className="flex gap-3">
-                  {(['yes', 'no'] as const).map((v) => (
-                    <label key={v} className="flex items-center gap-1.5 text-ink cursor-pointer">
-                      <input type="radio" name={name} value={v} required className="accent-amber" />
-                      {v === 'yes' ? 'Yes' : 'No'}
-                    </label>
-                  ))}
+            if (it.type === 'longtext' || it.type === 'text') {
+              const isSafety = it.std === 'safety'
+              const field = it.type === 'longtext' ? (
+                <textarea name={name} rows={it.std === 'writeup' ? 4 : 2} required={req}
+                  placeholder={(it.hint ?? label) + (req ? '' : ' (optional)')}
+                  className={`w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none resize-none ${isSafety ? 'focus:border-alert/50' : 'focus:border-amber/50'}`} />
+              ) : (
+                <input name={name} type="text" required={req} placeholder={(it.hint ?? label) + (req ? '' : ' (optional)')}
+                  className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50" />
+              )
+              return (
+                <div key={it.id}>
+                  <p className="text-[11px] text-faint mb-1 flex items-center gap-1.5">
+                    {isSafety && <ShieldAlert className="h-3.5 w-3.5 text-alert" />}
+                    {label}{req && <span className="text-amber">*</span>}
+                  </p>
+                  {field}
                 </div>
-              </fieldset>
-            ))}
-          </div>
+              )
+            }
 
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-navy-600 bg-navy-900 py-3 text-[13px] text-muted cursor-pointer hover:text-ink hover:border-teal/50 transition">
-              <Camera className="h-4 w-4 text-teal" />
-              {photoCount ? `${photoCount} photo${photoCount > 1 ? 's' : ''}` : 'Add photos'}
-              <input type="file" name="photos" accept="image/*" capture="environment" multiple hidden
-                onChange={(e) => setPhotoCount(e.target.files?.length ?? 0)} />
-            </label>
-            <label className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-navy-600 bg-navy-900 py-3 text-[13px] text-muted cursor-pointer hover:text-ink hover:border-amber/50 transition">
-              <Receipt className="h-4 w-4 text-amber" />
-              {receiptCount ? `${receiptCount} receipt${receiptCount > 1 ? 's' : ''}` : 'Add receipts'}
-              <input type="file" name="receipts" accept="image/*" capture="environment" multiple hidden
-                onChange={(e) => setReceiptCount(e.target.files?.length ?? 0)} />
-            </label>
-          </div>
+            if (it.type === 'number') {
+              return (
+                <div key={it.id}>
+                  <p className="text-[11px] text-faint mb-1">{label}{req && <span className="text-amber">*</span>}</p>
+                  <input name={name} type="number" inputMode="decimal" step="any" required={req}
+                    placeholder={it.hint ?? ''}
+                    className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50" />
+                </div>
+              )
+            }
+
+            if (it.type === 'yesno') {
+              return (
+                <fieldset key={it.id} className="rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[13px]">
+                  <legend className="sr-only">{label}</legend>
+                  <p className="text-faint flex items-center gap-1 mb-1">
+                    {it.std ? <Fuel className="h-3.5 w-3.5" /> : null} {label}{req && <span className="text-amber">*</span>}
+                  </p>
+                  <div className="flex gap-3">
+                    {(['yes', 'no'] as const).map((v) => (
+                      <label key={v} className="flex items-center gap-1.5 text-ink cursor-pointer">
+                        <input type="radio" name={name} value={v} required={req} className="accent-amber" />
+                        {v === 'yes' ? 'Yes' : 'No'}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )
+            }
+
+            if (it.type === 'choice') {
+              return (
+                <div key={it.id}>
+                  <p className="text-[11px] text-faint mb-1">{label}{req && <span className="text-amber">*</span>}</p>
+                  <select name={name} required={req} defaultValue=""
+                    className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-3 text-sm text-ink outline-none focus:border-amber/50">
+                    <option value="" disabled={req}>{req ? 'Pick one…' : '—'}</option>
+                    {(it.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+              )
+            }
+
+            if (it.type === 'checklist') {
+              return (
+                <fieldset key={it.id} className="rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[13px]">
+                  <legend className="sr-only">{label}</legend>
+                  <p className="text-faint mb-1">{label}{req && <span className="text-amber">*</span>}</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {(it.options ?? []).map((o) => (
+                      <label key={o} className="flex items-center gap-1.5 text-ink cursor-pointer">
+                        <input type="checkbox" name={name} value={o} className="accent-amber" /> {o}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )
+            }
+
+            // photos (standard photos/receipts + custom photo questions)
+            const isReceipts = it.std === 'receipts'
+            const count = fileCounts[name] ?? 0
+            return (
+              <label key={it.id} className={`flex items-center justify-center gap-2 rounded-lg border border-dashed border-navy-600 bg-navy-900 py-3 text-[13px] text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
+                {isReceipts ? <Receipt className="h-4 w-4 text-amber" /> : <Camera className="h-4 w-4 text-teal" />}
+                {count ? `${count} added` : label}{req && !count && <span className="text-amber">*</span>}
+                <input type="file" name={name} accept="image/*" capture="environment" multiple hidden
+                  onChange={(e) => setFileCounts((c) => ({ ...c, [name]: e.target.files?.length ?? 0 }))} />
+              </label>
+            )
+          })}
 
           {error && <p className="text-[12.5px] text-alert">{error}</p>}
 

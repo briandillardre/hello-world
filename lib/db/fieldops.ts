@@ -43,6 +43,19 @@ export async function getMyClockState(): Promise<{
   }
 }
 
+/** The company's daily-log form config (raw jsonb; resolveLogForm() it).
+ *  Null in demo mode, pre-059, or when the admin never customized. */
+export async function getLogFormRaw(companyId: string): Promise<unknown> {
+  if (isMock) return null
+  try {
+    const { createClient } = await import('../supabase-server')
+    const { data } = await createClient().from('companies').select('log_form').eq('id', companyId).single()
+    return data?.log_form ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Recent entries + logs for the office view, newest day first. */
 export async function getRecentFieldDays(companyId: string, days = 7): Promise<{
   entries: TimeEntry[]

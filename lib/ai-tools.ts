@@ -94,6 +94,19 @@ export const AI_TOOLS = [
     },
   },
   {
+    name: 'daily_logs',
+    description:
+      'Submitted crew daily logs over the last N days: who wrote it, which site they were clocked into, the day\'s writeup, safety issues, fuel answers, every custom form answer, photo count, and where the phone was. Use for "what happened on site", "did anyone report safety issues", "what did the crew log yesterday", "who worked at X and what did they say".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: { type: 'number', description: 'How many days back (1-14, default 3)' },
+        zone_name: { type: 'string', description: 'Optional: only logs from crews clocked into this zone/site (partial name ok)' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'recent_alerts',
     description:
       'Recent alert events (theft, after-hours movement, left-site, low battery) with asset, trigger, time, and whether acknowledged. Use for any alerts/theft/security question.',
@@ -386,6 +399,51 @@ async function runRecentAlerts(ctx: AiToolCtx, input: { limit?: number }) {
   }))
 }
 
+/** Crew daily logs + who/where context, compact for the model. */
+async function runDailyLogs(ctx: AiToolCtx, input: { days?: number; zone_name?: string }): Promise<unknown> {
+  const days = Math.min(14, Math.max(1, Math.round(input.days ?? 3)))
+  const { createClient } = await import('./supabase-server')
+  const supabase = createClient()
+  const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString()
+  const [logsQ, entriesQ] = await Promise.all([
+    supabase.from('daily_logs').select('*').eq('company_id', ctx.companyId)
+      .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(60),
+    supabase.from('time_entries').select('id, person_name, category, project_geofence_id, plan, clock_in_at, clock_out_at')
+      .eq('company_id', ctx.companyId).gte('clock_in_at', sinceIso).limit(300),
+  ])
+  if (logsQ.error) return { error: 'Daily logs are not set up yet (run migration 015).' }
+  const entries = new Map((entriesQ.data ?? []).map((e) => [e.id as string, e]))
+  const zoneFilter = input.zone_name ? matchByName(input.zone_name, ctx.geofences) : null
+  if (input.zone_name && !zoneFilter) {
+    return { error: `No zone matches "${input.zone_name}"`, zones: ctx.geofences.map((g) => g.name) }
+  }
+  const rows = (logsQ.data ?? []).flatMap((l) => {
+    const entry = entries.get(l.time_entry_id as string)
+    const zone = ctx.geofences.find((g) => g.id === entry?.project_geofence_id)
+    if (zoneFilter && zone?.id !== zoneFilter.id) return []
+    const hours = entry?.clock_out_at && entry?.clock_in_at
+      ? Math.round((new Date(entry.clock_out_at as string).getTime() - new Date(entry.clock_in_at as string).getTime()) / 360_000) / 10
+      : null
+    const answers = Array.isArray(l.answers)
+      ? Object.fromEntries((l.answers as { label: string; value: unknown }[]).map((a) => [a.label, a.value]))
+      : {}
+    return [{
+      person: (entry?.person_name as string) ?? 'Crew',
+      site: zone?.name ?? (entry?.category as string) ?? null,
+      submitted: fmtDateTime(new Date(l.created_at as string).getTime(), ctx.tz),
+      hours_clocked: hours,
+      plan: (entry?.plan as string) || null,
+      writeup: String(l.writeup ?? '').slice(0, 600),
+      safety: String(l.safety ?? '') || null,
+      trucks_fueled: l.trucks_fueled as boolean | null,
+      equipment_fueled: l.equipment_fueled as boolean | null,
+      ...(Object.keys(answers).length ? { form_answers: answers } : {}),
+      photos: Array.isArray(l.photos) ? (l.photos as unknown[]).length : 0,
+    }]
+  })
+  return rows.length ? rows : { note: `No daily logs in the last ${days} day(s)${zoneFilter ? ` for ${zoneFilter.name}` : ''}.` }
+}
+
 /** Execute one tool call. Never throws — errors return as {error} so the
  *  model can recover ("no such asset — here's the list"). */
 export async function runAiTool(name: string, input: Record<string, unknown>, ctx: AiToolCtx): Promise<unknown> {
@@ -398,6 +456,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       case 'site_visits': return await runSiteVisits(ctx, input as { zone_name?: string; days?: number })
       case 'eta_to_zone': return await runEtaToZone(ctx, input as { asset_name?: string; zone_name?: string })
       case 'recent_alerts': return await runRecentAlerts(ctx, input as { limit?: number })
+      case 'daily_logs': return await runDailyLogs(ctx, input as { days?: number; zone_name?: string })
       default: return { error: `Unknown tool ${name}` }
     }
   } catch (err) {
