@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
 import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
+import { toolIsFresh } from '@/lib/tools-resolve'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
@@ -268,10 +269,18 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                   const partnerId = p.member_asset_id === asset.id ? p.carrier_asset_id : p.member_asset_id
                   const verb = p.member_asset_id === asset.id ? 'rode with' : 'carried'
                   const start = new Date(p.started_at)
-                  const end = p.ended_at ? new Date(p.ended_at) : null
+                  // An open episode (no ended_at) is only "together" while the
+                  // sighting is fresh. Arbitration never closes an episode when
+                  // a tag simply goes silent (dropped on site, carrier drove
+                  // off), so a stale open episode ends at last_seen — same
+                  // clamp the map, trails, and hours ledger already apply
+                  // (TL8 "left here" at Creekside yet LIVE with the Silverado
+                  // in Easley, Aug 9).
+                  const live = !p.ended_at && toolIsFresh(p.last_seen)
+                  const end = p.ended_at ? new Date(p.ended_at) : live ? null : new Date(p.last_seen)
                   return (
                     <div key={p.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
-                      <Wifi className={'h-4 w-4 flex-none ' + (p.ended_at ? 'text-faint' : 'text-[#34d399]')} />
+                      <Wifi className={'h-4 w-4 flex-none ' + (live ? 'text-[#34d399]' : 'text-faint')} />
                       <span className="flex-1 min-w-0">
                         <span className="text-ink font-medium">{verb} </span>
                         <Link href={`/assets/${partnerId}`} className="text-teal hover:underline font-medium">{nameOf(partnerId)}</Link>
@@ -279,9 +288,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                           {dayFmt.format(start)} {timeFmt.format(start)}
                           {' → '}
                           {end ? `${dayFmt.format(end)} ${timeFmt.format(end)}` : 'still together'}
+                          {!p.ended_at && !live && ' · signal lost'}
                         </span>
                       </span>
-                      {!p.ended_at && (
+                      {live && (
                         <span className="flex-none font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#34d399]/15 text-[#6ee7b7]">LIVE</span>
                       )}
                     </div>
