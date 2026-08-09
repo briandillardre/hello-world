@@ -1,0 +1,61 @@
+# Play Store release build — signed AAB, ready for Play Console upload.
+#
+# Needs 4 repo secrets (Settings → Secrets → Actions), generated Aug 9 and
+# delivered to Brian's password manager:
+#   ANDROID_KEYSTORE_B64        base64 of hammertrack-upload.jks
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+# Manual dispatch only — releases are deliberate. Bump versionCode/versionName
+# in android/app/build.gradle before each store upload.
+name: android-release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Guard — signing secrets present?
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 not set — add the 4 signing secrets (see keystore-secrets.txt in Brian's password manager)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci --ignore-scripts
+
+      - run: npx cap sync android
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > /tmp/upload-keystore.jks
+
+      - name: Build signed release AAB + APK
+        env:
+          ANDROID_KEYSTORE_PATH: /tmp/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: cd android && ./gradlew bundleRelease assembleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hammertrack-release
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 90

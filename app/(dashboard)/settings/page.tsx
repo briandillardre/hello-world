@@ -10,6 +10,7 @@ import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
 import { BillingCard } from '@/components/settings/BillingCard'
+import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
 import { getMyPermissions } from '@/lib/permissions-server'
 
@@ -172,6 +173,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
             <p className="text-xs text-faint">Set NEXT_PUBLIC_MAPTILER_KEY in .env.local to enable Maptiler Streets.</p>
           </div>
         </section>
+
+        {/* Account deletion — in-app entry point (Apple 5.1.1(v)) */}
+        <DeleteAccountCard />
       </div>
     </div>
   )

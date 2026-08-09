@@ -83,14 +83,24 @@ our live web app and adds native capabilities: push notifications for theft
 alerts, background location for the optional crew-tracker ("Go Live"), and
 camera for asset/receipt photos.
 
-Demo account (full access, seeded data):
-  email:    <CREATE A REVIEW LOGIN>
-  password: <…>
+Demo account (full access, seeded fleet + a week of history):
+  email:    review@hammertrack.ai
+  password: <set when running supabase/seed_review_account.sql — see below>
+
+Suggested tour: Live Map (fleet + zone), tap the F-350 for its panel, Zones ->
+Riverside Office Park for tracked hours/costs and the activity chart,
+Settings -> "Delete my account" for the account-deletion entry point.
 
 Background location is user-initiated (Go Live toggle) and disclosed in-app and
 in the privacy policy (https://hammertrack.ai/privacy). It is used only to show
-the fleet on the company map — never for advertising, never sold.
+the fleet on the company map — never for advertising, never sold. Customers
+subscribe on our website; the app does not sell digital purchases.
 ```
+
+**Review-account setup (one-time, before first submission):** Supabase
+dashboard → Auth → Add user `review@hammertrack.ai` (auto-confirm, password to
+the password manager) → SQL Editor → run `supabase/seed_review_account.sql`.
+Rerunnable — it rebuilds the seeded company from scratch.
 
 ---
 
@@ -102,11 +112,24 @@ the fleet on the company map — never for advertising, never sold.
 - **Android screenshots** — phone (min 2), same set; plus a 1024×500 feature graphic.
 - **Short demo video** (optional, helps 4.2): 15–20s of the live map + a theft push.
 
-## Pre-submission gaps to close (real to-dos)
-1. **In-app "Delete my account"** — Apple 5.1.1(v) requires an in-app deletion
-   entry point for account-based apps. Add a button in Settings.
-2. **Firebase project + `FCM_SERVICE_ACCOUNT`** (full service-account JSON) in Vercel — turns on the push that
-   the listing/4.2 story leans on.
-3. **A dedicated review login** with seeded data (don't hand over a real one).
-4. Confirm the app loads `https://hammertrack.ai` (add the domain to Vercel —
-   still on the old Netlify per the go-live checklist).
+## Pre-submission status (updated Aug 9 2026)
+1. ~~In-app "Delete my account"~~ ✅ BUILT — Settings card → files an
+   account_deletion_requests row (migration 058) + emails support; complete
+   requests within 30 days.
+2. ~~Firebase + FCM~~ ✅ DONE — project hammertrack-app, FCM v1 sender,
+   @capacitor/push-notifications synced into both shells. Android push is
+   end-to-end. **iOS push note:** the Capacitor plugin registers APNs tokens;
+   our sender speaks FCM — after Apple approval, either upload an APNs auth
+   key to Firebase + add the FCM iOS SDK, or teach lib/push.ts APNs HTTP/2
+   for tokens with platform='ios'. One-day task, post-TestFlight.
+3. ~~Review login~~ ✅ SCRIPTED — `supabase/seed_review_account.sql` (Brian
+   runs it + sets the password before first submission).
+4. ~~hammertrack.ai on Vercel~~ ✅ DONE Aug 5.
+5. ~~App icons~~ ✅ DONE Aug 9 — real mark, every density, both shells.
+6. ~~Release signing~~ ✅ DONE Aug 9 — upload keystore generated (in Brian's
+   password manager), android-release.yml builds a signed AAB once the 4
+   ANDROID_* secrets are added to GitHub.
+7. ~~iOS build lane~~ ✅ WRITTEN — ios/App/fastlane/Fastfile (produce →
+   certs → build → TestFlight), arms with the 3 ASC_* secrets on
+   enrollment-approval day.
+8. Screenshots + feature graphic — `store-assets/` in the repo.

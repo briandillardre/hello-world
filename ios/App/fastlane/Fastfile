@@ -1,0 +1,59 @@
+# HammerTrack iOS — TestFlight lane, Mac-free (runs on GitHub macOS runners).
+#
+# Auth is an App Store Connect API key (three ASC_* env vars from repo
+# secrets) — no Apple ID password, no 2FA prompts, no match repo. The lane:
+# ensures the app exists in App Store Connect, mints/fetches signing assets,
+# builds the Capacitor shell, and pushes to TestFlight.
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_KEY_P8"),
+      is_key_content_base64: false
+    )
+
+    setup_ci # ephemeral keychain on the runner
+
+    # Idempotent app registration (App ID + App Store Connect record).
+    begin
+      produce(
+        api_key: api_key,
+        app_identifier: "com.hammertrack.app",
+        app_name: "HammerTrack",
+        language: "en-US",
+        sku: "hammertrack-app",
+        enable_services: { push_notification: "on" }
+      )
+    rescue => e
+      UI.message("produce skipped (app likely exists): #{e.message}")
+    end
+
+    get_certificates(api_key: api_key, output_path: "certs")
+    get_provisioning_profile(
+      api_key: api_key,
+      app_identifier: "com.hammertrack.app",
+      output_path: "certs"
+    )
+
+    increment_build_number(
+      xcodeproj: "App.xcodeproj",
+      build_number: ENV["GITHUB_RUN_NUMBER"] || "1"
+    )
+
+    build_app(
+      project: "App.xcodeproj",
+      scheme: "App",
+      export_method: "app-store"
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

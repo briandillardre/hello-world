@@ -4,6 +4,18 @@
 <dict>
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
+	<!-- Permission strings for webview features — Apple rejects binaries that
+	     touch these APIs without them. Wording mirrors /privacy. -->
+	<key>NSCameraUsageDescription</key>
+	<string>HammerTrack uses the camera to capture asset photos, VIN plates, and receipts.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HammerTrack lets you attach photos of assets, job sites, and receipts from your library.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>HammerTrack can save exported maps and reports to your photo library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location appears on your company's live map only while you turn on crew tracking (Go Live).</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>HammerTrack scans for Bluetooth tool tags to show which truck or machine is carrying each tool.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

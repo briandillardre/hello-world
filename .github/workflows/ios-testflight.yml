@@ -42,9 +42,4 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-        run: |
-          # fastlane ships on GitHub macOS runners. Lane config arrives with
-          # the Apple account (cert/profile creation needs the ASC API key to
-          # exist first) — authored as part of enrollment-day setup.
-          echo "fastlane lane to be added on Apple-account day"
-          exit 1
+        run: cd ios/App && fastlane beta
