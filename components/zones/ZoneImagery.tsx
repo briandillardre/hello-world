@@ -40,6 +40,30 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   const [placing, setPlacing] = useState<ZoneImage | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
+  // Preview of the picked file with the date it was TAKEN (EXIF) — a gallery
+  // photo from three days ago must not silently land on today's date.
+  const [preview, setPreview] = useState<{ url: string; note: string; exact: boolean } | null>(null)
+
+  async function onPickFile() {
+    const f = fileRef.current?.files?.[0]
+    setPreview((p) => { if (p) URL.revokeObjectURL(p.url); return null })
+    if (!f) return
+    const url = URL.createObjectURL(f)
+    const today = new Date().toISOString().slice(0, 10)
+    const meta = await import('@/lib/drone-meta').then((m) => m.photoTakenOn(f)).catch(() => null)
+    if (meta) {
+      const date = meta.date > today ? today : meta.date
+      setTakenOn(date)
+      const label = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      setPreview({
+        url,
+        note: meta.from === 'photo' ? `Taken ${label}` : `${label} (from the file — confirm below)`,
+        exact: meta.from === 'photo',
+      })
+    } else {
+      setPreview({ url, note: 'No date in this photo — set it below', exact: false })
+    }
+  }
   const [caption, setCaption] = useState('')
   // '90° top-down drone' shots become map overlays (auto pre-placed from the
   // drone's EXIF/XMP when present); 'site photo' stays timeline-only.
@@ -90,6 +114,7 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
       setImages((xs) => [r.image!, ...xs])
       setIdx(0); setShot(0); setCaption(''); setShowUpload(false)
       if (fileRef.current) fileRef.current.value = ''
+      setPreview((p) => { if (p) URL.revokeObjectURL(p.url); return null })
       // Smart placement (drone shots): read GPS + gimbal yaw + altitude from
       // the file's EXIF/XMP and open the placer pre-positioned — nudge + Save.
       if (viewType === 'drone') {
@@ -133,8 +158,17 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
               {viewType === 'drone' ? 'goes on the map — auto-placed from the drone’s flight data' : 'timeline only'}
             </span>
           </div>
-          <input ref={fileRef} type="file" accept="image/*"
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile}
             className="text-[11.5px] text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-navy-700 file:text-ink file:px-2.5 file:py-1.5 file:text-xs" />
+          {preview && (
+            <div className="w-full flex items-center gap-2.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={preview.url} alt="Selected photo" className="h-14 w-20 object-cover rounded-lg border border-navy-700" />
+              <span className={`text-[11px] font-semibold ${preview.exact ? 'text-teal' : 'text-amber'}`}>
+                📅 {preview.note}
+              </span>
+            </div>
+          )}
           <input type="date" value={takenOn} max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setTakenOn(e.target.value)}
             className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-ink" />

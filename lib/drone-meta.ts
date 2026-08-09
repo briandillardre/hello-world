@@ -41,6 +41,24 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** When the photo was TAKEN, as local YYYY-MM-DD — EXIF capture time first,
+ *  file modified time as fallback (gallery picks usually preserve it).
+ *  `from` tells the caller how confident to sound. Null = no usable date. */
+export async function photoTakenOn(file: File): Promise<{ date: string; from: 'photo' | 'file' } | null> {
+  const ymd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  try {
+    const exifr = (await import('exifr')).default
+    const m = await exifr.parse(file, { pick: ['DateTimeOriginal', 'CreateDate'] }) as Record<string, unknown> | null
+    const d = (m?.DateTimeOriginal ?? m?.CreateDate) as Date | undefined
+    if (d instanceof Date && !Number.isNaN(d.getTime())) return { date: ymd(d), from: 'photo' }
+  } catch { /* no EXIF (screenshots, exports) — fall through */ }
+  if (Number.isFinite(file.lastModified) && file.lastModified > 0) {
+    return { date: ymd(new Date(file.lastModified)), from: 'file' }
+  }
+  return null
+}
+
 /** Read a drone JPEG's EXIF/XMP and compute its ground-corner pre-placement. */
 export async function droneShotCorners(file: File): Promise<Corners | null> {
   try {
