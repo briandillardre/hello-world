@@ -162,6 +162,31 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
           </div>
           <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile}
             className="text-[11.5px] text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-navy-700 file:text-ink file:px-2.5 file:py-1.5 file:text-xs" />
+          {/* Android routes image/* inputs into the Google Photos picker with
+              no way to reach the Files app (Dropbox/Drive). This unrestricted
+              input opens the real file picker; the pick is stuffed into
+              fileRef so the upload path stays one road. */}
+          <label className="rounded-lg border border-navy-700 text-muted hover:text-ink text-[11px] font-semibold px-2.5 py-1.5 cursor-pointer">
+            Browse files…
+            <input type="file" className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (!f) return
+                const named = /\.(png|jpe?g|webp|gif|heic|heif|avif|tiff?)$/i.test(f.name)
+                if (!f.type.startsWith('image/') && !named) {
+                  setError(`"${f.name}" isn't a photo — pick a JPG, PNG, WEBP, or HEIC.`)
+                  return
+                }
+                setError(null)
+                if (fileRef.current) {
+                  const dt = new DataTransfer()
+                  dt.items.add(f)
+                  fileRef.current.files = dt.files
+                }
+                onPickFile()
+              }} />
+          </label>
           {preview && (
             <div className="w-full flex items-center gap-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}

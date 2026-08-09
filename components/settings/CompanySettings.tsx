@@ -105,11 +105,31 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
             <div className="h-12 w-24 rounded-md border border-dashed border-navy-700 grid place-items-center text-[10px] text-faint">No logo yet</div>
           )}
           {editable && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <label className={'inline-flex items-center rounded-lg border border-navy-700 text-muted text-xs font-medium px-3 py-1.5 hover:bg-navy-800 hover:text-ink transition-colors cursor-pointer ' + (logoBusy ? 'opacity-60 pointer-events-none' : '')}>
                 {logoBusy ? 'Uploading…' : logo_url ? 'Replace logo' : 'Upload logo'}
                 <input type="file" accept="image/*" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = '' }} />
+              </label>
+              {/* No accept filter ON PURPOSE: Android hijacks image/* inputs
+                  into the Google Photos picker with no path to the Files app
+                  (Dropbox, Drive, downloads — "replace logo only allows
+                  Google photos", Aug 9). An unrestricted input opens the real
+                  system file picker; the image check happens right here. */}
+              <label className={'inline-flex items-center rounded-lg border border-navy-700 text-muted text-xs font-medium px-3 py-1.5 hover:bg-navy-800 hover:text-ink transition-colors cursor-pointer ' + (logoBusy ? 'opacity-60 pointer-events-none' : '')}>
+                Browse files…
+                <input type="file" className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    e.target.value = ''
+                    if (!f) return
+                    const named = /\.(png|jpe?g|webp|gif|svg|heic|heif|avif)$/i.test(f.name)
+                    if (!f.type.startsWith('image/') && !named) {
+                      setErr(`"${f.name}" isn't an image — pick a PNG, JPG, WEBP, or SVG.`)
+                      return
+                    }
+                    uploadLogo(f)
+                  }} />
               </label>
               {logo_url && (
                 <button onClick={() => uploadLogo(null)} disabled={logoBusy} className="text-xs text-faint hover:text-alert transition-colors">Remove</button>
