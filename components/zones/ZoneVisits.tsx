@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import type { Visit } from '@/lib/visits'
 import type { AssetType } from '@/lib/types'
 import { ExportCsv } from '@/components/ui/ExportCsv'
@@ -80,6 +83,20 @@ export function ZoneVisits({
 }) {
   const groups = rollUpByDay(visits, tz)
 
+  // A busy zone's 30-day log runs to hundreds of rows — start with the
+  // newest ~10 asset lines (whole days only) and grow on demand ("see
+  // more", Brian, Aug 9). CSV export always carries the full window.
+  const [rowLimit, setRowLimit] = useState(10)
+  const shown: DayGroup[] = []
+  let rowCount = 0
+  for (const g of groups) {
+    if (shown.length > 0 && rowCount >= rowLimit) break
+    shown.push(g)
+    rowCount += g.lines.length
+  }
+  const hiddenDays = groups.length - shown.length
+  const hiddenRows = groups.slice(shown.length).reduce((s, g) => s + g.lines.length, 0)
+
   const csvRows = groups.flatMap((g) =>
     g.lines.map((l) => [
       fmtDateTime(l.firstIn, tz).split(',')[0],
@@ -111,7 +128,7 @@ export function ZoneVisits({
         </p>
       ) : (
         <div className="space-y-3">
-          {groups.slice(0, 14).map((g) => (
+          {shown.map((g) => (
             <div key={g.key} className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
               <div className="px-4 py-2.5 flex items-baseline gap-2 border-b border-navy-800/70 bg-navy-950/40">
                 <p className="font-display font-bold text-sm text-ink">{g.label}</p>
@@ -142,6 +159,15 @@ export function ZoneVisits({
               </div>
             </div>
           ))}
+          {hiddenDays > 0 && (
+            <button
+              type="button"
+              onClick={() => setRowLimit((l) => l + 30)}
+              className="w-full rounded-xl border border-dashed border-navy-700 bg-navy-900/50 py-2.5 text-[12.5px] font-semibold text-muted hover:text-ink hover:border-amber/50 transition-colors"
+            >
+              See more · {hiddenDays} earlier day{hiddenDays === 1 ? '' : 's'} ({hiddenRows} visit{hiddenRows === 1 ? '' : 's'})
+            </button>
+          )}
         </div>
       )}
     </section>
