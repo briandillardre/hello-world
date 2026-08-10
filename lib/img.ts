@@ -11,12 +11,18 @@
  */
 const MARKER = '/storage/v1/object/public/'
 
+/** ⚠ resize=contain is LOAD-BEARING. A width-only transform center-CROPS on
+ *  this service — zone heroes showed a vertical "middle slice" of full drone
+ *  shots while the map overlay (raw file) showed the whole photo (Aug 9).
+ *  Contain fits the image inside a width×width box, aspect preserved, never
+ *  cropped — and bounding both sides also keeps extreme-aspect panos at
+ *  dimensions phone GPUs will actually paint. */
 export function thumbUrl(url: string, width: number, quality = 75): string {
   if (!url.includes(MARKER)) return url
   return (
     url.replace(MARKER, '/storage/v1/render/image/public/') +
     (url.includes('?') ? '&' : '?') +
-    `width=${width}&quality=${quality}`
+    `width=${width}&height=${width}&resize=contain&quality=${quality}`
   )
 }
 
