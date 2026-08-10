@@ -37,11 +37,45 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
   const [err, setErr] = useState<string | null>(null)
   const [logoBusy, setLogoBusy] = useState(false)
 
+  /** Decode + downscale to a ≤640px PNG before upload. Files-app picks
+   *  (Dropbox/Drive/downloads) often arrive with an EMPTY mime type and at
+   *  photo sizes — the server rejected both ("files as logo is not working",
+   *  Aug 9). Normalizing client-side fixes type, size, and the server-action
+   *  body cap in one move; small SVGs pass through untouched (keep vectors). */
+  const normalizeLogo = async (file: File): Promise<File | null> => {
+    if ((file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) && file.size < 512 * 1024) return file
+    const url = URL.createObjectURL(file)
+    try {
+      const img = new Image()
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url })
+      const scale = Math.min(1, 640 / Math.max(img.naturalWidth, img.naturalHeight, 1))
+      const w = Math.max(1, Math.round(img.naturalWidth * scale))
+      const h = Math.max(1, Math.round(img.naturalHeight * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+      return blob ? new File([blob], 'logo.png', { type: 'image/png' }) : null
+    } catch {
+      return null // undecodable (e.g. HEIC on this browser)
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
   const uploadLogo = async (file: File | null) => {
     setLogoBusy(true); setErr(null)
     try {
+      let send = file
+      if (file) {
+        send = await normalizeLogo(file)
+        if (!send) {
+          setErr("Couldn't read that image on this device — export it as a PNG or JPG and try again.")
+          return
+        }
+      }
       const fd = new FormData()
-      if (file) fd.set('logo', file)
+      if (send) fd.set('logo', send)
       const r = await saveCompanyLogoAction(fd)
       if (!r.ok) setErr(r.error ?? 'Logo upload failed.')
       else router.refresh()

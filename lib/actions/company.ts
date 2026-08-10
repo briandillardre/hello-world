@@ -129,16 +129,24 @@ export async function saveCompanyLogoAction(form: FormData): Promise<{ ok: boole
   const file = form.get('logo')
   let url: string | null = null
   if (file instanceof File && file.size > 0) {
-    if (!file.type.startsWith('image/')) return { ok: false, error: 'That file is not an image.' }
+    // Files-app picks can carry an empty mime type — trust the extension as
+    // a backstop (the client normalizes to PNG anyway; this is defense in
+    // depth for older clients).
+    const extMatch = /\.(png|jpe?g|webp|gif|svg)$/i.exec(file.name)?.[1]?.toLowerCase()
+    if (!file.type.startsWith('image/') && !extMatch) return { ok: false, error: 'That file is not an image — use a PNG, JPG, WEBP, or SVG.' }
     if (file.size > 2 * 1024 * 1024) return { ok: false, error: 'Keep the logo under 2 MB.' }
     try {
       const { createServiceClient } = await import('@/lib/supabase-server')
       const supabase = createServiceClient()
-      const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : file.type === 'image/svg+xml' ? 'svg' : 'jpg'
+      const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : file.type === 'image/svg+xml' ? 'svg'
+        : file.type ? 'jpg'
+        : extMatch === 'jpeg' ? 'jpg' : (extMatch ?? 'png')
+      const contentType = file.type ||
+        (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'svg' ? 'image/svg+xml' : ext === 'gif' ? 'image/gif' : 'image/jpeg')
       const path = `${companyId}/logo-${crypto.randomUUID()}.${ext}`
       const { error } = await supabase.storage
         .from('asset-photos')
-        .upload(path, file, { contentType: file.type, upsert: false })
+        .upload(path, file, { contentType, upsert: false })
       if (error) return { ok: false, error: error.message }
       url = supabase.storage.from('asset-photos').getPublicUrl(path).data.publicUrl
     } catch (e) {
