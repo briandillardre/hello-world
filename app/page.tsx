@@ -4,12 +4,12 @@ import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, 
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { RealCinema } from '@/components/marketing/RealCinema'
-import { AnimatedHeadline } from '@/components/marketing/AnimatedHeadline'
+import { RoiCalculator } from '@/components/marketing/RoiCalculator'
 
 export const metadata: Metadata = {
-  title: 'HammerTrack — Mission control for your entire fleet',
+  title: 'HammerTrack — The AI operations platform for construction fleets',
   description:
-    'Every truck, machine, and Bluetooth-tagged tool on one live map. HammerTrack alerts your phone the second something moves when it shouldn\'t. Half the price of Tenna, live in a day.',
+    'Know where every truck, machine, crew, and tool is — every second. Live GPS + geofences, exact job-site hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. Half the price of Tenna, live in a day.',
 }
 
 const AI = [
@@ -62,20 +62,23 @@ export default function HomePage() {
       <SiteNav />
 
       <main className="relative z-10">
-        {/* Hero */}
+        {/* Hero — identity first, outcome headline, proof one scroll-inch away
+            (the REAL map engine below, never a mockup — splash truth rule). */}
         <section className="max-w-3xl mx-auto px-6 pt-14 pb-8 text-center">
-          <span className="inline-flex items-center gap-2.5 bg-teal/[0.08] border border-teal/25 text-teal px-4 py-1.5 rounded-full font-mono text-[12px] font-semibold uppercase tracking-[0.08em]">
-            <span className="w-[7px] h-[7px] rounded-full bg-teal shadow-glow-teal animate-blink" />
-            A working fleet is on the map right now — open the live demo
-          </span>
-          <AnimatedHeadline />
-          <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[56ch] mx-auto">
-            HammerTrack puts every truck, employee, machine, trailer, and Bluetooth-tagged tool on
-            one live map — and it alerts your phone the second something moves when it shouldn&apos;t.
-            Half the price of competitors. Live in a day.
+          <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-teal font-semibold">
+            The AI operations platform for construction
+          </p>
+          <h1 className="font-display font-black text-[2.6rem] sm:text-[3.7rem] leading-[1.02] tracking-tight mt-4 text-balance">
+            Know where every truck, machine, crew, and tool is —
+            <span className="text-amber"> every second.</span>
+          </h1>
+          <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[58ch] mx-auto">
+            Live GPS and geofences across the fleet, the crews, and the $20-tagged tools.
+            Exact job-site hours banked automatically. An AI you can ask anything about the
+            operation. And when a machine moves at 2 AM, your phone knows in minutes.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
-            For any operation with vehicles, equipment &amp; tools in the field — from 5 assets to fleets of thousands
+            Half the price of the big platforms · live in a day · from 5 assets to fleets of thousands
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
@@ -109,7 +112,49 @@ export default function HomePage() {
             splash truth rule, Brian, Aug 5.) */}
         <section className="max-w-6xl mx-auto px-6 mt-6">
           <p className="text-center font-mono text-[12.5px] text-faint max-w-3xl mx-auto">
-            We ship the trackers — plug-in OBD units for trucks, rugged GPS units for equipment &amp; Bluetooth tool tags. Built in South Carolina by a working contractor.
+            That&apos;s the real map engine above — and the <Link href="/live" className="text-teal underline decoration-dotted">live demo</Link> is
+            the real product. Hardware is the boring part: we ship plug-in trackers at cost, powered on in minutes.
+          </p>
+        </section>
+
+        {/* The 2 AM story — the theft hook told as a timeline, not adjectives.
+            Every beat is a shipped feature; the proof line is a production
+            event on our own fleet (Aug 2026). */}
+        <section className="max-w-6xl mx-auto px-6 mt-16">
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-alert text-center">◇ The night it pays for itself</p>
+          <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center max-w-[28ch] mx-auto">
+            Your excavator leaves the yard at 2:07 AM. Here&apos;s the next half hour.
+          </h2>
+          <div className="grid sm:grid-cols-3 gap-4 mt-8 relative">
+            {[
+              {
+                t: '2:07 AM', tone: 'alert' as const, title: 'It starts moving',
+                body: 'The yard geofence has been quiet since 6 PM. A tracked excavator crosses the line doing 14 mph on a trailer.',
+              },
+              {
+                t: '2:09 AM', tone: 'amber' as const, title: 'Your phone buzzes',
+                body: '“THEFT ALERT — Excavator left Yard after hours.” Live pin, direction of travel, and the full replay link, as a text.',
+              },
+              {
+                t: '2:31 AM', tone: 'teal' as const, title: 'You call it in with a location',
+                body: 'You hand dispatch a live position and a replay of the whole route. That’s a recovery in progress — not an insurance claim and a 6-month premium hike.',
+              },
+            ].map((s) => (
+              <div key={s.t} className={`rounded-2xl border p-6 bg-navy-900 ${
+                s.tone === 'alert' ? 'border-alert/40' : s.tone === 'amber' ? 'border-amber/40' : 'border-teal/40'
+              }`}>
+                <p className={`font-mono font-bold text-[13px] tabular-nums ${
+                  s.tone === 'alert' ? 'text-alert' : s.tone === 'amber' ? 'text-amber' : 'text-teal'
+                }`}>{s.t}</p>
+                <h3 className="font-display font-extrabold text-base mt-1.5">{s.title}</h3>
+                <p className="text-[13.5px] text-faint mt-1.5">{s.body}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center font-mono text-[12px] text-faint mt-5 max-w-2xl mx-auto">
+            Not a mockup: after-hours alerts run in production on our own fleet — movement to
+            text in under two minutes. Theft is the night it pays for itself; knowing where
+            everything is at 2 PM is why it earns its keep every day.
           </p>
         </section>
 
@@ -140,6 +185,33 @@ export default function HomePage() {
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* Make the AI tangible: real questions the assistant answers from
+                live fleet data, shown with demo-fleet answers. */}
+            <div className="mt-7">
+              <p className="font-mono text-[11.5px] text-faint mb-3">Ask it like you&apos;d ask your best superintendent — answers below are from the demo fleet:</p>
+              <div className="grid md:grid-cols-3 gap-4">
+                {[
+                  {
+                    q: 'Which machine sat idle the most this week?',
+                    a: 'The Sakai SW990 — 26 idle hours against 4 working. It hasn’t left Creekside since Tuesday.',
+                  },
+                  {
+                    q: 'Who was on the Riverside site yesterday, and how long?',
+                    a: 'Three crew and the RAM 3500. Two full days (7:02 AM–3:41 PM), one half day, truck on site 6.9 hours.',
+                  },
+                  {
+                    q: 'Did anyone report safety issues this week?',
+                    a: 'One — Thursday’s daily log flagged a frayed sling on the Link-Belt. It paged the owner the moment it was submitted.',
+                  },
+                ].map(({ q, a }) => (
+                  <div key={q} className="rounded-xl border border-navy-800 bg-navy-950 p-4">
+                    <p className="text-[13px] font-semibold text-ink">“{q}”</p>
+                    <p className="text-[12.5px] text-teal mt-2 border-l-2 border-teal/40 pl-2.5">{a}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -223,6 +295,15 @@ export default function HomePage() {
           </p>
         </section>
 
+        {/* ROI calculator — price anchoring with published numbers only */}
+        <section className="max-w-4xl mx-auto px-6 mt-16">
+          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Run your own numbers</p>
+          <h2 className="font-display font-extrabold text-[1.85rem] mt-2 text-center">What your fleet costs here vs. Tenna</h2>
+          <div className="mt-7">
+            <RoiCalculator />
+          </div>
+        </section>
+
         {/* Site IoT */}
         <section className="max-w-6xl mx-auto px-6 mt-16">
           <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal text-center">◇ Beyond tracking · <span className="text-teal">live today</span> + <span className="text-amber">roadmap</span></p>
@@ -287,18 +368,27 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* Founder note — built by the customer, not a telematics giant */}
+        {/* Founder note — built by the customer, not a telematics giant.
+            This is the moat: lean into it hard (Brian, Aug 9). */}
         <section className="max-w-3xl mx-auto px-6 mt-16">
           <div className="rounded-2xl border border-navy-800 bg-navy-900 p-8 text-center relative overflow-hidden">
             <div className="absolute inset-0 brand-glow" />
             <div className="relative">
-              <p className="font-display text-[1.35rem] font-bold leading-snug text-ink max-w-[38ch] mx-auto">
+              <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-amber">Built by a contractor, on his own fleet</p>
+              <p className="font-display text-[1.35rem] font-bold leading-snug text-ink max-w-[38ch] mx-auto mt-3">
                 &ldquo;I run crews and equipment every day. I built HammerTrack because the big
                 telematics platforms wanted $500 setup and $20 a machine to tell me where my own
                 excavator was.&rdquo;
               </p>
               <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-faint mt-4">
-                — Founder · working contractor, South Carolina
+                — Founder · working contractor, Greenville, South Carolina
+              </p>
+              <p className="text-[14px] text-muted max-w-[52ch] mx-auto mt-5">
+                HammerTrack runs on a working construction company&apos;s own trucks, excavators, and
+                tool trailers first. Every feature on this page shipped because a real crew needed
+                it that week — not because a product manager in an office tower guessed. The big
+                platforms build for fleet-manager dashboards; this is built for whoever loads the
+                trailer at 6 AM.
               </p>
             </div>
           </div>

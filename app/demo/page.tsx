@@ -4,6 +4,7 @@ import { Check, MapPin, Bell, Wrench, Calculator, ShieldAlert, ArrowRight } from
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { DemoCinemaLoader } from '@/components/marketing/DemoCinemaLoader'
+import { RoiCalculator } from '@/components/marketing/RoiCalculator'
 import { Reveal } from '@/components/ui/reveal'
 import { CountUp } from '@/components/ui/count-up'
 import { BRAND_EMAIL_SALES } from '@/lib/brand'
@@ -138,6 +139,16 @@ export default function DemoLandingPage() {
               </Reveal>
             ))}
           </div>
+        </section>
+
+        {/* ROI calculator — the "vs Tenna" claim with the reader's own fleet */}
+        <section className="max-w-3xl mx-auto px-6 py-8">
+          <Reveal>
+            <h2 className="font-display font-bold text-2xl text-center mb-6">Run your own numbers</h2>
+          </Reveal>
+          <Reveal delay={80}>
+            <RoiCalculator />
+          </Reveal>
         </section>
 
         {/* Founding 25 offer — mirrors the printed sales sheet */}
