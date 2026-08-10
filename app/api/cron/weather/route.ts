@@ -46,24 +46,37 @@ export async function GET(req: NextRequest) {
           { signal: AbortSignal.timeout(8000) }
         )
         if (!r.ok) { failed++; continue }
-        const j = await r.json() as { daily?: { time?: string[]; temperature_2m_max?: number[]; temperature_2m_min?: number[]; precipitation_sum?: number[]; wind_speed_10m_max?: number[]; weather_code?: number[] } }
+        const j = await r.json() as {
+          // Top-level latitude/longitude = the MODEL GRID POINT Open-Meteo
+          // snapped our centroid to — the true source location (mig 060).
+          latitude?: number; longitude?: number; elevation?: number
+          daily?: { time?: string[]; temperature_2m_max?: number[]; temperature_2m_min?: number[]; precipitation_sum?: number[]; wind_speed_10m_max?: number[]; weather_code?: number[] }
+        }
         const d = j.daily
         const day = d?.time?.[0]
         if (!day) { failed++; continue }
-        const { error } = await db.from('site_weather').upsert(
-          {
-            company_id: co.id,
-            geofence_id: z.id,
-            day,
-            temp_hi: d?.temperature_2m_max?.[0] ?? null,
-            temp_lo: d?.temperature_2m_min?.[0] ?? null,
-            rain_in: d?.precipitation_sum?.[0] ?? null,
-            wind_max: d?.wind_speed_10m_max?.[0] ?? null,
-            code: d?.weather_code?.[0] ?? null,
-            source: 'model',
-          },
-          { onConflict: 'geofence_id,day' }
-        )
+        const base = {
+          company_id: co.id,
+          geofence_id: z.id,
+          day,
+          temp_hi: d?.temperature_2m_max?.[0] ?? null,
+          temp_lo: d?.temperature_2m_min?.[0] ?? null,
+          rain_in: d?.precipitation_sum?.[0] ?? null,
+          wind_max: d?.wind_speed_10m_max?.[0] ?? null,
+          code: d?.weather_code?.[0] ?? null,
+          source: 'model',
+        }
+        const full = {
+          ...base,
+          src_lat: typeof j.latitude === 'number' ? j.latitude : null,
+          src_lng: typeof j.longitude === 'number' ? j.longitude : null,
+          src_elev_m: typeof j.elevation === 'number' ? j.elevation : null,
+        }
+        let { error } = await db.from('site_weather').upsert(full, { onConflict: 'geofence_id,day' })
+        // Migration 060 not applied yet → keep logging without provenance.
+        if (error && (error.code === 'PGRST204' || error.code === '42703')) {
+          ({ error } = await db.from('site_weather').upsert(base, { onConflict: 'geofence_id,day' }))
+        }
         if (error) failed++
         else written++
       } catch {

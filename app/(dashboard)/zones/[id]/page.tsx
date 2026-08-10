@@ -156,9 +156,11 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     (async () => {
       if (!wantActivity) return [] as SiteWeatherRow[]
       const { createClient } = await import('@/lib/supabase-server')
+      // Star-select: naming the 060 provenance columns before that migration
+      // runs would error the whole query (PostgREST) — '*' degrades instead.
       const { data: wx } = await createClient()
         .from('site_weather')
-        .select('day, temp_hi, temp_lo, rain_in, wind_max')
+        .select('*')
         .eq('geofence_id', fence.id)
         .order('day', { ascending: false })
         .limit(14)
@@ -355,7 +357,11 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />
         )}
 
-        <ZoneWeather rows={weather} />
+        <ZoneWeather rows={weather} centroid={ring && ring.length >= 3 ? {
+          // Same math as the nightly cron: ring-vertex average.
+          lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+          lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
+        } : null} />
 
         <section>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Assets inside ({inside.length})</h2>
