@@ -14,10 +14,56 @@ import { cookies } from 'next/headers'
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
 // to `force-dynamic` AND add a no-cache header so the edge doesn't serve stale.
+const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
+
 export default async function MapPage({ searchParams }: { searchParams?: { m?: string } }) {
-  // Speed: everything here used to await SERIALLY — six Supabase round-trips
-  // in a row before the page could stream (Brian: "map site loads slow").
-  // Only the company id truly gates the rest, so it's one hop, then one batch.
+  // ── Real mode: SHELL FIRST. The app icon opens straight into the map —
+  // this render awaits only the top-bar basics (company + weather prefs),
+  // so the document streams in well under a second and the map engine +
+  // tiles boot immediately. The whole fleet payload arrives via ONE
+  // /api/map-data fetch in parallel (with a localStorage snapshot painting
+  // last-known pins instantly on reopens). "Open quickly, then load" —
+  // Brian, Aug 9. Demo mode keeps the original all-server render below.
+  if (isRealMode) {
+    const { getMeasurement } = await import('@/lib/db/measurements')
+    const [company, prefs, focusMeasurement] = await Promise.all([
+      getCurrentCompany(),
+      getCompanyPrefs(),
+      searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
+    ])
+    const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+    return (
+      <div className="h-full flex flex-col pb-[54px] md:pb-0">
+        <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
+        <div className="flex-1 relative min-h-0">
+          <MapPageClient
+            bootstrap
+            assets={[]}
+            geofences={[]}
+            tracks={[]}
+            historyRows={[]}
+            deferHistory
+            siteOverlays={[]}
+            earliestMs={null}
+            tz={tz}
+            toolGateways={{}}
+            aboard={{}}
+            pairingEpisodes={[]}
+            defaultWeatherPlace={prefs.weatherPlace}
+            defaultWeatherCoords={prefs.weatherCoords}
+            canViewCosts={false}
+            savedMapViews={null}
+            alerts={[]}
+            focusMeasurement={focusMeasurement}
+            brand={{ companyName: company.name, logoUrl: company.logoUrl }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ── Demo mode: mock data is free — keep the fully-server render.
   const company = await getCurrentCompany()
   const companyId = company.id
   const { getMeasurement } = await import('@/lib/db/measurements')
@@ -51,8 +97,6 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // after mount, and longer ranges already fetch on demand behind the
   // timeline's loading bar.
   const sinceMs = earliestMs ?? Date.now() - 30 * 86_400_000
-  const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
   const pairingEpisodes = await getPairingEpisodes(companyId, new Date(sinceMs).toISOString())
 
   // Demo mode keeps the synthetic cinematic trails.

@@ -59,11 +59,85 @@ interface MapPageClientProps {
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
   /** Company branding for the Create-PDF button. */
   brand?: { companyName: string; logoUrl: string | null } | null
+  /** Shell-first boot: the page shipped EMPTY and this component pulls the
+   *  whole fleet payload from /api/map-data (and re-pulls it as the 20 s
+   *  live tick, replacing router.refresh full-page re-renders). */
+  bootstrap?: boolean
 }
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null }: MapPageClientProps) {
+/** /api/map-data payload — the server-batch fields the page used to await. */
+interface MapBootData {
+  assets: AssetWithLocation[]
+  geofences: Geofence[]
+  toolGateways: Record<string, { name: string; lastSeen: string }>
+  aboard: Record<string, import('@/lib/tools-resolve').AboardTool[]>
+  pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
+  alerts: import('@/lib/types').AlertEvent[]
+  siteOverlays: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
+  earliestMs: number | null
+  savedMapViews: { views: unknown[]; defaultId: string | null } | null
+  canViewCosts: boolean
+}
+
+const BOOT_CACHE_KEY = 'ht_mapboot_v1'
+
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null, bootstrap = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
+
+  // ── Shell-first boot: last visit's pins from localStorage paint instantly,
+  // the real payload replaces them the moment /api/map-data answers, and the
+  // same fetch repeats every 20 s as the live tick (visible tab only).
+  const [boot, setBoot] = useState<MapBootData | null>(null)
+  useEffect(() => {
+    if (!bootstrap) return
+    try {
+      const s = JSON.parse(localStorage.getItem(BOOT_CACHE_KEY) ?? 'null') as
+        | { at: number; assets: AssetWithLocation[]; geofences: Geofence[] } | null
+      if (s && Date.now() - s.at < 86_400_000 && Array.isArray(s.assets)) {
+        setBoot((b) => b ?? {
+          assets: s.assets, geofences: s.geofences ?? [],
+          toolGateways: {}, aboard: {}, pairingEpisodes: [], alerts: [],
+          siteOverlays: [], earliestMs: null, savedMapViews: null, canViewCosts: false,
+        })
+        setGeofences((prev) => (prev.length ? prev : s.geofences ?? []))
+      }
+    } catch { /* fresh device */ }
+    let cancelled = false
+    const load = () => {
+      if (document.visibilityState !== 'visible') return
+      fetch('/api/map-data')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: MapBootData | null) => {
+          if (cancelled || !j || !Array.isArray(j.assets)) return
+          setBoot(j)
+          // Keep optimistic just-drawn zones (temp fence-* ids) on top.
+          setGeofences((prev) => [...j.geofences, ...prev.filter((g) => g.id.startsWith('fence-'))])
+          try {
+            localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify({
+              at: Date.now(), assets: j.assets.slice(0, 400), geofences: j.geofences,
+            }))
+          } catch { /* storage full — reopen just won't pre-paint */ }
+        })
+        .catch(() => { /* offline — cached pins stay up */ })
+    }
+    load()
+    const iv = setInterval(load, 20_000)
+    const onVis = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { cancelled = true; clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [bootstrap])
+
+  // Effective data: boot payload in shell-first mode, server props otherwise.
+  const effAssets = bootstrap ? (boot?.assets ?? []) : assets
+  const effToolGateways = bootstrap ? (boot?.toolGateways ?? {}) : toolGateways
+  const effAboard = bootstrap ? (boot?.aboard ?? {}) : aboard
+  const effPairing = bootstrap ? (boot?.pairingEpisodes ?? []) : pairingEpisodes
+  const effAlerts = bootstrap ? (boot?.alerts ?? []) : alerts
+  const effSiteOverlays = bootstrap ? (boot?.siteOverlays ?? []) : siteOverlays
+  const effEarliestMs = bootstrap ? (boot?.earliestMs ?? null) : earliestMs
+  const effSavedViews = bootstrap ? (boot?.savedMapViews ?? null) : savedMapViews
+  const effCanViewCosts = bootstrap ? (boot?.canViewCosts ?? false) : canViewCosts
 
   // Deferred history baseline: the server no longer blocks first paint on the
   // GPS-history sweep. Pull the last 2 days here (feeds Live/Today trails);
@@ -96,7 +170,9 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
   // fresh positions; MapView stays mounted (zoom/follow/timeline preserved) and
   // just receives new asset props. Paused while the tab is hidden.
   useEffect(() => {
-    if (isMock) return
+    // Bootstrap mode ticks via /api/map-data above — a JSON hop instead of
+    // re-rendering the whole server page every 20 s.
+    if (isMock || bootstrap) return
     let timer: ReturnType<typeof setInterval> | null = null
     const start = () => { if (!timer) timer = setInterval(() => router.refresh(), 20_000) }
     const stop = () => { if (timer) { clearInterval(timer); timer = null } }
@@ -179,16 +255,16 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
     <>
       <MapView
         brand={brand}
-        assets={assets}
+        assets={effAssets}
         geofences={geofences}
         tracks={tracks}
         historyRows={effectiveHistory}
-        siteOverlays={siteOverlays}
-        earliestMs={earliestMs}
+        siteOverlays={effSiteOverlays}
+        earliestMs={effEarliestMs}
         tz={tz}
-        toolGateways={toolGateways}
-        aboard={aboard}
-        pairingEpisodes={pairingEpisodes}
+        toolGateways={effToolGateways}
+        aboard={effAboard}
+        pairingEpisodes={effPairing}
         askSlot={
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
@@ -202,13 +278,20 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         onGeofenceDelete={handleGeofenceDelete}
         defaultWeatherPlace={defaultWeatherPlace}
         defaultWeatherCoords={defaultWeatherCoords}
-        savedMapViews={savedMapViews as import('@/lib/map-views').MapViewsState | null}
+        savedMapViews={effSavedViews as import('@/lib/map-views').MapViewsState | null}
         onSaveMapViews={isMock ? undefined : saveMapViewsAction}
-        canViewCosts={canViewCosts}
-        alerts={alerts}
+        canViewCosts={effCanViewCosts}
+        alerts={effAlerts}
         focusMeasurement={focusMeasurement}
       />
-      {!isMock && assets.length === 0 && <GetSetUp hasZones={geofences.length > 0} />}
+      {/* Boot pill: only on a true first visit (no cached snapshot yet). */}
+      {bootstrap && !boot && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-navy-950/90 border border-navy-700 px-3.5 py-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber animate-pulse" />
+          <span className="font-mono text-[11.5px] text-muted">Loading your fleet…</span>
+        </div>
+      )}
+      {!isMock && effAssets.length === 0 && (!bootstrap || boot !== null) && <GetSetUp hasZones={geofences.length > 0} />}
     </>
   )
 }

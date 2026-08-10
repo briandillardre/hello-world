@@ -783,6 +783,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     m.fitBounds(bounds, { padding: 60, maxZoom: 16, duration: 600 })
   }, [])
 
+  // Shell-first boot: the page can mount with ZERO assets/zones while
+  // /api/map-data is in flight. When the fleet lands moments later, frame it
+  // once — and never yank the camera on ordinary live updates (only fires if
+  // we genuinely booted empty).
+  const bootedEmpty = useRef(assets.length === 0 && geofences.length === 0)
+  useEffect(() => {
+    if (!mapReady) return
+    if (bootedEmpty.current && (assets.length > 0 || geofences.length > 0)) {
+      bootedEmpty.current = false
+      fitAll()
+    }
+  }, [mapReady, assets.length, geofences.length, fitAll])
+
   // "Double-click the scroll wheel to zoom to everything" — a double-click of
   // the MIDDLE mouse button (the wheel is also a button) fits the whole fleet,
   // so you can never get lost. Uses mousedown/button===1 (dblclick doesn't fire
@@ -907,13 +920,30 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // Apply the default view once on open (not in kiosk — the wall display
   // configures itself).
   const defaultAppliedRef = useRef(false)
+  const defaultViewUsed = useRef(false)
   useEffect(() => {
     if (kiosk || defaultAppliedRef.current) return
     defaultAppliedRef.current = true
     const def = mapViews.defaultId ? allViews(mapViews).find((v) => v.id === mapViews.defaultId) : null
-    if (def) applyView(def)
+    if (def) { defaultViewUsed.current = true; applyView(def) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Shell-first boot delivers the PROFILE copy of saved views after mount.
+  // Adopt it once (DB wins over device) and apply its default view if none
+  // ran at mount — applyView only flips layer/style toggles, never the
+  // camera, so a late apply can't yank the map around.
+  const profileViewsAdopted = useRef(savedMapViews != null)
+  useEffect(() => {
+    if (kiosk || profileViewsAdopted.current || !savedMapViews) return
+    profileViewsAdopted.current = true
+    setMapViews(savedMapViews)
+    if (!defaultViewUsed.current) {
+      const def = savedMapViews.defaultId ? allViews(savedMapViews).find((v) => v.id === savedMapViews.defaultId) : null
+      if (def) { defaultViewUsed.current = true; applyView(def) }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedMapViews])
 
   const persistViews = useCallback((s: MapViewsState) => {
     setMapViews(s)
