@@ -40,6 +40,9 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
   const [showUpload, setShowUpload] = useState(false)
   const [placing, setPlacing] = useState<ZoneImage | null>(null)
   const [viewing, setViewing] = useState<ZoneImage | null>(null)
+  // Natural dimensions of the current hero image — drives the sideways
+  // treatment for skinny stitched panos.
+  const [heroDims, setHeroDims] = useState<{ url: string; w: number; h: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [takenOn, setTakenOn] = useState(new Date().toISOString().slice(0, 10))
   // Preview of the picked file with the date it was TAKEN (EXIF) — a gallery
@@ -217,24 +220,55 @@ export function ZoneImagery({ zoneId, initial, canEdit, ring = null }: {
         <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
           {/* Hero rides a 1600px transform, never the raw 48 MP file — full-
               res decodes froze iPads ("zone page is freezing", Aug 7). Tap
-              opens the full-screen pinch-zoom viewer — tall stitched panos
-              letterbox down to a sliver in this 420px box and need a real
-              look ("full images not showing", Aug 9). */}
-          <button type="button" className="relative block w-full cursor-zoom-in"
-            onClick={() => setViewing(current[1][Math.min(shot, current[1].length - 1)])}
-            aria-label="View photo full screen">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbUrl((current[1][Math.min(shot, current[1].length - 1)]).url, 1600, 78)}
-              onError={(e) => fallbackToRaw(e, (current[1][Math.min(shot, current[1].length - 1)]).url)}
-              alt={`Site on ${current[0]}`}
-              loading="lazy"
-              className="w-full max-h-[420px] object-contain bg-navy-950"
-            />
-            <span className="absolute right-2 top-2 rounded-lg bg-navy-950/80 border border-navy-700 p-1.5 text-muted">
-              <Maximize2 className="h-3.5 w-3.5" />
-            </span>
-          </button>
+              opens the full-screen pinch-zoom viewer. Skinny stitched panos
+              (aspect < 0.5) render SIDEWAYS at full width — upright-in-a-box
+              math reduces them to a finger-width sliver ("the whole image is
+              still not showing", Aug 9); rotated, every pixel is on screen. */}
+          {(() => {
+            const cur = current[1][Math.min(shot, current[1].length - 1)]
+            const a = heroDims && heroDims.url === cur.url ? heroDims.w / heroDims.h : null
+            const sideways = a !== null && a < 0.5
+            const onLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+              const t = e.currentTarget
+              if (t.naturalWidth && t.naturalHeight) setHeroDims({ url: cur.url, w: t.naturalWidth, h: t.naturalHeight })
+            }
+            return (
+              <button type="button" className="relative block w-full cursor-zoom-in"
+                onClick={() => setViewing(cur)}
+                aria-label="View photo full screen">
+                {sideways ? (
+                  <div className="relative w-full overflow-hidden bg-navy-950" style={{ aspectRatio: String(1 / a!) }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbUrl(cur.url, 1600, 78)}
+                      onError={(e) => fallbackToRaw(e, cur.url)}
+                      onLoad={onLoad}
+                      alt={`Site on ${current[0]}`}
+                      loading="lazy"
+                      className="absolute left-1/2 top-1/2 max-w-none"
+                      style={{ width: `${a! * 100}%`, transform: 'translate(-50%, -50%) rotate(90deg)' }}
+                    />
+                    <span className="absolute left-2 bottom-2 rounded-md bg-navy-950/80 border border-navy-700 px-1.5 py-0.5 font-mono text-[9.5px] text-faint">
+                      ↻ tall shot, shown sideways — tap for full size
+                    </span>
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbUrl(cur.url, 1600, 78)}
+                    onError={(e) => fallbackToRaw(e, cur.url)}
+                    onLoad={onLoad}
+                    alt={`Site on ${current[0]}`}
+                    loading="lazy"
+                    className="w-full max-h-[420px] object-contain bg-navy-950"
+                  />
+                )}
+                <span className="absolute right-2 top-2 rounded-lg bg-navy-950/80 border border-navy-700 p-1.5 text-muted">
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </span>
+              </button>
+            )
+          })()}
           <div className="p-3 space-y-2">
             <div className="flex items-center gap-2">
               <button type="button" aria-label="Older date" disabled={idx >= dates.length - 1}
