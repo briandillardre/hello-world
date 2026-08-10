@@ -785,11 +785,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
   // Shell-first boot: the page can mount with ZERO assets/zones while
   // /api/map-data is in flight. When the fleet lands moments later, frame it
-  // once — and never yank the camera on ordinary live updates (only fires if
-  // we genuinely booted empty).
+  // once — but ONLY if the camera didn't restore to the user's last view
+  // (fitting over the restored view yanked the map on every open, Aug 10).
+  // Never fires on ordinary live updates (only if we genuinely booted empty).
   const bootedEmpty = useRef(assets.length === 0 && geofences.length === 0)
+  const camRestoredRef = useRef(false)
   useEffect(() => {
     if (!mapReady) return
+    if (camRestoredRef.current) { bootedEmpty.current = false; return }
     if (bootedEmpty.current && (assets.length > 0 || geofences.length > 0)) {
       bootedEmpty.current = false
       fitAll()
@@ -930,18 +933,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   }, [])
 
   // Shell-first boot delivers the PROFILE copy of saved views after mount.
-  // Adopt it once (DB wins over device) and apply its default view if none
-  // ran at mount — applyView only flips layer/style toggles, never the
-  // camera, so a late apply can't yank the map around.
+  // Adopt the LIST only (so the picker shows cross-device views) — never
+  // apply a default view late. Doing so re-tilted/re-styled the map seconds
+  // after open ("tilting automatically", Aug 10); the open must be the
+  // user's last view, with defaults applied only at mount (an explicit
+  // choice made in the views panel / Settings).
   const profileViewsAdopted = useRef(savedMapViews != null)
   useEffect(() => {
     if (kiosk || profileViewsAdopted.current || !savedMapViews) return
     profileViewsAdopted.current = true
     setMapViews(savedMapViews)
-    if (!defaultViewUsed.current) {
-      const def = savedMapViews.defaultId ? allViews(savedMapViews).find((v) => v.id === savedMapViews.defaultId) : null
-      if (def) { defaultViewUsed.current = true; applyView(def) }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedMapViews])
 
@@ -1802,6 +1803,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           if (saved && Array.isArray(saved.center)) {
             m.jumpTo({ center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0, pitch: saved.pitch ?? 0 })
             openedFromSaved = true
+            camRestoredRef.current = true // boot fit must not override this
           }
         }
       } catch { /* corrupt value — fall through to fit */ }
