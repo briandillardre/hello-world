@@ -2335,9 +2335,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('sat-base', base === 'satellite' || base === 'hybrid')
     set('terrain-base', base === 'terrain')
     set('silver-base', base === 'silver')
-    set('plain-base', base === 'plain')
     set('bw-base', base === 'bw')
     set('aubergine-base', base === 'aubergine')
+    // Charts ride over a light base: the FAA cache only has tiles at
+    // chart-scale zooms, so wide views went void outside the visited area
+    // ("only loads the area I am zoomed to", Aug 10). The underlay keeps the
+    // whole world a map; the chart paints wherever FAA publishes tiles.
+    set('plain-base', base === 'plain' || base === 'vfr' || base === 'ifr')
     set('vfr-base', base === 'vfr')
     set('ifr-base', base === 'ifr')
     set('labels-overlay', base === 'hybrid' || base === 'aubergine')
