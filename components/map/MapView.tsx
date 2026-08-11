@@ -1827,13 +1827,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         if (localStorage.getItem('ht_map_open_view') !== 'fit') {
           const saved = JSON.parse(localStorage.getItem(camKey) ?? 'null')
           if (saved && Array.isArray(saved.center)) {
-            m.jumpTo({
-              center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0,
-              // Tilt only survives a restart when a 3D mode is deliberately
-              // on — a leftover two-finger tilt must not open the map at 45°
-              // ("fix the 45 degree thing", Aug 10).
-              pitch: (lastState.threeD || lastState.terrain) ? (saved.pitch ?? 0) : 0,
-            })
+            // Pitch restores as-left, unconditionally — tilt belongs to the
+            // camera, not to the 3D toggles (Brian, Aug 10 revision).
+            m.jumpTo({ center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0, pitch: saved.pitch ?? 0 })
             openedFromSaved = true
             camRestoredRef.current = true // boot fit must not override this
           }
@@ -2333,11 +2329,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // fight it. TERRAIN is deliberately NOT here anymore: piggybacking the DEM
   // onto this toggle (Jul 17) is what made "3D buildings" suddenly heavy —
   // "it used to work fine" (owner, Jul 21). Terrain has its own toggle below.
+  // The courtesy tilt (55°) fires ONLY when the user presses the toggle —
+  // never on load from remembered state. Pitch itself is free-floating and
+  // comes back exactly as it was left ("bring back the tilt if it was left
+  // that way… not tied to 3D except when that button is first pressed",
+  // Aug 10). The first effect run after map load just records the baseline.
+  const prevThreeD = useRef<boolean | null>(null)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m?.getLayer('buildings-3d')) return
     m.setLayoutProperty('buildings-3d', 'visibility', threeD ? 'visible' : 'none')
-    if (!followIdRef.current) m.easeTo({ pitch: threeD || terrain3d ? 55 : 0, duration: 600 })
+    const changed = prevThreeD.current !== null && prevThreeD.current !== threeD
+    prevThreeD.current = threeD
+    if (changed && !followIdRef.current) m.easeTo({ pitch: threeD || terrain3d ? 55 : 0, duration: 600 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, threeD])
 
@@ -2351,6 +2355,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   //  2. Cap pitch at 60° while terrain is on. The map normally allows 85° for
   //     the sky/satellite layers, but a near-horizon frustum over a DEM pulls
   //     a monster tile pyramid along the horizon.
+  const prevTerrain3d = useRef<boolean | null>(null)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -2367,7 +2372,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         m.setPixelRatio(window.devicePixelRatio || 1)
       }
     } catch { /* terrain unsupported / source not ready — ignore */ }
-    if (!followIdRef.current) m.easeTo({ pitch: terrain3d || threeD ? 55 : 0, duration: 600 })
+    // Same press-only rule as 3D buildings: no pitch snap on load.
+    const changed = prevTerrain3d.current !== null && prevTerrain3d.current !== terrain3d
+    prevTerrain3d.current = terrain3d
+    if (changed && !followIdRef.current) m.easeTo({ pitch: terrain3d || threeD ? 55 : 0, duration: 600 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, terrain3d])
 
