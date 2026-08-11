@@ -451,12 +451,16 @@ export function TimelinePlayback({
       {/* X straddles the bar's top edge (site convention) — always visible,
           always tappable, never buried in the wrapping control rows. */}
       <ProtrudingClose onClick={() => setStage('min')} title="Minimize timeline" />
-      <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* Drag handle — the bottom-sheet grab bar: pull down for the timeline
-          alone, down again for the pill; pull up to climb back. */}
       <div
-        className="flex items-center justify-center h-5 -mb-1 cursor-grab touch-none select-none"
-        onPointerDown={(e) => { dragRef.current = { y: e.clientY, done: false }; e.currentTarget.setPointerCapture(e.pointerId) }}
+        className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden"
+        // The whole bar accepts the sheet gesture — a swipe that starts on
+        // any non-interactive surface steps the stage, so "drag down twice"
+        // reliably lands on the pill (the same state the X produces). Drags
+        // that begin on buttons/inputs (pills, sliders) are left alone.
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest('button, input, select, a')) return
+          dragRef.current = { y: e.clientY, done: false }
+        }}
         onPointerMove={(e) => {
           const d = dragRef.current
           if (!d || d.done) return
@@ -466,9 +470,10 @@ export function TimelinePlayback({
         }}
         onPointerUp={() => { dragRef.current = null }}
         onPointerCancel={() => { dragRef.current = null }}
-        role="button"
-        aria-label="Drag down to shrink the timeline, up to expand"
       >
+      {/* Drag handle — the visual grab bar (the whole bar drags; touch-none
+          here keeps the gesture off the browser on the primary target). */}
+      <div className="flex items-center justify-center h-5 -mb-1 cursor-grab touch-none select-none" aria-hidden>
         <span className="w-9 h-1 rounded-full bg-navy-600" />
       </div>
       {/* range pills + movement-display control — the 'options' stage. On

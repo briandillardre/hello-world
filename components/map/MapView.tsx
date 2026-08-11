@@ -1112,6 +1112,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         btn.title = 'Zoom to all'
         btn.setAttribute('aria-label', 'Zoom to all')
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'
+        btn.classList.add('ht-fitall')
         btn.onclick = () => fitAll()
         div.appendChild(btn)
         return div
@@ -1119,6 +1120,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       onRemove() {},
     }
     map.current.addControl(fitAllControl, ctrlCorner)
+
+    // Locate + Zoom-to-all fold INTO the +/−/compass tray (Brian, Aug 10) —
+    // one column box instead of three stacked singles. Pure DOM surgery
+    // after the controls mount: move the buttons, drop the emptied shells.
+    setTimeout(() => {
+      const tr = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right')
+      if (!tr) return
+      const groups = Array.from(tr.querySelectorAll('.maplibregl-ctrl-group'))
+      const navGroup = groups.find((g) => g.querySelector('.maplibregl-ctrl-zoom-in'))
+      if (!navGroup) return
+      for (const sel of ['.maplibregl-ctrl-geolocate', '.ht-fitall']) {
+        const btn = tr.querySelector(sel)
+        const owner = btn?.closest('.maplibregl-ctrl-group')
+        if (btn && owner && owner !== navGroup) {
+          navGroup.appendChild(btn)
+          if (!owner.querySelector('button')) owner.remove()
+        }
+      }
+    }, 0)
 
     // Measure & takeoff toggle — same cluster as zoom/locate/fit so it gets
     // their exact size and sits directly below Zoom-to-all (owner ask, Jul 21).
@@ -3920,6 +3940,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, setChipOpen])
 
+  // Slide the whole right-rail control column off-screen on demand — a
+  // clean-screen mode for phones ("need a way to minimize or slide these
+  // buttons off", Aug 10). The little edge tab stays put to bring it back.
+  const [railHidden, setRailHidden] = useState(false)
+  useEffect(() => {
+    const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
+    if (!el) return
+    el.style.transition = 'transform .25s ease, opacity .25s ease'
+    el.style.transform = railHidden ? 'translateX(90px)' : ''
+    el.style.opacity = railHidden ? '0' : ''
+    el.style.pointerEvents = railHidden ? 'none' : ''
+  }, [railHidden, mapReady])
+
   // Chip position: measured off the radar button so it hugs the rail.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
   useEffect(() => {
@@ -4708,6 +4741,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           <span className="text-[10px] text-muted leading-none">{radarPaused ? '▶' : '❚❚'}</span>
         </button>
       )}
+
+      {/* Right-rail tuck handle — slides the button column off for a clean
+          screen; the tab stays on the edge to bring it back. */}
+      <button
+        type="button"
+        onClick={() => setRailHidden((h) => !h)}
+        aria-label={railHidden ? 'Show map buttons' : 'Hide map buttons'}
+        className="absolute right-0 top-[44%] z-20 rounded-l-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          {railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
+        </svg>
+      </button>
 
       {/* AskAI floats top-right on its own; the layers pill + search button
           pair lives top-LEFT (owner layout, Jul 14 PM). */}
