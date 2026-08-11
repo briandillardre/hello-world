@@ -136,7 +136,15 @@ export async function POST(request: NextRequest) {
       const strip = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
       const candidates = [beacon.id]
       const ib = beacon.id.match(/^(.*):([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})$/)
-      if (ib) candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)
+      if (ib) {
+        candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)
+        // Owner shorthand: "UUID:minor" with the major left out — the fleet
+        // pucks share one UUID+major, so the minor is the unique bit and
+        // that's what people naturally type (TB235 puck, Aug 11). Accept the
+        // minor in decimal (what beacon apps display) and raw hex.
+        candidates.push(`${ib[1]}:${parseInt(ib[3], 16)}`)
+        candidates.push(`${ib[1]}:${ib[3]}`)
+      }
 
       let toolId: string | null = null
       for (const cand of candidates) {
