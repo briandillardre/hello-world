@@ -1246,6 +1246,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         paint: { 'raster-hue-rotate': 230, 'raster-saturation': -0.4, 'raster-brightness-max': 0.55, 'raster-brightness-min': 0.06 },
       })
 
+      // ── Aviation charts (FAA's own public tile services — public-domain
+      // data, no key). EXPERIMENTAL (Brian, Aug 10): likely ports to a
+      // separate app later. Charts top out around z11 (sectional scale);
+      // MapLibre over-scales beyond instead of 404ing.
+      m.addSource('vfr-base', {
+        type: 'raster',
+        tiles: ['https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256, maxzoom: 11, attribution: 'FAA',
+      })
+      m.addLayer({ id: 'vfr-base', type: 'raster', source: 'vfr-base', layout: { visibility: 'none' } })
+      m.addSource('ifr-base', {
+        type: 'raster',
+        tiles: ['https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256, maxzoom: 11, attribution: 'FAA',
+      })
+      m.addLayer({ id: 'ifr-base', type: 'raster', source: 'ifr-base', layout: { visibility: 'none' } })
+
       // Hybrid labels — CARTO's retina label-only tiles (place + road names
       // with dark halos, crisp on hi-DPI). Replaced Esri's dated reference
       // rasters: non-retina text and salmon road lines read blurry over
@@ -2321,6 +2338,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('plain-base', base === 'plain')
     set('bw-base', base === 'bw')
     set('aubergine-base', base === 'aubergine')
+    set('vfr-base', base === 'vfr')
+    set('ifr-base', base === 'ifr')
     set('labels-overlay', base === 'hybrid' || base === 'aubergine')
   }, [mapReady, base])
 

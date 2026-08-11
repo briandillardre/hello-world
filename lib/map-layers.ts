@@ -5,7 +5,7 @@
  * — never rename one without a back-compat mapping.
  */
 
-export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine'
+export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine' | 'vfr' | 'ifr'
 export type GroupId = 'site' | 'weather' | 'water' | 'basemap' | 'advanced'
 
 export interface LayerRowDef {
@@ -59,6 +59,10 @@ export const BASEMAPS: { id: BasemapId; label: string }[] = [
   { id: 'plain', label: 'Plain' },
   { id: 'bw', label: 'B/W' },
   { id: 'aubergine', label: 'Aubergine' },
+  // Aviation charts (FAA public tiles) — experimental, may move to a
+  // separate app later (Brian, Aug 10).
+  { id: 'vfr', label: 'VFR Sectional' },
+  { id: 'ifr', label: 'IFR Low' },
 ]
 
 // One representative tile per source for the picker thumbnails (z8 tile over
@@ -74,6 +78,8 @@ export const BASEMAP_TILE: Record<BasemapId, string> = {
   plain: `https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
   bw: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
   aubergine: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  vfr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
+  ifr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
 }
 /** CSS filter approximating the map paint treatment, for picker thumbs only. */
 export const BASEMAP_THUMB_FILTER: Partial<Record<BasemapId, string>> = {
