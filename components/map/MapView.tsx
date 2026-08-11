@@ -2642,6 +2642,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
     const rv = overlayOpacity.radar
     if (rv != null && m.getLayer('wx-layer')) m.setPaintProperty('wx-layer', 'raster-opacity', rv)
+    // Airspace shelves — fill-extrusion, its own opacity property.
+    const av = overlayOpacity.airspace3d
+    if (av != null && m.getLayer('airspace3d-layer')) m.setPaintProperty('airspace3d-layer', 'fill-extrusion-opacity', av)
   }, [mapReady, overlayOpacity, overlaysOn, radarOn])
 
   // Track zoom for the layers panel's "zoom in/out to see this" rows.
@@ -3597,21 +3600,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           if (cancelled || !j?.features) return
           const FT = 0.3048
           const toNum = (v: unknown) => { const n = typeof v === 'number' ? v : parseFloat(String(v)); return Number.isFinite(n) ? n : null }
-          const features = j.features.flatMap((f) => {
+          const raw = j.features.flatMap((f) => {
             const p = (f.properties ?? {}) as Record<string, unknown>
             const cls = String(p.CLASS ?? p.class ?? '').toUpperCase()
             if (cls !== 'B' && cls !== 'C' && cls !== 'D') return []
             let lo = toNum(p.LOWER_VAL)
             let hi = toNum(p.UPPER_VAL)
-            if (lo == null || lo < 0) lo = 0            // -9998 sentinel = surface
-            if (hi == null || hi <= lo) hi = lo + 1000  // defensive: give the shelf a body
+            if (lo == null || lo < 0) lo = 0 // -9998 sentinel = surface
+            if (hi == null) hi = 0
+            return [{ geometry: f.geometry, cls, name: String(p.NAME ?? p.name ?? ''), lo, hi }]
+          })
+          // Unit sniff: NASR ships these values in HUNDREDS of feet in some
+          // vintages — a 5,300 ft shelf arrived as 53 and extruded to a
+          // 16 m pancake ("airspace not 3d at all", Aug 10). If nothing in
+          // the payload exceeds 200, the numbers are hundreds of feet.
+          const maxVal = raw.reduce((mx, r) => Math.max(mx, r.hi, r.lo), 0)
+          const unit = maxVal > 0 && maxVal <= 200 ? 100 : 1
+          const features = raw.map((r) => {
+            const lo = r.lo * unit
+            let hi = r.hi * unit
+            if (hi <= lo) hi = lo + 1000 // defensive: give the shelf a body
             if (hi > 60_000) hi = 60_000
             const band = `${lo === 0 ? 'SFC' : `${lo.toLocaleString()} ft`} – ${hi.toLocaleString()} ft MSL`
-            return [{
+            return {
               type: 'Feature' as const,
-              geometry: f.geometry,
-              properties: { cls, name: String(p.NAME ?? p.name ?? ''), base_m: lo * FT, top_m: hi * FT, band },
-            }]
+              geometry: r.geometry,
+              properties: { cls: r.cls, name: r.name, base_m: lo * FT, top_m: hi * FT, band },
+            }
           })
           ;(m.getSource('airspace3d') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'airspace3d', at: Date.now() } }))
