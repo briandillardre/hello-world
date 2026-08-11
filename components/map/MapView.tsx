@@ -785,16 +785,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   assetsRef.current = assets
   geofencesRef.current = geofences
 
-  // Fit the map to everything — assets, zones, and site devices.
+  // Fit the map to the ASSETS on screen — not zones or boundaries (Brian,
+  // Aug 10: a county-sized boundary ring made "zoom to all" useless).
+  // Respects the type filter so hidden asset types don't drag the frame.
+  // Zones are only the fallback when there are no positioned assets at all
+  // (a brand-new company that's drawn a site but plugged nothing in yet).
   const fitAll = useCallback(() => {
     const m = map.current
     if (!m) return
     const pts: [number, number][] = []
-    for (const a of assetsRef.current) if (a.location) pts.push([a.location.lng, a.location.lat])
-    for (const d of SITE_DEVICES) pts.push([d.lng, d.lat])
-    for (const g of geofencesRef.current) {
-      const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
-      if (ring) for (const c of ring) pts.push([c[0], c[1]])
+    for (const a of assetsRef.current) {
+      if (a.location && filterRef.current.has(a.type)) pts.push([a.location.lng, a.location.lat])
+    }
+    if (!pts.length) {
+      for (const g of geofencesRef.current) {
+        const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+        if (ring) for (const c of ring) pts.push([c[0], c[1]])
+      }
     }
     if (!pts.length) return
     const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
