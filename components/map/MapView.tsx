@@ -3547,6 +3547,85 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => { cancelled = true }
   }, [mapReady, overlaysOn.fieldops])
 
+  // ── Airspace 3D — the sectional's upside-down cake, extruded for real
+  // (Brian, Aug 10). FAA AIS publishes every Class B/C/D polygon WITH its
+  // charted floor/ceiling; each shelf becomes a translucent fill-extrusion
+  // slab from LOWER_VAL to UPPER_VAL (feet MSL → meters, 1:1 scale — tilt
+  // the map to see the tiers). Aviation colors: B blue, C magenta, D light
+  // blue. Note: rendered above the map's flat ground plane, so shelves sit
+  // at MSL altitude over sea-level terrain — chart-accurate geometry.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.airspace3d
+    if (m.getLayer('airspace3d-layer')) {
+      m.setLayoutProperty('airspace3d-layer', 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('airspace3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'airspace3d-layer', type: 'fill-extrusion', source: 'airspace3d',
+        paint: {
+          'fill-extrusion-color': ['match', ['get', 'cls'], 'B', '#3b82f6', 'C', '#c026d3', '#38bdf8'],
+          'fill-extrusion-opacity': 0.22,
+          'fill-extrusion-base': ['get', 'base_m'],
+          'fill-extrusion-height': ['get', 'top_m'],
+        },
+      })
+      m.on('click', 'airspace3d-layer', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#60a5fa">${String(p.name || 'Airspace')} · Class ${p.cls}</div><div style="color:#9fb6cc">${p.band}</div></div>`)
+          .addTo(m)
+      })
+      m.on('mouseenter', 'airspace3d-layer', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'airspace3d-layer', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const load = () => {
+      if (m.getZoom() < 6) return
+      const b = m.getBounds()
+      const env = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`
+      const url = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services/Class_Airspace/FeatureServer/0/query' +
+        `?where=1%3D1&geometry=${encodeURIComponent(env)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=true&resultRecordCount=400&f=geojson`
+      fetch(url)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: GeoJSON.FeatureCollection | null) => {
+          if (cancelled || !j?.features) return
+          const FT = 0.3048
+          const toNum = (v: unknown) => { const n = typeof v === 'number' ? v : parseFloat(String(v)); return Number.isFinite(n) ? n : null }
+          const features = j.features.flatMap((f) => {
+            const p = (f.properties ?? {}) as Record<string, unknown>
+            const cls = String(p.CLASS ?? p.class ?? '').toUpperCase()
+            if (cls !== 'B' && cls !== 'C' && cls !== 'D') return []
+            let lo = toNum(p.LOWER_VAL)
+            let hi = toNum(p.UPPER_VAL)
+            if (lo == null || lo < 0) lo = 0            // -9998 sentinel = surface
+            if (hi == null || hi <= lo) hi = lo + 1000  // defensive: give the shelf a body
+            if (hi > 60_000) hi = 60_000
+            const band = `${lo === 0 ? 'SFC' : `${lo.toLocaleString()} ft`} – ${hi.toLocaleString()} ft MSL`
+            return [{
+              type: 'Feature' as const,
+              geometry: f.geometry,
+              properties: { cls, name: String(p.NAME ?? p.name ?? ''), base_m: lo * FT, top_m: hi * FT, band },
+            }]
+          })
+          ;(m.getSource('airspace3d') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'airspace3d', at: Date.now() } }))
+        })
+        .catch(() => {
+          window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'airspace3d', msg: 'FAA airspace service unreachable right now' } }))
+        })
+    }
+    const onMove = () => { if (timer) clearTimeout(timer); timer = setTimeout(load, 900) }
+    load()
+    m.on('moveend', onMove)
+    return () => { cancelled = true; if (timer) clearTimeout(timer); m.off('moveend', onMove) }
+  }, [mapReady, overlaysOn.airspace3d])
+
   // ── Day/night, the realistic way: whatever basemap is up shows in daylight,
   // then the map fades through graduated twilight bands (sun 0/−6/−12/−18°
   // below the horizon) into night — and real cities glow on the dark side,
@@ -3799,6 +3878,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     const b = radarBtnEl.current
     if (!mapReady || !b) return
+    // Without touch-action:none the browser claims horizontal drags as a
+    // scroll gesture and fires pointercancel before the swipe registers
+    // ("swipe left on radar button is not working", Aug 10).
+    b.style.touchAction = 'none'
     const down = (e: PointerEvent) => { radarSwipeRef.current = { x: e.clientX, y: e.clientY }; radarSwipedRef.current = false }
     const move = (e: PointerEvent) => {
       const s = radarSwipeRef.current
@@ -4705,7 +4788,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.
