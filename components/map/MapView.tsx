@@ -1272,6 +1272,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         id: 'aubergine-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' },
         paint: { 'raster-hue-rotate': 230, 'raster-saturation': -0.4, 'raster-brightness-max': 0.55, 'raster-brightness-min': 0.06 },
       })
+      // Night — NASA Black Marble (VIIRS composite via GIBS, keyless).
+      // Promoted from the old 'nightlights' overlay (Brian, Aug 11). Tiles
+      // top out at z8; MapLibre over-scales beyond (soft glow, still reads).
+      m.addSource('night-base', {
+        type: 'raster',
+        tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png'],
+        tileSize: 256, maxzoom: 8, attribution: 'NASA Earth Observatory',
+      })
+      m.addLayer({ id: 'night-base', type: 'raster', source: 'night-base', layout: { visibility: 'none' } })
 
       // ── Aviation charts (FAA's own public tile services — public-domain
       // data, no key). EXPERIMENTAL (Brian, Aug 10): likely ports to a
@@ -2364,6 +2373,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('silver-base', base === 'silver')
     set('bw-base', base === 'bw')
     set('aubergine-base', base === 'aubergine')
+    set('night-base', base === 'night')
     // Charts ride over a light base: the FAA cache only has tiles at
     // chart-scale zooms, so wide views went void outside the visited area
     // ("only loads the area I am zoomed to", Aug 10). The underlay keeps the
@@ -2371,7 +2381,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('plain-base', base === 'plain' || base === 'vfr' || base === 'ifr')
     set('vfr-base', base === 'vfr')
     set('ifr-base', base === 'ifr')
-    set('labels-overlay', base === 'hybrid' || base === 'aubergine')
+    // Night photo gets the dark-halo label tiles too — city names over glow.
+    set('labels-overlay', base === 'hybrid' || base === 'aubergine' || base === 'night')
   }, [mapReady, base])
 
   // 3D buildings & tilt — buildings + camera tilt only, layerable on any

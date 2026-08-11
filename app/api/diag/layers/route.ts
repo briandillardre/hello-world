@@ -48,8 +48,8 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'image',
   },
   {
-    key: 'nightlights',
-    label: 'City lights (VIIRS Black Marble)',
+    key: 'night-base',
+    label: 'Night basemap (VIIRS Black Marble)',
     url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/5/12/8.png',
     kind: 'image',
   },

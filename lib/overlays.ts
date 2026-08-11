@@ -120,16 +120,8 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     maxzoom: 10,
     opacity: 0.7,
   },
-  {
-    key: 'nightlights',
-    label: 'City lights',
-    note: 'NASA Black Marble · Earth at night · zoom out',
-    // Static VIIRS composite via GIBS — no query params (strict server).
-    tiles: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png',
-    minzoom: 0,
-    maxzoom: 8,
-    opacity: 0.9,
-  },
+  // ('nightlights' Black Marble overlay promoted to the 'night' basemap,
+  // Aug 11 — see lib/map-layers.ts + the night-base source in MapView.)
   {
     key: 'streams',
     label: 'Streams',

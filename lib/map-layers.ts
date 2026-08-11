@@ -5,7 +5,7 @@
  * — never rename one without a back-compat mapping.
  */
 
-export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine' | 'vfr' | 'ifr'
+export type BasemapId = 'dark' | 'streets' | 'terrain' | 'satellite' | 'hybrid' | 'silver' | 'plain' | 'bw' | 'aubergine' | 'night' | 'vfr' | 'ifr'
 export type GroupId = 'site' | 'weather' | 'water' | 'basemap' | 'advanced'
 
 export interface LayerRowDef {
@@ -57,6 +57,9 @@ export const BASEMAPS: { id: BasemapId; label: string }[] = [
   { id: 'plain', label: 'Plain' },
   { id: 'bw', label: 'B/W' },
   { id: 'aubergine', label: 'Aubergine' },
+  // NASA Black Marble — Earth at night. Was the 'nightlights' overlay row
+  // (dark-basemap-only, opacity slider); promoted to a basemap Aug 11.
+  { id: 'night', label: 'Night (NASA)' },
   // Aviation charts (FAA public tiles) — experimental, may move to a
   // separate app later (Brian, Aug 10).
   { id: 'vfr', label: 'VFR Sectional' },
@@ -76,6 +79,7 @@ export const BASEMAP_TILE: Record<BasemapId, string> = {
   plain: `https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
   bw: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
   aubergine: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  night: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/${THUMB.z}/${THUMB.y}/${THUMB.x}.png`,
   vfr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
   ifr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
 }
@@ -133,7 +137,8 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── Night effects (nested under Advanced) ─────────────────────────────────
   { id: 'daynight', label: 'Day / night (real)', group: 'advanced', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
-  { id: 'nightlights', label: 'Night photo (NASA)', group: 'advanced', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
+  // ('nightlights' promoted to the 'night' BASEMAP Aug 11 — saved views that
+  // still carry the overlay key are silently ignored.)
 ]
 
 export interface RowState {
