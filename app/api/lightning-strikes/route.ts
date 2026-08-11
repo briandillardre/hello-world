@@ -27,6 +27,9 @@ const CACHE_MS = 45_000
 
 interface Strike { lat: number; lon: number; ageSec: number }
 let cache: { at: number; strikes: Strike[] } | null = null
+// Last refresh diagnostics — surfaced via ?debug=1 so a blank map is
+// explainable from the phone (which stage died: wasm, listing, parsing).
+let diag: Record<string, unknown> = {}
 
 /** s20262231758000 → ms UTC (year, day-of-year, HH, MM, SS). */
 function granuleMs(key: string): number {
@@ -65,17 +68,22 @@ export async function GET(req: NextRequest) {
 
   if (!cache || Date.now() - cache.at > CACHE_MS) {
     try {
+      diag = { at: new Date().toISOString() }
       const h5wasm = (await import('h5wasm/node')).default
       const Module = await h5wasm.ready
+      diag.wasm = 'ready'
       const FS = (Module as unknown as { FS: { writeFile: (p: string, d: Uint8Array) => void; unlink: (p: string) => void } }).FS
       let keys: string[] = []
       let bucket = BUCKETS[0]
       for (const b of BUCKETS) {
-        try { keys = await listLatestKeys(b); bucket = b; if (keys.length) break } catch { /* try next satellite */ }
+        try { keys = await listLatestKeys(b); bucket = b; if (keys.length) break } catch (e) { diag[`list_${b}`] = String(e) }
       }
+      diag.bucket = bucket
+      diag.granules = keys.length
       if (!keys.length) throw new Error('no GLM granules listed')
       const now = Date.now()
       const strikes: Strike[] = []
+      let parsed = 0
       for (const key of keys) {
         try {
           const r = await fetch(`https://${bucket}.s3.amazonaws.com/${key}`, { signal: AbortSignal.timeout(8_000), cache: 'no-store' })
@@ -88,19 +96,25 @@ export async function GET(req: NextRequest) {
             const lat = (f.get('flash_lat') as { value: Float32Array } | null)?.value
             const lon = (f.get('flash_lon') as { value: Float32Array } | null)?.value
             const ageSec = Math.max(0, Math.round((now - granuleMs(key)) / 1000))
-            if (lat && lon) for (let i = 0; i < lat.length; i++) strikes.push({ lat: lat[i], lon: lon[i], ageSec })
+            if (lat && lon) { parsed++; for (let i = 0; i < lat.length; i++) strikes.push({ lat: lat[i], lon: lon[i], ageSec }) }
           } finally {
             f.close()
             FS.unlink(name)
           }
-        } catch { /* one bad granule never kills the batch */ }
+        } catch (e) { diag[`granule_err`] = String(e) }
       }
+      diag.parsed = parsed
+      diag.total = strikes.length
       cache = { at: Date.now(), strikes }
     } catch (err) {
+      diag.fatal = err instanceof Error ? `${err.message}\n${err.stack?.split('\n').slice(0, 4).join('\n')}` : String(err)
+      console.error('[lightning-strikes]', diag.fatal)
+      if (sp.get('debug')) return NextResponse.json({ diag }, { status: 200 })
       if (cache) return NextResponse.json({ strikes: trim(cache.strikes, hasBox, w, s, e, n), stale: true })
       return NextResponse.json({ error: err instanceof Error ? err.message : 'GLM feed unreachable' }, { status: 503 })
     }
   }
+  if (sp.get('debug')) return NextResponse.json({ diag, cached: cache.strikes.length })
   return NextResponse.json({ strikes: trim(cache.strikes, hasBox, w, s, e, n) })
 }
 

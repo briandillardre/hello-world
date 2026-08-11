@@ -4107,6 +4107,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const src = () => m.getSource('glm-strikes') as maplibregl.GeoJSONSource | undefined
     if (!on) { src()?.setData(empty); return }
     let alive = true
+    let errNoted = false
     const poll = async () => {
       try {
         const b = m.getBounds()
@@ -4114,7 +4115,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         const px = (b.getEast() - b.getWest()) * 0.5, py = (b.getNorth() - b.getSouth()) * 0.5
         const qs = `w=${(b.getWest() - px).toFixed(2)}&s=${(b.getSouth() - py).toFixed(2)}&e=${(b.getEast() + px).toFixed(2)}&n=${(b.getNorth() + py).toFixed(2)}`
         const r = await fetch(`/api/lightning-strikes?${qs}`)
-        if (!r.ok) throw new Error(`strikes ${r.status}`)
+        if (!r.ok) throw new Error(`strike feed ${r.status}`)
         const j: { strikes?: { lat: number; lon: number; ageSec: number }[] } = await r.json()
         if (!alive) return
         src()?.setData({
@@ -4125,7 +4126,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
             properties: { age: Math.min(600, p.ageSec) },
           })),
         })
-      } catch { /* quiet — bolts are garnish on the radar, never an error state */ }
+      } catch (e) {
+        // Say so ON the radar row — a silent miss during a storm reads as
+        // "feature doesn't work" ("not seeing the lightning strikes", Aug 11).
+        if (!errNoted) {
+          errNoted = true
+          window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'radar', msg: `⚡ strikes: ${e instanceof Error ? e.message : 'feed down'}` } }))
+        }
+      }
     }
     poll()
     const id = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 60_000)

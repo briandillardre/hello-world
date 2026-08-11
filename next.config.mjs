@@ -12,6 +12,11 @@ const nextConfig = {
     // h5wasm loads its .wasm from disk at runtime — bundling it breaks the
     // path, so it stays external (used by /api/lightning-strikes for GLM).
     serverComponentsExternalPackages: ['h5wasm'],
+    // Belt AND suspenders: force the wasm binary into the function bundle —
+    // file tracing can miss assets loaded via import.meta.url resolution.
+    outputFileTracingIncludes: {
+      '/api/lightning-strikes': ['./node_modules/h5wasm/dist/node/**'],
+    },
     serverActions: {
       // Asset photos are resized client-side (~200-500 KB) before riding a
       // server action; anything big (zone site imagery, up to 50 MB) goes
