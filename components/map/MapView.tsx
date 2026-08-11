@@ -4480,7 +4480,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         <button
           type="button"
           onClick={() => setRadarPaused((p) => !p)}
-          className="absolute left-1/2 -translate-x-1/2 top-3 z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel"
+          className="absolute left-1/2 -translate-x-1/2 top-14 z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel"
           style={{ animation: 'radarChipIn .28s ease-out' }}
           aria-label={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
         >
@@ -4522,7 +4522,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS
           server's own legend so colors match the tiles exactly. */}
       {!kiosk && (overlaysOn.temp || overlaysOn.feels || overlaysOn.wind || overlaysOn.lightning || precipOn || trailMode === 'heatmap' || trailMode === '3d') && (
-        <div className="absolute left-3 top-[60px] z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none">
+        <div className={`absolute left-3 ${radarOn && !pbActive ? 'top-[94px]' : 'top-[60px]'} z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none`}>
           {(['temp', 'feels', 'wind', 'lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
             const name = rtmaNames?.[k] ?? (k === 'temp' ? 'air_temperature' : k === 'feels' ? 'apparent_air_temperature' : k === 'wind' ? 'wind_speed' : null)
             if (!name) return null
