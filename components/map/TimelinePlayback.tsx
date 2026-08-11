@@ -122,8 +122,14 @@ export function TimelinePlayback({
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
-  // Kiosk starts as a pill — the wall display leads with the map.
-  const [minimized, setMinimized] = useState(kiosk)
+  // Three-stage bottom sheet (Brian, Aug 10): 'full' = ranges + options +
+  // scrubber · 'bar' = the timeline alone · 'min' = the pill. Drag the
+  // handle down to step full → bar → min, up to climb back. The X stays for
+  // non-tech users and jumps straight to the pill. Kiosk starts as a pill —
+  // the wall display leads with the map.
+  const [stage, setStage] = useState<'full' | 'bar' | 'min'>(kiosk ? 'min' : 'full')
+  const minimized = stage === 'min'
+  const dragRef = useRef<{ y: number; done: boolean } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
   const [showChart, setShowChart] = useState(false)
@@ -225,7 +231,16 @@ export function TimelinePlayback({
       ro.disconnect()
       document.documentElement.style.setProperty('--ht-sheet-lift', '0px')
     }
-  }, [kiosk, minimized, publishLift])
+  }, [kiosk, stage, publishLift])
+
+  // One stage per gesture; leaving 'full' folds any open popovers with it.
+  const stepDown = useCallback(() => {
+    setStage((s) => {
+      if (s === 'full') { setShowChart(false); setShowFollow(false); setShowCustom(false); return 'bar' }
+      return 'min'
+    })
+  }, [])
+  const stepUp = useCallback(() => setStage((s) => (s === 'bar' ? 'full' : s === 'min' ? 'bar' : s)), [])
 
   const chartRef = useRef<HTMLDivElement>(null)
   const seekFromPointer = useCallback((clientX: number) => {
@@ -246,7 +261,7 @@ export function TimelinePlayback({
     return (
       <button
         ref={attachMeasure}
-        onClick={() => setMinimized(false)}
+        onClick={() => setStage(kiosk ? 'full' : 'bar')}
         className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
@@ -435,12 +450,33 @@ export function TimelinePlayback({
       <div className="relative">
       {/* X straddles the bar's top edge (site convention) — always visible,
           always tappable, never buried in the wrapping control rows. */}
-      <ProtrudingClose onClick={() => setMinimized(true)} title="Minimize timeline" />
+      <ProtrudingClose onClick={() => setStage('min')} title="Minimize timeline" />
       <div className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
-      {/* range pills + movement-display control. On phones the pills get their
-          own full-width scrollable row — sharing one row squeezed them into a
-          useless 10px sliver next to all the flex-none controls. */}
-      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-3 pr-11 pt-2 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
+      {/* Drag handle — the bottom-sheet grab bar: pull down for the timeline
+          alone, down again for the pill; pull up to climb back. */}
+      <div
+        className="flex items-center justify-center h-5 -mb-1 cursor-grab touch-none select-none"
+        onPointerDown={(e) => { dragRef.current = { y: e.clientY, done: false }; e.currentTarget.setPointerCapture(e.pointerId) }}
+        onPointerMove={(e) => {
+          const d = dragRef.current
+          if (!d || d.done) return
+          const dy = e.clientY - d.y
+          if (dy > 26) { d.done = true; stepDown() }
+          else if (dy < -26) { d.done = true; stepUp() }
+        }}
+        onPointerUp={() => { dragRef.current = null }}
+        onPointerCancel={() => { dragRef.current = null }}
+        role="button"
+        aria-label="Drag down to shrink the timeline, up to expand"
+      >
+        <span className="w-9 h-1 rounded-full bg-navy-600" />
+      </div>
+      {/* range pills + movement-display control — the 'options' stage. On
+          phones the pills get their own full-width scrollable row — sharing
+          one row squeezed them into a useless 10px sliver next to all the
+          flex-none controls. */}
+      {stage === 'full' && (
+      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-3 pr-11 pt-1 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
         {/* Reserve real width for the range pills — without a floor, the pile
             of flex-none controls crushes this strip to a sliver ("Toda…") on
             mid-width screens; controls wrap to a second line instead. */}
@@ -662,6 +698,7 @@ export function TimelinePlayback({
           </button>
         )}
       </div>
+      )}
 
       {/* Asset readout — speed / clock / miles for the followed or selected
           asset, docked in the bar so it never covers the map. Same row, same
@@ -677,8 +714,9 @@ export function TimelinePlayback({
       )}
 
       {live ? (
-        /* phones only — desktop shows the status inline in the pill row */
-        <div className="sm:hidden flex items-center gap-2 px-4 pb-2 min-w-0 flex-nowrap overflow-hidden">
+        /* Phones show this always; desktop shows it inline in the pill row —
+           except in the timeline-only stage, where it's all there is. */
+        <div className={(stage === 'bar' ? 'flex' : 'sm:hidden flex') + ' items-center gap-2 px-4 pb-2 pt-1 min-w-0 flex-nowrap overflow-hidden'}>
           <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
           <span className="font-mono text-[12px] text-teal whitespace-nowrap flex-none">Live · {ago}</span>
           <span className="font-mono text-[12px] text-faint truncate whitespace-nowrap min-w-0">
