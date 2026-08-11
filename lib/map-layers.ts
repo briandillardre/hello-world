@@ -96,18 +96,18 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── Weather ───────────────────────────────────────────────────────────────
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays' },
-  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min' },
-  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · sharp box = satellite zoom sector' },
-  { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'warnings solid (tornado red · t-storm orange · flood green) · watch boxes dashed · tap a polygon' },
-  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', hint: 'accumulated rainfall — pick the period' },
-  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', hasOpacity: true, hint: 'surface temp shading · hourly' },
-  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly' },
-  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly' },
+  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
+  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
+  { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'CURRENT warnings solid (tornado red · t-storm orange · flood green) · watch boxes dashed · ONLY LIVE — hides during replays' },
+  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
+  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', hasOpacity: true, hint: 'surface temp shading · hourly · replays show the scrubbed hour (~1 day back)' },
+  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
+  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
   { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
   { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see weather stations', hint: 'community stations · tap for readings' },
   // Layer name discovered live from NOAA's server (like temp/feels/wind) —
   // GOES lightning mapper strike density. Row reports if NOAA drops it.
-  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', hasOpacity: true, hint: 'GOES strike density · ~10 min' },
+  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
 
   // ── Water & Terrain ───────────────────────────────────────────────────────
   { id: 'streams', label: 'Streams', group: 'water', status: 'live', hasOpacity: true, hint: 'rivers & creeks (national hydrography)' },

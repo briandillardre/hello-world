@@ -3822,6 +3822,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, scrubWxTs, wxOutOfRange, overlaysOn, rtmaNames])
 
+  // ── One SURFACE weather layer at a time (Brian, Aug 10): temp, feels-like,
+  // wind speed, rain totals, lightning, clouds, and storm tops all paint the
+  // whole ground/sky — stacked they're mud. Turning one on switches the rest
+  // of the set off. Radar, the wind-flow particles, and storm-warning
+  // polygons stay stackable on top.
+  type SoloWeatherKey = 'clouds' | 'stormtops' | 'precip' | 'temp' | 'feels' | 'wind' | 'lightning'
+  const soloWeather = useCallback((key: SoloWeatherKey) => {
+    setCloudsOn(key === 'clouds')
+    setStormTopsOn(key === 'stormtops')
+    setPrecipOn(key === 'precip')
+    setOverlaysOn((prev) => ({
+      ...prev,
+      temp: key === 'temp', feels: key === 'feels', wind: key === 'wind', lightning: key === 'lightning',
+    }))
+  }, [])
+
   // Satellite clouds — coarse (max native zoom 7) but the real sky.
   useEffect(() => {
     const m = map.current
@@ -3921,6 +3937,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.setLayoutProperty('precip-layer', 'visibility', 'visible')
     }
   }, [mapReady, precipOn, precipPeriod])
+
+  // ── Live-only weather never paints under a historical scrubber (Brian,
+  // Aug 10): current warnings / clouds / storm tops / rain-totals over
+  // yesterday's trucks read as data from that day. Declared AFTER every
+  // weather effect so it wins within the same render — toggling one of
+  // these mid-replay re-hides it immediately; leaving replay restores each
+  // per its own switch. (Radar + temp/feels/wind/lightning follow the
+  // scrubber and stay; the wind-flow particles already self-gate to Live.)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const show = (id: string, on: boolean) => {
+      if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on && !pbActive ? 'visible' : 'none')
+    }
+    show('clouds-layer', cloudsOn)
+    show('stormtops-layer', stormTopsOn)
+    show('precip-layer', precipOn)
+    show('nws-fill', !!overlaysOn.nwswarn)
+    show('nws-line', !!overlaysOn.nwswarn)
+    show('spc-watch-line', !!overlaysOn.nwswarn)
+  }, [mapReady, pbActive, cloudsOn, stormTopsOn, precipOn, overlaysOn])
 
   // Animation loop: map sources update every frame (smooth movement), but
   // React state — scrubber, labels, cost panel — only ~10Hz, so the whole
@@ -4512,12 +4549,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         radarPaused={radarPaused}
         onRadarPause={setRadarPaused}
         stormTopsOn={stormTopsOn}
-        onStormTops={setStormTopsOn}
+        onStormTops={(v) => (v ? soloWeather('stormtops') : setStormTopsOn(false))}
         onRadar={setRadarOn}
         cloudsOn={cloudsOn}
-        onClouds={setCloudsOn}
+        onClouds={(v) => (v ? soloWeather('clouds') : setCloudsOn(false))}
         precipOn={precipOn}
-        onPrecip={setPrecipOn}
+        onPrecip={(v) => (v ? soloWeather('precip') : setPrecipOn(false))}
         precipPeriod={precipPeriod}
         onPrecipPeriod={setPrecipPeriod}
         frameTime={radarLabel}
@@ -4525,7 +4562,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
         overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
-        onOverlay={(key, on) => setOverlaysOn((prev) => ({ ...prev, [key]: on }))}
+        onOverlay={(key, on) => {
+          // Surface shadings are one-at-a-time; everything else stacks.
+          if (on && (key === 'temp' || key === 'feels' || key === 'wind' || key === 'lightning')) soloWeather(key)
+          else setOverlaysOn((prev) => ({ ...prev, [key]: on }))
+        }}
         showZones={showZones}
         onShowZones={setShowZones}
         zoom={mapZoom}
