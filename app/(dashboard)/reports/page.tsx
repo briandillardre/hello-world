@@ -140,7 +140,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
           <div className="ml-auto">
             <ScorecardExport
               scores={scores}
-              brand={{ companyName: settings.name, logoUrl: settings.logo_url }}
+              brand={{ companyName: settings.name, logoUrl: settings.logo_url, logoBg: settings.logo_bg }}
               rangeLabel={rangeSub}
             />
           </div>

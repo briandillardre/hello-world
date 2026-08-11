@@ -56,7 +56,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
             savedMapViews={null}
             alerts={[]}
             focusMeasurement={focusMeasurement}
-            brand={{ companyName: company.name, logoUrl: company.logoUrl }}
+            brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
           />
         </div>
       </div>
@@ -132,7 +132,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           savedMapViews={savedMapViews}
           alerts={alerts}
           focusMeasurement={focusMeasurement}
-          brand={{ companyName: company.name, logoUrl: company.logoUrl }}
+          brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
         />
       </div>
     </div>

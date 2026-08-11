@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
-import { updateCompanySettingsAction, saveCompanyLogoAction } from '@/lib/actions/company'
+import { updateCompanySettingsAction, saveCompanyLogoAction, saveLogoBgAction } from '@/lib/actions/company'
 import { normalizeUsPhone } from '@/lib/phone'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,15 +25,29 @@ interface Props {
   sms_consent_at?: string | null
   /** Company logo (044) — sidebar + every generated PDF wear it. */
   logo_url?: string | null
+  /** Backing color behind the logo (061); null = as uploaded. */
+  logo_bg?: string | null
   editable: boolean
 }
 
 /** Editable company name + working hours. Work hours drive the after-hours
  *  theft alert, so this is operational, not cosmetic. */
-export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, sms_consent_phone = null, sms_consent_at = null, logo_url = null, editable }: Props) {
+export function CompanySettings({ name, plan, work_start, work_end, work_days, alert_phone, alert_email, sms_consent_phone = null, sms_consent_at = null, logo_url = null, logo_bg = null, editable }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [logoBg, setLogoBg] = useState<string | null>(logo_bg)
+
+  // Backing behind the mark — dark logos vanish on the navy UI ("add
+  // background feature when the company logo is added", Aug 10). Optimistic;
+  // reverts on failure.
+  const saveBg = async (bg: string | null) => {
+    const prev = logoBg
+    setLogoBg(bg)
+    const r = await saveLogoBgAction(bg).catch(() => ({ ok: false as const, error: 'Save failed' }))
+    if (!r.ok) { setLogoBg(prev); setErr(r.error ?? 'Backing save failed.') }
+    else router.refresh()
+  }
   const [err, setErr] = useState<string | null>(null)
   const [logoBusy, setLogoBusy] = useState(false)
 
@@ -134,7 +148,9 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
         <div className="flex items-center gap-3">
           {logo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo_url} alt="Company logo" className="h-12 max-w-[160px] object-contain" />
+            <img src={logo_url} alt="Company logo"
+              className={'h-12 max-w-[160px] object-contain' + (logoBg ? ' rounded-md px-1.5 py-1' : '')}
+              style={logoBg ? { backgroundColor: logoBg } : undefined} />
           ) : (
             <div className="h-12 w-24 rounded-md border border-dashed border-navy-700 grid place-items-center text-[10px] text-faint">No logo yet</div>
           )}
@@ -174,6 +190,33 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
             Shows in your sidebar and on every PDF this app creates (map snapshots, fleet reports).
           </p>
         </div>
+
+        {/* Backing — a fill behind the mark for logos that vanish on navy. */}
+        {editable && logo_url && (
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <span className="text-[11px] text-faint">Backing:</span>
+            <button type="button" onClick={() => saveBg(null)}
+              className={`rounded-md border px-2 py-1 text-[11px] ${logoBg === null ? 'border-amber text-amber' : 'border-navy-700 text-muted hover:text-ink'}`}>
+              None
+            </button>
+            {[['#ffffff', 'White'], ['#000000', 'Black']].map(([hex, label]) => (
+              <button key={hex} type="button" onClick={() => saveBg(hex)}
+                aria-label={`${label} backing`}
+                className={`h-6 w-6 rounded-md border-2 ${logoBg === hex ? 'border-amber' : 'border-navy-600'}`}
+                style={{ backgroundColor: hex }} />
+            ))}
+            <label className="flex items-center gap-1.5 text-[11px] text-muted cursor-pointer">
+              <input
+                type="color"
+                value={logoBg && logoBg !== '#ffffff' && logoBg !== '#000000' ? logoBg : '#2dd4bf'}
+                onChange={(e) => saveBg(e.target.value)}
+                className="h-6 w-8 rounded-md border border-navy-600 bg-transparent p-0 cursor-pointer"
+                aria-label="Custom backing color"
+              />
+              custom
+            </label>
+          </div>
+        )}
 
         {editing ? (
           <div className="space-y-4">

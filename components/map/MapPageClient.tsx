@@ -58,7 +58,7 @@ interface MapPageClientProps {
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
   /** Company branding for the Create-PDF button. */
-  brand?: { companyName: string; logoUrl: string | null } | null
+  brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
   /** Shell-first boot: the page shipped EMPTY and this component pulls the
    *  whole fleet payload from /api/map-data (and re-pulls it as the 20 s
    *  live tick, replacing router.refresh full-page re-renders). */

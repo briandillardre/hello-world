@@ -220,6 +220,85 @@ export default function PricingPage() {
           </div>
         </section>
 
+        {/* The wider field — the platforms behind the "compare fleet quotes"
+            ads. Published/typical figures; honest about where they're strong. */}
+        <section className="mt-12">
+          <h3 className="font-display font-bold text-lg mb-2 text-center">How we compare across the board</h3>
+          <p className="text-[12.5px] text-faint text-center max-w-xl mx-auto mb-5">
+            The quote-comparison ads all lead to the same few platforms. Their published or
+            typically-quoted terms, side by side with ours.
+          </p>
+          <div className="overflow-x-auto rounded-2xl border border-navy-800">
+            <table className="w-full text-[12.5px] min-w-[640px]">
+              <thead>
+                <tr className="bg-navy-900 text-left font-mono text-[10px] uppercase tracking-wide text-faint">
+                  <th className="px-4 py-3"></th>
+                  <th className="px-4 py-3 text-amber">HammerTrack</th>
+                  <th className="px-4 py-3">Tenna</th>
+                  <th className="px-4 py-3">Samsara</th>
+                  <th className="px-4 py-3">Verizon Connect</th>
+                </tr>
+              </thead>
+              <tbody className="[&_td]:px-4 [&_td]:py-2.5 [&_tr]:border-t [&_tr]:border-navy-800">
+                <tr className="bg-navy-950/60">
+                  <td className="text-faint">Price per asset</td>
+                  <td className="text-ink font-semibold">$8/machine · $3/tool tag</td>
+                  <td className="text-muted">$15–25/mo</td>
+                  <td className="text-muted">$20–40/mo</td>
+                  <td className="text-muted">$20–35/mo</td>
+                </tr>
+                <tr>
+                  <td className="text-faint">Setup fee</td>
+                  <td className="text-ink font-semibold">$0</td>
+                  <td className="text-muted">$500+</td>
+                  <td className="text-muted">varies by quote</td>
+                  <td className="text-muted">varies by quote</td>
+                </tr>
+                <tr className="bg-navy-950/60">
+                  <td className="text-faint">Contract</td>
+                  <td className="text-ink font-semibold">month-to-month</td>
+                  <td className="text-muted">annual</td>
+                  <td className="text-muted">multi-year, typically 3</td>
+                  <td className="text-muted">multi-year</td>
+                </tr>
+                <tr>
+                  <td className="text-faint">$20 Bluetooth tool tags</td>
+                  <td className="text-teal font-semibold">✓ included in the model</td>
+                  <td className="text-muted">paid add-on</td>
+                  <td className="text-muted">—</td>
+                  <td className="text-muted">—</td>
+                </tr>
+                <tr className="bg-navy-950/60">
+                  <td className="text-faint">QuickBooks job costing</td>
+                  <td className="text-teal font-semibold">✓ built in</td>
+                  <td className="text-muted">enterprise only</td>
+                  <td className="text-muted">via integrations</td>
+                  <td className="text-muted">via integrations</td>
+                </tr>
+                <tr>
+                  <td className="text-faint">Crew clock-in, daily logs, punch lists</td>
+                  <td className="text-teal font-semibold">✓ same platform</td>
+                  <td className="text-muted">—</td>
+                  <td className="text-muted">—</td>
+                  <td className="text-muted">—</td>
+                </tr>
+                <tr className="bg-navy-950/60">
+                  <td className="text-faint">Built for</td>
+                  <td className="text-ink font-semibold">contractors, by a contractor</td>
+                  <td className="text-muted">enterprise construction</td>
+                  <td className="text-muted">trucking &amp; logistics fleets</td>
+                  <td className="text-muted">general fleets</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-faint text-center mt-3 max-w-2xl mx-auto">
+            Fair&apos;s fair: if you need dashcams or DOT/ELD compliance for interstate trucking,
+            Samsara and Verizon Connect are built for that — we&apos;re not. Competitor figures are
+            their published or commonly quoted terms as of Aug 2026; always confirm your quote.
+          </p>
+        </section>
+
         {/* FAQ */}
         <section className="mt-12 max-w-2xl mx-auto">
           <h3 className="font-display font-bold text-lg mb-5 text-center">Common questions</h3>

@@ -65,7 +65,7 @@ interface CommandCenterProps {
   /** Tool-pairing episodes over the history window (replay-accurate badges). */
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   /** Company branding for the Create-PDF button. */
-  brand?: { companyName: string; logoUrl: string | null } | null
+  brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
 }
 
 const TRIGGER_LABEL: Record<string, string> = {

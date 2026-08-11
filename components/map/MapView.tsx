@@ -285,7 +285,7 @@ interface MapViewProps {
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
   /** Company branding for the Create-PDF button (logo + name on the header). */
-  brand?: { companyName: string; logoUrl: string | null } | null
+  brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
   kiosk?: boolean
   /** Kiosk auto-tour (asset → asset camera glide). Off = the wall stays put. */
   tourOn?: boolean
@@ -487,6 +487,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       const pdf = await createBrandedPdf({
         companyName: brand?.companyName ?? 'HammerTrack',
         logoUrl: brand?.logoUrl ?? null,
+        logoBg: brand?.logoBg ?? null,
         title: kiosk ? 'Command Center' : 'Fleet map',
         subtitle: `${rangeLabelTxt} view`,
       }, 'portrait')

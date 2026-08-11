@@ -107,6 +107,22 @@ export async function saveDigestPrefsAction(prefs: {
   return { ok: true }
 }
 
+/** Backing color behind the company logo (Settings → Company). NULL = none
+ *  (render as uploaded); else a #rrggbb fill behind the mark everywhere the
+ *  logo shows (sidebar, PDF headers). */
+export async function saveLogoBgAction(bg: string | null): Promise<{ ok: boolean; error?: string }> {
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, error: 'Admins only.' }
+  const clean = bg === null ? null : /^#[0-9a-fA-F]{6}$/.test(bg) ? bg.toLowerCase() : undefined
+  if (clean === undefined) return { ok: false, error: 'Pick a color or None.' }
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const { error } = await createServiceClient().from('companies').update({ logo_bg: clean }).eq('id', companyId)
+  if (error) return { ok: false, error: 'Save failed — run migration 061 in the Supabase SQL Editor first.' }
+  revalidatePath('/settings')
+  revalidatePath('/', 'layout')
+  return { ok: true }
+}
+
 /** Daily-log form builder (Settings card) — replaces companies.log_form
  *  wholesale with a server-sanitized copy. Never trusts the client blob. */
 export async function saveLogFormAction(items: unknown): Promise<{ ok: boolean; error?: string }> {

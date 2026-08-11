@@ -9,7 +9,7 @@ import { fmtClock } from '@/lib/scorecard'
  *  cross-check and the print-and-hand-it-over version. */
 export function ScorecardExport({ scores, brand, rangeLabel }: {
   scores: VehicleScore[]
-  brand?: { companyName: string; logoUrl: string | null }
+  brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null }
   rangeLabel?: string
 }) {
   const [busy, setBusy] = useState(false)
@@ -22,6 +22,7 @@ export function ScorecardExport({ scores, brand, rangeLabel }: {
       const pdf = await createBrandedPdf({
         companyName: brand?.companyName ?? 'HammerTrack',
         logoUrl: brand?.logoUrl ?? null,
+        logoBg: brand?.logoBg ?? null,
         title: 'Fleet report',
         subtitle: rangeLabel,
       })

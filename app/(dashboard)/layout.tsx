@@ -45,7 +45,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <TzCookie />
       <BusyBar />
-      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl}>
+      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg}>
         {children}
       </DashboardShell>
     </div>

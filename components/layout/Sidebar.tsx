@@ -44,6 +44,8 @@ interface SidebarProps {
   userName?: string | null
   /** Client's own logo (Settings → Company) — shown above the company name. */
   logoUrl?: string | null
+  /** Backing fill behind the logo (Settings → Company, 061); null = none. */
+  logoBg?: string | null
   alertCount?: number
   latestAlertAt?: string | null
   onSignOut?: () => void
@@ -55,7 +57,7 @@ interface SidebarProps {
   fullCollapse?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
   if (fullCollapse && collapsed) {
@@ -90,7 +92,9 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
                 logo sits straight on the navy (owner ask, Aug 7). */}
             {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt={companyName} className="mt-1.5 h-8 max-w-[160px] object-contain object-left" />
+              <img src={logoUrl} alt={companyName}
+                className={'mt-1.5 h-8 max-w-[160px] object-contain object-left' + (logoBg ? ' rounded-md px-1.5 py-0.5' : '')}
+                style={logoBg ? { backgroundColor: logoBg } : undefined} />
             )}
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
