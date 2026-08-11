@@ -307,3 +307,9 @@ input[type='range'].slider-heat::-moz-range-thumb {
 .map-live .maplibregl-ctrl-top-right {
   margin-top: 52px;
 }
+
+/* Radar context chip — slides out from the radar map control. */
+@keyframes radarChipIn {
+  from { transform: translateX(14px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
