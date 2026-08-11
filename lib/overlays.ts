@@ -62,10 +62,13 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     label: 'Flood zones',
     note: 'FEMA flood hazard (NFHL) · bid intel',
     // Layer 28 = flood hazard zone polygons (AE/A/X shading + floodway).
-    tiles: exportTemplate('https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer', '&layers=show:28'),
+    // ⚠ Endpoint is /gis/nfhl/rest — FEMA's documented public NFHL path.
+    // The old /arcgis/rest guess answered blanks, so the toggle drew nothing
+    // ("are flood zones actually doing anything", Aug 10).
+    tiles: exportTemplate('https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer', '&layers=show:28'),
     minzoom: 10,
     maxzoom: 16,
-    opacity: 0.5,
+    opacity: 0.65,
   },
   {
     key: 'soils',
