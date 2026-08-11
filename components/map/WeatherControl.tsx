@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
@@ -45,6 +45,9 @@ interface WeatherControlProps {
    *  live here per the layers spec). */
   showZones?: boolean
   onShowZones?: (v: boolean) => void
+  /** Master switch for every name label (assets, tools, zones) at all zooms. */
+  showLabels?: boolean
+  onShowLabels?: (v: boolean) => void
   /** Current map zoom — powers visible zoom-gating on rows. */
   zoom?: number
   /** Per-layer raster opacity (0-1), keyed by layer id. */
@@ -167,7 +170,7 @@ function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; ico
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -558,6 +561,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
                   <Hexagon className={'h-3.5 w-3.5 ' + (showZones ? 'text-amber' : 'text-faint')} /> Zones
                 </span>
                 <Toggle on={showZones} />
+              </button>
+            </div>
+          )}
+          {/* Labels master switch — kills every name label (assets, tools,
+              zones) at every zoom; on = the normal zoom ladder (Aug 11). */}
+          {onShowLabels && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={() => onShowLabels(!showLabels)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showLabels ? 'text-ink' : 'text-faint')}>
+                  <Type className={'h-3.5 w-3.5 ' + (showLabels ? 'text-teal' : 'text-faint')} /> Labels
+                </span>
+                <Toggle on={showLabels} />
               </button>
             </div>
           )}

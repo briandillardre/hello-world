@@ -381,7 +381,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // still overrides after mount (an explicit choice beats a remembered one).
   const lastState = useRef<Partial<{
     base: BaseStyle; threeD: boolean; terrain: boolean; terrainExag: number; radar: boolean; clouds: boolean; stormtops: boolean
-    precip: boolean; precipPeriod: string; parcels: boolean; zones: boolean
+    precip: boolean; precipPeriod: string; parcels: boolean; zones: boolean; labels: boolean
     overlays: Record<string, boolean>; trailMode: TrailMode; markers: 'dot' | 'arrow'
   }>>((() => {
     try {
@@ -392,6 +392,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     } catch { return {} }
   })()).current
   const [showZones, setShowZones] = useState(lastState.zones ?? true)
+  // Name labels (assets, tools, zones) — one kill switch for all of them at
+  // every zoom (Brian, Aug 11). ON keeps the existing zoom-ladder convention.
+  const [showLabels, setShowLabels] = useState(lastState.labels ?? true)
   const [showDevices, setShowDevices] = useState(isMock)
   const realZoneCostsRef = useRef<Record<string, import('@/lib/costs').ZoneCostCurve> | null>(null)
   const realWindowRef = useRef<import('@/lib/trails').TrackWindow | null>(null)
@@ -897,11 +900,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     try {
       localStorage.setItem(kiosk ? 'ht_last_state_command' : 'ht_last_state_map', JSON.stringify({
         base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, stormtops: stormTopsOn,
-        precip: precipOn, precipPeriod, parcels: parcelsOn, zones: showZones,
+        precip: precipOn, precipPeriod, parcels: parcelsOn, zones: showZones, labels: showLabels,
         overlays: overlaysOn, trailMode, markers: markerStyle,
       }))
     } catch { /* private mode */ }
-  }, [kiosk, base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, overlaysOn, trailMode, markerStyle])
+  }, [kiosk, base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, stormTopsOn, precipOn, precipPeriod, parcelsOn, showZones, showLabels, overlaysOn, trailMode, markerStyle])
 
   // Factory reset for the whole panel — spec rule 6.
   const resetLayers = useCallback(() => {
@@ -917,6 +920,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     setPrecipOn(false)
     setParcelsOn(false)
     setShowZones(true)
+    setShowLabels(true)
     setOverlaysOn({})
     setOverlayOpacity({})
   }, [kiosk])
@@ -1991,11 +1995,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('trails-heat', trailMode === 'heatmap')
     set('heat3d-layer', trailMode === '3d')
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
+    // Labels master switch (Brian, Aug 11) overrides the per-mode defaults
+    // set above — OFF hides every name at every zoom, ON keeps the ladder.
+    set('unclustered-name', live && showLabels)
+    set('trail-head-labels', trailMode !== 'off' && showLabels)
+    set('tool-dots-name', showLabels)
     // The terrain reads flat from straight overhead — tilt in on entry.
     if (trailMode === '3d' && m.getPitch() < 25 && !followIdRef.current) {
       m.easeTo({ pitch: 55, duration: 800 })
     }
-  }, [mapReady, trailMode, markerStyle])
+  }, [mapReady, trailMode, markerStyle, showLabels])
 
   // Write movement geometry straight into the map sources. Called from the
   // RAF loop during playback (bypassing React) and from the effect below for
@@ -2450,14 +2459,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [terrainExag])
 
-  // Toggle visibility of all geofence layers at once
+  // Toggle visibility of all geofence layers at once — the name layers also
+  // answer to the Labels master switch.
   useEffect(() => {
     const m = map.current
     if (!mapReady) return
-    for (const id of ['geofence-fill', 'geofence-hit-line', 'geofence-outline', 'geofence-labels', 'geofence-labels-full']) {
+    for (const id of ['geofence-fill', 'geofence-hit-line', 'geofence-outline']) {
       if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones ? 'visible' : 'none')
     }
-  }, [mapReady, showZones])
+    for (const id of ['geofence-labels', 'geofence-labels-full']) {
+      if (m?.getLayer(id)) m.setLayoutProperty(id, 'visibility', showZones && showLabels ? 'visible' : 'none')
+    }
+  }, [mapReady, showZones, showLabels])
 
   // Kiosk auto-tour: glide ASSET → asset (flyTo arcs out and back in — "zoom
   // out smoothly, then over"), with a pull-back to the whole fleet each lap.
@@ -4893,6 +4906,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }}
         showZones={showZones}
         onShowZones={setShowZones}
+        showLabels={showLabels}
+        onShowLabels={setShowLabels}
         zoom={mapZoom}
         overlayOpacity={overlayOpacity}
         onOverlayOpacity={(key, v) => setOverlayOpacity((prev) => ({ ...prev, [key]: v }))}
