@@ -18,8 +18,6 @@ export interface LayerRowDef {
   hint?: string
   minZoom?: number
   maxZoom?: number
-  /** Row text when outside the zoom range — visible, never a silent no-op. */
-  zoomHint?: string
   /** Night effects only make sense on the dark basemap. */
   requiresBasemap?: BasemapId
   /** Row hides entirely until this parent layer id is on (e.g. the swarm
@@ -96,10 +94,10 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'alertpins', label: 'Alert pins', group: 'site', status: 'live', isLive: true, hint: 'where alerts fired · follows the timeline: Live shows today, replays reveal pins as the scrubber passes them' },
   { id: 'fieldops', label: 'Field activity', group: 'site', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
   { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
-  { id: 'webcams', label: 'Webcams', group: 'site', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see webcams', hint: 'public traffic & area cams · tap for the picture' },
+  { id: 'webcams', label: 'Webcams', group: 'site', status: 'live', isLive: true, minZoom: 8, hint: 'public traffic & area cams · tap for the picture' },
   // Honest gating: without the county service URL the toggle was a silent
   // no-op ("still not seeing a response" — Aug 6). Coming-soon until set.
-  { id: 'parcels', label: 'Parcel lines', group: 'site', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, zoomHint: 'Zoom in to see parcel lines', hint: 'county tax parcels · tap one for owner, address & acreage' },
+  { id: 'parcels', label: 'Parcel lines', group: 'site', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, hint: 'county tax parcels · tap one for owner, address & acreage' },
   { id: 'siteimg', label: 'Site imagery', group: 'site', status: 'live', hasOpacity: true, hint: 'placed drone shots pinned to the ground · follows the timeline — scrub to see the site that day' },
   { id: 'siteplans', label: 'Scaled plans', group: 'site', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
 
@@ -113,35 +111,38 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
   { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
   { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
-  { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, zoomHint: 'Zoom in to see weather stations', hint: 'community stations · tap for readings' },
+  { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, hint: 'community stations · tap for readings' },
   // Layer name discovered live from NOAA's server (like temp/feels/wind) —
   // GOES lightning mapper strike density. Row reports if NOAA drops it.
   { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
 
   // ── Water & Terrain ───────────────────────────────────────────────────────
   { id: 'streams', label: 'Streams', group: 'water', status: 'live', hasOpacity: true, hint: 'rivers & creeks (national hydrography)' },
-  { id: 'gauges', label: 'Stream gauges', group: 'water', status: 'live', isLive: true, minZoom: 9, zoomHint: 'Zoom in to see stream gauges', hint: 'live gage height · tap a dot' },
-  { id: 'flood', label: 'Flood zones', group: 'water', status: 'live', hasOpacity: true, minZoom: 10, zoomHint: 'Zoom in to see flood zones', hint: 'FEMA flood hazard areas' },
-  { id: 'wetlands', label: 'Wetlands', group: 'water', status: 'live', hasOpacity: true, minZoom: 11, zoomHint: 'Zoom in to see wetlands', hint: 'national wetlands inventory' },
-  { id: 'soils', label: 'Soils', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see soil units', hint: 'soil survey map units' },
-  { id: 'topo', label: 'Topo lines', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, zoomHint: 'Zoom in to see contours', hint: 'elevation contours' },
+  { id: 'gauges', label: 'Stream gauges', group: 'water', status: 'live', isLive: true, minZoom: 9, hint: 'live gage height · tap a dot' },
+  { id: 'flood', label: 'Flood zones', group: 'water', status: 'live', hasOpacity: true, minZoom: 10, hint: 'FEMA flood hazard areas' },
+  { id: 'wetlands', label: 'Wetlands', group: 'water', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },
+  { id: 'soils', label: 'Soils', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, hint: 'soil survey map units' },
+  { id: 'topo', label: 'Topo lines', group: 'water', status: 'live', hasOpacity: true, minZoom: 12, hint: 'elevation contours' },
 
   // ── Advanced: the planetarium & spectacle layers — fun on a TV wall,
   //    noise on a Tuesday. Lives at the bottom, collapsed. ──────────────────
   { id: 'planes', label: 'Aircraft (live)', group: 'advanced', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
-  { id: 'airspace3d', label: 'Airspace 3D', group: 'advanced', status: 'live', isLive: true, hasOpacity: true, minZoom: 6, zoomHint: 'Zoom in to load airspace', hint: 'Class B/C/D shelves at their charted altitudes — the upside-down cake · TILT the map · tap a shelf for floor/ceiling · FAA data' },
+  { id: 'airspace3d', label: 'Airspace 3D', group: 'advanced', status: 'live', isLive: true, hasOpacity: true, minZoom: 6, hint: 'Class B/C/D shelves at their charted altitudes — the upside-down cake · TILT the map · tap a shelf for floor/ceiling · FAA data' },
   { id: 'satellites', label: 'Satellites & sky (live)', group: 'advanced', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
   { id: 'satswarm', label: '↳ 11k satellites', group: 'advanced', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
 
   // ── Night effects (nested under Advanced) ─────────────────────────────────
   { id: 'daynight', label: 'Day / night (real)', group: 'advanced', nightFx: true, status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
-  { id: 'nightlights', label: 'Night photo (NASA)', group: 'advanced', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, zoomHint: 'Zoom out to see city lights', requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
+  { id: 'nightlights', label: 'Night photo (NASA)', group: 'advanced', nightFx: true, status: 'live', hasOpacity: true, maxZoom: 8, requiresBasemap: 'dark', hint: 'the whole planet as NASA photographs it at night — dark basemap only' },
 ]
 
 export interface RowState {
   on: boolean
   disabled: boolean
   reason?: string
+  /** Set when the only issue is zoom level — the panel renders it as a
+   *  compact inline "(zoom in)"/"(zoom out)" chip instead of a full row. */
+  zoomDir?: 'in' | 'out'
 }
 
 /** Every "is this row usable, and if not, why" decision lives HERE — the
@@ -152,10 +153,10 @@ export function rowState(def: LayerRowDef, on: boolean, zoom: number, basemap: B
     return { on, disabled: true, reason: `Requires the ${def.requiresBasemap === 'dark' ? 'Dark' : def.requiresBasemap} basemap` }
   }
   if (def.minZoom != null && zoom < def.minZoom) {
-    return { on, disabled: false, reason: def.zoomHint ?? 'Zoom in to see this layer' }
+    return { on, disabled: false, zoomDir: 'in' }
   }
   if (def.maxZoom != null && zoom > def.maxZoom) {
-    return { on, disabled: false, reason: def.zoomHint ?? 'Zoom out to see this layer' }
+    return { on, disabled: false, zoomDir: 'out' }
   }
   return { on, disabled: false }
 }

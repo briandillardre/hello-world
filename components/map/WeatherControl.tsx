@@ -109,15 +109,18 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
 }) {
   const st = rowState(def, on, zoom, base)
   const comingSoon = def.status === 'coming-soon'
-  const dim = st.disabled || (!!st.reason && !comingSoon)
+  const dim = st.disabled || ((!!st.reason || !!st.zoomDir) && !comingSoon)
   return (
     <div className="border-t border-navy-800 first:border-t-0">
       <button
         onClick={() => { if (!st.disabled) onToggle() }}
         disabled={st.disabled}
-        className={'w-full flex items-center justify-between gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
+        className={'w-full flex items-center gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
       >
-        <span className={'text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
+        <span className={'flex-1 min-w-0 truncate text-left text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
+        {st.zoomDir && !comingSoon && (
+          <span className="flex-none text-[10px] font-mono text-amber/90">(zoom {st.zoomDir})</span>
+        )}
         {comingSoon
           ? <span className="font-mono text-[9px] uppercase tracking-wide text-faint border border-navy-700 rounded px-1.5 py-0.5 flex-none">Coming soon</span>
           : <Toggle on={st.on} disabled={st.disabled} />}
@@ -128,7 +131,7 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
       {st.on && !st.disabled && err && (
         <p className="px-3 pb-1.5 -mt-1 text-[10px] font-mono text-amber">⚠ {err}</p>
       )}
-      {st.on && !st.disabled && !st.reason && def.hint && (
+      {st.on && !st.disabled && !st.reason && !st.zoomDir && def.hint && (
         <p className="px-3 pb-1.5 -mt-1 font-mono text-[10px] text-teal">
           {def.hint}
           {fresh && <span className={'ml-1.5 ' + (fresh.stale ? 'text-amber' : 'text-faint')}>{fresh.text}</span>}
