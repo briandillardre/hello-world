@@ -1071,7 +1071,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         b.title = 'Weather radar'
         b.setAttribute('aria-label', 'Toggle weather radar')
         b.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62a10 10 0 1 0 19.02-1.27"/><path d="M16.24 7.76a6 6 0 1 0-8.01 8.91"/><path d="M12 18h.01"/><path d="M17.99 11.66a6 6 0 0 1-2.22 4.58"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg>'
-        b.onclick = () => setRadarOn((v) => !v)
+        b.onclick = () => {
+          // A horizontal swipe on this button drives the frame-time chip —
+          // don't let the tail-end click also flip the radar layer.
+          if (radarSwipedRef.current) { radarSwipedRef.current = false; return }
+          setRadarOn((v) => !v)
+        }
         radarBtnEl.current = b
         div.appendChild(b)
         return div
@@ -3734,6 +3739,60 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (svg) svg.setAttribute('stroke', radarOn ? '#ff9e16' : '#9fb6cc')
   }, [radarOn, mapReady])
 
+  // Radar frame-time chip — an OPT-IN slide-out beside the radar button
+  // (Brian, Aug 10: "swiped on or off. mostly off for most people").
+  // Swipe LEFT on the radar button to pull it out, swipe RIGHT (button or
+  // chip) to tuck it away; the choice persists per device. Default: off.
+  const [radarChipOpen, setRadarChipOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('ht_radar_chip') === '1' } catch { return false }
+  })
+  const setChipOpen = useCallback((open: boolean) => {
+    setRadarChipOpen(open)
+    try { localStorage.setItem('ht_radar_chip', open ? '1' : '0') } catch { /* private mode */ }
+  }, [])
+  const radarSwipeRef = useRef<{ x: number; y: number } | null>(null)
+  const radarSwipedRef = useRef(false)
+  useEffect(() => {
+    const b = radarBtnEl.current
+    if (!mapReady || !b) return
+    const down = (e: PointerEvent) => { radarSwipeRef.current = { x: e.clientX, y: e.clientY }; radarSwipedRef.current = false }
+    const move = (e: PointerEvent) => {
+      const s = radarSwipeRef.current
+      if (!s || radarSwipedRef.current) return
+      const dx = e.clientX - s.x, dy = e.clientY - s.y
+      if (Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        radarSwipedRef.current = true // eat the click that follows
+        setChipOpen(dx < 0)
+      }
+    }
+    const up = () => { radarSwipeRef.current = null }
+    b.addEventListener('pointerdown', down)
+    b.addEventListener('pointermove', move)
+    b.addEventListener('pointerup', up)
+    b.addEventListener('pointercancel', up)
+    return () => {
+      b.removeEventListener('pointerdown', down)
+      b.removeEventListener('pointermove', move)
+      b.removeEventListener('pointerup', up)
+      b.removeEventListener('pointercancel', up)
+    }
+  }, [mapReady, setChipOpen])
+
+  // Chip position: measured off the radar button so it hugs the rail.
+  const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    if (!radarOn || !radarChipOpen || !mapReady) { setRadarChipPos(null); return }
+    const measure = () => {
+      const wrap = mapContainer.current, b = radarBtnEl.current
+      if (!wrap || !b) return
+      const wr = wrap.getBoundingClientRect(), br = b.getBoundingClientRect()
+      setRadarChipPos({ top: br.top - wr.top, right: wr.right - br.left + 8 })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [radarOn, radarChipOpen, mapReady])
+
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
   // beat longer so the loop "lands" on now. The loop runs ONLY on the Live
@@ -4471,17 +4530,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Radar context — top-center chip while the radar LOOP is running on
-          Live: observation time of the frame on screen, loop progress, tap
-          to pause/resume. LIVE ONLY (Brian, Aug 10): in a replay the radar
-          follows the scrubber and the timeline already shows that moment —
-          a second clock would just be noise. */}
-      {radarOn && !pbActive && (
+      {/* Radar frame-time chip — opt-in slide-out beside the radar button
+          (swipe the button left to open, right to tuck away; tap chip =
+          pause/resume, swipe chip right = tuck). LIVE loop only: in replay
+          the radar follows the scrubber and the timeline is the clock. */}
+      {radarOn && !pbActive && radarChipOpen && radarChipPos && (
         <button
           type="button"
-          onClick={() => setRadarPaused((p) => !p)}
-          className="absolute left-1/2 -translate-x-1/2 top-14 z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel"
-          style={{ animation: 'radarChipIn .28s ease-out' }}
+          onPointerDown={(e) => { radarSwipeRef.current = { x: e.clientX, y: e.clientY }; radarSwipedRef.current = false }}
+          onPointerMove={(e) => {
+            const s = radarSwipeRef.current
+            if (!s || radarSwipedRef.current) return
+            const dx = e.clientX - s.x
+            if (dx > 24) { radarSwipedRef.current = true; setChipOpen(false) }
+          }}
+          onPointerUp={() => { radarSwipeRef.current = null }}
+          onClick={() => {
+            if (radarSwipedRef.current) { radarSwipedRef.current = false; return }
+            setRadarPaused((p) => !p)
+          }}
+          className="absolute z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel touch-none"
+          style={{ top: radarChipPos.top, right: radarChipPos.right, animation: 'radarChipIn .28s ease-out' }}
           aria-label={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
         >
           <span className="font-mono text-[10px] font-bold text-amber tracking-wide">RADAR</span>
@@ -4522,7 +4591,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS
           server's own legend so colors match the tiles exactly. */}
       {!kiosk && (overlaysOn.temp || overlaysOn.feels || overlaysOn.wind || overlaysOn.lightning || precipOn || trailMode === 'heatmap' || trailMode === '3d') && (
-        <div className={`absolute left-3 ${radarOn && !pbActive ? 'top-[94px]' : 'top-[60px]'} z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none`}>
+        <div className="absolute left-3 top-[60px] z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none">
           {(['temp', 'feels', 'wind', 'lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
             const name = rtmaNames?.[k] ?? (k === 'temp' ? 'air_temperature' : k === 'feels' ? 'apparent_air_temperature' : k === 'wind' ? 'wind_speed' : null)
             if (!name) return null
