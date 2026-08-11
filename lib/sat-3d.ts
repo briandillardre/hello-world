@@ -727,7 +727,21 @@ export function createSat3DLayer(
         const camAltM = (156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)) * hCss / (2 * Math.tan(options.fov / 2))
         const altCapM = Math.max(300, camAltM * 0.62)
 
-        // Pass 1: soft glows (point program, already bound).
+        // FlightRadar24-style zoom handling. The pixel floor that keeps a
+        // distant Cessna visible at z10 turns 1,200 aircraft into a solid
+        // carpet at continental zoom, so: (a) the floor shrinks as you zoom
+        // out (full size by z8, 30% at planet zoom), and (b) below z7.5
+        // overlapping traffic is thinned to ONE aircraft per screen cell —
+        // highest altitude wins, so cruise jets outrank the GA swarm, same
+        // priority FR24 uses. Glow halos only render close-in; at far zoom
+        // they just wash the cluster yellow.
+        const floorScale = Math.min(1, Math.max(0.3, (zoom - 3) / 5))
+        const declutter = zoom < 7.5
+        const glowOn = zoom >= 6
+        const CELL_PX = 26
+        const cellBest = new Map<number, { pl: Plane3D; clip: V4; spanPx: number }>()
+
+        // Pass 1: project + declutter, then soft glows (point program bound).
         const glowables: { pl: Plane3D; clip: V4; spanPx: number }[] = []
         for (const pl of planes) {
           const P = toWorld(pl.lon, pl.lat, Math.min(pl.altFt * 0.3048, altCapM))
@@ -736,10 +750,21 @@ export function createSat3DLayer(
           if (!p) { pl.visible = false; continue }
           pl.sx = p.sx; pl.sy = p.sy; pl.visible = true
           const mpp = 156543.03 * Math.cos(pl.lat * Math.PI / 180) / Math.pow(2, zoom)
-          const spanPx = Math.min(72, Math.max(PLANE_FLOOR_PX[pl.shape], pl.spanM / mpp))
-          glowables.push({ pl, clip: p.clip, spanPx })
-          drawPoint(p.clip, spanPx * 1.5, 0, GLOW[0], GLOW[1], GLOW[2], 0.13)
+          const spanPx = Math.min(72, Math.max(PLANE_FLOOR_PX[pl.shape] * floorScale, pl.spanM / mpp))
+          if (declutter) {
+            const key = (Math.round(pl.sx / CELL_PX) + 4096) * 8192 + (Math.round(pl.sy / CELL_PX) + 4096)
+            const prev = cellBest.get(key)
+            if (prev) {
+              if (prev.pl.altFt >= pl.altFt) { pl.visible = false; continue }
+              prev.pl.visible = false
+            }
+            cellBest.set(key, { pl, clip: p.clip, spanPx })
+          } else {
+            glowables.push({ pl, clip: p.clip, spanPx })
+          }
         }
+        if (declutter) cellBest.forEach((g) => glowables.push(g))
+        if (glowOn) for (const g of glowables) drawPoint(g.clip, g.spanPx * 1.5, 0, GLOW[0], GLOW[1], GLOW[2], 0.13)
 
         // Pass 2: silhouettes as WORLD-SPACE quads lying in the ground plane
         // (nose along track) — they foreshorten with the map's pitch like the
@@ -753,8 +778,9 @@ export function createSat3DLayer(
             const latR = pl.lat * Math.PI / 180
             const lonR = pl.lon * Math.PI / 180
             const altM = Math.min(pl.altFt * 0.3048, altCapM)
-            // Render span: true size, floored for distant visibility.
-            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * mppCam)
+            // Render span: true size, floored for distant visibility
+            // (floor shrinks with zoom — see floorScale above).
+            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * floorScale * mppCam)
             const half = (spanMr / SHAPE_SPAN_FRAC) / 2
             const theta = (pl.track ?? 0) * Math.PI / 180
             const bank = pl.bankRad
