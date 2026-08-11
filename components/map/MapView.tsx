@@ -2605,9 +2605,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => { m.off('zoomend', upd) }
   }, [mapReady])
 
-  // ── Alert pins: where alerts fired (last 7 days), pinned to the zone the
-  // rule watches — alert events don't store coordinates, so the zone IS the
-  // honest location. Tap for the list of hits there.
+  // ── Alert pins: where alerts fired, pinned to the zone the rule watches —
+  // alert events don't store coordinates, so the zone IS the honest location.
+  // Pins follow the TIMELINE (Brian, Aug 10): only alerts inside the selected
+  // window show (Live = today), and in a replay each pin appears the moment
+  // the scrubber passes it — the map catches up with history as you sweep.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
@@ -2616,14 +2618,24 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
     }
     if (!on) return
-    const cutoff = Date.now() - 7 * 86_400_000
+    // Window: replay = selected range up to the scrub position; Live = today.
+    let fromMs: number, toMs: number
+    if (pbActive && realWindowEff) {
+      fromMs = realWindowEff.from
+      toMs = realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from)
+    } else {
+      const d = new Date(); d.setHours(0, 0, 0, 0)
+      fromMs = d.getTime()
+      toMs = Date.now()
+    }
     // Group by zone so five alerts at the yard become one pin with a count.
     // Company-wide rules (after-hours theft — THE headline alert) have no
     // zone, so those pin to the asset's current position instead of being
     // silently dropped ("I don't think I am seeing anything", Aug 5).
     const byZone = new Map<string, { cx: number; cy: number; lines: string[] }>()
     for (const a of alertsRef.current) {
-      if (new Date(a.triggered_at).getTime() < cutoff) continue
+      const at = new Date(a.triggered_at).getTime()
+      if (at < fromMs || at > toMs) continue
       const g = a.rule?.geofence
       const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
       let key: string, cx: number, cy: number
@@ -2667,7 +2679,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         if (!p) return
         new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
           .setLngLat(e.lngLat)
-          .setHTML(`<div style="padding:10px 12px;font:11.5px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff5d5d">Alerts here · last 7 days</div><div style="margin-top:3px">${p.list}</div></div>`)
+          .setHTML(`<div style="padding:10px 12px;font:11.5px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff5d5d">Alerts here · in this window</div><div style="margin-top:3px">${p.list}</div></div>`)
           .addTo(m)
       })
       m.on('mouseenter', 'alert-pins', () => { m.getCanvas().style.cursor = 'pointer' })
@@ -2676,7 +2688,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       src.setData(data)
     }
     window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'alertpins', at: Date.now() } }))
-  }, [mapReady, overlaysOn.alertpins])
+  }, [mapReady, overlaysOn.alertpins, pbActive, realWindowEff, displayT])
 
   // ── Storm warning polygons — IEM storm-based warnings, colored by TYPE ────
   // (The old NWS feed filtered to Extreme/Severe severity and capped at 500
