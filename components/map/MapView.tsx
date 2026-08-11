@@ -195,14 +195,31 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   }
 }
 
-function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
+/** Heat points weighted by TIME REPRESENTED, not existence. Trackers emit
+ *  every few seconds while DRIVING and every few minutes while working —
+ *  raw point density painted highways red and job sites cold, exactly
+ *  backwards ("should not show red for just someone driving down a road",
+ *  Aug 10). Each fix carries the seconds until the next one (log-scaled,
+ *  capped at 30 min so one overnight gap doesn't own the whole ramp):
+ *  a drive-through sums to seconds, a workday on the pad sums to hours —
+ *  same dwell story the 3D terrain already tells. */
+const HEAT_DT_CAP = 1800
+const HEAT_DENOM = Math.log1p(HEAT_DT_CAP)
+function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, windowSec = 86_400): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = []
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
     const sel = selId === tr.assetId ? 1 : 0
-    for (const p of tr.points) {
+    const pts = tr.points
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]
       if (p.t > t) break
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel } })
+      const nextT = i + 1 < pts.length ? Math.min(pts[i + 1].t, t) : t
+      // A fresh fix with no successor yet still counts a little (45 s floor)
+      // so Live view isn't blank where an asset just reported.
+      const dtSec = Math.max(45, (nextT - p.t) * windowSec)
+      const w = Math.min(1, Math.log1p(Math.min(dtSec, HEAT_DT_CAP)) / HEAT_DENOM)
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel, w } })
     }
   }
   return { type: 'FeatureCollection', features }
@@ -1340,10 +1357,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         id: 'trails-heat', type: 'heatmap', source: 'trail-points',
         layout: { visibility: 'none' },
         paint: {
-          // Selected asset's pings run hotter so its footprint stands out.
-          'heatmap-weight': ['case', ['==', ['get', 'sel'], 1], 1.6, 0.8],
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 1, 16, 3],
-          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 16, 34],
+          // Weight = time-on-the-spot (see pointsGeoJSON); the selected
+          // asset's footprint runs 1.5× hotter so it stands out.
+          'heatmap-weight': ['case', ['==', ['get', 'sel'], 1], ['*', 1.5, ['get', 'w']], ['get', 'w']],
+          // Zoom-adaptive: gentle at county zooms (aggregation does the
+          // talking), sharper as you close in on a site.
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 12, 1.4, 16, 3],
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 9, 11, 15, 16, 34],
           'heatmap-opacity': 0.85,
           'heatmap-color': [
             'interpolate', ['linear'], ['heatmap-density'],
@@ -1961,7 +1981,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     } else if (mode === '3d') {
       ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current))
     } else {
-      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel))
+      ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel, windowSecRef.current))
     }
   }, [])
 
@@ -4439,12 +4459,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           )}
           {(trailMode === 'heatmap' || trailMode === '3d') && (
             <div className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
-              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">Activity · assets moving</p>
+              {/* Both heat modes are dwell-weighted: color = time spent on
+                  the spot, so a drive-by can't outrank a workday. */}
+              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">Activity · time on the spot</p>
               <div className="h-2.5 rounded-sm" style={{ background: 'linear-gradient(90deg,#14506f,#2dd4bf,#ff9e16,#ff5d5d)' }} />
               <div className="flex justify-between font-mono text-[8.5px] text-faint mt-0.5">
-                <span>0</span>
-                <span>{Math.max(1, Math.round(Math.max(0, ...activity) / 2))}</span>
-                <span>{Math.max(1, ...activity)} at once</span>
+                <span>drove by</span>
+                <span>worked</span>
+                <span>all day</span>
               </div>
             </div>
           )}
