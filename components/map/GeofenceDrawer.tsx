@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Check, Search, MapPin, Hexagon, Shield, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, Search, MapPin, Hexagon, Shield, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ZoneFormOpts } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,10 +57,12 @@ export function GeofenceDrawer({
 
   // Address search while drawing — type a street address, jump there, click
   // out the corners. Free Photon geocoder (OSM data, CORS-open, no key).
+  // Collapsed behind its icon so the draw toolbar stays one tidy row.
+  const [searchOpen, setSearchOpen] = useState(false)
   const [addr, setAddr] = useState('')
   const [hits, setHits] = useState<AddressHit[]>([])
   useEffect(() => {
-    if (!isDrawing) { setAddr(''); setHits([]); return }
+    if (!isDrawing) { setAddr(''); setHits([]); setSearchOpen(false); return }
   }, [isDrawing])
   useEffect(() => {
     const q = addr.trim()
@@ -118,54 +120,66 @@ export function GeofenceDrawer({
   return (
     <>
       {/* The draw TRIGGER lives in the FilterBar ("+ New zone", beside Zones).
-          These are the in-progress finish/cancel controls only. */}
+          In-progress controls mirror the measure tool's slim top strip
+          (the floating green/red circles + banner "looked mickey mouse",
+          "needs similar feel to the measurements button" — Brian, Aug 11):
+          toolbar row with X + amber Done, amber mono hint line under it,
+          address search folded behind a chip on the hint row. Phones get
+          the full-bleed strip; md+ floats the same card centered. */}
       {isDrawing && (
-        <div className="absolute bottom-[150px] left-3 z-10 flex flex-col gap-2 md:bottom-[140px] md:left-4">
-          <button
-            onClick={handleFinish}
-            className="flex items-center justify-center w-12 h-12 bg-green-500 text-white rounded-full shadow-lg hover:bg-green-600 transition-colors"
-            title="Finish geofence"
-          >
-            <Check className="h-5 w-5" />
-          </button>
-          <button
-            onClick={onCancelDraw}
-            className="flex items-center justify-center w-12 h-12 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
-            title="Cancel"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      )}
-
-      {isDrawing && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 w-[300px] flex flex-col items-center gap-1.5">
-          <div className="bg-navy-950/90 backdrop-blur border border-navy-700 text-ink text-sm px-4 py-2 rounded-full shadow-panel pointer-events-none whitespace-nowrap">
-            Click to add points • ✓ to finish • ✕ to cancel
-          </div>
-          {/* jump to an address, then click out the corners around it */}
-          <div className="w-full bg-navy-950/90 backdrop-blur border border-navy-700 rounded-xl shadow-panel overflow-hidden">
-            <div className="flex items-center gap-1.5 px-3 py-2">
-              <Search className="h-3.5 w-3.5 text-teal flex-none" />
-              <input
-                value={addr}
-                onChange={(e) => setAddr(e.target.value)}
-                placeholder="Jump to address…"
-                className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
-              />
+        <div className="absolute top-0 inset-x-0 z-30 md:top-2 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[440px]">
+          <div className="bg-navy-950/95 backdrop-blur md:border md:border-navy-700 md:rounded-xl md:shadow-panel md:overflow-hidden">
+            <div className="flex items-center gap-1 px-1.5 py-1 border-b border-amber/30">
+              <button onClick={onCancelDraw} className="p-1.5 text-faint hover:text-ink flex-none" aria-label="Cancel zone drawing"><X className="h-4 w-4" /></button>
+              <Hexagon className="h-3.5 w-3.5 text-amber flex-none" />
+              <span className="font-display font-bold text-[12px] text-ink flex-none">New zone</span>
+              <span className="flex-1" />
+              <button
+                onClick={handleFinish}
+                className="flex-none rounded-md bg-amber text-[#1a1100] font-display font-bold text-[11.5px] px-3 py-1.5 hover:bg-amber-600 transition-colors"
+              >
+                Done
+              </button>
             </div>
-            {hits.length > 0 && (
-              <div className="border-t border-navy-800">
-                {hits.map((h, i) => (
-                  <button
-                    key={i}
-                    onMouseDown={(e) => { e.preventDefault(); onLocate?.(h.lng, h.lat, h.label); setAddr(''); setHits([]) }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] text-muted hover:bg-navy-900 hover:text-ink"
-                  >
-                    <MapPin className="h-3 w-3 text-faint flex-none" />
-                    <span className="truncate">{h.label}</span>
-                  </button>
-                ))}
+            {/* hint line — same treatment as the measure readout strip */}
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-navy-950/85 border-b border-navy-800">
+              <span className="font-mono text-[11.5px] text-amber truncate flex-1">Tap corners to outline the zone</span>
+              <button
+                onClick={() => setSearchOpen((v) => !v)}
+                className={'flex-none flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[10px] transition-colors ' + (searchOpen ? 'bg-navy-800 text-teal' : 'text-faint hover:text-ink')}
+                aria-label="Jump to address"
+                aria-expanded={searchOpen}
+              >
+                <Search className="h-3 w-3" /> address
+              </button>
+            </div>
+            {/* jump to an address, then tap out the corners around it */}
+            {searchOpen && (
+              <div className="bg-navy-950/85 border-b border-navy-800">
+                <div className="flex items-center gap-1.5 px-3 py-2">
+                  <Search className="h-3.5 w-3.5 text-teal flex-none" />
+                  <input
+                    value={addr}
+                    onChange={(e) => setAddr(e.target.value)}
+                    placeholder="Jump to address…"
+                    autoFocus
+                    className="flex-1 min-w-0 bg-transparent text-[12px] text-ink placeholder:text-faint outline-none"
+                  />
+                </div>
+                {hits.length > 0 && (
+                  <div className="border-t border-navy-800">
+                    {hits.map((h, i) => (
+                      <button
+                        key={i}
+                        onMouseDown={(e) => { e.preventDefault(); onLocate?.(h.lng, h.lat, h.label); setAddr(''); setHits([]); setSearchOpen(false) }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[12px] text-muted hover:bg-navy-900 hover:text-ink"
+                      >
+                        <MapPin className="h-3 w-3 text-faint flex-none" />
+                        <span className="truncate">{h.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
