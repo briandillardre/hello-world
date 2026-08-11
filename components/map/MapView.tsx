@@ -3722,22 +3722,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (svg) svg.setAttribute('stroke', radarOn ? '#ff9e16' : '#9fb6cc')
   }, [radarOn, mapReady])
 
-  // Radar context chip position — slides out beside the radar control while
-  // the layer is on, so the frame's observation time is on the map, not
-  // buried in the layers panel ("need context for radar", Aug 10).
-  const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
-  useEffect(() => {
-    if (!radarOn || !mapReady) { setRadarChipPos(null); return }
-    const measure = () => {
-      const wrap = mapContainer.current, b = radarBtnEl.current
-      if (!wrap || !b) return
-      const wr = wrap.getBoundingClientRect(), br = b.getBoundingClientRect()
-      setRadarChipPos({ top: br.top - wr.top, right: wr.right - br.left + 8 })
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [radarOn, mapReady])
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
   // beat longer so the loop "lands" on now. The loop runs ONLY on the Live
@@ -4418,22 +4402,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Radar context — slides out from the radar button while the layer is
-          on: the observation time of the frame ON SCREEN right now, the loop's
-          progress, tap to pause/resume. In replay it shows the scrubbed
-          moment instead and follows the timeline (testing rule: nothing
-          animates while the timeline is stopped — the bar hides). */}
-      {radarOn && radarChipPos && (
+      {/* Radar context — top-center chip while the radar LOOP is running on
+          Live: observation time of the frame on screen, loop progress, tap
+          to pause/resume. LIVE ONLY (Brian, Aug 10): in a replay the radar
+          follows the scrubber and the timeline already shows that moment —
+          a second clock would just be noise. */}
+      {radarOn && !pbActive && (
         <button
           type="button"
-          onClick={() => { if (!pbActive) setRadarPaused((p) => !p) }}
-          className="absolute z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel"
-          style={{ top: radarChipPos.top, right: radarChipPos.right, animation: 'radarChipIn .28s ease-out' }}
-          aria-label={pbActive ? 'Radar frame time — follows the timeline' : radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
+          onClick={() => setRadarPaused((p) => !p)}
+          className="absolute left-1/2 -translate-x-1/2 top-3 z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel"
+          style={{ animation: 'radarChipIn .28s ease-out' }}
+          aria-label={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
         >
-          <span className="font-mono text-[10px] font-bold text-amber tracking-wide">{pbActive ? 'RADAR · REPLAY' : 'RADAR'}</span>
+          <span className="font-mono text-[10px] font-bold text-amber tracking-wide">RADAR</span>
           <span className="font-mono text-[11px] text-ink tabular-nums whitespace-nowrap">{radarLabel ?? 'loading…'}</span>
-          {!pbActive && radarFrames.length > 1 && (
+          {radarFrames.length > 1 && (
             <span className="relative h-[3px] w-9 rounded-full bg-navy-700 overflow-hidden">
               <span
                 className="absolute left-0 top-0 h-full bg-amber"
@@ -4441,7 +4425,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
               />
             </span>
           )}
-          {!pbActive && <span className="text-[10px] text-muted leading-none">{radarPaused ? '▶' : '❚❚'}</span>}
+          <span className="text-[10px] text-muted leading-none">{radarPaused ? '▶' : '❚❚'}</span>
         </button>
       )}
 
