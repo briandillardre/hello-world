@@ -72,7 +72,9 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
   const companyId = await getCurrentCompanyId()
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const keys = REPORT_RANGES.map((r) => r.key)
-  const key = (keys.includes(searchParams?.range as TimeRangeKey) ? searchParams?.range : '7d') as TimeRangeKey
+  // Default TODAY — the cheapest, freshest view. Long ranges are a tap away
+  // and carry their own cost ("reports took 20 seconds for 7 day", Aug 10).
+  const key = (keys.includes(searchParams?.range as TimeRangeKey) ? searchParams?.range : 'today') as TimeRangeKey
 
   const [assets, geofences, settings] = await Promise.all([
     getAssetsWithLocations(companyId),

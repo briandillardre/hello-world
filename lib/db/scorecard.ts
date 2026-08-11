@@ -128,12 +128,27 @@ export async function getFleetScorecard(
   const toName = pending.slice(0, GEOCODE_BUDGET)
   const { classifyPoint } = await import('../poi-server')
   const named: { si: number; kind: import('../poi').PoiKind; name: string; minutes: number; inWorkHours: boolean }[] = []
-  for (let i = 0; i < toName.length; i += 6) {
-    const batch = toName.slice(i, i + 6)
-    const results = await Promise.all(batch.map((p) => classifyPoint(p.lat, p.lng)))
+  // HARD TIME BOX. Naming stops is garnish, not the meal — on a cold cache
+  // the serial geocode batches were the bulk of a 20-second page ("it is not
+  // acceptable", Aug 10). Batches stay small (public Photon instance), but
+  // once the deadline passes the remaining stops simply fold into "other";
+  // the 11 m-bucket cache names them on the next visit for free.
+  const deadline = Date.now() + 2_500
+  let namedCount = 0
+  for (let i = 0; i < toName.length; i += 8) {
+    if (Date.now() > deadline) break
+    const batch = toName.slice(i, i + 8)
+    const results = await Promise.all(batch.map((p) =>
+      Promise.race([
+        classifyPoint(p.lat, p.lng),
+        new Promise<{ kind: import('../poi').PoiKind; name: string }>((r) =>
+          setTimeout(() => r({ kind: 'other', name: '' }), Math.max(400, deadline - Date.now()))),
+      ])
+    ))
     results.forEach((r, j) => named.push({ si: batch[j].si, kind: r.kind, name: r.name, minutes: batch[j].minutes, inWorkHours: batch[j].inWorkHours }))
+    namedCount = i + batch.length
   }
-  const rest = pending.slice(GEOCODE_BUDGET)
+  const rest = [...toName.slice(namedCount), ...pending.slice(GEOCODE_BUDGET)]
   for (let si = 0; si < scores.length; si++) {
     scores[si] = {
       ...scores[si],
