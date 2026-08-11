@@ -3796,6 +3796,48 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
+  // Temperature / feels-like / wind / lightning FOLLOW THE SCRUBBER too
+  // (Brian, Aug 10): RTMA publishes hourly analyses and nowcoast retains
+  // roughly the last day, so within that window a replay shows the ACTUAL
+  // hour's shading via WMS TIME= — floored to the hour, so sweeping a day is
+  // at most 24 cheap tile swaps (same pattern as radar, $0 NOAA service).
+  // Older scrub positions fall back to the latest frame with a one-time note
+  // on the layer row — honest, never silently wrong.
+  const RTMA_ARCHIVE_MS = 24 * 3_600_000
+  const scrubWxMs = pbActive && realWindowEff
+    ? realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from)
+    : null
+  const scrubWxTs = scrubWxMs !== null && Date.now() - scrubWxMs <= RTMA_ARCHIVE_MS
+    ? new Date(Math.floor(scrubWxMs / 3_600_000) * 3_600_000).toISOString()
+    : null
+  const wxOutOfRange = scrubWxMs !== null && scrubWxTs === null
+  const rtmaHistoryNoted = useRef(false)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    for (const key of RTMA_KEYS) {
+      if (!overlaysOn[key]) continue
+      const src = m.getSource(`ovl-${key}`) as maplibregl.RasterTileSource | undefined
+      if (!src || typeof src.setTiles !== 'function') continue
+      const def = MAP_OVERLAYS.find((o) => o.key === key)
+      if (!def) continue
+      let tiles = def.tiles
+      const real = rtmaNames?.[key as 'temp' | 'feels' | 'wind' | 'lightning']
+      if (real) tiles = tiles.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(real)}`)
+      src.setTiles([scrubWxTs ? `${tiles}&TIME=${encodeURIComponent(scrubWxTs)}` : tiles])
+    }
+    if (wxOutOfRange && !rtmaHistoryNoted.current && RTMA_KEYS.some((k) => overlaysOn[k])) {
+      rtmaHistoryNoted.current = true
+      for (const k of RTMA_KEYS) {
+        if (overlaysOn[k]) {
+          window.dispatchEvent(new CustomEvent('ht:layer-error', {
+            detail: { key: k, msg: 'NOAA keeps ~1 day of history — older replays show the latest analysis' },
+          }))
+        }
+      }
+    }
+  }, [mapReady, scrubWxTs, wxOutOfRange, overlaysOn, rtmaNames])
+
   // Satellite clouds — coarse (max native zoom 7) but the real sky.
   useEffect(() => {
     const m = map.current
