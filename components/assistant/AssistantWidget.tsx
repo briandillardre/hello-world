@@ -2,10 +2,28 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX } from 'lucide-react'
+import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX, Search, SquarePen } from 'lucide-react'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
-interface Msg { role: 'user' | 'assistant'; text: string }
+interface Msg { role: 'user' | 'assistant'; text: string; at?: string }
+
+// A "meaningful chat" = the latest burst of conversation. A gap this long
+// between turns starts a new session; older turns hide behind "Show earlier"
+// instead of scrolling in as stale context (Brian, Aug 10).
+const SESSION_GAP_MS = 3 * 3_600_000
+const VISIBLE_CAP = 14
+const CUTOFF_KEY = 'ht_ai_cutoff'
+
+/** Index where the visible thread starts: the newest session, capped. */
+function sessionStart(msgs: Msg[]): number {
+  let start = 0
+  for (let i = 1; i < msgs.length; i++) {
+    const prev = msgs[i - 1].at ? Date.parse(msgs[i - 1].at!) : NaN
+    const cur = msgs[i].at ? Date.parse(msgs[i].at!) : NaN
+    if (Number.isFinite(prev) && Number.isFinite(cur) && cur - prev > SESSION_GAP_MS) start = i
+  }
+  return Math.max(start, msgs.length - VISIBLE_CAP)
+}
 
 // Minimal typings for the vendor-prefixed Web Speech API (same shape as MapSearch).
 type SpeechRecognitionLike = {
@@ -30,6 +48,16 @@ export function AssistantWidget() {
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showEarlier, setShowEarlier] = useState(false)
+  // Keyword search over the WHOLE stored history (server-side).
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState<Msg[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const cutoffRef = useRef<string | null>(null)
+  if (typeof window !== 'undefined' && cutoffRef.current === null) {
+    try { cutoffRef.current = localStorage.getItem(CUTOFF_KEY) || '' } catch { cutoffRef.current = '' }
+  }
   const [listening, setListening] = useState(false)
   // Conversation mode: answers are spoken aloud, and when the voice finishes
   // the mic reopens — ask, listen, ask again, hands never touch the phone.
@@ -75,7 +103,8 @@ export function AssistantWidget() {
   useEffect(() => {
     if (!open || historyLoaded.current) return
     historyLoaded.current = true
-    fetch('/api/assistant')
+    const since = cutoffRef.current
+    fetch(`/api/assistant${since ? `?since=${encodeURIComponent(since)}` : ''}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (Array.isArray(j?.messages) && j.messages.length) {
@@ -84,6 +113,31 @@ export function AssistantWidget() {
       })
       .catch(() => { /* stateless is fine */ })
   }, [open])
+
+  const newChat = () => {
+    const now = new Date().toISOString()
+    cutoffRef.current = now
+    try { localStorage.setItem(CUTOFF_KEY, now) } catch { /* private mode */ }
+    setMsgs([])
+    setShowEarlier(false)
+    setSearchOpen(false)
+    setSearchResults(null)
+  }
+
+  const runSearch = async (q: string) => {
+    const needle = q.trim()
+    if (!needle) { setSearchResults(null); return }
+    setSearching(true)
+    try {
+      const r = await fetch(`/api/assistant?q=${encodeURIComponent(needle)}`)
+      const j = r.ok ? await r.json() : null
+      setSearchResults(Array.isArray(j?.results) ? j.results : [])
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
 
   // Speak an answer, then (in conversation mode) reopen the mic when done.
   const speak = (text: string) => {
@@ -106,7 +160,8 @@ export function AssistantWidget() {
       const res = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question }),
+        // sinceTs: after "New chat" the model's context starts fresh too.
+        body: JSON.stringify({ question, sinceTs: cutoffRef.current || undefined }),
       })
       const data = await res.json()
       const answer = data.answer ?? "I couldn't work that one out."
@@ -174,6 +229,20 @@ export function AssistantWidget() {
               HammerTrack AI
             </span>
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setSearchOpen((s) => !s); setSearchQ(''); setSearchResults(null) }}
+                title="Find in chat history"
+                className={'grid place-items-center w-8 h-8 rounded-lg transition ' + (searchOpen ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <button
+                onClick={newChat}
+                title="New chat — start fresh (history stays searchable)"
+                className="grid place-items-center w-8 h-8 rounded-lg text-faint hover:text-ink transition"
+              >
+                <SquarePen className="h-4 w-4" />
+              </button>
               {voiceOk && (
                 <button
                   onClick={toggleVoiceMode}
@@ -190,7 +259,42 @@ export function AssistantWidget() {
             </div>
           </div>
 
+          {searchOpen && (
+            <div className="px-3 py-2 border-b border-navy-800 flex items-center gap-2">
+              <input
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') runSearch(searchQ) }}
+                placeholder="Find in chat history… (Enter)"
+                autoFocus
+                className="flex-1 bg-navy-900 border border-navy-700 rounded-lg px-3 py-1.5 text-[13px] text-ink placeholder:text-faint outline-none focus:border-amber/50"
+              />
+              <button onClick={() => runSearch(searchQ)} className="text-xs font-semibold text-amber">Find</button>
+            </div>
+          )}
+
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            {/* Search results replace the thread while active. */}
+            {searchOpen && searchResults !== null ? (
+              <>
+                <p className="font-mono text-[10px] uppercase tracking-wide text-faint">
+                  {searching ? 'Searching…' : `${searchResults.length} match${searchResults.length === 1 ? '' : 'es'} · newest first`}
+                </p>
+                {searchResults.map((m, i) => (
+                  <div key={i} className="rounded-xl border border-navy-800 bg-navy-900 px-3 py-2">
+                    <p className="font-mono text-[9.5px] text-faint mb-0.5">
+                      {m.role === 'user' ? 'You' : 'HammerTrack AI'}
+                      {m.at ? ` · ${new Date(m.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+                    </p>
+                    <p className="text-[12.5px] text-muted whitespace-pre-line line-clamp-4">{m.text}</p>
+                  </div>
+                ))}
+                {!searching && searchResults.length === 0 && (
+                  <p className="text-[12.5px] text-faint text-center mt-4">Nothing matches &ldquo;{searchQ}&rdquo;.</p>
+                )}
+              </>
+            ) : (
+            <>
             {msgs.length === 0 && (
               <div className="text-center mt-6">
                 <HardHat className="h-9 w-9 text-amber mx-auto mb-2" />
@@ -205,16 +309,35 @@ export function AssistantWidget() {
               </div>
             )}
 
-            {msgs.map((m, i) => (
-              <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
-                <div className={
-                  'max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] whitespace-pre-line ' +
-                  (m.role === 'user' ? 'bg-amber text-[#1a1100] font-medium rounded-br-sm' : 'bg-navy-900 border border-navy-800 text-ink rounded-bl-sm')
-                }>
-                  {m.text}
-                </div>
-              </div>
-            ))}
+            {/* Only the latest session shows by default — old context stays a
+                tap away instead of scrolling in as noise. */}
+            {(() => {
+              const start = showEarlier ? 0 : sessionStart(msgs)
+              return (
+                <>
+                  {start > 0 && (
+                    <button
+                      onClick={() => setShowEarlier(true)}
+                      className="w-full rounded-lg border border-dashed border-navy-700 py-1.5 text-[11.5px] font-semibold text-faint hover:text-ink transition"
+                    >
+                      Show earlier · {start} message{start === 1 ? '' : 's'}
+                    </button>
+                  )}
+                  {msgs.slice(start).map((m, i) => (
+                    <div key={start + i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+                      <div className={
+                        'max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] whitespace-pre-line ' +
+                        (m.role === 'user' ? 'bg-amber text-[#1a1100] font-medium rounded-br-sm' : 'bg-navy-900 border border-navy-800 text-ink rounded-bl-sm')
+                      }>
+                        {m.text}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )
+            })()}
+            </>
+            )}
 
             {loading && (
               <div className="flex justify-start">

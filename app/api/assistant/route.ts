@@ -41,11 +41,13 @@ Ground rules:
   almost certainly just parked; say "last reported doing 54 mph, 4 min ago — likely stopped
   since" instead of claiming they're on the road.`
 
-interface HistoryRow { role: 'user' | 'assistant'; content: string }
+interface HistoryRow { role: 'user' | 'assistant'; content: string; at?: string }
 
 /** Last N turns of this user's thread, oldest first. Empty when the table is
- *  missing (migration 014 not run), logged out, or demo mode. */
-async function loadHistory(limit: number): Promise<{ userId: string | null; companyId: string | null; rows: HistoryRow[] }> {
+ *  missing (migration 014 not run), logged out, or demo mode. `sinceIso`
+ *  supports "New chat": turns before the cutoff stay stored but leave both
+ *  the widget and the model's context window. */
+async function loadHistory(limit: number, sinceIso?: string | null): Promise<{ userId: string | null; companyId: string | null; rows: HistoryRow[] }> {
   if (isMock) return { userId: null, companyId: null, rows: [] }
   try {
     const { createClient } = await import('@/lib/supabase-server')
@@ -54,18 +56,47 @@ async function loadHistory(limit: number): Promise<{ userId: string | null; comp
     if (!user) return { userId: null, companyId: null, rows: [] }
     const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).single()
     const companyId = profile?.company_id ?? user.id
-    const { data } = await supabase
+    let q = supabase
       .from('ai_messages')
-      .select('role, content')
+      .select('role, content, created_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limit)
-    const rows = (data ?? []).reverse().filter(
-      (r): r is HistoryRow => (r.role === 'user' || r.role === 'assistant') && typeof r.content === 'string'
-    )
+    if (sinceIso && !Number.isNaN(Date.parse(sinceIso))) q = q.gte('created_at', sinceIso)
+    const { data } = await q
+    const rows = (data ?? []).reverse()
+      .filter((r): r is { role: 'user' | 'assistant'; content: string; created_at: string } =>
+        (r.role === 'user' || r.role === 'assistant') && typeof r.content === 'string')
+      .map((r) => ({ role: r.role, content: r.content, at: r.created_at }))
     return { userId: user.id, companyId, rows }
   } catch {
     return { userId: null, companyId: null, rows: [] }
+  }
+}
+
+/** Keyword search across the user's whole chat history, newest first. */
+async function searchHistory(q: string): Promise<HistoryRow[]> {
+  if (isMock) return []
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+    // Escape LIKE wildcards so "50%" searches literally.
+    const needle = q.replace(/[%_\\]/g, (c) => `\\${c}`).slice(0, 80)
+    const { data } = await supabase
+      .from('ai_messages')
+      .select('role, content, created_at')
+      .eq('user_id', user.id)
+      .ilike('content', `%${needle}%`)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    return (data ?? [])
+      .filter((r): r is { role: 'user' | 'assistant'; content: string; created_at: string } =>
+        (r.role === 'user' || r.role === 'assistant') && typeof r.content === 'string')
+      .map((r) => ({ role: r.role, content: r.content, at: r.created_at }))
+  } catch {
+    return []
   }
 }
 
@@ -82,17 +113,26 @@ async function saveTurn(userId: string | null, companyId: string | null, questio
   } catch { /* table absent or RLS denied — stateless is fine */ }
 }
 
-/** GET — the widget's thread on open. */
-export async function GET() {
-  const { rows } = await loadHistory(30)
-  return NextResponse.json({ messages: rows.map((r) => ({ role: r.role, text: r.content })) })
+/** GET — the widget's thread on open (?since= honors New chat), or keyword
+ *  search across the full history with ?q=. */
+export async function GET(request: NextRequest) {
+  const q = request.nextUrl.searchParams.get('q')?.trim()
+  if (q) {
+    const results = await searchHistory(q)
+    return NextResponse.json({ results: results.map((r) => ({ role: r.role, text: r.content, at: r.at })) })
+  }
+  const since = request.nextUrl.searchParams.get('since')
+  const { rows } = await loadHistory(30, since)
+  return NextResponse.json({ messages: rows.map((r) => ({ role: r.role, text: r.content, at: r.at })) })
 }
 
 export async function POST(request: NextRequest) {
   let question = ''
+  let sinceTs: string | null = null
   try {
     const body = await request.json()
     question = typeof body?.question === 'string' ? body.question.slice(0, 500) : ''
+    sinceTs = typeof body?.sinceTs === 'string' ? body.sinceTs : null
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -121,7 +161,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ── With a key: real tool-use agent over live data ──
-  const { userId, companyId: userCompanyId, rows: history } = await loadHistory(12)
+  const { userId, companyId: userCompanyId, rows: history } = await loadHistory(12, sinceTs)
   const toolCtx: AiToolCtx = { companyId, tz, assets, geofences, alerts }
 
   try {
