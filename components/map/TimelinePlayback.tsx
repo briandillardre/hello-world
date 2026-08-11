@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -471,10 +471,22 @@ export function TimelinePlayback({
         onPointerUp={() => { dragRef.current = null }}
         onPointerCancel={() => { dragRef.current = null }}
       >
-      {/* Drag handle — the visual grab bar (the whole bar drags; touch-none
-          here keeps the gesture off the browser on the primary target). */}
-      <div className="flex items-center justify-center h-5 -mb-1 cursor-grab touch-none select-none" aria-hidden>
-        <span className="w-9 h-1 rounded-full bg-navy-600" />
+      {/* Drag handle + stage arrows (Brian, Aug 11: "add arrows here to
+          simplify this function") — the chevrons make the three stages
+          tappable, not just draggable: ∨ steps down (full → bar → pill),
+          ∧ climbs back up (shown once there's somewhere up to go). The
+          whole bar still drags; touch-none keeps the gesture off the
+          browser on the primary target. */}
+      <div className="flex items-center justify-center gap-4 h-6 -mb-1 cursor-grab touch-none select-none">
+        {stage === 'bar' && (
+          <button onClick={stepUp} className="p-0.5 -m-0.5 text-faint hover:text-ink transition-colors" aria-label="Expand timeline options">
+            <ChevronUp className="h-4 w-4" />
+          </button>
+        )}
+        <span className="w-9 h-1 rounded-full bg-navy-600" aria-hidden />
+        <button onClick={stepDown} className="p-0.5 -m-0.5 text-faint hover:text-ink transition-colors" aria-label={stage === 'full' ? 'Collapse to timeline only' : 'Minimize timeline'}>
+          <ChevronDown className="h-4 w-4" />
+        </button>
       </div>
       {/* range pills + movement-display control — the 'options' stage. On
           phones the pills get their own full-width scrollable row — sharing

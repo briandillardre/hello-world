@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Gauge } from 'lucide-react'
 import { formatSpeed, niceSpeed } from '@/lib/trails'
 
@@ -22,6 +23,20 @@ export function SpeedControl({
 }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
+  const pop = useRef<HTMLDivElement>(null)
+  // The timeline sheet clips children (overflow-hidden + backdrop-blur, which
+  // also traps position:fixed descendants) — so the popup PORTALS to <body>
+  // and anchors to the button's measured viewport rect. It protrudes above
+  // the sheet instead of getting its top sliced off ("cut off", Aug 11).
+  const [pos, setPos] = useState<{ right: number; bottom: number } | null>(null)
+  const toggle = () => {
+    if (!open && wrap.current) {
+      const r = wrap.current.getBoundingClientRect()
+      const right = Math.min(Math.max(8, window.innerWidth - r.right), Math.max(8, window.innerWidth - 256))
+      setPos({ right, bottom: window.innerHeight - r.top + 8 })
+    }
+    setOpen((v) => !v)
+  }
 
   // Log-scale mapping between slider position (0..STEPS) and multiplier.
   // Bounds come from the per-window speeds list, so Today slides 1×–5k×
@@ -37,7 +52,9 @@ export function SpeedControl({
   useEffect(() => {
     if (!open) return
     const close = (e: PointerEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (wrap.current?.contains(t) || pop.current?.contains(t)) return
+      setOpen(false)
     }
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
@@ -46,7 +63,7 @@ export function SpeedControl({
   return (
     <div ref={wrap} className="relative flex-none">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="flex items-center gap-1.5 bg-navy-900 border border-navy-700 rounded-lg text-ink text-xs font-mono px-2 py-1.5 outline-none hover:border-amber/60 focus-visible:border-amber"
         aria-label="Playback speed"
         aria-expanded={open}
@@ -55,8 +72,8 @@ export function SpeedControl({
         <span className="tabular-nums">{formatSpeed(value)}</span>
       </button>
 
-      {open && (
-        <div className="absolute bottom-full right-0 mb-2 z-[90] w-[248px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2">
+      {open && pos && typeof document !== 'undefined' && createPortal(
+        <div ref={pop} className="fixed z-[130] w-[248px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-3 pt-2.5 pb-2" style={{ right: pos.right, bottom: pos.bottom }}>
           <div className="flex items-baseline justify-between mb-1">
             <span className="font-mono text-[10px] uppercase tracking-wider text-faint">Speed</span>
             <span className="font-display font-bold text-amber text-[13px] tabular-nums">{formatSpeed(value)}</span>
@@ -91,7 +108,8 @@ export function SpeedControl({
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
