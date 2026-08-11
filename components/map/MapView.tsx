@@ -1827,7 +1827,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         if (localStorage.getItem('ht_map_open_view') !== 'fit') {
           const saved = JSON.parse(localStorage.getItem(camKey) ?? 'null')
           if (saved && Array.isArray(saved.center)) {
-            m.jumpTo({ center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0, pitch: saved.pitch ?? 0 })
+            m.jumpTo({
+              center: saved.center, zoom: saved.zoom ?? DEMO_MAP_ZOOM, bearing: saved.bearing ?? 0,
+              // Tilt only survives a restart when a 3D mode is deliberately
+              // on — a leftover two-finger tilt must not open the map at 45°
+              // ("fix the 45 degree thing", Aug 10).
+              pitch: (lastState.threeD || lastState.terrain) ? (saved.pitch ?? 0) : 0,
+            })
             openedFromSaved = true
             camRestoredRef.current = true // boot fit must not override this
           }
