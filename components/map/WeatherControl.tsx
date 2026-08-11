@@ -543,6 +543,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               </div>
             )
           })}
+          {/* Zones rides with the asset-type rows (Brian, Aug 10) — same
+              formatting, hexagon mark matching the map's zone button. */}
+          {onShowZones && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={() => onShowZones(!showZones)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showZones ? 'text-ink' : 'text-faint')}>
+                  <Hexagon className={'h-3.5 w-3.5 ' + (showZones ? 'text-amber' : 'text-faint')} /> Zones
+                </span>
+                <Toggle on={showZones} />
+              </button>
+            </div>
+          )}
           {onToggleDevices && (
             <div className="border-t border-navy-800">
               <button

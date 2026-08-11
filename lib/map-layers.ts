@@ -83,7 +83,10 @@ export const BASEMAP_THUMB_FILTER: Partial<Record<BasemapId, string>> = {
 
 export const LAYER_ROWS: LayerRowDef[] = [
   // ── Site: context drawn around your assets ────────────────────────────────
-  { id: 'zones', label: 'Zones', group: 'site', status: 'live', hint: 'job sites, yards & boundaries' },
+  // ('zones' moved OUT of this registry Aug 10 — it renders as a dedicated
+  // row in the Show-on-map group beside the asset types. Its state was never
+  // in the overlays record (dedicated cfg.zones field), so saved views and
+  // last-session snapshots are unaffected.)
   { id: 'alertpins', label: 'Alert pins', group: 'site', status: 'live', isLive: true, hint: 'where alerts fired · follows the timeline: Live shows today, replays reveal pins as the scrubber passes them' },
   { id: 'fieldops', label: 'Field activity', group: 'site', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
   { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
