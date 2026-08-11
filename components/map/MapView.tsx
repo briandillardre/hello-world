@@ -3608,14 +3608,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!on) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
+    // Padded-envelope cache: fetch a 2.5×-viewport area once and skip
+    // refetches while panning inside it — the old version re-downloaded and
+    // re-triangulated the world on every moveend ("very heavy", Aug 10).
+    let cachedEnv: { w: number; s: number; e: number; n: number } | null = null
     const load = () => {
       if (m.getZoom() < 6) return
       const b = m.getBounds()
-      const env = `${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`
-      const url = 'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services/Class_Airspace/FeatureServer/0/query' +
-        `?where=1%3D1&geometry=${encodeURIComponent(env)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=true&resultRecordCount=400&f=geojson`
-      fetch(url)
+      if (cachedEnv && b.getWest() > cachedEnv.w && b.getSouth() > cachedEnv.s && b.getEast() < cachedEnv.e && b.getNorth() < cachedEnv.n) return
+      const padX = (b.getEast() - b.getWest()) * 0.75
+      const padY = (b.getNorth() - b.getSouth()) * 0.75
+      const env = { w: b.getWest() - padX, s: b.getSouth() - padY, e: b.getEast() + padX, n: b.getNorth() + padY }
+      cachedEnv = env
+      // Diet query: B/C/D only (Class E blankets were most of the payload),
+      // four fields instead of *, and maxAllowableOffset decimates the FAA's
+      // thousand-vertex arc tessellation to ~90 m tolerance — the cylinders
+      // stay visually round at a fraction of the triangulation cost.
+      const urlFor = (where: string) =>
+        'https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services/Class_Airspace/FeatureServer/0/query' +
+        `?where=${encodeURIComponent(where)}` +
+        `&geometry=${encodeURIComponent(`${env.w},${env.s},${env.e},${env.n}`)}` +
+        '&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects' +
+        '&outFields=NAME,CLASS,LOWER_VAL,UPPER_VAL&returnGeometry=true' +
+        '&maxAllowableOffset=0.0008&geometryPrecision=5&resultRecordCount=250&f=geojson'
+      // If the CLASS filter trips a field-name error, retry once unfiltered —
+      // the client-side B/C/D filter below still applies.
+      fetch(urlFor("CLASS IN ('B','C','D')"))
         .then((r) => (r.ok ? r.json() : null))
+        .then((j: GeoJSON.FeatureCollection | null) =>
+          j && Array.isArray(j.features) ? j : fetch(urlFor('1=1')).then((r) => (r.ok ? r.json() : null)))
         .then((j: GeoJSON.FeatureCollection | null) => {
           if (cancelled || !j?.features) return
           const FT = 0.3048
@@ -3645,7 +3666,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
             return {
               type: 'Feature' as const,
               geometry: r.geometry,
-              properties: { cls: r.cls, name: r.name, base_m: lo * FT, top_m: hi * FT, band },
+              // Bases sink ~50 ft (clamped at ground — the renderer doesn't
+              // do negative) so shelf bottoms tuck under the surface instead
+              // of hovering over dips (Brian, Aug 10). Tops stay charted.
+              properties: { cls: r.cls, name: r.name, base_m: Math.max(0, lo * FT - 15), top_m: hi * FT, band },
             }
           })
           ;(m.getSource('airspace3d') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
