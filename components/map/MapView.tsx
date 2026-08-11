@@ -4074,6 +4074,64 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
+  // ── Actual lightning strikes riding the radar (Brian, Aug 11) ────────────
+  // GOES-East GLM flash detections (real bolts, not the density raster) from
+  // /api/lightning-strikes, drawn whenever radar is on in LIVE view. Each
+  // strike fades over ~10 minutes of age. Live-only by the timeline-truth
+  // rule — GLM here is a now-feed, so replays never show today's bolts.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = radarOn && !pbActive
+    const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+    if (!m.getSource('glm-strikes')) {
+      m.addSource('glm-strikes', { type: 'geojson', data: empty })
+      m.addLayer({
+        id: 'glm-strike-glow', type: 'circle', source: 'glm-strikes',
+        paint: {
+          'circle-color': '#ffd24d', 'circle-blur': 0.9,
+          'circle-radius': ['interpolate', ['linear'], ['get', 'age'], 0, 13, 600, 5],
+          'circle-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 0.5, 600, 0.05],
+        },
+      })
+      m.addLayer({
+        id: 'glm-strike-bolt', type: 'symbol', source: 'glm-strikes',
+        layout: {
+          'text-field': '⚡',
+          'text-size': ['interpolate', ['linear'], ['get', 'age'], 0, 16, 600, 10],
+          'text-allow-overlap': true, 'text-ignore-placement': true,
+        },
+        paint: { 'text-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 1, 600, 0.15] },
+      })
+    }
+    const src = () => m.getSource('glm-strikes') as maplibregl.GeoJSONSource | undefined
+    if (!on) { src()?.setData(empty); return }
+    let alive = true
+    const poll = async () => {
+      try {
+        const b = m.getBounds()
+        // Pad the viewport so nearby cells are already painted after a pan.
+        const px = (b.getEast() - b.getWest()) * 0.5, py = (b.getNorth() - b.getSouth()) * 0.5
+        const qs = `w=${(b.getWest() - px).toFixed(2)}&s=${(b.getSouth() - py).toFixed(2)}&e=${(b.getEast() + px).toFixed(2)}&n=${(b.getNorth() + py).toFixed(2)}`
+        const r = await fetch(`/api/lightning-strikes?${qs}`)
+        if (!r.ok) throw new Error(`strikes ${r.status}`)
+        const j: { strikes?: { lat: number; lon: number; ageSec: number }[] } = await r.json()
+        if (!alive) return
+        src()?.setData({
+          type: 'FeatureCollection',
+          features: (j.strikes ?? []).map((p) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
+            properties: { age: Math.min(600, p.ageSec) },
+          })),
+        })
+      } catch { /* quiet — bolts are garnish on the radar, never an error state */ }
+    }
+    poll()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 60_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [mapReady, radarOn, pbActive])
+
   // Temperature / feels-like / wind / lightning FOLLOW THE SCRUBBER too
   // (Brian, Aug 10): RTMA publishes hourly analyses and nowcoast retains
   // roughly the last day, so within that window a replay shows the ACTUAL
