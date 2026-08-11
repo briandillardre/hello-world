@@ -261,7 +261,7 @@ export function TimelinePlayback({
     return (
       <button
         ref={attachMeasure}
-        onClick={() => setStage(kiosk ? 'full' : 'bar')}
+        onClick={() => setStage('full')}
         className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
