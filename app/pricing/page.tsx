@@ -130,10 +130,11 @@ export default function PricingPage() {
               You&apos;re helping us build it — you keep the price.
             </p>
           </div>
-          <div className="flex-none mt-4 sm:mt-0">
-            <Link href="/register" className="inline-block font-display font-bold rounded-xl px-6 py-3 bg-amber text-[#1a1100] hover:bg-amber-600 transition-colors">
+          <div className="flex-none mt-4 sm:mt-0 flex flex-col items-stretch gap-2">
+            <Link href="/reserve" className="inline-block text-center font-display font-bold rounded-xl px-6 py-3 bg-amber text-[#1a1100] hover:bg-amber-600 transition-colors">
               Claim a founding spot
             </Link>
+            <p className="text-[10.5px] text-faint text-center">Hardware ships in batches — reserving holds yours.</p>
           </div>
         </section>
 

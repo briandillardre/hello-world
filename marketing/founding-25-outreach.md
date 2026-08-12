@@ -3,8 +3,10 @@
 *Copy-paste scripts for filling the Founding 25. Every message quotes the
 same offer (docs/PRICING-TIERS.md — pricing sync rule applies): **$6/machine
 + $3/tool tag, Operate features included, 12-month price lock, hardware at
-cost, month-to-month, cancel anytime.** One link everywhere:
-**hammertrack.ai/demo**.*
+cost, month-to-month, cancel anytime.** Two links: **hammertrack.ai/demo** to
+show it, **hammertrack.ai/reserve** to close it — the reserve page holds a
+spot in the next hardware batch (deposit collected on your call once
+Stripe is live).*
 
 The sender is a working GC in the Upstate, not a software vendor. Every
 script leans on that — peer-to-peer, not sales-to-prospect.
