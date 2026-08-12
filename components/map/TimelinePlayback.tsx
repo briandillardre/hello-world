@@ -129,6 +129,18 @@ export function TimelinePlayback({
   // the wall display leads with the map.
   const [stage, setStage] = useState<'full' | 'bar' | 'min'>(kiosk ? 'min' : 'full')
   const minimized = stage === 'min'
+  // Range-pill overflow cue: fade the right edge while pills hide off-screen.
+  const pillsRef = useRef<HTMLDivElement>(null)
+  const [pillsMore, setPillsMore] = useState(false)
+  const measurePills = useCallback(() => {
+    const el = pillsRef.current
+    if (el) setPillsMore(el.scrollWidth - el.clientWidth - el.scrollLeft > 8)
+  }, [])
+  useEffect(() => {
+    measurePills()
+    window.addEventListener('resize', measurePills)
+    return () => window.removeEventListener('resize', measurePills)
+  }, [measurePills, stage, live])
   const dragRef = useRef<{ y: number; done: boolean } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
@@ -497,7 +509,10 @@ export function TimelinePlayback({
         {/* Reserve real width for the range pills — without a floor, the pile
             of flex-none controls crushes this strip to a sliver ("Toda…") on
             mid-width screens; controls wrap to a second line instead. */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px]">
+        <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px]">
+        {/* Right-edge fade whenever more pills hide off-screen — a clipped
+            "30d" read as broken, not scrollable ("7 days 3", Aug 11). */}
+        <div ref={pillsRef} onScroll={measurePills} className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           {RANGES.map((r) => (
             <button
               key={r.key}
@@ -521,6 +536,8 @@ export function TimelinePlayback({
               <span className="text-faint truncate">· {trailMode === 'off' ? 'pick a range to replay, or turn on Trails' : 'showing all of today'}</span>
             </span>
           )}
+        </div>
+        {pillsMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent" />}
         </div>
         {/* Day stepper — flip through calendar days one at a time (Brian, Aug 3).
             Appears whenever the view IS a single day (Today, Yesterday, or a
