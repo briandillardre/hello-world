@@ -4345,16 +4345,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => cancelAnimationFrame(raf)
   }, [pbPlaying, updateMovementSources, focusFollow])
 
-  // Day-scale ranges park the playhead just BEFORE the day's first movement
-  // once that range's history lands (Brian, Aug 10) — press play and the
-  // action starts immediately. Multi-day ranges keep the full-trail t=1
-  // default: "first movement" of a YTD window is January, an empty map.
-  const pendingFirstSnapRef = useRef(false)
+  // Picking a range parks the playhead at the END (t=1): the finished
+  // picture — full trails painted, every asset at its last position in the
+  // window ("show the last point in that time spread", Brian, Aug 11,
+  // reversing the day-old snap-to-first-movement default). The skip-the-
+  // empty-night trick lives on the PLAY button instead: pressing play from
+  // the end starts at the day's first movement, not midnight.
   const handleRange = useCallback((r: TimeRange) => {
     setRange(r)
     if (r === 'live') {
       setPbPlaying(false)
-      pendingFirstSnapRef.current = false
     } else {
       // Show the FULL trail for the range immediately (t=1) while history
       // loads. (Auto-playing from t=0 made the trail look empty — "no truck".)
@@ -4362,36 +4362,21 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       setPbT(1)
       // speed snaps via the windowSecondsEff effect below
       setPbPlaying(false)
-      pendingFirstSnapRef.current = r === 'today' || r === 'yesterday' || r === 'custom'
       // turn a movement layer on so the trail is actually visible
       setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     }
   }, [])
 
-  useEffect(() => {
-    if (!pendingFirstSnapRef.current) return
-    if (!pbActive) { pendingFirstSnapRef.current = false; return }
-    if (!realWindowEff || activity.length === 0) return
-    pendingFirstSnapRef.current = false
-    // Only day-scale windows — longer ones keep the whole-picture default.
-    if ((realWindowEff.to - realWindowEff.from) / 86_400_000 > 1.5) return
-    const s = Math.max(0, firstMoveT - 0.01)
-    tRef.current = s
-    setPbT(s)
-  }, [pbActive, realWindowEff, activity, firstMoveT])
-
   const handlePlayPause = useCallback(() => {
-    pendingFirstSnapRef.current = false
     setPbPlaying((p) => {
       // Replay-from-start begins at the first recorded movement, not midnight —
       // no more watching the playhead crawl through 6 empty hours of night.
-      if (!p && tRef.current >= 1) { const s = firstMoveTRef.current; tRef.current = s; setPbT(s) }
+      if (!p && tRef.current >= 1) { const s = Math.max(0, firstMoveTRef.current - 0.01); tRef.current = s; setPbT(s) }
       return !p
     })
   }, [])
 
   const handleSeek = useCallback((v: number) => {
-    pendingFirstSnapRef.current = false
     setPbPlaying(false)
     tRef.current = v
     setPbT(v)
