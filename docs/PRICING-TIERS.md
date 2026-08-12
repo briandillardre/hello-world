@@ -62,6 +62,13 @@ hybrid does both jobs:
 - Every Founding 25 asset still clears its COGS floor (rule 1) — this is
   margin-thin, not margin-negative. No exceptions below $6; discount with
   tags and platform-fee waivers instead of touching the SIM price.
+- **Reservation mechanics (Aug 12 2026):** hardware is ordered in batches;
+  a spot is held via /reserve (free) and a REFUNDABLE deposit collected
+  when the batch is scheduled (Stripe Payment Link on the call) holds that
+  spot's hardware. No deposit amount is published — set per kit at cost.
+  Deposits are refundable until the kit ships; state a real ship window
+  when collecting (FTC mail-order rule). Synced surfaces: /reserve,
+  /pricing founding block, splash ladder microcopy.
 
 ## Upgrade mechanics (the flywheel in the product)
 

@@ -25,7 +25,7 @@ export function ReserveForm() {
     })
     setBusy(false)
     if (r.ok) setDone(true)
-    else setErr(r.error ?? 'Something went wrong — call or text Brian directly.')
+    else setErr(r.error ?? 'Something went wrong — email sales@hammertrack.ai and we’ll hold your spot by hand.')
   }
 
   if (done) {

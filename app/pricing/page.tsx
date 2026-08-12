@@ -32,7 +32,7 @@ const TIERS = [
     features: [
       'Live map — trucks, equipment, Bluetooth tools',
       'After-hours theft & left-site alerts',
-      'Geofenced job sites & yards',
+      'Job-site & yard zones',
       'Site log, trips & utilization reports',
       'Unlimited users — never per-seat',
     ],

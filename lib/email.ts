@@ -20,6 +20,13 @@ export function emailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY
 }
 
+/** Escape user-supplied text before interpolating into email HTML —
+ *  otherwise a crafted company/name/note injects links or markup into
+ *  mail we send (sec-check, Aug 11). */
+export function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
+
 export async function sendEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY
   if (!key) return { ok: false, error: 'not configured' }
@@ -44,7 +51,10 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
 /** The invite email — plain, legible, one button. Inline styles only. */
 export function inviteEmailHtml(opts: { companyName: string; inviterName: string; role: string; link: string }): string {
-  const { companyName, inviterName, role, link } = opts
+  const { link } = opts
+  const companyName = escapeHtml(opts.companyName)
+  const inviterName = escapeHtml(opts.inviterName)
+  const role = escapeHtml(opts.role)
   return `
   <div style="background:#001523;padding:32px 16px;font-family:system-ui,-apple-system,Segoe UI,sans-serif">
     <div style="max-width:480px;margin:0 auto;background:#00243d;border:1px solid #0e3a5c;border-radius:14px;padding:28px">

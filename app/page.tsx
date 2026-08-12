@@ -95,8 +95,8 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
-            Founding 25 — first 25 companies: free 30-day pilot · we ship the trackers ·
-            founder pricing locked · cancel anytime
+            Founding 25 — first 25 companies: free 30-day pilot · hardware ships in
+            batches, a refundable deposit holds yours · founder pricing locked · cancel anytime
           </p>
         </section>
 

@@ -147,12 +147,16 @@ export async function POST(request: NextRequest) {
       }
 
       let toolId: string | null = null
+      // Escape LIKE metacharacters — beacon.id is device-supplied, and a
+      // crafted id of "%" would ilike-match an arbitrary asset (sec-check,
+      // Aug 11). Backslash is Postgres's default ESCAPE character.
+      const likeEsc = (s: string) => s.replace(/[\\%_]/g, '\\$&')
       for (const cand of candidates) {
         const { data: tool } = await supabase
           .from('assets')
           .select('id')
           .eq('company_id', asset.company_id)
-          .ilike('tracker_id', cand)
+          .ilike('tracker_id', likeEsc(cand))
           .limit(1)
           .maybeSingle()
         if (tool) { toolId = tool.id; break }
