@@ -239,6 +239,17 @@ in the SAME commit:
   `docs/OPERATING-MODEL.md`) whenever a decision changes a dollar figure
 The infographic is a rendered view of the roadmap — never let them drift.
 
+## Checks & balances rule (Brian, Aug 11 2026)
+"Create a few more agents within here as a checks and balances to your
+decisions… don't forget about this!" — any session that ships substantive
+code or public copy runs the repo's reviewer agents (.claude/agents/)
+before it ends, and fixes confirmed findings the same session:
+- **ship-check** — adversarial code review of the day's diff
+- **truth-check** — splash truth + pricing sync + public-repo hygiene
+- **sec-check** — new/changed endpoints, service-role writes, ingest paths
+Spawn them in parallel on the day's commit range. Real findings get fixed
+or tracked with a task number in the final report — never silently noted.
+
 ## Testing rule (Brian, Jul 2026)
 Any change touching the timeline, radar, or history data: click through EVERY
 time range (Live / Today / Yesterday / 7d / 30d / YTD / All) on BOTH /map and
