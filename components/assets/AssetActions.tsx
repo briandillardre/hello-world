@@ -6,6 +6,7 @@ import { Pencil, Trash2 } from 'lucide-react'
 import type { Asset, AssetPhoto } from '@/lib/types'
 import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction, reorderAssetPhotosAction } from '@/lib/actions/assets'
 import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
+import { toast, confirmSheet } from '@/components/ui/feedback'
 
 /** Edit + Delete controls on the asset detail page. Edit reuses the full
  *  AssetForm (all attributes, cost structure, labeled photo gallery). */
@@ -19,14 +20,15 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
     try {
       const result = await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
       if (!result.ok) {
-        alert(result.error ?? 'Could not save changes. Please try again.')
+        toast(result.error ?? 'Could not save changes. Please try again.', { variant: 'error' })
         return
       }
       setEditing(false)
+      toast('Saved', { variant: 'success' })
       router.refresh()
     } catch (err) {
       console.error('Failed to update asset', err)
-      alert('Could not save changes. Please try again.')
+      toast('Could not save changes. Please try again.', { variant: 'error' })
     } finally {
       setSaving(false)
     }
@@ -46,14 +48,20 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${asset.name}"? This removes its location history, maintenance records, and alerts. This cannot be undone.`)) return
+    const ok = await confirmSheet({
+      title: `Delete "${asset.name}"?`,
+      message: 'This removes its location history, maintenance records, and alerts. This cannot be undone.',
+      confirmLabel: 'Delete', destructive: true,
+    })
+    if (!ok) return
     try {
       await deleteAssetAction(asset.id)
+      toast(`"${asset.name}" deleted`, { variant: 'success' })
       router.push('/assets')
       router.refresh()
     } catch (err) {
       console.error('Failed to delete asset', err)
-      alert('Could not delete the asset. Please try again.')
+      toast('Could not delete the asset. Please try again.', { variant: 'error' })
     }
   }
 

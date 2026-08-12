@@ -8,6 +8,7 @@ import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
+import { toast } from '@/components/ui/feedback'
 import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
 import { saveMapViewsAction } from '@/lib/actions/profile'
 
@@ -213,10 +214,11 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         // this lands, "See full details" would 404 (the id only refreshed on
         // the next full page load before, Aug 6).
         setGeofences((prev) => prev.map((g) => (g.id === fence.id ? { ...g, id } : g)))
+        toast(`Zone "${name}" saved`, { variant: 'success' })
       } catch (err) {
         console.error('Geofence save failed', err)
         setGeofences((prev) => prev.filter((g) => g.id !== fence.id))
-        alert(`Zone "${name}" could not be saved to the database. Please try drawing it again.`)
+        toast(`Zone "${name}" could not be saved. Please try drawing it again.`, { variant: 'error' })
       }
     }
   }, [])
@@ -232,7 +234,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       } catch (err) {
         console.error('Zone edit failed', err)
         if (existing) setGeofences((prev) => prev.map((g) => (g.id === id ? existing : g)))
-        alert('That zone change could not be saved. Please try again.')
+        toast('That zone change could not be saved. Please try again.', { variant: 'error' })
       }
     }
   }, [geofences])
@@ -246,7 +248,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       } catch (err) {
         console.error('Zone delete failed', err)
         setGeofences(snapshot)
-        alert('That zone could not be deleted. Please try again.')
+        toast('That zone could not be deleted. Please try again.', { variant: 'error' })
       }
     }
   }, [geofences])

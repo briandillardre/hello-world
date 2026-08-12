@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Plus, Trash2, X, Moon, DoorOpen, ArrowLeftRight, Timer, Gauge, MessageSquareWarning, Pencil, Check } from 'lucide-react'
 import type { AlertRule, AlertRuleParams, AlertTrigger, Geofence, AssetWithLocation } from '@/lib/types'
+import { confirmSheet } from '@/components/ui/feedback'
 import {
   createAlertRuleAction, toggleAlertRuleAction, deleteAlertRuleAction,
   updateAlertRuleAction, bulkZoneRulesAction,
@@ -272,7 +273,11 @@ function SpecialRuleRow({ rule, zoneName, assetName, editable }: {
 
   const texts = rule.trigger === 'after_hours_movement' || rule.trigger === 'left_site' || !!rule.params?.critical
   const toggle = () => start(async () => { const next = !active; setActive(next); await toggleAlertRuleAction(rule.id, next) })
-  const remove = () => start(async () => { if (confirm('Delete this rule?')) await deleteAlertRuleAction(rule.id) })
+  const remove = async () => {
+    if (await confirmSheet({ title: 'Delete this rule?', confirmLabel: 'Delete', destructive: true })) {
+      start(async () => { await deleteAlertRuleAction(rule.id) })
+    }
+  }
   const saveTuning = () => start(async () => {
     if (rule.trigger === 'speeding') await updateAlertRuleAction(rule.id, { params: { ...(rule.params ?? {}), max_mph: mph } })
     if (rule.trigger === 'idle') await updateAlertRuleAction(rule.id, { idle_minutes: idleMin })

@@ -5,6 +5,7 @@ import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download, Check,
 import type { TimeEntry, DailyLog } from '@/lib/field-types'
 import type { PairSegment } from '@/lib/pairing'
 import { decidePairAction, type PairDecision } from '@/lib/actions/pairs'
+import { toast } from '@/components/ui/feedback'
 
 /**
  * The office's morning read: every crew day grouped date → project, with the
@@ -58,7 +59,7 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
     const res = await decidePairAction(day, personId, machineId, status)
     if (!res.ok) {
       setLocalDecisions((p) => { const n = { ...p }; delete n[k]; return n })
-      alert(res.error ?? 'Could not save that decision.')
+      toast(res.error ?? 'Could not save that decision.', { variant: 'error' })
     }
   }
 

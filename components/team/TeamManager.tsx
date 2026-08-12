@@ -8,6 +8,7 @@ import { createInviteAction, emailInviteAction, revokeInviteAction, updateMember
 import { ROLE_DEFAULTS } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toast, confirmSheet } from '@/components/ui/feedback'
 
 const ROLE_META: Record<Role, { label: string; hint: string; icon: typeof Shield; cls: string }> = {
   admin:   { label: 'Admin',   hint: 'Full access — billing, team, settings',     icon: Shield,    cls: 'text-amber' },
@@ -60,7 +61,12 @@ export function TeamManager({ data }: { data: TeamData }) {
   }
 
   const changeRole = async (id: string, r: Role) => { await updateMemberRoleAction(id, r); router.refresh() }
-  const remove = async (id: string, name: string) => { if (confirm(`Remove ${name} from the team?`)) { await removeMemberAction(id); router.refresh() } }
+  const remove = async (id: string, name: string) => {
+    if (await confirmSheet({ title: `Remove ${name} from the team?`, confirmLabel: 'Remove', destructive: true })) {
+      await removeMemberAction(id)
+      router.refresh()
+    }
+  }
   const revoke = async (id: string) => { await revokeInviteAction(id); router.refresh() }
 
   return (
@@ -175,7 +181,7 @@ function MemberRow({
     setBusyKey(key)
     const ok = await updateMemberOverridesAction(m.id, { [key]: value })
     setBusyKey(null)
-    if (!ok) alert('Could not save that permission. Is migration 011 applied?')
+    if (!ok) toast('Could not save that permission. Is migration 011 applied?', { variant: 'error' })
     onRefresh()
   }
 

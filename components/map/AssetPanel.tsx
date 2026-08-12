@@ -8,6 +8,7 @@ import { toolIsFresh, type AboardTool } from '@/lib/tools-resolve'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
+import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { LiveStatusBadge } from '@/components/assets/LiveStatus'
 import { Badge } from '@/components/ui/badge'
@@ -447,7 +448,7 @@ function AssetDetails({
               const url = `https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`
               const payload = { title: asset.name, text: `${asset.name} — last seen here`, url }
               if (navigator.share) navigator.share(payload).catch(() => { /* user canceled */ })
-              else { navigator.clipboard?.writeText(url); alert('Location link copied.') }
+              else { navigator.clipboard?.writeText(url); toast('Location link copied', { variant: 'success' }) }
             }}
             className="grid place-items-center w-11 rounded-lg bg-navy-800 border border-navy-700 text-base hover:bg-navy-700 transition-colors"
           >

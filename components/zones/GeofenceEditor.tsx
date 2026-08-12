@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ColorSwatches } from '@/components/ui/color-swatches'
+import { toast, confirmSheet } from '@/components/ui/feedback'
 
 const SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -260,10 +261,11 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
         notes,
       })
       setDirty(false)
+      toast('Zone saved', { variant: 'success' })
       router.refresh()
     } catch (err) {
       console.error('Zone save failed', err)
-      alert('Could not save the zone. Please try again.')
+      toast('Could not save the zone. Please try again.', { variant: 'error' })
     } finally {
       setSaving(false)
       done()
@@ -271,7 +273,12 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   }
 
   const removeZone = async () => {
-    if (!confirm(`Delete zone "${initialName}"? Alert rules attached to it are removed too.`)) return
+    const ok = await confirmSheet({
+      title: `Delete zone "${initialName}"?`,
+      message: 'Alert rules attached to it are removed too.',
+      confirmLabel: 'Delete', destructive: true,
+    })
+    if (!ok) return
     const done = globalBusy('Deleting zone…')
     try {
       await deleteGeofenceAction(id)
@@ -279,7 +286,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
       router.refresh()
     } catch (err) {
       console.error('Zone delete failed', err)
-      alert('Could not delete the zone. Please try again.')
+      toast('Could not delete the zone. Please try again.', { variant: 'error' })
     } finally {
       done()
     }

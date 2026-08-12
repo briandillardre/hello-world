@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ColorSwatches } from '@/components/ui/color-swatches'
+import { toast } from '@/components/ui/feedback'
 
 // Swatches + custom well come from the shared picker (lib/colors) — one
 // palette for every zone/asset color choice in the app.
@@ -87,7 +88,7 @@ export function GeofenceDrawer({
   const handleFinish = () => {
     const geom = onFinishDraw()
     if (!geom) {
-      alert('Draw at least 3 points to create a geofence.')
+      toast('Tap at least 3 corners to outline the zone', { variant: 'info' })
       return
     }
     setPendingGeom(geom)
@@ -191,7 +192,7 @@ export function GeofenceDrawer({
             has, which overflows a phone screen without this. */}
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Save Geofence</DialogTitle>
+            <DialogTitle>Save zone</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">

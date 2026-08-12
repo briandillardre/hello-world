@@ -7,6 +7,7 @@ import type { Geofence } from '@/lib/types'
 import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZoneFolderAction } from '@/lib/actions/zones'
 import { parseJobName, compareJobs } from '@/lib/job-code'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
+import { confirmSheet } from '@/components/ui/feedback'
 
 const PALETTE = ['#ff9e16', '#2dd4bf', '#60a5fa', '#a78bfa', '#f87171', '#34d399', '#fbbf24', '#f472b6']
 
@@ -151,23 +152,22 @@ function GeofenceRow({
       if (folderUrl.trim() !== (fence.folder_url ?? '')) await saveZoneFolderAction(fence.id, folderUrl)
       setEditing(false)
     })
-  const remove = () =>
-    start(async () => {
-      if (confirm(`Delete zone "${fence.name}"? This can't be undone.`)) {
-        await deleteGeofenceAction(fence.id)
-      }
-    })
+  const remove = async () => {
+    const ok = await confirmSheet({ title: `Delete zone "${fence.name}"?`, message: "This can't be undone.", confirmLabel: 'Delete', destructive: true })
+    if (ok) start(async () => { await deleteGeofenceAction(fence.id) })
+  }
   // The Z flip: complete/reopen renames the job here AND (when connected)
   // the matching QuickBooks customer, so the crews' pick list follows.
-  const flip = () =>
+  const flip = async () => {
+    const ok = await confirmSheet(done
+      ? { title: `Reopen "${fence.name}"?`, message: 'The Z comes off here and in QuickBooks.', confirmLabel: 'Reopen' }
+      : { title: `Mark "${fence.name}" complete?`, message: "It's renamed with a Z here and in QuickBooks, and drops to the bottom of the crews' pick list.", confirmLabel: 'Complete' })
+    if (!ok) return
     start(async () => {
-      const msg = done
-        ? `Reopen "${fence.name}"? The Z comes off here and in QuickBooks.`
-        : `Mark "${fence.name}" complete? It's renamed with a Z here and in QuickBooks, and drops to the bottom of the crews' pick list.`
-      if (!confirm(msg)) return
       const r = await setZoneCompletedAction(fence.id, !done)
       setFlipNote(r.ok ? (r.qbo ?? null) : (r.error ?? 'Failed'))
     })
+  }
 
   if (editing) {
     return (

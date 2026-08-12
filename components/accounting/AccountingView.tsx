@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
+import { confirmSheet } from '@/components/ui/feedback'
 import { formatRelativeTime } from '@/lib/utils'
 import { previewZoneInvoiceAction, pushZoneInvoiceAction, disconnectQboAction, type ZoneInvoiceDraft } from '@/lib/actions/qbo'
 
@@ -48,7 +49,12 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
   const [connError, setConnError] = useState<string | null>(null)
 
   const disconnect = async () => {
-    if (!confirm(`Disconnect ${connection.company_name}? Nothing changes in QuickBooks — HammerTrack just forgets the link until you reconnect.`)) return
+    const ok = await confirmSheet({
+      title: `Disconnect ${connection.company_name}?`,
+      message: 'Nothing changes in QuickBooks — HammerTrack just forgets the link until you reconnect.',
+      confirmLabel: 'Disconnect', destructive: true,
+    })
+    if (!ok) return
     setDisconnecting(true)
     setConnError(null)
     const r = await disconnectQboAction()
