@@ -7,7 +7,6 @@ import { redirect } from 'next/navigation'
 export const dynamic = 'force-dynamic'
 import { DashboardShell } from '@/components/layout/DashboardShell'
 import { BusyBar } from '@/components/layout/BusyBar'
-import { FeedbackHost } from '@/components/ui/feedback'
 import { TzCookie } from '@/components/TzCookie'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompany } from '@/lib/db/company'
@@ -46,7 +45,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <TzCookie />
       <BusyBar />
-      <FeedbackHost />
       <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg}>
         {children}
       </DashboardShell>

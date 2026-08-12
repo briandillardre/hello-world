@@ -56,8 +56,17 @@ export function SpeedControl({
       if (wrap.current?.contains(t) || pop.current?.contains(t)) return
       setOpen(false)
     }
+    // Rotation/resize moves the anchor button but the portal keeps its
+    // snapshotted coords — just close; reopening re-measures.
+    const onResize = () => setOpen(false)
     window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
   }, [open])
 
   return (

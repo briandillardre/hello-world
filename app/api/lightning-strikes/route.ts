@@ -129,5 +129,7 @@ async function refreshCache(): Promise<void> {
 
 function trim(all: Strike[], hasBox: boolean, w: number, s: number, e: number, n: number): Strike[] {
   const out = hasBox ? all.filter((p) => p.lon >= w && p.lon <= e && p.lat >= s && p.lat <= n) : all
-  return out.slice(0, 4000)
+  // slice from the END — strikes accumulate oldest-first, and when an
+  // outbreak overflows the cap it's the freshest bolts that must survive.
+  return out.slice(-4000)
 }

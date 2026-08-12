@@ -15,11 +15,14 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 const ipHits = new Map<string, { n: number; at: number }>()
 const IP_WINDOW_MS = 60_000
 const IP_MAX = 3
-// The notify email is throttled to one per 10 min per instance — a burst of
-// reservations sends ONE email carrying the count; the table is the truth.
-let pendingSinceEmail = 0
-let lastEmailAt = 0
-const EMAIL_GAP_MS = 10 * 60_000
+// Owner-email cap: every lead emails (leads are precious — a suppressed
+// one was LOST until a later lead flushed it; ship-check, Aug 12), but at
+// most N sends/hour per instance so a flood can't burn the Resend quota.
+// The reservations table is always the source of truth.
+let emailWindowStart = 0
+let emailsThisWindow = 0
+const EMAIL_WINDOW_MS = 60 * 60_000
+const EMAIL_WINDOW_MAX = 20
 
 const FALLBACK = `Could not save your spot — email sales@${BRAND_DOMAIN} and we'll hold it by hand.`
 
@@ -41,7 +44,7 @@ export interface ReservationInput {
 export async function createReservationAction(input: ReservationInput): Promise<{ ok: boolean; error?: string }> {
   if (input.website) return { ok: true } // bot fed the honeypot — pretend
 
-  const ip = headers().get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  const ip = headers().get('x-real-ip') || headers().get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
   const now = Date.now()
   const h = ipHits.get(ip)
   if (h && now - h.at < IP_WINDOW_MS && h.n >= IP_MAX) {
@@ -69,26 +72,24 @@ export async function createReservationAction(input: ReservationInput): Promise<
     return { ok: false, error: FALLBACK }
   }
 
-  // Ping the owner so the lead gets a call while it's hot — throttled, and
-  // every user-supplied string is HTML-escaped (link/markup injection into
-  // the owner's inbox otherwise). Best-effort, never a blocker.
-  pendingSinceEmail++
-  if (now - lastEmailAt > EMAIL_GAP_MS) {
-    const extra = pendingSinceEmail - 1
-    pendingSinceEmail = 0
-    lastEmailAt = now
+  // Ping the owner so the lead gets a call while it's hot. AWAITED — a
+  // fire-and-forget fetch in a server action gets frozen with the lambda
+  // and sometimes never sends (ship-check, Aug 12). sendEmail is bounded
+  // (10s timeout) and never throws, so this can't hang the user.
+  if (now - emailWindowStart > EMAIL_WINDOW_MS) { emailWindowStart = now; emailsThisWindow = 0 }
+  if (emailsThisWindow < EMAIL_WINDOW_MAX) {
+    emailsThisWindow++
     const e = escapeHtml
-    sendEmail(
+    await sendEmail(
       `brian@${BRAND_DOMAIN}`,
-      `Founding 25 reservation: ${company} (${machines} machines, ${tools} tools)${extra > 0 ? ` +${extra} more` : ''}`,
+      `Founding 25 reservation: ${company} (${machines} machines, ${tools} tools)`,
       `<div style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.6">
         <p><b>${e(company)}</b> just reserved a Founding 25 spot.</p>
         <p>${e(name)} · ${e(phone)}${email ? ` · ${e(email)}` : ''}</p>
         <p>${machines} machines · ${tools} tools${note ? `<br/>Note: ${e(note)}` : ''}</p>
-        ${extra > 0 ? `<p><b>${extra} more reservation${extra === 1 ? '' : 's'}</b> came in since the last email — full list in Supabase.</p>` : ''}
         <p>Call while it's hot.</p>
       </div>`
-    ).catch(() => { /* email is a bonus, never a blocker */ })
+    )
   }
 
   return { ok: true }

@@ -43,10 +43,12 @@ export function FeedbackHost() {
   const [confirm, setConfirm] = useState<ConfirmReq | null>(null)
 
   useEffect(() => {
+    const timers = new Set<ReturnType<typeof setTimeout>>()
     const onToast = (e: Event) => {
       const t = (e as CustomEvent<ToastItem>).detail
       setToasts((prev) => [...prev.slice(-2), t]) // stack caps at 3
-      setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== t.id)), t.ttl)
+      const id = setTimeout(() => { timers.delete(id); setToasts((prev) => prev.filter((x) => x.id !== t.id)) }, t.ttl)
+      timers.add(id)
     }
     const onConfirm = (e: Event) => {
       const req = (e as CustomEvent<ConfirmReq>).detail
@@ -58,6 +60,9 @@ export function FeedbackHost() {
     return () => {
       window.removeEventListener('ht:toast', onToast)
       window.removeEventListener('ht:confirm', onConfirm)
+      timers.forEach(clearTimeout)
+      // Never leave a caller awaiting a confirm that can no longer render.
+      setConfirm((prev) => { prev?.resolve(false); return null })
     }
   }, [])
 

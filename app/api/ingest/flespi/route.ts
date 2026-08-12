@@ -140,10 +140,10 @@ export async function POST(request: NextRequest) {
         candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)
         // Owner shorthand: "UUID:minor" with the major left out — the fleet
         // pucks share one UUID+major, so the minor is the unique bit and
-        // that's what people naturally type (TB235 puck, Aug 11). Accept the
-        // minor in decimal (what beacon apps display) and raw hex.
+        // that's what people naturally type (TB235 puck, Aug 11). DECIMAL
+        // only — a raw-hex candidate collided across pucks (hex 16 = dec 22
+        // reads as another puck's "16" registration; ship-check, Aug 12).
         candidates.push(`${ib[1]}:${parseInt(ib[3], 16)}`)
-        candidates.push(`${ib[1]}:${ib[3]}`)
       }
 
       let toolId: string | null = null

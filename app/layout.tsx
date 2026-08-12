@@ -4,6 +4,7 @@ import './globals.css'
 import { BRAND_NAME, BRAND_URL } from '@/lib/brand'
 import { ErrorReporter } from '@/components/system/ErrorReporter'
 import { NativePush } from '@/components/system/NativePush'
+import { FeedbackHost } from '@/components/ui/feedback'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const archivo = Archivo({
@@ -68,7 +69,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className="font-sans"><ErrorReporter /><NativePush />{children}</body>
+      {/* FeedbackHost lives at the ROOT so toast()/confirmSheet() work on
+          every surface — /command and /live render MapView outside the
+          dashboard layout, and a feedback call nobody hears is a dead
+          button (ship-check P0, Aug 12). */}
+      <body className="font-sans"><ErrorReporter /><NativePush /><FeedbackHost />{children}</body>
     </html>
   )
 }

@@ -140,7 +140,7 @@ export function TimelinePlayback({
     measurePills()
     window.addEventListener('resize', measurePills)
     return () => window.removeEventListener('resize', measurePills)
-  }, [measurePills, stage, live])
+  }, [measurePills, stage, live, range])
   const dragRef = useRef<{ y: number; done: boolean } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
