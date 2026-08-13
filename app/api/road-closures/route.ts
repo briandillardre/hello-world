@@ -181,12 +181,26 @@ async function fromWzdx(): Promise<Closure[]> {
   })
   if (!reg.ok) throw new Error(`wzdx registry ${reg.status}`)
   const rows = await reg.json()
+  // Only accept a feed URL from a field NAMED like one, https-only, and
+  // never an IP literal or explicit port — the registry is third-party
+  // content and whatever we pick here gets fetched server-side and cached
+  // for every company (sec-check P2, Aug 12).
+  const safeFeedUrl = (s: unknown): string | null => {
+    if (typeof s !== 'string' || !/^https:\/\//.test(s)) return null
+    try {
+      const u = new URL(s)
+      if (u.port || /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) || u.hostname.includes(':')) return null
+      if (/transportation\.gov$/i.test(u.hostname)) return null
+      return s
+    } catch { return null }
+  }
   let feedUrl: string | null = null
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== 'object') continue
-    for (const v of Object.values(row as Record<string, unknown>)) {
-      const s = typeof v === 'string' ? v : (v as { url?: string } | null)?.url
-      if (typeof s === 'string' && /^https?:\/\//.test(s) && !/transportation\.gov/.test(s)) { feedUrl = s; break }
+    for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+      if (!/url|feed/i.test(k)) continue
+      const s = safeFeedUrl(typeof v === 'string' ? v : (v as { url?: string } | null)?.url)
+      if (s) { feedUrl = s; break }
     }
     if (feedUrl) break
   }
@@ -235,19 +249,33 @@ const SOURCES: { name: string; pull: () => Promise<Closure[]> }[] = [
   { name: 'wzdx-registry', pull: fromWzdx },
 ]
 
+// Failure backoff: when every source is down, don't relaunch the whole
+// timeout chain for each request — sit out 60s. And the refresh itself is
+// deadlined at 20s so `inflight` always settles inside maxDuration (a
+// killed invocation must never wedge the warm instance; sec-check, Aug 12).
+let failedAt = 0
+const FAIL_BACKOFF_MS = 60_000
+
 async function refresh(): Promise<void> {
   diag = {}
   for (const s of SOURCES) {
     try {
       const closures = await s.pull()
       cache = { at: Date.now(), closures, source: s.name }
+      failedAt = 0
       return
     } catch (e) {
       diag[s.name] = e instanceof Error ? e.message : String(e)
     }
   }
+  failedAt = Date.now()
   throw new Error('all road-closure sources failed')
 }
+
+const deadlined = (): Promise<void> => Promise.race([
+  refresh(),
+  new Promise<void>((_, rej) => setTimeout(() => rej(new Error('refresh deadline (20s)')), 20_000)),
+])
 
 export async function GET(req: NextRequest) {
   try {
@@ -264,10 +292,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'w/s/e/n bbox required' }, { status: 400 })
   }
 
-  if (!cache || Date.now() - cache.at > CACHE_MS) {
+  if ((!cache || Date.now() - cache.at > CACHE_MS) && Date.now() - failedAt > FAIL_BACKOFF_MS) {
     try {
       // Single-flight: concurrent viewers at cache expiry share one pull.
-      if (!inflight) inflight = refresh().finally(() => { inflight = null })
+      if (!inflight) inflight = deadlined().finally(() => { inflight = null })
       await inflight
     } catch (err) {
       if (cache) {
@@ -279,6 +307,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: msg, diag }, { status: 503 })
     }
   }
+
+  // Backoff window with nothing cached: say so fast — a silent empty 200
+  // would render as "no closures" when the truth is "feeds down".
+  if (!cache && failedAt) return NextResponse.json({ error: 'closure feeds unreachable (backing off)', diag }, { status: 503 })
 
   const inBox = (cache?.closures ?? []).filter((c) => c.lng >= w && c.lng <= e && c.lat >= s && c.lat <= n)
   return NextResponse.json({

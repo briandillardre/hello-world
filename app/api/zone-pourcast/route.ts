@@ -147,12 +147,16 @@ export async function GET() {
       }
     }))
 
-    // Only cache a useful answer — an all-empty result (Open-Meteo blip)
-    // should retry on the next request, not stick for 30 minutes.
-    if (zones.some((z) => z.days.length > 0) || zones.length === 0) {
-      if (cache.size > 100) cache.clear()
-      cache.set(companyKey, { at: Date.now(), zones })
+    // Cache useful answers for the full TTL; cache an all-empty blip too,
+    // but SHORT — otherwise a down Open-Meteo means every request fires up
+    // to 25 upstream calls (sec-check, Aug 12). Short-cache = backdate.
+    const useful = zones.some((z) => z.days.length > 0) || zones.length === 0
+    if (cache.size > 100) {
+      let oldest: string | null = null, oldestAt = Infinity
+      cache.forEach((v, k) => { if (v.at < oldestAt) { oldestAt = v.at; oldest = k } })
+      if (oldest) cache.delete(oldest)
     }
+    cache.set(companyKey, { at: useful ? Date.now() : Date.now() - (CACHE_MS - 90_000), zones })
     return NextResponse.json({ zones })
   } catch {
     return NextResponse.json({ zones: [] })

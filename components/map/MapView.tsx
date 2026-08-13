@@ -124,6 +124,10 @@ function lerpAngle(from: number, to: number, f: number): number {
   return (from + diff * f + 360) % 360
 }
 
+/** Escape untrusted text before it enters popup setHTML — module-wide so
+ *  every popup shares one rule (sec-check, Aug 12). */
+const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
 function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -3576,9 +3580,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           .setLngLat(e.lngLat)
           .setHTML(
             `<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">` +
-            `<div style="font-weight:700;color:${color}">${title} · ${p.person}</div>` +
-            `<div style="color:#9fb6cc">${p.at}${p.zone ? ` · ${p.zone}` : ''}</div>` +
-            (p.text ? `<div style="margin-top:4px;color:#e8f0f7;white-space:normal;overflow-wrap:break-word">${String(p.text).replace(/</g, '&lt;')}</div>` : '') +
+            `<div style="font-weight:700;color:${color}">${title} · ${escHtml(p.person)}</div>` +
+            `<div style="color:#9fb6cc">${escHtml(p.at)}${p.zone ? ` · ${escHtml(p.zone)}` : ''}</div>` +
+            (p.text ? `<div style="margin-top:4px;color:#e8f0f7;white-space:normal;overflow-wrap:break-word">${escHtml(p.text)}</div>` : '') +
             `<a href="/logs" style="color:#2dd4bf;font-size:11px">open daily logs →</a></div>`
           )
           .addTo(m)
@@ -3776,7 +3780,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         if (!p) return
         new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
           .setLngLat(e.lngLat)
-          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff9e16">🚧 ${String(p.road ?? p.kind ?? 'Closure').replace(/</g, '&lt;')}</div><div style="color:#9fb6cc;white-space:normal">${String(p.desc ?? '').replace(/</g, '&lt;')}</div></div>`)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff9e16">🚧 ${escHtml(p.road || p.kind || 'Closure')}</div><div style="color:#9fb6cc;white-space:normal">${escHtml(p.desc ?? '')}</div></div>`)
           .addTo(m)
       })
     }

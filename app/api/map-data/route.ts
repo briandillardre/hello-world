@@ -116,6 +116,10 @@ export async function GET() {
       const lastMove = health.lastMoveMs.get(a.id)
       return {
         ...a,
+        // Cost fields honor the same boundary as /finance — non-cost roles
+        // must not read $/day off the wire even if no layer renders it
+        // (sec-check P1, Aug 12: idle rings made the leak visible).
+        ...(perms.canViewCosts ? {} : { daily_cost: null, hourly_rate: null, mileage_rate: null, purchase_price: null, purchase_value: null }),
         maintOverdue: health.maintOverdue.get(a.id) ?? 0,
         openWorkOrders: health.openWorkOrders.get(a.id) ?? 0,
         // Whole days since the last MOVING fix. Tool tags have no motion of
