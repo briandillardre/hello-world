@@ -11,8 +11,9 @@
 export type PlaneClass = 'prop' | 'biz' | 'narrow' | 'wide' | 'heli'
 export const PLANE_CLASS_INDEX: Record<PlaneClass, number> = { prop: 0, biz: 1, narrow: 2, wide: 3, heli: 4 }
 
-/** Minimum on-screen wingspan in px per class — keeps distant traffic visible. */
-export const PLANE_FLOOR_PX: Record<PlaneClass, number> = { prop: 9, biz: 11, narrow: 14, wide: 17, heli: 10 }
+/** Minimum on-screen wingspan in px per class — keeps distant traffic visible.
+ *  Trimmed ~20% Aug 12 ("make them all a little smaller"). */
+export const PLANE_FLOOR_PX: Record<PlaneClass, number> = { prop: 7, biz: 9, narrow: 11, wide: 13, heli: 8 }
 
 interface TypeInfo { cls: PlaneClass; spanM: number; label?: string }
 

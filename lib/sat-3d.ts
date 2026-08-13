@@ -99,7 +99,16 @@ const CORE_COLORS: Record<string, [number, number, number]> = {
 }
 const CORE_DEFAULT: [number, number, number] = [0.91, 0.941, 0.969] // #e8f0f7
 const GLOW: [number, number, number] = [0.49, 0.827, 0.988] // #7dd3fc
-const PLANE_COLOR: [number, number, number] = [1.0, 0.85, 0.35] // amber dart
+const PLANE_COLOR: [number, number, number] = [1.0, 0.85, 0.35] // amber dart (trail lines)
+// Per-class paint (Brian, Aug 12) — airliners amber, widebodies deep
+// orange, bizjets sky, GA props teal, helicopters violet. App palette.
+const PLANE_CLASS_COLOR: Record<PlaneClass, [number, number, number]> = {
+  narrow: [1.0, 0.62, 0.09],   // #ff9e16
+  wide: [0.976, 0.451, 0.086], // #f97316
+  biz: [0.49, 0.827, 0.988],   // #7dd3fc
+  prop: [0.176, 0.831, 0.749], // #2dd4bf
+  heli: [0.655, 0.545, 0.98],  // #a78bfa
+}
 
 /** Piecewise-linear size by orbit altitude (km) — LEO specks, GEO lanterns. */
 function sizeFor(altKm: number, stops: [number, number][]): number {
@@ -750,7 +759,7 @@ export function createSat3DLayer(
           if (!p) { pl.visible = false; continue }
           pl.sx = p.sx; pl.sy = p.sy; pl.visible = true
           const mpp = 156543.03 * Math.cos(pl.lat * Math.PI / 180) / Math.pow(2, zoom)
-          const spanPx = Math.min(72, Math.max(PLANE_FLOOR_PX[pl.shape] * floorScale, pl.spanM / mpp))
+          const spanPx = Math.min(58, Math.max(PLANE_FLOOR_PX[pl.shape] * floorScale, pl.spanM / mpp))
           if (declutter) {
             const key = (Math.round(pl.sx / CELL_PX) + 4096) * 8192 + (Math.round(pl.sy / CELL_PX) + 4096)
             const prev = cellBest.get(key)
@@ -770,17 +779,23 @@ export function createSat3DLayer(
         // (nose along track) — they foreshorten with the map's pitch like the
         // terrain does, instead of standing up billboard-style. Banking rolls
         // the quad around its longitudinal axis into the turn.
+        //
+        // Depth cue (Brian, Aug 12 — "slightly 3d as you pan around"): every
+        // aircraft casts a soft silhouette SHADOW on the ground directly
+        // below it. Plane at altitude + shadow at the surface = parallax
+        // while panning/pitching, which is what makes them read airborne.
+        // Colors are per class — jets amber, wides deep orange, bizjets sky,
+        // props teal, helos violet — matching the app palette.
         if (quadProg && quadBuf && glowables.length) {
-          const verts = new Float32Array(glowables.length * 6 * 5)
-          let vi = 0
           const mppCam = 156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)
-          for (const { pl } of glowables) {
+          // Close enough that the altitude offset is >~ a few px — shadows at
+          // continental zoom are subpixel noise, skip the extra draw.
+          const shadowsOn = zoom >= 7.5
+          // Emit one quad for plane `pl` at altitude altM (span × mul) into arr.
+          const emit = (arr: number[], pl: Plane3D, altM: number, mul: number) => {
             const latR = pl.lat * Math.PI / 180
             const lonR = pl.lon * Math.PI / 180
-            const altM = Math.min(pl.altFt * 0.3048, altCapM)
-            // Render span: true size, floored for distant visibility
-            // (floor shrinks with zoom — see floorScale above).
-            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * floorScale * mppCam)
+            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * floorScale * mppCam) * mul
             const half = (spanMr / SHAPE_SPAN_FRAC) / 2
             const theta = (pl.track ?? 0) * Math.PI / 180
             const bank = pl.bankRad
@@ -834,26 +849,37 @@ export function createSat3DLayer(
               C[2] + F[2] * sf + R[2] * sr,
             ]
             const nl = corner(1, -1), nr = corner(1, 1), tl = corner(-1, -1), tr = corner(-1, 1)
-            const put = (v: V3, u: number, w: number) => {
-              verts[vi++] = v[0]; verts[vi++] = v[1]; verts[vi++] = v[2]
-              verts[vi++] = u; verts[vi++] = w
-            }
+            const put = (v: V3, u: number, w: number) => { arr.push(v[0], v[1], v[2], u, w) }
             put(nl, cellU0, 0); put(nr, cellU1, 0); put(tl, cellU0, 1)
             put(nr, cellU1, 0); put(tr, cellU1, 1); put(tl, cellU0, 1)
           }
+
+          const shadowV: number[] = []
+          const classV: Record<PlaneClass, number[]> = { prop: [], biz: [], narrow: [], wide: [], heli: [] }
+          for (const { pl } of glowables) {
+            const altM = Math.min(pl.altFt * 0.3048, altCapM)
+            if (shadowsOn) emit(shadowV, pl, 0, 0.92)
+            emit(classV[pl.shape], pl, altM, 1)
+          }
+
           gl.useProgram(quadProg)
           gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
-          gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
           gl.enableVertexAttribArray(qPos)
-          gl.vertexAttribPointer(qPos, 3, gl.FLOAT, false, 20, 0)
           gl.enableVertexAttribArray(qUv)
-          gl.vertexAttribPointer(qUv, 2, gl.FLOAT, false, 20, 12)
           gl.uniformMatrix4fv(qMatrix, false, Array.from(main))
           gl.activeTexture(gl.TEXTURE0)
           if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
           gl.uniform1i(qTex, 0)
-          gl.uniform4f(qColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 1)
-          gl.drawArrays(gl.TRIANGLES, 0, glowables.length * 6)
+          const drawBatch = (arr: number[], c: [number, number, number], a: number) => {
+            if (!arr.length) return
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW)
+            gl.vertexAttribPointer(qPos, 3, gl.FLOAT, false, 20, 0)
+            gl.vertexAttribPointer(qUv, 2, gl.FLOAT, false, 20, 12)
+            gl.uniform4f(qColor, c[0], c[1], c[2], a)
+            gl.drawArrays(gl.TRIANGLES, 0, arr.length / 5)
+          }
+          drawBatch(shadowV, [0, 0, 0], 0.28) // ground shadows first, under everything
+          ;(Object.keys(classV) as PlaneClass[]).forEach((cls) => drawBatch(classV[cls], PLANE_CLASS_COLOR[cls], 1))
           gl.disableVertexAttribArray(qUv)
           // Restore the point program state for the satellite pass below.
           gl.useProgram(prog)
