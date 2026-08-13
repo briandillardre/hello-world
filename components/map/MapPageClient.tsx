@@ -94,7 +94,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
     if (!bootstrap) return
     try {
       const s = JSON.parse(localStorage.getItem(BOOT_CACHE_KEY) ?? 'null') as
-        | { at: number; assets: AssetWithLocation[]; geofences: Geofence[] } | null
+        | { at: number; assets: AssetWithLocation[]; geofences: Geofence[]; hist?: LocationHistoryRow[] } | null
       if (s && Date.now() - s.at < 86_400_000 && Array.isArray(s.assets)) {
         setBoot((b) => b ?? {
           assets: s.assets, geofences: s.geofences ?? [],
@@ -102,6 +102,12 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
           siteOverlays: [], earliestMs: null, savedMapViews: null, canViewCosts: false,
         })
         setGeofences((prev) => (prev.length ? prev : s.geofences ?? []))
+        // Cached history slice: trails paint on FIRST FRAME like the pins do
+        // ("trails selected but does not show them" on open, Aug 12) — the
+        // fresh baseline fetch replaces this within seconds.
+        if (Array.isArray(s.hist) && s.hist.length) {
+          setBaselineRows((prev) => prev ?? s.hist ?? null)
+        }
       }
     } catch { /* fresh device */ }
     let cancelled = false
@@ -115,8 +121,12 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
           // Keep optimistic just-drawn zones (temp fence-* ids) on top.
           setGeofences((prev) => [...j.geofences, ...prev.filter((g) => g.id.startsWith('fence-'))])
           try {
+            // Preserve the cached history slice — this write fires every 20s
+            // and clobbering `hist` would undo the instant-trails boot.
+            let hist: LocationHistoryRow[] | undefined
+            try { hist = (JSON.parse(localStorage.getItem(BOOT_CACHE_KEY) ?? 'null') as { hist?: LocationHistoryRow[] } | null)?.hist } catch { /* ignore */ }
             localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify({
-              at: Date.now(), assets: j.assets.slice(0, 400), geofences: j.geofences,
+              at: Date.now(), assets: j.assets.slice(0, 400), geofences: j.geofences, hist,
             }))
           } catch { /* storage full — reopen just won't pre-paint */ }
         })
@@ -155,14 +165,28 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
       fetch(`/api/history?from=${from}&to=${to}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
-          if (!cancelled && j && Array.isArray(j.rows)) setBaselineRows(j.rows)
+          if (cancelled || !j || !Array.isArray(j.rows)) return
+          setBaselineRows(j.rows)
+          // Stash a downsampled slice in the boot snapshot so the NEXT open
+          // paints trails on first frame instead of waiting on this fetch.
+          if (bootstrap) {
+            try {
+              const s = JSON.parse(localStorage.getItem(BOOT_CACHE_KEY) ?? 'null') as Record<string, unknown> | null
+              if (s) {
+                const rows = j.rows as LocationHistoryRow[]
+                const step = Math.max(1, Math.ceil(rows.length / 1200))
+                s.hist = rows.filter((_, i) => i % step === 0)
+                localStorage.setItem(BOOT_CACHE_KEY, JSON.stringify(s))
+              }
+            } catch { /* storage full — next open just fetches */ }
+          }
         })
         .catch(() => { /* offline — dots still render, ranges self-fetch */ })
     }
     load()
     const iv = setInterval(load, 3 * 60_000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [deferHistory])
+  }, [deferHistory, bootstrap])
   const effectiveHistory = deferHistory ? (baselineRows ?? historyRows) : historyRows
 
   // Keep the fleet map live: re-pull server data on an interval so trackers (and

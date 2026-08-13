@@ -437,7 +437,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const pbActive = range !== 'live'
   // Kiosk (Command Center) shows movement trails by default — the wall display
   // should look alive without anyone touching it.
-  const [trailMode, setTrailMode] = useState<TrailMode>(lastState.trailMode ?? (kiosk ? 'trails' : 'off'))
+  // Trails ON is the default everywhere (Brian, Aug 12: "default live view
+  // should have trails on") — a remembered choice still wins.
+  const [trailMode, setTrailMode] = useState<TrailMode>(lastState.trailMode ?? 'trails')
   const [pbPlaying, setPbPlaying] = useState(false)
   const [pbT, setPbT] = useState(0)
   const [pbSpeed, setPbSpeed] = useState(500)
