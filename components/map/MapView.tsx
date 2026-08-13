@@ -97,7 +97,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-badge']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -3619,7 +3619,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     m.addLayer({
       id: 'wrench-badge', type: 'symbol', source: 'assets',
       filter: ['all', ['!', ['has', 'point_count']], ['>', ['get', 'maint'], 0]],
-      layout: { 'text-field': '🛠', 'text-size': 11, 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true },
+      // It rides LIVE positions, so it lives in LIVE_LAYERS and hides with
+      // the other live pins in trail/replay modes (ship-check P1: a ghost
+      // wrench floated at the machine's CURRENT spot during yesterday's
+      // replay). Initial visibility honors a restored trail mode.
+      layout: { 'text-field': '🛠', 'text-size': 11, 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
     })
   }, [mapReady])
 
@@ -3663,7 +3667,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       const byId = new Map(zones.map((z) => [z.id, z]))
       burnDataRef.current = new Map(zones.map((z) => [z.id, z]))
       const feats: GeoJSON.Feature[] = []
-      for (const g of geofences) {
+      // geofences via REF — with the array in the deps, the bootstrap 20s
+      // tick's new identity re-ran this effect and reset the 60s poll every
+      // 20s (ship-check P1: 3x the advertised load, interval never fired).
+      for (const g of geofencesRef.current) {
         if (fenceKind(g) !== 'site') continue
         const z = byId.get(g.id)
         if (!z) continue
@@ -3686,14 +3693,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     poll()
     const iv = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 60_000)
     return () => { alive = false; clearInterval(iv) }
-  }, [mapReady, overlaysOn.burnmap, pbActive, geofences])
+  }, [mapReady, overlaysOn.burnmap, pbActive])
 
   // Idle-dollar rings — parked machines grow a red ring with the ownership
   // cost they've accrued sitting still. Data rides the assets source.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m || !m.getSource('assets')) return
-    const on = !!overlaysOn.idledollars && !pbActive
+    // Rings ride LIVE positions — hide in trail/heat replay modes too, not
+    // just during playback (ship-check: rings floated with no pin under
+    // them once the live dots hid).
+    const on = !!overlaysOn.idledollars && !pbActive && trailMode === 'off'
     if (!m.getLayer('idle-ring')) {
       const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']]
       m.addLayer({
@@ -3715,7 +3725,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
     }
     ;['idle-ring', 'idle-label'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'))
-  }, [mapReady, overlaysOn.idledollars, pbActive])
+  }, [mapReady, overlaysOn.idledollars, pbActive, trailMode])
 
   // Night Watch — where the fleet sleeps: teal halo + 🔒 tucked inside a
   // yard/site/boundary zone, amber halo + ⚠ out in the open. Current truth
@@ -3803,7 +3813,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
     poll()
     const iv = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 5 * 60_000)
-    return () => { alive = false; clearInterval(iv) }
+    // Refetch on pan (debounced) — the server holds the statewide set; this
+    // is purely the client catching up to a new viewport (ship-check P2).
+    let mt: ReturnType<typeof setTimeout> | undefined
+    const onMove = () => { clearTimeout(mt); mt = setTimeout(poll, 800) }
+    m.on('moveend', onMove)
+    return () => { alive = false; clearInterval(iv); clearTimeout(mt); m.off('moveend', onMove) }
   }, [mapReady, overlaysOn.closures])
 
   // Pour planner — each active site flags its next bad concrete/crane day.
@@ -3828,15 +3843,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     let alive = true
     fetch('/api/zone-pourcast')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`pourcast ${r.status}`))))
-      .then((j: { zones?: { id: string; nextBad: { date: string; reason: string } | null }[] }) => {
+      .then((j: { zones?: { id: string; days?: unknown[]; nextBad: { date: string; reason: string } | null }[] }) => {
         if (!alive || !j.zones) return
         const byId = new Map(j.zones.map((z) => [z.id, z]))
-        for (const z of j.zones) pourDataRef.current.set(z.id, z.nextBad)
+        // Only zones whose forecast actually LOADED enter the card cache —
+        // a failed fetch must never render as "clear" (ship-check P1).
+        for (const z of j.zones) { if (z.days?.length) pourDataRef.current.set(z.id, z.nextBad) }
         const feats: GeoJSON.Feature[] = []
-        for (const g of geofences) {
+        for (const g of geofencesRef.current) {
           if (fenceKind(g) !== 'site') continue
           const z = byId.get(g.id)
-          if (!z) continue
+          if (!z || !z.days?.length) continue // no data → no chip, never a false "clear"
           const ring = g.geometry.coordinates[0] as number[][]
           const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
           const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
@@ -3850,7 +3867,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
       .catch((e) => window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'pourcast', msg: e instanceof Error ? e.message : 'forecast down' } })))
     return () => { alive = false }
-  }, [mapReady, overlaysOn.pourcast, geofences])
+  }, [mapReady, overlaysOn.pourcast])
 
   // ── Airspace 3D — the sectional's upside-down cake, extruded for real
   // (Brian, Aug 10). FAA AIS publishes every Class B/C/D polygon WITH its
@@ -4796,8 +4813,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }).catch(() => { /* card just shows less */ })
       }
       if (pourDataRef.current.size === 0) {
-        fetch('/api/zone-pourcast').then((r) => (r.ok ? r.json() : null)).then((j: { zones?: { id: string; nextBad: { date: string; reason: string } | null }[] } | null) => {
-          for (const z of j?.zones ?? []) pourDataRef.current.set(z.id, z.nextBad)
+        fetch('/api/zone-pourcast').then((r) => (r.ok ? r.json() : null)).then((j: { zones?: { id: string; days?: unknown[]; nextBad: { date: string; reason: string } | null }[] } | null) => {
+          for (const z of j?.zones ?? []) { if (z.days?.length) pourDataRef.current.set(z.id, z.nextBad) }
         }).catch(() => { /* card just shows less */ })
       }
     }
