@@ -274,6 +274,66 @@ void main() {
   gl_FragColor = u_color * a;
 }`
 
+// ── Lit-mesh program (3D aircraft bodies, per-vertex lambert shade) ─────────
+const MESH_VERT = `
+attribute vec3 a_pos;
+attribute float a_shade;
+uniform mat4 u_matrix;
+varying float v_s;
+void main() {
+  vec4 p = u_matrix * vec4(a_pos, 1.0);
+  p.z = clamp(p.z, -abs(p.w) * 0.999, abs(p.w) * 0.999);
+  gl_Position = p;
+  v_s = a_shade;
+}`
+
+const MESH_FRAG = `
+precision mediump float;
+uniform vec4 u_color;
+varying float v_s;
+void main() { gl_FragColor = vec4(u_color.rgb * v_s, u_color.a); }`
+
+// ── Low-poly 3D aircraft mesh ───────────────────────────────────────────────
+// Local units: x = +right (1 = half wingspan), y = +forward, z = +up.
+// 18 triangles: octahedral fuselage, swept wings with dihedral, tailplane,
+// vertical FIN (the strong side-view cue). Normals precomputed per triangle;
+// near-horizontal surfaces are biased to face up so wings read lit from
+// above from either side, while the fin keeps its sideways glint.
+const PLANE_MESH = (() => {
+  const t: number[] = []
+  const push = (a: number[], b: number[], c: number[]) => t.push(...a, ...b, ...c)
+  const nose = [0, 1.05, 0.02], top = [0, 0.3, 0.12], bot = [0, 0.3, -0.07]
+  const lm = [-0.09, 0.3, 0.02], rm = [0.09, 0.3, 0.02], tail = [0, -0.95, 0.04]
+  push(nose, top, rm); push(nose, rm, bot); push(nose, bot, lm); push(nose, lm, top)
+  push(tail, rm, top); push(tail, bot, rm); push(tail, lm, bot); push(tail, top, lm)
+  const wing = (s: number) => {
+    const rf = [s * 0.07, 0.45, 0], rb = [s * 0.07, 0.05, 0], tb = [s * 1.0, -0.3, 0.1], tf = [s * 1.0, -0.12, 0.1]
+    push(rf, rb, tb); push(rf, tb, tf)
+  }
+  wing(-1); wing(1)
+  const stab = (s: number) => {
+    const rf = [s * 0.04, -0.7, 0.03], rb = [s * 0.04, -0.95, 0.03], tb = [s * 0.42, -1.02, 0.08], tf = [s * 0.42, -0.85, 0.08]
+    push(rf, rb, tb); push(rf, tb, tf)
+  }
+  stab(-1); stab(1)
+  const f1 = [0, -0.68, 0.04], f2 = [0, -0.98, 0.04], f3 = [0, -1.02, 0.34], f4 = [0, -0.85, 0.3]
+  push(f1, f2, f3); push(f1, f3, f4)
+  const v = new Float32Array(t)
+  const n = new Float32Array((t.length / 9) * 3)
+  for (let i = 0; i < t.length / 9; i++) {
+    const ax = t[i * 9], ay = t[i * 9 + 1], az = t[i * 9 + 2]
+    const bx = t[i * 9 + 3], by = t[i * 9 + 4], bz = t[i * 9 + 5]
+    const cx = t[i * 9 + 6], cy = t[i * 9 + 7], cz = t[i * 9 + 8]
+    const ux = bx - ax, uy = by - ay, uz = bz - az, wx = cx - ax, wy = cy - ay, wz = cz - az
+    let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx
+    const len = Math.hypot(nx, ny, nz) || 1
+    nx /= len; ny /= len; nz /= len
+    if (nz < -0.3) { nx = -nx; ny = -ny; nz = -nz }
+    n[i * 3] = nx; n[i * 3 + 1] = ny; n[i * 3 + 2] = nz
+  }
+  return { v, n, tris: t.length / 9 }
+})()
+
 // ── Flight-trail line program (world-space polyline at altitude) ───────────
 const LINE_VERT = `
 attribute vec3 a_pos;
@@ -365,6 +425,12 @@ export function createSat3DLayer(
   let qMatrix: WebGLUniformLocation | null = null
   let qTex: WebGLUniformLocation | null = null
   let qColor: WebGLUniformLocation | null = null
+  let meshProg: WebGLProgram | null = null
+  let meshBuf: WebGLBuffer | null = null
+  let mPos = 0
+  let mShade = 0
+  let mMatrix: WebGLUniformLocation | null = null
+  let mColor: WebGLUniformLocation | null = null
   let lineProg: WebGLProgram | null = null
   let lineBuf: WebGLBuffer | null = null
   let lPos = 0
@@ -414,6 +480,14 @@ export function createSat3DLayer(
         qColor = gl.getUniformLocation(quadProg, 'u_color')
         quadBuf = gl.createBuffer()
       }
+      meshProg = compile(gl, MESH_VERT, MESH_FRAG)
+      if (meshProg) {
+        mPos = gl.getAttribLocation(meshProg, 'a_pos')
+        mShade = gl.getAttribLocation(meshProg, 'a_shade')
+        mMatrix = gl.getUniformLocation(meshProg, 'u_matrix')
+        mColor = gl.getUniformLocation(meshProg, 'u_color')
+        meshBuf = gl.createBuffer()
+      }
       lineProg = compile(gl, LINE_VERT, LINE_FRAG)
       if (lineProg) {
         lPos = gl.getAttribLocation(lineProg, 'a_pos')
@@ -433,6 +507,10 @@ export function createSat3DLayer(
       if (quadBuf) gl.deleteBuffer(quadBuf)
       quadProg = null
       quadBuf = null
+      if (meshProg) gl.deleteProgram(meshProg)
+      if (meshBuf) gl.deleteBuffer(meshBuf)
+      meshProg = null
+      meshBuf = null
       if (lineProg) gl.deleteProgram(lineProg)
       if (lineBuf) gl.deleteBuffer(lineBuf)
       lineProg = null
@@ -775,17 +853,13 @@ export function createSat3DLayer(
         if (declutter) cellBest.forEach((g) => glowables.push(g))
         if (glowOn) for (const g of glowables) drawPoint(g.clip, g.spanPx * 1.5, 0, GLOW[0], GLOW[1], GLOW[2], 0.13)
 
-        // Pass 2: silhouettes as WORLD-SPACE quads lying in the ground plane
-        // (nose along track) — they foreshorten with the map's pitch like the
-        // terrain does, instead of standing up billboard-style. Banking rolls
-        // the quad around its longitudinal axis into the turn.
-        //
-        // Depth cue (Brian, Aug 12 — "slightly 3d as you pan around"): every
-        // aircraft casts a soft silhouette SHADOW on the ground directly
-        // below it. Plane at altitude + shadow at the surface = parallax
-        // while panning/pitching, which is what makes them read airborne.
-        // Colors are per class — jets amber, wides deep orange, bizjets sky,
-        // props teal, helos violet — matching the app palette.
+        // Pass 2 (Brian, Aug 12): TRUE 3D — each aircraft is a low-poly
+        // shaded mesh (PLANE_MESH: fuselage, swept wings, tail fin) sitting
+        // at its real altitude and banking into turns, plus a silhouette
+        // SHADOW quad on the ground below it. Altitude parallax + a form
+        // that changes with the viewing angle = reads airborne from any
+        // camera. Colors are per class — jets amber, wides deep orange,
+        // bizjets sky, props teal, helos violet — matching the app palette.
         if (quadProg && quadBuf && glowables.length) {
           const mppCam = 156543.03 * Math.cos(ctrLat) / Math.pow(2, zoom)
           // Close enough that the altitude offset is >~ a few px — shadows at
@@ -854,33 +928,123 @@ export function createSat3DLayer(
             put(nr, cellU1, 0); put(tr, cellU1, 1); put(tl, cellU0, 1)
           }
 
+          // TRUE 3D bodies (Brian, Aug 12: "make it 3d in space, not a 2d
+          // flat plane") — each aircraft is the low-poly PLANE_MESH placed
+          // in its local frame (right/forward/up at altitude), lambert-shaded
+          // per triangle, banked into turns. Vertex layout: xyz + shade.
+          const emitMesh = (arr: number[], pl: Plane3D, altM: number) => {
+            const latR = pl.lat * Math.PI / 180
+            const lonR = pl.lon * Math.PI / 180
+            const spanMr = Math.max(pl.spanM, PLANE_FLOOR_PX[pl.shape] * floorScale * mppCam)
+            const half = spanMr / 2
+            const theta = (pl.track ?? 0) * Math.PI / 180
+            let C: V3, fwd: V3, right: V3, up: V3, scale: number, L: V3
+            if (isGlobe) {
+              C = toWorld(pl.lon, pl.lat, altM)
+              up = [Math.cos(latR) * Math.sin(lonR), Math.sin(latR), Math.cos(latR) * Math.cos(lonR)]
+              const east: V3 = [Math.cos(lonR), 0, -Math.sin(lonR)]
+              const north: V3 = [
+                up[1] * east[2] - up[2] * east[1],
+                up[2] * east[0] - up[0] * east[2],
+                up[0] * east[1] - up[1] * east[0],
+              ]
+              fwd = [
+                north[0] * Math.cos(theta) + east[0] * Math.sin(theta),
+                north[1] * Math.cos(theta) + east[1] * Math.sin(theta),
+                north[2] * Math.cos(theta) + east[2] * Math.sin(theta),
+              ]
+              right = [
+                east[0] * Math.cos(theta) - north[0] * Math.sin(theta),
+                east[1] * Math.cos(theta) - north[1] * Math.sin(theta),
+                east[2] * Math.cos(theta) - north[2] * Math.sin(theta),
+              ]
+              L = [
+                east[0] * 0.4 + north[0] * 0.15 + up[0] * 0.9,
+                east[1] * 0.4 + north[1] * 0.15 + up[1] * 0.9,
+                east[2] * 0.4 + north[2] * 0.15 + up[2] * 0.9,
+              ]
+              const ll = Math.hypot(L[0], L[1], L[2]); L = [L[0] / ll, L[1] / ll, L[2] / ll]
+              scale = half / 6371008.8
+            } else {
+              C = toWorld(pl.lon, pl.lat, altM)
+              up = [0, 0, 1]
+              fwd = [Math.sin(theta), -Math.cos(theta), 0]
+              right = [Math.cos(theta), Math.sin(theta), 0]
+              L = [0.394, -0.148, 0.907] // fixed sun: east-southeast, high
+              scale = half / (156543.03 * Math.cos(latR) / Math.pow(2, zoom))
+            }
+            // Bank rolls the whole local frame around the forward axis.
+            if (pl.bankRad) {
+              const cb = Math.cos(pl.bankRad), sb = Math.sin(pl.bankRad)
+              const r0 = right, u0 = up
+              right = [r0[0] * cb - u0[0] * sb, r0[1] * cb - u0[1] * sb, r0[2] * cb - u0[2] * sb]
+              up = [u0[0] * cb + r0[0] * sb, u0[1] * cb + r0[1] * sb, u0[2] * cb + r0[2] * sb]
+            }
+            const V = PLANE_MESH.v, N = PLANE_MESH.n
+            for (let i = 0; i < PLANE_MESH.tris; i++) {
+              const nx = N[i * 3], ny = N[i * 3 + 1], nz = N[i * 3 + 2]
+              const Nw: V3 = [
+                right[0] * nx + fwd[0] * ny + up[0] * nz,
+                right[1] * nx + fwd[1] * ny + up[1] * nz,
+                right[2] * nx + fwd[2] * ny + up[2] * nz,
+              ]
+              const shade = 0.5 + 0.5 * Math.max(0, Nw[0] * L[0] + Nw[1] * L[1] + Nw[2] * L[2])
+              for (let k = 0; k < 3; k++) {
+                const vx = V[i * 9 + k * 3], vy = V[i * 9 + k * 3 + 1], vz = V[i * 9 + k * 3 + 2]
+                arr.push(
+                  C[0] + (right[0] * vx + fwd[0] * vy + up[0] * vz) * scale,
+                  C[1] + (right[1] * vx + fwd[1] * vy + up[1] * vz) * scale,
+                  C[2] + (right[2] * vx + fwd[2] * vy + up[2] * vz) * scale,
+                  shade
+                )
+              }
+            }
+          }
+
           const shadowV: number[] = []
           const classV: Record<PlaneClass, number[]> = { prop: [], biz: [], narrow: [], wide: [], heli: [] }
           for (const { pl } of glowables) {
             const altM = Math.min(pl.altFt * 0.3048, altCapM)
             if (shadowsOn) emit(shadowV, pl, 0, 0.92)
-            emit(classV[pl.shape], pl, altM, 1)
+            emitMesh(classV[pl.shape], pl, altM)
           }
 
-          gl.useProgram(quadProg)
-          gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
-          gl.enableVertexAttribArray(qPos)
-          gl.enableVertexAttribArray(qUv)
-          gl.uniformMatrix4fv(qMatrix, false, Array.from(main))
-          gl.activeTexture(gl.TEXTURE0)
-          if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
-          gl.uniform1i(qTex, 0)
-          const drawBatch = (arr: number[], c: [number, number, number], a: number) => {
-            if (!arr.length) return
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW)
+          // Ground shadows first (atlas silhouettes, quad program)…
+          if (shadowV.length) {
+            gl.useProgram(quadProg)
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf)
+            gl.enableVertexAttribArray(qPos)
+            gl.enableVertexAttribArray(qUv)
+            gl.uniformMatrix4fv(qMatrix, false, Array.from(main))
+            gl.activeTexture(gl.TEXTURE0)
+            if (planeTex) gl.bindTexture(gl.TEXTURE_2D, planeTex)
+            gl.uniform1i(qTex, 0)
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shadowV), gl.DYNAMIC_DRAW)
             gl.vertexAttribPointer(qPos, 3, gl.FLOAT, false, 20, 0)
             gl.vertexAttribPointer(qUv, 2, gl.FLOAT, false, 20, 12)
-            gl.uniform4f(qColor, c[0], c[1], c[2], a)
-            gl.drawArrays(gl.TRIANGLES, 0, arr.length / 5)
+            gl.uniform4f(qColor, 0, 0, 0, 0.28)
+            gl.drawArrays(gl.TRIANGLES, 0, shadowV.length / 5)
+            gl.disableVertexAttribArray(qUv)
           }
-          drawBatch(shadowV, [0, 0, 0], 0.28) // ground shadows first, under everything
-          ;(Object.keys(classV) as PlaneClass[]).forEach((cls) => drawBatch(classV[cls], PLANE_CLASS_COLOR[cls], 1))
-          gl.disableVertexAttribArray(qUv)
+          // …then the shaded 3D bodies, one batch per class color.
+          if (meshProg && meshBuf) {
+            gl.useProgram(meshProg)
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshBuf)
+            gl.enableVertexAttribArray(mPos)
+            gl.enableVertexAttribArray(mShade)
+            gl.uniformMatrix4fv(mMatrix, false, Array.from(main))
+            for (const cls of Object.keys(classV) as PlaneClass[]) {
+              const arr = classV[cls]
+              if (!arr.length) continue
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW)
+              gl.vertexAttribPointer(mPos, 3, gl.FLOAT, false, 16, 0)
+              gl.vertexAttribPointer(mShade, 1, gl.FLOAT, false, 16, 12)
+              const c = PLANE_CLASS_COLOR[cls]
+              gl.uniform4f(mColor, c[0], c[1], c[2], 1)
+              gl.drawArrays(gl.TRIANGLES, 0, arr.length / 4)
+            }
+            gl.disableVertexAttribArray(mShade)
+          }
           // Restore the point program state for the satellite pass below.
           gl.useProgram(prog)
           gl.bindBuffer(gl.ARRAY_BUFFER, buf)
