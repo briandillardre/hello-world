@@ -1286,7 +1286,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png'],
         tileSize: 256, maxzoom: 8, attribution: 'NASA Earth Observatory',
       })
-      m.addLayer({ id: 'night-base', type: 'raster', source: 'night-base', layout: { visibility: 'none' } })
+      // brightness-min lift: a night photo of Earth is BLACK land on BLACK
+      // ocean — at globe zoom that's an invisible planet against space, only
+      // city-light patches floating ("not showing the globe", Aug 12). The
+      // floor keeps the sphere reading as a dim disc everywhere.
+      m.addLayer({ id: 'night-base', type: 'raster', source: 'night-base', layout: { visibility: 'none' }, paint: { 'raster-brightness-min': 0.09 } })
 
       // ── Aviation charts (FAA's own public tile services — public-domain
       // data, no key). EXPERIMENTAL (Brian, Aug 10): likely ports to a

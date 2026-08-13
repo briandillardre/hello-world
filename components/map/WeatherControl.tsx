@@ -77,9 +77,11 @@ interface WeatherControlProps {
 }
 
 function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
+  // ON = full amber track (Brian, Aug 12: "make it more obvious when a layer
+  // is turned on") — unmissable against the navy panel; teal was too subtle.
   return (
-    <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (on && !disabled ? 'bg-teal/40' : 'bg-navy-700') + (disabled ? ' opacity-50' : '')}>
-      <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (on && !disabled ? 'left-[18px]' : 'left-0.5')} />
+    <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (on && !disabled ? 'bg-amber' : 'bg-navy-700') + (disabled ? ' opacity-50' : '')}>
+      <span className={'absolute top-0.5 w-4 h-4 rounded-full transition-all ' + (on && !disabled ? 'left-[18px] bg-[#1a1100]' : 'left-0.5 bg-ink')} />
     </span>
   )
 }
