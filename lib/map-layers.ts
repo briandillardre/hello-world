@@ -95,6 +95,11 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // row in the Show-on-map group beside the asset types. Its state was never
   // in the overlays record (dedicated cfg.zones field), so saved views and
   // last-session snapshots are unaffected.)
+  // ── The money layers (Aug 12 brainstorm — "where is my money and my day") ──
+  { id: 'burnmap', label: 'Burn Map', group: 'site', status: 'live', isLive: true, hint: 'zones shade by today’s spend vs budget · live $ chips tick as machines run · needs cost rates on assets' },
+  { id: 'idledollars', label: 'Idle $ rings', group: 'site', status: 'live', hint: 'parked machines grow a ring of accruing ownership cost · needs $/day on assets' },
+  { id: 'nightwatch', label: 'Night Watch', group: 'site', status: 'live', hint: 'where the fleet sleeps · teal = tucked in a yard/site · amber = out in the open' },
+  { id: 'closures', label: 'Road closures', group: 'site', status: 'live', isLive: true, hint: 'SCDOT incidents, closures & work zones · tap a cone' },
   { id: 'alertpins', label: 'Alert pins', group: 'site', status: 'live', isLive: true, hint: 'where alerts fired · follows the timeline: Live shows today, replays reveal pins as the scrubber passes them' },
   { id: 'fieldops', label: 'Field activity', group: 'site', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
   { id: 'traffic', label: 'Traffic', group: 'site', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
@@ -106,6 +111,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'siteplans', label: 'Scaled plans', group: 'site', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
 
   // ── Weather ───────────────────────────────────────────────────────────────
+  { id: 'pourcast', label: 'Pour planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad concrete/crane day — rain ≥60%, gusts ≥25, or ≤35°F' },
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays · ⚡ real satellite-detected strikes ride on top (live only, ~8km precision)' },
   { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
   { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },

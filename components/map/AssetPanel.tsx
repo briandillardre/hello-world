@@ -310,6 +310,9 @@ function AssetDetails({
           </div>
         )
       )}
+      {/* Custody trail — who carried this tag, when (Aug 12 wow-pack):
+          ends the weekly "who had it last" argument. */}
+      {asset.type === 'tool' && <ToolCustody assetId={asset.id} />}
       {/* On board — BLE tools CONFIRMED riding this truck right now (fresh
           Bluetooth sighting). Tags not heard in ~25 min are dropped/left
           somewhere — they don't show here at all; each renders on the map at
@@ -702,6 +705,40 @@ function StatTile({ icon, label, value }: { icon: ReactNode; label: string; valu
       <div>
         <p className="text-xs text-faint">{label}</p>
         <p className="text-sm font-semibold text-ink">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/** Custody trail for a BLE tool — the pairing episodes from
+ *  /api/tool-custody, newest first ("who had it last", Aug 12). Renders
+ *  nothing until data lands, or when the tag has no history. */
+function ToolCustody({ assetId }: { assetId: string }) {
+  const [eps, setEps] = useState<{ carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean }[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    setEps(null)
+    fetch(`/api/tool-custody?assetId=${assetId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { episodes?: { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean }[] } | null) => {
+        if (alive) setEps(j?.episodes ?? [])
+      })
+      .catch(() => { if (alive) setEps([]) })
+    return () => { alive = false }
+  }, [assetId])
+  if (!eps || eps.length === 0) return null
+  const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return (
+    <div className="bg-navy-800 rounded-lg px-3 py-2.5">
+      <p className="font-mono text-[9px] uppercase tracking-wider text-faint mb-1.5">Custody · last 30 days</p>
+      <div className="space-y-1">
+        {eps.slice(0, 6).map((e, i) => (
+          <div key={i} className="flex items-center gap-2 text-[12px]">
+            <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (e.open ? 'bg-teal' : 'bg-navy-600')} />
+            <span className="text-ink font-semibold truncate flex-1">{e.carrierName}</span>
+            <span className="text-faint font-mono text-[10.5px] flex-none">{e.open ? `${fmt(e.startMs)} → now` : `${fmt(e.startMs)}–${e.endMs ? fmt(e.endMs) : '?'}`}</span>
+          </div>
+        ))}
       </div>
     </div>
   )

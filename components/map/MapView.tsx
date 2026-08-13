@@ -145,6 +145,10 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
           // Travel direction for the arrow marker style (null → arrow points N).
           heading: a.location!.heading ?? 0,
+          // Wow-pack marker data: wrench badges + idle-dollar rings.
+          maint: (a.maintOverdue ?? 0) + (a.openWorkOrders ?? 0),
+          idleDays: a.idleDays ?? -1,
+          dailyCost: a.daily_cost ?? 0,
           // Three glance-states: moving (fresh fix + speed), idle (device awake
           // and reporting — trackers sleep minutes after ignition-off, so fresh
           // data ≈ powered up), off (stale — asleep/parked).
@@ -3600,6 +3604,250 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => { cancelled = true }
   }, [mapReady, overlaysOn.fieldops])
 
+  // ══ Aug 12 wow-pack: "where is my money and my day" ══════════════════════
+
+  // Wrench badges — always on: any machine with overdue service or an open
+  // work order wears a small 🛠 at its shoulder. Not a layer row; it's state
+  // the marker should never hide.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || m.getLayer('wrench-badge') || !m.getSource('assets')) return
+    m.addLayer({
+      id: 'wrench-badge', type: 'symbol', source: 'assets',
+      filter: ['all', ['!', ['has', 'point_count']], ['>', ['get', 'maint'], 0]],
+      layout: { 'text-field': '🛠', 'text-size': 11, 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true },
+    })
+  }, [mapReady])
+
+  // Shared caches for the Flyover briefing card — filled by the burn and
+  // pourcast effects below, topped up on demand at flyover takeoff.
+  const burnDataRef = useRef<Map<string, { spentToday: number; hoursToday: number; rateCoverage: string }>>(new Map())
+  const pourDataRef = useRef<Map<string, { date: string; reason: string } | null>>(new Map())
+
+  // Burn Map — zones shade by today's spend vs budget, with live $ chips.
+  // LIVE-ONLY by the timeline-truth rule: these numbers are "right now".
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.burnmap && !pbActive
+    if (!m.getSource('burn')) {
+      m.addSource('burn', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'burn-fill', type: 'fill', source: 'burn',
+        paint: {
+          'fill-color': ['case', ['<', ['get', 'pct'], 0], '#3b82f6',
+            ['interpolate', ['linear'], ['get', 'pct'], 0.5, '#22c55e', 0.85, '#ff9e16', 1.0, '#ef4444']],
+          'fill-opacity': 0.22,
+        },
+      }, beforeId)
+      m.addLayer({
+        id: 'burn-chip', type: 'symbol', source: 'burn', minzoom: 8,
+        layout: {
+          'text-field': ['get', 'chip'], 'text-size': 11.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top', 'text-offset': [0, 0.6], 'text-allow-overlap': true,
+        },
+        paint: { 'text-color': ['case', ['<', ['get', 'pct'], 0], '#7dd3fc', ['<', ['get', 'pct'], 0.85], '#4ade80', '#fca5a5'], 'text-halo-color': '#001016', 'text-halo-width': 2 },
+      }, beforeId)
+    }
+    const setVis = (v: boolean) => ['burn-fill', 'burn-chip'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none'))
+    setVis(on)
+    if (!on) return
+    let alive = true
+    const paint = (zones: { id: string; spentToday: number; hoursToday: number; budget: number | null; spentTotal: number; rateCoverage: string }[]) => {
+      const byId = new Map(zones.map((z) => [z.id, z]))
+      burnDataRef.current = new Map(zones.map((z) => [z.id, z]))
+      const feats: GeoJSON.Feature[] = []
+      for (const g of geofences) {
+        if (fenceKind(g) !== 'site') continue
+        const z = byId.get(g.id)
+        if (!z) continue
+        const pct = z.budget && z.budget > 0 ? z.spentTotal / z.budget : -1
+        const chip = z.rateCoverage === 'none'
+          ? `${g.name} · set rates →`
+          : `${g.name} · $${Math.round(z.spentToday).toLocaleString()} today${pct >= 0 ? ` · ${Math.round(pct * 100)}%` : ''}`
+        feats.push({ type: 'Feature', geometry: g.geometry, properties: { pct, chip } })
+      }
+      ;(m.getSource('burn') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: feats })
+    }
+    const poll = () => fetch('/api/zone-burn')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`burn ${r.status}`))))
+      .then((j: { zones?: Parameters<typeof paint>[0] }) => {
+        if (!alive || !j.zones) return
+        paint(j.zones)
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'burnmap', at: Date.now() } }))
+      })
+      .catch((e) => window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'burnmap', msg: e instanceof Error ? e.message : 'burn feed down' } })))
+    poll()
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 60_000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [mapReady, overlaysOn.burnmap, pbActive, geofences])
+
+  // Idle-dollar rings — parked machines grow a red ring with the ownership
+  // cost they've accrued sitting still. Data rides the assets source.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !m.getSource('assets')) return
+    const on = !!overlaysOn.idledollars && !pbActive
+    if (!m.getLayer('idle-ring')) {
+      const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']]
+      m.addLayer({
+        id: 'idle-ring', type: 'circle', source: 'assets', filter: idleFilter,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'idleDays'], 2, 14, 30, 30],
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': '#ef4444', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.85,
+        },
+      })
+      m.addLayer({
+        id: 'idle-label', type: 'symbol', source: 'assets', filter: idleFilter, minzoom: 10,
+        layout: {
+          'text-field': ['concat', '$', ['to-string', ['round', ['*', ['get', 'idleDays'], ['get', 'dailyCost']]]], ' · ', ['to-string', ['get', 'idleDays']], 'd idle'],
+          'text-size': 10, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top', 'text-offset': [0, 2.0], 'text-optional': true,
+        },
+        paint: { 'text-color': '#fca5a5', 'text-halo-color': '#001016', 'text-halo-width': 2 },
+      })
+    }
+    ;['idle-ring', 'idle-label'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'))
+  }, [mapReady, overlaysOn.idledollars, pbActive])
+
+  // Night Watch — where the fleet sleeps: teal halo + 🔒 tucked inside a
+  // yard/site/boundary zone, amber halo + ⚠ out in the open. Current truth
+  // only (hidden during replays).
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.nightwatch && !pbActive
+    if (!m.getSource('nightwatch')) {
+      m.addSource('nightwatch', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'nightwatch-halo', type: 'circle', source: 'nightwatch',
+        paint: {
+          'circle-radius': 17, 'circle-blur': 0.5,
+          'circle-color': ['case', ['get', 'ok'], '#2dd4bf', '#ff9e16'],
+          'circle-opacity': 0.4,
+        },
+      })
+      m.addLayer({
+        id: 'nightwatch-mark', type: 'symbol', source: 'nightwatch', minzoom: 9,
+        layout: { 'text-field': ['case', ['get', 'ok'], '🔒', '⚠️'], 'text-size': 11, 'text-offset': [1.3, -1.1], 'text-allow-overlap': true },
+      })
+    }
+    const setVis = (v: boolean) => ['nightwatch-halo', 'nightwatch-mark'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none'))
+    setVis(on)
+    if (!on) return
+    // Point-in-polygon (ray cast) against sleep-worthy zones.
+    const inside = (lng: number, lat: number, ring: number[][]) => {
+      let ok = false
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i], [xj, yj] = ring[j]
+        if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) ok = !ok
+      }
+      return ok
+    }
+    const beds = geofences.filter((g) => ['yard', 'site', 'boundary'].includes(fenceKind(g)))
+    const feats: GeoJSON.Feature[] = []
+    for (const a of assets) {
+      if (a.type === 'tool' || a.type === 'personnel' || !a.location) continue
+      const age = Date.now() - new Date(a.location.timestamp).getTime()
+      const moving = age < 15 * 60_000 && (a.location.speed ?? 0) > 2
+      if (moving) continue
+      const tucked = beds.some((g) => inside(a.location!.lng, a.location!.lat, g.geometry.coordinates[0] as number[][]))
+      feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [a.location.lng, a.location.lat] }, properties: { ok: tucked } })
+    }
+    ;(m.getSource('nightwatch') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: feats })
+  }, [mapReady, overlaysOn.nightwatch, pbActive, assets, geofences])
+
+  // Road closures — SCDOT cones, tap for the story.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.closures
+    if (!m.getSource('closures')) {
+      m.addSource('closures', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'closures-icon', type: 'symbol', source: 'closures',
+        layout: { 'text-field': '🚧', 'text-size': 15, 'text-allow-overlap': true },
+      })
+      m.on('click', 'closures-icon', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#ff9e16">🚧 ${String(p.road ?? p.kind ?? 'Closure').replace(/</g, '&lt;')}</div><div style="color:#9fb6cc;white-space:normal">${String(p.desc ?? '').replace(/</g, '&lt;')}</div></div>`)
+          .addTo(m)
+      })
+    }
+    if (m.getLayer('closures-icon')) m.setLayoutProperty('closures-icon', 'visibility', on ? 'visible' : 'none')
+    if (!on) return
+    let alive = true
+    const poll = () => {
+      const b = m.getBounds()
+      fetch(`/api/road-closures?w=${b.getWest().toFixed(2)}&s=${b.getSouth().toFixed(2)}&e=${b.getEast().toFixed(2)}&n=${b.getNorth().toFixed(2)}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`closures ${r.status}`))))
+        .then((j: { closures?: { lat: number; lng: number; kind?: string; road?: string; desc?: string }[] }) => {
+          if (!alive) return
+          ;(m.getSource('closures') as maplibregl.GeoJSONSource | undefined)?.setData({
+            type: 'FeatureCollection',
+            features: (j.closures ?? []).map((c) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [c.lng, c.lat] }, properties: { kind: c.kind ?? '', road: c.road ?? '', desc: c.desc ?? '' } })),
+          })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'closures', at: Date.now() } }))
+        })
+        .catch((e) => window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'closures', msg: e instanceof Error ? e.message : 'feed down' } })))
+    }
+    poll()
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') poll() }, 5 * 60_000)
+    return () => { alive = false; clearInterval(iv) }
+  }, [mapReady, overlaysOn.closures])
+
+  // Pour planner — each active site flags its next bad concrete/crane day.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.pourcast
+    if (!m.getSource('pourcast')) {
+      m.addSource('pourcast', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'pourcast-chip', type: 'symbol', source: 'pourcast', minzoom: 8,
+        layout: {
+          'text-field': ['get', 'chip'], 'text-size': 11,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'bottom', 'text-offset': [0, -1.6], 'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ff9e16', 'text-halo-color': '#001016', 'text-halo-width': 2 },
+      })
+    }
+    if (m.getLayer('pourcast-chip')) m.setLayoutProperty('pourcast-chip', 'visibility', on ? 'visible' : 'none')
+    if (!on) return
+    let alive = true
+    fetch('/api/zone-pourcast')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`pourcast ${r.status}`))))
+      .then((j: { zones?: { id: string; nextBad: { date: string; reason: string } | null }[] }) => {
+        if (!alive || !j.zones) return
+        const byId = new Map(j.zones.map((z) => [z.id, z]))
+        for (const z of j.zones) pourDataRef.current.set(z.id, z.nextBad)
+        const feats: GeoJSON.Feature[] = []
+        for (const g of geofences) {
+          if (fenceKind(g) !== 'site') continue
+          const z = byId.get(g.id)
+          if (!z) continue
+          const ring = g.geometry.coordinates[0] as number[][]
+          const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length
+          const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
+          const chip = z.nextBad
+            ? `⛈ ${new Date(z.nextBad.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short' })} — ${z.nextBad.reason}`
+            : '☀ 5 days clear'
+          feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [cx, cy] }, properties: { chip } })
+        }
+        ;(m.getSource('pourcast') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: feats })
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'pourcast', at: Date.now() } }))
+      })
+      .catch((e) => window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'pourcast', msg: e instanceof Error ? e.message : 'forecast down' } })))
+    return () => { alive = false }
+  }, [mapReady, overlaysOn.pourcast, geofences])
+
   // ── Airspace 3D — the sectional's upside-down cake, extruded for real
   // (Brian, Aug 10). FAA AIS publishes every Class B/C/D polygon WITH its
   // charted floor/ceiling; each shelf becomes a translucent fill-extrusion
@@ -4498,6 +4746,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const [flying, setFlying] = useState(false)
   const flyingRef = useRef(false)
   flyingRef.current = flying
+  // Briefing card shown while the flyover dwells at a site zone (Aug 12):
+  // name + today's burn + the next bad pour day. (Data refs live up by the
+  // burn/pourcast effects, which keep them fresh whenever those layers run.)
+  const [flyCard, setFlyCard] = useState<{ name: string; burn?: string; pour?: string } | null>(null)
   const [flySpeed, setFlySpeed] = useState(1)
   const flySpeedRef = useRef(1)
   flySpeedRef.current = flySpeed
@@ -4506,6 +4758,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     cancelAnimationFrame(flyRaf.current)
     flyingRef.current = false
     setFlying(false)
+    setFlyCard(null)
     map.current?.easeTo({ pitch: threeDRef.current || terrain3dRef.current ? 55 : 0, duration: 600 })
   }, [])
   stopFlyoverRef.current = stopFlyover
@@ -4515,10 +4768,35 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (flyingRef.current) { stopFlyover(); return }
     stopSpin()
     if (followIdRef.current) handleFollowRef.current(null)
-    const pts = assetsRef.current
+    const pts: { lng: number; lat: number; zone?: { id: string; name: string } }[] = assetsRef.current
       .filter((a) => a.location)
       .map((a) => ({ lng: a.location!.lng, lat: a.location!.lat }))
+    // Site zones join the flight plan — the dwell there shows a briefing card.
+    for (const g of geofencesRef.current ?? []) {
+      if (fenceKind(g) !== 'site') continue
+      const ring = g.geometry.coordinates[0] as number[][]
+      if (!ring?.length) continue
+      pts.push({
+        lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
+        lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+        zone: { id: g.id, name: g.name },
+      })
+    }
     if (!pts.length) return
+    // Top up the card data at takeoff (cheap, cached server-side) — the
+    // flyover shouldn't depend on the burn/pourcast layers being toggled on.
+    if (!isMock) {
+      if (burnDataRef.current.size === 0) {
+        fetch('/api/zone-burn').then((r) => (r.ok ? r.json() : null)).then((j: { zones?: { id: string; spentToday: number; hoursToday: number; rateCoverage: string }[] } | null) => {
+          for (const z of j?.zones ?? []) burnDataRef.current.set(z.id, z)
+        }).catch(() => { /* card just shows less */ })
+      }
+      if (pourDataRef.current.size === 0) {
+        fetch('/api/zone-pourcast').then((r) => (r.ok ? r.json() : null)).then((j: { zones?: { id: string; nextBad: { date: string; reason: string } | null }[] } | null) => {
+          for (const z of j?.zones ?? []) pourDataRef.current.set(z.id, z.nextBad)
+        }).catch(() => { /* card just shows less */ })
+      }
+    }
     // Nearest-neighbor route from where the camera is — a flight plan,
     // not a random zigzag across the county.
     const cosLat = Math.cos((m.getCenter().lat * Math.PI) / 180) ** 2
@@ -4542,6 +4820,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (!flyingRef.current) return
       i = (i + 1) % order.length
       const p = order[i]
+      // Zone stop → briefing card; asset stop → clear it.
+      if (p.zone) {
+        const b = burnDataRef.current.get(p.zone.id)
+        const nb = pourDataRef.current.get(p.zone.id)
+        setFlyCard({
+          name: p.zone.name,
+          burn: b ? (b.rateCoverage === 'none' ? undefined : `$${Math.round(b.spentToday).toLocaleString()} today · ${b.hoursToday.toFixed(1)} h`) : undefined,
+          pour: nb ? `next bad day: ${new Date(nb.date + 'T12:00:00').toLocaleDateString([], { weekday: 'short' })} (${nb.reason})` : nb === null ? '5 days clear' : undefined,
+        })
+      } else setFlyCard(null)
       m.flyTo({
         center: [p.lng, p.lat],
         zoom: 14.6,                          // "small plane" altitude — site-readable
@@ -4814,6 +5102,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           (swipe the button left to open, right to tuck away; tap chip =
           pause/resume, swipe chip right = tuck). LIVE loop only: in replay
           the radar follows the scrubber and the timeline is the clock. */}
+      {/* Flyover briefing card — shows while the tour dwells at a site zone:
+          the morning-briefing numbers, delivered from the cockpit (Aug 12). */}
+      {flying && flyCard && (
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 ht-toast-in rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel px-4 py-2.5 text-center pointer-events-none max-w-[86vw]">
+          <p className="font-display font-bold text-[14px] text-ink truncate">{flyCard.name}</p>
+          {flyCard.burn && <p className="font-mono text-[11.5px] text-amber tabular-nums">{flyCard.burn}</p>}
+          {flyCard.pour && <p className="font-mono text-[10.5px] text-faint">{flyCard.pour}</p>}
+        </div>
+      )}
       {radarOn && !pbActive && radarChipOpen && radarChipPos && (
         <button
           type="button"
@@ -4954,7 +5251,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.

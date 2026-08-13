@@ -175,6 +175,11 @@ export interface AssetLocation {
 
 export interface AssetWithLocation extends Asset {
   location: AssetLocation | null
+  /** Map-marker enrichment (additive, from /api/map-data — Aug 12 wow-pack):
+   *  overdue maintenance count, open work orders, whole days parked. */
+  maintOverdue?: number
+  openWorkOrders?: number
+  idleDays?: number | null
 }
 
 export interface Geofence {
