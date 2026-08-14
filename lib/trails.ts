@@ -433,8 +433,16 @@ export function customSpanDays(fromMs: number, toMs: number): number {
 
 /** Date/time at scrub position t within a custom From/To window. */
 export function customScrubLabel(fromMs: number, toMs: number, t: number, tz?: string): string {
+  // Day-of-week + date + time, dot-separated — "Tue · Aug 12 · 3:45 PM".
+  // The year only appears when it isn't this year (clean > complete;
+  // Brian, Aug 12: "time as well as date and day-of on the longer frames").
   const ms = fromMs + t * (toMs - fromMs)
-  return new Date(ms).toLocaleString([], { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const d = new Date(ms)
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  const day = d.toLocaleDateString([], { timeZone: tz, weekday: 'short' })
+  const date = d.toLocaleDateString([], { timeZone: tz, month: 'short', day: 'numeric', ...(sameYear ? {} : { year: 'numeric' }) })
+  const time = d.toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+  return `${day} · ${date} · ${time}`
 }
 
 /** Short tick label at scrub position t within a custom window. */
@@ -460,7 +468,9 @@ export function scrubLabel(range: TimeRange, t: number): string {
   if (range === 'today') return 'Today · ' + clockLabel(t)
   if (range === 'yesterday') return 'Yesterday · ' + clockLabel(t)
   const ms = Date.now() - (1 - t) * rangeSpanDays(range) * 86_400_000
-  return new Date(ms).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  const d = new Date(ms)
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
+    ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
 /** Human label for the scrubber position within a range. */
