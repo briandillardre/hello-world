@@ -119,7 +119,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
       }
       // Pre-056 fallback: per-asset uniform sampling in the DB (039), then
       // the parallel paged raw sweep (pre-039).
-      const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
+      const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history_json', {
         p_from: fromIso, p_to: new Date().toISOString(), p_max: 40_000,
       })
       if (!rpcErr && Array.isArray(sampled)) {

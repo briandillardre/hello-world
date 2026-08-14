@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   // windows lose nothing. Bigger windows simply stride wider, evenly across
   // the whole span — never newest-biased.
   const budget = spanDays <= 2 ? 30_000 : spanDays <= 31 ? 20_000 : 14_000
-  const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history', {
+  const { data: sampled, error: rpcErr } = await supabase.rpc('sampled_history_json', {
     p_from: new Date(fromMs).toISOString(),
     p_to: new Date(toMs).toISOString(),
     p_max: budget,
@@ -66,11 +66,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       // `source`/`count` are diagnostics: if a range ever looks wrong again,
       // the Network tab says which path served it and how much it returned.
-      { rows: sampled, truncated: false, source: 'sampled', count: sampled.length },
+      // truncated is HONEST now — a payload at the budget ceiling engages the
+      // client's snapshot-splice repair instead of claiming completeness.
+      { rows: sampled, truncated: sampled.length >= budget, source: 'sampled', count: sampled.length },
       { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
     )
   }
-  // Pre-039 DB (function missing) — fall through to the legacy paged fetch.
+  // Pre-063 DB (json wrapper missing) — fall through to the legacy paged fetch.
   const rpcNote = rpcErr?.message ?? 'sampled_history unavailable'
 
   // Fetch NEWEST-first in pages: Supabase's API "Max Rows" setting silently
@@ -119,7 +121,7 @@ export async function GET(req: NextRequest) {
     // sub-30-minute tail ships zero visually meaningful points but still made
     // Postgres window-scan the range on every poll (DB drag, Jul 21).
     if (Number.isFinite(oldestMs) && oldestMs - fromMs > 30 * 60_000) {
-      const { data: older, error: rpcErr } = await supabase.rpc('sampled_history', {
+      const { data: older, error: rpcErr } = await supabase.rpc('sampled_history_json', {
         p_from: new Date(fromMs).toISOString(),
         p_to: new Date(oldestMs).toISOString(),
         p_max: BACKFILL_CAP,

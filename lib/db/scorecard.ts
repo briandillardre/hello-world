@@ -58,7 +58,7 @@ export async function getFleetScorecard(
   type Row = ScoreRow & { asset_id: string }
   let rows: Row[] = []
   let sampled = false
-  const { data: viaRpc, error: rpcErr } = await supabase.rpc('sampled_history', {
+  const { data: viaRpc, error: rpcErr } = await supabase.rpc('sampled_history_json', {
     p_from: new Date(window.from).toISOString(),
     p_to: new Date(window.to).toISOString(),
     p_max: budget,
