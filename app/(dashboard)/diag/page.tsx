@@ -45,7 +45,7 @@ export default async function DiagPage() {
     mapDataErr = err instanceof Error ? err.message : 'query failed'
   }
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
       <div>
         <h1 className="font-display font-bold text-xl text-ink">Layer diagnostics</h1>
         <p className="text-[12.5px] text-faint">
@@ -56,14 +56,14 @@ export default async function DiagPage() {
 
       {/* The map page's own asset query, verbatim — if rows here have fresh
           locations but the map shows no dots, the bug is client rendering. */}
-      <div className="rounded-xl border border-navy-800 bg-navy-900 p-4">
+      <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 overflow-x-auto">
         <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">
           Map data (what the live map is fed)
         </p>
         {mapDataErr ? (
           <p className="text-xs text-alert font-mono">{mapDataErr}</p>
         ) : (
-          <table className="w-full text-[11.5px] font-mono">
+          <table className="w-full text-[11.5px] font-mono min-w-[560px]">
             <thead>
               <tr className="text-faint text-left">
                 <th className="pr-2 font-normal">asset</th>
@@ -93,6 +93,6 @@ export default async function DiagPage() {
       </div>
 
       <LayerDiag />
-    </div>
+    </div></div>
   )
 }

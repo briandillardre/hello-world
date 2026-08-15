@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 /** The company's forward P&L — behind login on purpose (these are the books). */
 export default function ModelPage() {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
       <div>
         <h1 className="font-display font-bold text-xl text-ink">Operating model</h1>
         <p className="text-[12.5px] text-faint">
@@ -14,6 +14,6 @@ export default function ModelPage() {
         </p>
       </div>
       <OperatingModel />
-    </div>
+    </div></div>
   )
 }

@@ -117,7 +117,7 @@ export function OperatingModel() {
         const x = xOf(e.i)
         ctx.strokeStyle = e.teal ? TEAL : 'rgba(45,212,191,.5)'
         ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h - pad.b); ctx.stroke(); ctx.setLineDash([])
-        ctx.save(); ctx.translate(x + 4, pad.t + 4); ctx.rotate(Math.PI / 2)
+        ctx.save(); ctx.translate(Math.min(x + 4, w - 12), pad.t + 4); ctx.rotate(Math.PI / 2)
         ctx.fillStyle = e.teal ? TEAL : '#9fb6cc'; ctx.textAlign = 'left'
         ctx.fillText(e.label, 0, 0); ctx.restore()
       }
@@ -194,7 +194,11 @@ export function OperatingModel() {
 
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Revenue vs total cost — hires are the jumps</p>
-        <canvas ref={mainRef} className="w-full h-[320px]" />
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px]">
+            <canvas ref={mainRef} className="w-full h-[320px]" />
+          </div>
+        </div>
         <div className="flex gap-4 flex-wrap text-[11.5px] text-muted pt-2">
           <span><i className="inline-block w-3.5 h-[3px] rounded align-middle mr-1.5" style={{ background: AMBER }} />MRR</span>
           <span><i className="inline-block w-3.5 h-[3px] rounded align-middle mr-1.5" style={{ background: RED }} />Total monthly cost</span>

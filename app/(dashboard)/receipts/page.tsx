@@ -51,7 +51,7 @@ export default async function ReceiptsPage() {
   const [chase, perms] = await Promise.all([getInstantChaseSetup(), getMyPermissions()])
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
       <div>
         <h1 className="font-display font-bold text-xl text-ink">Receipts</h1>
         <p className="text-[12.5px] text-faint">
@@ -72,6 +72,6 @@ export default async function ReceiptsPage() {
           <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
         </>
       )}
-    </div>
+    </div></div>
   )
 }

@@ -16,7 +16,7 @@ export default async function QrSheetPage() {
   const assets = (await getQrAssets(companyId)).filter((a) => a.qr_slug)
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20 print:h-auto print:overflow-visible print:pb-0"><div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-start justify-between gap-3 mb-4 print:hidden">
         <div>
           <h1 className="font-display font-bold text-xl text-ink">QR stickers</h1>
@@ -54,6 +54,6 @@ export default async function QrSheetPage() {
           ))}
         </div>
       )}
-    </div>
+    </div></div>
   )
 }

@@ -158,8 +158,8 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
           </div>
 
           {/* hours table — who, where, in/out, hours */}
-          <div className="rounded-xl border border-navy-800 overflow-hidden mb-3">
-            <table className="w-full text-[12.5px]">
+          <div className="rounded-xl border border-navy-800 overflow-x-auto mb-3">
+            <table className="w-full text-[12.5px] min-w-[440px]">
               <thead>
                 <tr className="bg-navy-900 text-faint font-mono text-[10px] uppercase tracking-[0.1em]">
                   <th className="text-left px-3 py-1.5">Who</th>

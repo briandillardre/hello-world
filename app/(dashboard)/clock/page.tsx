@@ -25,13 +25,13 @@ export default async function ClockPage() {
     .map((g) => ({ id: g.id, name: g.name }))
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6 space-y-4">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-md mx-auto px-4 py-6 space-y-4">
       <div>
         <h1 className="font-display font-bold text-xl text-ink">Time clock</h1>
         <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
       </div>
       <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock}
         form={resolveLogForm(logFormRaw).filter((it) => it.enabled)} />
-    </div>
+    </div></div>
   )
 }

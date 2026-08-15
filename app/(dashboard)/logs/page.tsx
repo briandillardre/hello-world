@@ -36,7 +36,7 @@ export default async function LogsPage() {
   for (const g of geofences) zoneNames[g.id] = g.name
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+    <div className="h-full overflow-auto pb-[54px] md:pb-20"><div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="font-display font-bold text-xl text-ink">Daily logs</h1>
@@ -69,6 +69,6 @@ export default async function LogsPage() {
       ) : (
         <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} pairDecisions={pairDecisions} />
       )}
-    </div>
+    </div></div>
   )
 }

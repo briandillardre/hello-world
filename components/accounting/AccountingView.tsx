@@ -252,7 +252,7 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
 
       {/* Demo invoice preview modal */}
       <Dialog open={!!preview} onOpenChange={(o) => !o && setPreview(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Equipment Usage Invoice</DialogTitle>
           </DialogHeader>
@@ -290,7 +290,7 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
 
       {/* REAL invoice flow: period → tracked-usage draft → create in QBO */}
       <Dialog open={!!fence} onOpenChange={(o) => !o && closeReal()}>
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Invoice · {fence?.name}</DialogTitle>
           </DialogHeader>
