@@ -10,7 +10,7 @@
  * Non-interactive; pauses off-screen; honors reduced motion.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
@@ -48,10 +48,22 @@ function pointAt(t: number): { p: [number, number]; bearing: number } {
   return { p, bearing: (Math.atan2(dx, dy) * 180) / Math.PI }
 }
 
+/** Can this browser actually give us a GL context? Some corporate/older
+ *  Android WebViews can't (VENDOR=0xffff in the wild, Aug 15) — the hero
+ *  must degrade to a poster, never a broken black canvas. */
+function webglOk(): boolean {
+  try {
+    const c = document.createElement('canvas')
+    return !!(c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'))
+  } catch { return false }
+}
+
 export function RealCinema() {
   const el = useRef<HTMLDivElement>(null)
+  const [dead, setDead] = useState(false)
 
   useEffect(() => {
+    if (!webglOk()) { setDead(true); return }
     let disposed = false
     let raf = 0
     let map: import('maplibre-gl').Map | null = null
@@ -68,6 +80,7 @@ export function RealCinema() {
       if (disposed || !el.current) return
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+      try {
       map = new maplibregl.Map({
         container: el.current,
         style: {
@@ -81,6 +94,7 @@ export function RealCinema() {
         center: SITE, zoom: 15.6, pitch: 55, bearing: -20,
         interactive: false, attributionControl: false,
       })
+      } catch { setDead(true); return }
       // Top-right keeps Esri credit clear of the CTA and the site label.
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-right')
 
@@ -163,6 +177,28 @@ export function RealCinema() {
 
     return () => { disposed = true; cancelAnimationFrame(raf); io.disconnect(); map?.remove() }
   }, [])
+
+  // Poster fallback: same frame, same story, zero GL — a clean pitch
+  // instead of a black box for browsers that can't do WebGL.
+  if (dead) {
+    return (
+      <div className="relative rounded-2xl overflow-hidden border border-navy-800 shadow-panel">
+        <div className="aspect-[16/8] w-full bg-gradient-to-br from-[#0a2438] via-[#04121f] to-[#001523] grid place-items-center">
+          <div className="text-center px-6">
+            <p className="font-mono text-[11px] text-teal mb-1">● LIVE MAP</p>
+            <p className="font-display font-bold text-ink text-lg leading-snug">Your whole fleet on one live map</p>
+            <p className="text-[12.5px] text-muted mt-1">This browser can&apos;t show the 3D preview — the real thing is one tap away.</p>
+          </div>
+        </div>
+        <Link
+          href="/live"
+          className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[13px] px-3.5 py-2 hover:bg-amber-600 transition-colors"
+        >
+          Open the live demo <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-navy-800 shadow-panel">
