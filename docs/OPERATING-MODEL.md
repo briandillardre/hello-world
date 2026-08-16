@@ -99,3 +99,15 @@ balance never below +$1.4k. $25k → $21.3k MRR / 231. $50k → $30.5k MRR /
 331 and ~$118k of operating cash ON TOP of the injection returned by end
 2028. The lever is strong because a $250 customer pays back in ~4 months
 at 60-80% gross margin, then compounds for the rest of the horizon.
+
+## Pricing levers (added Aug 13 2026, on the /model page)
+
+Three sliders, pure arithmetic, NO invented demand elasticity (that
+judgment stays human; the cushion is $12/machine is still under half of
+Tenna list + $500 setup): price/machine ($6–12), Operate platform-fee
+attach rate (0–60% of customers × $49/mo), one-time install fee ($0–200
+per new customer). Reference combos, base growth: $10/machine + 30%
+Operate + $150 install with $50k injected → breakeven Aug 2026, $40.6k
+MRR end 2028, ~$318k operating cash on top of the injection. Same levers
+with $0 injected → breakeven Feb 2027, $16.1k MRR, +$55.8k cash.
+Founder-lock on the first 25 not modeled (rounding-level).

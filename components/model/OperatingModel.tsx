@@ -34,9 +34,20 @@ interface Ev { i: number; label: string; teal?: boolean }
 const CAC = 250
 const MAX_EXTRA_ADS = 2000
 
-function run(k: number, inject = 0): { rows: Row[]; events: Ev[] } {
+// Pricing levers (Brian, Aug 13): price per machine, Operate platform-fee
+// attach rate, one-time install fee. Pure arithmetic — NO invented demand
+// elasticity. The judgment call ("does demand hold at $10?") stays human;
+// the cushion is that $12/machine is still under half of Tenna's list.
+// Founder-lock on the first 25 is ignored here (rounding-level effect).
+interface Levers { priceM: number; attach: number; fee: number }
+const BASE_LEVERS: Levers = { priceM: 8, attach: 0, fee: 0 }
+// ARPU 92 = 8 machines × $8 + $28 of tags — keep the tag half constant.
+const TAGS_ARPU = ARPU - MACHINES * 8
+
+function run(k: number, inject = 0, lv: Levers = BASE_LEVERS): { rows: Row[]; events: Ev[] } {
   const rows: Row[] = []
   const events: Ev[] = []
+  const arpu = MACHINES * lv.priceM + TAGS_ARPU + lv.attach * 49
   let cust = 0, cash = inject, carry = 0, pool = inject
   let h1 = false, h2 = false, h3 = false, be = false
   for (let i = 0; i < 30; i++) {
@@ -48,7 +59,7 @@ function run(k: number, inject = 0): { rows: Row[]; events: Ev[] } {
     const add = Math.floor(carry)
     carry -= add
     cust += add
-    const mrr = cust * ARPU
+    const mrr = cust * arpu
     const sims = cust * MACHINES
     const cogs = sims * 1.75 + (sims > 10 ? 140 : 0) + 25 + (sims > 500 ? 60 : sims > 200 ? 25 : 10)
       + 20 + (sims > 500 ? 40 : sims > 200 ? 10 : 0) + (cust > 0 ? 25 + (sims > 800 ? 70 : 0) : 0) + 10 + sims * 0.02
@@ -61,7 +72,8 @@ function run(k: number, inject = 0): { rows: Row[]; events: Ev[] } {
     if (cust >= 90) { payroll += 5200; wc += 200; if (!h2) { h2 = true; events.push({ i, label: 'H2 ops tech (FT)' }) } }
     if (cust >= 110) { payroll += 1200; if (!h3) { h3 = true; events.push({ i, label: 'H3 admin (PT)' }) } }
     const total = cogs + software + insurance + professional + marketing + payroll + wc
-    const net = mrr - total
+    // One-time install fee rides the month's NEW customers only.
+    const net = mrr - total + add * lv.fee
     cash += net
     if (!be && net > 0 && cust > 5) { be = true; events.push({ i, label: 'breakeven', teal: true }) }
     rows.push({ y, m, cust, mrr, cogs, payroll: payroll + wc, total, net, cash })
@@ -103,11 +115,15 @@ function grid(ctx: CanvasRenderingContext2D, w: number, h: number, pad: { l: num
 export function OperatingModel() {
   const [k, setK] = useState(1)
   const [inject, setInject] = useState(0)
+  const [priceM, setPriceM] = useState(8)
+  const [attach, setAttach] = useState(0)
+  const [fee, setFee] = useState(0)
+  const lv = { priceM, attach, fee }
   const mainRef = useRef<HTMLCanvasElement>(null)
   const cashRef = useRef<HTMLCanvasElement>(null)
 
   const draw = useCallback(() => {
-    const { rows, events } = run(k, inject)
+    const { rows, events } = run(k, inject, { priceM, attach, fee })
     const pad = { l: 46, r: 10, t: 14, b: 26 }
 
     const cvM = mainRef.current
@@ -158,7 +174,7 @@ export function OperatingModel() {
       ctx.textAlign = 'center'; ctx.fillStyle = FAINT
       rows.forEach((r, i) => { if (r.m === 1 || i === 0) ctx.fillText(MONTHS[r.m - 1] + ' ' + String(r.y).slice(2), xOf(i), h - 6) })
     }
-  }, [k, inject])
+  }, [k, inject, priceM, attach, fee])
 
   useEffect(() => {
     draw()
@@ -166,7 +182,7 @@ export function OperatingModel() {
     return () => window.removeEventListener('resize', draw)
   }, [draw])
 
-  const { rows } = run(k, inject)
+  const { rows } = run(k, inject, lv)
   const last = rows[rows.length - 1]
   const be = rows.find((r) => r.net > 0 && r.cust > 5)
   const minCash = Math.min(...rows.map((r) => r.cash))
@@ -211,6 +227,34 @@ export function OperatingModel() {
           deploys as extra ads, ${MAX_EXTRA_ADS.toLocaleString()}/mo max · ~${CAC}/customer · hires still wait for their customer triggers, they just arrive sooner
         </p>
       )}
+
+      {/* Pricing levers — pure math, no invented elasticity. The market
+          check lives in the footnote, the judgment stays with the owner. */}
+      <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Pricing levers</p>
+          <p className="font-mono text-[11px] text-amber tabular-nums">ARPU ${Math.round(MACHINES * priceM + TAGS_ARPU + attach * 49)}/mo</p>
+        </div>
+        {[
+          { label: `$${priceM}/machine`, min: 6, max: 12, step: 0.5, val: priceM, set: setPriceM, hint: 'list $8 · Tenna $15–25' },
+          { label: `${Math.round(attach * 100)}% on Operate (+$49/mo)`, min: 0, max: 0.6, step: 0.05, val: attach, set: setAttach, hint: 'field ops tier attach' },
+          { label: `$${fee} install fee`, min: 0, max: 200, step: 25, val: fee, set: setFee, hint: 'one-time, per new customer' },
+        ].map((s) => (
+          <div key={s.hint} className="flex items-center gap-3">
+            <span className="w-[168px] flex-none text-[12px] font-semibold text-ink tabular-nums">{s.label}</span>
+            <input
+              type="range" min={s.min} max={s.max} step={s.step} value={s.val}
+              onChange={(e) => s.set(Number(e.target.value))}
+              className="flex-1 h-1 accent-amber cursor-pointer"
+            />
+            <span className="hidden sm:block w-[150px] flex-none font-mono text-[10px] text-faint text-right">{s.hint}</span>
+          </div>
+        ))}
+        <p className="font-mono text-[10px] text-faint leading-relaxed">
+          assumes demand holds — the cushion is that $12/machine is still under half of Tenna&apos;s list + their $500 setup.
+          Founder-lock on the first 25 not modeled (rounding). Pricing-page changes still follow the sync rule.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
