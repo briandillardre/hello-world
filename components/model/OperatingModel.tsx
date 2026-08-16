@@ -25,15 +25,26 @@ function addsFor(y: number, m: number): number {
 interface Row { y: number; m: number; cust: number; mrr: number; cogs: number; payroll: number; total: number; net: number; cash: number }
 interface Ev { i: number; label: string; teal?: boolean }
 
-function run(k: number): { rows: Row[]; events: Ev[] } {
+// Cash-injection lever (Brian, Aug 13: "an option to add cash to make this
+// quicker"). Injected capital deploys as EXTRA ad spend, capped at $2k/mo
+// (Upstate ad inventory + install capacity are real limits), buying
+// customers at $250 CAC — deliberately worse than the model's own implied
+// ~$215 (its ad budgets ÷ its adds). Hires still wait for their customer
+// triggers, so they arrive EARLIER but never outrun revenue.
+const CAC = 250
+const MAX_EXTRA_ADS = 2000
+
+function run(k: number, inject = 0): { rows: Row[]; events: Ev[] } {
   const rows: Row[] = []
   const events: Ev[] = []
-  let cust = 0, cash = 0, carry = 0
+  let cust = 0, cash = inject, carry = 0, pool = inject
   let h1 = false, h2 = false, h3 = false, be = false
   for (let i = 0; i < 30; i++) {
     const y = 2026 + Math.floor((6 + i) / 12)
     const m = ((6 + i) % 12) + 1
-    carry += addsFor(y, m) * k
+    const extraAds = Math.min(MAX_EXTRA_ADS, pool)
+    pool -= extraAds
+    carry += addsFor(y, m) * k + extraAds / CAC
     const add = Math.floor(carry)
     carry -= add
     cust += add
@@ -44,7 +55,7 @@ function run(k: number): { rows: Row[]; events: Ev[] } {
     const software = 120 + cust * 1.5
     const insurance = cust > 0 ? 175 + Math.max(0, mrr - 2000) * 0.02 : 0
     const professional = 150 + (mrr > 5000 ? 250 : 100)
-    const marketing = y === 2026 ? (m >= 10 ? 300 : 0) : y === 2027 ? 750 : 1500
+    const marketing = (y === 2026 ? (m >= 10 ? 300 : 0) : y === 2027 ? 750 : 1500) + extraAds
     let payroll = 0, wc = 0
     if (cust >= 30 && cust < 90) { payroll += 1800; wc += 150; if (!h1) { h1 = true; events.push({ i, label: 'H1 installer (PT)' }) } }
     if (cust >= 90) { payroll += 5200; wc += 200; if (!h2) { h2 = true; events.push({ i, label: 'H2 ops tech (FT)' }) } }
@@ -91,11 +102,12 @@ function grid(ctx: CanvasRenderingContext2D, w: number, h: number, pad: { l: num
 
 export function OperatingModel() {
   const [k, setK] = useState(1)
+  const [inject, setInject] = useState(0)
   const mainRef = useRef<HTMLCanvasElement>(null)
   const cashRef = useRef<HTMLCanvasElement>(null)
 
   const draw = useCallback(() => {
-    const { rows, events } = run(k)
+    const { rows, events } = run(k, inject)
     const pad = { l: 46, r: 10, t: 14, b: 26 }
 
     const cvM = mainRef.current
@@ -146,7 +158,7 @@ export function OperatingModel() {
       ctx.textAlign = 'center'; ctx.fillStyle = FAINT
       rows.forEach((r, i) => { if (r.m === 1 || i === 0) ctx.fillText(MONTHS[r.m - 1] + ' ' + String(r.y).slice(2), xOf(i), h - 6) })
     }
-  }, [k])
+  }, [k, inject])
 
   useEffect(() => {
     draw()
@@ -154,7 +166,7 @@ export function OperatingModel() {
     return () => window.removeEventListener('resize', draw)
   }, [draw])
 
-  const { rows } = run(k)
+  const { rows } = run(k, inject)
   const last = rows[rows.length - 1]
   const be = rows.find((r) => r.net > 0 && r.cust > 5)
   const minCash = Math.min(...rows.map((r) => r.cash))
@@ -177,13 +189,36 @@ export function OperatingModel() {
         ))}
       </div>
 
+      {/* Cash injection — your money buying speed. Chips mirror the scenario
+          row; teal = capital, amber = growth assumption. */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Add cash</span>
+        {[[0, 'None'], [10_000, '$10k'], [25_000, '$25k'], [50_000, '$50k']].map(([v, label]) => (
+          <button
+            key={String(v)}
+            onClick={() => setInject(v as number)}
+            className={
+              'rounded-full border px-4 py-1.5 text-[12.5px] font-semibold transition ' +
+              (inject === v ? 'bg-teal/15 text-teal border-teal/40' : 'bg-navy-900 text-muted border-navy-700 hover:text-ink')
+            }
+          >
+            {label as string}
+          </button>
+        ))}
+      </div>
+      {inject > 0 && (
+        <p className="font-mono text-[10.5px] text-faint -mt-2">
+          deploys as extra ads, ${MAX_EXTRA_ADS.toLocaleString()}/mo max · ~${CAC}/customer · hires still wait for their customer triggers, they just arrive sooner
+        </p>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
           [`$${Math.round(last.mrr / 100) / 10}k`, 'MRR end 2028'],
           [String(last.cust), 'customers end 2028'],
           [be ? `${MONTHS[be.m - 1]} ${be.y}` : '—', 'first breakeven'],
-          [fmt(minCash), 'max drawdown'],
-          [fmt(last.cash), 'cum. cash end 2028'],
+          [fmt(minCash), inject > 0 ? 'lowest cash balance' : 'max drawdown'],
+          [fmt(last.cash), inject > 0 ? `cash end 2028 (incl. $${inject / 1000}k in)` : 'cum. cash end 2028'],
         ].map(([b, s]) => (
           <div key={s} className="rounded-xl border border-navy-700 bg-navy-950 px-3.5 py-2.5">
             <p className="font-display font-bold text-lg text-ink tabular-nums">{b}</p>

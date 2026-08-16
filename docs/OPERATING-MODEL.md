@@ -86,3 +86,16 @@ you'll see on the chart.
 
 *Revisit at each phase gate (per CLAUDE.md) and refresh actuals monthly once
 Founding 25 billing starts.*
+
+## Cash-injection lever (added Aug 13 2026, on the /model page)
+
+Owner ask: "an option to add cash to make this quicker." Injected capital
+deploys as EXTRA ad spend capped at $2,000/mo (ad inventory + install
+capacity are real limits), buying customers at a $250 CAC — deliberately
+worse than the model's own implied ~$215. Hires keep their customer-count
+triggers; they arrive earlier but never outrun revenue. Base-case results:
+$10k in → breakeven Dec 2026, $15.7k MRR / 171 customers end 2028, cash
+balance never below +$1.4k. $25k → $21.3k MRR / 231. $50k → $30.5k MRR /
+331 and ~$118k of operating cash ON TOP of the injection returned by end
+2028. The lever is strong because a $250 customer pays back in ~4 months
+at 60-80% gross margin, then compounds for the rest of the horizon.
