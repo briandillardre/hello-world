@@ -27,14 +27,23 @@ export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendEmail(to: string, subject: string, html: string, text?: string): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY
   if (!key) return { ok: false, error: 'not configured' }
   try {
+    // Always include a plain-text part — HTML-only mail with one big button
+    // is a classic Promotions-tab signal (an invite landed there Aug 17).
+    const fallbackText = text ?? html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|h1|h2|h3|div)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+      .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: process.env.EMAIL_FROM || FROM_DEFAULT, to: [to], subject, html }),
+      body: JSON.stringify({ from: process.env.EMAIL_FROM || FROM_DEFAULT, to: [to], subject, html, text: fallbackText }),
       signal: AbortSignal.timeout(10_000),
     })
     if (!res.ok) {

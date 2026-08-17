@@ -17,6 +17,22 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // /auth/callback lands here with ?error=… when an OAuth code exchange
+  // fails — it was silently dropped before (a failed Google sign-in looked
+  // like nothing happened; a real invitee hit this Aug 17). Surface it once.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const err = params.get('error')
+    if (err) {
+      setError(
+        /code verifier|invalid request/i.test(err)
+          ? 'That sign-in got interrupted (this happens inside the Gmail app’s built-in browser). Open hammertrack.ai in Chrome or Safari and try again.'
+          : err
+      )
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
+
   // The auth cookie adapters (lib/supabase + lib/supabase-server) read this
   // pref to shape session lifetime — written on change so the social-login
   // buttons honor the checkbox too, not just the password form.

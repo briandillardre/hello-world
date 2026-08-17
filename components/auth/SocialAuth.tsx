@@ -31,6 +31,26 @@ const PROVIDERS = [
   },
 ]
 
+/** Google blocks OAuth inside embedded in-app browsers (Gmail, Facebook,
+ *  Instagram WebViews) with a dead-end "403: disallowed_useragent" screen —
+ *  a real invitee hit this from a Gmail-opened invite (Aug 17). Detect the
+ *  common ones so we can steer people to a real browser instead. */
+function inAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return /\bwv\b|FBAN|FBAV|Instagram|Line\/|GSA\/|Gmail/i.test(ua) ||
+    (/Android/i.test(ua) && /Version\/[\d.]+ Chrome\/[\d.]+ Mobile/i.test(ua) && !/Safari/i.test(ua))
+}
+
+/** Raw Supabase provider errors read as gibberish to a contractor — map the
+ *  known ones to instructions a person can actually follow. */
+function friendly(message: string): string {
+  if (/not enabled|unsupported provider/i.test(message)) {
+    return 'Google sign-in isn’t switched on yet — use your email and a password above instead.'
+  }
+  return message
+}
+
 export function SocialAuth({ next = '/map' }: { next?: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -41,11 +61,16 @@ export function SocialAuth({ next = '/map' }: { next?: string }) {
 
   const signIn = async (provider: 'google') => {
     setBusy(provider); setError('')
+    if (inAppBrowser()) {
+      setError('Google blocks sign-in inside this app’s built-in browser. Tap ⋮ (or the share button) and choose “Open in Chrome/Safari”, then try again — or use email + password above.')
+      setBusy(null)
+      return
+    }
     try {
       const { createClient } = await import('@/lib/supabase')
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
       const { error } = await createClient().auth.signInWithOAuth({ provider, options: { redirectTo } })
-      if (error) { setError(error.message); setBusy(null) }
+      if (error) { setError(friendly(error.message)); setBusy(null) }
       // On success the browser redirects to the provider — no further work here.
     } catch {
       setError('Could not start sign-in. Please try again.')

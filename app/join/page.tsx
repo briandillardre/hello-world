@@ -50,8 +50,16 @@ function JoinInner() {
       const { createClient } = await import('@/lib/supabase')
       const supabase = createClient()
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } })
         if (error) { setError(error.message); setBusy(false); return }
+        // Confirm-email ON: signUp succeeds but returns no session, so the
+        // accept step can't run yet. Say exactly what to do next instead of
+        // the old confusing "sign in first" dead end.
+        if (!data.session) {
+          setError('Almost there — we emailed you a confirmation link. Tap it, then open this invite link again to finish joining.')
+          setBusy(false)
+          return
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) { setError(error.message); setBusy(false); return }
