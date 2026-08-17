@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
@@ -87,11 +87,12 @@ function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
 }
 
 const GROUP_ICON: Record<GroupId, typeof Hexagon> = {
-  site: Hexagon,
-  weather: CloudRain,
-  water: Waves,
   basemap: MapIcon,
-  advanced: Satellite,
+  jobs: HardHat,
+  weather: CloudRain,
+  roads: TrafficCone,
+  land: LandPlot,
+  sky: Sparkles,
 }
 
 // v2: everything defaults collapsed (owner ask Jul 14) — new key so stored
@@ -158,7 +159,8 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
   )
 }
 
-/** Flat, always-open section heading — the panel scrolls, sections don't hide. */
+/** Flat, always-open section heading — used by Show on map, which never
+ *  collapses (it's the everyday set, not a deep-layer group). */
 function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; icon?: typeof Hexagon }) {
   const g = gid ? GROUPS.find((x) => x.id === gid) : null
   const Icon = icon ?? (gid ? GROUP_ICON[gid] : Hexagon)
@@ -167,6 +169,36 @@ function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; ico
       <Icon className="h-3 w-3 text-teal flex-none" />
       <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{label ?? g?.label}</span>
     </div>
+  )
+}
+
+/** Collapsible group header (Aug 16 reorg) — chevron + icon + a "N on" count
+ *  badge (teal; amber when a live feed inside the group is failing). Expand
+ *  state is per-session component state only — never persisted. */
+function GroupHeader({ gid, open, count, hasErr, onToggle }: {
+  gid: GroupId
+  open: boolean
+  count: number
+  hasErr: boolean
+  onToggle: () => void
+}) {
+  const g = GROUPS.find((x) => x.id === gid)
+  const Icon = GROUP_ICON[gid]
+  return (
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 hover:bg-navy-900 transition-colors"
+    >
+      <Icon className="h-3 w-3 text-teal flex-none" />
+      <span className="flex-1 min-w-0 truncate text-left font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{g?.label}</span>
+      {count > 0 && (
+        <span className={'flex-none font-mono text-[9px] rounded px-1.5 py-0.5 ' + (hasErr ? 'bg-amber/20 text-amber' : 'bg-teal/20 text-teal')}>
+          {count} on
+        </span>
+      )}
+      <ChevronDown className={'h-3 w-3 text-faint flex-none transition-transform ' + (open ? '' : '-rotate-90')} />
+    </button>
   )
 }
 
@@ -185,10 +217,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     setViewName('')
     setSavingView(false)
   }
-  // ── Panel tabs: Layers (every toggle, flat + scannable) | Views (saved
-  //    looks). Accordions are gone — the redesign references (Jul 31) all show
-  //    their content instead of closed doors; one scroll beats six chevrons.
+  // ── Panel tabs: Layers (grouped toggles) | Views (saved looks). ──────────
   const [tab, setTab] = useState<'layers' | 'views'>('layers')
+  // Collapsible groups (Aug 16 reorg): ALL collapsed on open; expand state is
+  // per-session only — deliberately NOT persisted (fresh panel every visit).
+  const [openGroups, setOpenGroups] = useState<Set<GroupId>>(() => new Set())
+  const toggleGroup = (gid: GroupId) => setOpenGroups((s) => {
+    const next = new Set(s)
+    if (next.has(gid)) next.delete(gid); else next.add(gid)
+    return next
+  })
+  // Search/filter across the registry rows (label + hint, case-insensitive).
+  const [query, setQuery] = useState('')
+  // Basemap strip shows the everyday 6; "More" reveals the specialty set.
+  // Starts expanded when the current basemap IS one of the hidden ones.
+  const [moreBasemaps, setMoreBasemaps] = useState(() => BASEMAPS.slice(6).some((b) => b.id === base))
 
   // ── Feed freshness: layer effects broadcast when they fetch ───────────────
   const [feedAt, setFeedAt] = useState<Record<string, number>>({})
@@ -317,6 +360,26 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     return null
   }
 
+  // ── Derived, all off rowState/isOn — the single gating authority ─────────
+  // A row "counts" only when its parent (requiresLayer) chain is visible too,
+  // so a stranded satswarm=on with satellites off never ghosts a chip/badge.
+  const rowVisible = (d: LayerRowDef) => !d.requiresLayer || isOn(d.requiresLayer)
+  // Every ON registry overlay — feeds the active-now chip row. Registry rows
+  // ONLY: basemap choice, Show-on-map toggles and the 3D switches never
+  // appear here (and "Clear overlays" never touches them).
+  const activeRows = LAYER_ROWS.filter((d) => d.status !== 'coming-soon' && rowVisible(d) && isOn(d.id))
+  const groupCount = (gid: GroupId): number =>
+    gid === 'basemap'
+      ? (threeD ? 1 : 0) + (terrain3d ? 1 : 0)
+      : LAYER_ROWS.filter((d) => d.group === gid && d.status !== 'coming-soon' && rowVisible(d) && isOn(d.id)).length
+  const groupErr = (gid: GroupId): boolean =>
+    LAYER_ROWS.some((d) => d.group === gid && isOn(d.id) && !!feedErr[d.id])
+  // Search matches label + hint, case-insensitive. Dedicated Show-on-map rows
+  // (Vehicles/Zones/Labels…) are NOT searchable — registry layers only.
+  const q = query.trim().toLowerCase()
+  const matchedRows = q
+    ? LAYER_ROWS.filter((d) => rowVisible(d) && (d.label.toLowerCase().includes(q) || (d.hint ?? '').toLowerCase().includes(q)))
+    : []
 
   // Collapsed: a compact pill — just Layers + what's-on status icons (the
   // weather readout moved to the top bar, Jul 21). Search rides to its right.
@@ -345,12 +408,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     )
   }
 
-  const rowsFor = (gid: GroupId, nightFx = false) =>
+  const rowsFor = (gid: GroupId) =>
     LAYER_ROWS
-      .filter((d) => d.group === gid && !!d.nightFx === nightFx)
+      .filter((d) => d.group === gid)
       // A sub-layer (e.g. the satellite swarm) stays hidden until its parent
       // layer is on — no orphan toggle sitting there doing nothing.
-      .filter((d) => !d.requiresLayer || isOn(d.requiresLayer))
+      .filter(rowVisible)
       .map((d) => (
       <LayerRow
         key={d.id}
@@ -480,15 +543,88 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </div>
       )}
 
-      {/* ── Layers tab: flat, scannable sections — Basemap first (owner ask,
-             Aug 5), New zone right under it, then Show-on-map toggles,
-             then Site · Weather · 3D · Water & Terrain · Advanced. ── */}
+      {/* ── Layers tab (Aug 16 reorg): search → active-now chips → Map look
+             (basemap strip + 3D) → Show on map → My jobsites · Weather ·
+             Roads & travel · Land check · Sky & extras, all collapsible. ── */}
       {tab === 'layers' && (<>
-      <SectionLabel gid="basemap" />
-      {/* One swipe row of real tile thumbnails — the most-used control no
-          longer lives behind a door. */}
+
+      {/* Find a layer — filters the registry by label + hint; while typing,
+          the groups flatten to one matched list with group-name prefixes. */}
+      <div className="px-2 pt-2 pb-1">
+        <div className="flex items-center gap-1.5 bg-navy-900 border border-navy-800 rounded-lg px-2 py-1.5">
+          <Search className="h-3 w-3 text-faint flex-none" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a layer…"
+            aria-label="Find a layer"
+            className="flex-1 min-w-0 bg-transparent text-[11px] text-ink placeholder:text-faint outline-none"
+          />
+          {query && (
+            <button onClick={() => setQuery('')} aria-label="Clear layer search" className="grid place-items-center flex-none text-faint hover:text-ink">
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Active now — every ON registry overlay as a chip, × turns it off.
+          Sticky so what's-on stays in sight while the list scrolls. Registry
+          overlays ONLY: basemap, Show-on-map and 3D never appear here. */}
+      {activeRows.length > 0 && (
+        <div className="sticky top-[37px] z-10 flex flex-wrap items-center gap-1 px-2 py-1.5 bg-navy-950/95 backdrop-blur border-b border-navy-800">
+          {activeRows.map((d) => (
+            <span key={d.id} className="flex items-center gap-0.5 rounded-full bg-teal/15 border border-teal/30 pl-2 pr-0.5 py-0.5 font-mono text-[9px] text-teal">
+              {d.label.replace(/^↳ /, '')}
+              <button onClick={() => toggle(d.id)} aria-label={`Turn off ${d.label}`} className="grid place-items-center w-3.5 h-3.5 rounded-full hover:bg-teal/25 transition-colors">
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          {activeRows.length >= 2 && (
+            <button
+              onClick={() => activeRows.forEach((d) => toggle(d.id))}
+              className="rounded-full border border-navy-700 px-2 py-0.5 font-mono text-[9px] text-faint hover:text-ink transition-colors"
+            >
+              Clear overlays
+            </button>
+          )}
+        </div>
+      )}
+
+      {q ? (
+        /* Search active: groups flatten to one matched list with tiny
+           group-name prefixes. Show-on-map rows deliberately excluded. */
+        matchedRows.length === 0 ? (
+          <p className="px-3 py-3 border-t border-navy-800 text-[11px] text-faint">No layers match “{query.trim()}”.</p>
+        ) : (
+          matchedRows.map((d) => (
+            <div key={d.id}>
+              <p className="px-3 pt-1.5 font-mono text-[8px] uppercase tracking-[0.14em] text-faint/70">{GROUPS.find((g) => g.id === d.group)?.label}</p>
+              <LayerRow
+                def={d}
+                on={isOn(d.id)}
+                zoom={zoom}
+                base={base}
+                err={feedErr[d.id]}
+                fresh={d.isLive && isOn(d.id) ? stamp(d.id) : null}
+                opacity={overlayOpacity[d.id] ?? 0.6}
+                onOpacity={onOverlayOpacity ? (v: number) => onOverlayOpacity(d.id, v) : undefined}
+                onToggle={() => toggle(d.id)}
+                extra={rowExtra(d.id)}
+              />
+            </div>
+          ))
+        )
+      ) : (<>
+
+      {/* ── Map look: the basemap thumb strip (everyday 6 + More) and the 3D
+             switches — they change how the map LOOKS, not what's on it. ── */}
+      <GroupHeader gid="basemap" open={openGroups.has('basemap')} count={groupCount('basemap')} hasErr={false} onToggle={() => toggleGroup('basemap')} />
+      {openGroups.has('basemap') && (<>
+      {/* One swipe row of real tile thumbnails. */}
       <div className="flex gap-1.5 px-2 pt-1 pb-2 overflow-x-auto no-scrollbar">
-        {BASEMAPS.map((b) => (
+        {(moreBasemaps ? BASEMAPS : BASEMAPS.slice(0, 6)).map((b) => (
           <button
             key={b.id}
             onClick={() => onBase(b.id)}
@@ -517,9 +653,77 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             </span>
           </button>
         ))}
+        {/* Everyday 6 up front; the specialty set (Plain, B/W, Aubergine,
+            Night, VFR, IFR) lives behind More. */}
+        <button
+          onClick={() => setMoreBasemaps((m) => !m)}
+          className="flex-none w-[54px] h-[54px] rounded-lg border border-navy-700 hover:border-navy-500 bg-navy-900 grid place-items-center transition-all"
+        >
+          <span className="text-[9px] font-semibold text-faint text-center leading-tight">
+            {moreBasemaps ? 'Less' : `+${BASEMAPS.length - 6} More`}
+          </span>
+        </button>
       </div>
       {/* New zone moved to the map's right-side control rail (Aug 6) —
           drawing is a map action, this panel is what-you-see toggles. */}
+      {/* 3D buildings + tilt — layerable on any basemap */}
+      <div className="border-t border-navy-800">
+        <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+          <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+            <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
+          </span>
+          <Toggle on={threeD} />
+        </button>
+        {threeD && (
+          <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+            tilt: right-click + drag on PC · two-finger drag on mobile
+          </p>
+        )}
+      </div>
+      {/* 3D terrain — split from buildings & tilt (Jul 21): the DEM relief
+          is the heavy half, so it's its own opt-in. */}
+      {onTerrain3d && (
+        <div className="border-t border-navy-800">
+          <button onClick={() => onTerrain3d(!terrain3d)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Waves className={'h-4 w-4 ' + (terrain3d ? 'text-teal' : 'text-faint')} /> 3D terrain (real elevation)
+            </span>
+            <Toggle on={terrain3d} />
+          </button>
+          {terrain3d && (
+            <div className="px-3 pb-2 -mt-0.5 space-y-1.5">
+              <p className="font-mono text-[10px] text-teal">
+                mountains rise · measure reads elevation · map renders lighter while this is on
+              </p>
+              {onTerrainExag && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[9px] text-faint flex-none w-16">height ×{(terrainExag ?? 1.3).toFixed(1)}</span>
+                    <input
+                      type="range" min={5} max={40}
+                      value={Math.round((terrainExag ?? 1.3) * 10)}
+                      onChange={(e) => onTerrainExag(Number(e.target.value) / 10)}
+                      className="flex-1 h-1 accent-teal cursor-pointer"
+                      aria-label="Terrain vertical exaggeration"
+                    />
+                    <button
+                      onClick={() => onTerrainExag(1.3)}
+                      className="font-mono text-[9px] text-faint hover:text-ink transition-colors flex-none"
+                      title="Back to natural (×1.3)"
+                    >
+                      reset
+                    </button>
+                  </div>
+                  <p className="font-mono text-[10px] text-faint">
+                    crank it on flat ground — creeks, ditches and grades pop
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      </>)}
 
       {/* ── Show on map — asset types as the same toggle rows as every other
              layer (the old chip grid read as buttons, not switches). ── */}
@@ -597,92 +801,31 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </>
       )}
 
-      <SectionLabel gid="site" />
-      {rowsFor('site')}
-
-      <SectionLabel gid="weather" />
-        {/* Location + home-station readout moved to the TOP BAR dropdown —
-            tap the temperature (owner ask, Aug 5). Only actual layers here. */}
-        {rowsFor('weather')}
-
-      <SectionLabel label="3D" icon={Box} />
-        {/* 3D buildings + tilt — layerable on any basemap */}
-        <div className="border-t border-navy-800">
-          <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
-            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-              <Box className={'h-4 w-4 ' + (threeD ? 'text-teal' : 'text-faint')} /> 3D buildings &amp; tilt
-            </span>
-            <Toggle on={threeD} />
-          </button>
-          {threeD && (
-            <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-              tilt: right-click + drag on PC · two-finger drag on mobile
-            </p>
-          )}
-        </div>
-        {/* 3D terrain — split from buildings & tilt (Jul 21): the DEM relief
-            is the heavy half, so it's its own opt-in. */}
-        {onTerrain3d && (
-          <div className="border-t border-navy-800">
-            <button onClick={() => onTerrain3d(!terrain3d)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
-              <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
-                <Waves className={'h-4 w-4 ' + (terrain3d ? 'text-teal' : 'text-faint')} /> 3D terrain (real elevation)
-              </span>
-              <Toggle on={terrain3d} />
-            </button>
-            {terrain3d && (
-              <div className="px-3 pb-2 -mt-0.5 space-y-1.5">
-                <p className="font-mono text-[10px] text-teal">
-                  mountains rise · measure reads elevation · map renders lighter while this is on
-                </p>
-                {onTerrainExag && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[9px] text-faint flex-none w-16">height ×{(terrainExag ?? 1.3).toFixed(1)}</span>
-                      <input
-                        type="range" min={5} max={40}
-                        value={Math.round((terrainExag ?? 1.3) * 10)}
-                        onChange={(e) => onTerrainExag(Number(e.target.value) / 10)}
-                        className="flex-1 h-1 accent-teal cursor-pointer"
-                        aria-label="Terrain vertical exaggeration"
-                      />
-                      <button
-                        onClick={() => onTerrainExag(1.3)}
-                        className="font-mono text-[9px] text-faint hover:text-ink transition-colors flex-none"
-                        title="Back to natural (×1.3)"
-                      >
-                        reset
-                      </button>
-                    </div>
-                    <p className="font-mono text-[10px] text-faint">
-                      crank it on flat ground — creeks, ditches and grades pop
-                    </p>
-                  </>
-                )}
-              </div>
+      {/* ── The registry groups, in owner order: My jobsites · Weather ·
+             Roads & travel · Land check · Sky & extras. Each header is a
+             collapsible button with a "N on" badge; rowState stays the only
+             gating authority for the rows inside. ── */}
+      {GROUPS.filter((g) => g.id !== 'basemap').map((g) => (
+        <div key={g.id}>
+          <GroupHeader gid={g.id} open={openGroups.has(g.id)} count={groupCount(g.id)} hasErr={groupErr(g.id)} onToggle={() => toggleGroup(g.id)} />
+          {openGroups.has(g.id) && (<>
+            {g.id === 'land' && (
+              <p className="px-3 pt-1 pb-0.5 font-mono text-[10px] text-faint">
+                walk a lot before you bid — owner, flood, wetlands, soils
+              </p>
             )}
-          </div>
-        )}
-
-      <SectionLabel gid="water" />
-      {rowsFor('water')}
-
-      {/* ── Advanced: satellites, aircraft, night effects — the show-off
-             layers at the bottom of the scroll. Earth's real rotation needs
-             no switch: with Satellites & sky on, the globe simply turns with
-             the timeline clock. ── */}
-      <SectionLabel gid="advanced" />
-      {rowsFor('advanced')}
-      {isOn('satellites') && (
-        <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
-          ↳ zoom out to the globe — Earth turns in real time (and with the timeline in replays)
-        </p>
-      )}
-      {/* Night effects — nested; greyed with the reason unless basemap = Dark */}
-      <div className="border-t border-navy-800">
-        <p className="px-3 pt-2 pb-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">Night effects</p>
-        {rowsFor('advanced', true)}
-      </div>
+            {rowsFor(g.id)}
+            {/* Earth's real rotation needs no switch: with Satellites & sky
+                on, the globe simply turns with the timeline clock. */}
+            {g.id === 'sky' && isOn('satellites') && (
+              <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+                ↳ zoom out to the globe — Earth turns in real time (and with the timeline in replays)
+              </p>
+            )}
+          </>)}
+        </div>
+      ))}
+      </>)}
 
       {onResetLayers && (
         <button
