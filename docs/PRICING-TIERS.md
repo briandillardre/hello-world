@@ -55,7 +55,7 @@ hybrid does both jobs:
 
 ## Founding 25 (the offer that fills the funnel)
 
-- **$6/machine + $3/tag, Operate features included, 12-month price lock,
+- **$6/machine + $3/tag, Operate features included, no platform fee, 12-month price lock,
   hardware at cost, month-to-month, cancel anytime.**
 - Positioning: "founder pricing — you're helping me build it, you keep the
   discount for life on assets you've already enrolled."

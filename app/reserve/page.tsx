@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 // all real constraints. No fabricated stock-outs, ever.
 const TERMS = [
   '$6/machine + $3/tool tag per month',
-  'Full Operate feature set included (crews, logs, maintenance, QuickBooks)',
+  'Full Operate feature set included (crews, logs, maintenance, QuickBooks) — no platform fee',
   'Price locked for 12 months',
   'Hardware at cost — no markup, no setup fee',
   'Month-to-month, cancel anytime',

@@ -22,7 +22,7 @@ export async function classifyPoint(lat: number, lng: number): Promise<{ name: s
   let out: { name: string; kind: PoiKind } = { name: 'Stop', kind: 'other' }
   try {
     const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`, {
-      headers: { 'user-agent': 'HammerTrack stops (briandillardre@gmail.com)' },
+      headers: { 'user-agent': 'HammerTrack stops (hello@hammertrack.ai)' },
       signal: AbortSignal.timeout(5000),
     })
     if (r.ok) {
@@ -49,7 +49,7 @@ export async function streetAt(lat: number, lng: number): Promise<string | null>
   let street: string | null = null
   try {
     const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`, {
-      headers: { 'user-agent': 'HammerTrack stops (briandillardre@gmail.com)' },
+      headers: { 'user-agent': 'HammerTrack stops (hello@hammertrack.ai)' },
       signal: AbortSignal.timeout(5000),
     })
     if (r.ok) {

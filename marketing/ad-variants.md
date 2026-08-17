@@ -27,7 +27,7 @@ Target keywords: `tenna alternative`, `equipment gps tracking`, `construction as
 ### Variant C — "tool tracking" intent
 - **Headline 1:** Which Truck Is Your Tool In?
 - **Headline 2:** Bluetooth Tool Tracking Built In
-- **Headline 3:** $3–8/Asset · No Contracts
+- **Headline 3:** Half Tenna’s Price · No Contracts
 - **Description 1:** Tag expensive tools, see which truck or machine they're riding in. Live map.
 - **Description 2:** Everything Tenna does for a fraction of the price. Try it free for 30 days.
 
@@ -51,7 +51,7 @@ Co-branded; revenue-share per activation.
 > construction crews. Put every machine, truck, and tool on one map, and get
 > an instant text if anything moves after hours or leaves the jobsite.
 >
-> - Half the price of Tenna ($3–8/asset/mo), zero setup fees
+> - About half the price of Tenna — $8/machine, $3/tool tag, zero setup fees
 > - Tracks heavy equipment, trucks, AND small tools (Bluetooth)
 > - QuickBooks built in — bill equipment usage to job sites automatically
 >
@@ -94,8 +94,8 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 
 > [First Name] — are you on Tenna or Samsara for fleet tracking?
 >
-> Same live map, same geofence alerts, plus Bluetooth tool tracking and
-> QuickBooks — for $3–8/asset instead of $15–25, and no $500 setup.
+> Same live map, same after-hours zone alerts, plus Bluetooth tool tracking
+> and QuickBooks — at about half the price, and no $500 setup.
 >
 > 30-day free pilot, we ship the trackers. Live demo here: hammertrack.ai/demo
 >

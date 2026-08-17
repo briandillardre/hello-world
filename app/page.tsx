@@ -9,20 +9,20 @@ import { RoiCalculator } from '@/components/marketing/RoiCalculator'
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine, crew & tool is. Right now.',
   description:
-    'Built by a contractor, running on his own fleet. Live GPS + geofences, exact job-site hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. About half the price of Tenna, live in a day.',
+    'Built by a contractor, running on his own fleet. Live GPS + job-site zones, exact hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. About half the price of Tenna, live in a day.',
 }
 
 const AI = [
   {
     icon: ShieldAlert,
     title: 'After-hours watchdog',
-    body: 'Your yard has been quiet since 6 PM. Something moves at 2 AM — your phone knows by 2:09, replay link included.',
+    body: 'Your yard has been quiet since 6 PM. Something moves at 2 AM — your phone knows by 2:09 — then replay the whole route on the map.',
     tag: 'LIVE',
   },
   {
     icon: Wrench,
     title: 'Service that tracks itself',
-    body: 'Real engine hours open the work order before the machine is overdue — not after it is down.',
+    body: 'Real engine hours open the work order the moment service goes overdue — not after the machine is down.',
     tag: 'LIVE',
   },
   {
@@ -41,8 +41,8 @@ const AI = [
 
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, Bluetooth-tagged tools, and crews — live, with full replay of any day.' },
-  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site — with the replay link as evidence.' },
-  { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and geofence-verified daily logs.' },
+  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site — then replay the whole route as evidence.' },
+  { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and zone-verified daily logs.' },
   { icon: Banknote, title: 'Books that keep themselves', body: 'QuickBooks two-way sync, live job cost, and a "snap the receipt?" ping seconds after a company card swipes.' },
   { icon: Wrench, title: 'A shop that stays ahead', body: 'Service intervals from real engine hours auto-open work orders — assign, track parts & labor, done.' },
   { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
@@ -50,7 +50,7 @@ const FEATURES = [
 
 const PRICE = [
   { k: '$0', v: 'setup — Tenna charges $500+' },
-  { k: '~$3–8', v: '/asset/mo — Tenna is $15–25' },
+  { k: '$8 + $3', v: '/machine + /tool tag per mo — Tenna is $15–25/asset' },
   { k: '1 day', v: 'to live — no install crew' },
   { k: 'AI', v: 'included — not an enterprise tier' },
 ]
@@ -73,7 +73,7 @@ export default function HomePage() {
             <span className="text-amber"> right now.</span>
           </h1>
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[58ch] mx-auto">
-            Live GPS and geofences across the fleet, the crews, and the $20-tagged tools.
+            Live GPS and job-site zones across the fleet, the crews, and the $20-tagged tools.
             Exact job-site hours banked automatically. An AI you can ask anything about the
             operation. And when a machine moves at 2 AM, your phone knows in minutes.
           </p>
@@ -129,11 +129,11 @@ export default function HomePage() {
             {[
               {
                 t: '2:07 AM', tone: 'alert' as const, title: 'It starts moving',
-                body: 'The yard geofence has been quiet since 6 PM. A tracked excavator crosses the line doing 14 mph on a trailer.',
+                body: 'The yard zone has been quiet since 6 PM. A tracked excavator crosses the line doing 14 mph on a trailer.',
               },
               {
                 t: '2:09 AM', tone: 'amber' as const, title: 'Your phone buzzes',
-                body: '“THEFT ALERT — Excavator left Yard after hours.” Live pin, direction of travel, and the full replay link, as a text.',
+                body: '“THEFT ALERT — Excavator left Yard after hours.” Live pin and direction of travel as a text — then replay the whole route on the map.',
               },
               {
                 t: '2:31 AM', tone: 'teal' as const, title: 'You call it in with a location',
@@ -224,7 +224,7 @@ export default function HomePage() {
             {[
               { n: '1', icon: Package, title: 'We ship the trackers', body: 'Plug the OBD2 into trucks, drop a GPS on equipment, stick a Bluetooth tag on tools. Crews clock in from their phones.' },
               { n: '2', icon: MapPin, title: 'Everything appears on your map', body: 'Trucks, machines, tools, and people show up live within minutes of powering on — no IT, no setup crew.' },
-              { n: '3', icon: Bell, title: 'It watches and warns', body: 'After-hours theft texts, geofence-verified hours, and live job cost — automatically, the moment something moves.' },
+              { n: '3', icon: Bell, title: 'It watches and warns', body: 'After-hours theft texts, zone-verified hours, and live job cost — automatically, the moment something moves.' },
             ].map(({ n, icon: Icon, title, body }) => (
               <div key={n} className="bg-navy-900 border border-navy-800 rounded-2xl p-6">
                 <div className="flex items-center gap-3 mb-3.5">
@@ -253,7 +253,7 @@ export default function HomePage() {
               {
                 step: '1', name: 'Track', price: '$8/machine · $3/tag', fee: '$0 platform fee',
                 who: '“Just tell me where my stuff is.”',
-                items: ['Live map + full replay', 'After-hours theft alerts', 'Geofenced job sites', 'Utilization reports'],
+                items: ['Live map + full replay', 'After-hours theft alerts', 'Job-site & yard zones', 'Utilization reports'],
                 hot: false,
               },
               {

@@ -245,7 +245,7 @@ export default function DemoCinema() {
       <div className="absolute left-3 right-3 bottom-14 sm:left-4 sm:right-auto sm:max-w-[330px] space-y-2 pointer-events-none">
         {beat === 0 && (
           <StoryCard tone="teal" icon={<MapPin className="h-4 w-4" />} title="Every machine on one live map"
-            body="12 assets on site · geofence armed · AI watching for after-hours movement." />
+            body="12 assets on site · zones armed · AI watching for after-hours movement." />
         )}
         {beat === 1 && (
           <StoryCard tone="amber" icon={<span className="text-[15px] leading-none">🏗️</span>} title="Excavator 320 — working"
@@ -263,7 +263,7 @@ export default function DemoCinema() {
         )}
         {beat === 3 && (
           <StoryCard tone="ok" icon={<CheckCircle2 className="h-4 w-4" />} title="Recovered in 22 minutes"
-            body="Deputies met it at the on-ramp with the live pin. $82,000 machine, back on site by 7 AM." />
+            body="Hand deputies the live pin and the route replay — that's an $82,000 machine coming back, not an insurance claim." />
         )}
       </div>
 

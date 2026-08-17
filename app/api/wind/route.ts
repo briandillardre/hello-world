@@ -90,7 +90,7 @@ async function fetchGfs(): Promise<WindFieldJson | null> {
       const r = await fetch(url, {
         signal: AbortSignal.timeout(15_000),
         redirect: 'follow',
-        headers: { 'user-agent': 'Mozilla/5.0 (compatible; HammerTrack-weather/1.0; briandillardre@gmail.com)' },
+        headers: { 'user-agent': 'Mozilla/5.0 (compatible; HammerTrack-weather/1.0; hello@hammertrack.ai)' },
       })
       if (!r.ok) {
         lastTried.push({ url: url.slice(0, 90), status: r.status, location: r.headers.get('location') ?? undefined })
@@ -126,7 +126,7 @@ const V_VAR = 'v-component_of_wind_height_above_ground'
 async function fetchText(url: string, timeoutMs = 15_000): Promise<string> {
   const r = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
-    headers: { 'user-agent': 'HammerTrack weather (briandillardre@gmail.com)' },
+    headers: { 'user-agent': 'HammerTrack weather (hello@hammertrack.ai)' },
     cache: 'no-store',
   })
   if (!r.ok) throw new Error(`HTTP ${r.status}`)

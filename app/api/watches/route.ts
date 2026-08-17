@@ -24,7 +24,7 @@ interface WatchFeature {
 let cache: { at: number; features: WatchFeature[] } | null = null
 const TTL_MS = 5 * 60_000
 
-const UA = { 'user-agent': 'HammerTrack weather layers (briandillardre@gmail.com)' }
+const UA = { 'user-agent': 'HammerTrack weather layers (hello@hammertrack.ai)' }
 
 /** SPC's KML: <Placemark> per watch; name/description says TORNADO or SEVERE. */
 async function fromSpcKml(): Promise<WatchFeature[] | null> {

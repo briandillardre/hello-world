@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
       try {
         const res = await fetch(c.url, {
           signal: AbortSignal.timeout((c as { timeout?: number }).timeout ?? 8000),
-          headers: { 'user-agent': 'HammerTrack layer diagnostics (briandillardre@gmail.com)' },
+          headers: { 'user-agent': 'HammerTrack layer diagnostics (hello@hammertrack.ai)' },
           cache: 'no-store',
         })
         const buf = await res.arrayBuffer()

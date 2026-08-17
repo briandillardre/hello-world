@@ -37,7 +37,7 @@ const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
   ['Bluetooth tools included', 'Tenna: paid add-on'],
   ['QuickBooks built in', 'Tenna: enterprise only'],
-  ['~$3–8 / asset / mo', 'Tenna: $15–25 / asset / mo'],
+  ['$8/machine + $3/tool tag per mo', 'Tenna: $15–25 / asset / mo'],
 ]
 
 // No personal contact info on the public site (owner ask, Jul 23) — every
@@ -170,7 +170,7 @@ export default function DemoLandingPage() {
             <div className="relative rounded-3xl border-2 border-amber bg-gradient-to-br from-amber/[0.12] to-transparent p-7 sm:p-9">
               <span className="absolute -top-3 left-7 bg-amber text-[#3a2200] font-mono text-[11px] font-bold uppercase tracking-[0.08em] px-3 py-1 rounded-full">Founding 25 · first 25 companies</span>
               <h2 className="font-display font-black text-2xl sm:text-3xl text-ink mt-2">
-                $6/machine + $3/tool tag — <span className="text-amber">crews-and-jobs tier included, no platform fee</span>
+                $6/machine + $3/tool tag — <span className="text-amber">Operate tier (crews &amp; jobs) included, no platform fee</span>
               </h2>
               <p className="text-muted mt-2">Founder pricing locked for 12 months, hardware at cost, month-to-month. You&apos;re helping us build it — you keep the price.</p>
               <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
