@@ -230,8 +230,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // Search/filter across the registry rows (label + hint, case-insensitive).
   const [query, setQuery] = useState('')
   // Basemap strip shows the everyday 6; "More" reveals the specialty set.
-  // Starts expanded when the current basemap IS one of the hidden ones.
-  const [moreBasemaps, setMoreBasemaps] = useState(() => BASEMAPS.slice(6).some((b) => b.id === base))
+  // Derived at RENDER, not snapshotted at mount (ship-check P1): the default
+  // saved view / onApplyView can switch to a specialty basemap after mount,
+  // and the active thumb must never be hidden.
+  const [moreBasemaps, setMoreBasemaps] = useState(false)
+  const specialtyBase = BASEMAPS.slice(6).some((b) => b.id === base)
+  const stripAll = moreBasemaps || specialtyBase
 
   // ── Feed freshness: layer effects broadcast when they fetch ───────────────
   const [feedAt, setFeedAt] = useState<Record<string, number>>({})
@@ -372,8 +376,11 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     gid === 'basemap'
       ? (threeD ? 1 : 0) + (terrain3d ? 1 : 0)
       : LAYER_ROWS.filter((d) => d.group === gid && d.status !== 'coming-soon' && rowVisible(d) && isOn(d.id)).length
+  // Same visibility filters as groupCount/activeRows (ship-check P2): a
+  // hidden or coming-soon row's stale error must never amber-badge a group
+  // whose visible layers are all healthy.
   const groupErr = (gid: GroupId): boolean =>
-    LAYER_ROWS.some((d) => d.group === gid && isOn(d.id) && !!feedErr[d.id])
+    LAYER_ROWS.some((d) => d.group === gid && d.status !== 'coming-soon' && rowVisible(d) && isOn(d.id) && !!feedErr[d.id])
   // Search matches label + hint, case-insensitive. Dedicated Show-on-map rows
   // (Vehicles/Zones/Labels…) are NOT searchable — registry layers only.
   const q = query.trim().toLowerCase()
@@ -458,8 +465,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
 
       {/* Something just toggled on and its feed is still downloading — the
           same thin sweep the timeline uses (one loading language everywhere). */}
+      {/* z-20: the chip row shares this sticky offset at z-10 and would
+          otherwise paint over the sweep exactly while a feed loads. */}
       {pendingFeeds.size > 0 && (
-        <div className="sticky top-[37px] z-10 h-[3px] bg-navy-800 overflow-hidden" aria-label="Loading layers">
+        <div className="sticky top-[37px] z-20 h-[3px] bg-navy-800 overflow-hidden" aria-label="Loading layers">
           <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
         </div>
       )}
@@ -572,19 +581,21 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           Sticky so what's-on stays in sight while the list scrolls. Registry
           overlays ONLY: basemap, Show-on-map and 3D never appear here. */}
       {activeRows.length > 0 && (
-        <div className="sticky top-[37px] z-10 flex flex-wrap items-center gap-1 px-2 py-1.5 bg-navy-950/95 backdrop-blur border-b border-navy-800">
+        <div className="sticky top-[37px] z-10 flex flex-nowrap items-center gap-1 px-2 py-1.5 bg-navy-950/95 backdrop-blur border-b border-navy-800 overflow-x-auto no-scrollbar">
+          {/* The WHOLE chip is the dismiss button (ship-check P2) — a bare
+              14px × was a precision tap for gloved thumbs, with near-misses
+              landing on the neighbor chip. Single-line scroll keeps a stack
+              of overlays from eating the list height. */}
           {activeRows.map((d) => (
-            <span key={d.id} className="flex items-center gap-0.5 rounded-full bg-teal/15 border border-teal/30 pl-2 pr-0.5 py-0.5 font-mono text-[9px] text-teal">
+            <button key={d.id} onClick={() => toggle(d.id)} aria-label={`Turn off ${d.label}`} className="flex flex-none items-center gap-1 rounded-full bg-teal/15 border border-teal/30 pl-2 pr-1.5 py-1 font-mono text-[9px] text-teal hover:bg-teal/25 transition-colors whitespace-nowrap">
               {d.label.replace(/^↳ /, '')}
-              <button onClick={() => toggle(d.id)} aria-label={`Turn off ${d.label}`} className="grid place-items-center w-3.5 h-3.5 rounded-full hover:bg-teal/25 transition-colors">
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
+              <X className="h-2.5 w-2.5 flex-none" />
+            </button>
           ))}
           {activeRows.length >= 2 && (
             <button
               onClick={() => activeRows.forEach((d) => toggle(d.id))}
-              className="rounded-full border border-navy-700 px-2 py-0.5 font-mono text-[9px] text-faint hover:text-ink transition-colors"
+              className="flex-none rounded-full border border-navy-700 px-2 py-1 font-mono text-[9px] text-faint hover:text-ink transition-colors whitespace-nowrap"
             >
               Clear overlays
             </button>
@@ -624,7 +635,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       {openGroups.has('basemap') && (<>
       {/* One swipe row of real tile thumbnails. */}
       <div className="flex gap-1.5 px-2 pt-1 pb-2 overflow-x-auto no-scrollbar">
-        {(moreBasemaps ? BASEMAPS : BASEMAPS.slice(0, 6)).map((b) => (
+        {(stripAll ? BASEMAPS : BASEMAPS.slice(0, 6)).map((b) => (
           <button
             key={b.id}
             onClick={() => onBase(b.id)}
@@ -654,15 +665,19 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           </button>
         ))}
         {/* Everyday 6 up front; the specialty set (Plain, B/W, Aubergine,
-            Night, VFR, IFR) lives behind More. */}
-        <button
-          onClick={() => setMoreBasemaps((m) => !m)}
-          className="flex-none w-[54px] h-[54px] rounded-lg border border-navy-700 hover:border-navy-500 bg-navy-900 grid place-items-center transition-all"
-        >
-          <span className="text-[9px] font-semibold text-faint text-center leading-tight">
-            {moreBasemaps ? 'Less' : `+${BASEMAPS.length - 6} More`}
-          </span>
-        </button>
+            Night, VFR, IFR) lives behind More. While the ACTIVE basemap is a
+            specialty one the strip is force-expanded and the tile hides —
+            collapsing would hide the highlighted thumb. */}
+        {!specialtyBase && (
+          <button
+            onClick={() => setMoreBasemaps((m) => !m)}
+            className="flex-none w-[54px] h-[54px] rounded-lg border border-navy-700 hover:border-navy-500 bg-navy-900 grid place-items-center transition-all"
+          >
+            <span className="text-[9px] font-semibold text-faint text-center leading-tight">
+              {moreBasemaps ? 'Less' : `+${BASEMAPS.length - 6} More`}
+            </span>
+          </button>
+        )}
       </div>
       {/* New zone moved to the map's right-side control rail (Aug 6) —
           drawing is a map action, this panel is what-you-see toggles. */}
