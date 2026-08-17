@@ -13,9 +13,14 @@ export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine & tool is. Right now.',
   description:
     'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. About half the price of Tenna, set up in a day. Start a free pilot.',
+  // Next replaces the root layout's openGraph wholesale (no deep merge) —
+  // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
     title: 'Your $80K excavator just left the jobsite at 2 AM. Would you know?',
     description: 'Free 30-day pilot — we ship the trackers. Live in a day, no install crew.',
+    siteName: 'HammerTrack',
+    type: 'website',
+    url: '/demo',
     images: [{ url: '/brand/og-demo.png', width: 1200, height: 630, alt: 'HammerTrack' }],
   },
   twitter: { card: 'summary_large_image', images: ['/brand/og-demo.png'] },

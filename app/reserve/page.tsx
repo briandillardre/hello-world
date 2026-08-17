@@ -9,9 +9,14 @@ export const metadata: Metadata = {
   title: 'HammerTrack — Reserve a Founding 25 spot',
   description:
     'Founder pricing for 25 companies: $6/machine + $3/tool tag per month, price locked 12 months, hardware at cost, month-to-month. Hardware ships in batches — hold your spot.',
+  // Next replaces the root layout's openGraph wholesale (no deep merge) —
+  // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
     title: 'Founder pricing for 25 companies. Yours if you’re early.',
     description: 'Hardware ships in batches — a refundable deposit holds your spot in line.',
+    siteName: 'HammerTrack',
+    type: 'website',
+    url: '/reserve',
     images: [{ url: '/brand/og-reserve.png', width: 1200, height: 630, alt: 'HammerTrack Founding 25' }],
   },
   twitter: { card: 'summary_large_image', images: ['/brand/og-reserve.png'] },

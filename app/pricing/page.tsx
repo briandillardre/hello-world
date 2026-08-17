@@ -13,9 +13,14 @@ export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
   description:
     'Everything Tenna does — vehicles, equipment, Bluetooth tools — at about half the price, with AI alerts and QuickBooks built in.',
+  // Next replaces the root layout's openGraph wholesale (no deep merge) —
+  // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
     title: 'About half the price of Tenna. $0 setup.',
     description: 'Trucks, machines & Bluetooth tools on one map — hardware at cost, no markup, cancel anytime.',
+    siteName: 'HammerTrack',
+    type: 'website',
+    url: '/pricing',
     images: [{ url: '/brand/og-pricing.png', width: 1200, height: 630, alt: 'HammerTrack pricing' }],
   },
   twitter: { card: 'summary_large_image', images: ['/brand/og-pricing.png'] },
@@ -66,7 +71,9 @@ const TIERS = [
     sub: 'platform priced with you — talk to us · 100 tags included',
     blurb: '“Run the company on it.”',
     cta: 'Talk to us',
-    href: 'mailto:sales@hammertrack.ai?subject=HammerTrack%20Run%20tier',
+    // mailto — rendered as a plain <a>, NOT next/link (app-router Link
+    // preventDefaults external URLs and wedges the router on mailto).
+    href: `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('HammerTrack Run tier')}`,
     highlight: false,
     features: [
       'Everything in Operate',
@@ -175,16 +182,20 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <Link
-                href={(tier as { href?: string }).href ?? '/register'}
-                className={`mt-6 text-center font-display font-bold rounded-xl py-3 transition-colors ${
+              {(() => {
+                const href = (tier as { href?: string }).href ?? '/register'
+                const cls = `mt-6 text-center font-display font-bold rounded-xl py-3 transition-colors ${
                   tier.highlight
                     ? 'bg-amber text-[#1a1100] hover:bg-amber-600'
                     : 'bg-white/[0.04] border border-navy-700 text-ink hover:bg-white/[0.07]'
-                }`}
-              >
-                {tier.cta}
-              </Link>
+                }`
+                // mailto through next/link wedges the app router (it
+                // preventDefaults and suspends waiting for an unload that
+                // never comes) — external schemes get a plain anchor.
+                return href.startsWith('mailto:')
+                  ? <a href={href} className={cls}>{tier.cta}</a>
+                  : <Link href={href} className={cls}>{tier.cta}</Link>
+              })()}
             </div>
           ))}
         </div>
