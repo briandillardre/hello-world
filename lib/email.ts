@@ -38,7 +38,7 @@ export async function sendEmail(to: string, subject: string, html: string, text?
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/(p|h1|h2|h3|div)>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+      .replace(/&nbsp;/g, ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
       .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',

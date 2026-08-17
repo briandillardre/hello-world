@@ -24,10 +24,14 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search)
     const err = params.get('error')
     if (err) {
+      // NEVER render the raw param — it's attacker-controllable free text on
+      // our real domain (?error=Call+this+number… phishing). Known cases get
+      // specific guidance; everything else gets a generic line (sec-check P1).
+      console.warn('auth callback error:', err)
       setError(
         /code verifier|invalid request/i.test(err)
           ? 'That sign-in got interrupted (this happens inside the Gmail app’s built-in browser). Open hammertrack.ai in Chrome or Safari and try again.'
-          : err
+          : 'Sign-in didn’t complete. Please try again, or use your email and password.'
       )
       window.history.replaceState(null, '', window.location.pathname)
     }
