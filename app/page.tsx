@@ -7,22 +7,22 @@ import { RealCinema } from '@/components/marketing/RealCinema'
 import { RoiCalculator } from '@/components/marketing/RoiCalculator'
 
 export const metadata: Metadata = {
-  title: 'HammerTrack — The AI operations platform for construction fleets',
+  title: 'HammerTrack — Know where every truck, machine, crew & tool is. Right now.',
   description:
-    'Know where every truck, machine, crew, and tool is — every second. Live GPS + geofences, exact job-site hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. Half the price of Tenna, live in a day.',
+    'Built by a contractor, running on his own fleet. Live GPS + geofences, exact job-site hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. About half the price of Tenna, live in a day.',
 }
 
 const AI = [
   {
     icon: ShieldAlert,
-    title: 'Anomaly detection',
-    body: "Learns each machine's normal day, then flags the 2 AM move, the off-site drift, the route that's wrong.",
+    title: 'After-hours watchdog',
+    body: 'Your yard has been quiet since 6 PM. Something moves at 2 AM — your phone knows by 2:09, replay link included.',
     tag: 'LIVE',
   },
   {
     icon: Wrench,
-    title: 'Predictive maintenance',
-    body: 'Watches real engine hours and usage to call service before a breakdown costs you a workday.',
+    title: 'Service that tracks itself',
+    body: 'Real engine hours open the work order before the machine is overdue — not after it is down.',
     tag: 'LIVE',
   },
   {
@@ -66,11 +66,11 @@ export default function HomePage() {
             (the REAL map engine below, never a mockup — splash truth rule). */}
         <section className="max-w-3xl mx-auto px-6 pt-14 pb-8 text-center">
           <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-teal font-semibold">
-            The AI operations platform for construction
+            Built by a contractor, running on his own fleet
           </p>
           <h1 className="font-display font-black text-[2.6rem] sm:text-[3.7rem] leading-[1.02] tracking-tight mt-4 text-balance">
             Know where every truck, machine, crew, and tool is —
-            <span className="text-amber"> every second.</span>
+            <span className="text-amber"> right now.</span>
           </h1>
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[58ch] mx-auto">
             Live GPS and geofences across the fleet, the crews, and the $20-tagged tools.
@@ -78,7 +78,7 @@ export default function HomePage() {
             operation. And when a machine moves at 2 AM, your phone knows in minutes.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
-            Half the price of the big platforms · live in a day · from 5 assets to fleets of thousands
+            About half the price of Tenna, with $0 setup · live in a day · from 5 assets up
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
@@ -381,7 +381,7 @@ export default function HomePage() {
                 excavator was.&rdquo;
               </p>
               <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-faint mt-4">
-                — Founder · working contractor, Greenville, South Carolina
+                — Brian, founder · working contractor, Greenville, South Carolina
               </p>
               <p className="text-[14px] text-muted max-w-[52ch] mx-auto mt-5">
                 HammerTrack runs on a working construction company&apos;s own trucks, excavators, and

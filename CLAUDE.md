@@ -31,10 +31,15 @@ Black 'Property Boundary' zone rings the stage. /live shows the real product
 sidebar (locked rows → /register). `isMock` flag checks
 `NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
 
-## Pricing sync rule (Brian, Aug 5)
+## Pricing sync rule (Brian, Aug 5; /demo added Aug 17)
 Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
-/pricing, the splash ladder + hero microcopy, docs/PRICING-TIERS.md — in the
-SAME commit. Run tier platform price stays UNPUBLISHED ("talk to us").
+/pricing, the splash ladder + hero microcopy, **/demo's Founding-25 card**,
+docs/PRICING-TIERS.md — in the SAME commit. (/demo drifted to a dead $99-flat
+offer for 12 days because it wasn't on this list.) Run tier platform price
+stays UNPUBLISHED ("talk to us") — and never publish a typical-customer Run
+TOTAL either; the fee leaks by arithmetic. The standard discount claim on
+every surface is "about half the price of Tenna, $0 setup" — no other
+percentages or per-asset teaser numbers in ads or pages.
 
 ## Splash truth rule (Brian, Aug 5)
 Nothing on the splash/marketing pages may depict or claim functionality that

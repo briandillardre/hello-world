@@ -12,14 +12,20 @@ import { BRAND_EMAIL_SALES } from '@/lib/brand'
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine & tool is. Right now.',
   description:
-    'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. Half the price of the big telematics platforms, set up in a day. Start a free pilot.',
+    'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. About half the price of Tenna, set up in a day. Start a free pilot.',
+  openGraph: {
+    title: 'Your $80K excavator just left the jobsite at 2 AM. Would you know?',
+    description: 'Free 30-day pilot — we ship the trackers. Live in a day, no install crew.',
+    images: [{ url: '/brand/og-demo.png', width: 1200, height: 630, alt: 'HammerTrack' }],
+  },
+  twitter: { card: 'summary_large_image', images: ['/brand/og-demo.png'] },
 }
 
 const FEATURES = [
-  { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live, clustered, mobile-first.' },
+  { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live on one map, on your phone.' },
   { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Get a text the moment a machine moves outside work hours or leaves the jobsite.' },
   { icon: Wrench, title: 'Maintenance built in', body: 'Service schedules by engine hours, mileage, or days. Never miss an oil change again.' },
-  { icon: Calculator, title: 'QuickBooks native', body: 'Auto-allocate equipment cost to job sites and bill usage. Your CFO will love you.' },
+  { icon: Calculator, title: 'QuickBooks built in', body: 'Equipment cost lands on the right job by itself. Your bookkeeper gets their Fridays back.' },
 ]
 
 const VS_TENNA = [
@@ -44,8 +50,10 @@ export default function DemoLandingPage() {
         {/* Hero */}
         <section className="max-w-6xl mx-auto px-6 pt-8 pb-12 grid md:grid-cols-2 gap-10 items-center">
           <div>
+            {/* Real production alert, labeled as such (splash truth rule) —
+                after-hours alerts verified live on our own fleet Aug 2026. */}
             <span className="inline-flex items-center gap-2 bg-alert/10 text-alert border border-alert/30 px-3 py-1 rounded-full text-xs font-bold font-mono">
-              <span className="w-[7px] h-[7px] rounded-full bg-alert animate-pulse-ring" /> THEFT ALERT — Skid Steer #3 moved at 2:14 AM
+              <span className="w-[7px] h-[7px] rounded-full bg-alert animate-pulse-ring" /> REAL ALERT, OUR OWN TRUCK — after-hours movement, 6:33 AM
             </span>
             <h1 className="font-display font-black text-[2.4rem] md:text-5xl leading-[1.04] mt-5 text-balance">
               Your $80K excavator just left the jobsite at 2 AM.
@@ -53,8 +61,8 @@ export default function DemoLandingPage() {
             </h1>
             <p className="text-muted mt-5 text-lg">
               HammerTrack puts every truck, machine, and power tool on one live map — and it alerts your phone
-              the second something moves when it shouldn&apos;t. Half the price of the big telematics
-              platforms. Set up in a day, no install crew.
+              the second something moves when it shouldn&apos;t. About half the price of Tenna.
+              Set up in a day, no install crew.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-8">
               <Link
@@ -91,9 +99,9 @@ export default function DemoLandingPage() {
             </Reveal>
             <Reveal delay={120}>
               <p className="font-display font-black text-2xl md:text-4xl text-teal">
-                <CountUp value={60} suffix="%" />
+                <CountUp value={50} prefix="~" suffix="%" />
               </p>
-              <p className="text-xs md:text-sm text-faint mt-1">cheaper than Tenna, no setup fee</p>
+              <p className="text-xs md:text-sm text-faint mt-1">about half the price of Tenna — $0 setup</p>
             </Reveal>
             <Reveal delay={240}>
               <p className="font-display font-black text-2xl md:text-4xl text-ink">
@@ -155,19 +163,20 @@ export default function DemoLandingPage() {
         <section className="max-w-3xl mx-auto px-6 py-8">
           <Reveal>
             <div className="relative rounded-3xl border-2 border-amber bg-gradient-to-br from-amber/[0.12] to-transparent p-7 sm:p-9">
-              <span className="absolute -top-3 left-7 bg-amber text-[#3a2200] font-mono text-[11px] font-bold uppercase tracking-[0.08em] px-3 py-1 rounded-full">Founding 25 · limited</span>
+              <span className="absolute -top-3 left-7 bg-amber text-[#3a2200] font-mono text-[11px] font-bold uppercase tracking-[0.08em] px-3 py-1 rounded-full">Founding 25 · first 25 companies</span>
               <h2 className="font-display font-black text-2xl sm:text-3xl text-ink mt-2">
-                $99/mo flat — up to 25 assets, <span className="text-amber">price locked 2 years</span>
+                $6/machine + $3/tool tag — <span className="text-amber">crews-and-jobs tier included, no platform fee</span>
               </h2>
-              <p className="text-muted mt-2">Be one of our first 25 fleets. Lock this rate while we grow — it never goes up on you.</p>
+              <p className="text-muted mt-2">Founder pricing locked for 12 months, hardware at cost, month-to-month. You&apos;re helping us build it — you keep the price.</p>
               <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
-                {['Free 30-day pilot', 'We ship & pre-set the trackers', 'Live on your map in a day', 'Cancel anytime'].map((t) => (
+                {['Free 30-day pilot', 'Hardware at cost — no markup, no setup fee', 'First install done with you', 'Cancel anytime'].map((t) => (
                   <span key={t} className="flex items-center gap-2 text-sm text-ink"><Check className="h-4 w-4 text-teal" /> {t}</span>
                 ))}
               </div>
-              <Link href="/register" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
+              <Link href="/reserve" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
                 Claim a founding spot <ArrowRight className="h-4 w-4" />
               </Link>
+              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving holds yours. <Link href="/pricing" className="underline hover:text-ink">Full pricing →</Link></p>
             </div>
           </Reveal>
         </section>

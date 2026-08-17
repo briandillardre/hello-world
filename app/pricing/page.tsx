@@ -12,7 +12,13 @@ const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
   description:
-    'Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price, with AI alerts and QuickBooks built in.',
+    'Everything Tenna does — vehicles, equipment, Bluetooth tools — at about half the price, with AI alerts and QuickBooks built in.',
+  openGraph: {
+    title: 'About half the price of Tenna. $0 setup.',
+    description: 'Trucks, machines & Bluetooth tools on one map — hardware at cost, no markup, cancel anytime.',
+    images: [{ url: '/brand/og-pricing.png', width: 1200, height: 630, alt: 'HammerTrack pricing' }],
+  },
+  twitter: { card: 'summary_large_image', images: ['/brand/og-pricing.png'] },
 }
 
 // The REAL pricing model (docs/PRICING-TIERS.md): per-machine base + a
@@ -59,7 +65,8 @@ const TIERS = [
     unit: '/machine/mo',
     sub: 'platform priced with you — talk to us · 100 tags included',
     blurb: '“Run the company on it.”',
-    cta: 'Start free pilot',
+    cta: 'Talk to us',
+    href: 'mailto:sales@hammertrack.ai?subject=HammerTrack%20Run%20tier',
     highlight: false,
     features: [
       'Everything in Operate',
@@ -183,7 +190,9 @@ export default function PricingPage() {
         </div>
 
         <p className="text-center text-[12.5px] text-faint mt-4">
-          Typical customer — 8 machines, 12 tags: <span className="text-muted">Track $100/mo · Operate $113/mo · Run $263/mo.</span>{' '}
+          {/* Run stays "priced with you" — publishing a typical-customer Run
+              total would leak the platform fee by arithmetic (owner rule). */}
+          Typical customer — 8 machines, 12 tags: <span className="text-muted">Track $100/mo · Operate $113/mo · Run priced with you.</span>{' '}
           Tenna quotes the same fleet at $120–200/mo <em>plus</em> $500 setup.
         </p>
 
