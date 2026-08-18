@@ -26,7 +26,6 @@ const FROM_LABELS: Record<string, string> = {
   'accounting': 'Accounting',
   'receipts': 'Receipts',
   'financials': 'Financials',
-  'op-model': 'Op model',
 }
 
 function RegisterInner() {

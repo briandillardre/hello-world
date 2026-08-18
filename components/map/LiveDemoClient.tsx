@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   ArrowRight, X, MonitorPlay, Map as MapIcon, Bell, Clock, ClipboardList,
   Package, Hexagon, Ruler, Bluetooth, Wrench, BarChart3, Calculator,
-  Receipt, Banknote, TrendingUp, Lock,
+  Receipt, Banknote, Lock,
 } from 'lucide-react'
 import { MOCK_ASSETS, MOCK_GEOFENCES, MOCK_TOOL_ASSOCIATIONS } from '@/lib/mock-data'
 import { generateTracks } from '@/lib/trails'
@@ -30,7 +30,6 @@ const DEMO_NAV: { label: string; icon: typeof MapIcon; section?: string; active?
   { label: 'Accounting', icon: Calculator },
   { label: 'Receipts', icon: Receipt },
   { label: 'Financials', icon: Banknote },
-  { label: 'Op model', icon: TrendingUp },
 ]
 
 // "Live Map" → "live-map" — the /register page maps these slugs back to
