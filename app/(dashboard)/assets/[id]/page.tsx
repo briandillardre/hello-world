@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag } from 'lucide-react'
+import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag, MoreVertical } from 'lucide-react'
 import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { toolIsFresh } from '@/lib/tools-resolve'
@@ -126,7 +126,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
     engineOn: enginePower.engineOn,
     lastMovedMs,
+    assetType: asset.type,
   })
+  // Tools and people have no engine — the drive-stat tiles read as nonsense.
+  const showDriveStats = asset.type === 'vehicle' || asset.type === 'equipment'
 
   // Diagnostics "all signals seen" — the FULL set of fields this tracker has
   // emitted over the last week, each with its most-recent value + when. An
@@ -173,7 +176,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             <div className="text-xl w-10 h-10 grid place-items-center bg-navy-800 rounded-lg flex-none">{TYPE_EMOJI[asset.type]}</div>
           )}
           <div className="min-w-0 flex-1 overflow-hidden">
-            <h1 className="text-[15px] sm:text-lg font-bold text-ink leading-tight truncate">{asset.name}</h1>
+            <h1 className="text-[15px] sm:text-lg font-bold text-ink leading-tight line-clamp-2">{asset.name}</h1>
             {/* overflow-hidden + wrap: badges used to paint OVER the action
                 buttons on phones when the type + category didn't fit. */}
             <div className="flex flex-wrap items-center gap-1 mt-0.5 overflow-hidden">
@@ -182,15 +185,41 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             </div>
           </div>
           <div className="flex-none flex items-center gap-1.5">
-            {canEdit && asset.tracker_id && (
-              <ReassignTracker
-                asset={asset}
-                trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
-              />
+            {canEdit && (
+              <>
+                {/* sm+: the full Reassign / Edit / Delete cluster inline */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  {asset.tracker_id && (
+                    <ReassignTracker
+                      asset={asset}
+                      trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
+                    />
+                  )}
+                  <AssetActions asset={asset} photos={assetPhotos} />
+                </div>
+                {/* phones: one ⋮ overflow menu — three buttons were fighting
+                    the asset name for the same row of pixels */}
+                <details className="relative sm:hidden">
+                  <summary
+                    aria-label="More actions"
+                    className="list-none [&::-webkit-details-marker]:hidden grid place-items-center w-9 h-9 rounded-lg border border-navy-700 text-muted hover:text-ink hover:bg-navy-800 cursor-pointer"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </summary>
+                  <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[150px] rounded-xl border border-navy-700 bg-navy-900 p-2 shadow-xl flex flex-col items-stretch gap-1.5">
+                    {asset.tracker_id && (
+                      <ReassignTracker
+                        asset={asset}
+                        trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
+                      />
+                    )}
+                    <AssetActions asset={asset} photos={assetPhotos} />
+                  </div>
+                </details>
+              </>
             )}
-            {canEdit && <AssetActions asset={asset} photos={assetPhotos} />}
             {/* phones: icon-only (the text version wrapped to 3 ugly lines) */}
-            <Link href="/map" aria-label="View on map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm p-2.5 sm:px-3.5 sm:py-2 hover:bg-amber-600 transition-colors whitespace-nowrap">
+            <Link href={`/map?follow=${asset.id}`} aria-label="View on map" className="inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm p-2.5 sm:px-3.5 sm:py-2 hover:bg-amber-600 transition-colors whitespace-nowrap">
               <MapPin className="h-4 w-4" /> <span className="hidden sm:inline">View on map</span>
             </Link>
           </div>
@@ -205,10 +234,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             idleTodayMin={todayStats?.idleMin}
             lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
           />
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
-            <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />
-            <MiniStat label="Miles today" value={todayStats ? `${todayStats.miles}` : '—'} unit="mi" />
-            <MiniStat label="Drive time" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />
+          <div className={`grid ${showDriveStats ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'} gap-1.5 text-center`}>
+            {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />}
+            {showDriveStats && <MiniStat label="Miles today" value={todayStats ? `${todayStats.miles}` : '—'} unit="mi" />}
+            {showDriveStats && <MiniStat label="Drive time" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />}
             <MiniStat label="Idle today" value={todayStats ? `${Math.floor(todayStats.idleMin / 60)}:${String(todayStats.idleMin % 60).padStart(2, '0')}` : '—'} unit="h" />
             <MiniStat label="Battery" value={loc?.battery != null ? `${loc.battery}` : '—'} unit="%" />
             {(() => {

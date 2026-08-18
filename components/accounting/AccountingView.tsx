@@ -193,7 +193,7 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
                   <span className="text-lg">{TYPE_EMOJI[a.type]}</span>
                   <span className="flex-1 text-muted truncate">{a.name}</span>
                   <Link2 className="h-3.5 w-3.5 text-faint" />
-                  <span className="text-muted text-xs truncate">Fixed Asset: {a.name}</span>
+                  <span className="text-muted text-xs truncate">Fixed Asset ✓</span>
                   {synced && <Check className="h-4 w-4 text-[#34d399] flex-shrink-0" />}
                 </div>
               ))}
@@ -227,7 +227,7 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
                     <p className="font-medium text-ink text-sm truncate">{g.name}</p>
                     <p className="text-xs text-faint">
                       {demo
-                        ? (hasBillable ? `${inv.lines.length} billable asset(s) · $${inv.total.toLocaleString()}` : 'No billable usage')
+                        ? (hasBillable ? `${inv.lines.length} billable asset(s) · ${money(inv.total)}` : 'No billable usage')
                         : 'Bill tracked usage → draft invoice'}
                     </p>
                   </div>
@@ -266,12 +266,12 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
                 {preview.lines.map((l, i) => (
                   <div key={i} className="p-3 border-b border-navy-800 last:border-0 flex justify-between gap-3 text-sm">
                     <span className="text-muted flex-1">{l.description}</span>
-                    <span className="font-medium text-ink flex-shrink-0">${l.amount.toLocaleString()}</span>
+                    <span className="font-medium text-ink flex-shrink-0">{money(l.amount)}</span>
                   </div>
                 ))}
                 <div className="p-3 bg-navy-800 flex justify-between font-semibold text-ink">
                   <span>Total</span>
-                  <span>${preview.total.toLocaleString()}</span>
+                  <span>{money(preview.total)}</span>
                 </div>
               </div>
               <div className="flex gap-3">

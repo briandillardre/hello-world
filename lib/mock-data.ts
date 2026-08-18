@@ -363,12 +363,12 @@ export const DEMO_MAP_ZOOM = 14.5
 export const MOCK_TOOL_ASSOCIATIONS: ToolAssociation[] = [
   {
     id: 'assoc-1', company_id: 'mock-company-1',
-    tool_asset_id: 'asset-4', gateway_asset_id: 'asset-1', // Drill Kit in F-350 Truck #1
+    tool_asset_id: 'asset-4', gateway_asset_id: 'asset-1', // Drill Kit in Chevy 1500
     rssi: -62, last_seen: new Date(Date.now() - 6 * 60000).toISOString(),
   },
   {
     id: 'assoc-2', company_id: 'mock-company-1',
-    tool_asset_id: 'asset-8', gateway_asset_id: 'asset-9', // Survey Kit on JD Backhoe
+    tool_asset_id: 'asset-8', gateway_asset_id: 'asset-9', // Survey Kit on Takeuchi mini-ex
     rssi: -74, last_seen: new Date(Date.now() - 14 * 60000).toISOString(),
   },
 ]
@@ -426,29 +426,29 @@ export const MOCK_SERVICE_RECORDS: ServiceRecord[] = [
 // ── v2: Utilization ────────────────────────────────────────────────────────────
 export const MOCK_UTILIZATION: AssetUtilization[] = [
   {
-    asset_id: 'asset-1', asset_name: 'F-350 Truck #1', asset_type: 'vehicle',
+    asset_id: 'asset-1', asset_name: 'Chevy 1500 — Owner', asset_type: 'vehicle',
     engine_hours: 168, idle_hours: 31, distance_miles: 2240,
     job_site_hours: [
-      { geofence_id: 'fence-1', geofence_name: 'Main Site', hours: 96 },
-      { geofence_id: 'fence-2', geofence_name: 'Equipment Yard', hours: 41 },
+      { geofence_id: 'fence-1', geofence_name: 'Riverfront Tower', hours: 96 },
+      { geofence_id: 'fence-2', geofence_name: 'Maple St Grading', hours: 41 },
     ],
   },
   {
-    asset_id: 'asset-2', asset_name: 'CAT 336 Excavator', asset_type: 'equipment',
+    asset_id: 'asset-2', asset_name: 'Link-Belt 130X2 Excavator', asset_type: 'equipment',
     engine_hours: 212, idle_hours: 58, distance_miles: 0,
-    job_site_hours: [{ geofence_id: 'fence-1', geofence_name: 'Main Site', hours: 198 }],
+    job_site_hours: [{ geofence_id: 'fence-1', geofence_name: 'Riverfront Tower', hours: 198 }],
   },
   {
-    asset_id: 'asset-9', asset_name: 'JD 310L Backhoe', asset_type: 'equipment',
+    asset_id: 'asset-9', asset_name: 'Takeuchi TB235 Mini-Ex', asset_type: 'equipment',
     engine_hours: 143, idle_hours: 22, distance_miles: 0,
-    job_site_hours: [{ geofence_id: 'fence-1', geofence_name: 'Main Site', hours: 131 }],
+    job_site_hours: [{ geofence_id: 'fence-1', geofence_name: 'Riverfront Tower', hours: 131 }],
   },
   {
-    asset_id: 'asset-6', asset_name: 'Ram 2500 #2', asset_type: 'vehicle',
+    asset_id: 'asset-6', asset_name: 'RAM 3500 Dump', asset_type: 'vehicle',
     engine_hours: 201, idle_hours: 47, distance_miles: 3110,
     job_site_hours: [
-      { geofence_id: 'fence-1', geofence_name: 'Main Site', hours: 74 },
-      { geofence_id: 'fence-2', geofence_name: 'Equipment Yard', hours: 88 },
+      { geofence_id: 'fence-1', geofence_name: 'Riverfront Tower', hours: 74 },
+      { geofence_id: 'fence-2', geofence_name: 'Maple St Grading', hours: 88 },
     ],
   },
 ]
@@ -463,10 +463,11 @@ export const MOCK_QBO_CONNECTION: QboConnection = {
 
 // Equipment billing rates ($/engine-hour) used for usage-invoice generation
 export const MOCK_EQUIPMENT_RATES: Record<string, number> = {
-  'asset-2': 145, // CAT 336 Excavator
-  'asset-9': 95,  // JD 310L Backhoe
-  'asset-1': 45,  // F-350 Truck
-  'asset-6': 45,  // Ram 2500
+  'asset-2': 145, // Link-Belt 130X2 Excavator
+  'asset-9': 95,  // Takeuchi TB235 Mini-Ex
+  'asset-1': 45,  // Chevy 1500 — Owner
+  'asset-6': 45,  // RAM 3500 Dump
+  'asset-10': 65, // Peterbilt 567 Tri-Axle
 }
 
 // ── Fleet scorecard (demo) ───────────────────────────────────────────────────
@@ -536,13 +537,13 @@ export function buildMockScorecard(daysBack: number): VehicleScore[] {
   const scale = (m: number) => Math.round((m * n) / 30) // 30d-shaped totals → range
 
   // The model employee: rolling before 7, on site quick, home by 5.
-  const f350 = summarize('asset-1', 'F-350 Truck #1',
+  const chevy = summarize('asset-1', 'Chevy 1500 — Owner',
     mockDays({ first: 6 * 60 + 38, onSite: 7 * 60 + 4, last: 17 * 60 + 6, active: 340, idle: 76, miles: 74, satFactor: 0.5 }, n),
     [
       { kind: 'site', count: scale(46), minutes: scale(5940), workMinutes: scale(5760), topName: 'Riverfront Tower', topMinutes: 260 },
       { kind: 'supplier', count: scale(11), minutes: scale(430), workMinutes: scale(430), topName: '84 Lumber', topMinutes: 55 },
-      { kind: 'fuel', count: scale(8), minutes: scale(96), workMinutes: scale(80), topName: 'Shell — Charlotte Ave', topMinutes: 14 },
-      { kind: 'food', count: scale(9), minutes: scale(280), workMinutes: scale(280), topName: 'Chago’s Cantina', topMinutes: 38 },
+      { kind: 'fuel', count: scale(8), minutes: scale(96), workMinutes: scale(80), topName: 'Shell — Wade Hampton Blvd', topMinutes: 14 },
+      { kind: 'food', count: scale(9), minutes: scale(280), workMinutes: scale(280), topName: 'Bojangles — Laurens Rd', topMinutes: 38 },
     ],
     [
       { id: 'fence-1', name: 'Riverfront Tower', hours: scale(96) },
@@ -551,7 +552,7 @@ export function buildMockScorecard(daysBack: number): VehicleScore[] {
 
   // The conversation: late starts, long lunches, a Sunday trip, midday hours
   // at a residence. This card is the sales demo.
-  const silverado = summarize('asset-10', 'Silverado 1500 #3',
+  const peterbilt = summarize('asset-10', 'Peterbilt 567 Tri-Axle',
     mockDays({ first: 8 * 60 + 12, onSite: 9 * 60 + 18, last: 16 * 60 + 24, active: 235, idle: 118, miles: 58, satFactor: 0 }, n,
       (d, weekday, i) => {
         if (weekday === 0 && i < 14) { // Sunday runs inside the last two weeks
@@ -568,19 +569,19 @@ export function buildMockScorecard(daysBack: number): VehicleScore[] {
       { kind: 'site', count: scale(31), minutes: scale(3810), workMinutes: scale(3705), topName: 'Maple St Grading', topMinutes: 210 },
       { kind: 'supplier', count: scale(6), minutes: scale(220), workMinutes: scale(220), topName: 'SiteOne Landscape', topMinutes: 48 },
       { kind: 'fuel', count: scale(9), minutes: scale(112), workMinutes: scale(96), topName: 'QuikTrip #482', topMinutes: 16 },
-      { kind: 'food', count: scale(22), minutes: scale(1240), workMinutes: scale(1180), topName: 'Twin Peaks — Rivergate', topMinutes: 96 },
+      { kind: 'food', count: scale(22), minutes: scale(1240), workMinutes: scale(1180), topName: 'Waffle House — White Horse Rd', topMinutes: 96 },
       { kind: 'store', count: scale(12), minutes: scale(540), workMinutes: scale(505), topName: 'Bass Pro Shops', topMinutes: 88 },
       { kind: 'residence', count: scale(8), minutes: scale(660), workMinutes: scale(610), topName: 'Stonebrook Dr', topMinutes: 145 },
     ],
     [{ id: 'fence-2', name: 'Maple St Grading', hours: scale(64) }])
 
   // The yard truck: short hops, half its engine time idling at the gate.
-  const ram = summarize('asset-6', 'Ram 2500 #2',
+  const ram = summarize('asset-6', 'RAM 3500 Dump',
     mockDays({ first: 7 * 60 + 18, onSite: 7 * 60 + 32, last: 15 * 60 + 48, active: 120, idle: 96, miles: 21, satFactor: 0.4 }, n),
     [
       { kind: 'site', count: scale(38), minutes: scale(4620), workMinutes: scale(4540), topName: 'Equipment Yard', topMinutes: 240 },
       { kind: 'supplier', count: scale(9), minutes: scale(310), workMinutes: scale(310), topName: 'Ferguson Waterworks', topMinutes: 42 },
-      { kind: 'fuel', count: scale(5), minutes: scale(60), workMinutes: scale(60), topName: 'Marathon — Dickerson Pk', topMinutes: 13 },
+      { kind: 'fuel', count: scale(5), minutes: scale(60), workMinutes: scale(60), topName: 'Marathon — Poinsett Hwy', topMinutes: 13 },
     ],
     [
       { id: 'fence-3', name: 'Equipment Yard', hours: scale(88) },
@@ -588,10 +589,10 @@ export function buildMockScorecard(daysBack: number): VehicleScore[] {
     ])
 
   // Equipment reads differently: no commute, the story is hours-on-site.
-  const cat = summarize('asset-2', 'CAT 336 Excavator',
+  const linkBelt = summarize('asset-2', 'Link-Belt 130X2 Excavator',
     mockDays({ first: 7 * 60 + 22, onSite: 7 * 60 + 22, last: 16 * 60 + 30, active: 355, idle: 128, miles: 1, satFactor: 0.3 }, n),
     [{ kind: 'site', count: scale(26), minutes: scale(11040), workMinutes: scale(10520), topName: 'Riverfront Tower', topMinutes: 540 }],
     [{ id: 'fence-1', name: 'Riverfront Tower', hours: scale(198) }])
 
-  return [silverado, f350, ram, cat].sort((a, b) => b.miles - a.miles)
+  return [peterbilt, chevy, ram, linkBelt].sort((a, b) => b.miles - a.miles)
 }

@@ -262,7 +262,7 @@ export function OperatingModel() {
           [String(last.cust), 'customers end 2028'],
           [be ? `${MONTHS[be.m - 1]} ${be.y}` : '—', 'first breakeven'],
           [fmt(minCash), inject > 0 ? 'lowest cash balance' : 'max drawdown'],
-          [fmt(last.cash), inject > 0 ? `cash end 2028 (incl. $${inject / 1000}k in)` : 'cum. cash end 2028'],
+          [fmt(last.cash), inject > 0 ? `cash end 2028 · +$${inject / 1000}k in` : 'cum. cash end 2028'],
         ].map(([b, s]) => (
           <div key={s} className="rounded-xl border border-navy-700 bg-navy-950 px-3.5 py-2.5">
             <p className="font-display font-bold text-lg text-ink tabular-nums">{b}</p>
@@ -287,12 +287,18 @@ export function OperatingModel() {
 
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4">
         <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Cumulative cash (founder pay $0 · hardware billed at cost up front)</p>
-        <canvas ref={cashRef} className="w-full h-[200px]" />
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px]">
+            <canvas ref={cashRef} className="w-full h-[200px]" />
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 overflow-x-auto">
-        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">Quarter by quarter</p>
-        <table className="w-full text-[12.5px] tabular-nums">
+        <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint mb-2">
+          Quarter by quarter <span className="sm:hidden normal-case tracking-normal">· swipe →</span>
+        </p>
+        <table className="w-full min-w-[640px] text-[12.5px] tabular-nums">
           <thead>
             <tr className="text-faint font-mono text-[9.5px] uppercase tracking-[0.08em]">
               <th className="text-left py-1.5 pr-2">Quarter</th>
@@ -332,9 +338,9 @@ export function OperatingModel() {
         <p>
           The flywheel is why the net line hugs zero later <em>by choice</em>: surplus goes back into ads and
           hires, and every hire waits for its customer-count trigger so the jump never outruns the revenue
-          paying for it. Want monthly cash-positive instead? Three levers, in order: price at $8/machine
-          instead of $7, charge $150 per install, and cut ad spend — the chart goes green a year earlier and
-          grows slower. That trade is yours to pick, not the model&apos;s.
+          paying for it. Want monthly cash-positive instead? Try it with the pricing levers above: push
+          price to $9/machine and the install fee to $150 and watch breakeven move left — the chart goes
+          green earlier and grows slower. That trade is yours to pick, not the model&apos;s.
         </p>
       </div>
     </div>

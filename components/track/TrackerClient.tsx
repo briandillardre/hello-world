@@ -2,8 +2,10 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useState, useRef, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle, Navigation, RotateCcw, Radio } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
+import { confirmSheet } from '@/components/ui/feedback'
 import { pushPhoneLocation, stopPhoneShare } from '@/lib/actions/tracker'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -245,7 +247,7 @@ export function TrackerClient() {
         <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">Field Tracker</span>
         <span className={'flex items-center gap-1.5 font-mono text-[11px] ' + (tracking ? 'text-teal' : 'text-faint')}>
           <span className={'w-2 h-2 rounded-full ' + (tracking ? 'bg-teal animate-blink' : 'bg-navy-700')} />
-          {tracking ? 'ON CLOCK' : 'OFF'}
+          {tracking ? 'TRACKING LIVE' : 'OFF'}
         </span>
       </div>
 
@@ -254,7 +256,7 @@ export function TrackerClient() {
         <div ref={mapDiv} className="absolute inset-0" />
         {!tracking && !summary && (
           <div className="absolute inset-0 grid place-items-center pointer-events-none">
-            <p className="font-mono text-[12px] text-faint bg-navy-950/70 px-3 py-1.5 rounded-full">Clock in to start tracking</p>
+            <p className="font-mono text-[12px] text-faint bg-navy-950/70 px-3 py-1.5 rounded-full">Start tracking to record your GPS trail</p>
           </div>
         )}
         {tracking && !firstFix && (
@@ -282,28 +284,39 @@ export function TrackerClient() {
         {tracking ? (
           <>
             <div className="grid grid-cols-4 gap-2">
-              <Stat icon={<Clock className="h-3.5 w-3.5" />} label="On clock" value={clock(elapsed)} mono />
+              <Stat icon={<Clock className="h-3.5 w-3.5" />} label="Tracking" value={clock(elapsed)} mono />
               <Stat icon={<Route className="h-3.5 w-3.5" />} label="Distance" value={`${miles} mi`} />
               <Stat icon={<Gauge className="h-3.5 w-3.5" />} label="Speed" value={`${pos?.speed ?? 0}`} unit="mph" />
-              <Stat icon={<Crosshair className="h-3.5 w-3.5" />} label="GPS ±" value={`${pos?.accuracy ?? '—'}`} unit="m" />
+              <Stat icon={<Crosshair className="h-3.5 w-3.5" />} label="Accuracy" value={pos?.accuracy ? `${pos.accuracy}` : '—'} unit={pos?.accuracy ? 'm' : undefined} />
             </div>
             <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
-            <button onClick={clockOut} className="w-full flex items-center justify-center gap-2 rounded-xl bg-alert text-white font-display font-bold py-3.5 hover:brightness-110 transition">
-              <Square className="h-5 w-5" /> Clock Out
+            <button
+              onClick={async () => {
+                const ok = await confirmSheet({
+                  title: 'Stop tracking?',
+                  message: "The trail ends here — you can't resume it.",
+                  confirmLabel: 'Stop tracking',
+                  destructive: true,
+                })
+                if (ok) clockOut()
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-alert text-white font-display font-bold py-3.5 hover:brightness-110 transition"
+            >
+              <Square className="h-5 w-5" /> Stop tracking
             </button>
           </>
         ) : summary ? (
           <>
             <div className="rounded-xl border border-teal/30 bg-teal/[0.06] p-3.5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-2">Shift complete</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-2">Trail complete</div>
               <div className="grid grid-cols-3 gap-2">
-                <Stat icon={<Clock className="h-3.5 w-3.5" />} label="On clock" value={clock(summary.duration)} mono />
+                <Stat icon={<Clock className="h-3.5 w-3.5" />} label="Tracked" value={clock(summary.duration)} mono />
                 <Stat icon={<Route className="h-3.5 w-3.5" />} label="Distance" value={`${summary.miles} mi`} />
                 <Stat icon={<Gauge className="h-3.5 w-3.5" />} label="Top speed" value={`${summary.topSpeed}`} unit="mph" />
               </div>
             </div>
             <button onClick={() => setSummary(null)} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
-              <RotateCcw className="h-5 w-5" /> Start new shift
+              <RotateCcw className="h-5 w-5" /> Start new trail
             </button>
           </>
         ) : (
@@ -312,13 +325,20 @@ export function TrackerClient() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your name"
+              autoComplete="name"
+              autoCapitalize="words"
+              enterKeyHint="done"
               className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-ink placeholder:text-faint outline-none focus:border-amber/50"
             />
             <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
             <button onClick={clockIn} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
-              <Play className="h-5 w-5" /> Clock In & Track
+              <Play className="h-5 w-5" /> Start tracking
             </button>
-            <p className="text-center font-mono text-[10px] text-faint">We keep the screen awake while you&apos;re on the clock. Full background tracking comes with the native app.</p>
+            <p className="text-center font-mono text-[10px] text-faint">
+              GPS trail only — this doesn&apos;t record work hours. Clock in on the{' '}
+              <Link href="/clock" className="text-teal underline underline-offset-2 hover:brightness-110">Time clock</Link>.
+            </p>
+            <p className="text-center font-mono text-[10px] text-faint">We keep the screen awake while you&apos;re tracking. Full background tracking comes with the native app.</p>
           </>
         )}
       </div>

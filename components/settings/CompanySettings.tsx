@@ -12,6 +12,11 @@ import { Label } from '@/components/ui/label'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+// Same demo-mode check the rest of the app uses (NEXT_PUBLIC_ vars are inlined
+// at build time, so this works in a client component too).
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 interface Props {
   name: string
   plan: string
@@ -297,7 +302,13 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
             <Row label="Plan" value={<Badge>{plan}</Badge>} />
             <Row label="Working hours" value={<span className="font-mono text-xs">{hoursLabel}</span>} />
             <Row label="Alerts to" value={<span className="font-mono text-xs">{alert_phone || alert_email || '— not set'}</span>} />
-            {!editable && <p className="text-xs text-faint">Sign in to a live account to edit company settings.</p>}
+            {!editable && (
+              <p className="text-xs text-faint">
+                {isMock
+                  ? 'Sign in to a live account to edit company settings.'
+                  : 'Only company admins can edit these settings.'}
+              </p>
+            )}
           </div>
         )}
       </div>

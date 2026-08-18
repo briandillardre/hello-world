@@ -2,6 +2,8 @@ import { LayerDiag } from '@/components/diag/LayerDiag'
 import { getCurrentCompany } from '@/lib/db/company'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 
+export const metadata = { title: 'HammerTrack — Diagnostics' }
+
 export const dynamic = 'force-dynamic'
 
 /** Hidden ops page: live health of every external map-data source, plus a

@@ -122,7 +122,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
           {unreadCount > 1 && onAcknowledgeAll && (
             <button
               onClick={onAcknowledgeAll}
-              className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors"
+              className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors whitespace-nowrap"
             >
               ✓ Acknowledge all
             </button>
@@ -212,6 +212,16 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
           {formatRelativeTime(alert.triggered_at)}
           <span className="ml-2 text-teal opacity-0 group-hover:opacity-100 transition-opacity">view on map →</span>
         </p>
+      </Link>
+
+      {/* secondary link — the whole row deep-links to the map replay, this
+          jumps to the asset's own page instead (can't nest inside the Link) */}
+      <Link
+        href={`/assets/${alert.asset_id}`}
+        className="flex-shrink-0 text-[11px] text-faint hover:text-teal hover:underline mt-1"
+        title={`Open ${assetName}`}
+      >
+        asset →
       </Link>
 
       {isUnread && onAcknowledge && (

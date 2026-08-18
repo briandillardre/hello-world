@@ -6,6 +6,14 @@ import {
   createWorkOrderAction, updateWorkOrderAction, completeWorkOrderAction, cancelWorkOrderAction,
   type WorkOrder,
 } from '@/lib/actions/workorders'
+import { toast, confirmSheet } from '@/components/ui/feedback'
+
+/** Failures (incl. demo mode) surface as a toast by the acting button — not a
+ *  detached red string at the bottom of the section. */
+function showError(e: string | null) {
+  if (!e) return
+  toast(e === 'Demo mode' ? 'Demo — changes aren’t saved.' : e, { variant: 'error' })
+}
 
 const STATUS_META: Record<WorkOrder['status'], { label: string; cls: string; next?: WorkOrder['status'] }> = {
   open:          { label: 'Open',          cls: 'bg-amber/15 border-amber/40 text-amber', next: 'in_progress' },
@@ -32,7 +40,6 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
   available: boolean
 }) {
   const [orders, setOrders] = useState(initial)
-  const [error, setError] = useState<string | null>(null)
   const [, start] = useTransition()
   const [showNew, setShowNew] = useState(false)
   const [completing, setCompleting] = useState<WorkOrder | null>(null)
@@ -76,7 +83,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
         <NewWorkOrderForm
           assetNames={assetNames} members={members}
           onDone={(wo) => { if (wo) setOrders((os) => [wo, ...os]); setShowNew(false) }}
-          onError={setError}
+          onError={showError}
         />
       )}
 
@@ -95,14 +102,19 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
                   <button
                     type="button"
                     title={meta.next ? `Move to ${STATUS_META[meta.next].label}` : undefined}
+                    aria-label="advance status"
                     onClick={() => {
                       if (!meta.next) return
+                      const prev = o.status
                       patchLocal(o.id, { status: meta.next })
-                      start(async () => { await updateWorkOrderAction(o.id, { status: meta.next }) })
+                      start(async () => {
+                        const r = await updateWorkOrderAction(o.id, { status: meta.next })
+                        if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                      })
                     }}
                     className={`flex-none rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.cls}`}
                   >
-                    {meta.label}
+                    {meta.label}{meta.next && <span aria-hidden> ›</span>}
                   </button>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-ink font-medium">
@@ -121,8 +133,12 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
                     <select
                       value={o.assignee_id ?? ''}
                       onChange={(e) => {
+                        const prev = o.assignee_id
                         patchLocal(o.id, { assignee_id: e.target.value || null })
-                        start(async () => { await updateWorkOrderAction(o.id, { assigneeId: e.target.value || null }) })
+                        start(async () => {
+                          const r = await updateWorkOrderAction(o.id, { assigneeId: e.target.value || null })
+                          if (!r.ok) { patchLocal(o.id, { assignee_id: prev }); showError(r.error ?? 'Failed') }
+                        })
                       }}
                       className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1 text-[11px] text-muted max-w-[120px]"
                       aria-label="Assignee"
@@ -135,9 +151,14 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
                       Complete
                     </button>
                     <button type="button" aria-label="Cancel work order"
-                      onClick={() => {
+                      onClick={async () => {
+                        if (!(await confirmSheet({ title: 'Cancel this work order?', confirmLabel: 'Cancel it', destructive: true }))) return
+                        const prev = o.status
                         patchLocal(o.id, { status: 'canceled' })
-                        start(async () => { await cancelWorkOrderAction(o.id) })
+                        start(async () => {
+                          const r = await cancelWorkOrderAction(o.id)
+                          if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                        })
                       }}
                       className="text-faint hover:text-red-400 p-1">
                       <X className="h-3.5 w-3.5" />
@@ -165,6 +186,18 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
                   {o.status === 'done' && (
                     <span className="font-mono text-faint">${(Number(o.parts_cost) + Number(o.labor_hours) * Number(o.labor_rate ?? 0)).toFixed(0)}</span>
                   )}
+                  <button type="button"
+                    onClick={() => {
+                      const prev = o.status
+                      patchLocal(o.id, { status: 'open' })
+                      start(async () => {
+                        const r = await updateWorkOrderAction(o.id, { status: 'open' })
+                        if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                      })
+                    }}
+                    className="text-[11px] font-semibold text-teal hover:underline flex-none">
+                    Reopen
+                  </button>
                 </div>
               ))}
             </div>
@@ -177,10 +210,9 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
           wo={completing} assetName={assetNames[completing.asset_id] ?? 'Asset'}
           onClose={() => setCompleting(null)}
           onDone={(id) => { patchLocal(id, { status: 'done' }); setCompleting(null) }}
-          onError={setError}
+          onError={showError}
         />
       )}
-      {error && <p className="text-sm text-red-400">{error}</p>}
     </section>
   )
 }

@@ -33,6 +33,8 @@ interface GeofenceEditorProps {
   notes?: string | null
   /** Other zones that may serve as a parent (self + descendants excluded). */
   parentOptions?: { id: string; name: string }[]
+  /** Demo mode — the editor renders but Save/Delete are disabled (no-op backend). */
+  readOnly?: boolean
   /** Closed ring [[lng,lat],…] (first == last). */
   ring: [number, number][]
 }
@@ -49,7 +51,7 @@ function dayInput(iso?: string | null): string {
  * move — works with touch for iPad. Midpoints (hollow dots) tap to add a
  * vertex. Tap a vertex to select it, then "Delete vertex" removes it (min 3).
  */
-export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ownerId = null, isOwnedByMe = false, activeFrom: initialActiveFrom = null, activeUntil: initialActiveUntil = null, folderUrl: initialFolderUrl = null, notes: initialNotes = null, parentOptions = [], ring: initialRing }: GeofenceEditorProps) {
+export function GeofenceEditor({ id, name: initialName, color: initialColor, parentId, kind: initialKind = 'site', ownerId = null, isOwnedByMe = false, activeFrom: initialActiveFrom = null, activeUntil: initialActiveUntil = null, folderUrl: initialFolderUrl = null, notes: initialNotes = null, parentOptions = [], readOnly = false, ring: initialRing }: GeofenceEditorProps) {
   const router = useRouter()
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -242,7 +244,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   }
 
   const save = async () => {
-    if (verts.length < 3) return
+    if (readOnly || verts.length < 3) return
     setSaving(true)
     const done = globalBusy('Saving zone…')
     try {
@@ -273,6 +275,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
   }
 
   const removeZone = async () => {
+    if (readOnly) return
     const ok = await confirmSheet({
       title: `Delete zone "${initialName}"?`,
       message: 'Alert rules attached to it are removed too.',
@@ -439,10 +442,10 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={save} disabled={saving || !dirty || verts.length < 3} className="gap-1.5">
+            <Button size="sm" onClick={save} disabled={readOnly || saving || !dirty || verts.length < 3} className="gap-1.5">
               <Save className="h-4 w-4" /> {saving ? 'Saving…' : 'Save changes'}
             </Button>
-            <Button size="sm" variant="outline" onClick={removeZone} className="ml-auto text-alert border-alert/40 hover:bg-alert/10 gap-1.5">
+            <Button size="sm" variant="outline" onClick={removeZone} disabled={readOnly} className="ml-auto text-alert border-alert/40 hover:bg-alert/10 gap-1.5">
               <Trash2 className="h-4 w-4" /> Delete zone
             </Button>
           </div>

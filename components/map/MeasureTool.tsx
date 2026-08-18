@@ -7,7 +7,7 @@ import {
   toStatePlaneSC, polylineLengthFt, polygonAreaSqFt, lengthIn, areaIn, takeoff,
   LENGTH_LABEL, AREA_LABEL, MATERIALS, fmt, type LengthUnit, type AreaUnit,
 } from '@/lib/measure'
-import { saveMeasurementAction } from '@/lib/actions/measurements'
+import { saveMeasurementAction, updateMeasurementAction } from '@/lib/actions/measurements'
 
 type Mode = 'point' | 'line' | 'area'
 const M_TO_FT = 3.280839895
@@ -25,15 +25,27 @@ const DRAFT_SRC = 'measure-draft'
  * (Brian's Fields-app reference, Jul 18). Per-segment lengths label the edges
  * directly on the map in both layouts.
  */
+export interface SavedMeasureLite {
+  id: string
+  name: string
+  kind: Mode
+  personal: boolean
+  geometry: GeoJSON.Point | GeoJSON.LineString | GeoJSON.Polygon
+  props: import('@/lib/db/measurements').MeasureProps
+}
+
 export function MeasureTool({
-  map, active, onClose, onSaved, terrainOn,
+  map, active, onClose, onSaved, terrainOn, initial = null,
 }: {
   map: maplibregl.Map | null
   active: boolean
   onClose: () => void
-  onSaved: () => void
+  onSaved: (saved?: SavedMeasureLite) => void
   /** True when the DEM terrain is on — enables the live elevation readout. */
   terrainOn: boolean
+  /** Editing an EXISTING measurement (tap-to-edit from the saved layer):
+   *  loads its shape into the tool and Save becomes an update-in-place. */
+  initial?: { id: string; name: string; kind: Mode; personal: boolean; coords: [number, number][] } | null
 }) {
   const [mode, setMode] = useState<Mode>('area')
   const [pts, setPts] = useState<[number, number][]>([])
@@ -272,7 +284,27 @@ export function MeasureTool({
   }, [mode, pts])
 
   const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false); setDone(false) }
-  useEffect(() => { reset() }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Loading a saved shape flips `mode`, which would fire the reset below and
+  // wipe the points we just loaded — skip exactly that one reset.
+  const skipResetRef = useRef(false)
+  useEffect(() => {
+    if (skipResetRef.current) { skipResetRef.current = false; return }
+    reset()
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tap-to-edit: load the saved measurement into the tool, finished.
+  useEffect(() => {
+    if (!active || !initial) return
+    skipResetRef.current = true
+    setMode(initial.kind)
+    setPts(initial.coords)
+    setHover(null)
+    setDone(initial.kind !== 'point')
+    setName(initial.name)
+    setPersonal(initial.personal)
+    setMsg(null)
+    setSheetOpen(false)
+  }, [active, initial])
 
   const canSave = mode === 'point' ? pts.length === 1 : mode === 'line' ? pts.length >= 2 : pts.length >= 3
 
@@ -291,10 +323,21 @@ export function MeasureTool({
       elevationFt: mode === 'point' ? (clickElev ?? elev) : undefined,
       takeoff: mode === 'area' && depth > 0 ? takeoff(polygonAreaSqFt(pts), depth, material) : null,
     }
-    const r = await saveMeasurementAction({ name: name || defaultName(mode, props), kind: mode, personal, geometry, props })
+    const finalName = name || defaultName(mode, props)
+    if (initial?.id) {
+      const r = await updateMeasurementAction(initial.id, { name: finalName, geometry, props })
+      setSaving(false)
+      if (!r.ok) { setMsg(r.error ?? 'Update failed.'); return }
+      onSaved({ id: initial.id, name: finalName, kind: mode, personal, geometry, props })
+      reset()
+      setMsg('Updated ✓')
+      return
+    }
+    const r = await saveMeasurementAction({ name: finalName, kind: mode, personal, geometry, props })
     setSaving(false)
     if (!r.ok) { setMsg(r.error ?? 'Save failed.'); return }
-    onSaved(); reset()
+    onSaved(r.id ? { id: r.id, name: finalName, kind: mode, personal, geometry, props } : undefined)
+    reset()
     setMsg('Saved ✓')
   }
 
@@ -393,7 +436,7 @@ export function MeasureTool({
             <button onClick={() => setPersonal(true)} className={'flex-1 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold border ' + (personal ? 'bg-[#a78bfa]/20 text-[#c4b5fd] border-[#a78bfa]/40' : 'text-faint border-navy-700')}><Lock className="h-3 w-3" /> Just me</button>
           </div>
           <button onClick={save} disabled={saving} className="w-full flex items-center justify-center gap-1.5 rounded-md bg-amber text-[#1a1100] font-display font-bold text-[12.5px] py-2 disabled:opacity-50">
-            <Check className="h-4 w-4" /> {saving ? 'Saving…' : 'Save measurement'}
+            <Check className="h-4 w-4" /> {saving ? 'Saving…' : initial?.id ? 'Update measurement' : 'Save measurement'}
           </button>
           {msg && <p className={'text-[11px] ' + (msg.includes('✓') ? 'text-teal' : 'text-alert')}>{msg}</p>}
         </div>
@@ -403,7 +446,7 @@ export function MeasureTool({
       <div className="hidden md:block absolute left-3 bottom-28 z-30 w-[290px] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-navy-800">
         <Ruler className="h-4 w-4 text-amber" />
-        <span className="font-display font-bold text-[13px] text-ink flex-1">Measure &amp; takeoff</span>
+        <span className="font-display font-bold text-[13px] text-ink flex-1">{initial?.id ? `Editing “${initial.name}”` : <>Measure &amp; takeoff</>}</span>
         <button onClick={onClose} className="text-faint hover:text-ink"><X className="h-4 w-4" /></button>
       </div>
 
@@ -513,7 +556,7 @@ export function MeasureTool({
               <button onClick={() => setPersonal(true)} className={'flex-1 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold border ' + (personal ? 'bg-[#a78bfa]/20 text-[#c4b5fd] border-[#a78bfa]/40' : 'text-faint border-navy-700')}><Lock className="h-3 w-3" /> Just me</button>
             </div>
             <button onClick={save} disabled={saving} className="w-full flex items-center justify-center gap-1.5 rounded-md bg-amber text-[#1a1100] font-display font-bold text-[12.5px] py-2 disabled:opacity-50">
-              <Check className="h-4 w-4" /> {saving ? 'Saving…' : 'Save measurement'}
+              <Check className="h-4 w-4" /> {saving ? 'Saving…' : initial?.id ? 'Update measurement' : 'Save measurement'}
             </button>
           </div>
         )}

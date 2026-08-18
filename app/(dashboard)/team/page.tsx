@@ -1,6 +1,8 @@
 import { getTeam } from '@/lib/db/team'
 import { TeamManager } from '@/components/team/TeamManager'
 
+export const metadata = { title: 'HammerTrack — Team' }
+
 export default async function TeamPage() {
   const team = await getTeam()
   return (

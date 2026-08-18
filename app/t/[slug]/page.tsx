@@ -36,7 +36,7 @@ export default async function TagPage({ params }: { params: { slug: string } }) 
               Sign in first, then scan the sticker again — the machine page needs to know who&apos;s logging the work.
             </p>
             <Link
-              href="/login"
+              href={`/login?next=${encodeURIComponent('/t/' + params.slug)}`}
               className="inline-block rounded-lg bg-amber text-[#1a1100] font-display font-bold px-5 py-2.5 hover:brightness-110 transition"
             >
               Sign in

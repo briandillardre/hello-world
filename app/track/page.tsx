@@ -3,7 +3,7 @@ import { TrackerClient } from '@/components/track/TrackerClient'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Field Tracker',
-  description: 'Clock in and track your location on the jobsite.',
+  description: 'Share a live GPS trail from your phone on the jobsite.',
 }
 
 export default function TrackPage() {

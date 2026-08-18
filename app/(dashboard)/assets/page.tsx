@@ -3,6 +3,8 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
+export const metadata = { title: 'HammerTrack — Assets' }
+
 export default async function AssetsPage() {
   const companyId = await getCurrentCompanyId()
   const [rawAssets, toolAssociations] = await Promise.all([

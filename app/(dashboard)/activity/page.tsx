@@ -2,6 +2,8 @@ import { cookies } from 'next/headers'
 import { Activity, Bot, Users } from 'lucide-react'
 import { DEFAULT_TZ } from '@/lib/dates'
 
+export const metadata = { title: 'HammerTrack — Team activity' }
+
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 

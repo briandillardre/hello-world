@@ -314,6 +314,20 @@ input[type='range'].slider-heat::-moz-range-thumb {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* ── Print: paper-friendly, no app chrome ───────────────────────────────────
+   The sidebar / bottom nav / Ask launcher carry print:hidden; this neutralizes
+   the dashboard content offset (DashboardShell's md:ml-16/md:ml-56 on <main>)
+   so printed pages (e.g. /qr badge sheets) start at the page edge. */
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+}
+
 /* Toast / confirm entrance — shared feedback system (components/ui/feedback) */
 @keyframes htToastIn {
   from { opacity: 0; transform: translateY(12px) scale(0.98); }

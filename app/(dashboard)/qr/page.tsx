@@ -1,6 +1,9 @@
+import Link from 'next/link'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getQrAssets } from '@/lib/db/fieldops'
 import { PrintButton } from '@/components/field/PrintButton'
+
+export const metadata = { title: 'HammerTrack — QR stickers' }
 
 export const dynamic = 'force-dynamic'
 
@@ -25,16 +28,24 @@ export default async function QrSheetPage() {
             one-tap check-in: greased, fueled, radiator, air filter.
           </p>
         </div>
-        <PrintButton />
+        {assets.length > 0 && <PrintButton />}
       </div>
 
       {assets.length === 0 ? (
         <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
           {isMock ? (
-            <p className="text-sm text-muted">
-              Every machine gets a QR sticker — scan it at the machine and log greased / fueled /
-              radiator / air filter with one gloved tap. Sign in to a live account to print yours.
-            </p>
+            <>
+              <p className="text-sm text-muted">
+                Every machine gets a QR sticker — scan it at the machine and log greased / fueled /
+                radiator / air filter with one gloved tap. Sign in to a live account to print yours.
+              </p>
+              <Link
+                href="/register"
+                className="inline-block mt-4 rounded-lg bg-amber text-[#1a1100] font-display font-bold px-5 py-2.5 hover:brightness-110 transition"
+              >
+                Start free →
+              </Link>
+            </>
           ) : (
             <p className="text-sm text-muted">
               No equipment or vehicles with QR codes yet. Run migration{' '}
@@ -50,6 +61,8 @@ export default async function QrSheetPage() {
               <img src={`/api/qr/${a.qr_slug}`} alt={`QR for ${a.name}`} className="w-full aspect-square" />
               <p className="mt-2 font-display font-bold text-[13px] text-[#001523] leading-tight">{a.name}</p>
               <p className="font-mono text-[9px] text-[#6f88a0] uppercase tracking-[0.1em]">Scan to log service</p>
+              {/* Human fallback when the camera won't scan a muddy sticker. */}
+              <p className="mt-0.5 font-mono text-[9.5px] text-[#6f88a0] break-all">hammertrack.ai/t/{a.qr_slug}</p>
             </div>
           ))}
         </div>

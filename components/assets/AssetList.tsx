@@ -186,32 +186,35 @@ function AssetRow({ asset, toolCount, carrier }: { asset: AssetWithLocation; too
         </div>
       )}
       <div className="flex-1 min-w-0">
+        {/* Title row: name + type badge only. The aboard/carrier chips used to
+            sit here as flex-shrink-0 siblings and squeezed the name down to a
+            few characters — they live on the meta line now. */}
         <div className="flex items-center gap-2">
-          <p className="font-medium text-ink truncate">{asset.name}</p>
+          <p className="font-medium text-ink truncate min-w-0 flex-1">{asset.name}</p>
           <Badge variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-faint min-w-0">
           {(toolCount ?? 0) > 0 && (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[11px] font-semibold px-2 py-0.5">
               🔧 {toolCount} aboard
             </span>
           )}
           {carrier && (toolIsFresh(carrier.lastSeen) ? (
-            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[11px] font-semibold px-2 py-0.5 max-w-[160px] truncate">
+            <span className="inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[11px] font-semibold px-2 py-0.5 max-w-[160px] truncate">
               with {carrier.name}
             </span>
           ) : (
             // No Bluetooth ping in 25+ min — it was LEFT somewhere. Say so
             // instead of claiming it's still riding the truck.
-            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-navy-800/70 border border-navy-700 text-faint text-[11px] font-medium px-2 py-0.5 max-w-[180px] truncate">
+            <span className="inline-flex items-center rounded-full bg-navy-800/70 border border-navy-700 text-faint text-[11px] font-medium px-2 py-0.5 max-w-[180px] truncate">
               last seen with {carrier.name}
             </span>
           ))}
-        </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs text-faint">
           {asset.tracker_id && <span className="truncate">ID: {asset.tracker_id}</span>}
           {asset.location?.timestamp && (
-            <span className="flex items-center gap-0.5" suppressHydrationWarning>
+            <span className="flex items-center gap-0.5 flex-shrink-0" suppressHydrationWarning>
               <Clock className="h-3 w-3" />
               {formatRelativeTime(asset.location.timestamp)}
             </span>

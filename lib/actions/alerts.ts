@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { acknowledgeAlert, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
-import type { AlertRuleParams, AlertTrigger } from '@/lib/types'
+import type { AlertRule, AlertRuleParams, AlertTrigger } from '@/lib/types'
 
 export async function acknowledgeAlertAction(id: string) {
   await acknowledgeAlert(id)
@@ -22,10 +22,13 @@ export async function createAlertRuleAction(input: {
   trigger: AlertTrigger
   idle_minutes: number | null
   params?: AlertRuleParams | null
-}) {
+}): Promise<AlertRule | null> {
   const companyId = await getCurrentCompanyId()
-  await createAlertRule(companyId, input)
+  // null = demo mode or insert failure — the form uses this to avoid closing
+  // as if the rule saved.
+  const rule = await createAlertRule(companyId, input)
   revalidatePath('/alerts')
+  return rule
 }
 
 export async function toggleAlertRuleAction(id: string, active: boolean) {

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel } from 'lucide-react'
+import Link from 'next/link'
+import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Check, Images } from 'lucide-react'
 import { clockInAction, clockOutAction } from '@/lib/actions/fieldops'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
 import type { LogFormItem } from '@/lib/log-form'
@@ -31,7 +32,7 @@ function getPos(timeoutMs = 6000): Promise<{ lat: number; lng: number } | null> 
 const CATEGORIES: { key: ClockCategory; label: string }[] = [
   { key: 'project', label: 'Project' },
   { key: 'shop', label: 'Shop' },
-  { key: 'overhead', label: 'Overhead' },
+  { key: 'overhead', label: 'Office / other' }, // display label only — 'overhead' is the stored key
   { key: 'maintenance', label: 'Maintenance' },
 ]
 
@@ -42,7 +43,7 @@ function elapsedLabel(sinceIso: string, now: number): string {
 
 export function ClockCard({ openEntry, zones, available, personName, demo = false, form = [] }: {
   openEntry: TimeEntry | null
-  zones: { id: string; name: string }[]
+  zones: { id: string; name: string; center?: [number, number] | null }[]
   available: boolean
   personName: string
   /** Demo mode: show the pitch, not internal setup instructions. */
@@ -53,18 +54,64 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const router = useRouter()
   const [category, setCategory] = useState<ClockCategory>('project')
   const [zoneId, setZoneId] = useState<string>(zones[0]?.id ?? '')
+  // GPS preselect: rank job sites by distance to the phone and pick the
+  // nearest — a fast-tapping crew was coding hours to the alphabetical
+  // first zone. Runs once; a manual change is never overridden.
+  const [nearestApplied, setNearestApplied] = useState(false)
+  useEffect(() => {
+    if (nearestApplied || demo || !zones.some((z) => z.center)) return
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition((pos) => {
+      setNearestApplied(true)
+      const { latitude, longitude } = pos.coords
+      let best: { id: string; d: number } | null = null
+      for (const z of zones) {
+        if (!z.center) continue
+        const d = Math.hypot((z.center[1] - latitude) * 111_320, (z.center[0] - longitude) * 111_320 * Math.cos(latitude * Math.PI / 180))
+        if (!best || d < best.d) best = { id: z.id, d }
+      }
+      if (best) setZoneId(best.id)
+    }, () => setNearestApplied(true), { enableHighAccuracy: false, timeout: 6000, maximumAge: 120_000 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [plan, setPlan] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const [now, setNow] = useState(Date.now())
   const formRef = useRef<HTMLFormElement>(null)
-  const [fileCounts, setFileCounts] = useState<Record<string, number>>({})
+  // Picked log photos, per form field — accumulated across picks (a camera-
+  // forced input that replaces its FileList was silently eating photo 1 when
+  // the crew took photo 2). Object URLs live alongside for the thumbnails.
+  const [photoFiles, setPhotoFiles] = useState<Record<string, { file: File; url: string }[]>>({})
+  const photoFilesRef = useRef(photoFiles)
+  photoFilesRef.current = photoFiles
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(id)
   }, [])
+
+  // Revoke every thumbnail object URL on unmount.
+  useEffect(() => () => {
+    for (const list of Object.values(photoFilesRef.current)) {
+      for (const f of list) URL.revokeObjectURL(f.url)
+    }
+  }, [])
+
+  const addPhotos = (name: string, picked: FileList | null) => {
+    if (!picked?.length) return
+    const added = Array.from(picked).map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setPhotoFiles((p) => ({ ...p, [name]: [...(p[name] ?? []), ...added] }))
+  }
+  const removePhoto = (name: string, idx: number) => {
+    setPhotoFiles((p) => {
+      const list = [...(p[name] ?? [])]
+      const [gone] = list.splice(idx, 1)
+      if (gone) URL.revokeObjectURL(gone.url)
+      return { ...p, [name]: list }
+    })
+  }
 
   if (!available) {
     return (
@@ -78,6 +125,12 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
               clock is a daily log: what got done, photos, receipts, safety issues, fuel status.
               Sign in to a live account to use it.
             </p>
+            <Link
+              href="/register"
+              className="inline-block mt-3 rounded-lg bg-amber text-[#1a1100] font-display font-bold px-5 py-2.5 hover:brightness-110 transition"
+            >
+              Start free →
+            </Link>
           </>
         ) : (
           <p className="text-sm text-muted">
@@ -112,12 +165,19 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     setBusy(true)
     setError(null)
     const fd = new FormData(e.currentTarget)
+    // Photos come from accumulated state, not the (nameless, value-cleared)
+    // file inputs — append them under the field names the action expects.
+    for (const [name, list] of Object.entries(photoFiles)) {
+      for (const { file } of list) fd.append(name, file)
+    }
     const pos = await getPos()
     if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
     const res = await clockOutAction(fd)
     setBusy(false)
     if (!res.ok) setError(res.error ?? 'Clock-out failed')
     else {
+      for (const list of Object.values(photoFiles)) for (const f of list) URL.revokeObjectURL(f.url)
+      setPhotoFiles({})
       setLoggingOut(false)
       router.refresh()
     }
@@ -125,11 +185,13 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
 
   // ── Not clocked in ──
   if (!openEntry) {
+    const hour = new Date().getHours()
+    const greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'
     return (
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-4">
         <div className="flex items-center gap-2">
           <HardHat className="h-5 w-5 text-amber" />
-          <p className="font-display font-bold text-ink">Morning, {personName.split(' ')[0]}. Where&apos;s the day going?</p>
+          <p className="font-display font-bold text-ink">{greeting}, {personName.split(' ')[0]}. Where&apos;s the day going?</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -270,11 +332,16 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                   <p className="text-faint flex items-center gap-1 mb-1">
                     {it.std ? <Fuel className="h-3.5 w-3.5" /> : null} {label}{req && <span className="text-amber">*</span>}
                   </p>
-                  <div className="flex gap-3">
+                  {/* Same segmented-button pattern as the category picker —
+                      real radios stay in the form (sr-only) so the FormData
+                      field name/value and `required` are unchanged. */}
+                  <div className="grid grid-cols-2 gap-2">
                     {(['yes', 'no'] as const).map((v) => (
-                      <label key={v} className="flex items-center gap-1.5 text-ink cursor-pointer">
-                        <input type="radio" name={name} value={v} required={req} className="accent-amber" />
-                        {v === 'yes' ? 'Yes' : 'No'}
+                      <label key={v} className="cursor-pointer">
+                        <input type="radio" name={name} value={v} required={req} className="peer sr-only" />
+                        <span className="flex items-center justify-center min-h-[44px] rounded-lg text-sm font-semibold border transition bg-navy-950 text-muted border-navy-700 peer-checked:bg-amber/15 peer-checked:text-amber peer-checked:border-amber/40 peer-focus-visible:ring-1 peer-focus-visible:ring-amber/60">
+                          {v === 'yes' ? 'Yes' : 'No'}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -300,10 +367,18 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
                 <fieldset key={it.id} className="rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[13px]">
                   <legend className="sr-only">{label}</legend>
                   <p className="text-faint mb-1">{label}{req && <span className="text-amber">*</span>}</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {/* Row-sized tap targets — real checkboxes stay in the form
+                      (sr-only) so FormData names/values are unchanged. */}
+                  <div className="space-y-1.5">
                     {(it.options ?? []).map((o) => (
-                      <label key={o} className="flex items-center gap-1.5 text-ink cursor-pointer">
-                        <input type="checkbox" name={name} value={o} className="accent-amber" /> {o}
+                      <label key={o} className="block cursor-pointer">
+                        <input type="checkbox" name={name} value={o} className="peer sr-only" />
+                        <span className="flex items-center gap-2.5 min-h-[44px] rounded-lg border px-3 text-sm font-semibold transition bg-navy-950 text-muted border-navy-700 peer-checked:bg-amber/15 peer-checked:text-amber peer-checked:border-amber/40 peer-focus-visible:ring-1 peer-focus-visible:ring-amber/60 peer-checked:[&_svg]:opacity-100">
+                          <span className="grid place-items-center w-5 h-5 rounded border border-navy-600 flex-none">
+                            <Check className="h-3.5 w-3.5 opacity-0 transition-opacity" />
+                          </span>
+                          {o}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -311,16 +386,45 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
               )
             }
 
-            // photos (standard photos/receipts + custom photo questions)
+            // photos (standard photos/receipts + custom photo questions).
+            // Inputs are nameless and cleared after every pick — the files
+            // accumulate in photoFiles and submitLog appends them under
+            // `name`, so photo 2 no longer replaces photo 1.
             const isReceipts = it.std === 'receipts'
-            const count = fileCounts[name] ?? 0
+            const picked = photoFiles[name] ?? []
             return (
-              <label key={it.id} className={`flex items-center justify-center gap-2 rounded-lg border border-dashed border-navy-600 bg-navy-900 py-3 text-[13px] text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
-                {isReceipts ? <Receipt className="h-4 w-4 text-amber" /> : <Camera className="h-4 w-4 text-teal" />}
-                {count ? `${count} added` : label}{req && !count && <span className="text-amber">*</span>}
-                <input type="file" name={name} accept="image/*" capture="environment" multiple hidden
-                  onChange={(e) => setFileCounts((c) => ({ ...c, [name]: e.target.files?.length ?? 0 }))} />
-              </label>
+              <div key={it.id} className="rounded-lg border border-dashed border-navy-600 bg-navy-900 p-3 space-y-2">
+                <p className="flex items-center gap-2 text-[13px] text-muted">
+                  {isReceipts ? <Receipt className="h-4 w-4 text-amber" /> : <Camera className="h-4 w-4 text-teal" />}
+                  {label}{req && !picked.length && <span className="text-amber">*</span>}
+                </p>
+                {picked.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {picked.map((f, i) => (
+                      <span key={f.url} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={f.url} alt={`${label} ${i + 1}`} className="h-14 w-14 object-cover rounded-md border border-navy-700" />
+                        <button type="button" onClick={() => removePhoto(name, i)} aria-label="Remove photo"
+                          className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full bg-navy-800 border border-navy-600 text-muted text-[12px] leading-none hover:text-alert hover:border-alert/50 transition">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className={`flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
+                    <Camera className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> Take photo
+                    <input type="file" accept="image/*" capture="environment" multiple hidden
+                      onChange={(e) => { addPhotos(name, e.target.files); e.target.value = '' }} />
+                  </label>
+                  <label className={`flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink transition ${isReceipts ? 'hover:border-amber/50' : 'hover:border-teal/50'}`}>
+                    <Images className={`h-4 w-4 ${isReceipts ? 'text-amber' : 'text-teal'}`} /> From gallery
+                    <input type="file" accept="image/*" multiple hidden
+                      onChange={(e) => { addPhotos(name, e.target.files); e.target.value = '' }} />
+                  </label>
+                </div>
+              </div>
             )
           })}
 

@@ -142,6 +142,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                 Add
               </button>
             </div>
+            {error && <p className="text-sm text-red-400">{error}</p>}
           </div>
 
           {open.length === 0 && done.length === 0 ? (
@@ -188,8 +189,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       type="checkbox"
                       className="mt-0.5 h-4 w-4 accent-teal cursor-pointer"
                       onChange={() => {
+                        const prev = tasks
                         setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: 'done' as const, done_at: new Date().toISOString() } : x))
-                        start(async () => { await toggleTaskAction(zoneId, t.id, true) })
+                        start(async () => {
+                          const r = await toggleTaskAction(zoneId, t.id, true)
+                          if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                        })
                       }}
                       aria-label={`Mark done: ${t.title}`}
                     />
@@ -207,8 +212,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                     </button>
                     <button type="button" className="text-faint hover:text-red-400 mt-0.5"
                       onClick={() => {
+                        const prev = tasks
                         setTasks((ts) => ts.filter((x) => x.id !== t.id))
-                        start(async () => { await deleteTaskAction(zoneId, t.id) })
+                        start(async () => {
+                          const r = await deleteTaskAction(zoneId, t.id)
+                          if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                        })
                       }}
                       aria-label={`Delete: ${t.title}`}>
                       <Trash2 className="h-3.5 w-3.5" />
@@ -227,8 +236,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                   <input
                     type="checkbox" checked className="mt-0.5 h-4 w-4 accent-teal cursor-pointer"
                     onChange={() => {
+                      const prev = tasks
                       setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: 'open' as const, done_at: null } : x))
-                      start(async () => { await toggleTaskAction(zoneId, t.id, false) })
+                      start(async () => {
+                        const r = await toggleTaskAction(zoneId, t.id, false)
+                        if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                      })
                     }}
                     aria-label={`Reopen: ${t.title}`}
                   />
@@ -289,8 +302,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                     className="h-4 w-4 accent-teal cursor-pointer"
                     onChange={(e) => {
                       const v = e.target.checked
+                      const prev = milestones
                       setMilestones((ms) => ms.map((x) => x.id === m.id ? { ...x, done_at: v ? new Date().toISOString() : null } : x))
-                      start(async () => { await toggleMilestoneAction(zoneId, m.id, v) })
+                      start(async () => {
+                        const r = await toggleMilestoneAction(zoneId, m.id, v)
+                        if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+                      })
                     }}
                     aria-label={`Toggle milestone: ${m.name}`}
                   />
@@ -305,8 +322,12 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                   )}
                   <button type="button" className="text-faint hover:text-red-400"
                     onClick={() => {
+                      const prev = milestones
                       setMilestones((ms) => ms.filter((x) => x.id !== m.id))
-                      start(async () => { await deleteMilestoneAction(zoneId, m.id) })
+                      start(async () => {
+                        const r = await deleteMilestoneAction(zoneId, m.id)
+                        if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+                      })
                     }}
                     aria-label={`Delete milestone: ${m.name}`}>
                     <Trash2 className="h-3.5 w-3.5" />
@@ -317,7 +338,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
           </div>
           <div className="flex gap-2 p-3 border-t border-navy-800">
             <input value={msName} onChange={(e) => setMsName(e.target.value)}
-              placeholder="Milestone (e.g. “Base down”)"
+              placeholder="Milestone name"
               className="flex-1 min-w-0 rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink placeholder:text-faint" />
             <input type="date" value={msDate} onChange={(e) => setMsDate(e.target.value)}
               className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-xs text-muted" />
@@ -333,6 +354,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
               Add
             </button>
           </div>
+          {error && <p className="px-3 pb-3 text-sm text-red-400">{error}</p>}
         </div>
       </section>
 
@@ -389,11 +411,10 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                 </p>
               </>
             )}
+            {error && <p className="text-sm text-red-400">{error}</p>}
           </div>
         </section>
       )}
-
-      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   )
 }

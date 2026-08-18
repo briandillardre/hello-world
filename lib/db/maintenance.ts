@@ -64,6 +64,24 @@ function daysSince(date: string | null): number {
   return Math.floor((Date.now() - new Date(date).getTime()) / (24 * 60 * 60 * 1000))
 }
 
+/** Insert a service schedule via the anon client (RLS scopes by company),
+ *  same pattern as createServiceRecord below. Returns null in demo / on error. */
+export async function createSchedule(
+  companyId: string,
+  payload: Omit<MaintenanceSchedule, 'id' | 'company_id'>
+): Promise<MaintenanceSchedule | null> {
+  if (isMock) return null
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('maintenance_schedules')
+    .insert({ ...payload, company_id: companyId })
+    .select()
+    .single()
+  return data
+}
+
 export async function createServiceRecord(
   companyId: string,
   payload: Omit<ServiceRecord, 'id' | 'company_id'>

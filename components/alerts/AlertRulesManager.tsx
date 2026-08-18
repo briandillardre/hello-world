@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Plus, Trash2, X, Moon, DoorOpen, ArrowLeftRight, Timer, Gauge, MessageSquareWarning, Pencil, Check } from 'lucide-react'
 import type { AlertRule, AlertRuleParams, AlertTrigger, Geofence, AssetWithLocation } from '@/lib/types'
-import { confirmSheet } from '@/components/ui/feedback'
+import { toast, confirmSheet } from '@/components/ui/feedback'
 import {
   createAlertRuleAction, toggleAlertRuleAction, deleteAlertRuleAction,
   updateAlertRuleAction, bulkZoneRulesAction,
@@ -24,11 +24,12 @@ import {
 
 type MatrixCol = 'after_hours_movement' | 'left_site' | 'inout' | 'idle'
 
-const COLS: { key: MatrixCol; label: string; icon: typeof Moon; hint: string; texts: boolean }[] = [
-  { key: 'after_hours_movement', label: 'Theft watch', icon: Moon, hint: 'Moves outside work hours → texts you', texts: true },
-  { key: 'left_site', label: 'Left site', icon: DoorOpen, hint: 'Drives out of the zone → texts you', texts: true },
-  { key: 'inout', label: 'In/out log', icon: ArrowLeftRight, hint: 'Logs arrivals & departures (site log, zone history) — quiet', texts: false },
-  { key: 'idle', label: 'Idle', icon: Timer, hint: 'Sitting 60+ minutes → flagged in alerts', texts: false },
+/** `short` = the <sm header label; the matrix has to fit a 390px screen. */
+const COLS: { key: MatrixCol; label: string; short: string; icon: typeof Moon; hint: string; texts: boolean }[] = [
+  { key: 'after_hours_movement', label: 'Theft watch', short: 'After-hrs', icon: Moon, hint: 'Moves outside work hours → texts you', texts: true },
+  { key: 'left_site', label: 'Left site', short: 'Left site', icon: DoorOpen, hint: 'Drives out of the zone → texts you', texts: true },
+  { key: 'inout', label: 'In/out log', short: 'In/out', icon: ArrowLeftRight, hint: 'Logs arrivals & departures (site log, zone history) — quiet', texts: false },
+  { key: 'idle', label: 'Idle', short: 'Idle', icon: Timer, hint: 'Sitting 60+ minutes → flagged in alerts', texts: false },
 ]
 
 const TRIGGER_WORDS: Record<AlertTrigger, string> = {
@@ -161,15 +162,16 @@ export function AlertRulesManager({ rules, geofences, assets, editable }: {
           <span className="flex items-center gap-1 text-amber/90">✓ on</span>
           <span className="text-faint/70">· tap a cell to cycle</span>
         </p>
+        <div className="relative">
         <div className="rounded-xl border border-navy-800 bg-navy-900 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-navy-800">
-                <th className="text-left font-medium text-faint text-xs px-3 py-2 min-w-[130px]">Zone</th>
-                {COLS.map(({ key, label, icon: Icon, hint, texts }) => {
+                <th className="text-left font-medium text-faint text-xs px-3 py-2 min-w-[92px] sm:min-w-[130px]">Zone</th>
+                {COLS.map(({ key, label, short, icon: Icon, hint, texts }) => {
                   const allOn = zones.every((z) => cellState(z.id, key) === 'on')
                   return (
-                    <th key={key} className="px-1.5 py-2 text-center min-w-[74px]">
+                    <th key={key} className="px-1.5 py-2 text-center min-w-[64px] sm:min-w-[74px]">
                       <button
                         onClick={() => setColumn(key)}
                         disabled={!editable}
@@ -177,7 +179,10 @@ export function AlertRulesManager({ rules, geofences, assets, editable }: {
                         className={'inline-flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors ' + (editable ? 'hover:bg-navy-800' : '')}
                       >
                         <Icon className={'h-3.5 w-3.5 ' + (texts ? 'text-amber' : 'text-teal')} />
-                        <span className="text-[10px] font-semibold text-muted leading-none">{label}</span>
+                        <span className="text-[10px] font-semibold text-muted leading-none">
+                          <span className="sm:hidden">{short}</span>
+                          <span className="hidden sm:inline">{label}</span>
+                        </span>
                         {editable && <span className="text-[9px] font-mono text-faint leading-none">{allOn ? 'all on' : 'set all'}</span>}
                       </button>
                     </th>
@@ -230,6 +235,11 @@ export function AlertRulesManager({ rules, geofences, assets, editable }: {
             </tbody>
           </table>
         </div>
+        {/* phones: the matrix scrolls sideways with no cue — fade the right
+            edge and say so (Idle was invisible at 390px) */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-navy-900 to-transparent sm:hidden" aria-hidden />
+        </div>
+        <p className="sm:hidden font-mono text-[10px] text-faint text-right -mt-2.5">swipe →</p>
         </>
       )}
 
@@ -370,13 +380,19 @@ function CustomRuleForm({ geofences, assets, onDone }: {
       if (days.length && days.length < 7) params.days = days
     }
     if (textMe && (trigger === 'enter' || trigger === 'idle' || trigger === 'speeding')) params.critical = true
-    await createAlertRuleAction({
+    const created = await createAlertRuleAction({
       geofence_id: geofenceId,
       asset_id: assetId || null,
       trigger,
       idle_minutes: trigger === 'idle' ? idle : null,
       params: Object.keys(params).length ? params : null,
     })
+    // Demo mode (or a failed insert) returns null — say so and keep the form
+    // open instead of closing as if the rule saved.
+    if (!created) {
+      toast('Demo — changes aren’t saved.', { variant: 'error' })
+      return
+    }
     onDone()
   })
 

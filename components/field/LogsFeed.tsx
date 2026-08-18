@@ -210,7 +210,7 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
                       )
                     }
                     return (
-                      <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                      <li key={i} className="flex items-center gap-1.5 text-[12.5px]">
                         <span className="text-ink font-medium">{pr.personName}</span>
                         <span className="text-faint">↔</span>
                         <span className="text-ink font-medium truncate flex-1">{pr.machineName}</span>
@@ -220,12 +220,12 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
                         ) : (
                           <>
                             <span className="font-mono text-faint tabular-nums">{Math.round(pr.confidence * 100)}%</span>
-                            <span className="flex items-center gap-0.5 flex-none">
-                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'confirmed')} title="Confirm — yes, they ran it" className="grid place-items-center w-6 h-6 rounded-md bg-teal/15 text-teal hover:bg-teal/30 transition-colors">
-                                <Check className="h-3.5 w-3.5" />
+                            <span className="flex items-center gap-1 flex-none">
+                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'confirmed')} title="Confirm — yes, they ran it" className="grid place-items-center w-9 h-9 rounded-md bg-teal/15 text-teal hover:bg-teal/30 transition-colors">
+                                <Check className="h-4 w-4" />
                               </button>
-                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'rejected')} title="Reject — the GPS guessed wrong" className="grid place-items-center w-6 h-6 rounded-md bg-navy-800 text-faint hover:text-alert hover:bg-alert/15 transition-colors">
-                                <X className="h-3.5 w-3.5" />
+                              <button onClick={() => decide(key, pr.personId, pr.machineId, 'rejected')} title="Reject — the GPS guessed wrong" className="grid place-items-center w-9 h-9 rounded-md bg-navy-800 text-faint hover:text-alert hover:bg-alert/15 transition-colors">
+                                <X className="h-4 w-4" />
                               </button>
                             </span>
                           </>

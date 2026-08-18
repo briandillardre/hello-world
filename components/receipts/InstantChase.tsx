@@ -154,7 +154,7 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
               </div>
             </>
           )}
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-alert">{error}</p>}
         </div>
       )}
     </section>

@@ -59,6 +59,7 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
   const [pending, start] = useTransition()
   const [classifying, setClassifying] = useState(false)
   const [manualTrade, setManualTrade] = useState(false)
+  const [editing, setEditing] = useState<keyof FinanceProfile | null>(null)
 
   function classify() {
     if (!p.description || p.description.trim().length < 8) { setError('Describe the company in a sentence or two first.'); return }
@@ -89,10 +90,14 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
 
   const inp = 'w-full rounded-lg bg-navy-950 border border-navy-700 px-2.5 py-2 text-sm text-ink disabled:opacity-50'
   const lbl = 'block text-[10.5px] font-mono uppercase tracking-[0.1em] text-faint mb-1'
+  // Money inputs show 1,234,567 at rest and plain digits while editing —
+  // the sanitizer strips commas (and everything non-numeric) either way.
   const num = (k: keyof FinanceProfile) => ({
-    value: p[k] ?? '',
+    value: p[k] == null ? '' : editing === k ? String(p[k]) : Number(p[k]).toLocaleString('en-US'),
     disabled: !canEdit,
     inputMode: 'numeric' as const,
+    onFocus: () => setEditing(k),
+    onBlur: () => setEditing(null),
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
       const raw = e.target.value.replace(/[^0-9.]/g, '')
       setP((x) => ({ ...x, [k]: raw === '' ? undefined : Number(raw) }))
@@ -113,6 +118,7 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
         <div className="flex items-center gap-2 mb-3">
           <Building2 className="h-4 w-4 text-amber" />
           <h2 className="font-display font-bold text-sm text-ink flex-1">Your numbers</h2>
+          {error && <span className="text-[11px] text-alert truncate">{error}</span>}
           {pending && <span className="text-[11px] text-faint">Saving…</span>}
           {saved && <span className="text-[11px] text-teal">Saved ✓</span>}
           {canEdit && <button type="button" onClick={save} className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5">Save</button>}
@@ -239,11 +245,9 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
         <p className="text-[10.5px] text-faint">
           Same three lenses as a real-estate appraisal — capitalization, comps, cost. Estimates from
           entered figures and published trade multiples; not a formal appraisal. Raising margin,
-          utilization, and clean books moves the number — the levers live in docs/GROWTH-PLATFORM.md.
+          utilization, and clean books moves the number.
         </p>
       </section>
-
-      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   )
 }

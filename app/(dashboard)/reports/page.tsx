@@ -16,6 +16,8 @@ import { CountUp } from '@/components/ui/count-up'
 import { DailyBars, DayStrip, FleetRhythm, SplitBar, StopMixBar, fmtHM } from '@/components/reports/Scorecard'
 import { ScorecardExport } from '@/components/reports/ScorecardExport'
 
+export const metadata = { title: 'HammerTrack — Reports' }
+
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
 }
@@ -24,38 +26,50 @@ const TYPE_EMOJI: Record<AssetType, string> = {
 // window, and Today IS live-to-now). Same keys, same labels, same order.
 const REPORT_RANGES = RANGES.filter((r) => r.key !== 'live')
 
-interface Flag { severity: 0 | 1 | 2; text: string; assetName: string }
+type FlagKind = 'after-hours' | 'personal' | 'late-start' | 'idle' | 'vendor' | 'speed'
+interface Flag { severity: 0 | 1 | 2; kind: FlagKind; text: string; assetName: string }
+
+// Chip label + color per flag kind — the chip must say what the flag IS,
+// not what severity it happens to share with another kind.
+const FLAG_CHIP: Record<FlagKind, { label: string; cls: string }> = {
+  'after-hours': { label: 'after hours', cls: 'border-alert/40 text-alert bg-alert/10' },
+  personal: { label: 'personal time', cls: 'border-amber/40 text-amber bg-amber/10' },
+  'late-start': { label: 'late starts', cls: 'border-amber/40 text-amber bg-amber/10' },
+  idle: { label: 'high idle', cls: 'border-amber/40 text-amber bg-amber/10' },
+  vendor: { label: 'vendor runs', cls: 'border-amber/40 text-amber bg-amber/10' },
+  speed: { label: 'speeding', cls: 'border-alert/40 text-alert bg-alert/10' },
+}
 
 /** The judgment calls, in one place: what earns a card a callout chip. */
 function flagsFor(s: VehicleScore, workStartMin: number): Flag[] {
   const out: Flag[] = []
   if (s.afterHoursMiles >= 10) {
-    out.push({ severity: 0, assetName: s.name, text: `${s.afterHoursMiles} mi outside work hours${s.weekendMiles >= 5 ? ` (${s.weekendMiles} on weekends)` : ''}` })
+    out.push({ severity: 0, kind: 'after-hours', assetName: s.name, text: `${s.afterHoursMiles} mi outside work hours${s.weekendMiles >= 5 ? ` (${s.weekendMiles} on weekends)` : ''}` })
   }
   const personalWork = s.stops
     .filter((m) => m.kind === 'food' || m.kind === 'store' || m.kind === 'residence')
     .reduce((sum, m) => sum + m.workMinutes, 0)
   if (s.daysActive >= 1 && personalWork >= 45 * s.daysActive) {
-    out.push({ severity: 1, assetName: s.name, text: `${fmtHM(personalWork)} at food, stores or residences during work hours` })
+    out.push({ severity: 1, kind: 'personal', assetName: s.name, text: `${fmtHM(personalWork)} at food, stores or residences during work hours` })
   }
   if (s.medFirstMove != null && s.daysActive >= 3 && s.medFirstMove > workStartMin + 45) {
-    out.push({ severity: 2, assetName: s.name, text: `typically rolls at ${fmtClock(s.medFirstMove)}` })
+    out.push({ severity: 2, kind: 'late-start', assetName: s.name, text: `typically rolls at ${fmtClock(s.medFirstMove)}` })
   }
   if (s.idlePct >= 40 && s.activeHrs + s.idleHrs >= 5) {
-    out.push({ severity: 2, assetName: s.name, text: `${s.idlePct}% of engine time idling` })
+    out.push({ severity: 2, kind: 'idle', assetName: s.name, text: `${s.idlePct}% of engine time idling` })
   }
   // Procurement waste: lots of separate supply-house runs = windshield time.
   const vendVisits = (s.vendorRuns ?? []).reduce((n, v) => n + v.visits, 0)
   if (vendVisits >= 4) {
     const top = s.vendorRuns![0]
-    out.push({ severity: 2, assetName: s.name, text: `${vendVisits} vendor runs (${top.name} ×${top.visits}) — consolidate trips?` })
+    out.push({ severity: 2, kind: 'vendor', assetName: s.name, text: `${vendVisits} vendor runs (${top.name} ×${top.visits}) — consolidate trips?` })
   }
   // Driver safety (speed stream): a top-speed spike or a real share of time
   // at 80+ is a conversation, not a footnote.
   if (s.safety && s.safety.maxMph >= 85) {
-    out.push({ severity: 0, assetName: s.name, text: `hit ${s.safety.maxMph} mph` })
+    out.push({ severity: 0, kind: 'speed', assetName: s.name, text: `hit ${s.safety.maxMph} mph` })
   } else if (s.safety && s.safety.over80Pct >= 0.05) {
-    out.push({ severity: 1, assetName: s.name, text: `${Math.round(s.safety.over80Pct * 100)}% of drive time over 80 mph` })
+    out.push({ severity: 1, kind: 'speed', assetName: s.name, text: `${Math.round(s.safety.over80Pct * 100)}% of drive time over 80 mph` })
   }
   return out
 }
@@ -132,10 +146,10 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
         </div>
         <div className="flex gap-1 ml-2 flex-wrap">
           {REPORT_RANGES.map((r) => (
-            <a key={r.key} href={`/reports?range=${r.key}`}
+            <Link key={r.key} href={`/reports?range=${r.key}`}
               className={'px-2.5 py-1 rounded-full text-[11.5px] font-semibold transition-colors whitespace-nowrap ' + (key === r.key ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}>
               {r.label}
-            </a>
+            </Link>
           ))}
         </div>
         {scores.length > 0 && (
@@ -158,17 +172,19 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
           </section>
         ) : (
           <>
-            {/* Fleet pulse */}
+            {/* Fleet pulse — money first */}
             <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <StatTile icon={<DollarSign className="h-4 w-4 text-amber" />} label="Billable value">
+                {billable > 0
+                  ? <CountUp value={billable} prefix="$" />
+                  : <Link href="/assets" className="text-faint text-sm font-normal underline decoration-dotted hover:text-amber transition-colors">set hourly rates</Link>}
+              </StatTile>
               <StatTile icon={<Gauge className="h-4 w-4 text-[#60a5fa]" />} label="Miles driven">
                 <CountUp value={totMiles} />
               </StatTile>
               <StatTile icon={<Activity className="h-4 w-4 text-amber" />} label="Working hours">{totActive.toLocaleString()}</StatTile>
               <StatTile icon={<Clock className="h-4 w-4 text-teal" />} label="Idle share">{idlePct}%</StatTile>
               <StatTile icon={<Moon className={`h-4 w-4 ${totAfter >= 10 ? 'text-alert' : 'text-faint'}`} />} label="After-hours miles">{totAfter.toLocaleString()}</StatTile>
-              <StatTile icon={<DollarSign className="h-4 w-4 text-amber" />} label="Billable value">
-                {billable > 0 ? <CountUp value={billable} prefix="$" /> : <span className="text-faint text-sm font-normal">set hourly rates</span>}
-              </StatTile>
             </section>
 
             {/* Worth a look */}
@@ -220,8 +236,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                         </span>
                       )}
                       {flags.slice(0, 2).map((f, i) => (
-                        <span key={i} className={`text-[10.5px] px-1.5 py-0.5 rounded-full border ${f.severity === 0 ? 'border-alert/40 text-alert bg-alert/10' : 'border-amber/40 text-amber bg-amber/10'}`}>
-                          {f.severity === 0 ? 'after hours' : f.severity === 1 ? 'personal time' : f.text.includes('idling') ? 'high idle' : 'late starts'}
+                        <span key={i} className={`text-[10.5px] px-1.5 py-0.5 rounded-full border ${FLAG_CHIP[f.kind].cls}`}>
+                          {FLAG_CHIP[f.kind].label}
                         </span>
                       ))}
                     </div>
@@ -295,7 +311,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-faint mt-3">Site hours drive equipment-usage billing → see Accounting.</p>
+                <p className="text-xs text-faint mt-3">Site hours drive equipment-usage billing → <Link href="/accounting" className="text-teal hover:underline">see Accounting</Link>.</p>
               </section>
             )}
 

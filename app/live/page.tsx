@@ -1,5 +1,9 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { LiveDemoClient } from '@/components/map/LiveDemoClient'
+
+// Map surface: page zoom off so pinch gestures belong to the map engine
+// (the root layout allows pinch-zoom everywhere else).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false }
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Live demo map',

@@ -48,11 +48,14 @@ export const metadata: Metadata = {
   },
 }
 
+// Accessibility: pinch-zoom stays available everywhere by default. Map-like
+// surfaces (/map, /command, /live) pin their own maximumScale:1 viewport so
+// gesture handling stays with the map engine.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   themeColor: '#002946',
 }
 

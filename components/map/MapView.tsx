@@ -16,6 +16,8 @@ import {
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
 import { measureSummary } from '@/lib/measure'
+import { updateMeasurementAction, deleteMeasurementAction } from '@/lib/actions/measurements'
+import { toast, confirmSheet } from '@/components/ui/feedback'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
@@ -309,6 +311,8 @@ interface MapViewProps {
   alerts?: AlertEvent[]
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
+  /** All saved measurements — the 'Measurements' overlay layer. */
+  measurements?: import('@/lib/db/measurements').Measurement[]
   /** Company branding for the Create-PDF button (logo + name on the header). */
   brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
   kiosk?: boolean
@@ -331,7 +335,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -556,6 +560,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const [measureOn, setMeasureOn] = useState(false)
   const measureOnRef = useRef(false)
   measureOnRef.current = measureOn
+  // Saved measurements — the client copy (upserted on save/edit/delete so the
+  // layer reflects changes without a reload), the tapped one, and the one
+  // loaded into the measure tool for editing.
+  type SavedMeasure = import('@/lib/db/measurements').Measurement
+  const [measures, setMeasures] = useState<SavedMeasure[]>(measurements)
+  useEffect(() => { if (measurements.length) setMeasures(measurements) }, [measurements])
+  const measuresRef = useRef(measures)
+  measuresRef.current = measures
+  const [selectedMeasure, setSelectedMeasure] = useState<SavedMeasure | null>(null)
+  const [editingMeasure, setEditingMeasure] = useState<SavedMeasure | null>(null)
+  const [measureRename, setMeasureRename] = useState<string | null>(null)
   // The measure toggle lives INSIDE the MapLibre control cluster (same size,
   // same column as zoom/locate/fit — owner ask, Jul 21); this ref lets React
   // paint its active state onto the DOM button.
@@ -618,6 +633,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, maxZoom: 18, duration: 1100 })
     }
     fit()
+    // Drop ?m= from the URL once focused — otherwise every refresh re-flies
+    // to this measurement ("page refresh is zooming to the measurement",
+    // Brian, Aug 17). Back/refresh then behave like a normal map open.
+    try {
+      const u = new URL(window.location.href)
+      if (u.searchParams.has('m')) { u.searchParams.delete('m'); window.history.replaceState(null, '', u.pathname + (u.searchParams.size ? '?' + u.searchParams.toString() : '')) }
+    } catch { /* URL API unavailable — harmless */ }
     // Re-assert once — the first-open zoom-to-fleet can land later and steal
     // the camera from the deep link.
     const t = setTimeout(fit, 1600)
@@ -628,6 +650,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (m.getSource(SRC)) m.removeSource(SRC)
     }
   }, [mapReady, focusMeasurement])
+
 
   // On-demand full-resolution history for the selected window. The shipped
   // snapshot is capped + newest-biased (older days were getting silently
@@ -888,6 +911,74 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // Settings now; the open-behavior effect below reads ht_map_open_view.
   const [parcelsOn, setParcelsOn] = useState(lastState.parcels ?? false)
   const [overlaysOn, setOverlaysOn] = useState<Record<string, boolean>>(lastState.overlays ?? {})
+
+  // ── Saved measurements — the 'Measurements' overlay: every saved point/
+  // line/area drawn in measure-amber with a name+summary label; tap to open
+  // the sheet (rename / edit shape / delete). The one being edited hides so
+  // the measure tool's draft isn't drawn twice.
+  const measClickBoundRef = useRef(false)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const SRC = 'msaved'
+    const on = !!overlaysOn.measures
+    const fc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: measures.filter((mm) => mm.id !== editingMeasure?.id).flatMap((mm) => {
+        const g = mm.geometry
+        const coords: [number, number][] =
+          g.type === 'Point' ? [g.coordinates as [number, number]]
+          : g.type === 'LineString' ? (g.coordinates as [number, number][])
+          : (g.coordinates[0] as [number, number][])
+        if (!coords.length) return []
+        const mid = coords[Math.floor(coords.length / 2)]
+        return [
+          { type: 'Feature' as const, properties: { id: mm.id, pt: g.type === 'Point' ? 1 : 0 }, geometry: g },
+          { type: 'Feature' as const, properties: { id: mm.id, lbl: `${mm.name} — ${measureSummary(mm.kind, mm.props)}` }, geometry: { type: 'Point' as const, coordinates: g.type === 'Point' ? coords[0] : mid } },
+        ]
+      }),
+    }
+    const ensure = () => {
+      if (!m.getSource(SRC)) m.addSource(SRC, { type: 'geojson', data: fc })
+      else (m.getSource(SRC) as maplibregl.GeoJSONSource).setData(fc)
+      if (!m.getLayer('msaved-fill')) m.addLayer({ id: 'msaved-fill', type: 'fill', source: SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.13 } })
+      if (!m.getLayer('msaved-line')) m.addLayer({ id: 'msaved-line', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': '#ffb648', 'line-width': 2, 'line-dasharray': [2, 1.2] } })
+      // Invisible fat line — a 2px dash is untappable with a thumb.
+      if (!m.getLayer('msaved-hit')) m.addLayer({ id: 'msaved-hit', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': '#000', 'line-width': 22, 'line-opacity': 0.001 } })
+      if (!m.getLayer('msaved-pts')) m.addLayer({ id: 'msaved-pts', type: 'circle', source: SRC, filter: ['==', 'pt', 1], paint: { 'circle-radius': 6.5, 'circle-color': '#f5a623', 'circle-stroke-color': '#04121d', 'circle-stroke-width': 2 } })
+      if (!m.getLayer('msaved-pts-hit')) m.addLayer({ id: 'msaved-pts-hit', type: 'circle', source: SRC, filter: ['==', 'pt', 1], paint: { 'circle-radius': 18, 'circle-color': '#000', 'circle-opacity': 0.001 } })
+      if (!m.getLayer('msaved-label')) m.addLayer({
+        id: 'msaved-label', type: 'symbol', source: SRC, filter: ['has', 'lbl'], minzoom: 12,
+        layout: { 'text-field': ['get', 'lbl'], 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-offset': [0, -1.2], 'text-max-width': 16 },
+        paint: { 'text-color': '#ffe0b0', 'text-halo-color': '#04121d', 'text-halo-width': 1.6 },
+      })
+      const vis = on ? 'visible' : 'none'
+      for (const l of ['msaved-fill', 'msaved-line', 'msaved-hit', 'msaved-pts', 'msaved-pts-hit', 'msaved-label']) m.setLayoutProperty(l, 'visibility', vis)
+      if (!measClickBoundRef.current) {
+        measClickBoundRef.current = true
+        const pick = (e: maplibregl.MapLayerMouseEvent) => {
+          if (measureOnRef.current) return // measuring — taps place vertices
+          const id = e.features?.[0]?.properties?.id
+          const hit = measuresRef.current.find((x) => x.id === id)
+          if (!hit) return
+          setSelectedAsset(null)
+          setSelectedDevice(null)
+          setSelectedZone(null)
+          setSelectedMeasure(hit)
+          setMeasureRename(null)
+        }
+        for (const l of ['msaved-fill', 'msaved-hit', 'msaved-pts-hit']) {
+          m.on('click', l, pick)
+          m.on('mouseenter', l, () => { m.getCanvas().style.cursor = 'pointer' })
+          m.on('mouseleave', l, () => { m.getCanvas().style.cursor = '' })
+        }
+      }
+    }
+    let disposed = false
+    const tryEnsure = () => { if (disposed) return; try { ensure() } catch { m.once('idle', tryEnsure) } }
+    tryEnsure()
+    return () => { disposed = true }
+  }, [mapReady, overlaysOn.measures, measures, editingMeasure])
   const parcelAbort = useRef<AbortController | null>(null)
   // Current zoom feeds the layers panel's visible zoom-gating rows.
   const [mapZoom, setMapZoom] = useState(11)
@@ -1846,6 +1937,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           [e.point.x + pad, e.point.y + pad],
         ]
         if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg'] }).length) return
+        // Saved measurements sit ON TOP of zones — a tap on one opens the
+        // measurement sheet, never the zone underneath (Brian, Aug 17: could
+        // only ever reach the zone). Hidden layers don't hit-test, so this
+        // costs nothing while the Measurements toggle is off.
+        const mLayers = ['msaved-fill', 'msaved-hit', 'msaved-pts-hit'].filter((l) => m.getLayer(l))
+        if (mLayers.length && m.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]], { layers: mLayers }).length) return
         const id = e.features?.[0]?.properties?.id
         const fence = geofencesRef.current.find((g) => g.id === id)
         if (!fence) return
@@ -5046,6 +5143,62 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     startDrawing()
   }
 
+  // ── Live deep links (UX sweep, Aug 17) ──────────────────────────────────
+  // /map?follow=<assetId> and /map?follow=zone:<id> now work on LIVE view —
+  // asset pages, maintenance rows, and zone pages can land users focused on
+  // the thing they tapped (the old handler only honored `follow` inside a
+  // shared-replay restore). /map?draw=1 opens with the zone-draw tool armed
+  // (the "Draw Zone" buttons used to dump users on a bare map).
+  const liveDeepLinkRef = useRef(false)
+  useEffect(() => {
+    if (!mapReady || kiosk || liveDeepLinkRef.current || typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const r = q.get('range')
+    if (r && r !== 'live') return // replay restore path owns these params
+    const follow = q.get('follow')
+    const draw = q.get('draw')
+    if (!follow && !draw) return
+    liveDeepLinkRef.current = true
+    const strip = () => {
+      try {
+        const u = new URL(window.location.href)
+        u.searchParams.delete('follow'); u.searchParams.delete('draw')
+        window.history.replaceState(null, '', u.pathname + (u.searchParams.size ? '?' + u.searchParams.toString() : ''))
+      } catch { /* harmless */ }
+    }
+    if (draw === '1') { strip(); startDrawing(); return }
+    if (!follow) return
+    // Shell-first boot: assets/zones stream in after mount — poll briefly.
+    const started = Date.now()
+    const attempt = () => {
+      if (follow.startsWith('zone:')) {
+        const fence = geofencesRef.current.find((g) => g.id === follow.slice(5))
+        if (fence) {
+          const ring = fence.geometry?.coordinates?.[0] as [number, number][] | undefined
+          if (ring?.length) {
+            let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity
+            for (const [lng, lat] of ring) { a = Math.min(a, lng); b = Math.min(b, lat); c = Math.max(c, lng); d = Math.max(d, lat) }
+            map.current?.fitBounds([[a, b], [c, d]], { padding: 90, maxZoom: 17.5, duration: 1200 })
+          }
+          setSelectedZone(fence)
+          strip()
+          return
+        }
+      } else {
+        const a = assetsRef.current.find((x) => x.id === follow)
+        if (a?.location) {
+          setSelectedAsset(a)
+          map.current?.flyTo({ center: [a.location.lng, a.location.lat], zoom: 16, duration: 1400 })
+          strip()
+          return
+        }
+      }
+      if (Date.now() - started < 15_000) setTimeout(attempt, 500)
+      else strip() // never arrived — stop trying, leave the map usable
+    }
+    attempt()
+  }, [mapReady, kiosk, startDrawing])
+
   /** Drop (or clear) the amber marker on an address searched while drawing.
    *  Declared BEFORE the draw callbacks that list it as a dependency — a
    *  dependency array is evaluated during render, so a `const` defined further
@@ -5189,8 +5342,31 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           map={mapReady ? map.current : null}
           active={measureOn}
           terrainOn={terrain3d}
-          onClose={() => setMeasureOn(false)}
-          onSaved={() => { /* saved measurements reload on next page visit */ }}
+          initial={editingMeasure ? {
+            id: editingMeasure.id,
+            name: editingMeasure.name,
+            kind: editingMeasure.kind,
+            personal: editingMeasure.personal,
+            coords: editingMeasure.geometry.type === 'Point'
+              ? [editingMeasure.geometry.coordinates as [number, number]]
+              : editingMeasure.geometry.type === 'LineString'
+                ? (editingMeasure.geometry.coordinates as [number, number][])
+                : (editingMeasure.geometry.coordinates[0] as [number, number][]).slice(0, -1),
+          } : null}
+          onClose={() => { setMeasureOn(false); setEditingMeasure(null) }}
+          onSaved={(saved) => {
+            if (!saved) return
+            setMeasures((prev) => {
+              const i = prev.findIndex((x) => x.id === saved.id)
+              const row = { ...saved, created_at: i >= 0 ? prev[i].created_at : new Date().toISOString() }
+              return i >= 0 ? prev.map((x, ix) => (ix === i ? row : x)) : [row, ...prev]
+            })
+            setSelectedMeasure(null)
+            setEditingMeasure(null)
+            // Saving flips the layer ON — the shape stays visible instead of
+            // vanishing until the next /measurements visit (Brian, Aug 17).
+            setOverlaysOn((prev) => (prev.measures ? prev : { ...prev, measures: true }))
+          }}
         />
       )}
 
@@ -5391,6 +5567,83 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           onFocusStop={(lat, lng) => map.current?.flyTo({ center: [lng, lat], zoom: Math.max(map.current.getZoom(), 15), duration: 1200 })}
           onClose={() => setSelectedAsset(null)}
         />
+      )}
+
+      {/* Saved-measurement sheet — tap a shape on the Measurements layer */}
+      {selectedMeasure && !measureOn && (
+        <div className="absolute left-2 right-2 bottom-24 md:left-3 md:right-auto md:bottom-28 md:w-[300px] z-30 rounded-xl bg-navy-950/97 backdrop-blur border border-navy-700 shadow-panel p-3 space-y-2">
+          <div className="flex items-start gap-2">
+            {measureRename != null ? (
+              <input
+                value={measureRename}
+                onChange={(e) => setMeasureRename(e.target.value)}
+                autoFocus
+                className="flex-1 min-w-0 bg-navy-900 border border-navy-700 rounded-md text-[12.5px] text-ink px-2 py-1 outline-none focus:border-amber/50"
+              />
+            ) : (
+              <div className="flex-1 min-w-0">
+                <p className="font-display font-bold text-[13.5px] text-ink truncate">{selectedMeasure.name}</p>
+                <p className="font-mono text-[11px] text-amber tabular-nums">{measureSummary(selectedMeasure.kind, selectedMeasure.props)}</p>
+              </div>
+            )}
+            <button onClick={() => { setSelectedMeasure(null); setMeasureRename(null) }} className="text-faint hover:text-ink text-[16px] leading-none px-1 flex-none" aria-label="Close">✕</button>
+          </div>
+          {selectedMeasure.props.takeoff && measureRename == null && (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded-md bg-amber/10 text-amber font-display font-bold text-[12.5px] px-2 py-0.5 tabular-nums">{Math.round(selectedMeasure.props.takeoff.tons)} tons</span>
+              <span className="rounded-md bg-teal/10 text-teal font-display font-bold text-[12.5px] px-2 py-0.5 tabular-nums">{Math.round(selectedMeasure.props.takeoff.cubicYd)} CY</span>
+              <span className="rounded-md bg-navy-900 text-faint text-[11px] px-2 py-1">{selectedMeasure.props.takeoff.material}</span>
+            </div>
+          )}
+          {measureRename != null ? (
+            <div className="flex gap-1.5">
+              <button
+                onClick={async () => {
+                  const nm = (measureRename ?? '').trim() || 'Measurement'
+                  const r = await updateMeasurementAction(selectedMeasure.id, { name: nm })
+                  if (!r.ok) { toast(r.error ?? 'Rename failed.', { variant: 'error' }); return }
+                  setMeasures((prev) => prev.map((x) => (x.id === selectedMeasure.id ? { ...x, name: nm } : x)))
+                  setSelectedMeasure((cur) => (cur ? { ...cur, name: nm } : cur))
+                  setMeasureRename(null)
+                }}
+                className="flex-1 rounded-md bg-amber text-[#1a1100] font-display font-bold text-[11.5px] py-1.5"
+              >Save name</button>
+              <button onClick={() => setMeasureRename(null)} className="flex-1 rounded-md border border-navy-700 text-faint hover:text-ink text-[11.5px] py-1.5">Cancel</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                onClick={() => {
+                  const m2 = map.current
+                  if (!m2) return
+                  const g = selectedMeasure.geometry
+                  const cs: [number, number][] = g.type === 'Point' ? [g.coordinates as [number, number]] : g.type === 'LineString' ? (g.coordinates as [number, number][]) : (g.coordinates[0] as [number, number][])
+                  if (g.type === 'Point') { m2.flyTo({ center: cs[0], zoom: 17, duration: 900 }); return }
+                  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity
+                  for (const [lng, lat] of cs) { a = Math.min(a, lng); b = Math.min(b, lat); c = Math.max(c, lng); d = Math.max(d, lat) }
+                  m2.fitBounds([[a, b], [c, d]], { padding: 90, maxZoom: 18, duration: 900 })
+                }}
+                className="rounded-md border border-navy-700 text-ink text-[11px] font-semibold py-1.5 hover:bg-navy-900"
+              >Zoom</button>
+              <button
+                onClick={() => { setEditingMeasure(selectedMeasure); setSelectedMeasure(null); setMeasureOn(true) }}
+                className="rounded-md bg-amber/15 border border-amber/40 text-amber text-[11px] font-semibold py-1.5"
+              >Edit</button>
+              <button onClick={() => setMeasureRename(selectedMeasure.name)} className="rounded-md border border-navy-700 text-ink text-[11px] font-semibold py-1.5 hover:bg-navy-900">Rename</button>
+              <button
+                onClick={async () => {
+                  const okGo = await confirmSheet({ title: 'Delete this measurement?', message: `“${selectedMeasure.name}” comes off the map for everyone it's shared with.`, confirmLabel: 'Delete', destructive: true })
+                  if (!okGo) return
+                  const r = await deleteMeasurementAction(selectedMeasure.id)
+                  if (!r.ok) { toast(r.error ?? 'Delete failed.', { variant: 'error' }); return }
+                  setMeasures((prev) => prev.filter((x) => x.id !== selectedMeasure.id))
+                  setSelectedMeasure(null)
+                }}
+                className="rounded-md border border-alert/40 text-alert text-[11px] font-semibold py-1.5 hover:bg-alert/10"
+              >Delete</button>
+            </div>
+          )}
+        </div>
       )}
 
       {selectedZone && (() => {

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: 'HammerTrack — Command Center',
   description: 'Live fleet command center for the lobby TV.',
 }
+
+// Map surface: page zoom off so pinch gestures belong to the map engine
+// (the root layout allows pinch-zoom everywhere else).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false }
 
 // Supabase is live — render per-request so the wall shows THIS company's
 // fleet, not the demo baked in at build time.

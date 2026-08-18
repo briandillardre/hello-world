@@ -16,12 +16,17 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [nextPath, setNextPath] = useState('/map')
 
   // /auth/callback lands here with ?error=… when an OAuth code exchange
   // fails — it was silently dropped before (a failed Google sign-in looked
   // like nothing happened; a real invitee hit this Aug 17). Surface it once.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
+    // Deep links (QR stickers → /t/…) arrive as ?next=; honor it on success.
+    // Same-site paths only — same open-redirect guard as app/auth/callback.
+    const next = params.get('next')
+    if (next && next.startsWith('/') && !next.startsWith('//')) setNextPath(next)
     const err = params.get('error')
     if (err) {
       // NEVER render the raw param — it's attacker-controllable free text on
@@ -55,7 +60,7 @@ export default function LoginPage() {
       process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
     if (isMock) {
-      router.push('/map')
+      router.push(nextPath)
       return
     }
 
@@ -66,7 +71,7 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      router.push('/map')
+      router.push(nextPath)
       router.refresh()
     }
   }
@@ -128,7 +133,7 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
 
-          <SocialAuth next="/map" />
+          <SocialAuth next={nextPath} />
 
           <div className="flex items-center justify-between text-sm">
             <Link href="/forgot" className="text-faint hover:text-amber hover:underline">

@@ -4,8 +4,10 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getConnectionStatus } from '@/lib/qbo'
 import { getWorkOrders, ensureScheduleWorkOrders } from '@/lib/db/workorders'
 import { Badge } from '@/components/ui/badge'
-import { MaintenanceLists } from '@/components/maintenance/MaintenanceLists'
+import { MaintenanceLists, AddScheduleButton } from '@/components/maintenance/MaintenanceLists'
 import { WorkOrders } from '@/components/maintenance/WorkOrders'
+
+export const metadata = { title: 'HammerTrack — Maintenance' }
 
 export default async function MaintenancePage() {
   const companyId = await getCurrentCompanyId()
@@ -43,6 +45,7 @@ export default async function MaintenancePage() {
         <span className="ml-auto text-sm text-faint">
           ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })} YTD
         </span>
+        <AddScheduleButton assetNames={assetNames} />
       </div>
 
       <WorkOrders
@@ -56,6 +59,7 @@ export default async function MaintenancePage() {
         statuses={statuses}
         services={services.map(r => ({ ...r, assetName: assetName(r.asset_id) }))}
         qboLive={qboLive}
+        assetNames={assetNames}
       />
     </div>
   )

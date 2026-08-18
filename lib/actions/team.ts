@@ -6,6 +6,11 @@ import type { Role } from '@/lib/db/team'
 
 const ROLES: Role[] = ['admin', 'manager', 'foreman', 'viewer']
 
+// Demo mode — no Supabase behind these actions; fail shaped, never throw a 500.
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+const DEMO_MSG = 'Demo mode — sign up to invite your crew.'
+
 /** Resolve caller → { userId, companyId, isAdmin } using the anon client. */
 async function ctx() {
   const { createClient } = await import('@/lib/supabase-server')
@@ -44,6 +49,7 @@ export async function createInviteAction(
   email: string,
   role: Role
 ): Promise<{ token: string; emailed: boolean; emailError?: string } | { error: string }> {
+  if (isMock) return { error: DEMO_MSG }
   const c = await ctx()
   if (!c) return { error: 'Not signed in.' }
   if (!c.isAdmin) return { error: 'Only admins can invite teammates.' }
@@ -88,6 +94,7 @@ export async function createInviteAction(
 
 /** Admin: (re)send the email for an existing pending invite. */
 export async function emailInviteAction(inviteId: string): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: DEMO_MSG }
   const c = await ctx()
   if (!c?.isAdmin) return { ok: false, error: 'Only admins can send invites.' }
   const { sendEmail, inviteEmailHtml, emailConfigured } = await import('@/lib/email')
@@ -117,6 +124,7 @@ export async function emailInviteAction(inviteId: string): Promise<{ ok: boolean
 }
 
 export async function revokeInviteAction(id: string): Promise<boolean> {
+  if (isMock) return false
   const c = await ctx()
   if (!c?.isAdmin) return false
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -129,6 +137,7 @@ export async function revokeInviteAction(id: string): Promise<boolean> {
  *  (re)written to the invited company + role via the service role, after the
  *  token is validated — so company membership can't be self-assigned. */
 export async function acceptInviteAction(token: string): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: DEMO_MSG }
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -166,6 +175,7 @@ export async function acceptInviteAction(token: string): Promise<{ ok: boolean; 
 }
 
 export async function updateMemberRoleAction(memberId: string, role: Role): Promise<boolean> {
+  if (isMock) return false
   const c = await ctx()
   if (!c?.isAdmin) return false
   if (!ROLES.includes(role)) return false
@@ -183,6 +193,7 @@ export async function updateMemberRoleAction(memberId: string, role: Role): Prom
 }
 
 export async function removeMemberAction(memberId: string): Promise<boolean> {
+  if (isMock) return false
   const c = await ctx()
   if (!c?.isAdmin) return false
   if (memberId === c.userId) return false // can't remove yourself here
@@ -199,6 +210,7 @@ export async function updateMemberOverridesAction(
   memberId: string,
   overrides: { can_view_costs?: boolean | null; can_manage_billing?: boolean | null; can_manage_team?: boolean | null }
 ): Promise<boolean> {
+  if (isMock) return false
   const c = await ctx()
   if (!c?.isAdmin) return false
   const patch: Record<string, boolean | null> = {}

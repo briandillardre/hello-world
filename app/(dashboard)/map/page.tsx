@@ -10,6 +10,13 @@ import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
+import type { Viewport } from 'next'
+
+export const metadata = { title: 'HammerTrack — Live map' }
+
+// Map surface: page zoom off so pinch gestures belong to the map engine
+// (the root layout allows pinch-zoom everywhere else).
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false }
 
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
@@ -26,12 +33,13 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // last-known pins instantly on reopens). "Open quickly, then load" —
   // Brian, Aug 9. Demo mode keeps the original all-server render below.
   if (isRealMode) {
-    const { getMeasurement } = await import('@/lib/db/measurements')
+    const { getMeasurement, getMeasurements } = await import('@/lib/db/measurements')
     const [company, prefs, focusMeasurement] = await Promise.all([
       getCurrentCompany(),
       getCompanyPrefs(),
       searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
     ])
+    const measurements = await getMeasurements(company.id)
     const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
     return (
       <div className="h-full flex flex-col pb-[54px] md:pb-0">
@@ -56,6 +64,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
             savedMapViews={null}
             alerts={[]}
             focusMeasurement={focusMeasurement}
+            measurements={measurements}
             brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
           />
         </div>
@@ -66,13 +75,14 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // ── Demo mode: mock data is free — keep the fully-server render.
   const company = await getCurrentCompany()
   const companyId = company.id
-  const { getMeasurement } = await import('@/lib/db/measurements')
+  const { getMeasurement, getMeasurements } = await import('@/lib/db/measurements')
   const [
-    focusMeasurement, prefs, perms, savedMapViews,
+    focusMeasurement, measurements, prefs, perms, savedMapViews,
     rawAssets, geofences, toolAssociations, earliestMs, alerts, siteOverlays,
   ] = await Promise.all([
     // ?m=<id> — deep link from /measurements: draw it and fly the camera to it.
     searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
+    getMeasurements(companyId),
     getCompanyPrefs(),
     getMyPermissions(),
     getMyMapViews(),
@@ -132,6 +142,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           savedMapViews={savedMapViews}
           alerts={alerts}
           focusMeasurement={focusMeasurement}
+          measurements={measurements}
           brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
         />
       </div>

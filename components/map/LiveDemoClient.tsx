@@ -33,6 +33,10 @@ const DEMO_NAV: { label: string; icon: typeof MapIcon; section?: string; active?
   { label: 'Op model', icon: TrendingUp },
 ]
 
+// "Live Map" → "live-map" — the /register page maps these slugs back to
+// display names for its "<Label> is included in your free pilot" line.
+const slugify = (label: string) => label.toLowerCase().replace(/\s+/g, '-')
+
 const MapView = dynamic(
   () => import('@/components/map/MapView').then((m) => ({ default: m.MapView })),
   {
@@ -99,7 +103,7 @@ export function LiveDemoClient() {
                   </span>
                 ) : (
                   <Link
-                    href="/register"
+                    href={`/register?from=${slugify(label)}`}
                     title={`${label} — included in the free pilot`}
                     className="group/item flex items-center gap-2.5 mx-2 px-2.5 py-2 rounded-lg text-muted hover:bg-navy-800 hover:text-ink text-[13px]"
                   >
@@ -129,6 +133,23 @@ export function LiveDemoClient() {
           <span className="sm:hidden absolute top-[110px] left-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-teal">
             <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" /> demo · simulated fleet
           </span>
+        </div>
+      </div>
+      {/* Phones never see the desktop sidebar (md:flex) — give them the same
+          locked-pages funnel as a compact chip strip under the map. */}
+      <div className="md:hidden flex-none border-t border-navy-800 bg-navy-950/95 px-3 pt-2 pb-2.5">
+        <p className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint mb-1.5">More in the free pilot</p>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 [-webkit-overflow-scrolling:touch]">
+          {DEMO_NAV.filter((i) => !i.active).map(({ label, icon: Icon }) => (
+            <Link
+              key={label}
+              href={`/register?from=${slugify(label)}`}
+              className="flex-none inline-flex items-center gap-1.5 rounded-full border border-navy-700 bg-navy-900 px-3 py-1.5 text-[12px] text-muted hover:text-ink whitespace-nowrap"
+            >
+              <Icon className="h-3.5 w-3.5" /> {label}
+              <Lock className="h-3 w-3 text-faint" />
+            </Link>
+          ))}
         </div>
       </div>
     </div>

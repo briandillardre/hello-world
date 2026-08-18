@@ -58,6 +58,8 @@ interface MapPageClientProps {
   alerts?: import('@/lib/types').AlertEvent[]
   /** Saved measurement to draw + fly to (deep link from /measurements). */
   focusMeasurement?: import('@/lib/db/measurements').Measurement | null
+  /** All saved measurements — the toggleable Measurements layer. */
+  measurements?: import('@/lib/db/measurements').Measurement[]
   /** Company branding for the Create-PDF button. */
   brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
   /** Shell-first boot: the page shipped EMPTY and this component pulls the
@@ -82,7 +84,7 @@ interface MapBootData {
 
 const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, brand = null, bootstrap = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], brand = null, bootstrap = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const router = useRouter()
 
@@ -309,6 +311,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         canViewCosts={effCanViewCosts}
         alerts={effAlerts}
         focusMeasurement={focusMeasurement}
+        measurements={measurements}
       />
       {/* Boot pill: only on a true first visit (no cached snapshot yet). */}
       {bootstrap && !boot && (

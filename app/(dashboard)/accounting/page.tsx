@@ -7,6 +7,8 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import type { QboInvoicePreview } from '@/lib/types'
 import { Building2, Lock } from 'lucide-react'
 
+export const metadata = { title: 'HammerTrack — Accounting' }
+
 export default async function AccountingPage() {
   const companyId = await getCurrentCompanyId()
   const [status, assets, geofences, perms] = await Promise.all([

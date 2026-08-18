@@ -10,6 +10,8 @@ import { getPairDecisions } from '@/lib/actions/pairs'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { LogsFeed } from '@/components/field/LogsFeed'
 
+export const metadata = { title: 'HammerTrack — Daily logs' }
+
 export const dynamic = 'force-dynamic'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -53,11 +55,19 @@ export default async function LogsPage() {
       {!available ? (
         <div className="rounded-xl border border-navy-700 bg-navy-950 p-8 text-center">
           {isMock ? (
-            <p className="text-sm text-muted">
-              This is the office&apos;s morning read: every crew day grouped by project — writeups, photos,
-              receipts, safety flags in red, and an hours table that shames whoever forgot to clock out.
-              Sign in to a live account to see your crew&apos;s logs.
-            </p>
+            <>
+              <p className="text-sm text-muted">
+                This is the office&apos;s morning read: every crew day grouped by project — writeups, photos,
+                receipts, safety flags in red, and an hours table that shames whoever forgot to clock out.
+                Sign in to a live account to see your crew&apos;s logs.
+              </p>
+              <Link
+                href="/register"
+                className="inline-block mt-4 rounded-lg bg-amber text-[#1a1100] font-display font-bold px-5 py-2.5 hover:brightness-110 transition"
+              >
+                Start free →
+              </Link>
+            </>
           ) : (
             <p className="text-sm text-muted">
               One quick database update turns field ops on — run migration{' '}

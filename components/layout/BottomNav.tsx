@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
@@ -11,6 +11,7 @@ const primaryItems = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
+  { href: '/clock', label: 'Clock', icon: Clock },
 ]
 
 const moreItems = [
@@ -18,7 +19,7 @@ const moreItems = [
   { href: '/measurements', label: 'Measurements', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
   { href: '/command', label: 'Command Center', icon: MonitorPlay },
-  { href: '/clock', label: 'Time clock', icon: Clock },
+  { href: '/track', label: 'Go Live (GPS)', icon: Radio },
   { href: '/logs', label: 'Daily logs', icon: ClipboardList },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
@@ -43,17 +44,26 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   const [moreOpen, setMoreOpen] = useState(false)
   const moreActive = moreItems.some(i => pathname.startsWith(i.href))
 
+  // Tell the rest of the UI (the Ask launcher) the drawer is up: a body
+  // attribute for CSS, plus a ht:drawer event (same pattern as ht:dialog).
+  useEffect(() => {
+    if (moreOpen) document.body.setAttribute('data-ht-drawer-open', '')
+    else document.body.removeAttribute('data-ht-drawer-open')
+    window.dispatchEvent(new CustomEvent('ht:drawer', { detail: { open: moreOpen } }))
+    return () => document.body.removeAttribute('data-ht-drawer-open')
+  }, [moreOpen])
+
   return (
     <>
       {moreOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/40 md:hidden print:hidden" onClick={() => setMoreOpen(false)}>
           <div
             className="absolute bottom-0 left-0 right-0 bg-navy-950 border-t border-navy-800 rounded-t-2xl p-4 max-h-[calc(100dvh-56px)] overflow-y-auto pb-[calc(76px+env(safe-area-inset-bottom))]"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-muted">More</span>
-              <button onClick={() => setMoreOpen(false)} className="p-1 text-faint">
+              <button onClick={() => setMoreOpen(false)} className="p-2.5 text-faint">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -105,7 +115,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
         </div>
       )}
 
-      <nav data-tour="nav" className="fixed bottom-0 left-0 right-0 z-40 bg-navy-950 border-t border-navy-800 md:hidden safe-area-pb">
+      <nav data-tour="nav" className="fixed bottom-0 left-0 right-0 z-40 bg-navy-950 border-t border-navy-800 md:hidden print:hidden safe-area-pb">
         <div className="flex">
           {primaryItems.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
@@ -115,7 +125,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 key={href}
                 href={href}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center py-1 gap-0.5 text-[10.5px] font-medium transition-colors min-h-[46px]',
+                  'flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[11px] font-medium transition-colors min-h-[56px]',
                   active ? 'text-amber' : 'text-faint hover:text-muted'
                 )}
               >
@@ -134,7 +144,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
           <button
             onClick={() => setMoreOpen(v => !v)}
             className={cn(
-              'flex-1 flex flex-col items-center justify-center py-3 gap-1 text-xs font-medium transition-colors min-h-[60px]',
+              'flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[11px] font-medium transition-colors min-h-[56px]',
               moreActive || moreOpen ? 'text-amber' : 'text-faint hover:text-muted'
             )}
           >

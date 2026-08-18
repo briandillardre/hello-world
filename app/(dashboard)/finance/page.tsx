@@ -3,6 +3,8 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import { FinancePanel } from '@/components/finance/FinancePanel'
 import type { FinanceProfile } from '@/lib/valuation'
 
+export const metadata = { title: 'HammerTrack — Financials' }
+
 export const dynamic = 'force-dynamic'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||

@@ -6,6 +6,7 @@ import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, Sliders
 import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction } from '@/lib/actions/team'
 import { ROLE_DEFAULTS } from '@/lib/permissions'
+import { formatRelativeTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast, confirmSheet } from '@/components/ui/feedback'
@@ -53,6 +54,8 @@ export function TeamManager({ data }: { data: TeamData }) {
       else setSentNote(null)
       setEmail('')
       router.refresh()
+    } catch {
+      setErr('Something went wrong.')
     } finally { setBusy(false) }
   }
 
@@ -60,7 +63,11 @@ export function TeamManager({ data }: { data: TeamData }) {
     try { await navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 1600) } catch { /* clipboard blocked */ }
   }
 
-  const changeRole = async (id: string, r: Role) => { await updateMemberRoleAction(id, r); router.refresh() }
+  const changeRole = async (id: string, r: Role) => {
+    const ok = await updateMemberRoleAction(id, r)
+    if (!ok) toast('Couldn’t change role — a company needs at least one admin.', { variant: 'error' })
+    router.refresh()
+  }
   const remove = async (id: string, name: string) => {
     if (await confirmSheet({ title: `Remove ${name} from the team?`, confirmLabel: 'Remove', destructive: true })) {
       await removeMemberAction(id)
@@ -124,7 +131,15 @@ export function TeamManager({ data }: { data: TeamData }) {
               <div key={inv.id} className="flex items-center gap-3 p-3.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink truncate">{inv.email || 'Anyone with the link'}</p>
-                  <p className="text-xs text-faint">{ROLE_META[inv.role].label} · expires {new Date(inv.expires_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-faint">
+                    {ROLE_META[inv.role].label}
+                    {(() => {
+                      // created_at only when the roster query fetches it — skip cleanly otherwise.
+                      const created = (inv as typeof inv & { created_at?: string }).created_at
+                      return created ? <> · created {formatRelativeTime(created)}</> : null
+                    })()}
+                    {' · expires '}{new Date(inv.expires_at).toLocaleDateString()}
+                  </p>
                 </div>
                 {inv.email && (
                   <button
@@ -138,7 +153,7 @@ export function TeamManager({ data }: { data: TeamData }) {
                     disabled={emailing === inv.id}
                     className="inline-flex items-center gap-1 text-xs text-teal hover:underline disabled:opacity-50"
                   >
-                    <Mail className="h-3.5 w-3.5" /> {emailing === inv.id ? 'Sending…' : 'Email'}
+                    <Mail className="h-3.5 w-3.5" /> {emailing === inv.id ? 'Sending…' : 'Resend email'}
                   </button>
                 )}
                 <button onClick={() => copy(linkFor(inv.token), inv.id)} className="inline-flex items-center gap-1 text-xs text-teal hover:underline">

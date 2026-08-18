@@ -98,6 +98,15 @@ export function AssistantWidget() {
     return () => window.removeEventListener('ht:dialog', onDialog)
   }, [])
 
+  // The BottomNav "More" drawer announces itself the same way (ht:drawer) —
+  // hide the launcher while it's up so it never covers the Sign out button.
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  useEffect(() => {
+    const onDrawer = (e: Event) => setDrawerOpen(!!(e as CustomEvent).detail?.open)
+    window.addEventListener('ht:drawer', onDrawer)
+    return () => window.removeEventListener('ht:drawer', onDrawer)
+  }, [])
+
   // First open: pull the persisted thread so the conversation survives
   // reloads and devices (empty when history isn't set up — same UX as before).
   useEffect(() => {
@@ -210,10 +219,10 @@ export function AssistantWidget() {
     <>
       {/* Floating launcher (hidden on the map — it lives in the banner there —
           and while any edit dialog is open, so it never covers a form) */}
-      {!open && !hideLauncher && dialogDepth === 0 && (
+      {!open && !hideLauncher && dialogDepth === 0 && !drawerOpen && (
         <button
           onClick={() => setOpen(true)}
-          className={`fixed ${launcherPos} z-[60] flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
+          className={`fixed ${launcherPos} z-[60] print:hidden flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
           aria-label="Ask HammerTrack AI"
         >
           <Sparkles className="h-5 w-5" /> Ask
@@ -222,7 +231,7 @@ export function AssistantWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed z-[60] inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+        <div className="fixed z-[60] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-navy-800">
             <span className="flex items-center gap-2 font-display font-bold text-ink">
               <span className="grid place-items-center w-6 h-6 rounded-md bg-amber/20"><Sparkles className="h-3.5 w-3.5 text-amber" /></span>

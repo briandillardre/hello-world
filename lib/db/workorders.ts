@@ -14,7 +14,30 @@ export interface WorkOrderData {
 /** Open + recent work orders, newest first, plus the assignee roster. */
 export async function getWorkOrders(companyId: string): Promise<WorkOrderData> {
   const empty: WorkOrderData = { available: false, orders: [], members: [] }
-  if (isMock) return { ...empty, available: true }
+  if (isMock) {
+    // Demo backs up the auto-WO story: the overdue mock schedule (maint-1 —
+    // Link-Belt hydraulic service, 275/250 hrs) has already opened its work
+    // order, shaped exactly as ensureScheduleWorkOrders would write it
+    // (`${description} — ${assetName}` title, high priority, live reading).
+    const mockWo: WorkOrder = {
+      id: 'wo-mock-1',
+      asset_id: 'asset-2',
+      title: 'Hydraulic fluid & filter service — Link-Belt 130X2 Excavator',
+      detail: 'Auto-opened: engine hours interval of 250 exceeded.',
+      source: 'schedule',
+      priority: 'high',
+      status: 'open',
+      assignee_id: null,
+      due_date: null,
+      reading: 1455,
+      parts_cost: 0,
+      labor_hours: 0,
+      labor_rate: null,
+      created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      completed_at: null,
+    }
+    return { available: true, orders: [mockWo], members: [] }
+  }
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()

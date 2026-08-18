@@ -38,13 +38,13 @@ export async function getCurrentCompanyId(): Promise<string> {
  * the logged-in company and user.
  */
 export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null; logoUrl: string | null; logoBg: string | null }> {
-  if (isMock) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null, logoUrl: null, logoBg: null }
+  if (isMock) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null }
 
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { id: MOCK_COMPANY.id, name: 'HammerTrack Demo', userName: null, logoUrl: null, logoBg: null }
+    if (!user) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -138,6 +138,8 @@ export async function getCompanySettings(): Promise<{
   logo_bg: string | null;
   digest_prefs: Record<string, unknown> | null;
   log_form: unknown;
+  /** Tracker ingest key — real value only for admins of a live company. */
+  api_key: string | null;
   isAdmin: boolean
 }> {
   const fallback = {
@@ -147,7 +149,8 @@ export async function getCompanySettings(): Promise<{
     sms_consent_phone: null, sms_consent_at: null,
     stripe_customer_id: null, subscription_status: null,
     current_period_end: null, cancel_at_period_end: false,
-    logo_url: null, logo_bg: null, digest_prefs: null, log_form: null, isAdmin: false,
+    logo_url: null, logo_bg: null, digest_prefs: null, log_form: null,
+    api_key: null, isAdmin: false,
   }
   if (isMock) return fallback
   try {
@@ -191,6 +194,11 @@ export async function getCompanySettings(): Promise<{
       digest_prefs: (c.digest_prefs as Record<string, unknown> | null) ?? null,
       // undefined until migration 059 — resolver applies defaults over null.
       log_form: c.log_form ?? null,
+      // Only admins get the real ingest key — everyone else sees null and the
+      // Settings page hides the card's secret accordingly.
+      api_key: (profile?.role === 'admin' || user.id === companyId)
+        ? ((c.api_key as string | null) ?? null)
+        : null,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {

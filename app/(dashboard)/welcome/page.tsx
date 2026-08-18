@@ -6,6 +6,8 @@ import { getCurrentCompany, getCompanySettings } from '@/lib/db/company'
 import { getTeam } from '@/lib/db/team'
 import { getRecentFieldDays } from '@/lib/db/fieldops'
 
+export const metadata = { title: 'HammerTrack — Getting started' }
+
 export default async function WelcomePage() {
   const company = await getCurrentCompany()
   const [assets, geofences, team, settings, fieldDays] = await Promise.all([
@@ -23,11 +25,11 @@ export default async function WelcomePage() {
   const hasAlertPhone = !!settings.alert_phone
   const hasClockIns = fieldDays.entries.length > 0
 
-  const steps = [
+  const steps: { key: string; done: boolean; icon: typeof Plus; title: string; body: string; note?: string; href: string; cta: string }[] = [
     { key: 'asset', done: hasAsset, icon: Plus, title: 'Add your first asset', body: 'A truck, machine, or Bluetooth-tagged tool — with its tracker ID.', href: '/assets', cta: 'Add an asset' },
-    { key: 'tracker', done: reporting, icon: Radio, title: 'Plug in a tracker', body: 'The OBD or GPS unit goes live the moment it reports — your asset appears on the map.', href: '/settings', cta: 'Integration guide' },
+    { key: 'tracker', done: reporting, icon: Radio, title: 'Plug in a tracker', body: 'The OBD or GPS unit goes live the moment it reports — your asset appears on the map.', note: 'Hardware ships in batches — while yours is in the mail, add your team and draw your first zone.', href: '/settings#integration', cta: 'What happens when trackers arrive' },
     { key: 'zone', done: hasZone, icon: Hexagon, title: 'Draw a job-site zone', body: 'Outline your yard or a jobsite so theft alerts and cost-per-site kick in.', href: '/map', cta: 'Open the map' },
-    { key: 'phone', done: hasAlertPhone, icon: BellRing, title: 'Set your alert phone', body: 'Where the 2 AM theft text goes. Without it, alerts only live in the app.', href: '/settings', cta: 'Open settings' },
+    { key: 'phone', done: hasAlertPhone, icon: BellRing, title: 'Set your alert phone', body: 'Where the 2 AM theft text goes. Without it, alerts only live in the app.', href: '/settings#company', cta: 'Open settings' },
     { key: 'team', done: hasTeam, icon: UserPlus, title: 'Invite your crew', body: 'Add a foreman or office admin — set exactly what each person can do.', href: '/team', cta: 'Invite teammates' },
     { key: 'clock', done: hasClockIns, icon: Clock, title: 'Put the crew on the clock', body: 'Clock in to a project, clock out through a daily log — plus QR stickers for machine checks.', href: '/clock', cta: 'Open the time clock' },
   ]
@@ -36,7 +38,7 @@ export default async function WelcomePage() {
   const pct = Math.round((doneCount / steps.length) * 100)
 
   return (
-    <div className="h-full overflow-auto pb-[54px] md:pb-20">
+    <div className="h-full overflow-auto pb-36 md:pb-24">
       <div className="max-w-2xl mx-auto p-5 sm:p-8">
         <div className="text-center">
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-teal">Welcome to HammerTrack</p>
@@ -69,6 +71,7 @@ export default async function WelcomePage() {
                 <div className="flex-1 min-w-0">
                   <h3 className={`font-display font-bold text-[15px] ${s.done ? 'text-muted line-through decoration-navy-700' : 'text-ink'}`}>{s.title}</h3>
                   <p className="text-[13px] text-faint mt-0.5">{s.body}</p>
+                  {!s.done && s.note && <p className="text-[12px] text-faint/80 italic mt-1.5">{s.note}</p>}
                 </div>
                 {!s.done && (
                   <Link href={s.href} className="flex-none self-center text-sm font-semibold text-amber hover:underline whitespace-nowrap">

@@ -61,7 +61,7 @@ export async function getTeam(): Promise<TeamData> {
         ? (await supabase.from('profiles').select('id, name, email, role').eq('company_id', companyId)).data
         : wide.data
     }
-    const { data: invites } = await supabase.from('invites').select('id, email, role, token, expires_at').eq('company_id', companyId).is('accepted_at', null).order('created_at', { ascending: false })
+    const { data: invites } = await supabase.from('invites').select('id, email, role, token, expires_at, created_at').eq('company_id', companyId).is('accepted_at', null).order('created_at', { ascending: false })
 
     const members: TeamMember[] = ((profiles ?? []) as {
       id: string; name: string | null; email: string | null; role: string | null

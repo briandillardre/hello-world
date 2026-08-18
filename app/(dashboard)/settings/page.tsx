@@ -5,6 +5,7 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
 import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
+import { ApiKeyReveal } from '@/components/settings/ApiKeyCard'
 import { WeeklyDigests } from '@/components/settings/WeeklyDigests'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
@@ -16,6 +17,11 @@ import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
 import { getMyPermissions } from '@/lib/permissions-server'
 
+export const metadata = { title: 'HammerTrack — Settings' }
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 export default async function SettingsPage({ searchParams }: { searchParams?: { billing?: string } }) {
   const [co, perms] = await Promise.all([getCompanySettings(), getMyPermissions()])
   // Checkout lands back here. The webhook is what actually records the
@@ -23,13 +29,14 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
   // confirms the ACTION, and the card below catches up on refresh.
   const billingReturn = searchParams?.billing
   return (
-    <div className="h-full overflow-auto pb-[54px] md:pb-20">
+    <div className="h-full overflow-auto pb-36 md:pb-24">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
         <h1 className="text-xl font-bold text-ink">Settings</h1>
       </div>
 
       <div className="p-4 space-y-4 max-w-xl">
-        {/* Company info — editable */}
+        {/* Company info — editable. Anchor target for /welcome's alert-phone step. */}
+        <div id="company" className="scroll-mt-20">
         <CompanySettings
           name={co.name} plan={co.plan}
           work_start={co.work_start} work_end={co.work_end} work_days={co.work_days}
@@ -39,6 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           logo_bg={co.logo_bg}
           editable={co.isAdmin}
         />
+        </div>
 
         {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
         <WeeklyDigests initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
@@ -99,9 +107,13 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           </div>
           <div className="p-4 space-y-3">
             <p className="text-xs text-muted">Use this key to authenticate tracker hardware pushing location data.</p>
-            <div className="bg-navy-800 rounded-lg px-3 py-2 font-mono text-xs text-muted break-all select-all border border-navy-800">
-              {MOCK_COMPANY.api_key}
-            </div>
+            {isMock ? (
+              <ApiKeyReveal apiKey={MOCK_COMPANY.api_key} demo />
+            ) : co.isAdmin && co.api_key ? (
+              <ApiKeyReveal apiKey={co.api_key} demo={false} />
+            ) : (
+              <p className="text-xs text-faint">Only company admins can view the tracker API key.</p>
+            )}
             <div className="bg-amber/15 border border-navy-800 rounded-lg p-3 text-xs text-amber">
               <p className="font-semibold mb-1">How to use with OBD2 trackers</p>
               <p>Send a POST request to <code className="bg-amber/15 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber/15 px-1 rounded">x-api-key: YOUR_KEY</code></p>
@@ -109,31 +121,43 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           </div>
         </section>
 
-        {/* Integration guide */}
-        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
+        {/* Integration guide — anchor target for /welcome's tracker step. */}
+        <section id="integration" className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden scroll-mt-20">
           <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
             <Wifi className="h-4 w-4 text-faint" />
             <h2 className="font-semibold text-sm text-muted">Tracker Integration</h2>
           </div>
           <div className="p-4 space-y-4">
-            <IntegrationCard
-              title="OBD2 (Vehicles)"
-              description="Use any OBD2 WiFi/BLE dongle that supports HTTP webhooks (e.g. Bouncie, AutoPi, Optimus 2.0). Configure the device to POST to /api/ingest/obd2."
-              endpoint="POST /api/ingest/obd2"
-              payload='{ "tracker_id": "obd-001", "lat": 36.16, "lng": -86.78, "speed": 45, "engine_on": true }'
-            />
-            <IntegrationCard
-              title="GPS Equipment Trackers"
-              description="Works with most commercial GPS fleet trackers. Use the standard location endpoint."
-              endpoint="POST /api/ingest/location"
-              payload='{ "tracker_id": "gps-002", "lat": 36.16, "lng": -86.78, "battery": 85 }'
-            />
-            <IntegrationCard
-              title="Bluetooth Tools (BLE)"
-              description="Tile, AirTag-style or custom BLE tags. A companion mobile app scans nearby BLE and relays positions."
-              endpoint="POST /api/ingest/location"
-              payload='{ "tracker_id": "bt-003", "lat": 36.16, "lng": -86.78, "accuracy": 15 }'
-            />
+            <p className="text-sm text-muted leading-relaxed">
+              Your HammerTrack trackers arrive pre-configured — plug the OBD unit into the truck,
+              mount the GPS puck on the machine, and the asset appears on your map on first report.
+              Nothing to set up.
+            </p>
+            <details className="group border border-navy-800 rounded-lg">
+              <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-semibold text-muted hover:text-ink transition-colors">
+                Advanced: send your own data (API)
+              </summary>
+              <div className="p-3 pt-1 space-y-4">
+                <IntegrationCard
+                  title="OBD2 (Vehicles)"
+                  description="Use any OBD2 WiFi/BLE dongle that supports HTTP webhooks (e.g. Bouncie, AutoPi, Optimus 2.0). Configure the device to POST to /api/ingest/obd2."
+                  endpoint="POST /api/ingest/obd2"
+                  payload='{ "tracker_id": "obd-001", "lat": 34.85, "lng": -82.40, "speed": 45, "engine_on": true }'
+                />
+                <IntegrationCard
+                  title="GPS Equipment Trackers"
+                  description="Works with most commercial GPS fleet trackers. Use the standard location endpoint."
+                  endpoint="POST /api/ingest/location"
+                  payload='{ "tracker_id": "gps-002", "lat": 34.85, "lng": -82.40, "battery": 85 }'
+                />
+                <IntegrationCard
+                  title="Bluetooth Tools (BLE)"
+                  description="Tile, AirTag-style or custom BLE tags. A companion mobile app scans nearby BLE and relays positions."
+                  endpoint="POST /api/ingest/location"
+                  payload='{ "tracker_id": "bt-003", "lat": 34.85, "lng": -82.40, "accuracy": 15 }'
+                />
+              </div>
+            </details>
           </div>
         </section>
 

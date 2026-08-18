@@ -41,21 +41,27 @@ export function MissingReceipts({
 
   return (
     <section className="rounded-xl border border-amber/30 bg-amber/[0.04] overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-amber/20">
-        <AlertTriangle className="h-4.5 w-4.5 text-amber flex-none" />
-        <div className="flex-1 min-w-0">
-          <p className="font-display font-bold text-[15px] text-ink">Missing receipts</p>
-          <p className="text-[12px] text-faint">
-            {open.length === 0 ? 'All charges accounted for 🎉' : `${open.length} charge${open.length === 1 ? '' : 's'} without a receipt · ${money(total)} unaccounted`}
-          </p>
+      {/* Title row + action row: stacked on phones (three buttons crushed the
+          title at 390px), back to a single row from sm: up. */}
+      <div className="px-4 py-3 border-b border-amber/20 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0 sm:flex-1">
+          <AlertTriangle className="h-4.5 w-4.5 text-amber flex-none" />
+          <div className="flex-1 min-w-0">
+            <p className="font-display font-bold text-[15px] text-ink">Missing receipts</p>
+            <p className="text-[12px] text-faint">
+              {open.length === 0 ? 'All charges accounted for 🎉' : `${open.length} charge${open.length === 1 ? '' : 's'} without a receipt · ${money(total)} unaccounted`}
+            </p>
+          </div>
         </div>
-        <PlaidConnect onMessage={setMsg} />
-        <button onClick={() => setShowImport((v) => !v)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
-          <Upload className="h-3.5 w-3.5" /> Import
-        </button>
-        <button onClick={() => setShowAdd((v) => !v)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
-          <Plus className="h-3.5 w-3.5" /> Add
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PlaidConnect onMessage={setMsg} />
+          <button onClick={() => setShowImport((v) => !v)} className="flex-none whitespace-nowrap inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
+            <Upload className="h-3.5 w-3.5" /> Import
+          </button>
+          <button onClick={() => setShowAdd((v) => !v)} className="flex-none whitespace-nowrap inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
+            <Plus className="h-3.5 w-3.5" /> Add
+          </button>
+        </div>
       </div>
 
       {msg && <p className="px-4 py-2 text-[12px] text-amber bg-amber/5 border-b border-amber/20">{msg}</p>}

@@ -4,6 +4,8 @@ import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
 
+export const metadata = { title: 'HammerTrack — Alerts' }
+
 export default async function AlertsPage() {
   const companyId = await getCurrentCompanyId()
   const role = await getMyRole()

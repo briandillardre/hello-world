@@ -1,5 +1,7 @@
 import { OperatingModel } from '@/components/model/OperatingModel'
 
+export const metadata = { title: 'HammerTrack — Operating model' }
+
 export const dynamic = 'force-dynamic'
 
 /** The company's forward P&L — behind login on purpose (these are the books). */

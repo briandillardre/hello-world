@@ -7,6 +7,8 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { pointInPolygon } from '@/lib/alerts-engine'
 
+export const metadata = { title: 'HammerTrack — Zones' }
+
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 

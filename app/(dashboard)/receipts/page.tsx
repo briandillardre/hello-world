@@ -1,6 +1,6 @@
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
-import { getExpenses } from '@/lib/db/expenses'
+import { getExpenses, type Expense } from '@/lib/db/expenses'
 import { suggestMatchesAction } from '@/lib/actions/expenses'
 import { getInstantChaseSetup } from '@/lib/actions/cards'
 import { getMyPermissions } from '@/lib/permissions-server'
@@ -9,10 +9,46 @@ import { MissingReceipts } from '@/components/receipts/MissingReceipts'
 import { InstantChase } from '@/components/receipts/InstantChase'
 import type { ReceiptRow } from '@/lib/actions/receipts'
 
+export const metadata = { title: 'HammerTrack — Receipts' }
+
 export const dynamic = 'force-dynamic'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
+/** Demo mode: show the receipt chase working instead of an empty page —
+ *  two swipes already pinged to their cardholders, one imported charge with
+ *  no card mapping yet. Display-only; every action returns "Demo mode". */
+function demoOpenExpenses(): Expense[] {
+  const today = new Date().toISOString().slice(0, 10)
+  const base = {
+    company_id: 'mock-company-1', category: null, note: null, receipt_id: null,
+    status: 'needs_receipt' as const, external_id: null, cardholder_user_id: null,
+  }
+  return [
+    {
+      ...base, id: 'demo-exp-1', source: 'card_alert',
+      merchant: 'The Home Depot #1123', amount: 214.83, txn_date: today,
+      last4: '4821', cardholder_name: 'John',
+      chased_at: new Date(Date.now() - 38 * 60000).toISOString(),
+      created_at: new Date(Date.now() - 39 * 60000).toISOString(),
+    },
+    {
+      ...base, id: 'demo-exp-2', source: 'card_alert',
+      merchant: 'SiteOne Landscape Supply', amount: 187.5, txn_date: today,
+      last4: '7310', cardholder_name: 'Sarah',
+      chased_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
+      created_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
+    },
+    {
+      ...base, id: 'demo-exp-3', source: 'import',
+      merchant: 'QuikTrip #1042', amount: 62.15,
+      txn_date: new Date(Date.now() - 2 * 86400_000).toISOString().slice(0, 10),
+      last4: '9954', cardholder_name: null, chased_at: null,
+      created_at: new Date(Date.now() - 2 * 86400_000).toISOString(),
+    },
+  ]
+}
 
 /** Receipts inbox: field photos in, approved QuickBooks expenses out. */
 export default async function ReceiptsPage() {
@@ -41,8 +77,8 @@ export default async function ReceiptsPage() {
   }
 
   // Missing receipts — charges without a matching receipt, + suggested matches.
-  const openExpenses = available ? await getExpenses(companyId, 'needs_receipt') : []
-  const suggestions = openExpenses.length ? await suggestMatchesAction() : {}
+  const openExpenses = available ? await getExpenses(companyId, 'needs_receipt') : isMock ? demoOpenExpenses() : []
+  const suggestions = available && openExpenses.length ? await suggestMatchesAction() : {}
 
   const geofences = await getGeofences(companyId)
   const zoneNames: Record<string, string> = {}

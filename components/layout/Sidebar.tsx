@@ -75,7 +75,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
   return (
     <aside
       className={cn(
-        'flex-col bg-navy-950 text-ink h-screen fixed left-0 top-0 border-r border-navy-800 transition-[width] duration-200',
+        'flex-col bg-navy-950 text-ink h-screen fixed left-0 top-0 border-r border-navy-800 transition-[width] duration-200 print:hidden',
         fullCollapse ? 'flex z-[48]' : 'hidden md:flex z-40',
         collapsed ? 'w-16' : 'w-56'
       )}

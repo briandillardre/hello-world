@@ -42,8 +42,10 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   ])
   if (!fence) notFound()
 
-  const fmtDay = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null
-  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
+  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const fmtDay = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString(undefined, { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' }) : null
+  const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const activeFrom = fmtDay(fence.active_from)
   const activeUntil = fmtDay(fence.active_until)
   const archived = !!fence.active_until && Date.parse(fence.active_until) < Date.now()
@@ -237,8 +239,6 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   const trackedCost = (usage ?? []).reduce((s, u) => s + u.amount, 0)
 
   const assetMeta = Object.fromEntries(assets.map((a) => [a.id, { name: a.name, type: a.type }]))
-  // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
 
   return (
     <div className="h-full overflow-auto pb-28 md:pb-10">
@@ -268,7 +268,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             </div>
           </div>
           <Link href="/map" className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm px-3.5 py-2 hover:bg-amber-600 transition-colors">
-            <MapPin className="h-4 w-4" /> View on map
+            <MapPin className="h-4 w-4" /> <span className="sm:hidden">Map</span><span className="hidden sm:inline">View on map</span>
           </Link>
         </div>
       </div>
@@ -277,7 +277,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {ring && ring.length >= 3 && (
           <GeofenceEditor
             id={fence.id} name={fence.name} color={fence.color} parentId={fence.parent_id ?? null}
-            kind={isBoundary ? 'boundary' : 'site'} ring={ring}
+            kind={fence.kind ?? (isBoundary ? 'boundary' : 'site')} ring={ring}
+            readOnly={isMock}
             ownerId={fence.owner_id ?? null}
             isOwnedByMe={!!fence.owner_id /* RLS only returns your own personal zones */}
             activeFrom={fence.active_from ?? null}
@@ -286,6 +287,12 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
             notes={fence.notes ?? null}
             parentOptions={parentOptions}
           />
+        )}
+
+        {isMock && (
+          <div className="bg-amber/15 border border-amber/30 rounded-xl p-4 text-xs text-amber">
+            You&apos;re viewing the demo. Sign in to your company to rename, recolor, nest, or delete zones.
+          </div>
         )}
 
         {isVendor && (

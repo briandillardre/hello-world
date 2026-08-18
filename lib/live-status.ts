@@ -50,9 +50,14 @@ export function deriveLiveStatus(opts: {
   engineOn?: boolean | null
   /** ms of the newest fix that was actually moving (for "parked Xh ago"). */
   lastMovedMs?: number | null
+  /** Asset type; tools/personnel have no engine, so "· engine off" is dropped
+   *  from their labels. Omitted = machine wording (back-compat). */
+  assetType?: string | null
   nowMs?: number
 }): LiveStatus {
-  const { speedMph, lastFixMs, engineOn = null, lastMovedMs = null, nowMs = Date.now() } = opts
+  const { speedMph, lastFixMs, engineOn = null, lastMovedMs = null, assetType = null, nowMs = Date.now() } = opts
+  const hasEngine = assetType == null || assetType === 'vehicle' || assetType === 'equipment'
+  const stationaryLabel = hasEngine ? 'Stationary · engine off' : 'Stationary'
   if (lastFixMs == null) {
     return { key: 'nodata', label: 'No data', detail: 'never reported', color: COLOR.nodata, live: false }
   }
@@ -65,12 +70,12 @@ export function deriveLiveStatus(opts: {
     if (engineOn === true) return { key: 'idling', label: 'Engine idle', detail: 'stationary, engine running', color: COLOR.idling, live: true }
     // fresh, stopped, engine off/unknown — just pulled up somewhere
     return engineOn === false
-      ? { key: 'stopped', label: 'Stationary · engine off', detail: movedAgo, color: COLOR.parked, live: false }
+      ? { key: 'stopped', label: stationaryLabel, detail: movedAgo, color: COLOR.parked, live: false }
       : { key: 'stopped', label: 'Stationary', detail: movedAgo, color: COLOR.stopped, live: false }
   }
   if (age >= OFFLINE_MS) {
     return { key: 'offline', label: 'No signal', detail: `last seen ${shortDuration(age)} ago`, color: COLOR.offline, live: false }
   }
   // stale-but-normal: device asleep between hourly check-ins = parked, engine off
-  return { key: 'parked', label: 'Stationary · engine off', detail: movedAgo, color: COLOR.parked, live: false }
+  return { key: 'parked', label: stationaryLabel, detail: movedAgo, color: COLOR.parked, live: false }
 }

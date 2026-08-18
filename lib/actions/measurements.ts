@@ -45,6 +45,32 @@ export async function saveMeasurementAction(input: SaveMeasurementInput): Promis
   }
 }
 
+/** Edit an existing measurement in place — rename and/or replace the shape
+ *  (the map's tap-to-edit flow). RLS scopes the update to the caller's rows. */
+export async function updateMeasurementAction(
+  id: string,
+  patch: { name?: string; geometry?: GeoJSON.Point | GeoJSON.LineString | GeoJSON.Polygon; props?: MeasureProps }
+): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: 'Not available in demo.' }
+  if (!id) return { ok: false, error: 'Missing id.' }
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const supabase = createClient()
+    const row: Record<string, unknown> = {}
+    if (patch.name !== undefined) row.name = patch.name.trim() || 'Measurement'
+    if (patch.geometry !== undefined) row.geometry = patch.geometry
+    if (patch.props !== undefined) row.props = patch.props
+    if (!Object.keys(row).length) return { ok: true }
+    const { error } = await supabase.from('measurements').update(row).eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath('/map')
+    revalidatePath('/measurements')
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Update failed.' }
+  }
+}
+
 export async function deleteMeasurementAction(id: string): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Not available in demo.' }
   try {
