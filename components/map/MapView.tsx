@@ -437,6 +437,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [])
   const [isDrawing, setIsDrawing] = useState(false)
+  const isDrawingRef = useRef(false)
+  isDrawingRef.current = isDrawing
   const drawCoords = useRef<[number, number][]>([])
   const drawPreviewSource = useRef<string>('draw-preview')
 
@@ -570,6 +572,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   measuresRef.current = measures
   const [selectedMeasure, setSelectedMeasure] = useState<SavedMeasure | null>(null)
   const [editingMeasure, setEditingMeasure] = useState<SavedMeasure | null>(null)
+  // Stable identity — an inline object literal re-triggered MeasureTool's
+  // load effect on EVERY MapView render, stomping in-progress edits the
+  // moment the user pinch-zoomed (ship-check P0, Aug 18).
+  const measureInitial = useMemo(() => editingMeasure ? {
+    id: editingMeasure.id,
+    name: editingMeasure.name,
+    kind: editingMeasure.kind,
+    personal: editingMeasure.personal,
+    coords: editingMeasure.geometry.type === 'Point'
+      ? [editingMeasure.geometry.coordinates as [number, number]]
+      : editingMeasure.geometry.type === 'LineString'
+        ? (editingMeasure.geometry.coordinates as [number, number][])
+        : (editingMeasure.geometry.coordinates[0] as [number, number][]).slice(0, -1),
+  } : null, [editingMeasure])
   const [measureRename, setMeasureRename] = useState<string | null>(null)
   // The measure toggle lives INSIDE the MapLibre control cluster (same size,
   // same column as zoom/locate/fit — owner ask, Jul 21); this ref lets React
@@ -638,7 +654,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Brian, Aug 17). Back/refresh then behave like a normal map open.
     try {
       const u = new URL(window.location.href)
-      if (u.searchParams.has('m')) { u.searchParams.delete('m'); window.history.replaceState(null, '', u.pathname + (u.searchParams.size ? '?' + u.searchParams.toString() : '')) }
+      if (u.searchParams.has('m')) { u.searchParams.delete('m'); const qs = u.searchParams.toString(); window.history.replaceState(null, '', u.pathname + (qs ? '?' + qs : '')) }
     } catch { /* URL API unavailable — harmless */ }
     // Re-assert once — the first-open zoom-to-fleet can land later and steal
     // the camera from the deep link.
@@ -958,6 +974,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         measClickBoundRef.current = true
         const pick = (e: maplibregl.MapLayerMouseEvent) => {
           if (measureOnRef.current) return // measuring — taps place vertices
+          if (isDrawingRef.current) return // drawing a zone — taps are corners
+          // Asset pins win over the (22px-fat) measurement hit line — same
+          // protection the zone handler has (ship-check P2, Aug 18).
+          const pad = 14
+          const abox: [maplibregl.PointLike, maplibregl.PointLike] = [
+            [e.point.x - pad, e.point.y - pad],
+            [e.point.x + pad, e.point.y + pad],
+          ]
+          const aLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg'].filter((l) => m.getLayer(l))
+          if (aLayers.length && m.queryRenderedFeatures(abox, { layers: aLayers }).length) return
           const id = e.features?.[0]?.properties?.id
           const hit = measuresRef.current.find((x) => x.id === id)
           if (!hit) return
@@ -5163,14 +5189,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       try {
         const u = new URL(window.location.href)
         u.searchParams.delete('follow'); u.searchParams.delete('draw')
-        window.history.replaceState(null, '', u.pathname + (u.searchParams.size ? '?' + u.searchParams.toString() : ''))
+        const qs = u.searchParams.toString()
+        window.history.replaceState(null, '', u.pathname + (qs ? '?' + qs : ''))
       } catch { /* harmless */ }
     }
     if (draw === '1') { strip(); startDrawing(); return }
     if (!follow) return
     // Shell-first boot: assets/zones stream in after mount — poll briefly.
+    // The chain cancels on unmount (ship-check: it outlived the map).
     const started = Date.now()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let gone = false
     const attempt = () => {
+      if (gone) return
       if (follow.startsWith('zone:')) {
         const fence = geofencesRef.current.find((g) => g.id === follow.slice(5))
         if (fence) {
@@ -5193,10 +5224,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           return
         }
       }
-      if (Date.now() - started < 15_000) setTimeout(attempt, 500)
+      if (Date.now() - started < 15_000) timer = setTimeout(attempt, 500)
       else strip() // never arrived — stop trying, leave the map usable
     }
     attempt()
+    return () => { gone = true; if (timer) clearTimeout(timer) }
   }, [mapReady, kiosk, startDrawing])
 
   /** Drop (or clear) the amber marker on an address searched while drawing.
@@ -5342,17 +5374,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           map={mapReady ? map.current : null}
           active={measureOn}
           terrainOn={terrain3d}
-          initial={editingMeasure ? {
-            id: editingMeasure.id,
-            name: editingMeasure.name,
-            kind: editingMeasure.kind,
-            personal: editingMeasure.personal,
-            coords: editingMeasure.geometry.type === 'Point'
-              ? [editingMeasure.geometry.coordinates as [number, number]]
-              : editingMeasure.geometry.type === 'LineString'
-                ? (editingMeasure.geometry.coordinates as [number, number][])
-                : (editingMeasure.geometry.coordinates[0] as [number, number][]).slice(0, -1),
-          } : null}
+          initial={measureInitial}
           onClose={() => { setMeasureOn(false); setEditingMeasure(null) }}
           onSaved={(saved) => {
             if (!saved) return

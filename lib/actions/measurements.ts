@@ -53,6 +53,16 @@ export async function updateMeasurementAction(
 ): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Not available in demo.' }
   if (!id) return { ok: false, error: 'Missing id.' }
+  // Bound the payload like the create path: a geometry is at most a few
+  // hundred vertices; props is a small readouts object.
+  if (patch.geometry) {
+    const n = patch.geometry.type === 'Point' ? 1
+      : patch.geometry.type === 'LineString' ? patch.geometry.coordinates.length
+      : patch.geometry.coordinates.reduce((s, ring) => s + ring.length, 0)
+    if (!Number.isFinite(n) || n < 1 || n > 2000) return { ok: false, error: 'Shape too complex.' }
+  }
+  if (patch.props && JSON.stringify(patch.props).length > 4000) return { ok: false, error: 'Props too large.' }
+  if (patch.name !== undefined && patch.name.length > 200) patch.name = patch.name.slice(0, 200)
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()

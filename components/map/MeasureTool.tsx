@@ -292,10 +292,21 @@ export function MeasureTool({
     reset()
   }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Closing the tool without saving must not leave a stale draft — the next
+  // open would show the old shape and Save would DUPLICATE it (ship-check
+  // P1, Aug 18).
+  useEffect(() => {
+    if (!active) { reset(); skipResetRef.current = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
+
   // Tap-to-edit: load the saved measurement into the tool, finished.
   useEffect(() => {
     if (!active || !initial) return
-    skipResetRef.current = true
+    // Skip the mode-change reset ONLY if the mode will actually change —
+    // a same-mode load leaves setMode a no-op and the stale flag would eat
+    // the NEXT manual mode switch's reset.
+    skipResetRef.current = initial.kind !== mode
     setMode(initial.kind)
     setPts(initial.coords)
     setHover(null)
@@ -304,6 +315,7 @@ export function MeasureTool({
     setPersonal(initial.personal)
     setMsg(null)
     setSheetOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, initial])
 
   const canSave = mode === 'point' ? pts.length === 1 : mode === 'line' ? pts.length >= 2 : pts.length >= 3

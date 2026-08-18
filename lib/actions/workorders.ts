@@ -68,6 +68,10 @@ export async function updateWorkOrderAction(id: string, patch: {
   const { supabase, companyId } = await client()
   const row: Record<string, unknown> = {}
   if (patch.status) row.status = patch.status
+  // Reopening clears the completion stamps — otherwise a reopened WO could
+  // be completed AGAIN, double-writing service history and resetting the
+  // schedule clock twice (sec-check, Aug 18).
+  if (patch.status === 'open') { row.completed_at = null; row.service_record_id = null }
   if (patch.priority) row.priority = patch.priority
   if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId || null
   if (patch.dueDate !== undefined) row.due_date = patch.dueDate || null

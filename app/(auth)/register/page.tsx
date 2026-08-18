@@ -56,7 +56,17 @@ function RegisterInner() {
     const { createClient } = await import('@/lib/supabase')
     const supabase = createClient()
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email, password })
+    // emailRedirectTo routes the confirm link through /auth/callback, which
+    // provisions company+profile for first-time sign-ins — without it a
+    // confirm-email signup was NEVER provisioned (ship-check P1, Aug 18).
+    // user_metadata.name seeds the company name in that provisioning path.
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email, password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome`,
+        data: { name: companyName },
+      },
+    })
     if (authError || !authData.user) {
       setError(authError?.message ?? 'Sign up failed')
       setLoading(false)
@@ -74,20 +84,22 @@ function RegisterInner() {
     }
 
     const apiKey = generateApiKey()
-    const { error: companyError } = await supabase.from('companies').insert({
+    // upsert + ignoreDuplicates: a retry after a partial failure (company
+    // landed, profile didn't) must not die on the duplicate PK forever.
+    const { error: companyError } = await supabase.from('companies').upsert({
       id: authData.user.id,
       name: companyName,
       api_key: apiKey,
       plan: 'starter',
-    })
+    }, { onConflict: 'id', ignoreDuplicates: true })
 
-    const { error: profileError } = await supabase.from('profiles').insert({
+    const { error: profileError } = await supabase.from('profiles').upsert({
       id: authData.user.id,
       company_id: authData.user.id,
       role: 'admin',
       name: email.split('@')[0],
       email,
-    })
+    }, { onConflict: 'id', ignoreDuplicates: true })
 
     if (companyError || profileError) {
       setError('Could not finish setting up your company — please try again or email support@hammertrack.ai')

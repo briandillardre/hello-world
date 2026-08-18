@@ -58,11 +58,15 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   // nearest — a fast-tapping crew was coding hours to the alphabetical
   // first zone. Runs once; a manual change is never overridden.
   const [nearestApplied, setNearestApplied] = useState(false)
+  // A manual zone pick must NEVER be overridden — a cold GPS fix can land
+  // seconds after a fast worker already chose (ship-check P1, Aug 18).
+  const userPickedZoneRef = useRef(false)
   useEffect(() => {
     if (nearestApplied || demo || !zones.some((z) => z.center)) return
     if (typeof navigator === 'undefined' || !navigator.geolocation) return
     navigator.geolocation.getCurrentPosition((pos) => {
       setNearestApplied(true)
+      if (userPickedZoneRef.current) return
       const { latitude, longitude } = pos.coords
       let best: { id: string; d: number } | null = null
       for (const z of zones) {
@@ -215,7 +219,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           zones.length ? (
             <select
               value={zoneId}
-              onChange={(e) => setZoneId(e.target.value)}
+              onChange={(e) => { userPickedZoneRef.current = true; setZoneId(e.target.value) }}
               className="w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-3 text-sm text-ink outline-none focus:border-amber/50"
             >
               {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}

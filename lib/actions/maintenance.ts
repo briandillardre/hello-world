@@ -33,6 +33,14 @@ export async function createScheduleAction(input: {
   if (!INTERVAL_TYPES.includes(input.intervalType)) return { ok: false, error: 'Pick an interval type.' }
 
   const companyId = await getCurrentCompanyId()
+  // The FK alone would accept ANY company's asset UUID — verify ownership
+  // before writing the schedule (sec-check, Aug 18).
+  {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data: owned } = await createClient()
+      .from('assets').select('id').eq('id', input.assetId).eq('company_id', companyId).maybeSingle()
+    if (!owned) return { ok: false, error: 'That machine is not in your fleet.' }
+  }
   const { createSchedule } = await import('@/lib/db/maintenance')
   const created = await createSchedule(companyId, {
     asset_id: input.assetId,

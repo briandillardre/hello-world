@@ -47,8 +47,13 @@ export function ApiKeyReveal({ apiKey, demo }: { apiKey: string; demo: boolean }
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      {demo && (
+      {demo ? (
         <p className="text-[11px] text-faint">Demo key — not live. Create an account to get your real tracker key.</p>
+      ) : (
+        // Honest scoping (Aug 18): ingest endpoints currently authenticate
+        // with the platform key, not this one — per-company ingest auth is
+        // on the roadmap. Don't imply this key gates data today.
+        <p className="text-[11px] text-faint">Your shipped HammerTrack trackers are pre-authenticated and don&apos;t use this key. It identifies your company for upcoming API access.</p>
       )}
     </div>
   )

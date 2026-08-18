@@ -12,9 +12,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   let next = url.searchParams.get('next') || '/map'
-  // Same-site paths only — an absolute or protocol-relative `next` would make
-  // this an open redirector off the real domain (sec-check, Aug 17).
-  if (!next.startsWith('/') || next.startsWith('//')) next = '/map'
+  // Same-site paths only — an absolute, protocol-relative, or backslash
+  // `next` ('/\\evil.com' resolves off-domain) would make this an open
+  // redirector off the real domain (sec-check, Aug 17 + 18).
+  if (!/^\/(?![/\\])/.test(next)) next = '/map'
+  if (new URL(next, url.origin).origin !== url.origin) next = '/map'
 
   if (code) {
     const supabase = createClient()

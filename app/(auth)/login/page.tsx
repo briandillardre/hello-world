@@ -26,7 +26,9 @@ export default function LoginPage() {
     // Deep links (QR stickers → /t/…) arrive as ?next=; honor it on success.
     // Same-site paths only — same open-redirect guard as app/auth/callback.
     const next = params.get('next')
-    if (next && next.startsWith('/') && !next.startsWith('//')) setNextPath(next)
+    // Same-site only. Backslash matters: browsers treat \ as / so '/\evil.com'
+    // would resolve off-domain (sec-check, Aug 18).
+    if (next && /^\/(?![/\\])/.test(next)) setNextPath(next)
     const err = params.get('error')
     if (err) {
       // NEVER render the raw param — it's attacker-controllable free text on
