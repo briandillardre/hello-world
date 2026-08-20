@@ -10,7 +10,8 @@
 --              notes on submission day)
 --   ✓ auto-confirm
 -- STEP 2: run this whole script.
--- (Fixed Aug 20: real column names/roles + api_key — the Aug 9 draft never ran.)
+-- (Fixed Aug 20: real column names/roles + api_key; assets has `active`,
+--  not `status` — verified against the live run.)
 
 DO $$
 DECLARE
@@ -39,14 +40,14 @@ BEGIN
   VALUES (v_user, v_company, 'App Reviewer', 'admin')
   ON CONFLICT (id) DO UPDATE SET company_id = EXCLUDED.company_id, name = EXCLUDED.name, role = EXCLUDED.role;
 
-  INSERT INTO assets (company_id, name, type, status, tracker_id, hourly_rate, daily_cost)
-  VALUES (v_company, 'F-350 Crew Truck', 'vehicle', 'active', 'review-truck-1', 85, 40)
+  INSERT INTO assets (company_id, name, type, tracker_id, hourly_rate, daily_cost)
+  VALUES (v_company, 'F-350 Crew Truck', 'vehicle', 'review-truck-1', 85, 40)
   RETURNING id INTO v_truck;
-  INSERT INTO assets (company_id, name, type, status, tracker_id, hourly_rate, daily_cost)
-  VALUES (v_company, 'CAT 305 Excavator', 'equipment', 'active', 'review-excav-1', 95, 60)
+  INSERT INTO assets (company_id, name, type, tracker_id, hourly_rate, daily_cost)
+  VALUES (v_company, 'CAT 305 Excavator', 'equipment', 'review-excav-1', 95, 60)
   RETURNING id INTO v_excav;
-  INSERT INTO assets (company_id, name, type, status, tracker_id)
-  VALUES (v_company, 'Topcon Laser Level', 'tool', 'active', 'review-tool-1')
+  INSERT INTO assets (company_id, name, type, tracker_id)
+  VALUES (v_company, 'Topcon Laser Level', 'tool', 'review-tool-1')
   RETURNING id INTO v_tool;
 
   -- Job-site zone near downtown Greenville.
