@@ -7,7 +7,7 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 
 ## Live Site (updated Jul 2026 — app moved to Vercel)
 - **Live app:** https://hammertrack.ai (Vercel — auto-deploys `master`; hammertrackjune28.vercel.app is the same deployment)
-- **Database:** Supabase project **"Hammertrack 2026"** — 9 migrations: 001–005 applied Jul 6 2026, 006–009 pending in SQL Editor (see Pending); env vars set in Vercel (Production + Preview)
+- **Database:** Supabase project **"Hammertrack 2026"** — **AUTO-MIGRATIONS ARE LIVE**: `SUPABASE_DB_URL` is set in Vercel (Brian confirmed Aug 18) and every `master` build ends with `scripts/migrate.mjs`, so pushing a `supabase/migrations/NNN_*.sql` file IS the migration — never tell Brian to paste SQL into the SQL Editor again. Verify state anytime: Vercel latest build log (migrate step lists applied files) or `select filename from schema_migrations order by filename desc limit 10;`. A failing migration fails the whole build, so a green deploy = schema applied.
 - **hammertrack.ai** DNS cutover ✅ DONE Aug 5 2026 — apex + www on Vercel (Valid Configuration), hammertrackai.com 301s to it, Google Workspace MX (smtp.google.com) verified intact post-cutover
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
@@ -206,7 +206,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
-2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026", migrations 001–005 applied. **Run in SQL Editor: 006 (asset-photos bucket), 007 (asset cost columns), 008 (weather default), 009 (alert phone/email), and `supabase/cleanup_demo_data.sql` (removes seeded TN assets/zones — keeps real IMEI trackers).** Fresh installs: paste `supabase/setup.sql` (all 9). See `docs/GO-LIVE.md`.
+2. ~~Supabase production~~ ✅ DONE Jul 6 2026 — project "Hammertrack 2026". ~~Manual SQL Editor runs~~ superseded: **auto-migrations on deploy since early Aug** (see Live Site above) — the old "run 006–009 by hand" instructions here misled a session as late as Aug 18. Fresh installs: paste `supabase/setup.sql`. See `docs/GO-LIVE.md`.
 3. ~~Env vars~~ ✅ DONE — all set in Vercel (Production + Preview) since Jun 28–30
 4. ~~Point hammertrack.ai at Vercel~~ ✅ DONE Aug 5 2026 (task 173) — apex A → Vercel (216.150.1.1 is Vercel's current anycast IP), www CNAME → cname.vercel-dns.com, hammertrackai.com 301 → hammertrack.ai, Workspace MX intact. Unblocks final QBO_REDIRECT_URI + app-store remote URL. Follow-up: set Supabase Auth → URL Configuration Site URL to https://hammertrack.ai (else auth emails/redirects still point at vercel.app).
 5. **Remaining hardware** — ~~install T1-b~~ ✅ reporting since Aug 4 (…00200); finish pucks (task 160: Minors 3+5 configured, tool assets created; last puck = Minor 4); KORE order #1 in fulfillment (see Hardware section) — on arrival: SuperSIM APN settings ≠ Hologram (task 171)
