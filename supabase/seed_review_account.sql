@@ -10,6 +10,7 @@
 --              notes on submission day)
 --   ✓ auto-confirm
 -- STEP 2: run this whole script.
+-- (Fixed Aug 20: real column names/roles + api_key — the Aug 9 draft never ran.)
 
 DO $$
 DECLARE
@@ -30,12 +31,13 @@ BEGIN
     DELETE FROM companies WHERE id = v_company; -- cascades
   END IF;
 
-  INSERT INTO companies (name, plan) VALUES ('Blue Ridge Sitework Co.', 'founding25')
+  INSERT INTO companies (name, plan, api_key)
+  VALUES ('Blue Ridge Sitework Co.', 'founding25', 'ht_review_' || encode(gen_random_bytes(16), 'hex'))
   RETURNING id INTO v_company;
 
-  INSERT INTO profiles (id, company_id, full_name, role)
-  VALUES (v_user, v_company, 'App Reviewer', 'owner')
-  ON CONFLICT (id) DO UPDATE SET company_id = EXCLUDED.company_id, full_name = EXCLUDED.full_name, role = EXCLUDED.role;
+  INSERT INTO profiles (id, company_id, name, role)
+  VALUES (v_user, v_company, 'App Reviewer', 'admin')
+  ON CONFLICT (id) DO UPDATE SET company_id = EXCLUDED.company_id, name = EXCLUDED.name, role = EXCLUDED.role;
 
   INSERT INTO assets (company_id, name, type, status, tracker_id, hourly_rate, daily_cost)
   VALUES (v_company, 'F-350 Crew Truck', 'vehicle', 'active', 'review-truck-1', 85, 40)
