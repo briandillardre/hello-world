@@ -1455,7 +1455,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         type: 'fill-extrusion',
         source: 'ofm',
         'source-layer': 'building',
-        minzoom: 13,
+        // z12: as far out as the toggle can help — the OpenMapTiles schema
+        // only carries buildings from ~z13, so this is a free win where the
+        // tiles have data and a harmless no-op where they don't (owner ask,
+        // Aug 21: "leave 3d buildings on a little further zoomed out").
+        minzoom: 12,
         layout: { visibility: 'none' },
         paint: {
           'fill-extrusion-color': '#2a3f57',
@@ -1474,11 +1478,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           tiles: ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
           encoding: 'terrarium',
           tileSize: 256,
-          // z10 mesh, over-scaled beyond — hills keep their SHAPE but the
-          // tile count collapses another 16× vs z12. "Dialed WAY back on the
-          // accuracy and/or detail" is the explicit ask (owner, Jul 31, after
-          // terrain still wouldn't load on the PC).
-          maxzoom: 10,
+          // z8 mesh, over-scaled beyond — 16× fewer terrain tiles/meshes
+          // than z10, 256× fewer than z12. Hills become smooth rolling
+          // shapes but the FRAME RATE is the feature ("detail needs to be
+          // cut 10x or more" — owner, Aug 21; z10 was still unusably slow
+          // on phones). Trade-off: the measure tool's elevation readout
+          // coarsens to ridge-level accuracy while terrain is on.
+          maxzoom: 8,
         })
       }
 
