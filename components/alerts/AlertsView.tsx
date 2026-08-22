@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { AlertList } from './AlertList'
 import { AlertRulesManager } from './AlertRulesManager'
-import { acknowledgeAlertAction, acknowledgeAllAlertsAction } from '@/lib/actions/alerts'
+import { acknowledgeAlertAction, acknowledgeManyAlertsAction } from '@/lib/actions/alerts'
 import type { AlertEvent, AlertRule, Geofence, AssetWithLocation } from '@/lib/types'
 
 interface Props {
@@ -23,13 +23,20 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     if (editable) acknowledgeAlertAction(id)
   }
 
-  const acknowledgeAll = () => {
+  // Ack a SPECIFIC set (the "Ack visible" path) — the blanket ack-all is
+  // gone from the UI: theft must never ride along in a bulk sweep (Aug 22).
+  const acknowledgeMany = (ids: string[]) => {
     const now = new Date().toISOString()
-    setAlerts((prev) => prev.map((a) => (a.acknowledged_at ? a : { ...a, acknowledged_at: now })))
-    if (editable) acknowledgeAllAlertsAction()
+    const idSet = new Set(ids)
+    setAlerts((prev) => prev.map((a) => (idSet.has(a.id) && !a.acknowledged_at ? { ...a, acknowledged_at: now } : a)))
+    if (editable) acknowledgeManyAlertsAction(ids)
   }
 
-  const unread = alerts.filter((a) => !a.acknowledged_at).length
+  // ONE number, same rule as the nav bell: unread ACTIONABLE alerts —
+  // routine enter/exit crossings are the zone log, not alerts.
+  const unread = alerts.filter((a) =>
+    !a.acknowledged_at && !(!a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit'))
+  ).length
 
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
@@ -41,7 +48,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
       </div>
       <div className="flex-1 overflow-y-auto">
         {tab === 'activity' ? (
-          <AlertList alerts={alerts} onAcknowledge={acknowledge} onAcknowledgeAll={acknowledgeAll} />
+          <AlertList alerts={alerts} onAcknowledge={acknowledge} onAcknowledgeMany={acknowledgeMany} />
         ) : (
           <AlertRulesManager rules={rules} geofences={geofences} assets={assets} editable={editable} />
         )}

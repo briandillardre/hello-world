@@ -34,6 +34,18 @@ export async function acknowledgeAlert(id: string): Promise<void> {
 }
 
 /** Clear the whole backlog in one tap — nobody acknowledges 47 rows by hand. */
+/** Bulk-ack a specific set (the "Ack visible" button — never blanket).
+ *  RLS scopes the update to the caller's company. */
+export async function acknowledgeAlerts(ids: string[]): Promise<void> {
+  if (isMock || !ids.length) return
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  await supabase
+    .from('alert_events')
+    .update({ acknowledged_at: new Date().toISOString() })
+    .in('id', ids.slice(0, 500))
+}
+
 export async function acknowledgeAllAlerts(companyId: string): Promise<void> {
   if (isMock) return
 

@@ -2,11 +2,19 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { acknowledgeAlert, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
+import { acknowledgeAlert, acknowledgeAlerts, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
 import type { AlertRule, AlertRuleParams, AlertTrigger } from '@/lib/types'
 
 export async function acknowledgeAlertAction(id: string) {
   await acknowledgeAlert(id)
+  revalidatePath('/alerts')
+}
+
+/** Ack a SPECIFIC visible set — replaces blanket ack-all in the UI so
+ *  critical theft rows can never ride along unseen (Aug 22 rebuild). */
+export async function acknowledgeManyAlertsAction(ids: string[]) {
+  const clean = (Array.isArray(ids) ? ids : []).filter((v): v is string => typeof v === 'string' && v.length < 64).slice(0, 500)
+  await acknowledgeAlerts(clean)
   revalidatePath('/alerts')
 }
 
