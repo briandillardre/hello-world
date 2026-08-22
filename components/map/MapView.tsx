@@ -99,7 +99,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 }
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-badge']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -136,7 +136,7 @@ function lerpAngle(from: number, to: number, f: number): number {
  *  every popup shares one rule (sec-check, Aug 12). */
 const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
+function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     // Tools live in their own unclustered source (tools-live) so they stay
@@ -159,6 +159,9 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           heading: a.location!.heading ?? 0,
           // Wow-pack marker data: wrench badges + idle-dollar rings.
           maint: (a.maintOverdue ?? 0) + (a.openWorkOrders ?? 0),
+          // Live unacknowledged alert → red ring + ⚠ in the attention slot
+          // (marker grammar, Brian-approved sketch, Aug 22).
+          alert: alertIds?.has(a.id) ? 1 : 0,
           idleDays: a.idleDays ?? -1,
           dailyCost: a.daily_cost ?? 0,
           // Three glance-states: moving (fresh fix + speed), idle (device awake
@@ -862,6 +865,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   }, [aboard])
   const toolCountsRef = useRef(toolCounts)
   toolCountsRef.current = toolCounts
+  // Assets wearing a LIVE unacknowledged alert — feeds the red ring + the
+  // ⚠ attention slot (marker grammar). Routine enter/exit crossings are
+  // activity, not alerts (same rule as the bell badge).
+  const alertAssetIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const a of alerts) {
+      if (a.acknowledged_at) continue
+      if (!a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')) continue
+      s.add(a.asset_id)
+    }
+    return s
+  }, [alerts])
+  const alertIdsRef = useRef(alertAssetIds)
+  alertIdsRef.current = alertAssetIds
   const episodesRef = useRef(pairingEpisodes)
   episodesRef.current = pairingEpisodes
   tracksRef.current = tracksEff
@@ -1732,7 +1749,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
 
       // ── Live asset cluster source ──
-      m.addSource('assets', { type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current), cluster: true, clusterMaxZoom: 15, clusterRadius: 40 })
+      m.addSource('assets', { type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current), cluster: true, clusterMaxZoom: 15, clusterRadius: 40 })
       m.addLayer({
         id: 'clusters', type: 'circle', source: 'assets', filter: ['has', 'point_count'],
         paint: {
@@ -1746,12 +1763,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 13, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
         paint: { 'text-color': '#ff9e16' },
       })
-      // Expanding pulse ring — MOVING assets only. The RAF effect below
-      // animates radius/opacity so who's rolling is obvious from across a room.
+      // Expanding pulse ring — MOVING assets, plus a RED pulse on anything
+      // wearing a live alert (marker grammar: alert outranks everything).
       m.addLayer({
         id: 'asset-pulse', type: 'circle', source: 'assets',
-        filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'state'], 'moving']],
-        paint: { 'circle-color': ['get', 'color'], 'circle-opacity': 0.4, 'circle-radius': 16, 'circle-stroke-width': 0 },
+        filter: ['all', ['!', ['has', 'point_count']], ['any', ['==', ['get', 'state'], 'moving'], ['==', ['get', 'alert'], 1]]],
+        paint: { 'circle-color': ['case', ['==', ['get', 'alert'], 1], '#fb5d5d', ['get', 'color']], 'circle-opacity': 0.4, 'circle-radius': 16, 'circle-stroke-width': 0 },
       })
       // soft glow under each pin so assets pop off the satellite imagery —
       // brightness reads the state: moving bright, idle steady, off nearly out
@@ -1765,6 +1782,32 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           // screenshots. Small marker glow far out, full halo up close.
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 9, 10, 14, 14, 24],
           'circle-blur': 0.7,
+        },
+      })
+      // ── THE STATE RING (marker grammar, Brian-approved sketch, Aug 22) ──
+      // Exactly one ring, always the same radius; its style is the ONLY
+      // place run-state lives: amber = moving · teal = awake/working ·
+      // quiet grey = asleep · red thickening with idle days = parked and
+      // burning money (absorbs the old idle-$ ring) · bright red = live
+      // alert. Dark puck border stays for contrast; this ring sits outside.
+      m.addLayer({
+        id: 'state-ring', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-radius': 14,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': ['case',
+            ['==', ['get', 'alert'], 1], '#fb5d5d',
+            ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']], '#ef4444',
+            ['match', ['get', 'state'], 'moving', '#ff9e16', 'idle', '#2dd4bf', '#6f88a0']],
+          'circle-stroke-width': ['case',
+            ['==', ['get', 'alert'], 1], 3.5,
+            ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']],
+              ['interpolate', ['linear'], ['get', 'idleDays'], 2, 3, 14, 6.5],
+            ['match', ['get', 'state'], 'off', 1.5, 2.5]],
+          'circle-stroke-opacity': ['case',
+            ['==', ['get', 'alert'], 1], 0.95,
+            ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']], 0.85,
+            ['match', ['get', 'state'], 'off', 0.5, 0.85]],
         },
       })
       m.addLayer({
@@ -1980,12 +2023,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         // Zoom-scaled (Aug 22 badge pass): legible up close, quiet far out.
         'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11, 16, 13.5],
         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-        'text-offset': [1.15, -1.15],
+        // PAYLOAD SLOT — bottom-right (marker grammar): what's riding along.
+        // Today that's Bluetooth tool count; people-in-truck joins this same
+        // count when personnel pairing lands (Brian, Aug 22 — never lose
+        // this functionality).
+        'text-offset': [1.15, 1.15],
         'icon-allow-overlap': true, 'text-allow-overlap': true,
         'icon-ignore-placement': true, 'text-ignore-placement': true,
       }
       m.addLayer({
         id: 'tool-count-badge', type: 'symbol', source: 'assets', filter: hasTools,
+        // Zoom ladder (marker grammar): badges wait for town zoom — far out
+        // it's clean pucks + rings only.
+        minzoom: 10,
         layout: toolBadgeLayout,
         paint: { 'text-color': '#0b0618' },
       })
@@ -2269,7 +2319,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!mapReady) return
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
-    source?.setData(buildGeoJSON(visible, filter, toolCounts))
+    source?.setData(buildGeoJSON(visible, filter, toolCounts, alertAssetIds))
     const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
     // Replaying with trails on: a tool that has a synthesized track gets a
     // moving trail head like any other asset — drop its static "now" dot so
@@ -2279,7 +2329,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
       : null
     tools?.setData(toolsGeoJSON(replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible, filter))
-  }, [mapReady, assets, filter, isolateId, toolCounts, range, trailMode, tracksEff])
+  }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {
@@ -3970,24 +4020,23 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
   // ══ Aug 12 wow-pack: "where is my money and my day" ══════════════════════
 
-  // Wrench badges — always on: any machine with overdue service or an open
-  // work order wears a small 🛠 at its shoulder. Not a layer row; it's state
-  // the marker should never hide.
+  // ATTENTION SLOT — top-right, one badge, priority-picked (marker grammar):
+  // live alert ⚠ beats service-due 🛠. Everything else waits in the asset
+  // sheet; a marker never wears a third bauble.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m || m.getLayer('wrench-badge') || !m.getSource('assets')) return
     m.addLayer({
       id: 'wrench-badge', type: 'symbol', source: 'assets',
-      filter: ['all', ['!', ['has', 'point_count']], ['>', ['get', 'maint'], 0]],
+      filter: ['all', ['!', ['has', 'point_count']], ['any', ['>', ['get', 'maint'], 0], ['==', ['get', 'alert'], 1]]],
       // It rides LIVE positions, so it lives in LIVE_LAYERS and hides with
       // the other live pins in trail/replay modes (ship-check P1: a ghost
       // wrench floated at the machine's CURRENT spot during yesterday's
       // replay). Initial visibility honors a restored trail mode.
-      // minzoom 9 + zoom-scaled size (Aug 22 badge pass): at county zoom an
-      // always-on 🛠 per machine is pure noise — the wrench only means
-      // something once you can tell which machine wears it.
-      minzoom: 9,
-      layout: { 'text-field': '🛠', 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
+      // Zoom ladder: badges wait for town zoom (10) — same tier as the
+      // payload count.
+      minzoom: 10,
+      layout: { 'text-field': ['case', ['==', ['get', 'alert'], 1], '⚠️', '🛠'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [1.15, -1.15], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
     })
   }, [mapReady])
 
@@ -4068,16 +4117,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // just during playback (ship-check: rings floated with no pin under
     // them once the live dots hid).
     const on = !!overlaysOn.idledollars && !pbActive && trailMode === 'off'
-    if (!m.getLayer('idle-ring')) {
+    if (!m.getLayer('idle-label')) {
       const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']]
-      m.addLayer({
-        id: 'idle-ring', type: 'circle', source: 'assets', filter: idleFilter,
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['get', 'idleDays'], 2, 14, 30, 30],
-          'circle-color': 'rgba(0,0,0,0)',
-          'circle-stroke-color': '#ef4444', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.85,
-        },
-      })
+      // The RING moved into the always-on state ring (marker grammar — red
+      // thickness = days idle); this opt-in overlay keeps only the $ chip.
       m.addLayer({
         id: 'idle-label', type: 'symbol', source: 'assets', filter: idleFilter, minzoom: 10,
         layout: {
@@ -4088,7 +4131,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         paint: { 'text-color': '#fca5a5', 'text-halo-color': '#001016', 'text-halo-width': 2 },
       })
     }
-    ;['idle-ring', 'idle-label'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'))
+    ;['idle-label'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'))
   }, [mapReady, overlaysOn.idledollars, pbActive, trailMode])
 
   // Night Watch — where the fleet sleeps: teal halo + 🔒 tucked inside a
@@ -4110,10 +4153,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
       m.addLayer({
         id: 'nightwatch-mark', type: 'symbol', source: 'nightwatch', minzoom: 9,
-        // Below-right shoulder [1.3, 1.1] (Aug 22 badge pass): the top-right
-        // shoulder belongs to the tools-aboard count — on a tagged truck
-        // sleeping in the open the two glyphs printed on top of each other.
-        layout: { 'text-field': ['case', ['get', 'ok'], '🔒', '⚠️'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [1.3, 1.1], 'text-allow-overlap': true },
+        // Top-LEFT shoulder (marker grammar, Aug 22): top-right is the
+        // attention slot, bottom-right the payload count — the night-watch
+        // mark takes the free corner so nothing ever prints on top of it.
+        layout: { 'text-field': ['case', ['get', 'ok'], '🔒', '⚠️'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true },
       })
     }
     const setVis = (v: boolean) => ['nightwatch-halo', 'nightwatch-mark'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none'))
