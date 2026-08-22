@@ -10,6 +10,7 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { toast } from '@/components/ui/feedback'
 import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
 import { saveMapViewsAction } from '@/lib/actions/profile'
+import { TodayTray } from './TodayTray'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -304,6 +305,9 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         focusMeasurement={focusMeasurement}
         measurements={measurements}
       />
+      {/* TODAY — the morning exceptions card, once per day on the map
+          (Brian, Aug 22: Today pops up on the map, not a full page). */}
+      {!isMock && <TodayTray assets={effAssets} alerts={effAlerts} canViewCosts={effCanViewCosts} />}
       {/* Boot pill: only on a true first visit (no cached snapshot yet). */}
       {bootstrap && !boot && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-navy-950/90 border border-navy-700 px-3.5 py-1.5">
