@@ -38,6 +38,7 @@ function dayEndMs(v: string): number {
 // Remembered bottom-sheet stage (UX audit, Aug 22): reopening the map lands
 // on whatever stage you last chose instead of always unfolding to 'full'.
 const STAGE_KEY = 'ht_timeline_stage'
+const KIOSK_STAGE_KEY = 'ht_cc_timeline_stage'
 const STAGES = ['full', 'bar', 'min'] as const
 type Stage = (typeof STAGES)[number]
 
@@ -136,11 +137,13 @@ export function TimelinePlayback({
   // remembered per device; phones with nothing stored start at 'bar' —
   // 'full' ate half a 400px screen before anyone touched it (Aug 22).
   const [stage, setStageRaw] = useState<Stage>(() => {
-    if (kiosk) return 'min'
+    // Kiosk remembers its own stage under a separate key (Brian, Aug 22:
+    // /command matches /map) — fresh walls still lead with the map (pill).
     try {
-      const saved = localStorage.getItem(STAGE_KEY)
+      const saved = localStorage.getItem(kiosk ? KIOSK_STAGE_KEY : STAGE_KEY)
       if ((STAGES as readonly string[]).includes(saved ?? '')) return saved as Stage
     } catch { /* private mode / SSR */ }
+    if (kiosk) return 'min'
     try { if (window.matchMedia('(max-width: 767px)').matches) return 'bar' } catch { /* SSR */ }
     return 'full'
   })
@@ -155,9 +158,8 @@ export function TimelinePlayback({
     autoStepRef.current = false
     setStageRaw((s) => {
       const v = typeof next === 'function' ? next(s) : next
-      // Kiosk never persists — the wall display's pill shouldn't decide what
-      // a phone on the same device opens to.
-      if (!kiosk) { try { localStorage.setItem(STAGE_KEY, v) } catch { /* private mode */ } }
+      // Separate keys: the wall's choice never decides what /map opens to.
+      try { localStorage.setItem(kiosk ? KIOSK_STAGE_KEY : STAGE_KEY, v) } catch { /* private mode */ }
       return v
     })
   }, [kiosk])
@@ -556,14 +558,20 @@ export function TimelinePlayback({
         {/* px-3/py-2 + matching negative margins = a ~40×32px thumb target
             on a 16px glyph without moving a pixel visually. Taller would eat
             taps meant for the range pills right below (gloved-thumb audit,
-            Aug 22 — same pattern on every small control in this bar). */}
-        {stage === 'bar' && (
-          <button onClick={stepUp} className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors" aria-label="Expand timeline options">
-            <ChevronUp className="h-4 w-4" />
-          </button>
-        )}
+            Aug 22 — same pattern on every small control in this bar).
+            BOTH directions always render (Brian, Aug 22: "a different
+            chevron to slide up and slide down") — ∧ dims when the sheet is
+            already fully open, so the pair always reads as two actions. */}
+        <button
+          onClick={stepUp}
+          disabled={stage === 'full'}
+          className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors disabled:opacity-25 disabled:hover:text-faint"
+          aria-label="Slide timeline up"
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
         <span className="w-9 h-1 rounded-full bg-navy-600" aria-hidden />
-        <button onClick={stepDown} className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors" aria-label={stage === 'full' ? 'Collapse to timeline only' : 'Minimize timeline'}>
+        <button onClick={stepDown} className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors" aria-label="Slide timeline down">
           <ChevronDown className="h-4 w-4" />
         </button>
       </div>

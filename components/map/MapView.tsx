@@ -4649,20 +4649,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     try { localStorage.setItem('ht_rail_hidden', railHidden ? '1' : '0') } catch { /* private mode */ }
   }, [railHidden])
-  // The LEFT cluster (Layers pill + search + fleet chips + open panel) tucks
-  // the same way — its own edge tab, its own memory (Brian, Aug 22:
-  // "too cluttered… swiped out of the way fully just like the right side").
-  const [leftHidden, setLeftHidden] = useState(() => {
-    try { return localStorage.getItem('ht_left_hidden') === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try { localStorage.setItem('ht_left_hidden', leftHidden ? '1' : '0') } catch { /* private mode */ }
-  }, [leftHidden])
-  // The tour must point at REAL chrome: pull both tucked columns back before
+  // The tour must point at REAL chrome: pull the tucked rail back before
   // it measures, or step 1's ring draws at x ≈ -250 around nothing
   // (ship-check P2). Covers the ht:tour relaunch AND the ?tour=1 deep link.
   useEffect(() => {
-    const untuck = () => { setLeftHidden(false); setRailHidden(false) }
+    const untuck = () => { setRailHidden(false) }
     window.addEventListener('ht:tour', untuck)
     try {
       if (new URLSearchParams(window.location.search).get('tour') === '1') untuck()
@@ -5828,9 +5819,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Map tools</span>
       </button>
 
-      {/* LEFT tray handle — on /map this IS the layers entry (Brian, Aug 22:
-          "layers is handled with the left tray"): tap opens the drawer. On
-          kiosk it stays the tuck toggle for the pill. */}
+      {/* LEFT tray handle — the layers entry on /map AND /command (Brian,
+          Aug 22: "update command center to match"): tap or swipe-right opens
+          the same half-width drawer everywhere. */}
       <button
         type="button"
         data-tour="layers"
@@ -5845,24 +5836,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           const dx = e.clientX - st.x
           if (dx > 24) {
             leftTraySwiped.current = true
-            if (kiosk) setLeftHidden(false)
-            else { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }
-          } else if (dx < -24 && kiosk) {
-            leftTraySwiped.current = true
-            setLeftHidden(true)
+            try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ }
           }
         }}
         onPointerUp={() => { leftTraySwipe.current = null }}
         onClick={() => {
           if (leftTraySwiped.current) { leftTraySwiped.current = false; return }
-          if (kiosk) setLeftHidden((h) => !h)
-          else { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }
+          try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ }
         }}
-        aria-label={kiosk ? (leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls') : 'Open map layers'}
+        aria-label="Open map layers"
         className="absolute left-0 top-[44%] z-20 flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {kiosk && !leftHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
+          <path d="m9 18 6-6-6-6" />
         </svg>
         {/* Same tray-tab language as TIMELINE at the bottom (Brian, Aug 22:
             "left, right and timeline… feel similar"): teal mono label. */}
@@ -6004,8 +5990,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         side="left"
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 30}
-        hidden={kiosk ? leftHidden : false}
-        hidePill={!kiosk}
+        hidden={false}
+        hidePill
         // Fleet on/off is BACK inside Layers, first section (Brian, Aug 22
         // 2:38 AM — the chips-on-map experiment lost; the panel opens as a
         // Google-style left drawer now, so the toggles are one tap away).
