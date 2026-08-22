@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { X, Sparkles, ChevronRight, ChevronLeft, Radar, LayoutGrid, Check, Route } from 'lucide-react'
 import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
-import type { AssetTrack } from '@/lib/trails'
+import { tracksFromHistory, type AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -233,24 +233,43 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   useEffect(() => {
     if (!deferLoad) return
     let alive = true
-    const pull = () => Promise.all([
-      fetch(`/api/history?from=${new Date(Date.now() - 2 * 86_400_000).toISOString()}&to=${new Date().toISOString()}`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
-      fetch('/api/command-data').then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
-    ])
-    pull()
-      .catch(() => new Promise((res) => setTimeout(res, 4000)).then(pull))
-      .then(([h, c]) => {
-        if (!alive) return
-        setDyn({ ...(c as Omit<CommandData, 'historyRows'>), historyRows: Array.isArray(h?.rows) ? h.rows : null })
-      })
-      .catch(() => { if (alive) setDynErr(true) })
-    return () => { alive = false }
+    let timer: number | undefined
+    const attempt = () => {
+      Promise.all([
+        fetch(`/api/history?from=${new Date(Date.now() - 2 * 86_400_000).toISOString()}&to=${new Date().toISOString()}`)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+        fetch('/api/command-data').then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+      ])
+        .then(([h, c]) => {
+          if (!alive) return
+          setDyn({ ...(c as Omit<CommandData, 'historyRows'>), historyRows: Array.isArray(h?.rows) ? h.rows : null })
+          setDynErr(false)
+        })
+        .catch(() => {
+          // Keep trying — a wall display that boots before the shop Wi-Fi
+          // associates must recover on its own, not wait for a hand refresh
+          // (ship-check). The chip says so meanwhile.
+          if (!alive) return
+          setDynErr(true)
+          timer = window.setTimeout(attempt, 20_000)
+        })
+    }
+    attempt()
+    return () => { alive = false; if (timer) window.clearTimeout(timer) }
   }, [deferLoad])
   const liveRows = dyn?.historyRows ?? historyRows
   const liveEarliest = dyn?.earliestMs ?? earliestMs
   const livePairing = dyn?.pairingEpisodes ?? pairingEpisodes
   const liveKpis = dyn ? { ...kpis, costToday: dyn.costToday ?? '—' } : kpis
+  // Rail waveform + map trails in real mode derive from the fetched rows —
+  // the server `tracks` prop is [] on live accounts (ship-check: passing it
+  // straight through flatlined the fleet-activity rail). Last 24h to match
+  // the rail's old window.
+  const liveTracks = useMemo(() => {
+    if (!dyn?.historyRows?.length) return tracks
+    const since = Date.now() - 24 * 3_600_000
+    return tracksFromHistory(assets, dyn.historyRows.filter((r) => Date.parse(r.timestamp) >= since))
+  }, [dyn, assets, tracks])
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
 
@@ -320,7 +339,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <MapView
           assets={assets}
           geofences={geofences}
-          tracks={tracks}
+          tracks={liveTracks}
           historyRows={liveRows}
           earliestMs={liveEarliest}
           tz={tz}
@@ -346,7 +365,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
           <span className={`h-2 w-2 rounded-full ${dynErr ? 'bg-alert' : 'bg-teal animate-blink'}`} />
           <span className={`font-mono text-[10.5px] uppercase tracking-[0.12em] ${dynErr ? 'text-alert' : 'text-teal'}`}>
-            {dynErr ? 'History failed to load — refresh to retry' : 'Loading trails & history…'}
+            {dynErr ? 'History unavailable — retrying…' : 'Loading trails & history…'}
           </span>
         </div>
       )}
@@ -368,7 +387,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // Jul 21). Only the rail itself accepts input.
         <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
+            <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} />
           </div>
         </div>
       ) : (

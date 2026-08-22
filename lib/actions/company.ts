@@ -98,7 +98,12 @@ export async function saveDigestPrefsAction(prefs: {
   const clean = {
     friday: { enabled: !!prefs.friday?.enabled, email: !!prefs.friday?.email, sms: !!prefs.friday?.sms, hour: hour(prefs.friday?.hour, 16) },
     sunday: { enabled: !!prefs.sunday?.enabled, hour: hour(prefs.sunday?.hour, 18) },
-    tz: typeof prefs.tz === 'string' && /^[A-Za-z_]+\/[A-Za-z_]+$/.test(prefs.tz) ? prefs.tz : 'America/New_York',
+    // Real-IANA check, not just shape: "America/Greenville" passes the regex
+    // but throws in Intl at digest time (ship-check) — reject it at save.
+    tz: (() => {
+      if (typeof prefs.tz !== 'string' || !/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(prefs.tz)) return 'America/New_York'
+      try { new Intl.DateTimeFormat('en-US', { timeZone: prefs.tz }); return prefs.tz } catch { return 'America/New_York' }
+    })(),
   }
   const { createClient } = await import('@/lib/supabase-server')
   const { error } = await createClient().from('companies').update({ digest_prefs: clean }).eq('id', companyId)

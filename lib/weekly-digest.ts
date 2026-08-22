@@ -129,7 +129,14 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
 
   // Who was where: per site zone, per asset — hours + distinct local days
   // (the ledger's sessions, same numbers as the zone pages and invoices).
-  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+  // Guarded tz: one bad stored timezone must never 500 the whole cron run
+  // and starve every OTHER company's digest (ship-check).
+  let dayFmt: Intl.DateTimeFormat
+  try {
+    dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+  } catch {
+    dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+  }
   const siteIds = new Set(siteZones.map((z) => z.id as string))
   const byZone = new Map<string, Map<string, { ms: number; days: Set<string> }>>()
   const now = Date.now()
@@ -143,7 +150,10 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     let agg = zoneMap.get(s.asset_id as string)
     if (!agg) zoneMap.set(s.asset_id as string, (agg = { ms: 0, days: new Set() }))
     agg.ms += exit - enter
-    agg.days.add(dayFmt.format(new Date(enter)))
+    // A session spanning nights counts EVERY local day it touched — parked
+    // on site all week is "5 days", not "1 day" (ship-check).
+    for (let d = enter; d <= exit; d += 86_400_000) agg.days.add(dayFmt.format(new Date(d)))
+    agg.days.add(dayFmt.format(new Date(exit)))
   }
   const siteActivity = Array.from(byZone.entries())
     .map(([zoneId, zoneMap]) => {

@@ -5853,7 +5853,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ }
         }}
         aria-label="Open map layers"
-        className="absolute left-0 top-[44%] z-20 flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
+        // Kiosk: the desktop CommandRail (z-40) spans past 44% — the handle
+        // must ride above it or only a sliver stays clickable (ship-check).
+        className={`absolute left-0 top-[44%] ${kiosk ? 'z-[41]' : 'z-20'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="m9 18 6-6-6-6" />

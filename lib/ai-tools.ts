@@ -317,7 +317,7 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
           minutes: Math.round(((still ? now : exitMs) - enterMs) / 60_000),
         }
       }),
-      note: 'Visit ledger updates hourly — the most recent hour may not be reflected yet.',
+      note: 'Visit ledger updates hourly, and sleeping trackers check in about hourly — the last 1-2 hours may not be reflected yet.',
     }
   }
 

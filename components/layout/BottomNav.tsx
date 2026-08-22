@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check } from 'lucide-react'
@@ -37,6 +37,7 @@ const allItems = [
 ] as { href: string; label: string; short?: string; icon: typeof Map }[]
 const DEFAULT_ORDER = allItems.map((i) => i.href)
 const ORDER_KEY = 'ht_nav_order_v1'
+const BAR_COUNT = 5
 // Plain object, not a Map — the lucide `Map` icon import shadows the global.
 const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(allItems.map((i) => [i.href, i]))
 
@@ -80,26 +81,32 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   }, [navOrder])
 
   // Write-through: localStorage for instant demo/offline recall, the profile
-  // for "next open, any phone, same user". Best-effort — a failed save just
-  // leaves this device's copy in charge.
+  // for "next open, any phone, same user". The server save is DEBOUNCED to
+  // the latest arrangement only — rapid swaps must never commit out of order
+  // and leave a stale profile beating the fresher local copy (ship-check).
+  const saveTimer = useRef<number | null>(null)
   const persist = (next: string[]) => {
     try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch {}
-    import('@/lib/actions/nav').then(({ saveNavOrderAction }) => saveNavOrderAction(next)).catch(() => {})
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      import('@/lib/actions/nav').then(({ saveNavOrderAction }) => saveNavOrderAction(next)).catch(() => {})
+    }, 800)
   }
 
+  // FIVE list items ride the bar — 3 · AskAI · 2 + More, so AskAI sits dead
+  // center of the 7 cells (Brian, Aug 22: "update this to five and center
+  // the ask AI").
   const ordered = order.map((h) => byHref[h]).filter(Boolean)
-  const barItems = ordered.slice(0, 4)
-  const moreActive = ordered.slice(4).some((i) => pathname.startsWith(i.href))
+  const barItems = ordered.slice(0, BAR_COUNT)
+  const moreActive = ordered.slice(BAR_COUNT).some((i) => pathname.startsWith(i.href))
 
   const swap = (a: string, b: string) => {
-    setOrder((cur) => {
-      const next = [...cur]
-      const ia = next.indexOf(a), ib = next.indexOf(b)
-      if (ia < 0 || ib < 0) return cur
-      ;[next[ia], next[ib]] = [next[ib], next[ia]]
-      persist(next)
-      return next
-    })
+    const ia = order.indexOf(a), ib = order.indexOf(b)
+    if (ia < 0 || ib < 0) return
+    const next = [...order]
+    ;[next[ia], next[ib]] = [next[ib], next[ia]]
+    setOrder(next)
+    persist(next)
   }
   const resetOrder = () => {
     setOrder(DEFAULT_ORDER)
@@ -152,12 +159,12 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </div>
             <p className="text-[11px] text-faint mb-3">
               {editing
-                ? 'Tap two tiles to swap them — the first 4 fill your bottom bar.'
-                : 'The first 4 (amber) are your bottom bar.'}
+                ? 'Tap two tiles to swap them — the first 5 fill your bottom bar.'
+                : 'The first 5 (amber) are your bottom bar.'}
             </p>
             <div className="grid grid-cols-3 gap-3">
               {ordered.map(({ href, label, icon: Icon }, idx) => {
-                const inBar = idx < 4
+                const inBar = idx < BAR_COUNT
                 const active = pathname.startsWith(href)
                 const tile = (
                   <>
@@ -238,7 +245,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
           {/* AskAI rides the CENTER of the bar (Brian, Aug 22: "AskAI needs
               to be in the bottom bar, not on the map") — the classic raised
               middle action, one thumb-tap from anywhere. */}
-          {barItems.slice(0, 2).map(({ href, label, short, icon: Icon }) => {
+          {barItems.slice(0, 3).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link
@@ -253,7 +260,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="whitespace-nowrap">{short ?? label}</span>
+                <span className="whitespace-nowrap text-[10px]">{short ?? label}</span>
               </Link>
             )
           })}
@@ -268,7 +275,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </span>
             <span className="-mt-0.5 text-amber">AskAI</span>
           </button>
-          {barItems.slice(2).map(({ href, label, short, icon: Icon }) => {
+          {barItems.slice(3).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link
@@ -283,7 +290,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="whitespace-nowrap">{short ?? label}</span>
+                <span className="whitespace-nowrap text-[10px]">{short ?? label}</span>
               </Link>
             )
           })}
@@ -298,7 +305,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 the More button — a theft alert must never be invisible. */}
             <span className="relative">
               <MoreHorizontal className="h-5 w-5" />
-              {order.indexOf('/alerts') >= 4 && alertBadge('/alerts')}
+              {order.indexOf('/alerts') >= BAR_COUNT && alertBadge('/alerts')}
             </span>
             <span>More</span>
           </button>
