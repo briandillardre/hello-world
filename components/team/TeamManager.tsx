@@ -1,4 +1,5 @@
 'use client'
+import { busy as trackBusy } from '@/lib/busy'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -43,6 +44,7 @@ export function TeamManager({ data }: { data: TeamData }) {
 
   const invite = async () => {
     setBusy(true); setErr(null); setNewLink(null)
+    const doneBar = trackBusy('Sending invite…')
     try {
       const to = email.trim()
       const res = await createInviteAction(email, role)
@@ -56,7 +58,7 @@ export function TeamManager({ data }: { data: TeamData }) {
       router.refresh()
     } catch {
       setErr('Something went wrong.')
-    } finally { setBusy(false) }
+    } finally { setBusy(false); doneBar() }
   }
 
   const copy = async (text: string, id: string) => {

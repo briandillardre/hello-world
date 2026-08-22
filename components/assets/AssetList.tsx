@@ -9,6 +9,7 @@ import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { createAssetAction } from '@/lib/actions/assets'
+import { busy as trackBusy } from '@/lib/busy'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -93,6 +94,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
     }
     setSaving(true)
     setError(null)
+    const doneBar = trackBusy('Saving asset…')
     try {
       // Blobs can't ride in a plain server-action argument — wrap in FormData.
       const photoForm = photosToFormData(photos ?? [])
@@ -110,6 +112,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
       setError('Could not save asset. Please try again.')
     } finally {
       setSaving(false)
+      doneBar()
     }
   }
 

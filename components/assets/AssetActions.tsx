@@ -7,6 +7,7 @@ import type { Asset, AssetPhoto } from '@/lib/types'
 import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction, reorderAssetPhotosAction } from '@/lib/actions/assets'
 import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
 import { toast, confirmSheet } from '@/components/ui/feedback'
+import { busy as trackBusy } from '@/lib/busy'
 
 /** Edit + Delete controls on the asset detail page. Edit reuses the full
  *  AssetForm (all attributes, cost structure, labeled photo gallery). */
@@ -17,6 +18,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
 
   const handleSave = async (data: AssetFormData, newPhotos?: NewPhoto[]) => {
     setSaving(true)
+    const doneBar = trackBusy('Saving asset changes…')
     try {
       const result = await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
       if (!result.ok) {
@@ -31,6 +33,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
       toast('Could not save changes. Please try again.', { variant: 'error' })
     } finally {
       setSaving(false)
+      doneBar()
     }
   }
 

@@ -1,4 +1,5 @@
 'use client'
+import { busy as trackBusy } from '@/lib/busy'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -28,18 +29,25 @@ function PendingCard({ r, zoneNames }: { r: ReceiptRow; zoneNames: Record<string
     if (busy) return
     setBusy(kind)
     setMsg(null)
-    const res =
-      kind === 'extract' ? await extractReceiptAction(r.id)
-      : kind === 'approve' ? await approveReceiptAction(r.id, {
-          vendor: vendor.trim() || undefined,
-          amount: amount.trim() ? Number(amount) : undefined,
-          txn_date: date || undefined,
-          category: category || undefined,
-        })
-      : await rejectReceiptAction(r.id)
-    setBusy(null)
-    if (!res.ok) setMsg(res.error ?? 'Failed')
-    else router.refresh()
+    // AI extraction runs seconds-long — global sweep so the page never
+    // reads frozen (task #9).
+    const doneBar = trackBusy(kind === 'extract' ? 'Reading the receipt…' : kind === 'approve' ? 'Approving receipt…' : 'Rejecting receipt…')
+    try {
+      const res =
+        kind === 'extract' ? await extractReceiptAction(r.id)
+        : kind === 'approve' ? await approveReceiptAction(r.id, {
+            vendor: vendor.trim() || undefined,
+            amount: amount.trim() ? Number(amount) : undefined,
+            txn_date: date || undefined,
+            category: category || undefined,
+          })
+        : await rejectReceiptAction(r.id)
+      if (!res.ok) setMsg(res.error ?? 'Failed')
+      else router.refresh()
+    } finally {
+      setBusy(null)
+      doneBar()
+    }
   }
 
   return (

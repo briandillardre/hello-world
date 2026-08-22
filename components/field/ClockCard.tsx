@@ -7,6 +7,7 @@ import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Chec
 import { clockInAction, clockOutAction } from '@/lib/actions/fieldops'
 import { enqueue, pending, stashFormData, newIdempotencyKey, type QueueFlushDetail } from '@/lib/offline-queue'
 import { toast } from '@/components/ui/feedback'
+import { busy as trackBusy } from '@/lib/busy'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
 import type { LogFormItem } from '@/lib/log-form'
 
@@ -218,6 +219,9 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     if (busy) return
     setBusy(true)
     setError(null)
+    // Global amber sweep while photos upload + the log files (task #9) —
+    // the local button spinner alone read as frozen on big uploads.
+    const doneBar = trackBusy('Filing your daily log…')
     const fd = new FormData(e.currentTarget)
     // Photos come from accumulated state, not the (nameless, value-cleared)
     // file inputs — append them under the field names the action expects.
@@ -235,6 +239,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       const fields: Record<string, string[]> = {}
       fd.forEach((v, k) => { if (typeof v === 'string') (fields[k] ??= []).push(v) })
       const entry = enqueue('clock-out', { fields }, key)
+      doneBar()
       setBusy(false)
       if (!entry) { setError('No signal — and this phone is blocking offline storage. Try again in coverage.'); return }
       stashFormData(key, fd)
@@ -251,6 +256,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       }
     } catch {
       saveOffline()
+    } finally {
+      doneBar()
     }
   }
 

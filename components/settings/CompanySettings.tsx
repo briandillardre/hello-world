@@ -1,4 +1,5 @@
 'use client'
+import { busy as trackBusy } from '@/lib/busy'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -84,6 +85,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
 
   const uploadLogo = async (file: File | null) => {
     setLogoBusy(true); setErr(null)
+    const doneBar = trackBusy('Uploading logo…')
     try {
       let send = file
       if (file) {
@@ -98,7 +100,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
       const r = await saveCompanyLogoAction(fd)
       if (!r.ok) setErr(r.error ?? 'Logo upload failed.')
       else router.refresh()
-    } finally { setLogoBusy(false) }
+    } finally { setLogoBusy(false); doneBar() }
   }
   const [form, setForm] = useState({ name, work_start, work_end, work_days: [...work_days], alert_phone, alert_email })
   // Carrier rule: the box must be ticked by the user, never pre-checked. It
@@ -126,13 +128,14 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
       return
     }
     setSaving(true); setErr(null)
+    const doneBar = trackBusy('Saving company settings…')
     try {
       const ok = await updateCompanySettingsAction({ ...form, sms_consent: smsConsent || consentOnFile })
       if (!ok) { setErr('Could not save. You may not have admin rights, or the database rejected it.'); return }
       setEditing(false)
       router.refresh()
     } catch { setErr('Could not save. Please try again.') }
-    finally { setSaving(false) }
+    finally { setSaving(false); doneBar() }
   }
 
   const hoursLabel = `${work_start}–${work_end} · ${work_days.map((d) => DAYS[d]).join(' ')}`
