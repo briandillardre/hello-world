@@ -1720,6 +1720,74 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           'circle-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
         },
       })
+      // ── Type silhouettes INSIDE the dots (Brian, Aug 22: "change these dots
+      // into things that actually represent what they are — easy to see but
+      // small"). The dot's whole language survives — color = machine,
+      // brightness = state, pulse = moving — and a small dark glyph (truck /
+      // excavator / person / wrench) sits in it, dark-on-color like every
+      // amber button in the app. SDF masks so one image serves any dot color.
+      const addGlyph = (name: string, draw: (ctx: CanvasRenderingContext2D) => void) => {
+        if (m.hasImage(name)) return
+        const c = document.createElement('canvas')
+        c.width = 64; c.height = 64
+        const ctx = c.getContext('2d')
+        if (!ctx) return
+        ctx.fillStyle = '#fff'
+        draw(ctx)
+        m.addImage(name, ctx.getImageData(0, 0, 64, 64), { sdf: true })
+      }
+      const rr = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+        if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r) } else { ctx.rect(x, y, w, h) }
+      }
+      // Truck, side view: box bed + stepped cab + two wheels.
+      addGlyph('type-vehicle', (ctx) => {
+        ctx.beginPath()
+        rr(ctx, 6, 20, 30, 22, 3)
+        ctx.moveTo(36, 26); ctx.lineTo(47, 26); ctx.lineTo(56, 35); ctx.lineTo(56, 42); ctx.lineTo(36, 42)
+        ctx.closePath(); ctx.fill()
+        ctx.beginPath(); ctx.arc(17, 45, 7, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(46, 45, 7, 0, Math.PI * 2); ctx.fill()
+      })
+      // Excavator: tracks + cab + raised boom with bucket.
+      addGlyph('type-equipment', (ctx) => {
+        ctx.beginPath(); rr(ctx, 8, 44, 34, 11, 5.5); ctx.fill()
+        ctx.beginPath(); rr(ctx, 12, 26, 20, 16, 3); ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(30, 34); ctx.lineTo(46, 10); ctx.lineTo(54, 15); ctx.lineTo(38, 39)
+        ctx.closePath(); ctx.fill()
+        ctx.beginPath(); ctx.moveTo(48, 13); ctx.lineTo(60, 22); ctx.lineTo(50, 30); ctx.closePath(); ctx.fill()
+      })
+      // Person: head + shoulders.
+      addGlyph('type-personnel', (ctx) => {
+        ctx.beginPath(); ctx.arc(32, 19, 10, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); rr(ctx, 14, 33, 36, 24, 13); ctx.fill()
+      })
+      // Wrench at 45°: open-jaw head + handle.
+      addGlyph('type-tool', (ctx) => {
+        ctx.save()
+        ctx.translate(32, 32)
+        ctx.rotate(Math.PI / 4)
+        ctx.beginPath(); rr(ctx, -5, -8, 10, 32, 5); ctx.fill()
+        ctx.beginPath(); ctx.arc(0, -16, 11, 0, Math.PI * 2); ctx.fill()
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.beginPath(); ctx.arc(0, -16, 5, 0, Math.PI * 2); ctx.fill()
+        ctx.fillRect(-4, -32, 8, 12)
+        ctx.restore()
+      })
+      m.addLayer({
+        id: 'asset-type-glyph', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        layout: {
+          'icon-image': ['concat', 'type-', ['get', 'type']],
+          // Images register at 64px base (same as nav-arrow) — 0.19 ≈ 12px,
+          // inside the 20px dot: identity without growing the marker.
+          'icon-size': 0.19,
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-color': '#04121d',
+          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
+        },
+      })
       // Direction arrows — the alternate marker style: a ground-aligned puck
       // in the asset's color, nose pointing the travel heading. Drawn as an
       // SDF alpha mask so ONE image tints per-feature via icon-color.
@@ -1794,16 +1862,29 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         id: 'tool-dots', type: 'circle', source: 'tools-live',
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-radius': 9,
+          // One step SMALLER than asset dots (Brian, Aug 22): the floating 🔧
+          // emoji made tools read bigger than the trucks carrying them.
+          'circle-radius': 8,
           'circle-stroke-width': 2,
           'circle-stroke-color': '#04121d',
           'circle-opacity': ['match', ['get', 'state'], 'dropped', 0.75, 1],
         },
       })
+      // Wrench silhouette INSIDE the dot — same glyph system as the asset
+      // dots, replacing the oversized emoji layer.
       m.addLayer({
-        id: 'tool-dots-emoji', type: 'symbol', source: 'tools-live',
+        id: 'tool-dots-glyph', type: 'symbol', source: 'tools-live',
         minzoom: 6,
-        layout: { 'text-field': '🔧', 'text-size': 10, 'text-allow-overlap': true },
+        layout: {
+          'icon-image': 'type-tool',
+          // 64px base image → ~9.5px wrench inside the 16px tool dot.
+          'icon-size': 0.15,
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-color': '#04121d',
+          'icon-opacity': ['match', ['get', 'state'], 'dropped', 0.75, 1],
+        },
       })
       m.addLayer({
         id: 'tool-dots-name', type: 'symbol', source: 'tools-live',
@@ -2157,6 +2238,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Marker style splits the live view: dots (clean, matches replay heads)
     // or direction arrows with the type emoji riding on top.
     set('unclustered-circle', live && markerStyle === 'dot')
+    set('asset-type-glyph', live && markerStyle === 'dot') // silhouettes ride the dots only
     set('asset-arrows', live && markerStyle === 'arrow')
     set('unclustered-label', live && markerStyle === 'arrow')
     set('trails-line', trailMode === 'trails')
@@ -4439,6 +4521,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     try { localStorage.setItem('ht_rail_hidden', railHidden ? '1' : '0') } catch { /* private mode */ }
   }, [railHidden])
+  // The LEFT cluster (Layers pill + search + fleet chips + open panel) tucks
+  // the same way — its own edge tab, its own memory (Brian, Aug 22:
+  // "too cluttered… swiped out of the way fully just like the right side").
+  const [leftHidden, setLeftHidden] = useState(() => {
+    try { return localStorage.getItem('ht_left_hidden') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ht_left_hidden', leftHidden ? '1' : '0') } catch { /* private mode */ }
+  }, [leftHidden])
   useEffect(() => {
     const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
     if (!el) return
@@ -5495,6 +5586,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         </svg>
       </button>
 
+      {/* LEFT-edge tuck handle — the mirror image: slides the Layers pill +
+          search + fleet chips (and the open panel) fully off-screen for a
+          clean map (Brian, Aug 22). Rides at the pill's height so thumb
+          memory matches what it hides. */}
+      <button
+        type="button"
+        onClick={() => setLeftHidden((h) => !h)}
+        aria-label={leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls'}
+        style={{ top: (kiosk ? 68 : 12) + 4 }}
+        className="absolute left-0 z-20 rounded-r-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+      >
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          {leftHidden ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
+        </svg>
+      </button>
+
       {/* AskAI floats top-right on its own; the layers pill + search button
           pair lives top-LEFT (owner layout, Jul 14 PM). */}
       {!kiosk && askSlot && <div data-tour="askai" className="absolute top-3 right-3 z-20">{askSlot}</div>}
@@ -5628,6 +5735,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         side="left"
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 15}
+        hidden={leftHidden}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
         // Fleet visibility left the layers panel (Aug 22, task #30): your own
         // stuff is chips on the map surface, Google-style — state + counts

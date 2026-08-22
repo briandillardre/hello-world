@@ -68,7 +68,16 @@ interface WeatherControlProps {
    *  the panel is context-only; your own stuff lives on the map surface,
    *  Google-chips style), so it rides here instead of inside the panel. */
   fleetSlot?: ReactNode
+  /** Slide the whole cluster (pill + search + chips + open panel) off the
+   *  LEFT edge — the mirror of the right rail's tuck (Brian, Aug 22:
+   *  "too cluttered… swiped out of the way fully just like the right side"). */
+  hidden?: boolean
 }
+
+/** Shared tuck animation for both roots (collapsed row + open panel). */
+const tuckCls = (hidden: boolean) =>
+  'transition-all duration-300 ease-out ' +
+  (hidden ? '-translate-x-[130%] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100')
 
 function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
   // ON = full amber track (Brian, Aug 12: "make it more obvious when a layer
@@ -185,7 +194,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot, hidden = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -373,7 +382,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // weather readout moved to the top bar, Jul 21). Search rides to its right.
   if (!open) {
     return (
-      <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex flex-col items-start gap-1.5`}>
+      <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex flex-col items-start gap-1.5 ${tuckCls(hidden)}`}>
       <div className="flex items-center gap-2">
       <button
         onClick={() => setOpen(true)}
@@ -447,7 +456,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
     // the inner panel scrolls (overflow-y-auto) and would cut it in half.
-    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[272px]`}>
+    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[272px] ${tuckCls(hidden)}`}>
       <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
       <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
 
