@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
-import type { AssetType } from '@/lib/types'
 import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
 export type BaseStyle = BasemapId
@@ -41,10 +40,6 @@ interface WeatherControlProps {
   /** On/off state for every registry overlay, keyed by persisted layer id. */
   overlays?: { key: string; on: boolean }[]
   onOverlay?: (key: string, on: boolean) => void
-  /** Zones visibility (mirrors the chip; zones are site CONTEXT, so they also
-   *  live here per the layers spec). */
-  showZones?: boolean
-  onShowZones?: (v: boolean) => void
   /** Master switch for every name label (assets, tools, zones) at all zooms. */
   showLabels?: boolean
   onShowLabels?: (v: boolean) => void
@@ -66,14 +61,13 @@ interface WeatherControlProps {
   z?: number
   /** Which screen edge the pill/panel hugs. Live map = right; kiosk = left. */
   side?: 'left' | 'right'
-  /** Asset-type visibility (the old chip row, folded in here). */
-  filter?: Set<AssetType>
-  onFilter?: (f: Set<AssetType>) => void
-  /** Demo-only Site IoT toggle. */
-  showDevices?: boolean
-  onToggleDevices?: () => void
   /** Rendered to the RIGHT of the collapsed pill (the map search button). */
   searchSlot?: ReactNode
+  /** The fleet chip row (Vehicles/Equipment/People/Tools/Zones) — rendered
+   *  UNDER the collapsed pill. Fleet visibility is not a map layer (Aug 22:
+   *  the panel is context-only; your own stuff lives on the map surface,
+   *  Google-chips style), so it rides here instead of inside the panel. */
+  fleetSlot?: ReactNode
 }
 
 function Toggle({ on, disabled = false }: { on: boolean; disabled?: boolean }) {
@@ -123,7 +117,7 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
         disabled={st.disabled}
         className={'w-full flex items-center gap-2 px-3 py-2 transition-colors ' + (st.disabled ? 'cursor-not-allowed' : 'hover:bg-navy-900')}
       >
-        <span className={'flex-1 min-w-0 truncate text-left text-[12px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
+        <span className={'flex-1 min-w-0 truncate text-left text-[13px] font-semibold ' + (dim ? 'text-faint' : 'text-ink')}>{def.label}</span>
         {st.zoomDir && !comingSoon && (
           <span className="flex-none text-[10px] font-mono text-amber/90">(zoom {st.zoomDir})</span>
         )}
@@ -159,19 +153,6 @@ function LayerRow({ def, on, zoom, base, err, fresh, opacity, onOpacity, onToggl
   )
 }
 
-/** Flat, always-open section heading — used by Show on map, which never
- *  collapses (it's the everyday set, not a deep-layer group). */
-function SectionLabel({ gid, label, icon }: { gid?: GroupId; label?: string; icon?: typeof Hexagon }) {
-  const g = gid ? GROUPS.find((x) => x.id === gid) : null
-  const Icon = icon ?? (gid ? GROUP_ICON[gid] : Hexagon)
-  return (
-    <div className="flex items-center gap-2 px-3 pt-3 pb-1 border-t border-navy-800">
-      <Icon className="h-3 w-3 text-teal flex-none" />
-      <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{label ?? g?.label}</span>
-    </div>
-  )
-}
-
 /** Collapsible group header (Aug 16 reorg) — chevron + icon + a "N on" count
  *  badge (teal; amber when a live feed inside the group is failing). Expand
  *  state is per-session component state only — never persisted. */
@@ -191,7 +172,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
       className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 hover:bg-navy-900 transition-colors"
     >
       <Icon className="h-3 w-3 text-teal flex-none" />
-      <span className="flex-1 min-w-0 truncate text-left font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">{g?.label}</span>
+      <span className="flex-1 min-w-0 truncate text-left font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">{g?.label}</span>
       {count > 0 && (
         <span className={'flex-none font-mono text-[9px] rounded px-1.5 py-0.5 ' + (hasErr ? 'bg-amber/20 text-amber' : 'bg-teal/20 text-teal')}>
           {count} on
@@ -204,7 +185,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showZones = true, onShowZones, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', filter, onFilter, showDevices = false, onToggleDevices, searchSlot }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -227,6 +208,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     if (next.has(gid)) next.delete(gid); else next.add(gid)
     return next
   })
+  // Which groups have their advanced ("More layers") rows expanded.
+  const [moreRows, setMoreRows] = useState<Set<GroupId>>(() => new Set())
   // Search/filter across the registry rows (label + hint, case-insensitive).
   const [query, setQuery] = useState('')
   // Basemap strip shows the everyday 6; "More" reveals the specialty set.
@@ -299,7 +282,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   }, [overlays])
   const isOn = (id: string): boolean => {
     switch (id) {
-      case 'zones': return showZones
       case 'radar': return radarOn
       case 'clouds': return cloudsOn
       case 'stormtops': return stormTopsOn
@@ -314,7 +296,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       setPendingFeeds((p) => new Set(p).add(id))
     }
     switch (id) {
-      case 'zones': return onShowZones?.(!showZones)
       case 'radar': return onRadar(!radarOn)
       case 'clouds': return onClouds?.(!cloudsOn)
       case 'stormtops': return onStormTops?.(!stormTopsOn)
@@ -381,8 +362,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // whose visible layers are all healthy.
   const groupErr = (gid: GroupId): boolean =>
     LAYER_ROWS.some((d) => d.group === gid && d.status !== 'coming-soon' && rowVisible(d) && isOn(d.id) && !!feedErr[d.id])
-  // Search matches label + hint, case-insensitive. Dedicated Show-on-map rows
-  // (Vehicles/Zones/Labels…) are NOT searchable — registry layers only.
+  // Search matches label + hint, case-insensitive — registry layers only
+  // (fleet visibility is chips on the map now, not rows in here).
   const q = query.trim().toLowerCase()
   const matchedRows = q
     ? LAYER_ROWS.filter((d) => rowVisible(d) && (d.label.toLowerCase().includes(q) || (d.hint ?? '').toLowerCase().includes(q)))
@@ -392,7 +373,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // weather readout moved to the top bar, Jul 21). Search rides to its right.
   if (!open) {
     return (
-      <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex items-center gap-2`}>
+      <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex flex-col items-start gap-1.5`}>
+      <div className="flex items-center gap-2">
       <button
         onClick={() => setOpen(true)}
         aria-label="Map layers"
@@ -412,16 +394,14 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       </button>
       {searchSlot}
       </div>
+      {/* Fleet chips ride below the pill — visible state, zero taps away.
+          They vanish while the panel is open (it occupies this corner). */}
+      {fleetSlot}
+      </div>
     )
   }
 
-  const rowsFor = (gid: GroupId) =>
-    LAYER_ROWS
-      .filter((d) => d.group === gid)
-      // A sub-layer (e.g. the satellite swarm) stays hidden until its parent
-      // layer is on — no orphan toggle sitting there doing nothing.
-      .filter(rowVisible)
-      .map((d) => (
+  const renderRow = (d: LayerRowDef) => (
       <LayerRow
         key={d.id}
         def={d}
@@ -435,12 +415,39 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         onToggle={() => toggle(d.id)}
         extra={rowExtra(d.id)}
       />
-    ))
+  )
+  const rowsFor = (gid: GroupId) => {
+    const rows = LAYER_ROWS
+      .filter((d) => d.group === gid)
+      // A sub-layer (e.g. the satellite swarm) stays hidden until its parent
+      // layer is on — no orphan toggle sitting there doing nothing.
+      .filter(rowVisible)
+    // Progressive disclosure (Aug 22 declutter): specialist rows wait behind
+    // one inline expander. A row that's ON always renders — never hide state.
+    const everyday = rows.filter((d) => !d.advanced || isOn(d.id))
+    const advanced = rows.filter((d) => d.advanced && !isOn(d.id))
+    const showAll = moreRows.has(gid)
+    return (
+      <>
+        {everyday.map(renderRow)}
+        {advanced.length > 0 && (
+          <button
+            onClick={() => setMoreRows((m) => { const n = new Set(m); if (n.has(gid)) n.delete(gid); else n.add(gid); return n })}
+            className="w-full flex items-center gap-1.5 px-3 py-2 border-t border-navy-800 text-[11.5px] font-semibold text-faint hover:text-ink transition-colors"
+          >
+            <ChevronDown className={'h-3 w-3 transition-transform ' + (showAll ? '' : '-rotate-90')} />
+            {showAll ? 'Fewer layers' : `More layers (${advanced.length})`}
+          </button>
+        )}
+        {showAll && advanced.map(renderRow)}
+      </>
+    )
+  }
 
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
     // the inner panel scrolls (overflow-y-auto) and would cut it in half.
-    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[236px]`}>
+    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[272px]`}>
       <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
       <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
 
@@ -480,7 +487,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           {/* Same row + switch language as the Layers tab (owner ask, Aug 5):
               a view is a look you turn ON — and only one can be on at a time. */}
           <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-faint">One tap to a whole look</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">One tap to a whole look</span>
             {onSaveView && !savingView && (
               <button
                 onClick={() => setSavingView(true)}
@@ -552,8 +559,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </div>
       )}
 
-      {/* ── Layers tab (Aug 16 reorg): search → active-now chips → Map look
-             (basemap strip + 3D) → Show on map → My jobsites · Weather ·
+      {/* ── Layers tab (Aug 22: context-only — fleet visibility moved to the
+             chips under the collapsed pill): search → active-now chips →
+             Map look (basemap strip + 3D + Labels) → My jobsites · Weather ·
              Roads & travel · Land check · Sky & extras, all collapsible. ── */}
       {tab === 'layers' && (<>
 
@@ -587,7 +595,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               landing on the neighbor chip. Single-line scroll keeps a stack
               of overlays from eating the list height. */}
           {activeRows.map((d) => (
-            <button key={d.id} onClick={() => toggle(d.id)} aria-label={`Turn off ${d.label}`} className="flex flex-none items-center gap-1 rounded-full bg-teal/15 border border-teal/30 pl-2 pr-1.5 py-1 font-mono text-[9px] text-teal hover:bg-teal/25 transition-colors whitespace-nowrap">
+            <button key={d.id} onClick={() => toggle(d.id)} aria-label={`Turn off ${d.label}`} className="flex flex-none items-center gap-1 rounded-full bg-teal/15 border border-teal/30 pl-2 pr-1.5 py-1 font-mono text-[10px] text-teal hover:bg-teal/25 transition-colors whitespace-nowrap">
               {d.label.replace(/^↳ /, '')}
               <X className="h-2.5 w-2.5 flex-none" />
             </button>
@@ -595,7 +603,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           {activeRows.length >= 2 && (
             <button
               onClick={() => activeRows.forEach((d) => toggle(d.id))}
-              className="flex-none rounded-full border border-navy-700 px-2 py-1 font-mono text-[9px] text-faint hover:text-ink transition-colors whitespace-nowrap"
+              className="flex-none rounded-full border border-navy-700 px-2 py-1 font-mono text-[10px] text-faint hover:text-ink transition-colors whitespace-nowrap"
             >
               Clear overlays
             </button>
@@ -738,83 +746,23 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           )}
         </div>
       )}
-      </>)}
-
-      {/* ── Show on map — asset types as the same toggle rows as every other
-             layer (the old chip grid read as buttons, not switches). ── */}
-      {filter && onFilter && (
-        <>
-          <SectionLabel label="Show on map" icon={Layers} />
-          {([
-            ['vehicle', '🚛', 'Vehicles'],
-            ['equipment', '🏗️', 'Equipment'],
-            ['personnel', '👷', 'People'],
-            ['tool', '🔧', 'Tools'],
-          ] as [AssetType, string, string][]).map(([t, emoji, label]) => {
-            const on = filter.has(t)
-            return (
-              <div key={t} className="border-t border-navy-800 first:border-t-0">
-                <button
-                  onClick={() => {
-                    const next = new Set(filter)
-                    if (on) next.delete(t); else next.add(t)
-                    onFilter(next)
-                  }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
-                >
-                  <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (on ? 'text-ink' : 'text-faint')}>
-                    <span>{emoji}</span>{label}
-                  </span>
-                  <Toggle on={on} />
-                </button>
-              </div>
-            )
-          })}
-          {/* Zones rides with the asset-type rows (Brian, Aug 10) — same
-              formatting, hexagon mark matching the map's zone button. */}
-          {onShowZones && (
-            <div className="border-t border-navy-800">
-              <button
-                onClick={() => onShowZones(!showZones)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
-              >
-                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showZones ? 'text-ink' : 'text-faint')}>
-                  <Hexagon className={'h-3.5 w-3.5 ' + (showZones ? 'text-amber' : 'text-faint')} /> Zones
-                </span>
-                <Toggle on={showZones} />
-              </button>
-            </div>
-          )}
-          {/* Labels master switch — kills every name label (assets, tools,
-              zones) at every zoom; on = the normal zoom ladder (Aug 11). */}
-          {onShowLabels && (
-            <div className="border-t border-navy-800">
-              <button
-                onClick={() => onShowLabels(!showLabels)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
-              >
-                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showLabels ? 'text-ink' : 'text-faint')}>
-                  <Type className={'h-3.5 w-3.5 ' + (showLabels ? 'text-teal' : 'text-faint')} /> Labels
-                </span>
-                <Toggle on={showLabels} />
-              </button>
-            </div>
-          )}
-          {onToggleDevices && (
-            <div className="border-t border-navy-800">
-              <button
-                onClick={onToggleDevices}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
-              >
-                <span className={'text-[12px] font-semibold flex items-center gap-2 ' + (showDevices ? 'text-ink' : 'text-faint')}>
-                  <Cctv className={'h-3.5 w-3.5 ' + (showDevices ? 'text-teal' : 'text-faint')} /> Site IoT
-                </span>
-                <Toggle on={showDevices} />
-              </button>
-            </div>
-          )}
-        </>
+      {/* Labels master switch — cartography, so it lives with the map's look
+          (moved out of the old Show-on-map section, Aug 22: fleet visibility
+          is chips on the map now; this panel is context-only). */}
+      {onShowLabels && (
+        <div className="border-t border-navy-800">
+          <button
+            onClick={() => onShowLabels(!showLabels)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+          >
+            <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (showLabels ? 'text-ink' : 'text-faint')}>
+              <Type className={'h-3.5 w-3.5 ' + (showLabels ? 'text-teal' : 'text-faint')} /> Labels
+            </span>
+            <Toggle on={showLabels} />
+          </button>
+        </div>
       )}
+      </>)}
 
       {/* ── The registry groups, in owner order: My jobsites · Weather ·
              Roads & travel · Land check · Sky & extras. Each header is a

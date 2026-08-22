@@ -30,12 +30,14 @@ const UNIT = { engine_hours: 'hrs', mileage: 'mi', days: 'days' }
 type ScheduleSort = 'due' | 'name'
 type HistorySort = 'newest' | 'cost'
 
-export function MaintenanceLists({ statuses, services, qboLive, assetNames }: {
+export function MaintenanceLists({ statuses, services, qboLive, assetNames, canViewCosts }: {
   statuses: (MaintenanceStatus & { name: string })[]
   services: (ServiceRecord & { assetName: string })[]
   qboLive: boolean
   /** Machines eligible for a schedule — enables "Add schedule" in the empty state. */
   assetNames?: Record<string, string>
+  /** Dollar figures (record costs, Priciest sort) hide for roles without cost permission. */
+  canViewCosts: boolean
 }) {
   const [query, setQuery] = useState('')
   const [schedSort, setSchedSort] = useState<ScheduleSort>('due')
@@ -124,7 +126,7 @@ export function MaintenanceLists({ statuses, services, qboLive, assetNames }: {
         <section className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Service History</h2>
-            {services.length > 1 && (
+            {services.length > 1 && canViewCosts && (
               <span className="ml-auto"><SortPills<HistorySort> options={[['newest', 'Newest'], ['cost', 'Priciest']]} value={histSort} onChange={setHistSort} /></span>
             )}
           </div>
@@ -143,16 +145,20 @@ export function MaintenanceLists({ statuses, services, qboLive, assetNames }: {
                     {r.vendor} · {formatRelativeTime(r.service_date)}
                   </p>
                 </div>
-                <span className="font-semibold text-muted text-sm flex-shrink-0">
-                  ${r.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </span>
-                {qboLive && r.cost > 0 && <ExpenseToQbo recordId={r.id} />}
+                {canViewCosts && (
+                  <span className="font-semibold text-muted text-sm flex-shrink-0">
+                    ${r.cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+                {canViewCosts && qboLive && r.cost > 0 && <ExpenseToQbo recordId={r.id} />}
               </div>
             ))}
           </div>
-          <p className="text-xs text-faint text-center">
-            Service costs sync to QuickBooks as expenses → see Accounting.
-          </p>
+          {canViewCosts && (
+            <p className="text-xs text-faint text-center">
+              Service costs sync to QuickBooks as expenses → see Accounting.
+            </p>
+          )}
         </section>
       </div>
     </div>

@@ -64,8 +64,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   // Show every spec, but keep internal/UI-only keys out of the flat row list:
   // serial variants are shown above; `color` is a map setting; `cost_basis`
-  // is the AI cost-assumption note rendered under the cost card.
-  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'cost_basis'].includes(k))
+  // is the AI cost-assumption note rendered under the cost card; `notes` gets
+  // its own card (a paragraph, not a one-line truncated Field row).
+  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'cost_basis', 'notes'].includes(k))
 
   // Trip log: segment this asset's last 7 days of pings into drives, with
   // zone names anchoring each end ("Yard → Riverfront Tower"). Also drives the
@@ -384,6 +385,17 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
         {/* document folder — link to Dropbox/Drive/etc. */}
         <FolderLink kind="asset" id={asset.id} initial={asset.folder_url ?? null} />
+
+        {/* owner notes — full text, line breaks intact ("V6 engine, takes
+            0W-20, spare key in office" must never truncate to one row) */}
+        {typeof meta.notes === 'string' && meta.notes.trim() && (
+          <section>
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Notes</h2>
+            <p className="rounded-xl border border-navy-800 bg-navy-900 p-4 text-sm text-ink leading-relaxed whitespace-pre-line">
+              {meta.notes}
+            </p>
+          </section>
+        )}
 
         {/* identity / hardware — reference info, kept at the bottom */}
         <section>

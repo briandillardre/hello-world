@@ -342,7 +342,7 @@ function GetSetUp({ hasZones }: { hasZones: boolean }) {
         <li className="flex items-start gap-2.5">
           <span className="grid place-items-center w-5 h-5 rounded-full bg-amber/20 text-amber font-display font-bold text-[11px] flex-none mt-0.5">2</span>
           <span className="text-muted">
-            {hasZones ? 'Zones drawn ✓ — nice.' : 'Draw a zone around your yard or job site (hexagon button, bottom-left).'}
+            {hasZones ? 'Zones drawn ✓ — nice.' : 'Draw a zone around your yard or job site (hexagon button, top-right map buttons).'}
           </span>
         </li>
         <li className="flex items-start gap-2.5">

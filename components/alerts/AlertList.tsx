@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Bell, CheckCheck, AlertTriangle, MapPin, Clock } from 'lucide-react'
 import type { AlertEvent, AlertRule } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { SortPills } from '@/components/ui/list-controls'
 
 const TRIGGER_LABELS: Record<AlertRule['trigger'], string> = {
   enter: 'Entered zone',
@@ -38,9 +39,13 @@ type SortKey = 'newest' | 'asset' | 'type' | 'zone'
 export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertListProps) {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [sort, setSort] = useState<SortKey>('newest')
-  // Alert-fatigue split: routine enter/exit crossings are the ACTIVITY LOG,
-  // everything else is a real alert. Two tabs, alerts first.
+  // Alert-fatigue split: routine enter/exit crossings are the ZONE LOG,
+  // everything else needs attention. Two tabs, needs-attention first.
   const [tab, setTab] = useState<'alerts' | 'activity'>('alerts')
+  // Date separators render only after mount — the server's timezone can bucket
+  // a row differently than the viewer's, and that's a hydration mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   // Gmail-style: opening this page marks everything as SEEN — the nav badge
   // zeroes out (unacknowledged alerts stay in the Unread filter here).
@@ -79,20 +84,20 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
             </span>
           )}
         </div>
-        {/* Alerts = needs attention · Zone activity = the silent comings-and-
-            goings log (powers pins + site history, never pages anyone) */}
+        {/* Needs attention = real alerts · Zone log = the silent comings-and-
+            goings record (powers pins + site history, never pages anyone) */}
         <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 w-fit">
           <button
             onClick={() => setTab('alerts')}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'alerts' ? 'bg-alert/20 text-alert' : 'text-faint hover:text-ink'}`}
           >
-            Alerts ({alerts.length - activityCount})
+            Needs attention ({alerts.length - activityCount})
           </button>
           <button
             onClick={() => setTab('activity')}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'activity' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink'}`}
           >
-            Zone activity ({activityCount})
+            Zone log ({activityCount})
           </button>
         </div>
         <div className="flex gap-2 items-center">
@@ -108,17 +113,11 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
           >
             Unread ({unreadCount})
           </button>
-          <select
+          <SortPills<SortKey>
+            options={[['newest', 'Newest'], ['asset', 'By asset'], ['type', 'By type'], ['zone', 'By zone']]}
             value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="rounded-full bg-navy-800 border border-navy-700 text-muted text-xs px-2.5 py-1 outline-none"
-            title="Sort alerts"
-          >
-            <option value="newest">Newest</option>
-            <option value="asset">By asset</option>
-            <option value="type">By type</option>
-            <option value="zone">By zone</option>
-          </select>
+            onChange={setSort}
+          />
           {unreadCount > 1 && onAcknowledgeAll && (
             <button
               onClick={onAcknowledgeAll}
@@ -154,13 +153,36 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
             </div>
           )
         ) : (
-          visible.map(alert => (
-            <AlertRow key={alert.id} alert={alert} onAcknowledge={onAcknowledge} />
-          ))
+          visible.map((alert, i) => {
+            const showHeader = sort === 'newest' && mounted &&
+              (i === 0 || dateGroup(visible[i - 1].triggered_at) !== dateGroup(alert.triggered_at))
+            return (
+              <Fragment key={alert.id}>
+                {showHeader && (
+                  <div className="sticky top-0 z-[5] px-4 py-1.5 text-[10px] font-mono uppercase tracking-[0.1em] text-faint bg-navy-950/95 backdrop-blur">
+                    {dateGroup(alert.triggered_at)}
+                  </div>
+                )}
+                <AlertRow alert={alert} onAcknowledge={onAcknowledge} />
+              </Fragment>
+            )
+          })
         )}
       </div>
     </div>
   )
+}
+
+/** Local-calendar bucket for the newest-first list. Client component, so plain
+ *  Date math runs in the viewer's own timezone — same treatment as the
+ *  formatRelativeTime stamps below. */
+function dateGroup(iso: string): 'Today' | 'Yesterday' | 'This week' | 'Earlier' {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const days = Math.round((startOfDay(new Date()) - startOfDay(new Date(iso))) / 86_400_000)
+  if (days <= 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return 'This week'
+  return 'Earlier'
 }
 
 /** Deep link to the map replay: a 3-hour window with the scrubber parked on

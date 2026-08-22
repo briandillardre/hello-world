@@ -32,7 +32,7 @@ export default async function GeofencesPage() {
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
         <h1 className="text-xl font-bold text-ink">Zones</h1>
         <span className="text-sm text-faint">{geofences.length} zones</span>
-        <Link href="/map" className="ml-auto">
+        <Link href="/map?draw=1" className="ml-auto">
           <Button size="sm" className="gap-1">
             <Plus className="h-4 w-4" /> Draw Zone
           </Button>

@@ -38,7 +38,7 @@ const STEPS: Step[] = [
   {
     selector: '.maplibregl-ctrl-top-right',
     title: 'Zoom & locate',
-    body: 'Zoom, tilt for 3D, jump to your own location, or fit the whole fleet on screen in one tap.',
+    body: 'Zoom, tilt for 3D, jump to your own location, or fit the whole fleet on screen in one tap — the same stack also measures distances & takeoffs, draws a new zone, and saves a branded PDF snapshot of the map.',
     side: 'below',
   },
   {

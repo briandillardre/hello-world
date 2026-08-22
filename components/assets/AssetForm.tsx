@@ -92,6 +92,9 @@ interface AssetFormProps {
   onClose: () => void
   onSubmit: (data: AssetFormData, photos?: NewPhoto[]) => void
   saving?: boolean
+  /** Save error from the parent — rendered next to the buttons INSIDE the
+   *  dialog (a header banner behind the modal looked like a dead Add button). */
+  error?: string | null
   initial?: { name: string; type: AssetType; tracker_id: string; category?: string; serial?: string; photo_url?: string; folder_url?: string | null;
     metadata?: Record<string, unknown>;
     hourly_rate?: number | null; mileage_rate?: number | null; daily_cost?: number | null; purchase_price?: number | null; purchase_value?: number | null }
@@ -137,7 +140,7 @@ const MAKE_SUGGESTIONS = [
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
 ]
 
-export function AssetForm({ onClose, onSubmit, saving = false, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos }: AssetFormProps) {
+export function AssetForm({ onClose, onSubmit, saving = false, error = null, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -357,6 +360,20 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
   // like zones after the Jul 30 one-save consolidation.
   const [folderUrl, setFolderUrl] = useState(initial?.folder_url ?? '')
 
+  // Optional sections start collapsed on CREATE (the form was a wall of
+  // inputs); on EDIT they open only when they already hold values, so nothing
+  // saved ever hides. Collapsing doesn't touch state — values still submit.
+  const initMeta = initial?.metadata ?? {}
+  const [showIdSpecs, setShowIdSpecs] = useState(
+    () => !!initial && ['year', 'make', 'model', 'trim', 'fuel'].some((k) => String(initMeta[k] ?? '').trim() !== '')
+  )
+  const [showService, setShowService] = useState(
+    () => !!initial && ['oil', 'oil_capacity', 'oil_filter', 'air_filter', 'fuel_filter', 'hydraulic_oil', 'hydraulic_filter', 'coolant', 'tires'].some((k) => String(initMeta[k] ?? '').trim() !== '')
+  )
+  const [showCosts, setShowCosts] = useState(
+    () => !!initial && [initial.hourly_rate, initial.mileage_rate, initial.daily_cost, initial.purchase_price, initial.purchase_value].some((v) => v != null)
+  )
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
@@ -411,6 +428,21 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                 <SelectItem value="tool">🔧 Small Tool</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Tracker ID up top — it's the field that makes the asset REAL on
+              the map, not an afterthought below the photos. */}
+          <div className="space-y-2">
+            <Label htmlFor="tracker-id">Tracker ID</Label>
+            <Input
+              id="tracker-id"
+              placeholder="e.g. obd-001, bt-042, gps-007"
+              value={trackerId}
+              onChange={e => setTrackerId(e.target.value)}
+            />
+            <p className="text-xs text-faint">
+              The ID number printed on the tracker in this machine. Reports with this ID become this asset&apos;s dots on the map.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -479,8 +511,17 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               database (vPIC). Trim + fuel capture "3500" / "Diesel" as real
               structured specs instead of burying them in the name. */}
           {hasVehicleId && (
-            <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Year · Make · Model (optional)</p>
+            <div className="rounded-lg border border-navy-800 bg-navy-950/50">
+              <button
+                type="button"
+                onClick={() => setShowIdSpecs((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5"
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Year · Make · Model (optional)</span>
+                <span className="text-[11px] text-faint">{showIdSpecs ? '▾' : '▸'}</span>
+              </button>
+              {showIdSpecs && (
+              <div className="px-3 pb-3 space-y-2">
               <div className="grid grid-cols-[70px_1fr_1fr] gap-2">
                 <input
                   value={String(specs.year ?? '')}
@@ -530,6 +571,8 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               </datalist>
               {modelOptions.length > 0 && (
                 <p className="text-[10.5px] text-faint">{modelOptions.length} known models for {String(specs.make)}{/^(19|20)\d{2}$/.test(String(specs.year ?? '')) ? ` ${String(specs.year)}` : ''} — keep typing to filter.</p>
+              )}
+              </div>
               )}
             </div>
           )}
@@ -587,10 +630,18 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
           {/* Service specs — the numbers on the shop wall: what oil, which
               filter, what tires. AI can pre-fill them from the make/model, or
               type them once; receipts can fill them later. */}
-          <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Service specs (optional)</p>
-              <div className="flex items-center gap-3">
+          <div className="rounded-lg border border-navy-800 bg-navy-950/50">
+            <button
+              type="button"
+              onClick={() => setShowService((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5"
+            >
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Service specs (optional)</span>
+              <span className="text-[11px] text-faint">{showService ? '▾' : '▸'}</span>
+            </button>
+            {showService && (
+            <div className="px-3 pb-3 space-y-2">
+              <div className="flex items-center justify-end gap-3">
                 {hasVehicleId && (
                   <button
                     type="button"
@@ -610,7 +661,6 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
                   {valuing ? 'Estimating…' : specs.value_range ? `Value: ${String(specs.value_range)} ↻` : 'AI market value'}
                 </button>
               </div>
-            </div>
             <div className="grid grid-cols-2 gap-2">
               {([
                 ['oil', 'Oil (e.g. 15W-40 diesel)'], ['oil_capacity', 'Oil capacity (e.g. 9.5 qt)'],
@@ -637,6 +687,8 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
               AI-filled values are suggestions and can be wrong — confirm oils, capacities, and
               part numbers against the operator&apos;s manual before servicing.
             </p>
+            </div>
+            )}
           </div>
 
           {/* Photos — the whole set: truck shot, GVWR sticker, VIN plate,
@@ -741,60 +793,68 @@ export function AssetForm({ onClose, onSubmit, saving = false, initial, initialP
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="tracker-id">Tracker ID</Label>
-            <Input
-              id="tracker-id"
-              placeholder="e.g. obd-001, bt-042, gps-007"
-              value={trackerId}
-              onChange={e => setTrackerId(e.target.value)}
-            />
-            <p className="text-xs text-faint">
-              The tracker_id sent in POST /api/ingest/location payloads.
-            </p>
-          </div>
-
           {/* Cost structure — the last thing to fill in, once the identity is
               set. AI can advise the numbers from the year/make/model. */}
-          <div className="space-y-2 rounded-lg border border-navy-800 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium text-ink">Cost structure <span className="text-faint font-normal">(powers job-cost tracking)</span></p>
-              <button
-                type="button"
-                onClick={() => advise('cost')}
-                disabled={advising !== null || (!name.trim() && !specs.make)}
-                className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40 whitespace-nowrap"
-              >
-                {advising === 'cost' ? 'Thinking…' : '✨ AI advise from specs'}
-              </button>
+          <div className="rounded-lg border border-navy-800">
+            <button
+              type="button"
+              onClick={() => setShowCosts((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+            >
+              <span className="text-sm font-medium text-ink">Cost structure <span className="text-faint font-normal">(powers job-cost tracking)</span></span>
+              <span className="text-[11px] text-faint">{showCosts ? '▾' : '▸'}</span>
+            </button>
+            {showCosts && (
+            <div className="px-3 pb-3 space-y-2">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => advise('cost')}
+                  disabled={advising !== null || (!name.trim() && !specs.make)}
+                  className="text-[11px] font-semibold text-teal hover:text-ink disabled:opacity-40 whitespace-nowrap"
+                >
+                  {advising === 'cost' ? 'Thinking…' : '✨ AI advise from specs'}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {COST_FIELDS[type].map((f) => (
+                  <div key={f.key} className="space-y-1">
+                    <Label htmlFor={`cost-${f.key}`} className="text-xs">{f.label}</Label>
+                    <Input
+                      id={`cost-${f.key}`}
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={costs[f.key] ?? ''}
+                      onChange={(e) => setCosts((c) => ({ ...c, [f.key]: e.target.value }))}
+                    />
+                    <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {COST_FIELDS[type].map((f) => (
-                <div key={f.key} className="space-y-1">
-                  <Label htmlFor={`cost-${f.key}`} className="text-xs">{f.label}</Label>
-                  <Input
-                    id={`cost-${f.key}`}
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={costs[f.key] ?? ''}
-                    onChange={(e) => setCosts((c) => ({ ...c, [f.key]: e.target.value }))}
-                  />
-                  <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
-                </div>
-              ))}
-            </div>
+            )}
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1" disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!name.trim() || saving} className="flex-1">
-              {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Asset'}
-            </Button>
+          {/* Sticky footer — Save stays reachable no matter how long the form
+              scrolls, and the save error surfaces HERE (it used to render in
+              the page header, hidden behind this dialog). */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-3 pb-5 bg-navy-900 border-t border-navy-800 space-y-2">
+            {error && (
+              <p className="text-xs text-alert bg-alert/10 border border-alert/30 rounded-md px-3 py-2">
+                {error}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1" disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!name.trim() || saving} className="flex-1">
+                {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Asset'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

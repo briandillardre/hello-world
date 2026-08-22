@@ -33,11 +33,13 @@ const SOURCE_BADGE: Record<WorkOrder['source'], string | null> = {
  * reading attached; completing one writes the service record and restarts
  * the schedule clock. No per-seat fees for whoever turns the wrench.
  */
-export function WorkOrders({ orders: initial, members, assetNames, available }: {
+export function WorkOrders({ orders: initial, members, assetNames, available, canViewCosts }: {
   orders: WorkOrder[]
   members: { id: string; name: string }[]
   assetNames: Record<string, string>
   available: boolean
+  /** Closed-order dollar totals hide for roles without cost permission. */
+  canViewCosts: boolean
 }) {
   const [orders, setOrders] = useState(initial)
   const [, start] = useTransition()
@@ -58,8 +60,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
     return (
       <section className="p-4">
         <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
-          Work orders unlock with one database update — run migration{' '}
-          <span className="font-mono text-teal">050_work_orders.sql</span> in the Supabase SQL Editor.
+          Work orders unlock on the next app update — nothing for you to run.
         </p>
       </section>
     )
@@ -183,7 +184,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available }: 
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${STATUS_META[o.status].cls}`}>{STATUS_META[o.status].label}</span>
                   <span className="text-muted flex-1 truncate">{o.title}</span>
                   <span className="text-faint">{memberName(o.assignee_id)}</span>
-                  {o.status === 'done' && (
+                  {canViewCosts && o.status === 'done' && (
                     <span className="font-mono text-faint">${(Number(o.parts_cost) + Number(o.labor_hours) * Number(o.labor_rate ?? 0)).toFixed(0)}</span>
                   )}
                   <button type="button"

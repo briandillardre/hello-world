@@ -35,7 +35,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
       <div className="flex gap-1 p-2 border-b border-navy-800 bg-navy-950">
         <Tab active={tab === 'activity'} onClick={() => setTab('activity')}>
-          Activity {unread > 0 && <span className="ml-1 text-[10px] bg-alert text-white rounded-full px-1.5">{unread}</span>}
+          Alerts {unread > 0 && <span className="ml-1 text-[10px] bg-alert text-white rounded-full px-1.5">{unread}</span>}
         </Tab>
         <Tab active={tab === 'rules'} onClick={() => setTab('rules')}>Rules {rules.length > 0 && <span className="ml-1 text-faint">({rules.length})</span>}</Tab>
       </div>

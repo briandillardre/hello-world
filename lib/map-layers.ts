@@ -27,6 +27,10 @@ export interface LayerRowDef {
   hasOpacity?: boolean
   /** Feed-backed rows render an "updated h:mm" stamp (amber when stale). */
   isLive?: boolean
+  /** Specialist rows hide behind an inline "More …" expander inside their
+   *  group (Aug 22 declutter) — everyday rows stay one tap away. An advanced
+   *  row that's ON always renders, expander or not (never hide live state). */
+  advanced?: boolean
 }
 
 // Every group starts collapsed (owner ask, Jul 14; re-confirmed in the Aug 16
@@ -111,18 +115,18 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation · loops on Live, scrubs with replays · ⚡ real satellite-detected strikes ride on top (live only, ~8km precision)' },
   { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'CURRENT warnings solid (tornado red · t-storm orange · flood green) · watch boxes dashed · ONLY LIVE — hides during replays' },
   { id: 'pourcast', label: 'Pour planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad concrete/crane day — rain ≥60%, gusts ≥25, or ≤35°F' },
-  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', hasOpacity: true, hint: 'surface temp shading · hourly · replays show the scrubbed hour (~1 day back)' },
-  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
-  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
+  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'surface temp shading · hourly · replays show the scrubbed hour (~1 day back)' },
+  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
+  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
   // Nested display row directly under Wind speed (Aug 16 reorg) — same
   // persisted id as always, only the label carries the "↳" nesting mark.
-  { id: 'windanim', label: '↳ Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
-  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
+  { id: 'windanim', label: '↳ Wind flow', group: 'weather', status: 'live', advanced: true, isLive: true, hint: 'animated wind — live view only' },
+  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', advanced: true, hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
   // Layer name discovered live from NOAA's server (like temp/feels/wind) —
   // GOES lightning mapper strike density. Row reports if NOAA drops it.
-  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
-  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
-  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
+  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
+  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
+  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', advanced: true, hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
   { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, hint: 'community stations · tap for readings' },
 
   // ── Roads & travel ────────────────────────────────────────────────────────

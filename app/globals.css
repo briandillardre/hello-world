@@ -111,6 +111,24 @@ body {
   right: 4px !important;
 }
 
+/* Live map: scale bar + attribution ride ABOVE the timeline instead of dying
+   behind it — the buried attribution was also a CARTO license problem, not
+   just cosmetics (the free tiles require it visible). --ht-sheet-lift is
+   published by TimelinePlayback as "bar height beyond the standard 54px gap",
+   so these track every stage: pill, bar, and full. Base offsets land the
+   controls a few px above the bar's top edge (bar hugs bottom-2 / md:bottom-4). */
+.map-live .maplibregl-ctrl-bottom-left,
+.map-live .maplibregl-ctrl-bottom-right {
+  bottom: calc(58px + var(--ht-sheet-lift, 0px)) !important;
+  transition: bottom 0.2s ease;
+}
+@media (min-width: 768px) {
+  .map-live .maplibregl-ctrl-bottom-left,
+  .map-live .maplibregl-ctrl-bottom-right {
+    bottom: calc(66px + var(--ht-sheet-lift, 0px)) !important;
+  }
+}
+
 /* Attribution: dark glass instead of the default white pill (it sat glaring on
    top of the translucent timeline bar). */
 .maplibregl-ctrl-attrib {
@@ -306,6 +324,26 @@ input[type='range'].slider-heat::-moz-range-thumb {
    down so nothing stacks on it. */
 .map-live .maplibregl-ctrl-top-right {
   margin-top: 52px;
+}
+
+/* Desktop selection sheet: the 288px right panel (.map-sheet-desktop in
+   MapSheet) was burying the zoom/measure/snapshot rail AND the AskAI button.
+   While a sheet is in the DOM, slide both left by the panel width. md+ only —
+   the desktop panel element exists (display:none) on phones too, so a bare
+   :has() would fire there. The rail tuck handle is Tailwind-positioned inline
+   in MapView with no stable hook, so it stays put under the sheet. */
+@media (min-width: 768px) {
+  .map-live .maplibregl-ctrl-top-right,
+  .map-live [data-tour='askai'] {
+    transition: right 0.2s ease;
+  }
+  .map-live:has(.map-sheet-desktop) .maplibregl-ctrl-top-right {
+    right: 288px;
+  }
+  .map-live:has(.map-sheet-desktop) [data-tour='askai'] {
+    /* keep the button's own right-3 breathing room off the panel edge */
+    right: calc(288px + 0.75rem);
+  }
 }
 
 /* Radar context chip — slides out from the radar map control. */

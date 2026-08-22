@@ -44,6 +44,7 @@ import { ZonePanel } from './ZonePanel'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
+import { FleetChips } from './FleetChips'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -449,6 +450,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const [customTo, setCustomTo] = useState(() => Date.now())
   const customDays = Math.max(1, Math.round((customTo - customFrom) / 86_400_000))
   const pbActive = range !== 'live'
+  // Ref mirror for ASYNC effect bodies (clouds/storm tops): an in-flight
+  // fetch that resolves after the user enters a replay must not re-show a
+  // live-only layer under a historical scrubber (task #13 follow-on).
+  const pbActiveRef = useRef(pbActive)
+  pbActiveRef.current = pbActive
   // Kiosk (Command Center) shows movement trails by default — the wall display
   // should look alive without anyone touching it.
   // Trails ON is the default everywhere (Brian, Aug 12: "default live view
@@ -571,6 +577,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const measuresRef = useRef(measures)
   measuresRef.current = measures
   const [selectedMeasure, setSelectedMeasure] = useState<SavedMeasure | null>(null)
+  // Tell the timeline a selection sheet opened/closed so it can step down to
+  // its bar stage on phones (Aug 22: peek sheet + full timeline + bottom nav
+  // left ≈ zero visible map). TimelinePlayback listens for 'ht:sheet-open'.
+  const sheetOpen = !!(selectedAsset || selectedZone || selectedMeasure)
+  useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent('ht:sheet-open', { detail: { open: sheetOpen } })) } catch { /* SSR */ }
+  }, [sheetOpen])
   const [editingMeasure, setEditingMeasure] = useState<SavedMeasure | null>(null)
   // Stable identity — an inline object literal re-triggered MeasureTool's
   // load effect on EVERY MapView render, stomping in-progress edits the
@@ -1355,6 +1368,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.setProjection({ type: 'globe' })
 
       // ── Free basemap layers stacked over the CARTO dark base ──
+      // All base rasters run raster-fade-duration 0 (task #13): the default
+      // 300ms cross-fade reads parent-tile textures that may not exist on a
+      // layer's very first frame and crashes with "reading 'bind'".
       // Streets (labeled, no imagery) — CARTO Voyager
       m.addSource('streets-base', {
         type: 'raster',
@@ -1363,13 +1379,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         maxzoom: 20,
         attribution: '© OpenStreetMap contributors © CARTO',
       })
-      m.addLayer({ id: 'streets-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'streets-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
 
       // Satellite (aerial) imagery — Esri World Imagery. maxzoom caps tile
       // requests at 19 (Esri's global max) and over-scales beyond, so deep zoom
       // no longer throws "zoom level not supported".
       m.addSource('sat-base', { type: 'raster', tiles: [SAT_TILES], tileSize: 256, maxzoom: 19, attribution: 'Esri, Maxar' })
-      m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'sat-base', type: 'raster', source: 'sat-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
 
       // ── Extra basemap flavors (FR24-style picker, Jul 18) ──
       // Terrain — Esri World Topo (relief + contours, free, no key).
@@ -1378,7 +1394,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256, maxzoom: 19, attribution: 'Esri',
       })
-      m.addLayer({ id: 'terrain-base', type: 'raster', source: 'terrain-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'terrain-base', type: 'raster', source: 'terrain-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       // Silver — CARTO Positron (light, labeled). Plain — Positron without
       // labels. B/W reuses the Positron source with a grayscale+contrast paint.
       m.addSource('silver-base', {
@@ -1386,22 +1402,22 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png'],
         tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
       })
-      m.addLayer({ id: 'silver-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'silver-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addSource('plain-base', {
         type: 'raster',
         tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}@2x.png'],
         tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
       })
-      m.addLayer({ id: 'plain-base', type: 'raster', source: 'plain-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'plain-base', type: 'raster', source: 'plain-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addLayer({
         id: 'bw-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' },
-        paint: { 'raster-saturation': -1, 'raster-contrast': 0.3 },
+        paint: { 'raster-saturation': -1, 'raster-contrast': 0.3, 'raster-fade-duration': 0 },
       })
       // Aubergine — Voyager hue-rotated into a deep purple night map (paint
       // transform, no extra tile source).
       m.addLayer({
         id: 'aubergine-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' },
-        paint: { 'raster-hue-rotate': 230, 'raster-saturation': -0.4, 'raster-brightness-max': 0.55, 'raster-brightness-min': 0.06 },
+        paint: { 'raster-hue-rotate': 230, 'raster-saturation': -0.4, 'raster-brightness-max': 0.55, 'raster-brightness-min': 0.06, 'raster-fade-duration': 0 },
       })
       // Night — NASA Black Marble (VIIRS composite via GIBS, keyless).
       // Promoted from the old 'nightlights' overlay (Brian, Aug 11). Tiles
@@ -1415,7 +1431,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       // ocean — at globe zoom that's an invisible planet against space, only
       // city-light patches floating ("not showing the globe", Aug 12). The
       // floor keeps the sphere reading as a dim disc everywhere.
-      m.addLayer({ id: 'night-base', type: 'raster', source: 'night-base', layout: { visibility: 'none' }, paint: { 'raster-brightness-min': 0.09 } })
+      m.addLayer({ id: 'night-base', type: 'raster', source: 'night-base', layout: { visibility: 'none' }, paint: { 'raster-brightness-min': 0.09, 'raster-fade-duration': 0 } })
 
       // ── Aviation charts (FAA's own public tile services — public-domain
       // data, no key). EXPERIMENTAL (Brian, Aug 10): likely ports to a
@@ -1426,13 +1442,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         tiles: ['https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256, maxzoom: 11, attribution: 'FAA',
       })
-      m.addLayer({ id: 'vfr-base', type: 'raster', source: 'vfr-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'vfr-base', type: 'raster', source: 'vfr-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addSource('ifr-base', {
         type: 'raster',
         tiles: ['https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256, maxzoom: 11, attribution: 'FAA',
       })
-      m.addLayer({ id: 'ifr-base', type: 'raster', source: 'ifr-base', layout: { visibility: 'none' } })
+      m.addLayer({ id: 'ifr-base', type: 'raster', source: 'ifr-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
 
       // Hybrid labels — CARTO's retina label-only tiles (place + road names
       // with dark halos, crisp on hi-DPI). Replaced Esri's dated reference
@@ -1816,7 +1832,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         'icon-text-fit': 'both',
         'icon-text-fit-padding': [3, 5, 3, 5],
         'text-field': ['to-string', ['get', 'toolCount']],
-        'text-size': 10.5,
+        // Zoom-scaled (Aug 22 badge pass): legible up close, quiet far out.
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11, 16, 13.5],
         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
         'text-offset': [1.15, -1.15],
         'icon-allow-overlap': true, 'text-allow-overlap': true,
@@ -2089,6 +2106,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       window.clearInterval(loadWatchdog)
       map.current?.remove()
       map.current = null
+      // The map died but the component may live on (dev StrictMode remount):
+      // every "layer already added" ref must reset with it, or the first
+      // toggle after remount takes the else-branch against a map that has no
+      // such layer (task #13 secondary finding).
+      wxAdded.current = false
+      cloudsAdded.current = false
+      stormAdded.current = false
+      precipAdded.current = false
     }
   }, [])
 
@@ -2705,8 +2730,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }
         m.addSource(srcId, { type: 'raster', tiles: [tiles], tileSize: 256, maxzoom: o.maxzoom })
         const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        // Born hidden + fade 0 (task #13): a layer added already-visible joins
+        // the very next render pass before any tile has a GPU texture, and the
+        // default cross-fade walks parent textures that aren't there yet. The
+        // line below is the single place that turns it on.
         m.addLayer(
-          { id: layerId, type: 'raster', source: srcId, minzoom: o.minzoom, paint: { 'raster-opacity': overlayOpacity[o.key] ?? o.opacity } },
+          { id: layerId, type: 'raster', source: srcId, minzoom: o.minzoom, layout: { visibility: 'none' }, paint: { 'raster-opacity': overlayOpacity[o.key] ?? o.opacity, 'raster-fade-duration': 0 } },
           beforeId
         )
       }
@@ -3752,7 +3781,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       // the other live pins in trail/replay modes (ship-check P1: a ghost
       // wrench floated at the machine's CURRENT spot during yesterday's
       // replay). Initial visibility honors a restored trail mode.
-      layout: { 'text-field': '🛠', 'text-size': 11, 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
+      // minzoom 9 + zoom-scaled size (Aug 22 badge pass): at county zoom an
+      // always-on 🛠 per machine is pure noise — the wrench only means
+      // something once you can tell which machine wears it.
+      minzoom: 9,
+      layout: { 'text-field': '🛠', 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [-1.3, -1.1], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
     })
   }, [mapReady])
 
@@ -3875,7 +3908,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
       m.addLayer({
         id: 'nightwatch-mark', type: 'symbol', source: 'nightwatch', minzoom: 9,
-        layout: { 'text-field': ['case', ['get', 'ok'], '🔒', '⚠️'], 'text-size': 11, 'text-offset': [1.3, -1.1], 'text-allow-overlap': true },
+        // Below-right shoulder [1.3, 1.1] (Aug 22 badge pass): the top-right
+        // shoulder belongs to the tools-aboard count — on a tagged truck
+        // sleeping in the open the two glyphs printed on top of each other.
+        layout: { 'text-field': ['case', ['get', 'ok'], '🔒', '⚠️'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [1.3, 1.1], 'text-allow-overlap': true },
       })
     }
     const setVis = (v: boolean) => ['nightwatch-halo', 'nightwatch-mark'].forEach((id) => m.getLayer(id) && m.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none'))
@@ -4395,7 +4431,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // Slide the whole right-rail control column off-screen on demand — a
   // clean-screen mode for phones ("need a way to minimize or slide these
   // buttons off", Aug 10). The little edge tab stays put to bring it back.
-  const [railHidden, setRailHidden] = useState(false)
+  // Tucked-rail preference survives visits (Aug 22): the owner who tucks the
+  // buttons once wants a map, not a control panel, every open.
+  const [railHidden, setRailHidden] = useState(() => {
+    try { return localStorage.getItem('ht_rail_hidden') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ht_rail_hidden', railHidden ? '1' : '0') } catch { /* private mode */ }
+  }, [railHidden])
   useEffect(() => {
     const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
     if (!el) return
@@ -4470,11 +4513,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': overlayOpacity.radar ?? 0.72 } }, beforeId)
+      // fade-duration 0 (task #13): with the default 300ms cross-fade,
+      // MapLibre's drawRaster touches parent-tile textures that don't exist
+      // yet on the FIRST re-tile and throws "reading 'bind'" — the /command
+      // first-timeline-switch crash. Site imagery already runs fade 0.
+      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': overlayOpacity.radar ?? 0.72, 'raster-fade-duration': 0 } }, beforeId)
       wxAdded.current = true
     } else {
+      // Visibility first, THEN the re-tile — setTiles marks every in-view
+      // tile expired, and forcing visibility in the same tick as the reload
+      // rendered tiles whose textures were mid-swap (task #13).
+      if (m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'visible')
       ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
-      m.setLayoutProperty('wx-layer', 'visibility', 'visible')
     }
   }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
@@ -4616,7 +4666,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     let gone = false
     const apply = async () => {
       const stamp = await goesLatestStamp('GOES-East_ABI_GeoColor', 7)
-      if (gone || !map.current) return
+      // pbActiveRef: never re-show live imagery under a historical scrubber —
+      // the hide in the live-only effect below ran while this fetch was out.
+      if (gone || !map.current || pbActiveRef.current) return
       const url = goesTileUrl('GOES-East_ABI_GeoColor', 7, stamp)
       if (!cloudsAdded.current) {
         m.addSource('clouds', {
@@ -4628,11 +4680,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         })
         const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
           : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-        m.addLayer({ id: 'clouds-layer', type: 'raster', source: 'clouds', paint: { 'raster-opacity': 0.6 } }, beforeId)
+        // fade 0: first-show raster with the default cross-fade hits tiles
+        // whose textures aren't attached yet → "reading 'bind'" (task #13).
+        m.addLayer({ id: 'clouds-layer', type: 'raster', source: 'clouds', paint: { 'raster-opacity': 0.6, 'raster-fade-duration': 0 } }, beforeId)
         cloudsAdded.current = true
-      } else {
-        ;(m.getSource('clouds') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      } else if (m.getLayer('clouds-layer')) {
         m.setLayoutProperty('clouds-layer', 'visibility', 'visible')
+        ;(m.getSource('clouds') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
       }
     }
     apply()
@@ -4656,7 +4710,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     let gone = false
     const apply = async () => {
       const stamp = await goesLatestStamp('GOES-East_ABI_Band13_Clean_Infrared', 6)
-      if (gone || !map.current) return
+      // pbActiveRef: same replay guard as clouds — the fetch may outlive Live.
+      if (gone || !map.current || pbActiveRef.current) return
       const tileUrl = goesTileUrl('GOES-East_ABI_Band13_Clean_Infrared', 6, stamp)
       if (!stormAdded.current) {
         m.addSource('stormtops', { type: 'raster', tiles: [tileUrl], tileSize: 256, maxzoom: 6, attribution: 'NASA GIBS · NOAA GOES-East' })
@@ -4664,11 +4719,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
         // 0.45: the IR enhancement paints EVERY cold cloud top, and at 0.62 it
         // read as rainbow soup smeared over half the country (owner, Jul 14).
-        m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.45 } }, beforeId)
+        // fade 0 per task #13 (first-show raster texture race).
+        m.addLayer({ id: 'stormtops-layer', type: 'raster', source: 'stormtops', paint: { 'raster-opacity': 0.45, 'raster-fade-duration': 0 } }, beforeId)
         stormAdded.current = true
-      } else {
-        ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])
+      } else if (m.getLayer('stormtops-layer')) {
         m.setLayoutProperty('stormtops-layer', 'visibility', 'visible')
+        ;(m.getSource('stormtops') as maplibregl.RasterTileSource | undefined)?.setTiles([tileUrl])
       }
     }
     apply()
@@ -4694,11 +4750,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       // what you're looking at (roads + city names stay readable on top).
       const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
         : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.45 } }, beforeId)
+      // fade 0 per task #13 (first-show raster texture race).
+      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.45, 'raster-fade-duration': 0 } }, beforeId)
       precipAdded.current = true
-    } else {
-      ;(m.getSource('precip') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+    } else if (m.getLayer('precip-layer')) {
       m.setLayoutProperty('precip-layer', 'visibility', 'visible')
+      ;(m.getSource('precip') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
     }
   }, [mapReady, precipOn, precipPeriod])
 
@@ -5483,8 +5540,6 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           if (on && (key === 'temp' || key === 'feels' || key === 'wind' || key === 'lightning')) soloWeather(key)
           else setOverlaysOn((prev) => ({ ...prev, [key]: on }))
         }}
-        showZones={showZones}
-        onShowZones={setShowZones}
         showLabels={showLabels}
         onShowLabels={setShowLabels}
         zoom={mapZoom}
@@ -5501,11 +5556,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         side="left"
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 15}
-        filter={filter}
-        onFilter={setFilter}
-        showDevices={showDevices}
-        onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
+        // Fleet visibility left the layers panel (Aug 22, task #30): your own
+        // stuff is chips on the map surface, Google-style — state + counts
+        // visible at zero taps. The panel stays context-only.
+        fleetSlot={
+          <FleetChips
+            filter={filter}
+            onFilter={setFilter}
+            counts={{
+              vehicle: assets.filter((a) => a.type === 'vehicle').length,
+              equipment: assets.filter((a) => a.type === 'equipment').length,
+              personnel: assets.filter((a) => a.type === 'personnel').length,
+              tool: assets.filter((a) => a.type === 'tool').length,
+            }}
+            showZones={showZones}
+            onShowZones={setShowZones}
+            zoneCount={geofences.length}
+            showDevices={showDevices}
+            onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
+          />
+        }
       />
 
 

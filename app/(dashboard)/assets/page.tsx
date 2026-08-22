@@ -2,16 +2,45 @@ import { AssetList } from '@/components/assets/AssetList'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { getGeofences } from '@/lib/db/zones'
+import { pointInPolygon } from '@/lib/alerts-engine'
+import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 
 export const metadata = { title: 'HammerTrack — Assets' }
 
 export default async function AssetsPage() {
   const companyId = await getCurrentCompanyId()
-  const [rawAssets, toolAssociations] = await Promise.all([
+  const [rawAssets, toolAssociations, geofences, schedules, readings] = await Promise.all([
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
+    getGeofences(companyId),
+    getMaintenanceSchedules(companyId),
+    getCurrentReadings(),
   ])
-  const assets = resolveToolLocations(rawAssets, toolAssociations)
+  const located = resolveToolLocations(rawAssets, toolAssociations)
+
+  // Which zone each asset sits in right now — same containment test the zones
+  // page runs. The list leads with "at Creekside" instead of the IMEI.
+  const zoneNames: Record<string, string> = {}
+  for (const a of located) {
+    if (!a.location) continue
+    for (const g of geofences) {
+      const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+      if (ring && pointInPolygon([a.location.lng, a.location.lat], ring)) {
+        zoneNames[a.id] = g.name
+        break
+      }
+    }
+  }
+
+  // Overdue service per asset (same computeStatus the detail page runs) —
+  // drives the 🛠 chip and the "Needs attention" filter.
+  const overdue: Record<string, number> = {}
+  for (const s of schedules) {
+    const st = computeStatus(s, readings[s.asset_id] ?? s.last_service_value)
+    if (st.status === 'overdue') overdue[s.asset_id] = (overdue[s.asset_id] ?? 0) + 1
+  }
+  const assets = located.map((a) => ({ ...a, maintOverdue: overdue[a.id] ?? 0 }))
 
   // Chips both directions: trucks show "🔧 N aboard", tools show their ride.
   const aboard = toolsAboard(rawAssets, toolAssociations)
@@ -27,7 +56,7 @@ export default async function AssetsPage() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
-      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} />
+      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} />
     </div>
   )
 }

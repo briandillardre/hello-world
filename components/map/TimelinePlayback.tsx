@@ -35,6 +35,12 @@ function dayEndMs(v: string): number {
   return new Date(`${v}T23:59:59.999`).getTime()
 }
 
+// Remembered bottom-sheet stage (UX audit, Aug 22): reopening the map lands
+// on whatever stage you last chose instead of always unfolding to 'full'.
+const STAGE_KEY = 'ht_timeline_stage'
+const STAGES = ['full', 'bar', 'min'] as const
+type Stage = (typeof STAGES)[number]
+
 const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', icon: Ban },
   { key: 'trails', label: 'Trails', icon: Route },
@@ -126,8 +132,57 @@ export function TimelinePlayback({
   // scrubber · 'bar' = the timeline alone · 'min' = the pill. Drag the
   // handle down to step full → bar → min, up to climb back. The X stays for
   // non-tech users and jumps straight to the pill. Kiosk starts as a pill —
-  // the wall display leads with the map.
-  const [stage, setStage] = useState<'full' | 'bar' | 'min'>(kiosk ? 'min' : 'full')
+  // the wall display leads with the map. Otherwise the last choice is
+  // remembered per device; phones with nothing stored start at 'bar' —
+  // 'full' ate half a 400px screen before anyone touched it (Aug 22).
+  const [stage, setStageRaw] = useState<Stage>(() => {
+    if (kiosk) return 'min'
+    try {
+      const saved = localStorage.getItem(STAGE_KEY)
+      if ((STAGES as readonly string[]).includes(saved ?? '')) return saved as Stage
+    } catch { /* private mode / SSR */ }
+    try { if (window.matchMedia('(max-width: 767px)').matches) return 'bar' } catch { /* SSR */ }
+    return 'full'
+  })
+  const stageRef = useRef(stage)
+  stageRef.current = stage
+  // True while WE stepped full → bar for an opening selection sheet — only
+  // then does the sheet closing restore 'full' (see the ht:sheet-open effect).
+  const autoStepRef = useRef(false)
+  // Every EXPLICIT stage change routes through here: it persists the choice
+  // and cancels any pending auto-restore (a user's manual change wins).
+  const setStage = useCallback((next: Stage | ((s: Stage) => Stage)) => {
+    autoStepRef.current = false
+    setStageRaw((s) => {
+      const v = typeof next === 'function' ? next(s) : next
+      // Kiosk never persists — the wall display's pill shouldn't decide what
+      // a phone on the same device opens to.
+      if (!kiosk) { try { localStorage.setItem(STAGE_KEY, v) } catch { /* private mode */ } }
+      return v
+    })
+  }, [kiosk])
+  // A selection sheet opening asks the timeline to get out of the way
+  // (MapView dispatches 'ht:sheet-open'): step full → bar so the sheet and
+  // the option rows don't stack; closing it climbs back up — but only if the
+  // auto-step did the folding, never over a choice the user made meanwhile.
+  useEffect(() => {
+    if (kiosk) return
+    const onSheet = (e: Event) => {
+      const open = !!(e as CustomEvent<{ open?: boolean }>).detail?.open
+      if (open) {
+        if (stageRef.current === 'full') {
+          autoStepRef.current = true
+          setShowChart(false); setShowFollow(false); setShowCustom(false)
+          setStageRaw('bar')
+        }
+      } else if (autoStepRef.current) {
+        autoStepRef.current = false
+        setStageRaw((s) => (s === 'bar' ? 'full' : s))
+      }
+    }
+    window.addEventListener('ht:sheet-open', onSheet as EventListener)
+    return () => window.removeEventListener('ht:sheet-open', onSheet as EventListener)
+  }, [kiosk])
   const minimized = stage === 'min'
   // Range-pill overflow cue: fade the right edge while pills hide off-screen.
   const pillsRef = useRef<HTMLDivElement>(null)
@@ -251,8 +306,8 @@ export function TimelinePlayback({
       if (s === 'full') { setShowChart(false); setShowFollow(false); setShowCustom(false); return 'bar' }
       return 'min'
     })
-  }, [])
-  const stepUp = useCallback(() => setStage((s) => (s === 'bar' ? 'full' : s === 'min' ? 'bar' : s)), [])
+  }, [setStage])
+  const stepUp = useCallback(() => setStage((s) => (s === 'bar' ? 'full' : s === 'min' ? 'bar' : s)), [setStage])
 
   const chartRef = useRef<HTMLDivElement>(null)
   const seekFromPointer = useCallback((clientX: number) => {
@@ -490,13 +545,17 @@ export function TimelinePlayback({
           whole bar still drags; touch-none keeps the gesture off the
           browser on the primary target. */}
       <div className="flex items-center justify-center gap-4 h-6 -mb-1 cursor-grab touch-none select-none">
+        {/* px-3/py-2 + matching negative margins = a ~40×32px thumb target
+            on a 16px glyph without moving a pixel visually. Taller would eat
+            taps meant for the range pills right below (gloved-thumb audit,
+            Aug 22 — same pattern on every small control in this bar). */}
         {stage === 'bar' && (
-          <button onClick={stepUp} className="p-0.5 -m-0.5 text-faint hover:text-ink transition-colors" aria-label="Expand timeline options">
+          <button onClick={stepUp} className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors" aria-label="Expand timeline options">
             <ChevronUp className="h-4 w-4" />
           </button>
         )}
         <span className="w-9 h-1 rounded-full bg-navy-600" aria-hidden />
-        <button onClick={stepDown} className="p-0.5 -m-0.5 text-faint hover:text-ink transition-colors" aria-label={stage === 'full' ? 'Collapse to timeline only' : 'Minimize timeline'}>
+        <button onClick={stepDown} className="px-3 py-2 -mx-3 -my-2 text-faint hover:text-ink transition-colors" aria-label={stage === 'full' ? 'Collapse to timeline only' : 'Minimize timeline'}>
           <ChevronDown className="h-4 w-4" />
         </button>
       </div>
@@ -564,13 +623,16 @@ export function TimelinePlayback({
           }
           return (
             <div className="flex-none flex items-center gap-0.5 rounded-full bg-navy-900 border border-navy-700 px-1 py-0.5">
+              {/* 40px-wide touch boxes via negative margins — the visible
+                  pill stays this slim, the date label between them soaks up
+                  the invisible overlap (it isn't tappable anyway). */}
               <button type="button" onClick={() => step(-1)} title="Previous day" aria-label="Previous day"
-                className="p-0.5 text-faint hover:text-ink">
+                className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink">
                 <ChevronLeft className="h-3.5 w-3.5" />
               </button>
               <span className="font-mono text-[10.5px] text-muted whitespace-nowrap px-0.5">{isToday ? 'Today' : label}</span>
               <button type="button" onClick={() => step(1)} disabled={isToday} title="Next day" aria-label="Next day"
-                className="p-0.5 text-faint hover:text-ink disabled:opacity-30">
+                className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink disabled:opacity-30">
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -599,8 +661,10 @@ export function TimelinePlayback({
           <button
             onClick={() => setShowChart((s) => !s)}
             title="Activity chart"
+            // before:-inset-1.5 pads the 28px chip out to a 40px touch box
+            // without growing the visible bordered square.
             className={
-              'flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors ' +
+              "relative before:absolute before:-inset-1.5 before:content-[''] flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors " +
               (showChart ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
             }
           >
@@ -614,7 +678,7 @@ export function TimelinePlayback({
               ? 'Copy PUBLIC replay link — anyone with it can watch this trip for 7 days, no login'
               : 'Copy replay link (teammates sign in and see this view)'}
             className={
-              'flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors ' +
+              "relative before:absolute before:-inset-1.5 before:content-[''] flex-none grid place-items-center w-7 h-7 rounded-lg border transition-colors " +
               (shared ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
             }
           >
@@ -794,15 +858,23 @@ export function TimelinePlayback({
               />
               {/* Alert moments live ON the timeline — red diamonds at the
                   minute they fired; tap to jump the replay there. */}
+              {/* The 8px diamond stays the visual; the button around it is a
+                  40px touch box (an 8px target is unhittable with gloves).
+                  It hangs ABOVE the track — only the top sliver of the
+                  scrubber sits under it — so drags on the slider itself
+                  still land on the range input, and a tap here jumps to the
+                  alert, which is the same moment that spot on the track is. */}
               {alertMarks.map((mk, i) => (
                 <button
                   key={i}
                   title={mk.label}
                   onClick={() => onSeek(Math.min(1, Math.max(0, mk.t)))}
-                  className="absolute -top-[7px] z-10 w-2 h-2 rotate-45 bg-alert border border-navy-950 hover:scale-150 transition-transform"
-                  style={{ left: `calc(${(mk.t * 100).toFixed(2)}% - 4px)` }}
+                  className="group absolute -top-[35px] z-10 flex h-10 w-10 -translate-x-1/2 items-end justify-center pb-1"
+                  style={{ left: `${(mk.t * 100).toFixed(2)}%` }}
                   aria-label={`Jump to alert: ${mk.label}`}
-                />
+                >
+                  <span className="w-2 h-2 rotate-45 bg-alert border border-navy-950 group-hover:scale-150 transition-transform" />
+                </button>
               ))}
               <input
                 type="range" min={0} max={1000} value={Math.round(t * 1000)}
