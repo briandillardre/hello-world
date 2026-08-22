@@ -4451,7 +4451,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // Chip position: measured off the radar button so it hugs the rail.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
   useEffect(() => {
-    if (!radarOn || !radarChipOpen || !mapReady) { setRadarChipPos(null); return }
+    // Measured whenever radar is ON (not just while the chip is open): the
+    // pull-handle chevron needs the anchor even when the chip is tucked
+    // (Brian, Aug 22: the slide-out has to be OBVIOUS).
+    if (!radarOn || !mapReady) { setRadarChipPos(null); return }
     const measure = () => {
       const wrap = mapContainer.current, b = radarBtnEl.current
       if (!wrap || !b) return
@@ -4461,7 +4464,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [radarOn, radarChipOpen, mapReady])
+  }, [radarOn, mapReady])
+  // Hand-scrub of the radar loop (Brian, Aug 22): dragging the chip's bar
+  // moves the frame directly; a manual scrub pauses the loop (manual wins).
+  const radarScrubbing = useRef(false)
+  const scrubRadarTo = useCallback((clientX: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect()
+    if (rect.width <= 0) return
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+    setRadarIdx(Math.round(frac * Math.max(0, radarFrames.length - 1)))
+    setRadarPaused(true)
+  }, [radarFrames.length])
 
 
   // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
@@ -4472,8 +4485,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // everywhere.
   useEffect(() => {
     if (!radarOn || radarFrames.length === 0 || pbActive || radarPaused) {
-      // Freeze on the newest observation rather than mid-loop.
-      if (radarFrames.length) setRadarIdx(radarFrames.length - 1)
+      // Replays hold the newest frame (the MAIN scrubber drives radar there).
+      // A manual pause now HOLDS its frame instead of snapping to newest —
+      // the chip's scrubber knob shows exactly which frame is on screen, and
+      // snapping would erase a hand-scrubbed position (Aug 22).
+      if (radarFrames.length && pbActive) setRadarIdx(radarFrames.length - 1)
       return
     }
     const id = setInterval(() => {
@@ -5387,37 +5403,83 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           {flyCard.pour && <p className="font-mono text-[10.5px] text-faint">{flyCard.pour}</p>}
         </div>
       )}
-      {radarOn && !pbActive && radarChipOpen && radarChipPos && (
-        <button
-          type="button"
-          onPointerDown={(e) => { radarSwipeRef.current = { x: e.clientX, y: e.clientY }; radarSwipedRef.current = false }}
-          onPointerMove={(e) => {
-            const s = radarSwipeRef.current
-            if (!s || radarSwipedRef.current) return
-            const dx = e.clientX - s.x
-            if (dx > 24) { radarSwipedRef.current = true; setChipOpen(false) }
-          }}
-          onPointerUp={() => { radarSwipeRef.current = null }}
-          onClick={() => {
-            if (radarSwipedRef.current) { radarSwipedRef.current = false; return }
-            setRadarPaused((p) => !p)
-          }}
-          className="absolute z-20 flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel touch-none"
-          style={{ top: radarChipPos.top, right: radarChipPos.right, animation: 'radarChipIn .28s ease-out' }}
-          aria-label={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
-        >
-          <span className="font-mono text-[10px] font-bold text-amber tracking-wide">RADAR</span>
-          <span className="font-mono text-[11px] text-ink tabular-nums whitespace-nowrap">{radarLabel ?? 'loading…'}</span>
-          {radarFrames.length > 1 && (
-            <span className="relative h-[3px] w-9 rounded-full bg-navy-700 overflow-hidden">
-              <span
-                className="absolute left-0 top-0 h-full bg-amber"
-                style={{ width: `${(Math.min(radarIdx, radarFrames.length - 1) / (radarFrames.length - 1)) * 100}%` }}
-              />
-            </span>
-          )}
-          <span className="text-[10px] text-muted leading-none">{radarPaused ? '▶' : '❚❚'}</span>
-        </button>
+      {/* Radar slide-out (Brian, Aug 22): the pull-handle chevron makes the
+          drawer OBVIOUS (it only exists while radar is on), the chip slides
+          smoothly both ways (max-width transition — stays mounted), and the
+          frame bar is a real scrubber you drag by hand (dragging pauses the
+          loop; manual pause wins, per the timeline rule). Hidden in replays —
+          there the radar follows the main timeline scrubber. */}
+      {radarOn && !pbActive && radarChipPos && (
+        <div className="absolute z-20 flex items-center" style={{ top: radarChipPos.top, right: radarChipPos.right }}>
+          <div
+            className={'overflow-hidden transition-[max-width,opacity] duration-300 ease-out ' +
+              (radarChipOpen ? 'max-w-[320px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none')}
+          >
+            <div
+              onPointerDown={(e) => { radarSwipeRef.current = { x: e.clientX, y: e.clientY }; radarSwipedRef.current = false }}
+              onPointerMove={(e) => {
+                const s = radarSwipeRef.current
+                if (!s || radarSwipedRef.current) return
+                const dx = e.clientX - s.x
+                if (dx > 24) { radarSwipedRef.current = true; setChipOpen(false) }
+              }}
+              onPointerUp={() => { radarSwipeRef.current = null }}
+              className="flex items-center gap-2 rounded-lg border border-amber/40 bg-navy-950/90 backdrop-blur px-2.5 h-[29px] shadow-panel touch-none mr-1 whitespace-nowrap"
+            >
+              <button
+                type="button"
+                onClick={() => { if (radarSwipedRef.current) { radarSwipedRef.current = false; return } setRadarPaused((p) => !p) }}
+                aria-label={radarPaused ? 'Resume radar loop' : 'Pause radar loop'}
+                className="flex items-center gap-2"
+              >
+                <span className="font-mono text-[10px] font-bold text-amber tracking-wide">RADAR</span>
+                <span className="font-mono text-[11px] text-ink tabular-nums whitespace-nowrap">{radarLabel ?? 'loading…'}</span>
+                <span className="text-[10px] text-muted leading-none">{radarPaused ? '▶' : '❚❚'}</span>
+              </button>
+              {radarFrames.length > 1 && (
+                <span
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    radarScrubbing.current = true
+                    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* older webviews */ }
+                    scrubRadarTo(e.clientX, e.currentTarget)
+                  }}
+                  onPointerMove={(e) => { if (radarScrubbing.current) scrubRadarTo(e.clientX, e.currentTarget) }}
+                  onPointerUp={() => { radarScrubbing.current = false }}
+                  onPointerCancel={() => { radarScrubbing.current = false }}
+                  role="slider"
+                  aria-label="Radar frame"
+                  aria-valuemin={0}
+                  aria-valuemax={Math.max(0, radarFrames.length - 1)}
+                  aria-valuenow={Math.min(radarIdx, radarFrames.length - 1)}
+                  className="relative flex items-center h-6 w-16 cursor-ew-resize touch-none flex-none"
+                >
+                  <span className="relative h-[4px] w-full rounded-full bg-navy-700 overflow-hidden pointer-events-none">
+                    <span
+                      className="absolute left-0 top-0 h-full bg-amber"
+                      style={{ width: `${(Math.min(radarIdx, radarFrames.length - 1) / (radarFrames.length - 1)) * 100}%` }}
+                    />
+                  </span>
+                  <span
+                    className="absolute w-2.5 h-2.5 rounded-full bg-amber border border-[#1a1100]/40 pointer-events-none -translate-x-1/2"
+                    style={{ left: `${(Math.min(radarIdx, radarFrames.length - 1) / (radarFrames.length - 1)) * 100}%` }}
+                  />
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setChipOpen(!radarChipOpen)}
+            aria-label={radarChipOpen ? 'Tuck the radar timeline away' : 'Pull out the radar timeline'}
+            aria-expanded={radarChipOpen}
+            className="grid place-items-center w-5 h-[29px] rounded-md border border-amber/40 bg-navy-950/90 backdrop-blur text-amber shadow-panel flex-none"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={'transition-transform duration-300 ' + (radarChipOpen ? 'rotate-180' : '')}>
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+        </div>
       )}
 
       {/* Right-rail tuck handle — slides the button column off for a clean
