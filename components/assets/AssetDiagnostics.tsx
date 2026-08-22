@@ -88,7 +88,7 @@ function ago(ts: string): string {
   if (s < 129600) return `${Math.round(s / 3600)}h ago`
   // Human past 36h: days + hours (Brian, Aug 22).
   const d = Math.floor(s / 86400)
-  const hr = Math.round((s % 86400) / 3600)
+  const hr = Math.floor((s % 86400) / 3600)
   return hr ? `${d}d ${hr}h ago` : `${d}d ago`
 }
 

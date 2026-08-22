@@ -195,7 +195,7 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
   if (inline) {
     return (
       <div className="relative w-9 h-9 flex-none">
-        <div className={(anchor === 'bottom-right' ? 'absolute right-0 bottom-0' : 'absolute left-0 top-0') + ' z-30 w-[248px]'}>{body}</div>
+        <div className={(anchor === 'bottom-right' ? 'absolute right-0 bottom-0 flex flex-col-reverse' : 'absolute left-0 top-0') + ' z-30 w-[248px]'}>{body}</div>
       </div>
     )
   }

@@ -4986,7 +4986,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // release of each YEAR and a slider picks the year. Static imagery — it
   // never animates on its own, so the timeline-truth rule is satisfied.
   const waybackOn = !!overlaysOn.wayback
-  const [waybackReleases, setWaybackReleases] = useState<{ num: number; year: number; label: string }[]>([])
+  const [waybackReleases, setWaybackReleases] = useState<{ num: number; year: number; label: string; tileUrl?: string }[]>([])
   const [waybackIdx, setWaybackIdx] = useState(0)
   useEffect(() => {
     if (!waybackOn || waybackReleases.length) return
@@ -5001,7 +5001,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           const dm = /(\d{4})-(\d{2})-(\d{2})/.exec(v?.itemTitle ?? '')
           if (!dm) continue
           const year = Number(dm[1])
-          const cand = { num: Number(k), year, label: dm[0] }
+          const itemUrl = (v as { itemURL?: string })?.itemURL
+          const cand = {
+            num: Number(k), year, label: dm[0],
+            tileUrl: typeof itemUrl === 'string' && itemUrl.includes('{level}/{row}/{col}')
+              ? itemUrl.replace('{level}/{row}/{col}', '{z}/{y}/{x}')
+              : undefined,
+          }
           const cur = byYear.get(year)
           if (!cur || cand.label > cur.label) byYear.set(year, cand) // newest snapshot of each year
         }
@@ -5023,21 +5029,37 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (waybackAdded.current && m.getLayer('wayback-layer')) m.setLayoutProperty('wayback-layer', 'visibility', 'none')
       return
     }
-    const url = `https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/wmts/1.0.0/default028mm/mapserver/tile/${rel.num}/{z}/{y}/{x}`
+    // Prefer the config's own tile template (each release ships one) — the
+    // hand-built lowercase path worked but rode on CDN case-insensitivity.
+    const url = rel.tileUrl
+      ?? `https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/wmts/1.0.0/default028mm/mapserver/tile/${rel.num}/{z}/{y}/{x}`
     if (!waybackAdded.current) {
       m.addSource('wayback', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 19, attribution: 'Esri Wayback' })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
       // fade 0 + visibility-before-setTiles, per the task #13 raster rules.
-      m.addLayer({ id: 'wayback-layer', type: 'raster', source: 'wayback', paint: { 'raster-opacity': overlayOpacity.wayback ?? 1, 'raster-fade-duration': 0 } }, beforeId)
+      // 0.6 default matches the slider's display default — they disagreed.
+      m.addLayer({ id: 'wayback-layer', type: 'raster', source: 'wayback', paint: { 'raster-opacity': overlayOpacity.wayback ?? 0.6, 'raster-fade-duration': 0 } }, beforeId)
       waybackAdded.current = true
+      lastWaybackRel.current = rel.num
     } else if (m.getLayer('wayback-layer')) {
       m.setLayoutProperty('wayback-layer', 'visibility', 'visible')
-      m.setPaintProperty('wayback-layer', 'raster-opacity', overlayOpacity.wayback ?? 1)
-      ;(m.getSource('wayback') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      // Only re-tile when the YEAR actually changed — the opacity slider
+      // shares state with this effect and a full source reload per input
+      // tick flickered the whole layer (ship-check P2).
+      if (lastWaybackRel.current !== rel.num) {
+        lastWaybackRel.current = rel.num
+        ;(m.getSource('wayback') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      }
     }
     window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'wayback', at: Date.now() } }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, waybackOn, waybackReleases, waybackIdx, overlayOpacity.wayback])
+  }, [mapReady, waybackOn, waybackReleases, waybackIdx])
+  const lastWaybackRel = useRef<number | null>(null)
+  // Opacity rides its own cheap paint-only effect.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !m.getLayer('wayback-layer')) return
+    m.setPaintProperty('wayback-layer', 'raster-opacity', overlayOpacity.wayback ?? 0.6)
+  }, [mapReady, overlayOpacity.wayback])
 
   // ── Live-only weather never paints under a historical scrubber (Brian,
   // Aug 10): current warnings / clouds / storm tops / rain-totals over
@@ -5425,6 +5447,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     setTrailMode((prev) => (prev === 'off' ? 'trails' : prev))
     if (m) { bearingRef.current = m.getBearing(); pitchRef.current = m.getPitch() }
     entranceRef.current = 0
+    camRef.current = null // fresh target — never glide in from the LAST followed asset
     // LIVE follow: stay on Live — the camera rides each incoming fix (its
     // own RAF loop below drives it). No replay, no range switch.
     if (rangeRef.current === 'live') return
@@ -5481,6 +5504,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       bearingRef.current = map.current?.getBearing() ?? 0
       pitchRef.current = map.current?.getPitch() ?? 0
       entranceRef.current = 0
+      camRef.current = null
       setFollowId(follow)
     }
   }, [mapReady, handleRange])
@@ -5667,7 +5691,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           loop; manual pause wins, per the timeline rule). Hidden in replays —
           there the radar follows the main timeline scrubber. */}
       {radarOn && !pbActive && radarChipPos && (
-        // z-[12]: above the map, BELOW the layers panel (15) and sheets (20) —
+        // z-[12]: above the map, BELOW the layers drawer (30) and sheets (20) —
         // at z-20 the chip printed straight across the open Views tab
         // (Brian's 2:07 AM screenshot, "Site planning has some issues").
         <div className="absolute z-[12] flex items-center" style={{ top: radarChipPos.top, right: radarChipPos.right }}>
@@ -5925,8 +5949,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         onSetDefaultView={handleDefaultView}
         side="left"
         top={kiosk ? 68 : 12}
-        z={kiosk ? 45 : 15}
-        hidden={leftHidden}
+        z={kiosk ? 45 : 30}
+        hidden={kiosk ? leftHidden : false}
         hidePill={!kiosk}
         // Fleet on/off is BACK inside Layers, first section (Brian, Aug 22
         // 2:38 AM — the chips-on-map experiment lost; the panel opens as a

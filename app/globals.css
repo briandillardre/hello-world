@@ -153,12 +153,9 @@ body {
 }
 .ht-drawer-in { animation: ht-drawer-in 0.25s ease-out; }
 
-/* Attribution collapses to the (i) like Google's — the required credits
-   expand on tap/hover instead of billboarding "Esri, Maxar…" across the map
-   (Brian, Aug 22 2:21 AM). License needs it available, not permanent. */
-.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner { display: none; }
-.maplibregl-ctrl-attrib.maplibregl-compact:hover .maplibregl-ctrl-attrib-inner,
-.maplibregl-ctrl-attrib.maplibregl-compact:focus-within .maplibregl-ctrl-attrib-inner { display: block; }
+/* Attribution folding is handled by the <details> watchdog in MapView —
+   a CSS-only attempt lost to MapLibre's stylesheet order, and a
+   :focus-within reveal kept credits stuck open on Android (Aug 22). */
 
 /* Safe area for iOS notch / home indicator */
 .safe-area-pb {
