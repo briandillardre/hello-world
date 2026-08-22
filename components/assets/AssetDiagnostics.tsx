@@ -85,8 +85,11 @@ function ago(ts: string): string {
   const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000)
   if (s < 90) return 'just now'
   if (s < 5400) return `${Math.round(s / 60)}m ago`
-  if (s < 172800) return `${Math.round(s / 3600)}h ago`
-  return `${Math.round(s / 86400)}d ago`
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`
+  // Human past 36h: days + hours (Brian, Aug 22).
+  const d = Math.floor(s / 86400)
+  const hr = Math.round((s % 86400) / 3600)
+  return hr ? `${d}d ${hr}h ago` : `${d}d ago`
 }
 
 type History = Record<string, { value: unknown; ts: string }>

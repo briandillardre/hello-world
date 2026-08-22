@@ -3412,12 +3412,32 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
     const kindLabel = (g: string) =>
       g === 'gps' ? 'GPS fleet' : g === 'weather' ? 'Weather satellite' : g === 'stations' ? 'Station' : 'Satellite'
-    const popup = (lngLat: maplibregl.LngLatLike, html: string) => {
-      new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
+    // The info box FOLLOWS its object (Brian, Aug 22: "as I pan around a
+    // plane the info box does not stay centered on the plane"). The sky
+    // layer caches every object's on-screen position (sx/sy) each frame, so
+    // the popup re-anchors from that on map moves AND on a timer (the plane
+    // flies even while the map sits still). locate() returning null means
+    // the object left the feed — the popup goes with it.
+    let skyPopup: maplibregl.Popup | null = null
+    let locateSky: (() => { sx: number; sy: number } | null) | null = null
+    const popup = (lngLat: maplibregl.LngLatLike, html: string, locate?: () => { sx: number; sy: number } | null) => {
+      skyPopup?.remove()
+      locateSky = locate ?? null
+      const sp = new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
         .setLngLat(lngLat)
         .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">${html}</div>`)
         .addTo(m)
+      sp.on('close', () => { if (skyPopup === sp) { skyPopup = null; locateSky = null } })
+      skyPopup = sp
     }
+    const followSky = () => {
+      if (!skyPopup || !locateSky) return
+      const p = locateSky()
+      if (!p) { skyPopup.remove(); return }
+      skyPopup.setLngLat(m.unproject([p.sx, p.sy]))
+    }
+    m.on('move', followSky)
+    const followTimer = setInterval(followSky, 800)
     const pickAll = (x: number, y: number) => {
       const cel = celestialRef.current
       const bodies = [cel?.sun, cel?.moon].filter(Boolean) as CelestialBody[]
@@ -3460,10 +3480,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         return
       }
       if ('kind' in hit) {
+        const body = hit.kind
+        const locateBody = () => {
+          const c = celestialRef.current
+          const b = body === 'sun' ? c?.sun : c?.moon
+          return b ? { sx: b.sx, sy: b.sy } : null
+        }
         if (hit.kind === 'sun') {
-          popup(e.lngLat, `<div style="font-weight:700;color:#ffd479">Sun</div><div style="margin-top:3px">${hit.distLabel}</div>`)
+          popup(e.lngLat, `<div style="font-weight:700;color:#ffd479">Sun</div><div style="margin-top:3px">${hit.distLabel}</div>`, locateBody)
         } else {
-          popup(e.lngLat, `<div style="font-weight:700;color:#cdd5df">Moon</div><div style="margin-top:3px">${hit.distLabel}</div>${hit.illum != null ? `<div>${Math.round(hit.illum * 100)}% illuminated</div>` : ''}`)
+          popup(e.lngLat, `<div style="font-weight:700;color:#cdd5df">Moon</div><div style="margin-top:3px">${hit.distLabel}</div>${hit.illum != null ? `<div>${Math.round(hit.illum * 100)}% illuminated</div>` : ''}`, locateBody)
         }
       } else if ('hex' in hit) {
         const title = hit.flight ?? hit.reg ?? hit.hex.toUpperCase()
@@ -3473,7 +3499,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         selPlaneRef.current = hit.hex
         rebuildPlaneTrail()
         backfillTrace(hit.hex)
-        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`)
+        const hex = hit.hex
+        const locatePlane = () => {
+          const pl = planesRef.current?.find((x) => x.hex === hex)
+          return pl ? { sx: pl.sx, sy: pl.sy } : null
+        }
+        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`, locatePlane)
       } else {
         const facts: string[] = []
         if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
@@ -3481,7 +3512,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         const link = hit.norad
           ? `<a href="https://www.n2yo.com/satellite/?s=${hit.norad}" target="_blank" rel="noopener" style="display:inline-block;margin-top:5px;color:#2dd4bf;font-weight:600">full details & live track →</a>`
           : ''
-        popup(e.lngLat, `<div style="font-weight:700;color:#7dd3fc">${hit.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLabel(hit.group)}${hit.norad ? ` · NORAD ${hit.norad}` : ''}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Math.round(hit.altKm).toLocaleString()} km</b> (${Math.round(hit.altKm * 0.6214).toLocaleString()} mi)</div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}${facts.length ? `<div style="color:#9fb6cc">${facts.join(' · ')}</div>` : ''}${link}`)
+        const satKey = hit.norad ?? hit.name
+        const locateSat = () => {
+          const sv = satsRef.current?.find((x) => (x.norad ?? x.name) === satKey)
+          return sv ? { sx: sv.sx, sy: sv.sy } : null
+        }
+        popup(e.lngLat, `<div style="font-weight:700;color:#7dd3fc">${hit.name}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLabel(hit.group)}${hit.norad ? ` · NORAD ${hit.norad}` : ''}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${Math.round(hit.altKm).toLocaleString()} km</b> (${Math.round(hit.altKm * 0.6214).toLocaleString()} mi)</div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph</div>` : ''}${facts.length ? `<div style="color:#9fb6cc">${facts.join(' · ')}</div>` : ''}${link}`, locateSat)
       }
     }
     let skyHover = false
@@ -3495,6 +3531,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     return () => {
       m.off('click', onClick)
       m.off('mousemove', onHover)
+      m.off('move', followSky)
+      clearInterval(followTimer)
+      skyPopup?.remove()
       rebuildTrailRef.current = null
       if (skyHover) m.getCanvas().style.cursor = ''
     }

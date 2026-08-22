@@ -11,7 +11,9 @@ function pwsAge(iso: string): string {
   const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000))
   if (mins < 1) return 'live'
   if (mins < 60) return `${mins}m ago`
-  return `${Math.round(mins / 60)}h ago`
+  const h = Math.round(mins / 60)
+  if (h < 36) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago` // a station this stale is simply old
 }
 
 /**

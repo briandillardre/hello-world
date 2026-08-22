@@ -33,14 +33,18 @@ const COLOR = {
   nodata: '#64748b',
 }
 
-/** "1h 12m", "9m", "just now". */
+/** "1h 12m", "9m", "just now" — and past 36h it talks like a human:
+ *  "8d 19h", never "211h 7m" (Brian, Aug 22). */
 export function shortDuration(ms: number): string {
   const min = Math.max(0, Math.round(ms / 60_000))
   if (min < 1) return 'just now'
   if (min < 60) return `${min}m`
   const h = Math.floor(min / 60)
   const m = min % 60
-  return m ? `${h}h ${m}m` : `${h}h`
+  if (h < 36) return m ? `${h}h ${m}m` : `${h}h`
+  const d = Math.floor(h / 24)
+  const hr = h % 24
+  return hr ? `${d}d ${hr}h` : `${d}d`
 }
 
 export function deriveLiveStatus(opts: {

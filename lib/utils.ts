@@ -13,8 +13,11 @@ export function formatRelativeTime(date: string | Date): string {
   if (diffMins < 1) return 'Just now'
   if (diffMins < 60) return `${diffMins}m ago`
   const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  return `${Math.floor(diffHours / 24)}d ago`
+  // Human past 36h: days + hours, not a wall of hours (Brian, Aug 22).
+  if (diffHours < 36) return `${diffHours}h ago`
+  const days = Math.floor(diffHours / 24)
+  const hr = diffHours % 24
+  return hr ? `${days}d ${hr}h ago` : `${days}d ago`
 }
 
 export function generateApiKey(): string {

@@ -473,7 +473,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             className="w-full flex items-center gap-1.5 px-3 py-2 border-t border-navy-800 text-[11.5px] font-semibold text-faint hover:text-ink transition-colors"
           >
             <ChevronDown className={'h-3 w-3 transition-transform ' + (showAll ? '' : '-rotate-90')} />
-            {showAll ? 'Fewer layers' : `More layers (${advanced.length})`}
+            {(gid === 'weather' ? 'Advanced weather' : 'More layers') + (showAll ? '' : ` (${advanced.length})`)}
           </button>
         )}
         {showAll && advanced.map(renderRow)}
