@@ -282,14 +282,52 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
   if (!zone) return { error: `No zone matching "${input.zone_name}". Known zones: ${ctx.geofences.map((g) => g.name).join(', ')}` }
   const days = Math.min(14, Math.max(1, Math.round(Number(input.days) || 7)))
   const sinceIso = new Date(Date.now() - days * 86_400_000).toISOString()
+  const nameOf = (id: string) => ctx.assets.find((a) => a.id === id)?.name ?? 'Unknown asset'
 
+  // EXACT LEDGER first (zone_sessions, migration 056) — the same source the
+  // zone page shows, so the assistant never disagrees with it. The old raw
+  // ping sweep was row-capped newest-first, which silently shrank "this
+  // week" to the newest day or so of data (Brian, Aug 22: multi-day visits
+  // all reported as one date).
+  const { createClient } = await import('./supabase-server')
+  const zs = await createClient()
+    .from('zone_sessions')
+    .select('asset_id, entered_at, exited_at')
+    .eq('geofence_id', zone.id)
+    .gte('entered_at', sinceIso)
+    .order('entered_at', { ascending: false })
+    .limit(400)
+  if (!zs.error) {
+    // Sessions are closed intervals stamped by the hourly cron — an end
+    // within the last ~75 min means "still on site" (zone-page convention).
+    const now = Date.now()
+    const STILL_MS = 75 * 60_000
+    return {
+      zone: zone.name,
+      zone_notes: zone.notes || undefined,
+      days,
+      visits: (zs.data ?? []).slice(0, 40).map((s) => {
+        const enterMs = new Date(s.entered_at).getTime()
+        const exitMs = new Date(s.exited_at).getTime()
+        const still = now - exitMs < STILL_MS
+        return {
+          asset: nameOf(s.asset_id),
+          arrived: fmtDateTime(enterMs, ctx.tz),
+          left: still ? 'still on site' : fmtDateTime(exitMs, ctx.tz),
+          minutes: Math.round(((still ? now : exitMs) - enterMs) / 60_000),
+        }
+      }),
+      note: 'Visit ledger updates hourly — the most recent hour may not be reflected yet.',
+    }
+  }
+
+  // Pre-056 fallback: segment raw pings (row-capped; fine for small fleets).
   const { getLocationHistory } = await import('./db/assets')
   const history = await getLocationHistory(ctx.companyId, sinceIso)
   if (!history?.length) return { zone: zone.name, days, visits: [] }
 
   const ring = (zone.geometry?.coordinates?.[0] ?? []) as [number, number][]
   const visits = segmentVisits(history as VisitPoint[], ring)
-  const nameOf = (id: string) => ctx.assets.find((a) => a.id === id)?.name ?? 'Unknown asset'
   return {
     zone: zone.name,
     zone_notes: zone.notes || undefined,
@@ -300,6 +338,7 @@ async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?:
       left: v.exitMs ? fmtDateTime(v.exitMs, ctx.tz) : 'still on site',
       minutes: v.minutes,
     })),
+    note: 'Computed from a capped sample of recent GPS pings — older days in the window may be incomplete.',
   }
 }
 
