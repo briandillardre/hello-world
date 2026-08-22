@@ -2226,7 +2226,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           [e.point.x - pad, e.point.y - pad],
           [e.point.x + pad, e.point.y + pad],
         ]
-        if (m.queryRenderedFeatures(box, { layers: ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg'] }).length) return
+        // tool-dots + trail-heads INCLUDED: tools "left here" inside a zone
+        // were unreachable — the zone sheet stole every tap (Brian, Aug 23).
+        const pinLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg', 'tool-dots', 'trail-heads'].filter((l) => m.getLayer(l))
+        if (m.queryRenderedFeatures(box, { layers: pinLayers }).length) return
         // Saved measurements sit ON TOP of zones — a tap on one opens the
         // measurement sheet, never the zone underneath (Brian, Aug 17: could
         // only ever reach the zone). Hidden layers don't hit-test, so this
@@ -2260,7 +2263,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           [e.point.x - pad, e.point.y - pad],
           [e.point.x + pad, e.point.y + pad],
         ]
-        const layers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads'].filter((l) => m.getLayer(l))
+        const layers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads', 'tool-dots'].filter((l) => m.getLayer(l))
         const hits = m.queryRenderedFeatures(box, { layers })
         // Direct hits already handled by the layer handlers — this only fires
         // usefully when the tap landed NEAR a pin but on none. A direct hit in
