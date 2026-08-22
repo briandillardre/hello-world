@@ -96,15 +96,23 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   useEffect(() => { setHi(0) }, [q])
 
   // Address results (Photon, debounced) — shown BELOW fleet matches; the
-  // fleet always wins the top of the list.
+  // fleet always wins the top of the list. Deps are PRIMITIVES + a ref for
+  // the callback: MapView re-renders constantly (live repulls), and identity
+  // deps tore this effect down every cycle — churning a free community
+  // geocoder toward a rate-limit (ship-check P2).
   const [places, setPlaces] = useState<PlaceHit[]>([])
+  const onPickPlaceRef = useRef(onPickPlace)
+  onPickPlaceRef.current = onPickPlace
+  const placesOn = !!onPickPlace
+  const biasLat = bias?.lat
+  const biasLng = bias?.lng
   useEffect(() => {
-    if (!onPickPlace) return
+    if (!placesOn) return
     const s = q.trim()
     if (s.length < 4) { setPlaces([]); return }
     const ctrl = new AbortController()
     const t = setTimeout(() => {
-      const biasQs = bias ? `&lat=${bias.lat.toFixed(3)}&lon=${bias.lng.toFixed(3)}` : ''
+      const biasQs = biasLat != null && biasLng != null ? `&lat=${biasLat.toFixed(3)}&lon=${biasLng.toFixed(3)}` : ''
       fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(s)}&limit=4&lang=en${biasQs}`, { signal: ctrl.signal })
         .then((r) => (r.ok ? r.json() : null))
         .then((j: { features?: { geometry?: { coordinates?: [number, number] }; properties?: Record<string, string> }[] } | null) => {
@@ -121,8 +129,15 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
         .catch(() => { /* geocoder down — fleet search still works */ })
     }, 350)
     return () => { clearTimeout(t); ctrl.abort() }
-  }, [q, bias, onPickPlace])
+  }, [q, biasLat, biasLng, placesOn])
   useEffect(() => { if (!open) setPlaces([]) }, [open])
+
+  const pickPlace = (p: PlaceHit) => {
+    onPickPlaceRef.current?.(p)
+    setQ('')
+    setOpen(false)
+    recRef.current?.stop()
+  }
 
   const pick = (it: SearchItem) => {
     onPick(it)
@@ -157,10 +172,18 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
     rec.start()
   }
 
+  // One keyboard list across fleet matches AND address rows — typing an
+  // address usually means ZERO fleet matches, and Enter must still work
+  // (ship-check P1).
+  const totalRows = matches.length + places.length
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, matches.length - 1)) }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.max(0, Math.min(h + 1, totalRows - 1))) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)) }
-    else if (e.key === 'Enter' && matches[hi]) { e.preventDefault(); pick(matches[hi]) }
+    else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (hi < matches.length && matches[hi]) pick(matches[hi])
+      else if (places[hi - matches.length]) pickPlace(places[hi - matches.length])
+    }
     else if (e.key === 'Escape') { setOpen(false); setQ('') }
   }
 
@@ -238,11 +261,12 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
               </button>
             </li>
           ))}
-          {onPickPlace && places.map((p) => (
-            <li key={`place-${p.lat}-${p.lng}`}>
+          {onPickPlace && places.map((p, i) => (
+            <li key={`place-${i}-${p.lat}-${p.lng}`}>
               <button
-                onMouseDown={(e) => { e.preventDefault(); onPickPlace(p); setQ(''); setOpen(false); recRef.current?.stop() }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-navy-800"
+                onMouseDown={(e) => { e.preventDefault(); pickPlace(p) }}
+                onMouseEnter={() => setHi(matches.length + i)}
+                className={'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ' + (matches.length + i === hi ? 'bg-navy-800' : '')}
               >
                 <span className="text-base flex-none">📍</span>
                 <span className="min-w-0 flex-1">

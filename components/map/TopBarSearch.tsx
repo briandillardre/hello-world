@@ -25,7 +25,9 @@ export function TopBarSearch() {
         type="button"
         onClick={open}
         aria-label="Search assets, zones, and addresses"
-        className="md:hidden grid place-items-center h-6 w-6 text-faint hover:text-ink transition-colors flex-none"
+        // 24px glyph, ≥40px hit box — gloved-thumb rule (the pseudo pad keeps
+        // the slim bar layout intact).
+        className="md:hidden relative grid place-items-center h-6 w-6 text-faint hover:text-ink transition-colors flex-none before:content-[''] before:absolute before:-inset-2"
       >
         <Search className="h-4 w-4" />
       </button>

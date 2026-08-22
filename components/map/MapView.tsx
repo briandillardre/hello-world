@@ -350,12 +350,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const mapContainer = useRef<HTMLDivElement>(null)
   // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
   // reading the map at noon in the truck — pure CSS filter on the canvas
-  // (globals.css .ht-sun), so it costs nothing and works on every basemap.
-  const [sunMode, setSunMode] = useState(() => {
-    try { return localStorage.getItem('ht_sun') === '1' } catch { return false }
-  })
+  // (globals.css .ht-sun). The class is applied via classList, NEVER through
+  // React's className: MapLibre owns runtime classes on this node, and a
+  // React class write wiped maplibregl-map's overflow clip (ship-check P1) —
+  // and the lazy-init read never survived hydration anyway.
+  const [sunMode, setSunMode] = useState(false)
+  useEffect(() => {
+    try { if (localStorage.getItem('ht_sun') === '1') setSunMode(true) } catch { /* private mode */ }
+  }, [])
   useEffect(() => {
     try { localStorage.setItem('ht_sun', sunMode ? '1' : '0') } catch { /* private mode */ }
+    mapContainer.current?.classList.toggle('ht-sun', sunMode)
   }, [sunMode])
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -5691,7 +5696,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
   return (
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
-      <div ref={mapContainer} className={'w-full h-full' + (sunMode ? ' ht-sun' : '')} />
+      <div ref={mapContainer} className="w-full h-full" />
 
       {/* Radar frame-time chip — opt-in slide-out beside the radar button
           (swipe the button left to open, right to tuck away; tap chip =

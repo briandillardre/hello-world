@@ -361,6 +361,56 @@ export function TimelinePlayback({
     // the old 80px offset left a dead strip of map under the controls. Kiosk
     // rides above the event ticker.
     <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-[calc(104px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
+      {/* Camera popover — sibling of the bar for the same overflow-hidden
+          reason as the follow menu below (rendering INSIDE the bar clipped
+          it invisible; ship-check P0, Aug 22). */}
+      {showCam && (
+        <div className="absolute bottom-full mb-2 right-0 z-30 w-[230px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-1.5 flex flex-col gap-0.5">
+          {onSpin && !followed && (
+            <button
+              onClick={() => { onSpin(); setShowCam(false) }}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+            >
+              <RotateCw className={'h-3.5 w-3.5 ' + (spinning ? 'text-teal' : 'text-faint')} />
+              {spinning ? 'Stop the 360 spin' : '360° spin'}
+            </button>
+          )}
+          {onFlyover && !followed && (
+            <span className="flex items-center gap-1">
+              <button
+                onClick={() => { onFlyover(); setShowCam(false) }}
+                className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+              >
+                <Plane className={'h-3.5 w-3.5 ' + (flying ? 'text-amber' : 'text-faint')} />
+                {flying ? 'End the flyover' : 'Flyover every asset'}
+              </button>
+              {flying && onFlySpeed && (
+                <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 flex-none">
+                  {([[0.5, '½×'], [1, '1×'], [2, '2×']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => onFlySpeed(v)}
+                      className={
+                        'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                        (flySpeed === v ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
+                      }
+                    >{label}</button>
+                  ))}
+                </span>
+              )}
+            </span>
+          )}
+          {(followAssets.length > 0 || followZones.length > 0) && (
+            <button
+              onClick={() => { setShowCam(false); setShowFollow(true) }}
+              className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+            >
+              {live ? <Navigation className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} /> : <Video className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} />}
+              {followed ? `Following ${followed.name}…` : 'Follow an asset…'}
+            </button>
+          )}
+        </div>
+      )}
       {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}
@@ -755,75 +805,26 @@ export function TimelinePlayback({
             the active mode's color + label; the follow MENU still renders
             above the bar (see top). */}
         {(onSpin || onFlyover || followAssets.length > 0 || followZones.length > 0) && (
-          <span className="relative flex-none">
-            <button
-              onClick={() => { setShowCam((s) => !s); setShowFollow(false) }}
-              title={followed ? `Following ${followed.name}` : flying ? 'Flyover running' : spinning ? '360 spin running' : 'Camera — 360, flyover, follow'}
-              className={
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
-                (followed || flying
-                  ? 'bg-amber/20 text-amber border-amber/40'
-                  : spinning
-                    ? 'bg-teal/20 text-teal border-teal/40'
-                    : showCam
-                      ? 'bg-navy-800 text-ink border-navy-700'
-                      : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
-              }
-            >
-              <Video className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline max-w-[90px] truncate">
-                {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following'
-                  : flying ? 'Fly' : spinning ? '360' : 'Camera'}
-              </span>
-            </button>
-            {showCam && (
-              <span className="absolute bottom-full mb-2 right-0 z-30 w-[220px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-1.5 flex flex-col gap-0.5">
-                {onSpin && !followed && (
-                  <button
-                    onClick={() => { onSpin(); setShowCam(false) }}
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
-                  >
-                    <RotateCw className={'h-3.5 w-3.5 ' + (spinning ? 'text-teal' : 'text-faint')} />
-                    {spinning ? 'Stop the 360 spin' : '360° spin'}
-                  </button>
-                )}
-                {onFlyover && !followed && (
-                  <span className="flex items-center gap-1">
-                    <button
-                      onClick={() => { onFlyover(); setShowCam(false) }}
-                      className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
-                    >
-                      <Plane className={'h-3.5 w-3.5 ' + (flying ? 'text-amber' : 'text-faint')} />
-                      {flying ? 'End the flyover' : 'Flyover every asset'}
-                    </button>
-                    {flying && onFlySpeed && (
-                      <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 flex-none">
-                        {([[0.5, '½×'], [1, '1×'], [2, '2×']] as const).map(([v, label]) => (
-                          <button
-                            key={v}
-                            onClick={() => onFlySpeed(v)}
-                            className={
-                              'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
-                              (flySpeed === v ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
-                            }
-                          >{label}</button>
-                        ))}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {(followAssets.length > 0 || followZones.length > 0) && (
-                  <button
-                    onClick={() => { setShowCam(false); setShowFollow(true) }}
-                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
-                  >
-                    {live ? <Navigation className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} /> : <Video className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} />}
-                    {followed ? `Following ${followed.name}…` : 'Follow an asset…'}
-                  </button>
-                )}
-              </span>
-            )}
-          </span>
+          <button
+            onClick={() => { setShowCam((s) => !s); setShowFollow(false) }}
+            title={followed ? `Following ${followed.name}` : flying ? 'Flyover running' : spinning ? '360 spin running' : 'Camera — 360, flyover, follow'}
+            className={
+              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+              (followed || flying
+                ? 'bg-amber/20 text-amber border-amber/40'
+                : spinning
+                  ? 'bg-teal/20 text-teal border-teal/40'
+                  : showCam
+                    ? 'bg-navy-800 text-ink border-navy-700'
+                    : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            <Video className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline max-w-[90px] truncate">
+              {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following'
+                : flying ? 'Fly' : spinning ? '360' : 'Camera'}
+            </span>
+          </button>
         )}
       </div>
       )}
