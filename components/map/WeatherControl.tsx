@@ -228,6 +228,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     if (next.has(gid)) next.delete(gid); else next.add(gid)
     return next
   })
+  // Assets dropdown (Brian, Aug 22): same collapsible treatment as every
+  // other group — starts collapsed, badge shows how many types are on.
+  const [fleetOpen, setFleetOpen] = useState(false)
   // Which groups have their advanced ("More layers") rows expanded.
   const [moreRows, setMoreRows] = useState<Set<GroupId>>(() => new Set())
   // Search/filter across the registry rows (label + hint, case-insensitive).
@@ -699,14 +702,25 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         )
       ) : (<>
 
-      {/* ── Show on map — the everyday set, FIRST (Brian, Aug 22: asset
-             on/off lives in Layers; most-used section leads the panel). ── */}
+      {/* ── Assets — the fleet on/off dropdown, FIRST (Brian, Aug 22: same
+             collapsible treatment as every other group). ── */}
       {filter && onFilter && (
         <>
-          <div className="flex items-center gap-2 px-3 pt-3 pb-1 border-t border-navy-800">
-            <Layers className="h-3 w-3 text-teal flex-none" />
-            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Show on map</span>
-          </div>
+          <button
+            onClick={() => setFleetOpen((o) => !o)}
+            aria-expanded={fleetOpen}
+            className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 hover:bg-navy-900 transition-colors"
+          >
+            <Box className="h-3 w-3 text-teal flex-none" />
+            <span className="flex-1 min-w-0 truncate text-left font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Assets</span>
+            {(filter.size + (onShowZones && showZones ? 1 : 0) + (onToggleDevices && showDevices ? 1 : 0)) > 0 && (
+              <span className="flex-none font-mono text-[9px] rounded px-1.5 py-0.5 bg-teal/20 text-teal">
+                {filter.size + (onShowZones && showZones ? 1 : 0) + (onToggleDevices && showDevices ? 1 : 0)} on
+              </span>
+            )}
+            <ChevronDown className={'h-3 w-3 text-faint flex-none transition-transform ' + (fleetOpen ? '' : '-rotate-90')} />
+          </button>
+          {fleetOpen && (<>
           {([
             ['vehicle', '🚛', 'Vehicles'],
             ['equipment', '🏗️', 'Equipment'],
@@ -758,6 +772,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               </button>
             </div>
           )}
+          </>)}
         </>
       )}
 
