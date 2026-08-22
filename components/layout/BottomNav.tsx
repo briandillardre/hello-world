@@ -10,65 +10,82 @@ import { useUnseenAlertCount } from './unseen-alerts'
 // ONE ordered list of every phone destination. The first 4 fill the bottom
 // bar (AskAI keeps the center seat); everything shows in the More drawer,
 // bar members highlighted. The owner reorders from the drawer's Edit mode
-// (Brian, Aug 22) — per-device preference, stored locally.
+// (Brian, Aug 22) — saved to the profile so it follows the user to any
+// phone, with localStorage as the demo/offline fallback. `short` is the
+// bar label: the bar's 5-way split fits one word, and two-line labels
+// knocked the icons out of line (Brian, 3:57 AM screenshot).
 const allItems = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/clock', label: 'Clock', icon: Clock },
   { href: '/zones', label: 'Zones', icon: Hexagon },
-  { href: '/measurements', label: 'Measurements', icon: Ruler },
-  { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
-  { href: '/command', label: 'Command Center', icon: MonitorPlay },
-  { href: '/track', label: 'Go Live (GPS)', icon: Radio },
-  { href: '/logs', label: 'Daily logs', icon: ClipboardList },
+  { href: '/measurements', label: 'Measurements', short: 'Measure', icon: Ruler },
+  { href: '/tags', label: 'Tag scanner', short: 'Tags', icon: Bluetooth },
+  { href: '/command', label: 'Command Center', short: 'Command', icon: MonitorPlay },
+  { href: '/track', label: 'Go Live (GPS)', short: 'Go Live', icon: Radio },
+  { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
   { href: '/team', label: 'Team', icon: Users },
-  { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+  { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
-  { href: '/accounting', label: 'Accounting', icon: Calculator },
+  { href: '/accounting', label: 'Accounting', short: 'Books', icon: Calculator },
   { href: '/receipts', label: 'Receipts', icon: Receipt },
-  { href: '/finance', label: 'Financials', icon: Scale },
+  { href: '/finance', label: 'Financials', short: 'Finance', icon: Scale },
   { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/welcome', label: 'Getting started', icon: Rocket },
+  { href: '/welcome', label: 'Getting started', short: 'Start', icon: Rocket },
   { href: '/help', label: 'Help', icon: HelpCircle },
-]
+] as { href: string; label: string; short?: string; icon: typeof Map }[]
 const DEFAULT_ORDER = allItems.map((i) => i.href)
 const ORDER_KEY = 'ht_nav_order_v1'
 // Plain object, not a Map — the lucide `Map` icon import shadows the global.
 const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(allItems.map((i) => [i.href, i]))
 
-export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, onSignOut }: {
+// Drop unknown hrefs, splice newly-shipped pages in at their default slot
+// (never buried at the tail), or null if nothing usable survives.
+function sanitizeOrder(saved: unknown): string[] | null {
+  if (!Array.isArray(saved)) return null
+  const kept = (saved as string[]).filter((h) => h in byHref)
+  if (!kept.length) return null
+  const next = [...kept]
+  for (const h of DEFAULT_ORDER) {
+    if (!next.includes(h)) next.splice(DEFAULT_ORDER.indexOf(h), 0, h)
+  }
+  return next
+}
+
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, onSignOut }: {
   alertCount?: number
   latestAlertAt?: string | null
   companyName?: string
   userName?: string | null
+  /** Saved bar order from the user's profile (null = none saved / demo). */
+  navOrder?: string[] | null
   onSignOut?: () => void
 }) {
   const pathname = usePathname()
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [order, setOrder] = useState<string[]>(DEFAULT_ORDER)
+  // Profile order renders server-side (no flash, follows the user across
+  // phones); localStorage only fills in for demo mode / pre-070 deploys.
+  const [order, setOrder] = useState<string[]>(() => sanitizeOrder(navOrder) ?? DEFAULT_ORDER)
   const [editing, setEditing] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
 
-  // Saved order loads after mount (SSR-safe). Unknown hrefs are dropped and
-  // newly-shipped pages append in default position, so app updates never
-  // brick a stored layout.
   useEffect(() => {
+    if (navOrder?.length) return
     try {
-      const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || 'null') as string[] | null
-      if (!Array.isArray(saved)) return
-      const kept = saved.filter((h) => h in byHref)
-      if (!kept.length) return
-      // Newly-shipped pages splice in at their default slot, not the tail —
-      // a future prominent page must not land buried in the last drawer row.
-      const next = [...kept]
-      for (const h of DEFAULT_ORDER) {
-        if (!next.includes(h)) next.splice(DEFAULT_ORDER.indexOf(h), 0, h)
-      }
-      setOrder(next)
+      const saved = sanitizeOrder(JSON.parse(localStorage.getItem(ORDER_KEY) || 'null'))
+      if (saved) setOrder(saved)
     } catch { /* default order */ }
-  }, [])
+  }, [navOrder])
+
+  // Write-through: localStorage for instant demo/offline recall, the profile
+  // for "next open, any phone, same user". Best-effort — a failed save just
+  // leaves this device's copy in charge.
+  const persist = (next: string[]) => {
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch {}
+    import('@/lib/actions/nav').then(({ saveNavOrderAction }) => saveNavOrderAction(next)).catch(() => {})
+  }
 
   const ordered = order.map((h) => byHref[h]).filter(Boolean)
   const barItems = ordered.slice(0, 4)
@@ -80,7 +97,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
       const ia = next.indexOf(a), ib = next.indexOf(b)
       if (ia < 0 || ib < 0) return cur
       ;[next[ia], next[ib]] = [next[ib], next[ia]]
-      try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch {}
+      persist(next)
       return next
     })
   }
@@ -88,6 +105,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
     setOrder(DEFAULT_ORDER)
     setSel(null)
     try { localStorage.removeItem(ORDER_KEY) } catch {}
+    persist(DEFAULT_ORDER)
   }
 
   // Tell the rest of the UI (the Ask launcher) the drawer is up: a body
@@ -220,7 +238,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
           {/* AskAI rides the CENTER of the bar (Brian, Aug 22: "AskAI needs
               to be in the bottom bar, not on the map") — the classic raised
               middle action, one thumb-tap from anywhere. */}
-          {barItems.slice(0, 2).map(({ href, label, icon: Icon }) => {
+          {barItems.slice(0, 2).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link
@@ -235,7 +253,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span>{label}</span>
+                <span className="whitespace-nowrap">{short ?? label}</span>
               </Link>
             )
           })}
@@ -250,7 +268,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </span>
             <span className="-mt-0.5 text-amber">AskAI</span>
           </button>
-          {barItems.slice(2).map(({ href, label, icon: Icon }) => {
+          {barItems.slice(2).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (
               <Link
@@ -265,7 +283,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span>{label}</span>
+                <span className="whitespace-nowrap">{short ?? label}</span>
               </Link>
             )
           })}

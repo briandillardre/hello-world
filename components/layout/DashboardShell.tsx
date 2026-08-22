@@ -18,6 +18,7 @@ export function DashboardShell({
   userName,
   logoUrl = null,
   logoBg = null,
+  navOrder = null,
   children,
 }: {
   alertCount: number
@@ -26,6 +27,7 @@ export function DashboardShell({
   userName?: string | null
   logoUrl?: string | null
   logoBg?: string | null
+  navOrder?: string[] | null
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -45,7 +47,7 @@ export function DashboardShell({
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200'}>
         {children}
       </main>
-      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} onSignOut={signOutAction} />
+      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} onSignOut={signOutAction} />
       <AssistantWidget />
     </>
   )

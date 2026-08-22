@@ -37,20 +37,26 @@ export async function getCurrentCompanyId(): Promise<string> {
  * sidebar header. Demo mode shows the "HammerTrack Demo" label; real mode shows
  * the logged-in company and user.
  */
-export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null; logoUrl: string | null; logoBg: string | null }> {
-  if (isMock) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null }
+export async function getCurrentCompany(): Promise<{ id: string; name: string; userName: string | null; logoUrl: string | null; logoBg: string | null; navOrder: string[] | null }> {
+  if (isMock) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null, navOrder: null }
 
   try {
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null }
+    if (!user) return { id: MOCK_COMPANY.id, name: 'Blue Ridge Sitework Co. (demo)', userName: null, logoUrl: null, logoBg: null, navOrder: null }
 
-    const { data: profile } = await supabase
+    // Migration-tolerant wide select (070 adds nav_order): naming a missing
+    // column errors the whole query, so fall back to the narrow shape.
+    const wide = await supabase
       .from('profiles')
-      .select('company_id, name')
+      .select('company_id, name, nav_order')
       .eq('id', user.id)
       .single()
+    const profile = wide.error
+      ? (await supabase.from('profiles').select('company_id, name').eq('id', user.id).single()).data as
+        ({ company_id: string | null; name: string | null; nav_order?: string[] | null } | null)
+      : wide.data
     const companyId = profile?.company_id ?? user.id
 
     // Star-select: naming logo_url before migration 044 lands would error the
@@ -68,9 +74,10 @@ export async function getCurrentCompany(): Promise<{ id: string; name: string; u
       logoUrl: (company?.logo_url as string | null) ?? null,
       // undefined until migration 061 — star-select degrades instead of erroring.
       logoBg: (company?.logo_bg as string | null) ?? null,
+      navOrder: (profile?.nav_order as string[] | null) ?? null,
     }
   } catch {
-    return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null, logoUrl: null, logoBg: null }
+    return { id: MOCK_COMPANY.id, name: 'HammerTrack', userName: null, logoUrl: null, logoBg: null, navOrder: null }
   }
 }
 

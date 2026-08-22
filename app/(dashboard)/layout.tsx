@@ -47,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <TzCookie />
       <OfflineSync />
       <BusyBar />
-      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg}>
+      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder}>
         {children}
       </DashboardShell>
     </div>
