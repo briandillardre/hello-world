@@ -28,7 +28,7 @@ const buildSteps = (canDrawZones: boolean): Step[] => [
   {
     selector: '[data-tour="layers"]',
     title: 'Layers & your fleet',
-    body: 'Layers holds the map itself — basemaps, radar and weather, job-site money layers, land checks. The chips underneath flip your fleet on and off the map: trucks, machines, people, tools, zones.',
+    body: 'Everything the map shows lives here: switches for your trucks, machines, people, tools and zones up top, then basemaps, radar and weather, job-site money layers, and land checks.',
     side: 'below',
   },
   {

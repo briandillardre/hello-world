@@ -43,7 +43,9 @@ export interface LayerRowDef {
 // dedicated section in the panel, not a registry group.)
 export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[] = [
   { id: 'basemap', label: 'Map look', defaultCollapsed: true },
-  { id: 'jobs', label: 'My jobsites', defaultCollapsed: true },
+  // 'My sites', not 'My jobsites' (Brian, Aug 22): landscapers, crews,
+  // rental yards — not every customer calls them job sites.
+  { id: 'jobs', label: 'My sites', defaultCollapsed: true },
   { id: 'weather', label: 'Weather', defaultCollapsed: true },
   { id: 'roads', label: 'Roads & travel', defaultCollapsed: true },
   { id: 'land', label: 'Land check', defaultCollapsed: true },
@@ -96,7 +98,7 @@ export const BASEMAP_THUMB_FILTER: Partial<Record<BasemapId, string>> = {
 }
 
 export const LAYER_ROWS: LayerRowDef[] = [
-  // ── My jobsites: the money/context layers drawn around your assets ────────
+  // ── My sites: the money/context layers drawn around your assets ──────────
   // ('zones' moved OUT of this registry Aug 10 — it renders as a dedicated
   // row in the Show-on-map group beside the asset types. Its state was never
   // in the overlays record (dedicated cfg.zones field), so saved views and
@@ -137,6 +139,10 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // ── Land check: walk a lot before you bid ─────────────────────────────────
   // Honest gating: without the county service URL the toggle was a silent
   // no-op ("still not seeing a response" — Aug 6). Coming-soon until set.
+  // Esri World Imagery Wayback — free public archive of the satellite
+  // basemap, one snapshot per year back to 2014 (Brian, Aug 22: "historical
+  // imagery with a year slider").
+  { id: 'wayback', label: 'Historical imagery', group: 'land', status: 'live', isLive: true, hasOpacity: true, hint: 'satellite time machine — drag the year to see a site before you built it' },
   { id: 'parcels', label: 'Parcel lines', group: 'land', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, hint: 'county tax parcels · tap one for owner, address & acreage' },
   { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 10, hint: 'FEMA flood hazard areas' },
   { id: 'wetlands', label: 'Wetlands', group: 'land', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },

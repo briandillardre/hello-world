@@ -44,7 +44,6 @@ import { ZonePanel } from './ZonePanel'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
-import { FleetChips } from './FleetChips'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -2224,6 +2223,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       cloudsAdded.current = false
       stormAdded.current = false
       precipAdded.current = false
+      waybackAdded.current = false
     }
   }, [])
 
@@ -4928,6 +4928,65 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, precipOn, precipPeriod])
 
+  // ── Historical imagery — Esri World Imagery Wayback (Brian, Aug 22:
+  // "open-source historical imagery with a year slider"). Free public WMTS
+  // archive of the satellite basemap back to 2014; we surface the newest
+  // release of each YEAR and a slider picks the year. Static imagery — it
+  // never animates on its own, so the timeline-truth rule is satisfied.
+  const waybackOn = !!overlaysOn.wayback
+  const [waybackReleases, setWaybackReleases] = useState<{ num: number; year: number; label: string }[]>([])
+  const [waybackIdx, setWaybackIdx] = useState(0)
+  useEffect(() => {
+    if (!waybackOn || waybackReleases.length) return
+    let gone = false
+    ;(async () => {
+      try {
+        // The same public config the official Wayback app reads (CORS-open).
+        const r = await fetch('https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json')
+        const cfg = await r.json() as Record<string, { itemTitle?: string }>
+        const byYear = new Map<number, { num: number; year: number; label: string }>()
+        for (const [k, v] of Object.entries(cfg)) {
+          const dm = /(\d{4})-(\d{2})-(\d{2})/.exec(v?.itemTitle ?? '')
+          if (!dm) continue
+          const year = Number(dm[1])
+          const cand = { num: Number(k), year, label: dm[0] }
+          const cur = byYear.get(year)
+          if (!cur || cand.label > cur.label) byYear.set(year, cand) // newest snapshot of each year
+        }
+        const list = Array.from(byYear.values()).sort((a, b) => a.year - b.year)
+        if (!list.length) throw new Error('empty wayback config')
+        if (!gone) { setWaybackReleases(list); setWaybackIdx(list.length - 1) }
+      } catch {
+        if (!gone) window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'wayback', msg: 'couldn’t load the year list — toggle again to retry' } }))
+      }
+    })()
+    return () => { gone = true }
+  }, [waybackOn, waybackReleases.length])
+  const waybackAdded = useRef(false)
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const rel = waybackReleases.length ? waybackReleases[Math.min(waybackIdx, waybackReleases.length - 1)] : null
+    if (!waybackOn || !rel) {
+      if (waybackAdded.current && m.getLayer('wayback-layer')) m.setLayoutProperty('wayback-layer', 'visibility', 'none')
+      return
+    }
+    const url = `https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/wmts/1.0.0/default028mm/mapserver/tile/${rel.num}/{z}/{y}/{x}`
+    if (!waybackAdded.current) {
+      m.addSource('wayback', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 19, attribution: 'Esri Wayback' })
+      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+      // fade 0 + visibility-before-setTiles, per the task #13 raster rules.
+      m.addLayer({ id: 'wayback-layer', type: 'raster', source: 'wayback', paint: { 'raster-opacity': overlayOpacity.wayback ?? 1, 'raster-fade-duration': 0 } }, beforeId)
+      waybackAdded.current = true
+    } else if (m.getLayer('wayback-layer')) {
+      m.setLayoutProperty('wayback-layer', 'visibility', 'visible')
+      m.setPaintProperty('wayback-layer', 'raster-opacity', overlayOpacity.wayback ?? 1)
+      ;(m.getSource('wayback') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+    }
+    window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'wayback', at: Date.now() } }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, waybackOn, waybackReleases, waybackIdx, overlayOpacity.wayback])
+
   // ── Live-only weather never paints under a historical scrubber (Brian,
   // Aug 10): current warnings / clouds / storm tops / rain-totals over
   // yesterday's trucks read as data from that day. Declared AFTER every
@@ -5770,7 +5829,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.
@@ -5796,26 +5855,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         z={kiosk ? 45 : 15}
         hidden={leftHidden}
         searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
-        // Fleet visibility left the layers panel (Aug 22, task #30): your own
-        // stuff is chips on the map surface, Google-style — state + counts
-        // visible at zero taps. The panel stays context-only.
-        fleetSlot={
-          <FleetChips
-            filter={filter}
-            onFilter={setFilter}
-            counts={{
-              vehicle: assets.filter((a) => a.type === 'vehicle').length,
-              equipment: assets.filter((a) => a.type === 'equipment').length,
-              personnel: assets.filter((a) => a.type === 'personnel').length,
-              tool: assets.filter((a) => a.type === 'tool').length,
-            }}
-            showZones={showZones}
-            onShowZones={setShowZones}
-            zoneCount={geofences.length}
-            showDevices={showDevices}
-            onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
-          />
-        }
+        // Fleet on/off is BACK inside Layers, first section (Brian, Aug 22
+        // 2:38 AM — the chips-on-map experiment lost; the panel opens as a
+        // Google-style left drawer now, so the toggles are one tap away).
+        filter={filter}
+        onFilter={setFilter}
+        showZones={showZones}
+        onShowZones={setShowZones}
+        showDevices={showDevices}
+        onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
+        waybackYears={waybackReleases.map((r) => String(r.year))}
+        waybackIdx={waybackIdx}
+        onWaybackIdx={setWaybackIdx}
       />
 
 

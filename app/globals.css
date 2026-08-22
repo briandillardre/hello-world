@@ -145,6 +145,21 @@ body {
   filter: invert(78%) sepia(12%) saturate(380%) hue-rotate(150deg) brightness(95%);
 }
 
+
+/* Layers drawer (Aug 22): slides in from the left edge, Google Maps style. */
+@keyframes ht-drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.ht-drawer-in { animation: ht-drawer-in 0.25s ease-out; }
+
+/* Attribution collapses to the (i) like Google's — the required credits
+   expand on tap/hover instead of billboarding "Esri, Maxar…" across the map
+   (Brian, Aug 22 2:21 AM). License needs it available, not permanent. */
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner { display: none; }
+.maplibregl-ctrl-attrib.maplibregl-compact:hover .maplibregl-ctrl-attrib-inner,
+.maplibregl-ctrl-attrib.maplibregl-compact:focus-within .maplibregl-ctrl-attrib-inner { display: block; }
+
 /* Safe area for iOS notch / home indicator */
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);

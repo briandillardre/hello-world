@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
-import { ProtrudingClose } from '@/components/ui/window-chrome'
-import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
+import type { AssetType } from '@/lib/types'
 import { GROUPS, BASEMAPS, BASEMAP_TILE, BASEMAP_THUMB_FILTER, LAYER_ROWS, rowState, type GroupId, type LayerRowDef, type BasemapId } from '@/lib/map-layers'
 
 export type BaseStyle = BasemapId
@@ -65,11 +65,20 @@ interface WeatherControlProps {
   side?: 'left' | 'right'
   /** Rendered to the RIGHT of the collapsed pill (the map search button). */
   searchSlot?: ReactNode
-  /** The fleet chip row (Vehicles/Equipment/People/Tools/Zones) — rendered
-   *  UNDER the collapsed pill. Fleet visibility is not a map layer (Aug 22:
-   *  the panel is context-only; your own stuff lives on the map surface,
-   *  Google-chips style), so it rides here instead of inside the panel. */
-  fleetSlot?: ReactNode
+  /** Asset-type visibility — BACK inside the panel (Brian, Aug 22 2:38 AM:
+   *  "add the asset on and off functionality back into layers"), as the
+   *  first section: the everyday set, one tap from the pill. */
+  filter?: Set<AssetType>
+  onFilter?: (f: Set<AssetType>) => void
+  showZones?: boolean
+  onShowZones?: (v: boolean) => void
+  /** Demo-only Site IoT toggle. */
+  showDevices?: boolean
+  onToggleDevices?: () => void
+  /** Historical imagery (Esri Wayback): one entry per year, oldest first. */
+  waybackYears?: string[]
+  waybackIdx?: number
+  onWaybackIdx?: (i: number) => void
   /** Slide the whole cluster (pill + search + chips + open panel) off the
    *  LEFT edge — the mirror of the right rail's tuck (Brian, Aug 22:
    *  "too cluttered… swiped out of the way fully just like the right side"). */
@@ -196,7 +205,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot, hidden = false }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -335,6 +344,23 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         </div>
       )
     }
+    if (id === 'wayback' && isOn('wayback')) {
+      if (!waybackYears || waybackYears.length === 0) {
+        return <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-faint">loading the year list…</p>
+      }
+      const i = Math.min(waybackIdx, waybackYears.length - 1)
+      return (
+        <div className="px-3 pb-2 -mt-0.5 flex items-center gap-2">
+          <span className="font-mono text-[11px] font-bold text-amber tabular-nums flex-none w-10">{waybackYears[i]}</span>
+          <input
+            type="range" min={0} max={waybackYears.length - 1} value={i}
+            onChange={(e) => onWaybackIdx?.(Number(e.target.value))}
+            className="flex-1 h-1 accent-amber cursor-pointer"
+            aria-label="Imagery year"
+          />
+        </div>
+      )
+    }
     if (id === 'precip' && precipOn) {
       return (
         <div className="px-3 pb-2">
@@ -405,9 +431,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       </button>
       {searchSlot}
       </div>
-      {/* Fleet chips ride below the pill — visible state, zero taps away.
-          They vanish while the panel is open (it occupies this corner). */}
-      {fleetSlot}
       </div>
     )
   }
@@ -458,9 +481,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   return (
     // Outer wrapper exists so the X can straddle the top edge un-clipped —
     // the inner panel scrolls (overflow-y-auto) and would cut it in half.
-    <div style={{ top, zIndex: z }} className={`absolute ${sideCls} w-[272px] ${tuckCls(hidden)}`}>
-      <ProtrudingClose onClick={() => setOpen(false)} title="Minimize layers" />
-      <div className="rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-y-auto no-scrollbar max-h-[min(560px,calc(100dvh-380px))] md:max-h-[min(640px,calc(100dvh-200px))]">
+    // Full-height LEFT DRAWER (Brian, Aug 22: "open from the left similar to
+    // what Google Maps does") — backdrop tap closes; the map stays visible
+    // to the right of it.
+    <div style={{ zIndex: z }} className={`absolute inset-0 ${tuckCls(hidden)}`}>
+      <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default" />
+      <div className="absolute left-0 top-0 bottom-0 w-[min(320px,86vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in">
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
           saved looks. Sticky so the tab bar survives the scroll. */}
@@ -478,6 +504,13 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             (tab === 'views' ? 'border-teal text-ink' : 'border-transparent text-faint hover:text-muted')}
         >
           <Bookmark className="h-3.5 w-3.5" /> Views
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          aria-label="Close layers"
+          className="flex-none grid place-items-center w-9 border-b-2 border-transparent -mb-px text-faint hover:text-ink transition-colors"
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
 
@@ -588,7 +621,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
 
       {/* ── Layers tab (Aug 22: context-only — fleet visibility moved to the
              chips under the collapsed pill): search → active-now chips →
-             Map look (basemap strip + 3D + Labels) → My jobsites · Weather ·
+             Map look (basemap strip + 3D + Labels) → My sites · Weather ·
              Roads & travel · Land check · Sky & extras, all collapsible. ── */}
       {tab === 'layers' && (<>
 
@@ -663,6 +696,68 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           ))
         )
       ) : (<>
+
+      {/* ── Show on map — the everyday set, FIRST (Brian, Aug 22: asset
+             on/off lives in Layers; most-used section leads the panel). ── */}
+      {filter && onFilter && (
+        <>
+          <div className="flex items-center gap-2 px-3 pt-3 pb-1 border-t border-navy-800">
+            <Layers className="h-3 w-3 text-teal flex-none" />
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Show on map</span>
+          </div>
+          {([
+            ['vehicle', '🚛', 'Vehicles'],
+            ['equipment', '🏗️', 'Equipment'],
+            ['personnel', '👷', 'People'],
+            ['tool', '🔧', 'Tools'],
+          ] as [AssetType, string, string][]).map(([t, emoji, label]) => {
+            const on = filter.has(t)
+            return (
+              <div key={t} className="border-t border-navy-800 first:border-t-0">
+                <button
+                  onClick={() => {
+                    const next = new Set(filter)
+                    if (on) next.delete(t); else next.add(t)
+                    onFilter(next)
+                  }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+                >
+                  <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (on ? 'text-ink' : 'text-faint')}>
+                    <span>{emoji}</span>{label}
+                  </span>
+                  <Toggle on={on} />
+                </button>
+              </div>
+            )
+          })}
+          {onShowZones && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={() => onShowZones(!showZones)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (showZones ? 'text-ink' : 'text-faint')}>
+                  <Hexagon className={'h-3.5 w-3.5 ' + (showZones ? 'text-amber' : 'text-faint')} /> Zones
+                </span>
+                <Toggle on={showZones} />
+              </button>
+            </div>
+          )}
+          {onToggleDevices && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={onToggleDevices}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (showDevices ? 'text-ink' : 'text-faint')}>
+                  <Cctv className={'h-3.5 w-3.5 ' + (showDevices ? 'text-teal' : 'text-faint')} /> Site IoT
+                </span>
+                <Toggle on={showDevices} />
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── Map look: the basemap thumb strip (everyday 6 + More) and the 3D
              switches — they change how the map LOOKS, not what's on it. ── */}
@@ -791,7 +886,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       )}
       </>)}
 
-      {/* ── The registry groups, in owner order: My jobsites · Weather ·
+      {/* ── The registry groups, in owner order: My sites · Weather ·
              Roads & travel · Land check · Sky & extras. Each header is a
              collapsible button with a "N on" badge; rowState stays the only
              gating authority for the rows inside. ── */}

@@ -748,7 +748,9 @@ export function TimelinePlayback({
               }
             >
               <Icon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{label}</span>
+              {/* Label always visible (Brian, Aug 22: circled this row asking
+                  where Trails lives — it was the unlabeled second glyph). */}
+              <span className="text-[10px] sm:text-[11px]">{label}</span>
             </button>
           ))}
         </div>
