@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
-import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search } from 'lucide-react'
+import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search, Sun } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
 import type { AssetType } from '@/lib/types'
@@ -22,6 +22,9 @@ interface WeatherControlProps {
    *  read on flat ground. */
   terrainExag?: number
   onTerrainExag?: (v: number) => void
+  /** Sunlight mode (8c-f): high-contrast canvas boost for bright daylight. */
+  sunMode?: boolean
+  onSunMode?: (v: boolean) => void
   radarOn: boolean
   onRadar: (v: boolean) => void
   radarPaused?: boolean
@@ -210,7 +213,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false, hidePill = false }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, sunMode = false, onSunMode, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false, hidePill = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   // The thumb cluster's Layers FAB opens the drawer from outside.
   useEffect(() => {
@@ -859,6 +862,22 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       </div>
       {/* New zone moved to the map's right-side control rail (Aug 6) —
           drawing is a map action, this panel is what-you-see toggles. */}
+      {/* Sunlight mode — noon-in-the-truck contrast boost (8c-f) */}
+      {onSunMode && (
+        <div className="border-t border-navy-800">
+          <button onClick={() => onSunMode(!sunMode)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">
+            <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+              <Sun className={'h-4 w-4 ' + (sunMode ? 'text-amber' : 'text-faint')} /> Sunlight mode
+            </span>
+            <Toggle on={sunMode} />
+          </button>
+          {sunMode && (
+            <p className="px-3 pb-2 -mt-0.5 font-mono text-[10px] text-teal">
+              brighter, harder contrast — for reading the map in direct sun
+            </p>
+          )}
+        </div>
+      )}
       {/* 3D buildings + tilt — layerable on any basemap */}
       <div className="border-t border-navy-800">
         <button onClick={() => onThreeD(!threeD)} className="w-full flex items-center justify-between px-3 py-2 hover:bg-navy-900 transition-colors">

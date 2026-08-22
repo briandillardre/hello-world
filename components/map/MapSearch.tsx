@@ -24,6 +24,14 @@ export interface SearchItem {
   sub?: string
 }
 
+/** A geocoded address hit (Photon — same free geocoder the server uses). */
+export interface PlaceHit {
+  name: string
+  sub: string
+  lat: number
+  lng: number
+}
+
 // Minimal typings for the vendor-prefixed Web Speech API.
 type SpeechRecognitionLike = {
   lang: string
@@ -42,9 +50,14 @@ function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
 }
 
-export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 'top-left', overlay = false }: {
+export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
+  /** Address hit chosen — fly the camera there (Brian, Aug 22: search finds
+   *  assets, zones AND addresses). Omitting it hides address results. */
+  onPickPlace?: (p: PlaceHit) => void
+  /** Bias geocoding toward the fleet so "Greenville" is the SC one. */
+  bias?: { lat: number; lng: number } | null
   top?: number
   /** Render as a flex-row member (beside the layers pill) instead of an
    *  absolutely positioned element; the open box overlays from that spot. */
@@ -81,6 +94,35 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
     return [...starts, ...contains].slice(0, 8)
   }, [q, items])
   useEffect(() => { setHi(0) }, [q])
+
+  // Address results (Photon, debounced) — shown BELOW fleet matches; the
+  // fleet always wins the top of the list.
+  const [places, setPlaces] = useState<PlaceHit[]>([])
+  useEffect(() => {
+    if (!onPickPlace) return
+    const s = q.trim()
+    if (s.length < 4) { setPlaces([]); return }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      const biasQs = bias ? `&lat=${bias.lat.toFixed(3)}&lon=${bias.lng.toFixed(3)}` : ''
+      fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(s)}&limit=4&lang=en${biasQs}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { features?: { geometry?: { coordinates?: [number, number] }; properties?: Record<string, string> }[] } | null) => {
+          if (!j?.features) return
+          setPlaces(j.features.flatMap((f) => {
+            const [lng, lat] = f.geometry?.coordinates ?? []
+            if (typeof lat !== 'number' || typeof lng !== 'number') return []
+            const p = f.properties ?? {}
+            const name = [p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.name ?? p.street), p.city ?? p.county].filter(Boolean).join(', ')
+            if (!name) return []
+            return [{ name, sub: [p.state, p.postcode].filter(Boolean).join(' '), lat, lng }]
+          }).slice(0, 4))
+        })
+        .catch(() => { /* geocoder down — fleet search still works */ })
+    }, 350)
+    return () => { clearTimeout(t); ctrl.abort() }
+  }, [q, bias, onPickPlace])
+  useEffect(() => { if (!open) setPlaces([]) }, [open])
 
   const pick = (it: SearchItem) => {
     onPick(it)
@@ -149,7 +191,7 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKey}
-          placeholder="Find asset or zone…"
+          placeholder={onPickPlace ? 'Find asset, zone, or address…' : 'Find asset or zone…'}
           className="flex-1 min-w-0 bg-transparent text-[13px] text-ink placeholder:text-faint outline-none"
         />
         {getSpeechCtor() && (
@@ -174,7 +216,7 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
           Listening… say an asset or zone name
         </p>
       )}
-      {matches.length > 0 && (
+      {(matches.length > 0 || places.length > 0) && (
         <ul className="mt-1.5 rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           {matches.map((it, i) => (
             <li key={`${it.kind}-${it.id}`}>
@@ -193,6 +235,21 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
                   {it.sub && <span className="block font-mono text-[10px] text-faint truncate">{it.sub}</span>}
                 </span>
                 <span className="font-mono text-[9px] uppercase tracking-wide text-faint flex-none">{it.kind}</span>
+              </button>
+            </li>
+          ))}
+          {onPickPlace && places.map((p) => (
+            <li key={`place-${p.lat}-${p.lng}`}>
+              <button
+                onMouseDown={(e) => { e.preventDefault(); onPickPlace(p); setQ(''); setOpen(false); recRef.current?.stop() }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-navy-800"
+              >
+                <span className="text-base flex-none">📍</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] text-ink truncate">{p.name}</span>
+                  {p.sub && <span className="block font-mono text-[10px] text-faint truncate">{p.sub}</span>}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wide text-faint flex-none">address</span>
               </button>
             </li>
           ))}

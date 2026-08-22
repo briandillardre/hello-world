@@ -2,6 +2,7 @@
 
 import { Logo } from '@/components/brand/Logo'
 import { TopBarWeather } from './TopBarWeather'
+import { TopBarSearch } from './TopBarSearch'
 
 /** Slim banner above the Live Map: brand + company on the left, current
  *  conditions on the right (weather moved up out of the layers menu — owner
@@ -26,7 +27,11 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
           no page title (owner ask, Jul 21), but not an empty strip either. */}
       <span className="md:hidden flex items-center"><Logo size={20} href="/map" /></span>
       <span className="hidden md:inline font-mono text-[11px] uppercase tracking-[0.12em] leading-none text-faint truncate">{companyName}</span>
-      <span className="ml-auto flex items-center gap-2.5 min-w-0">
+      {/* Desktop: a real search field center-bar (8c-a). Phones get the icon
+          in the right cluster below. */}
+      <span className="hidden md:flex flex-1 justify-center px-4"><TopBarSearch /></span>
+      <span className="ml-auto md:ml-0 flex items-center gap-2.5 min-w-0">
+        <span className="md:hidden flex items-center flex-none"><TopBarSearch /></span>
         <span className="flex items-center flex-none">
           <TopBarWeather place={weatherPlace} coords={weatherCoords} canSetDefault={canSetWeatherDefault} />
         </span>

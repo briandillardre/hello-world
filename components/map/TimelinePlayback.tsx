@@ -205,6 +205,8 @@ export function TimelinePlayback({
   const dragRef = useRef<{ y: number; done: boolean } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
+  // One Camera button folds 360/Fly/Follow (8c-c) — this is its popover.
+  const [showCam, setShowCam] = useState(false)
   const [showChart, setShowChart] = useState(false)
   const [shared, setShared] = useState(false)
   const [chartMode, setChartMode] = useState<'assets' | 'cost'>('assets')
@@ -245,11 +247,11 @@ export function TimelinePlayback({
     setTimeout(() => setShared(false), 1800)
   }
 
-  // Close the follow menu on any tap/click outside the playback bar.
+  // Close the follow + camera menus on any tap/click outside the playback bar.
   useEffect(() => {
-    if (!showFollow) return
+    if (!showFollow && !showCam) return
     const onDoc = (e: MouseEvent | TouchEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setShowFollow(false)
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) { setShowFollow(false); setShowCam(false) }
     }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('touchstart', onDoc)
@@ -257,7 +259,7 @@ export function TimelinePlayback({
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('touchstart', onDoc)
     }
-  }, [showFollow])
+  }, [showFollow, showCam])
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
     custom ? customTickLabel(customFrom, customTo, f, tz)
     : realWindow ? windowTickLabel(realWindow, f, tz)
@@ -701,53 +703,8 @@ export function TimelinePlayback({
             {shared ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
           </button>
         )}
-        {/* 360 — slow continuous spin of the current view (map + command).
-            Hidden while following: the follow camera owns bearing. */}
-        {onSpin && !followed && (
-          <button
-            onClick={onSpin}
-            title={spinning ? 'Stop the spin' : 'Slow 360° spin — loops until you stop it'}
-            className={
-              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
-              (spinning ? 'bg-teal/20 text-teal border-teal/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
-            }
-          >
-            <RotateCw className={'h-3.5 w-3.5' + (spinning ? ' animate-spin [animation-duration:3s]' : '')} />
-            <span className="hidden sm:inline">360</span>
-          </button>
-        )}
-        {/* Earth spin moved to the layers panel → Advanced (owner ask, Jul 21) */}
-        {/* Flyover — the slow-plane pass over every asset; loops until stopped */}
-        {onFlyover && !followed && (
-          <span className="flex-none flex items-center gap-0.5">
-            <button
-              onClick={onFlyover}
-              title={flying ? 'End the flyover' : 'Flyover — a slow plane over every asset; drag or tap again to stop'}
-              className={
-                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
-                (flying ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
-              }
-            >
-              <Plane className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Fly</span>
-            </button>
-            {flying && onFlySpeed && (
-              <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
-                {([[0.5, '½×'], [1, '1×'], [2, '2×']] as const).map(([v, label]) => (
-                  <button
-                    key={v}
-                    onClick={() => onFlySpeed(v)}
-                    title={v === 0.5 ? 'Lazy circle — slow glide' : v === 1 ? 'Cruise' : 'Quick pass'}
-                    className={
-                      'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
-                      (flySpeed === v ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
-                    }
-                  >{label}</button>
-                ))}
-              </span>
-            )}
-          </span>
-        )}
+        {/* Earth spin moved to the layers panel → Advanced (owner ask, Jul 21).
+            360 + Fly folded into the single Camera button below (8c-c). */}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
           {MODES.map(({ key, label, icon: Icon }) => (
             <button
@@ -793,25 +750,80 @@ export function TimelinePlayback({
           </div>
         )}
 
-        {/* Cinematic camera-follow (menu itself renders above the bar — see top) */}
-        {(followAssets.length > 0 || followZones.length > 0) && (
-          <button
-            onClick={() => setShowFollow((s) => !s)}
-            title={followed ? `Following ${followed.name} — camera settings` : live ? 'Live follow — camera tracks the asset as fixes arrive' : 'Cinematic follow'}
-            className={
-              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
-              (followed
-                ? 'bg-amber/20 text-amber border-amber/40'
-                : showFollow
-                  ? 'bg-navy-800 text-ink border-navy-700'
-                  : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
-            }
-          >
-            {live ? <Navigation className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline max-w-[90px] truncate">
-              {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following' : 'Follow'}
-            </span>
-          </button>
+        {/* ONE Camera button (Brian, Aug 22, decision 8c-c): 360, Fly, and
+            Follow fold behind it so the options row slims. The button wears
+            the active mode's color + label; the follow MENU still renders
+            above the bar (see top). */}
+        {(onSpin || onFlyover || followAssets.length > 0 || followZones.length > 0) && (
+          <span className="relative flex-none">
+            <button
+              onClick={() => { setShowCam((s) => !s); setShowFollow(false) }}
+              title={followed ? `Following ${followed.name}` : flying ? 'Flyover running' : spinning ? '360 spin running' : 'Camera — 360, flyover, follow'}
+              className={
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+                (followed || flying
+                  ? 'bg-amber/20 text-amber border-amber/40'
+                  : spinning
+                    ? 'bg-teal/20 text-teal border-teal/40'
+                    : showCam
+                      ? 'bg-navy-800 text-ink border-navy-700'
+                      : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+              }
+            >
+              <Video className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline max-w-[90px] truncate">
+                {followed ? CAMERA_MODES.find((m) => m.key === followMode)?.label ?? 'Following'
+                  : flying ? 'Fly' : spinning ? '360' : 'Camera'}
+              </span>
+            </button>
+            {showCam && (
+              <span className="absolute bottom-full mb-2 right-0 z-30 w-[220px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-1.5 flex flex-col gap-0.5">
+                {onSpin && !followed && (
+                  <button
+                    onClick={() => { onSpin(); setShowCam(false) }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+                  >
+                    <RotateCw className={'h-3.5 w-3.5 ' + (spinning ? 'text-teal' : 'text-faint')} />
+                    {spinning ? 'Stop the 360 spin' : '360° spin'}
+                  </button>
+                )}
+                {onFlyover && !followed && (
+                  <span className="flex items-center gap-1">
+                    <button
+                      onClick={() => { onFlyover(); setShowCam(false) }}
+                      className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+                    >
+                      <Plane className={'h-3.5 w-3.5 ' + (flying ? 'text-amber' : 'text-faint')} />
+                      {flying ? 'End the flyover' : 'Flyover every asset'}
+                    </button>
+                    {flying && onFlySpeed && (
+                      <span className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 flex-none">
+                        {([[0.5, '½×'], [1, '1×'], [2, '2×']] as const).map(([v, label]) => (
+                          <button
+                            key={v}
+                            onClick={() => onFlySpeed(v)}
+                            className={
+                              'px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold transition-colors ' +
+                              (flySpeed === v ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
+                            }
+                          >{label}</button>
+                        ))}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {(followAssets.length > 0 || followZones.length > 0) && (
+                  <button
+                    onClick={() => { setShowCam(false); setShowFollow(true) }}
+                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold text-ink hover:bg-navy-800 text-left"
+                  >
+                    {live ? <Navigation className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} /> : <Video className={'h-3.5 w-3.5 ' + (followed ? 'text-amber' : 'text-faint')} />}
+                    {followed ? `Following ${followed.name}…` : 'Follow an asset…'}
+                  </button>
+                )}
+              </span>
+            )}
+          </span>
         )}
       </div>
       )}

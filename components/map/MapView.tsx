@@ -348,6 +348,15 @@ interface MapViewProps {
 
 export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
+  // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
+  // reading the map at noon in the truck — pure CSS filter on the canvas
+  // (globals.css .ht-sun), so it costs nothing and works on every basemap.
+  const [sunMode, setSunMode] = useState(() => {
+    try { return localStorage.getItem('ht_sun') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('ht_sun', sunMode ? '1' : '0') } catch { /* private mode */ }
+  }, [sunMode])
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
   // too early re-apply instead of silently dropping the change.
@@ -1242,27 +1251,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Weather radar toggle, right under the compass — replaced the two 90°
     // rotate buttons (owner ask, Aug 1; drag-to-rotate still works). Same
     // switch as the Layers panel row; the effect below paints its on-state.
-    // Search rides IN the rail (Brian, Aug 22: "the search button should
-    // collapse in the right tray and expand with the rest") — it tucks and
-    // returns with railHidden like every other rail button. The box itself
-    // opens as a top-center overlay (MapSearch overlay mode).
-    const searchControl: maplibregl.IControl = {
-      onAdd() {
-        const div = document.createElement('div')
-        div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-        const b = document.createElement('button')
-        b.type = 'button'
-        b.title = 'Find asset or zone'
-        b.setAttribute('aria-label', 'Find asset or zone')
-        b.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>'
-        b.onclick = () => { try { window.dispatchEvent(new CustomEvent('ht:open-search')) } catch { /* SSR */ } }
-        div.appendChild(b)
-        return div
-      },
-      onRemove() {},
-    }
-    map.current.addControl(searchControl, ctrlCorner)
-
+    // Search moved from the rail into the TOP BAR as a real field (Brian,
+    // Aug 22, decision 8c-a) — MapTopBar's TopBarSearch dispatches
+    // ht:open-search; the box still opens as the top-center overlay.
     const radarControl: maplibregl.IControl = {
       onAdd() {
         const div = document.createElement('div')
@@ -5700,7 +5691,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
   return (
     <div className={'relative w-full h-full bg-navy-950' + (kiosk ? ' kiosk-map' : ' map-live')}>
-      <div ref={mapContainer} className="w-full h-full" />
+      <div ref={mapContainer} className={'w-full h-full' + (sunMode ? ' ht-sun' : '')} />
 
       {/* Radar frame-time chip — opt-in slide-out beside the radar button
           (swipe the button left to open, right to tuck away; tap chip =
@@ -5868,7 +5859,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       {/* Search box: top-center overlay, opened from the rail's search
           button (AskAI lives in the bottom nav / the widget's desktop
           floater; Layers opens from the left tray handle). */}
-      {!kiosk && <MapSearch overlay items={searchItems} onPick={pickSearchItem} />}
+      {!kiosk && (
+        <MapSearch
+          overlay
+          items={searchItems}
+          onPick={pickSearchItem}
+          bias={assets.find((a) => a.location)?.location ?? null}
+          onPickPlace={(p) => map.current?.flyTo({ center: [p.lng, p.lat], zoom: 16, duration: 1400 })}
+        />
+      )}
 
       {/* Measure toggle lives in the MapLibre control cluster (added at map
           init) — same size + column as zoom/locate/fit, below Zoom-to-all. */}
@@ -6000,6 +5999,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         side="left"
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 30}
+        sunMode={sunMode}
+        onSunMode={setSunMode}
         hidden={false}
         hidePill
         // Fleet on/off is BACK inside Layers, first section (Brian, Aug 22
