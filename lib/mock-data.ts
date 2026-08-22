@@ -25,7 +25,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-1', asset_id: 'asset-1', company_id: 'mock-company-1',
-      lat: 36.1627, lng: -86.7838, accuracy: 5, battery: 88, speed: 0, heading: 0,
+      lat: 36.1629, lng: -86.7833, accuracy: 5, battery: 88, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 12 * 60000).toISOString(),
       raw: {
         source: 'flespi',
@@ -57,7 +57,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-2', asset_id: 'asset-2', company_id: 'mock-company-1',
-      lat: 36.1640, lng: -86.7830, accuracy: 8, battery: 42, speed: 0, heading: 0,
+      lat: 36.1636, lng: -86.7828, accuracy: 8, battery: 42, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
       raw: {
         source: 'flespi',
@@ -86,7 +86,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-3', asset_id: 'asset-3', company_id: 'mock-company-1',
-      lat: 36.1610, lng: -86.7828, accuracy: 10, battery: 71, speed: 0, heading: 0,
+      lat: 36.1633, lng: -86.7825, accuracy: 10, battery: 71, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 3 * 60000).toISOString(), raw: null,
     },
   },
@@ -97,7 +97,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-4', asset_id: 'asset-4', company_id: 'mock-company-1',
-      lat: 36.1626, lng: -86.7837, accuracy: 15, battery: 31, speed: 0, heading: 0,
+      lat: 36.1629, lng: -86.7834, accuracy: 15, battery: 31, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 47 * 60000).toISOString(), raw: null,
     },
   },
@@ -108,7 +108,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-5', asset_id: 'asset-5', company_id: 'mock-company-1',
-      lat: 36.1612, lng: -86.7900, accuracy: 6, battery: null, speed: 0, heading: 0,
+      lat: 36.1610, lng: -86.7920, accuracy: 6, battery: null, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), raw: null,
     },
   },
@@ -119,7 +119,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-6', asset_id: 'asset-6', company_id: 'mock-company-1',
-      lat: 36.1650, lng: -86.7860, accuracy: 4, battery: 95, speed: 45, heading: 270,
+      lat: 36.1615, lng: -86.7885, accuracy: 4, battery: 95, speed: 36, heading: 218,
       timestamp: new Date(Date.now() - 2 * 60000).toISOString(), raw: null,
     },
   },
@@ -130,7 +130,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-7', asset_id: 'asset-7', company_id: 'mock-company-1',
-      lat: 36.1600, lng: -86.7890, accuracy: 12, battery: 56, speed: 0, heading: 0,
+      lat: 36.1608, lng: -86.7898, accuracy: 12, battery: 56, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 8 * 60000).toISOString(), raw: null,
     },
   },
@@ -141,7 +141,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-8', asset_id: 'asset-8', company_id: 'mock-company-1',
-      lat: 36.1598, lng: -86.7884, accuracy: 20, battery: 62, speed: 0, heading: 0,
+      lat: 36.1595, lng: -86.7889, accuracy: 20, battery: 62, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 90 * 60000).toISOString(), raw: null,
     },
   },
@@ -152,7 +152,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-9', asset_id: 'asset-9', company_id: 'mock-company-1',
-      lat: 36.1598, lng: -86.7885, accuracy: 7, battery: 78, speed: 0, heading: 0,
+      lat: 36.1594, lng: -86.7890, accuracy: 7, battery: 78, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 30 * 60000).toISOString(), raw: null,
     },
   },
@@ -163,12 +163,15 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-10', asset_id: 'asset-10', company_id: 'mock-company-1',
-      lat: 36.1663, lng: -86.7890, accuracy: 5, battery: 83, speed: 0, heading: 0,
+      lat: 36.1663, lng: -86.7895, accuracy: 5, battery: 83, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 18 * 60000).toISOString(), raw: null,
     },
   },
 ]
 
+// Demo zones are IRREGULAR polygons on purpose (Brian, Aug 23: "do better
+// zones" — the old axis-aligned rectangles read as fake). Real customers
+// trace geofences around parcels and pads freehand; these shapes match that.
 export const MOCK_GEOFENCES: Geofence[] = [
   {
     id: 'fence-1', company_id: 'mock-company-1', name: 'Riverfront Tower',
@@ -177,25 +180,26 @@ export const MOCK_GEOFENCES: Geofence[] = [
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7862, 36.1602], [-86.7813, 36.1602],
-        [-86.7813, 36.1652], [-86.7862, 36.1652],
-        [-86.7862, 36.1602],
+        [-86.7862, 36.1607], [-86.7838, 36.1601], [-86.7815, 36.1606],
+        [-86.7808, 36.1622], [-86.7812, 36.1641], [-86.7827, 36.1651],
+        [-86.7849, 36.1653], [-86.7861, 36.1643], [-86.7866, 36.1625],
+        [-86.7862, 36.1607],
       ]],
     },
   },
   {
-    // Moved WEST of the Cumberland (old ring straddled the river, so demo
-    // trails "drove across water" — Brian, Aug 5). Everything now stages on
-    // the downtown grid side.
+    // Staged WEST of the Cumberland (old ring straddled the river, so demo
+    // trails "drove across water" — Brian, Aug 5).
     id: 'fence-2', company_id: 'mock-company-1', name: 'Maple St Grading',
     color: '#2dd4bf',
     created_at: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7930, 36.1585], [-86.7875, 36.1585],
-        [-86.7875, 36.1640], [-86.7930, 36.1640],
-        [-86.7930, 36.1585],
+        [-86.7934, 36.1587], [-86.7906, 36.1581], [-86.7879, 36.1586],
+        [-86.7872, 36.1600], [-86.7877, 36.1621], [-86.7892, 36.1637],
+        [-86.7912, 36.1640], [-86.7928, 36.1630], [-86.7936, 36.1610],
+        [-86.7934, 36.1587],
       ]],
     },
   },
@@ -206,9 +210,8 @@ export const MOCK_GEOFENCES: Geofence[] = [
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7905, 36.1655], [-86.7875, 36.1655],
-        [-86.7875, 36.1675], [-86.7905, 36.1675],
-        [-86.7905, 36.1655],
+        [-86.7908, 36.1652], [-86.7884, 36.1649], [-86.7878, 36.1668],
+        [-86.7902, 36.1672], [-86.7908, 36.1652],
       ]],
     },
   },
@@ -221,54 +224,104 @@ export const MOCK_GEOFENCES: Geofence[] = [
     geometry: {
       type: 'Polygon',
       coordinates: [[
-        [-86.7945, 36.1572], [-86.7790, 36.1572],
-        [-86.7790, 36.1688], [-86.7945, 36.1688],
-        [-86.7945, 36.1572],
+        [-86.7978, 36.1552], [-86.7900, 36.1545], [-86.7800, 36.1558],
+        [-86.7778, 36.1590], [-86.7782, 36.1650], [-86.7815, 36.1690],
+        [-86.7910, 36.1695], [-86.7965, 36.1665], [-86.7982, 36.1600],
+        [-86.7978, 36.1552],
+      ]],
+    },
+  },
+  {
+    // Vendor zone: where the dump trucks actually GO — deterministic stop
+    // names + the supply-run story on the demo stage.
+    id: 'fence-5', company_id: 'mock-company-1', name: 'Palmetto Aggregates — Pit 4',
+    color: '#a78bfa', kind: 'vendor',
+    created_at: new Date(Date.now() - 65 * 24 * 60 * 60 * 1000).toISOString(),
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[
+        [-86.7964, 36.1559], [-86.7938, 36.1556], [-86.7930, 36.1572],
+        [-86.7944, 36.1584], [-86.7962, 36.1580], [-86.7964, 36.1559],
       ]],
     },
   },
 ]
 
 // Hand-authored waypoint loops the demo vehicles/equipment FOLLOW instead of
-// random-walking (which sent trucks across the river off-bridge). Paths are
-// closed loops; index 0 must equal the asset's live position. Trucks run
-// yard↔site circuits; machines serpentine INSIDE their site. Edit these to
-// change the demo's movement story.
-export const MOCK_PATHS: Record<string, [number, number][]> = {
-  // Chevy 1500 — Riverfront Tower ↔ Equipment Yard circuit
+// random-walking. Paths are closed loops; index 0 must equal the asset's
+// live position. Each waypoint may carry a third value: the mph AFTER that
+// point, which feeds the HUD + speed-colored trails. generateTracks rounds
+// the corners (Chaikin) and adds GPS jitter, so these coarse routes render
+// as recorded-looking traces, not CAD linework (Brian, Aug 23).
+//
+// The trucks share ONE road spine (the "artery" points below) — overlapping
+// trails on a common corridor is what makes a fleet map read as roads.
+export type MockPathPoint = [number, number] | [number, number, number]
+
+// Diagonal artery, NE corner down to the quarry gate in the SW — every
+// truck route rides some stretch of these exact points.
+const A2: MockPathPoint = [-86.7845, 36.1640, 34]
+const A3: MockPathPoint = [-86.7862, 36.1629, 34]
+const A4: MockPathPoint = [-86.7885, 36.1615, 36]
+const A5: MockPathPoint = [-86.7898, 36.1606, 30]
+const A6: MockPathPoint = [-86.7912, 36.1594, 30]
+const A7: MockPathPoint = [-86.7930, 36.1585, 22]
+const Q_GATE: MockPathPoint = [-86.7941, 36.1578, 8]
+const Q_PAD: MockPathPoint = [-86.7951, 36.1569, 4]
+// Yard spur off the artery
+const Y1: MockPathPoint = [-86.7856, 36.1644, 24]
+const Y2: MockPathPoint = [-86.7876, 36.1652, 14]
+const Y_GATE: MockPathPoint = [-86.7888, 36.1657, 8]
+const Y_PAD: MockPathPoint = [-86.7895, 36.1663, 4]
+// Site gates/pads
+const RF_GATE: MockPathPoint = [-86.7841, 36.1636, 10]
+const RF_PAD: MockPathPoint = [-86.7833, 36.1629, 4]
+const MG_GATE: MockPathPoint = [-86.7903, 36.1613, 10]
+const MG_PAD: MockPathPoint = [-86.7908, 36.1621, 4]
+const MG_LOAD: MockPathPoint = [-86.7904, 36.1596, 4]
+
+export const MOCK_PATHS: Record<string, MockPathPoint[]> = {
+  // Chevy 1500 (owner) — supervisor rounds: Riverfront → Maple St → yard →
+  // home. Out-and-back on the same artery, like a real workday.
   'asset-1': [
-    [-86.7838, 36.1627], [-86.7820, 36.1627], [-86.7820, 36.1660],
-    [-86.7890, 36.1660], [-86.7890, 36.1627], [-86.7838, 36.1627],
+    RF_PAD, RF_GATE, A2, A3, A4, A5, MG_GATE, MG_PAD, MG_GATE, A5, A4, A3,
+    A2, Y1, Y2, Y_GATE, Y_PAD, Y_GATE, Y2, Y1, A2, RF_GATE, RF_PAD,
   ],
-  // Link-Belt excavator — working passes inside Riverfront Tower
+  // Link-Belt excavator — dig passes on the Riverfront pad (skewed lanes),
+  // with a spoil-pile run at the end of each cycle.
   'asset-2': [
-    [-86.7830, 36.1640], [-86.7855, 36.1640], [-86.7855, 36.1632],
-    [-86.7820, 36.1632], [-86.7820, 36.1622], [-86.7855, 36.1622],
-    [-86.7855, 36.1612], [-86.7820, 36.1612], [-86.7820, 36.1645],
-    [-86.7830, 36.1645], [-86.7830, 36.1640],
+    [-86.7828, 36.1636, 3], [-86.7838, 36.1641, 3], [-86.7841, 36.1638, 2],
+    [-86.7831, 36.1633, 3], [-86.7833, 36.1630, 3], [-86.7843, 36.1635, 2],
+    [-86.7846, 36.1632, 3], [-86.7836, 36.1627, 3], [-86.7838, 36.1624, 3],
+    [-86.7848, 36.1629, 2], [-86.7824, 36.1620, 4], [-86.7820, 36.1628, 4],
+    [-86.7828, 36.1636, 3],
   ],
-  // Sakai roller — compaction passes inside Maple St Grading
+  // Sakai roller — compaction lanes across the Maple St pad, slightly
+  // skewed like a real lift, stepping over a lane at each end.
   'asset-5': [
-    [-86.7900, 36.1612], [-86.7925, 36.1612], [-86.7925, 36.1603],
-    [-86.7880, 36.1603], [-86.7880, 36.1594], [-86.7925, 36.1594],
-    [-86.7925, 36.1588], [-86.7900, 36.1588], [-86.7900, 36.1612],
+    [-86.7920, 36.1610, 4], [-86.7890, 36.1601, 4], [-86.7888, 36.1604, 3],
+    [-86.7918, 36.1613, 4], [-86.7916, 36.1616, 3], [-86.7886, 36.1607, 4],
+    [-86.7884, 36.1610, 3], [-86.7914, 36.1619, 4], [-86.7912, 36.1622, 3],
+    [-86.7882, 36.1613, 4], [-86.7920, 36.1610, 4],
   ],
-  // RAM 3500 — the busy dump loop: Maple St ↔ Riverfront via the yard block
+  // RAM 3500 Dump — material runs: Maple St load-out ↔ Palmetto Aggregates.
   'asset-6': [
-    [-86.7860, 36.1650], [-86.7890, 36.1650], [-86.7890, 36.1600],
-    [-86.7838, 36.1600], [-86.7838, 36.1627], [-86.7820, 36.1627],
-    [-86.7820, 36.1660], [-86.7890, 36.1660], [-86.7890, 36.1650],
-    [-86.7860, 36.1650],
+    A4, A5, A6, A7, Q_GATE, Q_PAD, Q_GATE, A7, A6, [-86.7908, 36.1599, 8],
+    MG_LOAD, [-86.7908, 36.1599, 8], A6, A7, Q_GATE, Q_PAD, Q_GATE, A7, A6,
+    A5, A4,
   ],
-  // Takeuchi mini-ex — trench passes inside Maple St Grading
+  // Takeuchi mini-ex — trench line on the Maple St south end: short
+  // back-and-forth passes stepping sideways.
   'asset-9': [
-    [-86.7885, 36.1598], [-86.7905, 36.1598], [-86.7905, 36.1591],
-    [-86.7882, 36.1591], [-86.7882, 36.1598], [-86.7885, 36.1598],
+    [-86.7890, 36.1594, 2], [-86.7881, 36.1600, 2], [-86.7883, 36.1602, 2],
+    [-86.7892, 36.1596, 2], [-86.7894, 36.1598, 2], [-86.7885, 36.1604, 2],
+    [-86.7887, 36.1606, 2], [-86.7896, 36.1600, 2], [-86.7890, 36.1594, 2],
   ],
-  // Peterbilt 567 — yard ↔ Maple St hauls
+  // Peterbilt 567 — yard ↔ quarry hauls down the full artery.
   'asset-10': [
-    [-86.7890, 36.1663], [-86.7890, 36.1600], [-86.7910, 36.1600],
-    [-86.7910, 36.1640], [-86.7890, 36.1640], [-86.7890, 36.1663],
+    Y_PAD, Y_GATE, Y2, Y1, A2, A3, A4, A5, A6, A7, Q_GATE,
+    [-86.7947, 36.1565, 4], Q_GATE, A7, A6, A5, A4, A3, A2, Y1, Y2,
+    Y_GATE, Y_PAD,
   ],
 }
 
@@ -351,11 +404,11 @@ export const MOCK_ALERTS: AlertEvent[] = [
   },
 ]
 
-export const DEMO_MAP_CENTER: [number, number] = [-86.7867, 36.1628]
+export const DEMO_MAP_CENTER: [number, number] = [-86.7876, 36.1620]
 /** Demo stage bounds (just inside the Property Boundary) — random-walk demo
  *  movement must stay inside; nothing wanders across town or the river. */
-export const DEMO_BOUNDS = { west: -86.7940, east: -86.7795, south: 36.1576, north: 36.1684 }
-export const DEMO_MAP_ZOOM = 14.5
+export const DEMO_BOUNDS = { west: -86.7970, east: -86.7790, south: 36.1552, north: 36.1690 }
+export const DEMO_MAP_ZOOM = 14.2
 
 // ── v2: Bluetooth tool associations ──────────────────────────────────────────
 // The two tool assets (asset-4 Drill Kit, asset-8 Level & Survey Kit) are

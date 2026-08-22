@@ -24,12 +24,21 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 ## Demo Mode
 App works fully with zero env vars — 10 mock assets mirroring the DCG fleet
 (Chevy 1500, RAM 3500 Dump, Peterbilt 567, Link-Belt 130X2, Sakai SW990,
-Takeuchi TB235…) staged WEST of the river on the Nashville grid. Vehicles/
-equipment follow hand-authored waypoint loops (`MOCK_PATHS` in lib/mock-data.ts
-— edit there to change the demo story; no more random walks across water).
-Black 'Property Boundary' zone rings the stage. /live shows the real product
-sidebar (locked rows → /register). `isMock` flag checks
-`NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
+Takeuchi TB235…) staged WEST of the river on the Nashville grid. REALISM
+REBUILD (Aug 23 — Brian: "I really hate this demo screen"): trucks share ONE
+road artery (yard → sites → 'Palmetto Aggregates — Pit 4' vendor/quarry zone)
+so overlapping trails read as roads; `MOCK_PATHS` waypoints carry optional
+per-segment mph (feeds HUD + speed-colored trails); generateTracks Chaikin-
+rounds corners + adds GPS jitter; zones are irregular freehand-looking
+polygons, never axis-aligned rectangles; machines run skewed grading/dig
+passes inside their site. Edit `MOCK_PATHS`/`MOCK_GEOFENCES` in
+lib/mock-data.ts to change the story — index 0 of each path must equal the
+asset's live position. Black 'Property Boundary' zone rings the stage. /live
+shows the real product sidebar (locked rows → /register). `isMock` flag
+checks `NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
+Live public feeds (ADS-B planes, transit GTFS) were considered and declined
+for the front door: wrong story for a construction fleet + a third-party
+outage would break the demo; revisit only as a labeled extras layer.
 
 ## Pricing sync rule (Brian, Aug 5; /demo added Aug 17)
 Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:

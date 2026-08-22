@@ -61,6 +61,12 @@ export function MeasureTool({
   const [clickElev, setClickElev] = useState<number | null>(null)
   const [lenUnit, setLenUnit] = useState<LengthUnit>('ft')
   const [areaUnit, setAreaUnit] = useState<AreaUnit>('sf')
+  // Auto-promote ft/yd → miles once the shape is highway-scale ("4,077,654.1
+  // ft" — Brian, Aug 23). A hand-picked unit always wins; the auto-step only
+  // runs while the user hasn't touched the unit buttons, and steps back down
+  // when the shape shrinks again.
+  const unitTouched = useRef(false)
+  const autoMi = useRef(false)
   const [material, setMaterial] = useState('asphalt')
   const [depthIn, setDepthIn] = useState('2')
   const [extrude, setExtrude] = useState(false)
@@ -88,6 +94,15 @@ export function MeasureTool({
   const depth = Number(depthIn) || 0
   const to = mode === 'area' && areaSqFt > 0 && depth > 0 ? takeoff(areaSqFt, depth, material) : null
   const sp = mode === 'point' && pts[0] ? toStatePlaneSC(pts[0][0], pts[0][1]) : hover ? toStatePlaneSC(hover[0], hover[1]) : null
+
+  // The auto-unit step (see unitTouched/autoMi above): ≥2 miles flips the
+  // readout + map labels to miles; shrinking back under 1 mile restores ft.
+  useEffect(() => {
+    if (unitTouched.current) return
+    const ft = mode === 'area' ? perimFt : lengthFt
+    if (lenUnit !== 'mi' && ft >= 10_560) { autoMi.current = true; setLenUnit('mi') }
+    else if (lenUnit === 'mi' && autoMi.current && ft > 0 && ft < 5_280) { autoMi.current = false; setLenUnit('ft') }
+  }, [lengthFt, perimFt, lenUnit, mode])
 
   // ── Map interaction ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -408,7 +423,7 @@ export function MeasureTool({
         {/* readout line — tap the unit chip to cycle */}
         <div className="flex items-center gap-2 px-2.5 py-1 bg-navy-950/85 backdrop-blur border-b border-navy-800">
           <span className="font-mono text-[11.5px] text-amber tabular-nums truncate flex-1">{stripReadout}</span>
-          {mode === 'line' && <UnitBtns opts={['ft', 'yd', 'mi']} labels={LENGTH_LABEL} val={lenUnit} set={(u) => setLenUnit(u as LengthUnit)} />}
+          {mode === 'line' && <UnitBtns opts={['ft', 'yd', 'mi']} labels={LENGTH_LABEL} val={lenUnit} set={(u) => { unitTouched.current = true; autoMi.current = false; setLenUnit(u as LengthUnit) }} />}
           {mode === 'area' && <UnitBtns opts={['sf', 'sy', 'acre']} labels={AREA_LABEL} val={areaUnit} set={(u) => setAreaUnit(u as AreaUnit)} />}
         </div>
       </div>
@@ -495,7 +510,7 @@ export function MeasureTool({
           <div className="rounded-lg bg-navy-900 p-2.5">
             <div className="flex items-baseline justify-between">
               <span className="font-display font-black text-amber text-xl tabular-nums">{lengthFt > 0 ? fmt(lengthIn(lengthFt, lenUnit), lenUnit === 'mi' ? 3 : 1) : '0.0'}</span>
-              <UnitBtns opts={['ft', 'yd', 'mi']} labels={LENGTH_LABEL} val={lenUnit} set={(u) => setLenUnit(u as LengthUnit)} />
+              <UnitBtns opts={['ft', 'yd', 'mi']} labels={LENGTH_LABEL} val={lenUnit} set={(u) => { unitTouched.current = true; autoMi.current = false; setLenUnit(u as LengthUnit) }} />
             </div>
             <p className="text-[10px] text-faint mt-0.5">{pts.length} point{pts.length === 1 ? '' : 's'} · click to add, double-click or Finish to end</p>
           </div>

@@ -605,6 +605,11 @@ export function TimelinePlayback({
         // and the tail-end click is swallowed so the button under the finger
         // doesn't also fire; horizontal drags still scroll the pill strips.
         onPointerDown={(e) => {
+          // Reset the eaten-click flag on every NEW gesture — on touch a
+          // completed swipe never synthesizes a click, so without this the
+          // flag stayed armed and silently ate the next legitimate tap
+          // (ship-check P1, Aug 23).
+          swipeStepped.current = false
           if ((e.target as HTMLElement).closest('input, select, textarea, a, [role="slider"]')) return
           dragRef.current = { x: e.clientX, y: e.clientY, done: false }
         }}

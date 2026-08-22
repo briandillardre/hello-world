@@ -19,7 +19,8 @@ export interface TrackPoint {
    *  coverage). Interpolation must SNAP across it, not glide, and trails
    *  break the line here instead of drawing a chord across town. */
   gap?: boolean
-  /** Reported speed at this fix (real history only) — the Follow HUD reads it. */
+  /** Reported speed at this fix (real history, or the demo's authored story
+   *  speed) — feeds the Follow HUD and speed-colored trails. */
   mph?: number
 }
 
@@ -65,7 +66,9 @@ function mulberry32(seed: number) {
 // Demo movement: a smooth random wander anchored at the asset's live position
 // (only assets WITHOUT an authored MOCK_PATHS loop — today that's people and
 // tools). Small amplitudes: they move within a site, not across town.
-const AMP: Record<AssetType, number> = { vehicle: 0.012, equipment: 0.004, personnel: 0.0012, tool: 0.0006 }
+// People and tools stay ON their site — the old amplitudes sent a foreman
+// wandering half the stage, which read as noise on the new realistic map.
+const AMP: Record<AssetType, number> = { vehicle: 0.012, equipment: 0.004, personnel: 0.0005, tool: 0.0003 }
 
 // How busy each class is across a work day — scales the odds an asset is moving
 // (vs. parked) at any moment. Tools mostly sit; trucks run all day. This is what
@@ -102,9 +105,34 @@ export function trailColor(id: string): string {
 // How many times an asset traverses its authored loop across the demo day.
 const PATH_LOOPS: Record<AssetType, number> = { vehicle: 2, equipment: 3, personnel: 2, tool: 1 }
 
+type DemoPathPt = [number, number] | [number, number, number]
+
+/** Chaikin corner-cutting on a CLOSED loop, pinning vertex 0 (the asset's
+ *  live position must survive smoothing exactly). Two rounds turn coarse
+ *  hand-authored waypoints into curved, recorded-looking GPS lines — the old
+ *  right-angle loops read as CAD linework, not a fleet (Brian, Aug 23).
+ *  The optional per-waypoint mph rides along on the smoothed points. */
+function chaikinClosedKeepFirst(path: DemoPathPt[], iters = 2): DemoPathPt[] {
+  const last = path[path.length - 1]
+  let ring: DemoPathPt[] = last[0] === path[0][0] && last[1] === path[0][1] ? path.slice(0, -1) : path.slice()
+  for (let k = 0; k < iters; k++) {
+    const out: DemoPathPt[] = []
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i]
+      const b = ring[(i + 1) % ring.length]
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25, a[2] ?? b[2]] as DemoPathPt)
+      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75, a[2] ?? b[2]] as DemoPathPt)
+    }
+    ring = out
+  }
+  // Re-close through the EXACT live-position vertex: first and last smoothed
+  // points already hug it, so this adds no spike — just one true corner.
+  return [path[0], ...ring, path[0]]
+}
+
 /** Point at distance d (wrapping) along a closed waypoint loop. Distances are
  *  in raw degrees — fine for a demo stage a couple of km across. */
-function pathPointAt(path: [number, number][], cum: number[], total: number, d: number): [number, number] {
+function pathPointAt(path: DemoPathPt[], cum: number[], total: number, d: number): [number, number] {
   const dd = ((d % total) + total) % total
   for (let s = 0; s < cum.length - 1; s++) {
     if (dd <= cum[s + 1]) {
@@ -113,7 +141,16 @@ function pathPointAt(path: [number, number][], cum: number[], total: number, d: 
       return [path[s][0] + (path[s + 1][0] - path[s][0]) * f, path[s][1] + (path[s + 1][1] - path[s][1]) * f]
     }
   }
-  return path[path.length - 1]
+  return [path[path.length - 1][0], path[path.length - 1][1]]
+}
+
+/** Authored mph for the segment containing distance d (undefined = no hint). */
+function pathMphAt(path: DemoPathPt[], cum: number[], total: number, d: number): number | undefined {
+  const dd = ((d % total) + total) % total
+  for (let s = 0; s < cum.length - 1; s++) {
+    if (dd <= cum[s + 1]) return path[s][2]
+  }
+  return path[path.length - 1][2]
 }
 
 export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
@@ -140,8 +177,11 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
     // serpentines) instead of random-walking — the walk sent demo trucks
     // across the river off-bridge (Brian, Aug 5). Walk backward from the live
     // position (path[0]), advancing along the loop only during active blocks.
-    const path = MOCK_PATHS[a.id]
-    if (path && path.length >= 2) {
+    const authored = MOCK_PATHS[a.id]
+    if (authored && authored.length >= 2) {
+      // Round the corners so the trace reads as recorded GPS, then jitter
+      // each active fix by a few meters (real receivers wobble in-lane).
+      const path = chaikinClosedKeepFirst(authored as DemoPathPt[])
       const cum: number[] = [0]
       for (let s = 1; s < path.length; s++) {
         cum.push(cum[s - 1] + Math.hypot(path[s][0] - path[s - 1][0], path[s][1] - path[s - 1][1]))
@@ -149,11 +189,21 @@ export function generateTracks(assets: AssetWithLocation[]): AssetTrack[] {
       const total = cum[cum.length - 1] || 1
       const activeCount = active.filter(Boolean).length
       const step = (total * PATH_LOOPS[a.type]) / Math.max(1, activeCount)
+      const noise = a.type === 'vehicle' ? 0.00005 : 0.000025
       const pathPts: TrackPoint[] = new Array(N_POINTS)
       let d = 0 // distance along loop; 0 = live position (path[0])
       for (let i = N_POINTS - 1; i >= 0; i--) {
         const [plng, plat] = pathPointAt(path, cum, total, d)
-        pathPts[i] = { lng: plng, lat: plat, t: i / (N_POINTS - 1) }
+        const mph = pathMphAt(path, cum, total, d)
+        const moving = active[i] && i !== N_POINTS - 1
+        pathPts[i] = {
+          lng: moving ? plng + (rng() - 0.5) * noise : plng,
+          lat: moving ? plat + (rng() - 0.5) * noise : plat,
+          t: i / (N_POINTS - 1),
+          // Authored story speed (± a little life) — feeds the HUD and the
+          // speed-colored trails; parked buckets honestly read 0.
+          mph: active[i] && mph != null ? Math.max(0, mph + (rng() - 0.5) * Math.min(6, mph)) : 0,
+        }
         if (active[i]) d -= step
       }
       return {
@@ -625,7 +675,15 @@ export function trailSegmentsSpeed(
     prev = p
     prevCls = cls
   }
-  if (prev && prevCls !== null) buckets[prevCls].current.push(positionAt(track, t))
+  // Head leg attaches even when the newest fix ≤ t was a wake-up (gap) point
+  // — prevCls is null there, so seed a crawl-class segment from that fix.
+  // Without this, sleeping assets (every fix a gap) drew NO ink in Speed
+  // mode and the head detached after any 15-min stop (ship-check P2).
+  if (prev) {
+    const cls = prevCls ?? 0
+    if (!buckets[cls].current.length) buckets[cls].current.push([prev.lng, prev.lat])
+    buckets[cls].current.push(positionAt(track, t))
+  }
   for (const b of buckets) { if (b.current.length) b.segments.push(b.current) }
   return buckets.map((b, cls) => ({ cls, segments: b.segments.filter((s) => s.length >= 2) }))
 }

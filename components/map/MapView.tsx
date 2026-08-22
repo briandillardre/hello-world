@@ -4802,13 +4802,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const up = () => {
       st = null
       document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', up)
+      document.removeEventListener('pointercancel', up)
       window.setTimeout(() => { swiped = false }, 80)
     }
     const down = (e: PointerEvent) => {
       st = { x: e.clientX, y: e.clientY }
       swiped = false
       document.addEventListener('pointermove', move)
-      document.addEventListener('pointerup', up, { once: true })
+      document.addEventListener('pointerup', up)
+      // pointercancel too (rotation, notification shade — which starts
+      // exactly at this corner): without it the document listener leaked a
+      // stale origin and a later map pan could self-tuck the rail
+      // (ship-check P2, Aug 23).
+      document.addEventListener('pointercancel', up)
     }
     const click = (e: MouseEvent) => { if (swiped) { e.preventDefault(); e.stopPropagation() } }
     el.addEventListener('pointerdown', down)
@@ -4818,6 +4825,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       el.removeEventListener('click', click, true)
       document.removeEventListener('pointermove', move)
       document.removeEventListener('pointerup', up)
+      document.removeEventListener('pointercancel', up)
     }
   }, [mapReady])
   // Two-finger HOLD = quick measure (see measureSeed above). Detached while
