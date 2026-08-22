@@ -894,11 +894,8 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         <div key={g.id}>
           <GroupHeader gid={g.id} open={openGroups.has(g.id)} count={groupCount(g.id)} hasErr={groupErr(g.id)} onToggle={() => toggleGroup(g.id)} />
           {openGroups.has(g.id) && (<>
-            {g.id === 'land' && (
-              <p className="px-3 pt-1 pb-0.5 font-mono text-[10px] text-faint">
-                walk a lot before you bid — owner, flood, wetlands, soils
-              </p>
-            )}
+            {/* Land-development blurb removed (Brian, Aug 22): "not really
+                the use case for this app yet" — the rows speak for themselves. */}
             {rowsFor(g.id)}
             {/* Earth's real rotation needs no switch: with Satellites & sky
                 on, the globe simply turns with the timeline clock. */}
