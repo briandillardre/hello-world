@@ -42,7 +42,7 @@ function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
 }
 
-export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 'top-left' }: {
+export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 'top-left', overlay = false }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
   top?: number
@@ -52,8 +52,18 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
   /** Which corner of the inline slot the open box grows from —
    *  'bottom-right' for the thumb cluster (box grows up-left). */
   anchor?: 'top-left' | 'bottom-right'
+  /** No trigger of its own: opens on the 'ht:open-search' window event (the
+   *  rail's search button) as a top-center overlay with a dim backdrop. */
+  overlay?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  // Overlay mode: the rail button is the trigger.
+  useEffect(() => {
+    if (!overlay) return
+    const openIt = () => setOpen(true)
+    window.addEventListener('ht:open-search', openIt)
+    return () => window.removeEventListener('ht:open-search', openIt)
+  }, [overlay])
   const [q, setQ] = useState('')
   const [hi, setHi] = useState(0)
   const [listening, setListening] = useState(false)
@@ -113,6 +123,7 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
   }
 
   if (!open) {
+    if (overlay) return null
     return (
       <button
         style={inline ? undefined : { top }}
@@ -192,6 +203,14 @@ export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 't
 
   // Inline mode: hold the button's 36px slot in the row and overlay the open
   // box from that anchor, so the pill beside it doesn't jump.
+  if (overlay) {
+    return (
+      <>
+        <button aria-label="Close search" onClick={() => setOpen(false)} className="absolute inset-0 z-40 w-full h-full bg-black/30 cursor-default" />
+        <div className="absolute left-1/2 -translate-x-1/2 top-3 z-50 w-[min(340px,92vw)]">{body}</div>
+      </>
+    )
+  }
   if (inline) {
     return (
       <div className="relative w-9 h-9 flex-none">

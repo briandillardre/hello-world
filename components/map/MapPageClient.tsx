@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Sparkles } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
@@ -293,14 +292,6 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         toolGateways={effToolGateways}
         aboard={effAboard}
         pairingEpisodes={effPairing}
-        askSlot={
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-[13px] px-3 py-2 shadow-glow-amber hover:brightness-110 transition"
-          >
-            <Sparkles className="h-4 w-4" /> AskAI
-          </button>
-        }
         onGeofenceSave={handleGeofenceSave}
         onGeofenceEdit={handleGeofenceEdit}
         onGeofenceDelete={handleGeofenceDelete}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
@@ -118,7 +118,45 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
 
       <nav data-tour="nav" className="fixed bottom-0 left-0 right-0 z-40 bg-navy-950 border-t border-navy-800 md:hidden print:hidden safe-area-pb">
         <div className="flex">
-          {primaryItems.map(({ href, label, icon: Icon }) => {
+          {/* AskAI rides the CENTER of the bar (Brian, Aug 22: "AskAI needs
+              to be in the bottom bar, not on the map") — the classic raised
+              middle action, one thumb-tap from anywhere. */}
+          {primaryItems.slice(0, 2).map(({ href, label, icon: Icon }) => {
+            const active = pathname.startsWith(href)
+            const isAlerts = href === '/alerts'
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[11px] font-medium transition-colors min-h-[56px]',
+                  active ? 'text-amber' : 'text-faint hover:text-muted'
+                )}
+              >
+                <span className="relative">
+                  <Icon className="h-5 w-5" />
+                  {isAlerts && unseen > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-alert text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
+                      {unseen > 9 ? '9+' : unseen}
+                    </span>
+                  )}
+                </span>
+                <span>{label}</span>
+              </Link>
+            )
+          })}
+          <button
+            data-tour="askai"
+            onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
+            aria-label="Ask HammerTrack AI"
+            className="flex-1 flex flex-col items-center justify-center py-1.5 gap-0.5 text-[11px] font-semibold min-h-[56px]"
+          >
+            <span className="grid place-items-center w-10 h-10 -mt-5 rounded-full bg-amber text-[#1a1100] shadow-glow-amber border-4 border-navy-950">
+              <Sparkles className="h-5 w-5" />
+            </span>
+            <span className="-mt-0.5 text-amber">AskAI</span>
+          </button>
+          {primaryItems.slice(2).map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
             const isAlerts = href === '/alerts'
             return (

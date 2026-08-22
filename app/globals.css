@@ -345,17 +345,11 @@ input[type='range'].slider-heat::-moz-range-thumb {
    :has() would fire there. The rail tuck handle is Tailwind-positioned inline
    in MapView with no stable hook, so it stays put under the sheet. */
 @media (min-width: 768px) {
-  .map-live .maplibregl-ctrl-top-right,
-  .map-live .ht-fab-cluster {
-    transition: right 0.2s ease, bottom 0.2s ease;
+  .map-live .maplibregl-ctrl-top-right {
+    transition: right 0.2s ease;
   }
   .map-live:has(.map-sheet-desktop) .maplibregl-ctrl-top-right {
     right: 288px;
-  }
-  /* AskAI moved into the bottom-right thumb cluster (Aug 22) — shift the
-     whole cluster clear of the open panel. */
-  .map-live:has(.map-sheet-desktop) .ht-fab-cluster {
-    right: calc(288px + 0.75rem);
   }
 }
 

@@ -307,7 +307,6 @@ interface MapViewProps {
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   /** Floating AskAI button, rendered beside the collapsed layers pill
    *  (only the real /map passes one — demo + kiosk have no assistant). */
-  askSlot?: React.ReactNode
   onGeofenceSave?: (name: string, geometry: GeoJSON.Polygon, color: string, kind: 'site' | 'boundary' | 'yard' | 'vendor', opts?: import('@/lib/types').ZoneFormOpts) => void
   /** Rename/recolor a zone from its map sheet (optimistic + persisted). */
   onGeofenceEdit?: (id: string, name: string, color: string) => void
@@ -341,7 +340,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, askSlot, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   // Flipped once the style + custom layers exist, so mutation effects that fired
@@ -1237,6 +1236,27 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Weather radar toggle, right under the compass — replaced the two 90°
     // rotate buttons (owner ask, Aug 1; drag-to-rotate still works). Same
     // switch as the Layers panel row; the effect below paints its on-state.
+    // Search rides IN the rail (Brian, Aug 22: "the search button should
+    // collapse in the right tray and expand with the rest") — it tucks and
+    // returns with railHidden like every other rail button. The box itself
+    // opens as a top-center overlay (MapSearch overlay mode).
+    const searchControl: maplibregl.IControl = {
+      onAdd() {
+        const div = document.createElement('div')
+        div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.title = 'Find asset or zone'
+        b.setAttribute('aria-label', 'Find asset or zone')
+        b.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>'
+        b.onclick = () => { try { window.dispatchEvent(new CustomEvent('ht:open-search')) } catch { /* SSR */ } }
+        div.appendChild(b)
+        return div
+      },
+      onRemove() {},
+    }
+    map.current.addControl(searchControl, ctrlCorner)
+
     const radarControl: maplibregl.IControl = {
       onAdd() {
         const div = document.createElement('div')
@@ -5779,46 +5799,28 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         </svg>
       </button>
 
-      {/* LEFT-edge tuck handle — only where the pill still lives (kiosk).
-          On /map the launchers moved to the bottom-right thumb cluster, so
-          there's nothing at top-left to tuck. */}
-      {kiosk && <button
+      {/* LEFT tray handle — on /map this IS the layers entry (Brian, Aug 22:
+          "layers is handled with the left tray"): tap opens the drawer. On
+          kiosk it stays the tuck toggle for the pill. */}
+      <button
         type="button"
-        onClick={() => setLeftHidden((h) => !h)}
-        aria-label={leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls'}
+        data-tour="layers"
+        onClick={() => {
+          if (kiosk) setLeftHidden((h) => !h)
+          else { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }
+        }}
+        aria-label={kiosk ? (leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls') : 'Open map layers'}
         className="absolute left-0 top-[44%] z-20 rounded-r-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {leftHidden ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
+          {kiosk && !leftHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
-      </button>}
+      </button>
 
-      {/* Bottom-right THUMB CLUSTER (Brian, Aug 22): Search, Layers, AskAI
-          live where a phone thumb actually is, riding above the timeline on
-          the same lift variable the scale bar uses. AskAI keeps its amber
-          weight at the bottom of the stack; 92px base clears the (i). */}
-      {!kiosk && (
-        <div
-          className="ht-fab-cluster absolute right-3 z-20 flex flex-col items-end gap-2 transition-[bottom] duration-200"
-          style={{ bottom: 'calc(92px + var(--ht-sheet-lift, 0px))' }}
-        >
-          <MapSearch inline anchor="bottom-right" items={searchItems} onPick={pickSearchItem} />
-          <button
-            type="button"
-            data-tour="layers"
-            onClick={() => { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }}
-            aria-label="Map layers"
-            className="grid place-items-center w-9 h-9 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel text-faint hover:text-ink transition-colors"
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
-              <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
-              <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
-            </svg>
-          </button>
-          {askSlot && <span data-tour="askai">{askSlot}</span>}
-        </div>
-      )}
+      {/* Search box: top-center overlay, opened from the rail's search
+          button (AskAI lives in the bottom nav / the widget's desktop
+          floater; Layers opens from the left tray handle). */}
+      {!kiosk && <MapSearch overlay items={searchItems} onPick={pickSearchItem} />}
 
       {/* Measure toggle lives in the MapLibre control cluster (added at map
           init) — same size + column as zoom/locate/fit, below Zoom-to-all. */}
