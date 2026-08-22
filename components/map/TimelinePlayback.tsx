@@ -292,6 +292,9 @@ export function TimelinePlayback({
     if (kiosk || typeof document === 'undefined') return
     const h = measureRef.current?.getBoundingClientRect().height ?? 0
     document.documentElement.style.setProperty('--ht-sheet-lift', `${Math.max(0, Math.ceil(h) + 8 - 54)}px`)
+    // Stage broadcast: with just the pill showing, the scale bar + (i) drop
+    // to the true bottom corners (Brian, Aug 22) — CSS keys off this.
+    document.documentElement.setAttribute('data-ht-tl', stageRef.current)
   }, [kiosk])
   const attachMeasure = useCallback((el: HTMLElement | null) => { measureRef.current = el; publishLift() }, [publishLift])
   useEffect(() => {
@@ -301,6 +304,7 @@ export function TimelinePlayback({
     return () => {
       ro.disconnect()
       document.documentElement.style.setProperty('--ht-sheet-lift', '0px')
+      document.documentElement.removeAttribute('data-ht-tl')
     }
   }, [kiosk, stage, publishLift])
 

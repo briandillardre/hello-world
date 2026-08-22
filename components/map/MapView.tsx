@@ -4629,6 +4629,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // Slide the whole right-rail control column off-screen on demand — a
   // clean-screen mode for phones ("need a way to minimize or slide these
   // buttons off", Aug 10). The little edge tab stays put to bring it back.
+  // Tray-handle swipe tracking (Brian, Aug 22: "I still can't swipe to open
+  // the right and the left tray") — a horizontal drag on a handle acts like
+  // the tap, and the tail-end click is swallowed (same trick as the radar
+  // button's swipe).
+  const leftTraySwipe = useRef<{ x: number } | null>(null)
+  const leftTraySwiped = useRef(false)
+  const railTraySwipe = useRef<{ x: number } | null>(null)
+  const railTraySwiped = useRef(false)
   // Tucked-rail preference survives visits (Aug 22): the owner who tucks the
   // buttons once wants a map, not a control panel, every open.
   const [railHidden, setRailHidden] = useState(() => {
@@ -5790,13 +5798,30 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           screen; the tab stays on the edge to bring it back. */}
       <button
         type="button"
-        onClick={() => setRailHidden((h) => !h)}
-        aria-label={railHidden ? 'Show map buttons' : 'Hide map buttons'}
-        className="absolute right-0 top-[44%] z-20 rounded-l-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+        onPointerDown={(e) => {
+          railTraySwipe.current = { x: e.clientX }
+          railTraySwiped.current = false
+          try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* older webviews */ }
+        }}
+        onPointerMove={(e) => {
+          const st = railTraySwipe.current
+          if (!st || railTraySwiped.current) return
+          const dx = e.clientX - st.x
+          if (dx < -24) { railTraySwiped.current = true; setRailHidden(false) }
+          else if (dx > 24) { railTraySwiped.current = true; setRailHidden(true) }
+        }}
+        onPointerUp={() => { railTraySwipe.current = null }}
+        onClick={() => {
+          if (railTraySwiped.current) { railTraySwiped.current = false; return }
+          setRailHidden((h) => !h)
+        }}
+        aria-label={railHidden ? 'Show map tools' : 'Hide map tools'}
+        className="absolute right-0 top-[44%] z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Map tools</span>
       </button>
 
       {/* LEFT tray handle — on /map this IS the layers entry (Brian, Aug 22:
@@ -5805,16 +5830,39 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       <button
         type="button"
         data-tour="layers"
+        onPointerDown={(e) => {
+          leftTraySwipe.current = { x: e.clientX }
+          leftTraySwiped.current = false
+          try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* older webviews */ }
+        }}
+        onPointerMove={(e) => {
+          const st = leftTraySwipe.current
+          if (!st || leftTraySwiped.current) return
+          const dx = e.clientX - st.x
+          if (dx > 24) {
+            leftTraySwiped.current = true
+            if (kiosk) setLeftHidden(false)
+            else { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }
+          } else if (dx < -24 && kiosk) {
+            leftTraySwiped.current = true
+            setLeftHidden(true)
+          }
+        }}
+        onPointerUp={() => { leftTraySwipe.current = null }}
         onClick={() => {
+          if (leftTraySwiped.current) { leftTraySwiped.current = false; return }
           if (kiosk) setLeftHidden((h) => !h)
           else { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }
         }}
         aria-label={kiosk ? (leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls') : 'Open map layers'}
-        className="absolute left-0 top-[44%] z-20 rounded-r-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+        className="absolute left-0 top-[44%] z-20 flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {kiosk && !leftHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
+        {/* Same tray-tab language as TIMELINE at the bottom (Brian, Aug 22:
+            "left, right and timeline… feel similar"): teal mono label. */}
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Layers</span>
       </button>
 
       {/* Search box: top-center overlay, opened from the rail's search

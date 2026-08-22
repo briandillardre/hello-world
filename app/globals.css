@@ -122,6 +122,12 @@ body {
   bottom: calc(58px + var(--ht-sheet-lift, 0px)) !important;
   transition: bottom 0.2s ease;
 }
+/* Timeline collapsed to the centered pill: the corners are empty — the
+   scale bar + (i) sit at the true bottom (Brian, Aug 22). */
+:root[data-ht-tl='min'] .map-live .maplibregl-ctrl-bottom-left,
+:root[data-ht-tl='min'] .map-live .maplibregl-ctrl-bottom-right {
+  bottom: 10px !important;
+}
 @media (min-width: 768px) {
   .map-live .maplibregl-ctrl-bottom-left,
   .map-live .maplibregl-ctrl-bottom-right {
