@@ -168,6 +168,10 @@ export function TimelinePlayback({
   useEffect(() => {
     if (kiosk) return
     const onSheet = (e: Event) => {
+      // Phones only (ship-check P2): the desktop sheet is a side panel that
+      // never overlaps the bar — folding there just closed the cost chart
+      // every time the user clicked a marker to identify it.
+      if (!window.matchMedia('(max-width: 767px)').matches) return
       const open = !!(e as CustomEvent<{ open?: boolean }>).detail?.open
       if (open) {
         if (stageRef.current === 'full') {

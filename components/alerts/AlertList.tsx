@@ -100,7 +100,10 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeAll }: AlertList
             Zone log ({activityCount})
           </button>
         </div>
-        <div className="flex gap-2 items-center">
+        {/* flex-wrap: All + Unread + 4 sort pills + Acknowledge-all is ~600px
+            — on a 360px phone the un-wrapped row clipped "Acknowledge all"
+            off-screen exactly when it mattered (ship-check P1). */}
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={() => setFilter('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium ${filter === 'all' ? 'bg-amber text-[#1a1100]' : 'bg-navy-800 text-muted'}`}

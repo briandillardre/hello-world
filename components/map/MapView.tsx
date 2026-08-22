@@ -4660,6 +4660,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (cloudsAdded.current && m.getLayer('clouds-layer')) m.setLayoutProperty('clouds-layer', 'visibility', 'none')
       return
     }
+    // Live-only layer: during a replay don't fetch/add at all — and because
+    // pbActive is a dep, LEAVING the replay re-runs this effect so a toggle
+    // flipped mid-replay finally appears (ship-check P2: it used to stay
+    // invisible until the 10-min interval fired).
+    if (pbActive) return
     // GOES publishes ~every 10 min; re-resolve the newest REAL frame on the
     // same cadence so the sky stays current — day where it's day, night where
     // it's night — instead of a frozen screenshot of the layer's first load.
@@ -4692,7 +4697,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     apply()
     const id = setInterval(apply, 600_000)
     return () => { gone = true; clearInterval(id) }
-  }, [mapReady, cloudsOn])
+  }, [mapReady, cloudsOn, pbActive])
 
   // Storm tops — GOES-East Band 13 clean-window IR from the same GIBS service.
   // Cold (bright) = high convective tops; the classic aviation read on which
@@ -4707,6 +4712,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       if (stormAdded.current && m.getLayer('stormtops-layer')) m.setLayoutProperty('stormtops-layer', 'visibility', 'none')
       return
     }
+    // Same replay guard + re-run-on-Live as clouds (ship-check P2).
+    if (pbActive) return
     let gone = false
     const apply = async () => {
       const stamp = await goesLatestStamp('GOES-East_ABI_Band13_Clean_Infrared', 6)
@@ -4730,7 +4737,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     apply()
     const id = setInterval(apply, 600_000)
     return () => { gone = true; clearInterval(id) }
-  }, [mapReady, stormTopsOn])
+  }, [mapReady, stormTopsOn, pbActive])
 
   // Rain totals — MRMS accumulated precipitation (1h/24h/48h/72h) from IEM.
   // Same free tile service as the radar loop; maxzoom 10 (~1 km data).
@@ -5457,7 +5464,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
       {/* First-run walkthrough of the controls (skippable, once per device;
           relaunch from Getting Started or /map?tour=1) */}
-      {!kiosk && <MapTour />}
+      {/* canDrawZones: the public /live demo mounts MapView without
+          onGeofenceSave — the tour must not point at a button that isn't
+          there (truth-check, Aug 22). */}
+      {!kiosk && <MapTour canDrawZones={!!onGeofenceSave} />}
 
       {/* Numeric scales for shaded layers — a wash of color with no numbers
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS

@@ -39,6 +39,14 @@ export default async function MaintenancePage() {
   const overdueCount = statuses.filter(s => s.status === 'overdue').length
   const totalSpent = services.reduce((sum, r) => sum + r.cost, 0)
 
+  // Dollar figures never LEAVE the server for non-cost roles (sec-check P2):
+  // hiding them in JSX still ships them in the RSC props payload, readable in
+  // DevTools. Zero them here; the components' canViewCosts gates handle the UI.
+  const safeServices = services.map(r => ({ ...r, assetName: assetName(r.asset_id), ...(perms.canViewCosts ? {} : { cost: 0 }) }))
+  const safeOrders = perms.canViewCosts
+    ? woData.orders
+    : woData.orders.map(o => ({ ...o, parts_cost: 0, labor_hours: 0, labor_rate: null }))
+
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
@@ -55,7 +63,7 @@ export default async function MaintenancePage() {
       </div>
 
       <WorkOrders
-        orders={woData.orders}
+        orders={safeOrders}
         members={woData.members}
         assetNames={assetNames}
         available={woData.available}
@@ -64,7 +72,7 @@ export default async function MaintenancePage() {
 
       <MaintenanceLists
         statuses={statuses}
-        services={services.map(r => ({ ...r, assetName: assetName(r.asset_id) }))}
+        services={safeServices}
         qboLive={qboLive}
         assetNames={assetNames}
         canViewCosts={perms.canViewCosts}

@@ -306,7 +306,7 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
                     <div className="flex items-center justify-between mb-1 gap-2">
                       <span className="text-[13px] font-semibold text-ink flex items-center gap-1.5 min-w-0">
                         <span className="truncate">{entry.person_name}</span>
-                        {log?.idempotency_key && (
+                        {log?.offline_synced && (
                           <span title="This entry was queued in a dead zone and synced when coverage returned" className="flex-none rounded border border-navy-700 bg-navy-900 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-faint">
                             synced offline
                           </span>

@@ -1,4 +1,4 @@
-<!-- HammerTrack to-do — rendered view of the live action list. Updated Aug 12 2026.
+<!-- HammerTrack to-do — rendered view of the live action list. Updated Aug 22 2026.
      PUBLIC REPO: no vendor pricing, no EIN, no personal contact details. -->
 <title>HammerTrack — To Do</title>
 <style>
@@ -14,12 +14,12 @@
 </style>
 <div class="wrap">
   <h1>HammerTrack — To Do</h1>
-  <p class="sub">Ordered by importance · updated Aug 21, 2026 · items Claude can't do for you</p>
+  <p class="sub">Ordered by importance · updated Aug 22, 2026 · items Claude can't do for you</p>
 
   <h2 class="week">🗓 Timeline — what lands when</h2>
   <div class="card">
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">TODAY Aug 21</td><td style="padding:4px 8px;color:var(--muted)">SIM day — Matt's APN answer → one-unit pipeline test → 13-unit fleet install begins. Tap the mail-forwarding confirm.</td></tr>
+      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">SAT Aug 22, 9–11am</td><td style="padding:4px 8px;color:var(--muted)">SIM day (on your calendar) — send Matt the KORE draft (fill the address) → APN answer → one-unit pipeline test → 13-unit install begins Sun 10am. Tap the mail-forwarding confirm.</td></tr>
       <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 22–25</td><td style="padding:4px 8px;color:var(--muted)">Google Play review verdict expected (submitted Aug 21). App goes LIVE on approval — Founding-25 texts get a store link.</td></tr>
       <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 23</td><td style="padding:4px 8px;color:var(--muted)">Apple 2-week mark — if N37H75H2FX still pending, contact Apple Developer Support.</td></tr>
       <tr><td style="padding:4px 8px;color:var(--red);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 31</td><td style="padding:4px 8px;color:var(--muted)"><b>HARD DEADLINE:</b> Google Ads advertiser verification (acct 346-100-1886) or the ads account pauses.</td></tr>
@@ -30,12 +30,12 @@
     </table>
   </div>
 
-  <h2 class="week">🤝 Triage — whose plate is what (Aug 21)</h2>
+  <h2 class="week">🤝 Triage — whose plate is what (Aug 22)</h2>
   <div class="card">
     <span class="why" style="margin-top:0"><b style="color:var(--ink)">YOURS (dashboards, hardware, money, legal — Claude can't reach these):</b><br>
     Store watch + forwarding tap (0) · Stripe (1) · Google Ads by Aug 31 (2) · KORE reply — draft in your Gmail (3) · first five texts (4) · SIM day + installs (6) · Vercel env vars incl. FCM push key (7, 7b) · QBO production connect · cost rates on machines (13) · QSBS CPA + gifting attorney · Apple/Play verdict taps.</span>
     <span class="why"><b style="color:var(--ink)">CLAUDE'S (all code — say "go" and they ship):</b><br>
-    QBO timesheet push (built now, live when you connect QBO) · offline field queue (dead-zone clock/QR events sync later) · multi-tenant hardening for customer #2 (per-company keys, zero-touch onboarding) · <b>Agent Interface (MCP)</b> — customers' own AI queries their fleet (docs/AI-RESILIENCE.md) · in-app help center · PM Tier 1 money loop when you call it · UX sweep batch 2 · wow-pack tier 2.</span>
+    ✅ SHIPPED Aug 21–22 while you slept: <b>Agent Interface (MCP) LIVE</b> at /api/mcp (any AI + your company key) · QBO timesheet push (live the moment you connect QBO) · offline field queue · per-company keys · in-app help center · in-app Ask now answers from the same brain as the MCP door · <b>map/pages UX batch</b> — fleet chips replace the layers-panel clutter, /command first-switch crash fixed, asset list shows status + place instead of an IMEI, maintenance dollars gated to cost roles. NEXT UP: radar slide-out scrubber (your ask) · P2 design decisions below · PM Tier 1 when you call it · wow-pack tier 2.</span>
     <span class="why"><b style="color:var(--ink)">SHARED:</b><br>
     Hardware provisioning playbook (Claude writes, you field-test) · app-store review replies (you screenshot, Claude drafts) · store screenshots (your phone, Claude's shot list).</span>
   </div>
@@ -54,7 +54,7 @@
 
   <h2 class="week">🟠 Next — product &amp; pipeline</h2>
   <div class="card"><b>5 · Field-test the latest ships on your phone</b>
-    <span class="why">3D terrain should now be FAST (z8 mesh — tell Claude if still slow and which layers were on) · 3D buildings hold one more zoom-out step · new layers panel groups (Map look / My jobsites / Weather / Roads / Land check / Sky) · wow-pack layers · measurement tap-to-edit (needs migration 064 = auto-applied). Screenshot anything off.</span></div>
+    <span class="why">NEW tonight: fleet chips under the Layers pill (Vehicles/Equipment/People/Tools/Zones with live counts — the panel is context-only now) · Weather group's "More layers" expander · /command first timeline switch should no longer crash · asset list shows real status ("Parked · 2h") + the zone each machine is AT · Add Asset errors show inside the dialog · alerts got Today/Yesterday separators. Also still: 3D terrain speed, 3D buildings zoom-out step. Screenshot anything off.</span></div>
   <div class="card" style="border-color:rgba(255,158,22,.6)"><b>6 · SIM DAY (units arrived Aug 20, SIMs Aug 21)</b><span class="min">today</span>
     <span class="why">Order of operations: (1) text Matt for SuperSIM APN settings — NOT Hologram's — and ask if KORE pushed our flespi profile (ch1401177.flespi.gw:24397); (2) ONE OBD unit: SIM in, plug into a truck, ignition on, confirm it appears in flespi then moves on /map; (3) only then do the other 12. FMM00A battery plug ships disconnected — click it in. Create each asset with its IMEI BEFORE power-on (ingest drops unknown trackers). Puck batteries won't survive outside — wire 12V where machines have it. Install last puck (Minor 4).</span></div>
   <div class="card"><b>7 · Vercel env odds &amp; ends</b>
@@ -64,8 +64,14 @@
   <div class="card"><b>8 · Assistant plumbing</b><span class="min">~5 min</span>
     <span class="why">brian@hammertrack.ai → DCG Gmail forward (Claude reads the verification code for you) · YouMail voicemail-to-email w/ transcript+MP3 → DCG address · add hammertrack.ai as "Send mail as" in DCG Gmail · add the app to your phone's home screen.</span></div>
 
-  <div class="card"><b>8b · Say "go" on QuickBooks timesheets</b>
-    <span class="why">Decision made Aug 20: HammerTrack clock-ins push straight into QBO timesheets (TimeActivity API — no QuickBooks Time subscription needed); crews clock in with GPS+zone verification, QuickBooks still runs payroll, job costing gets labor automatically. Code can be built and waiting — the only gate is task 1's QBO connect. Tell Claude "build the QBO timesheet push" and it ships.</span></div>
+  <div class="card"><b>8b · QuickBooks timesheets — ✅ BUILT, waiting on your QBO connect</b>
+    <span class="why">Shipped Aug 22: /logs gets a "Push day to QuickBooks" button per day (GPS-verified hours → TimeActivity, job-costed by zone, double-post-proof). The ONLY gate left is card 7's QBO production connect — the moment that's done, payroll runs off tracker-verified hours.</span></div>
+
+  <div class="card"><b>8c · Decisions Claude needs (best-in-class UX, P2) — one text each</b>
+    <span class="why">Tonight's audit shipped every safe fix; these change layouts you use daily, so they wait for your yes/no: (a) search moves into the top bar as a real field (finds assets, zones AND addresses) · (b) Layers + Ask buttons become bottom corners, thumb-reach · (c) camera toys (360/Fly/Follow) fold behind one Camera button so the timeline bar slims · (d) desktop side panel moves LEFT and widens · (e) marker badges redrawn as one glyph system (needs a sketch) · (f) "sunlight mode" high-contrast toggle for noon in the truck · (g) asset list becomes photo-led cards · (h) Add Asset becomes a 3-step flow for new customers · (i) reports range chips switch instantly instead of a 20s reload. Reply like "yes a, c, f — sketch e".</span></div>
+
+  <div class="card"><b>8d · Let build sessions see the live fleet</b><span class="min">~2 min</span>
+    <span class="why">claude.ai/code → your environment's network policy → allow <b>hammertrack.ai</b>. After that, any build session can query DCG's real fleet through the Agent Interface (read-only, your company key) instead of flying blind on mock data.</span></div>
 
   <h2 class="wait">🟢 Waiting on others — check, don't push</h2>
   <div class="card"><b>9 · Twilio toll-free verification</b><span class="why">In review; verdict emails brian@hammertrack.ai. Don't publish the number until the voice greeting exists.</span></div>

@@ -22,11 +22,13 @@ interface Step {
   side: 'below' | 'above'
 }
 
-const STEPS: Step[] = [
+// Built per-surface (Aug 22 truth-check): the public /live demo has no
+// New-zone button, so the tour must not point at one there.
+const buildSteps = (canDrawZones: boolean): Step[] => [
   {
     selector: '[data-tour="layers"]',
-    title: 'Layers & weather',
-    body: 'Your control hub. Tap to search for any asset or zone, toggle what shows on the map, draw a new zone, and turn on weather layers like radar, lightning, and live satellites.',
+    title: 'Layers & your fleet',
+    body: 'Layers holds the map itself — basemaps, radar and weather, job-site money layers, land checks. The chips underneath flip your fleet on and off the map: trucks, machines, people, tools, zones.',
     side: 'below',
   },
   {
@@ -38,7 +40,9 @@ const STEPS: Step[] = [
   {
     selector: '.maplibregl-ctrl-top-right',
     title: 'Zoom & locate',
-    body: 'Zoom, tilt for 3D, jump to your own location, or fit the whole fleet on screen in one tap — the same stack also measures distances & takeoffs, draws a new zone, and saves a branded PDF snapshot of the map.',
+    body: 'Zoom, tilt for 3D, jump to your own location, or fit the whole fleet on screen in one tap — the same stack also measures distances & takeoffs, '
+      + (canDrawZones ? 'draws a new zone, ' : '')
+      + 'and saves a branded PDF snapshot of the map.',
     side: 'below',
   },
   {
@@ -55,9 +59,12 @@ const STEPS: Step[] = [
   },
 ]
 
-export function MapTour() {
+export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
   const [step, setStep] = useState<number | null>(null)
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  // Stable across renders (buildSteps is pure); rebuilt only if the surface's
+  // capabilities change.
+  const steps = buildSteps(canDrawZones)
 
   // Auto-start once per device; relaunchable via window event or ?tour=1.
   useEffect(() => {
@@ -89,7 +96,7 @@ export function MapTour() {
   useEffect(() => {
     if (step === null) return
     const measure = () => {
-      const el = document.querySelector(STEPS[step].selector)
+      const el = document.querySelector(steps[step].selector)
       if (!el) { setBox(null); return }
       const r = el.getBoundingClientRect()
       if (r.width === 0 && r.height === 0) { setBox(null); return }
@@ -104,14 +111,14 @@ export function MapTour() {
   useEffect(() => {
     if (step !== null && box === null) {
       // Target absent — auto-advance past it.
-      const t = setTimeout(() => setStep((s) => (s !== null && s < STEPS.length - 1 ? s + 1 : (finish(), null))), 250)
+      const t = setTimeout(() => setStep((s) => (s !== null && s < steps.length - 1 ? s + 1 : (finish(), null))), 250)
       return () => clearTimeout(t)
     }
   }, [step, box, finish])
 
   if (step === null) return null
-  const s = STEPS[step]
-  const last = step === STEPS.length - 1
+  const s = steps[step]
+  const last = step === steps.length - 1
 
   // Card position: clamped to viewport, preferring the step's side.
   const CARD_W = 300
@@ -148,7 +155,7 @@ export function MapTour() {
         <p className="mt-1 text-[13px] leading-relaxed text-muted">{s.body}</p>
         <div className="mt-3 flex items-center gap-2">
           <span className="flex gap-1">
-            {STEPS.map((_, i) => (
+            {steps.map((_, i) => (
               <span key={i} className={'w-1.5 h-1.5 rounded-full ' + (i === step ? 'bg-amber' : 'bg-navy-700')} />
             ))}
           </span>

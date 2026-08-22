@@ -173,6 +173,10 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const offlineReplay = form.get('_offlineReplay') === '1'
     // When the queue replays, the clock-out happened at queue time — not now.
     const backAt = validPastIso(form.get('_queuedAt'))
+    // Only the queue's replay executor sends _queuedAt — its presence (valid
+    // or not) is the honest "this arrived via offline sync" marker. The
+    // online path also sends idempotency keys, so the key can't be the badge.
+    const offlineSynced = form.get('_queuedAt') !== null || offlineReplay
     if (idem) {
       const { data: dup, error: dupErr } = await supabase
         .from('daily_logs').select('id')
@@ -270,6 +274,7 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       ...(hasPos ? { lat, lng } : {}),
       ...(idem ? { idempotency_key: idem } : {}),
       ...(photosWaived ? { photos_waived: true } : {}),
+      ...(offlineSynced ? { offline_synced: true } : {}),
     }
     let { data: logRow, error: logErr } = await supabase.from('daily_logs').insert(fullRow).select('id').single()
     // Replay raced an attempt that already landed (unique idempotency index):

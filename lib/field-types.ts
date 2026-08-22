@@ -31,10 +31,13 @@ export interface DailyLog {
   /** Where the phone was when the log was submitted (migration 059). */
   lat?: number | null
   lng?: number | null
-  /** Present when the log arrived via the offline queue's replay (066). */
+  /** Double-tap/replay dedup key (066) — set by ONLINE submits too, so it
+   *  is NOT an offline marker; offline_synced below is. */
   idempotency_key?: string | null
   /** Required-photo rules were waived on an offline replay (067). */
   photos_waived?: boolean | null
+  /** Arrived via the offline queue's replay — dead zone, synced later (069). */
+  offline_synced?: boolean | null
   created_at: string
 }
 

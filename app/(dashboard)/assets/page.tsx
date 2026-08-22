@@ -22,9 +22,13 @@ export default async function AssetsPage() {
   // Which zone each asset sits in right now — same containment test the zones
   // page runs. The list leads with "at Creekside" instead of the IMEI.
   const zoneNames: Record<string, string> = {}
+  // Boundaries excluded (same convention as the AI's place naming): a
+  // property boundary ringing every site would otherwise win first-match and
+  // stamp every row "at Property Boundary" (ship-check P2).
+  const namedZones = geofences.filter((g) => g.kind !== 'boundary')
   for (const a of located) {
     if (!a.location) continue
-    for (const g of geofences) {
+    for (const g of namedZones) {
       const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
       if (ring && pointInPolygon([a.location.lng, a.location.lat], ring)) {
         zoneNames[a.id] = g.name
