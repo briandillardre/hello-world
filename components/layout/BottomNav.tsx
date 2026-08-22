@@ -59,8 +59,14 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
       const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || 'null') as string[] | null
       if (!Array.isArray(saved)) return
       const kept = saved.filter((h) => h in byHref)
-      const missing = DEFAULT_ORDER.filter((h) => !kept.includes(h))
-      if (kept.length) setOrder([...kept, ...missing])
+      if (!kept.length) return
+      // Newly-shipped pages splice in at their default slot, not the tail —
+      // a future prominent page must not land buried in the last drawer row.
+      const next = [...kept]
+      for (const h of DEFAULT_ORDER) {
+        if (!next.includes(h)) next.splice(DEFAULT_ORDER.indexOf(h), 0, h)
+      }
+      setOrder(next)
     } catch { /* default order */ }
   }, [])
 
@@ -270,7 +276,12 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               moreActive || moreOpen ? 'text-amber' : 'text-faint hover:text-muted'
             )}
           >
-            <MoreHorizontal className="h-5 w-5" />
+            {/* If Alerts was swapped into the drawer, its unseen badge rides
+                the More button — a theft alert must never be invisible. */}
+            <span className="relative">
+              <MoreHorizontal className="h-5 w-5" />
+              {order.indexOf('/alerts') >= 4 && alertBadge('/alerts')}
+            </span>
             <span>More</span>
           </button>
         </div>
