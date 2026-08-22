@@ -4163,7 +4163,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const poll = () => {
       const b = m.getBounds()
       fetch(`/api/road-closures?w=${b.getWest().toFixed(2)}&s=${b.getSouth().toFixed(2)}&e=${b.getEast().toFixed(2)}&n=${b.getNorth().toFixed(2)}`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`closures ${r.status}`))))
+        .then((r) => (r.ok
+          ? r.json()
+          : Promise.reject(new Error(r.status === 503
+            ? 'DOT feeds unreachable right now — retries every few minutes'
+            : `feed error (${r.status})`))))
         .then((j: { closures?: { lat: number; lng: number; kind?: string; road?: string; desc?: string }[] }) => {
           if (!alive) return
           ;(m.getSource('closures') as maplibregl.GeoJSONSource | undefined)?.setData({

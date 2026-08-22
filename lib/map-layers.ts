@@ -134,7 +134,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
 
   // ── Roads & travel ────────────────────────────────────────────────────────
   { id: 'traffic', label: 'Traffic', group: 'roads', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
-  { id: 'closures', label: 'Road closures', group: 'roads', status: 'live', isLive: true, hint: 'SCDOT incidents, closures & work zones · tap a cone' },
+  { id: 'closures', label: 'Road closures', group: 'roads', status: 'live', isLive: true, hint: 'DOT incidents, closures & work zones · tap a cone' },
   { id: 'webcams', label: 'Webcams', group: 'roads', status: 'live', isLive: true, minZoom: 8, hint: 'public traffic & area cams · tap for the picture' },
 
   // ── Land check: walk a lot before you bid ─────────────────────────────────
