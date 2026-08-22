@@ -303,9 +303,16 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
               <div className="space-y-2">
                 {list.map(({ entry, log }) => (
                   <article key={entry.id} className="rounded-xl border border-navy-800 bg-navy-950 p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-semibold text-ink">{entry.person_name}</span>
-                      <span className="font-mono text-[10.5px] text-faint tabular-nums">{hoursOf(entry, now).toFixed(1)} h</span>
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-[13px] font-semibold text-ink flex items-center gap-1.5 min-w-0">
+                        <span className="truncate">{entry.person_name}</span>
+                        {log?.idempotency_key && (
+                          <span title="This entry was queued in a dead zone and synced when coverage returned" className="flex-none rounded border border-navy-700 bg-navy-900 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-faint">
+                            synced offline
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-mono text-[10.5px] text-faint tabular-nums flex-none">{hoursOf(entry, now).toFixed(1)} h</span>
                     </div>
                     {entry.plan && <p className="text-[12px] text-faint mb-1">Plan: {entry.plan}</p>}
                     {log ? (
@@ -336,6 +343,11 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
                               </p>
                             ))}
                           </div>
+                        )}
+                        {log.photos_waived && (
+                          <p className="mt-1.5 text-[11.5px] text-amber">
+                            Required photos were skipped — the app was closed before this synced, so the photos couldn&apos;t come along.
+                          </p>
                         )}
                         {log.photos.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">

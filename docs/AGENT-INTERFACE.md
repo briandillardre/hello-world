@@ -59,6 +59,13 @@ All numbers come from the same math the HammerTrack screens use — the
 exact-hours usage ledger for costs, the live telemetry stream for positions —
 so the assistant never disagrees with the app.
 
+**One brain, three doors:** this registry is also what the in-app Ask
+assistant serves (plus its deeper per-asset tools — stops, telemetry, visit
+logs). Asking in the app, asking your own AI over MCP, and future doors all
+hit the same executors and the same house math. The one difference: the
+in-app door knows WHO is asking, so cost tools are hidden from crew roles
+without the cost permission — a company API key is always admin-grade.
+
 ## Security notes — read before you paste the key anywhere
 
 - **The company API key is admin-grade.** Anything holding it can read your

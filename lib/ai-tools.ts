@@ -8,6 +8,7 @@
  * screens.
  */
 import type { AssetWithLocation, Geofence, AlertEvent } from './types'
+import { MCP_TOOLS, runMcpTool } from './mcp-tools'
 import { pointInPolygon } from './alerts-engine'
 import { computeRangeStats, estMpgForSpecs, type StatPoint } from './asset-stats'
 import { segmentVisits, type VisitPoint } from './visits'
@@ -21,6 +22,27 @@ export interface AiToolCtx {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   alerts: AlertEvent[]
+  /** Session door's role gate: the signed-in user may see dollar figures.
+   *  (The MCP door has no per-user roles — a company key is admin-grade.) */
+  canViewCosts: boolean
+}
+
+// ── Shared MCP registry (task #28: one brain, three doors) ──────────────────
+// The Agent Interface (lib/mcp-tools.ts) is the canonical tool registry.
+// The in-app assistant serves the subset it doesn't already cover natively
+// (fleet_snapshot ⊇ list_assets, recent_alerts ⊇ list_alerts), so an answer
+// in the app and an answer through a customer's own AI come from the same
+// executors and the same house math.
+const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_status', 'find_tool']
+/** Tools that return dollars — hidden AND refused for non-cost roles. */
+const COST_GATED_TOOLS = new Set(['get_zone_costs'])
+
+/** Anthropic-format defs for the shared MCP tools this user may call. */
+export function sharedMcpToolDefs(canViewCosts: boolean) {
+  return MCP_TOOLS
+    .filter((t) => SHARED_MCP_TOOLS.includes(t.name))
+    .filter((t) => canViewCosts || !COST_GATED_TOOLS.has(t.name))
+    .map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
 }
 
 // Anthropic Messages API custom-tool definitions (raw JSON schema).
@@ -448,6 +470,18 @@ async function runDailyLogs(ctx: AiToolCtx, input: { days?: number; zone_name?: 
  *  model can recover ("no such asset — here's the list"). */
 export async function runAiTool(name: string, input: Record<string, unknown>, ctx: AiToolCtx): Promise<unknown> {
   try {
+    // Shared MCP registry tools — same executors as the Agent Interface.
+    // The permission check runs HERE too (not just at def-list time): a
+    // model must never reach dollars a hidden tool def alone would allow.
+    if (SHARED_MCP_TOOLS.includes(name)) {
+      if (COST_GATED_TOOLS.has(name) && !ctx.canViewCosts) {
+        return { error: 'This user does not have the cost-visibility permission — answer without dollar figures.' }
+      }
+      const res = await runMcpTool(name, input, ctx.companyId)
+      const text = res.content[0]?.text ?? ''
+      if (res.isError) return { error: text || 'tool failed' }
+      try { return JSON.parse(text) } catch { return { result: text } }
+    }
     switch (name) {
       case 'fleet_snapshot': return await runFleetSnapshot(ctx)
       case 'asset_activity': return await runAssetActivity(ctx, input as { asset_name?: string; range?: string })

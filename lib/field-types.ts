@@ -31,6 +31,10 @@ export interface DailyLog {
   /** Where the phone was when the log was submitted (migration 059). */
   lat?: number | null
   lng?: number | null
+  /** Present when the log arrived via the offline queue's replay (066). */
+  idempotency_key?: string | null
+  /** Required-photo rules were waived on an offline replay (067). */
+  photos_waived?: boolean | null
   created_at: string
 }
 

@@ -7,7 +7,8 @@ import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { PROJECTS } from '@/lib/projects'
 import { answerQuestion, type AssistantContext } from '@/lib/assistant'
-import { AI_TOOLS, runAiTool, type AiToolCtx } from '@/lib/ai-tools'
+import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai-tools'
+import { getMyPermissions } from '@/lib/permissions-server'
 import { DEFAULT_TZ } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +35,10 @@ Ground rules:
   as approximate ("roughly 25 min if traffic behaves"), never as turn-by-turn certainty.
 - Assets and zones may carry owner-written "notes" (engine type, gate codes, quirks). Treat
   notes as ground truth from the owner and use them when relevant.
+- Maintenance ("anything overdue?", "open work orders?") -> maintenance_status. Finding a
+  Bluetooth-tagged tool -> find_tool. Zone cost/budget questions -> get_zone_costs when it is
+  available to you; if it is not in your tools, this user may not see dollars — give hours and
+  activity without cost figures and don't mention the permission mechanics.
 - RIGHT-NOW questions ("what is X doing"): trust fleet_snapshot's "moving" and "stoppedAt"
   fields over the raw speed. If stoppedAt is set, the asset is parked THERE NOW — lead with
   "stopped at <place> for <minutes> min". A speedMph with lastReportAgeMinutes >= 3 is a STALE
@@ -141,11 +146,12 @@ export async function POST(request: NextRequest) {
   // The bug that made this bot useless on live accounts: it queried with the
   // demo company id, so RLS returned zero rows ("0 of 0 assets").
   const companyId = await getCurrentCompanyId()
-  const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
+  const [rawAssets, geofences, alerts, toolAssociations, perms] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getAlertEvents(companyId),
     getToolAssociations(companyId),
+    getMyPermissions(),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = decodeURIComponent(request.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
@@ -162,7 +168,11 @@ export async function POST(request: NextRequest) {
 
   // ── With a key: real tool-use agent over live data ──
   const { userId, companyId: userCompanyId, rows: history } = await loadHistory(12, sinceTs)
-  const toolCtx: AiToolCtx = { companyId, tz, assets, geofences, alerts }
+  const toolCtx: AiToolCtx = { companyId, tz, assets, geofences, alerts, canViewCosts: perms.canViewCosts }
+  // One brain, three doors (task #28): the in-app assistant serves the shared
+  // MCP registry too — zone costs (cost-permission gated), maintenance, tool
+  // finding — so it never knows less than a customer's own AI on the MCP door.
+  const tools = [...AI_TOOLS, ...sharedMcpToolDefs(perms.canViewCosts)] as Anthropic.Tool[]
 
   try {
     const client = new Anthropic({ apiKey })
@@ -177,7 +187,7 @@ export async function POST(request: NextRequest) {
       max_tokens: 1500,
       thinking: { type: 'adaptive' },
       system: SYSTEM,
-      tools: AI_TOOLS as Anthropic.Tool[],
+      tools,
       messages,
     })
 
@@ -196,7 +206,7 @@ export async function POST(request: NextRequest) {
         max_tokens: 1500,
         thinking: { type: 'adaptive' },
         system: SYSTEM,
-        tools: AI_TOOLS as Anthropic.Tool[],
+        tools,
         messages,
       })
     }

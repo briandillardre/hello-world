@@ -173,7 +173,8 @@ export async function pushQboDayAction(
     const zoneIds = Array.from(new Set(entries.map((e) => e.project_geofence_id as string | null).filter((z): z is string => !!z)))
     const [mapRes, pushRes, fenceRes] = await Promise.all([
       supabase.from('qbo_employee_map').select('user_id, qbo_employee_id').eq('company_id', companyId),
-      supabase.from('qbo_time_pushes').select('time_entry_id, status').in('time_entry_id', entryIds),
+      supabase.from('qbo_time_pushes').select('time_entry_id, status')
+        .eq('company_id', companyId).in('time_entry_id', entryIds),
       zoneIds.length
         ? supabase.from('geofences').select('id, name, qbo_customer_id').in('id', zoneIds)
         : Promise.resolve({ data: [], error: null } as { data: { id: string; name: string; qbo_customer_id: string | null }[]; error: null }),
@@ -230,7 +231,7 @@ export async function pushQboDayAction(
       if (already === 'error') {
         const { data: claimed } = await supabase.from('qbo_time_pushes')
           .update({ status: 'pending', error: null, hours, pushed_at: new Date().toISOString() })
-          .eq('time_entry_id', entryId).eq('status', 'error').select('id')
+          .eq('company_id', companyId).eq('time_entry_id', entryId).eq('status', 'error').select('id')
         if (!claimed?.length) { skipped++; continue }
       } else if (already === 'pending') {
         // A crash mid-push strands rows as 'pending' forever (ship-check P1):
@@ -239,7 +240,7 @@ export async function pushQboDayAction(
         const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString()
         const { data: claimed } = await supabase.from('qbo_time_pushes')
           .update({ error: null, hours, pushed_at: new Date().toISOString() })
-          .eq('time_entry_id', entryId).eq('status', 'pending').lt('pushed_at', staleBefore)
+          .eq('company_id', companyId).eq('time_entry_id', entryId).eq('status', 'pending').lt('pushed_at', staleBefore)
           .select('id')
         if (!claimed?.length) { skipped++; continue }
       } else {
@@ -272,14 +273,14 @@ export async function pushQboDayAction(
           status: 'pushed',
           error: null,
           pushed_at: new Date().toISOString(),
-        }).eq('time_entry_id', entryId)
+        }).eq('company_id', companyId).eq('time_entry_id', entryId)
         pushed++
         pushedEntryIds.push(entryId)
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'QuickBooks rejected this entry.'
         await supabase.from('qbo_time_pushes')
           .update({ status: 'error', error: msg.slice(0, 2000) })
-          .eq('time_entry_id', entryId)
+          .eq('company_id', companyId).eq('time_entry_id', entryId)
         failed.push({ person, error: msg })
       }
     }

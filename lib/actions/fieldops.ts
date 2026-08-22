@@ -40,14 +40,34 @@ const isDuplicateKey = (error: { code?: string } | null): boolean => error?.code
 
 /** Offline replays carry WHEN the tap actually happened, so a clock-in synced
  *  three hours later doesn't shift the timesheet. Sane values only: parseable,
- *  not in the future (2 min skew allowed), no older than 7 days. */
+ *  not in the future (2 min skew allowed), no older than 30 days — a phone
+ *  left in a truck for a couple of weeks still replays with honest times. */
 const validPastIso = (v: unknown): string | null => {
   if (typeof v !== 'string' || !v) return null
   const t = Date.parse(v)
   if (!Number.isFinite(t)) return null
   const now = Date.now()
-  if (t > now + 2 * 60_000 || t < now - 7 * 86_400_000) return null
+  if (t > now + 2 * 60_000 || t < now - 30 * 86_400_000) return null
   return new Date(t).toISOString()
+}
+
+/** The calendar day an instant falls on in the viewer's timezone (ht_tz
+ *  cookie, set by TzCookie). A 9 PM Eastern writeup is 1 AM UTC the NEXT
+ *  day — log_date must follow the crew's clock, not the server's. */
+async function localLogDate(iso: string): Promise<string> {
+  let tz = 'America/New_York'
+  try {
+    const { cookies } = await import('next/headers')
+    const raw = cookies().get('ht_tz')?.value
+    if (raw) {
+      const candidate = decodeURIComponent(raw)
+      new Intl.DateTimeFormat('en-US', { timeZone: candidate }) // throws on garbage
+      tz = candidate
+    }
+  } catch { /* missing/invalid cookie — Eastern fallback */ }
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(iso))
 }
 
 export async function clockInAction(input: {
@@ -77,6 +97,11 @@ export async function clockInAction(input: {
     }
     const idem = validIdem(input.idempotencyKey)
     const at = validPastIso(input.at)
+    // A replay whose timestamp is too old (or garbage) must not open a shift
+    // stamped "now" — that fabricates hours weeks after the fact (ship P2-9).
+    if (idem && input.at && !at) {
+      return { ok: false, error: 'This queued clock-in is too old to record accurately — add the shift manually.' }
+    }
     const base = {
       ...(at ? { clock_in_at: at } : {}), // column exists since 015 — safe in the fallback too
       company_id: companyId,
@@ -150,7 +175,8 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const backAt = validPastIso(form.get('_queuedAt'))
     if (idem) {
       const { data: dup, error: dupErr } = await supabase
-        .from('daily_logs').select('id').eq('idempotency_key', idem).limit(1)
+        .from('daily_logs').select('id')
+        .eq('company_id', companyId).eq('idempotency_key', idem).limit(1)
       if (!dupErr && dup?.length) return { ok: true }
     }
 
@@ -176,6 +202,9 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     // Uploads + custom answers, walked from the form definition.
     const photos: { url: string; kind: 'photo' | 'receipt' }[] = []
     const answers: { id: string; label: string; value: string | number | boolean | string[] }[] = []
+    // Records that a required-photo rule was relaxed for this replay, so the
+    // office sees "photos skipped" instead of assuming a complete form (067).
+    let photosWaived = false
     for (const it of items) {
       if (it.std === 'writeup' || it.std === 'safety') continue // legacy columns below
       if (it.type === 'photos') {
@@ -186,7 +215,10 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
           const url = await uploadFieldPhoto(companyId, f)
           if (url) { photos.push({ url, kind: it.std === 'receipts' ? 'receipt' : 'photo' }); uploaded++ }
         }
-        if (it.required && !uploaded && !offlineReplay) return { ok: false, error: `“${it.label}” needs at least one photo.` }
+        if (it.required && !uploaded) {
+          if (!offlineReplay) return { ok: false, error: `“${it.label}” needs at least one photo.` }
+          photosWaived = true
+        }
         continue
       }
       if (it.std === 'trucks_fueled' || it.std === 'equipment_fueled') {
@@ -221,7 +253,9 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const hasPos = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null
 
     const baseRow = {
-      ...(backAt ? { log_date: backAt.slice(0, 10) } : {}), // the day it was written, not the sync day
+      // The day it was WRITTEN (replay = queue time), on the crew's clock —
+      // the DB default is the UTC day, which shifts evening logs forward.
+      log_date: await localLogDate(backAt ?? new Date().toISOString()),
       company_id: companyId,
       user_id: userId,
       time_entry_id: entryId,
@@ -231,7 +265,12 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       equipment_fueled: form.get('equipmentFueled') === null ? null : form.get('equipmentFueled') === 'yes',
       photos,
     }
-    const fullRow = { ...baseRow, answers, ...(hasPos ? { lat, lng } : {}), ...(idem ? { idempotency_key: idem } : {}) }
+    const fullRow = {
+      ...baseRow, answers,
+      ...(hasPos ? { lat, lng } : {}),
+      ...(idem ? { idempotency_key: idem } : {}),
+      ...(photosWaived ? { photos_waived: true } : {}),
+    }
     let { data: logRow, error: logErr } = await supabase.from('daily_logs').insert(fullRow).select('id').single()
     // Replay raced an attempt that already landed (unique idempotency index):
     // just make sure the entry is closed, then report success.
@@ -320,6 +359,11 @@ export async function addEquipmentCheckAction(
     const { supabase, userId, companyId } = await requireUser()
     const idem = validIdem(idempotencyKey)
     const at = validPastIso(occurredAt)
+    // Same policy as clock-in: a replay too old to timestamp honestly is
+    // rejected, not silently recorded as if it happened now (ship P2-9).
+    if (idem && occurredAt && !at) {
+      return { ok: false, error: 'This queued check is too old to record accurately — it was skipped.' }
+    }
     const base = {
       ...(at ? { created_at: at } : {}), // column exists since 015 — safe in the fallback too
       company_id: companyId,
