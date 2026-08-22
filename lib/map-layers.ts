@@ -42,7 +42,8 @@ export interface LayerRowDef {
 // bottom. (Show on map renders between Map look and My jobsites; it's a
 // dedicated section in the panel, not a registry group.)
 export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[] = [
-  { id: 'basemap', label: 'Map look', defaultCollapsed: true },
+  // "Basemap", not "Map look" (Brian, Aug 22) — the industry word.
+  { id: 'basemap', label: 'Basemap', defaultCollapsed: true },
   // 'My sites', not 'My jobsites' (Brian, Aug 22): landscapers, crews,
   // rental yards — not every customer calls them job sites.
   { id: 'jobs', label: 'My sites', defaultCollapsed: true },
