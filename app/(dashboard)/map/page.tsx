@@ -43,7 +43,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
     return (
       <div className="h-full flex flex-col pb-[54px] md:pb-0">
-        <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
+        <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
         <div className="flex-1 relative min-h-0">
           <MapPageClient
             bootstrap
@@ -122,7 +122,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const aboard = toolsAboard(rawAssets, toolAssociations)
   return (
     <div className="h-full flex flex-col pb-[54px] md:pb-0">
-      <MapTopBar companyName={company.name} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
+      <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient
           assets={assets}
