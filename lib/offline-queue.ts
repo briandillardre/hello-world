@@ -126,6 +126,13 @@ interface ClockInPayload {
   lng: number | null
 }
 
+/** Auth failures are RETRYABLE (session refresh after a long offline
+ *  stretch), never a server "no" — deleting the writeup over a stale
+ *  session would lose real data (ship-check P2). */
+function isAuthFailure(error?: string): boolean {
+  return !!error && /not signed in|sign in/i.test(error)
+}
+
 async function defaultExecutor(entry: QueueEntry): Promise<FlushOutcome> {
   if (entry.action === 'clock-in') {
     const p = entry.payload as unknown as ClockInPayload
@@ -173,6 +180,9 @@ export async function flush(executor: Executor = defaultExecutor): Promise<void>
       } catch {
         break // still no coverage — keep the entry, stop the run
       }
+      if (outcome.status === 'rejected' && isAuthFailure(outcome.error)) {
+        break // stale session, not a real rejection — keep everything, retry later
+      }
       remove(entry.id)
       try {
         window.dispatchEvent(new CustomEvent<QueueFlushDetail>('ht:queue-flushed', {
@@ -185,15 +195,38 @@ export async function flush(executor: Executor = defaultExecutor): Promise<void>
   }
 }
 
+// ── Owner guard: on a shared tablet, worker A's queued events must never
+// replay under worker B's session (sec-check P2). The queue remembers which
+// user it belongs to; a different signed-in user drops it.
+const OWNER_KEY = 'ht_offline_queue_owner_v1'
+async function ownerGuard(): Promise<void> {
+  try {
+    const { createClient } = await import('@/lib/supabase')
+    const { data } = await createClient().auth.getUser()
+    const uid = data.user?.id
+    if (!uid) return // signed out — flush will fail auth-retryably anyway
+    const owner = localStorage.getItem(OWNER_KEY)
+    if (owner && owner !== uid && readAll().length) {
+      writeAll([]) // different person now — their taps, not this queue's
+      formStash.clear()
+      emitChanged()
+    }
+    localStorage.setItem(OWNER_KEY, uid)
+  } catch { /* demo mode / storage blocked — nothing to guard */ }
+}
+
+/** Side-effect bootstrap for layouts (OfflineSync) — wiring lives below. */
+export function initOfflineQueue(): void { /* module init did the work */ }
+
 // ── Auto-flush wiring: back-online events + module init when already online ──
 if (typeof window !== 'undefined') {
   const w = window as unknown as Record<string, unknown>
   if (!w.__htOfflineQueueWired) {
     w.__htOfflineQueueWired = true
-    window.addEventListener('online', () => { void flush() })
+    window.addEventListener('online', () => { void ownerGuard().then(() => flush()) })
     if (navigator.onLine && readAll().length) {
       // Small delay so hydration finishes before server actions fire.
-      setTimeout(() => { void flush() }, 1500)
+      setTimeout(() => { void ownerGuard().then(() => flush()) }, 1500)
     }
   }
 }

@@ -56,8 +56,16 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
   const [pushingDay, setPushingDay] = useState<string | null>(null)
   const pushDay = async (day: string) => {
     setPushingDay(day)
-    const r = await pushQboDayAction(day, tz)
-    setPushingDay(null)
+    let r: Awaited<ReturnType<typeof pushQboDayAction>>
+    try {
+      r = await pushQboDayAction(day, tz)
+    } catch {
+      // Timeout/network mid-push — the claim-lock makes a retry safe.
+      toast('Push interrupted — tap it again; nothing gets double-posted.', { variant: 'error' })
+      return
+    } finally {
+      setPushingDay(null)
+    }
     if ('error' in r) { toast(r.error, { variant: 'error' }); return }
     if (r.pushedEntryIds.length) {
       setQboPushed((p) => new Set(Array.from(p).concat(r.pushedEntryIds)))

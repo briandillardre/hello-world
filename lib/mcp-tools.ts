@@ -553,8 +553,10 @@ export async function runMcpTool(
     const result = await Promise.race([run(), budget])
     clearTimeout(timer)
     return result
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : 'Tool failed.')
+  } catch {
+    // Never echo internal error text (env/config messages) to callers,
+    // even authenticated ones (sec-check P2-5).
+    return fail('Tool failed — try again, or email support@hammertrack.ai if it keeps happening.')
   }
 }
 

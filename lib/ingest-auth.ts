@@ -62,6 +62,9 @@ export async function verifyIngestKey(request: NextRequest): Promise<IngestAuth>
  * accepts ONLY company keys, never the platform INGEST_API_KEY.
  */
 export async function lookupCompanyByKey(key: string): Promise<string | null> {
+  // Shape gate: real keys are tf_ + base36 (generateApiKey). Garbage keys
+  // get rejected here instead of costing a DB query each (ship-check P2).
+  if (!/^tf_[a-z0-9_]{10,64}$/i.test(key)) return null
   if (!key) return null
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')

@@ -42,21 +42,32 @@ const DOCS_HINT = {
 // which is what this guards against.
 const RATE_LIMIT = 60
 const RATE_WINDOW_MS = 60_000
+// Second gate keyed by client IP: a flood that rotates garbage keys gets a
+// fresh key-bucket every time, but not a fresh address (sec-check P2-1).
+const IP_RATE_LIMIT = 300
 const rateBuckets = new Map<string, number[]>()
 
-function rateLimited(key: string): boolean {
+/** Debit `cost` hits (batch = one per element, sec-check P1-1). */
+function rateLimited(key: string, cost = 1, limit = RATE_LIMIT): boolean {
   // Bucket by a hash so raw keys never sit in process memory longer than the request.
   const id = createHash('sha256').update(key).digest('base64').slice(0, 16)
   const now = Date.now()
   const hits = (rateBuckets.get(id) ?? []).filter((t) => now - t < RATE_WINDOW_MS)
-  if (hits.length >= RATE_LIMIT) {
+  if (hits.length + cost > limit) {
     rateBuckets.set(id, hits)
     return true
   }
-  hits.push(now)
+  for (let i = 0; i < cost; i++) hits.push(now)
   rateBuckets.set(id, hits)
-  // Keep the map from growing unboundedly under key-guessing traffic.
-  if (rateBuckets.size > 5000) rateBuckets.clear()
+  // Bound the map under key-rotating traffic WITHOUT resetting legitimate
+  // windows: evict oldest entries instead of clearing everyone.
+  if (rateBuckets.size > 5000) {
+    const keys = Array.from(rateBuckets.keys())
+    for (const k of keys) {
+      rateBuckets.delete(k)
+      if (rateBuckets.size <= 4000) break
+    }
+  }
   return false
 }
 
@@ -169,7 +180,8 @@ export async function POST(request: NextRequest) {
   // Rate limit first (keyed by the presented credential) so brute-forcing
   // keys hammers this in-memory gate, not the database.
   const key = extractKey(request)
-  if (key && rateLimited(key)) {
+  const ip = (request.headers.get('x-forwarded-for') ?? 'unknown').split(',')[0].trim()
+  if (rateLimited(`ip:${ip}`, 1, IP_RATE_LIMIT) || (key && rateLimited(key))) {
     return NextResponse.json(
       rpcError(null, -32000, `Rate limit exceeded — max ${RATE_LIMIT} calls per minute per key.`),
       { status: 429, headers: JSON_HEADERS }
@@ -200,6 +212,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(rpcError(null, -32600, 'Invalid request: empty batch'), {
           status: 400, headers: JSON_HEADERS,
         })
+      }
+      // One POST must not multiply past the per-key limit (sec-check P1-1):
+      // cap the batch and debit the bucket one hit per element.
+      if (body.length > 20) {
+        return NextResponse.json(rpcError(null, -32600, 'Batch too large (max 20).'), {
+          status: 400, headers: JSON_HEADERS,
+        })
+      }
+      if (key && body.length > 1 && rateLimited(key, body.length - 1)) {
+        return NextResponse.json(
+          rpcError(null, -32000, `Rate limit exceeded — max ${RATE_LIMIT} calls per minute per key.`),
+          { status: 429, headers: JSON_HEADERS }
+        )
       }
       const responses = (
         await Promise.all(body.map((m) => handleRpc((m ?? {}) as JsonRpcRequest, companyId)))

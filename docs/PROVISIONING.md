@@ -10,8 +10,8 @@ hardware batch — customer #2 and beyond, and our own reorders.
 > **Create the asset (with the tracker's FULL IMEI as its Tracker ID) BEFORE
 > the unit powers on.** Ingest drops reports from unknown tracker_ids — a
 > device that reports before its asset exists looks dead even though the
-> pipeline is fine. T1-a's asset row uses the full 15-digit IMEI
-> (e.g. `868996068802222`), not the suffix.
+> pipeline is fine. The asset row uses the full 15-digit IMEI
+> (e.g. `868996068800000`), not the suffix.
 
 ## Phase 0 — Before the order ships (our side)
 

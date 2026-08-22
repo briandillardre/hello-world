@@ -59,8 +59,9 @@ export const GUIDES: HelpGuide[] = [
           <>
             <P>
               Add the asset in the app first: <B>Assets → Add Asset</B>. Name it, pick the type,
-              and enter the <B>Tracker ID</B> printed on the tracker&apos;s kit. Your trackers arrive
-              pre-configured — the ID is the only thing that ties the hardware to the right machine.
+              and enter the <B>Tracker ID</B> printed on the tracker&apos;s kit — the ID is what
+              ties the hardware to the right machine. Trackers come set up for our network, and
+              your first install is done with you, in person or on the phone.
             </P>
             <P>
               Do <B>one unit first</B>. Install it, watch it show up on <B>Map</B> on the drive home,

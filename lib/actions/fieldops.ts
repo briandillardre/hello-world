@@ -64,10 +64,17 @@ export async function clockInAction(input: {
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock in.' }
   try {
     const { supabase, userId, companyId, personName } = await requireUser()
-    // One open entry per person — idempotent against double taps.
+    // One open entry per person — idempotent against double taps. But a
+    // REPLAY (queued offline clock-in) colliding with a different open
+    // entry must say so, not pretend it landed (ship-check P2).
     const { data: open } = await supabase
       .from('time_entries').select('id').eq('user_id', userId).is('clock_out_at', null).limit(1)
-    if (open?.length) return { ok: true }
+    if (open?.length) {
+      if (input.idempotencyKey) {
+        return { ok: false, error: 'You already have an open shift — the queued clock-in was skipped, not recorded.' }
+      }
+      return { ok: true }
+    }
     const idem = validIdem(input.idempotencyKey)
     const at = validPastIso(input.at)
     const base = {

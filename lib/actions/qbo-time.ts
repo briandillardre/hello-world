@@ -164,7 +164,7 @@ export async function pushQboDayAction(
       .lt('clock_in_at', windowTo)
       .not('clock_out_at', 'is', null)
       .order('clock_in_at', { ascending: true })
-      .limit(500)
+      .limit(2000)
     if (entriesErr) return { error: entriesErr.message }
     const entries = (allEntries ?? []).filter((e) => dayKeyInTz(e.clock_in_at as string, zone) === dayKey)
     if (!entries.length) return { ok: true, pushed: 0, skipped: 0, failed: [], pushedEntryIds: [] }
@@ -213,7 +213,7 @@ export async function pushQboDayAction(
       const entryId = e.id as string
       const person = (e.person_name as string) || 'Crew member'
       const already = pushStateOf[entryId]
-      if (already === 'pushed' || already === 'pending') { skipped++; continue }
+      if (already === 'pushed') { skipped++; continue }
 
       const qboEmployeeId = employeeOf[e.user_id as string]
       if (!qboEmployeeId) {
@@ -229,8 +229,18 @@ export async function pushQboDayAction(
       // the idempotency lock: a concurrent push loses the insert and skips.
       if (already === 'error') {
         const { data: claimed } = await supabase.from('qbo_time_pushes')
-          .update({ status: 'pending', error: null, hours })
+          .update({ status: 'pending', error: null, hours, pushed_at: new Date().toISOString() })
           .eq('time_entry_id', entryId).eq('status', 'error').select('id')
+        if (!claimed?.length) { skipped++; continue }
+      } else if (already === 'pending') {
+        // A crash mid-push strands rows as 'pending' forever (ship-check P1):
+        // re-claim ONLY when the claim is stale (>10 min old — pushed_at is
+        // stamped at claim time). A live concurrent push keeps its claim.
+        const staleBefore = new Date(Date.now() - 10 * 60_000).toISOString()
+        const { data: claimed } = await supabase.from('qbo_time_pushes')
+          .update({ error: null, hours, pushed_at: new Date().toISOString() })
+          .eq('time_entry_id', entryId).eq('status', 'pending').lt('pushed_at', staleBefore)
+          .select('id')
         if (!claimed?.length) { skipped++; continue }
       } else {
         const { error: claimErr } = await supabase.from('qbo_time_pushes')

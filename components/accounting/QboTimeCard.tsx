@@ -33,6 +33,7 @@ export function QboTimeCard({ demo }: { demo: boolean }) {
     setSaving(userId)
     setSaved(null)
     setSaveError(null)
+    const prev = status.mappings[userId]
     // Optimistic — the select shows the new pick immediately.
     setStatus((s) => s && {
       ...s,
@@ -42,8 +43,16 @@ export function QboTimeCard({ demo }: { demo: boolean }) {
     })
     const r = await saveEmployeeMappingAction(userId, qboEmployeeId || null, name)
     setSaving(null)
-    if ('error' in r) setSaveError(r.error)
-    else setSaved(userId)
+    if ('error' in r) {
+      // Payroll mapping must never LOOK saved when it isn't — roll back.
+      setStatus((s) => s && {
+        ...s,
+        mappings: prev
+          ? { ...s.mappings, [userId]: prev }
+          : Object.fromEntries(Object.entries(s.mappings).filter(([k]) => k !== userId)),
+      })
+      setSaveError(r.error)
+    } else setSaved(userId)
   }
 
   return (
