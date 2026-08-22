@@ -486,7 +486,9 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     // to the right of it.
     <div style={{ zIndex: z }} className={`absolute inset-0 ${tuckCls(hidden)}`}>
       <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default" />
-      <div className="absolute left-0 top-0 bottom-0 w-[min(320px,86vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in">
+      {/* ~half the phone (Brian, Aug 22: "try half screen width") — the map
+          stays alive beside the drawer; 320px cap keeps desktop sane. */}
+      <div className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in">
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
           saved looks. Sticky so the tab bar survives the scroll. */}
