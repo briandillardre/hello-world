@@ -84,6 +84,9 @@ interface CommandData {
   pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
   /** Null = the caller's role may not see dollars (server-gated). */
   costToday: string | null
+  /** Fresh alerts from the re-poll — a wall display can't run on the
+   *  server-render snapshot forever. */
+  alerts?: AlertEvent[] | null
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -240,6 +243,19 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
     if (!deferLoad) return
     let alive = true
     let timer: number | undefined
+    // After the first full load, keep alerts/cost fresh with a light re-poll
+    // of command-data only (history stays the one-shot heavy fetch) — a wall
+    // display left on all day was showing breakfast's alerts at quitting time.
+    const refresh = () => {
+      fetch('/api/command-data')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((c) => {
+          if (!alive) return
+          setDyn((prev) => ({ ...(c as Omit<CommandData, 'historyRows'>), historyRows: prev?.historyRows ?? null }))
+        })
+        .catch(() => { /* transient — next tick retries */ })
+        .finally(() => { if (alive) timer = window.setTimeout(refresh, 180_000) })
+    }
     const attempt = () => {
       Promise.all([
         fetch(`/api/history?from=${new Date(Date.now() - 2 * 86_400_000).toISOString()}&to=${new Date().toISOString()}`)
@@ -250,6 +266,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           if (!alive) return
           setDyn({ ...(c as Omit<CommandData, 'historyRows'>), historyRows: Array.isArray(h?.rows) ? h.rows : null })
           setDynErr(false)
+          timer = window.setTimeout(refresh, 180_000)
         })
         .catch(() => {
           // Keep trying — a wall display that boots before the shop Wi-Fi
@@ -266,6 +283,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   const liveRows = dyn?.historyRows ?? historyRows
   const liveEarliest = dyn?.earliestMs ?? earliestMs
   const livePairing = dyn?.pairingEpisodes ?? pairingEpisodes
+  const liveAlerts = dyn?.alerts ?? alerts
   const liveKpis = dyn ? { ...kpis, costToday: dyn.costToday ?? '—' } : kpis
   // Rail waveform + map trails in real mode derive from the fetched rows —
   // the server `tracks` prop is [] on live accounts (ship-check: passing it
@@ -325,7 +343,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
 
   // Live event ticker: real alerts first (loud), then fleet status lines.
   const ticker: { text: string; alert?: boolean }[] = [
-    ...alerts.slice(0, 6).map((a) => ({
+    ...liveAlerts.slice(0, 6).map((a) => ({
       alert: a.rule?.trigger === 'after_hours_movement' || a.rule?.trigger === 'left_site',
       text: `${a.asset?.name ?? 'Asset'} · ${TRIGGER_LABEL[a.rule?.trigger ?? ''] ?? 'alert'}${a.rule?.geofence ? ` · ${a.rule.geofence.name}` : ''} · ${formatRelativeTime(a.triggered_at)}`,
     })),
@@ -352,7 +370,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           aboard={aboard}
           pairingEpisodes={livePairing}
           kiosk
-          alerts={alerts}
+          alerts={liveAlerts}
           tourOn={tourOn}
           onTourInterrupt={() => setTourOn(false)}
           brand={brand}
@@ -386,11 +404,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           bottom bar as /map instead (Brian, Aug 22) — the overlay sidebar
           ate the whole screen there. */}
       <div className="hidden md:block">
-        <KioskNav company={company} alerts={alerts} />
+        <KioskNav company={company} alerts={liveAlerts} />
       </div>
       <BottomNav
-        alertCount={alerts.filter((a) => !a.acknowledged_at).length}
-        latestAlertAt={alerts[0]?.triggered_at ?? null}
+        alertCount={liveAlerts.filter((a) => !a.acknowledged_at).length}
+        latestAlertAt={liveAlerts[0]?.triggered_at ?? null}
         companyName={company}
         userName={userName}
         navOrder={navOrder}
@@ -428,7 +446,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // must never block the map.
         <div className="absolute right-[58px] top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={liveRows} panels={panels} onPanel={onPanel} />
+            <EventRail assets={assets} alerts={liveAlerts} geofences={geofences} historyRows={liveRows} panels={panels} onPanel={onPanel} />
           </div>
         </div>
       ) : (
@@ -448,7 +466,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
             <TacticalHud
               assets={assets}
               geofences={geofences}
-              alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+              alertCount={liveAlerts.filter((a) => !a.acknowledged_at).length}
               center={camCenter}
             />
           )}

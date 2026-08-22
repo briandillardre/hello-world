@@ -18,9 +18,16 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
   const [tab, setTab] = useState<'activity' | 'rules'>('activity')
   const [alerts, setAlerts] = useState(initial)
 
-  const acknowledge = (id: string) => {
-    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged_at: new Date().toISOString() } : a)))
-    if (editable) acknowledgeAlertAction(id)
+  const acknowledge = async (id: string) => {
+    const prev = alerts.find((a) => a.id === id)?.acknowledged_at ?? null
+    setAlerts((cur) => cur.map((a) => (a.id === id ? { ...a, acknowledged_at: new Date().toISOString() } : a)))
+    if (!editable) return
+    const res = await acknowledgeAlertAction(id).catch(() => ({ ok: false }))
+    if (!res.ok) {
+      setAlerts((cur) => cur.map((a) => (a.id === id ? { ...a, acknowledged_at: prev } : a)))
+      const { toast } = await import('@/components/ui/feedback')
+      toast('Could not acknowledge — check your connection and try again.', { variant: 'error' })
+    }
   }
 
   // Ack a SPECIFIC set (the "Ack visible" path) — the blanket ack-all is

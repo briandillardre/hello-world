@@ -130,7 +130,8 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
       g.unreadIds.push(a.id)
       if (!critical) g.nonCriticalIds.push(a.id)
       const trigger = (a.rule?.trigger ?? 'exit') as AlertRule['trigger']
-      const sysLabel = a.kind === 'fuel_low' ? 'Fuel low' : a.kind === 'battery_low' ? '12V battery weak' : null
+      const sysLabel = a.kind === 'fuel_low' ? 'Fuel low' : a.kind === 'battery_low' ? '12V battery weak'
+        : a.kind === 'oem_fault' ? 'OEM fault code' : null
       const zone = sysLabel ? 'Vehicle health' : (a.rule?.geofence?.name ?? 'Unknown zone')
       const key = `${a.kind ?? trigger}|${zone}`
       let line = g.lines.find((l) => l.key === key)
@@ -195,7 +196,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
               {unreadActionable.length}
             </span>
           )}
-          {tab === 'alerts' && ackVisibleIds.length > 1 && onAcknowledgeMany && (
+          {tab === 'alerts' && mounted && ackVisibleIds.length > 1 && onAcknowledgeMany && (
             <button
               onClick={() => onAcknowledgeMany(ackVisibleIds)}
               className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors whitespace-nowrap"
@@ -230,6 +231,10 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
 
       <div className="flex-1 overflow-y-auto">
         {tab === 'alerts' ? (
+          // Gated on mounted: snoozes load post-mount, and rendering the
+          // pre-snooze layout first made cards jump under a descending thumb
+          // (ship-check P2).
+          !mounted ? null : (
           <div className="p-3 space-y-3">
             {activeGroups.length === 0 && snoozedGroups.length === 0 && (
               <div className="p-8 max-w-sm mx-auto text-center">
@@ -283,6 +288,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
               </details>
             )}
           </div>
+          )
         ) : (
           <div className="divide-y divide-navy-800">
             {visibleActivity.length === 0 ? (
@@ -367,7 +373,9 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze }: {
             </Link>
             {onAcknowledge && (
               <button
-                onClick={() => l.ids.forEach((id) => onAcknowledge(id))}
+                // ONE bulk action for a coalesced line — 30 serial POSTs on
+                // field LTE froze every other tap (ship-check P1).
+                onClick={() => (onAcknowledgeMany ? onAcknowledgeMany(l.ids) : l.ids.forEach((id) => onAcknowledge(id)))}
                 className="flex-none p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
                 title={l.count > 1 ? `Acknowledge all ${l.count}` : 'Acknowledge'}
               >
@@ -405,7 +413,8 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
   const trigger = alert.rule?.trigger ?? 'exit'
   // System (vehicle-health) alerts carry `kind` and no rule/zone.
   const sysLabel = alert.kind === 'fuel_low' ? 'Fuel low'
-    : alert.kind === 'battery_low' ? '12V battery weak' : null
+    : alert.kind === 'battery_low' ? '12V battery weak'
+    : alert.kind === 'oem_fault' ? 'OEM fault code' : null
   const isUnread = !alert.acknowledged_at
   const isCritical = CRITICAL_TRIGGERS.includes(trigger) && !sysLabel
   const assetName = alert.asset?.name ?? 'Unknown Asset'

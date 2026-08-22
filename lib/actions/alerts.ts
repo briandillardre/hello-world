@@ -5,9 +5,16 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { acknowledgeAlert, acknowledgeAlerts, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
 import type { AlertRule, AlertRuleParams, AlertTrigger } from '@/lib/types'
 
-export async function acknowledgeAlertAction(id: string) {
-  await acknowledgeAlert(id)
+export async function acknowledgeAlertAction(id: string): Promise<{ ok: boolean }> {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (typeof id !== 'string' || !UUID.test(id)) return { ok: false }
+  try {
+    await acknowledgeAlert(id)
+  } catch {
+    return { ok: false }
+  }
   revalidatePath('/alerts')
+  return { ok: true }
 }
 
 /** Ack a SPECIFIC visible set — replaces blanket ack-all in the UI so

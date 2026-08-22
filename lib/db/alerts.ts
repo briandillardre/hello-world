@@ -27,10 +27,13 @@ export async function acknowledgeAlert(id: string): Promise<void> {
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  await supabase
+  const { error } = await supabase
     .from('alert_events')
     .update({ acknowledged_at: new Date().toISOString() })
     .eq('id', id)
+  // Same contract as the bulk path: a swallowed error paints an alert as
+  // handled while nothing persisted.
+  if (error) throw new Error(error.message)
 }
 
 /** Clear the whole backlog in one tap — nobody acknowledges 47 rows by hand. */

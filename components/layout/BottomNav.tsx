@@ -250,16 +250,23 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 <div className="grid grid-cols-3 gap-3">{ordered.map(renderTile)}</div>
               ) : (
                 <div className="space-y-4">
-                  {DRAWER_GROUPS.map((g) => {
-                    const items = ordered.filter((i) => g.hrefs.includes(i.href))
-                    if (!items.length) return null
-                    return (
-                      <div key={g.title}>
-                        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">{g.title}</p>
-                        <div className="grid grid-cols-3 gap-3">{items.map(renderTile)}</div>
-                      </div>
-                    )
-                  })}
+                  {(() => {
+                    // Catch-all: a page that ships without a DRAWER_GROUPS
+                    // entry must still be reachable — it lands in "Other"
+                    // instead of silently vanishing from browse mode.
+                    const grouped = new Set(DRAWER_GROUPS.flatMap((g) => g.hrefs))
+                    const groups = [...DRAWER_GROUPS, { title: 'Other', hrefs: ordered.map((i) => i.href).filter((h) => !grouped.has(h)) }]
+                    return groups.map((g) => {
+                      const items = ordered.filter((i) => g.hrefs.includes(i.href))
+                      if (!items.length) return null
+                      return (
+                        <div key={g.title}>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">{g.title}</p>
+                          <div className="grid grid-cols-3 gap-3">{items.map(renderTile)}</div>
+                        </div>
+                      )
+                    })
+                  })()}
                 </div>
               )
             })()}

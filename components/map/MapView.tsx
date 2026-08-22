@@ -1749,19 +1749,26 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
 
       // ── Live asset cluster source ──
-      m.addSource('assets', { type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current), cluster: true, clusterMaxZoom: 15, clusterRadius: 40 })
+      m.addSource('assets', {
+        type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current),
+        cluster: true, clusterMaxZoom: 15, clusterRadius: 40,
+        // Roll the alert flag up into clusters so a theft alert can't hide
+        // inside an amber blob at low zoom (ship-check, Aug 22).
+        clusterProperties: { alerts: ['+', ['get', 'alert']] },
+      })
       m.addLayer({
         id: 'clusters', type: 'circle', source: 'assets', filter: ['has', 'point_count'],
         paint: {
           'circle-color': '#001523',
           'circle-radius': ['step', ['get', 'point_count'], 20, 5, 26, 20, 32],
-          'circle-stroke-width': 2, 'circle-stroke-color': '#ff9e16',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': ['case', ['>', ['coalesce', ['get', 'alerts'], 0], 0], '#fb5d5d', '#ff9e16'],
         },
       })
       m.addLayer({
         id: 'cluster-count', type: 'symbol', source: 'assets', filter: ['has', 'point_count'],
         layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 13, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
-        paint: { 'text-color': '#ff9e16' },
+        paint: { 'text-color': ['case', ['>', ['coalesce', ['get', 'alerts'], 0], 0], '#fb5d5d', '#ff9e16'] },
       })
       // Expanding pulse ring — MOVING assets, plus a RED pulse on anything
       // wearing a live alert (marker grammar: alert outranks everything).
@@ -2355,6 +2362,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // or direction arrows with the type emoji riding on top.
     set('unclustered-circle', live && markerStyle === 'dot')
     set('asset-type-glyph', live && markerStyle === 'dot') // silhouettes ride the dots only
+    set('state-ring', live && markerStyle === 'dot') // ring is sized to the dot — clips ugly behind arrows
     set('asset-arrows', live && markerStyle === 'arrow')
     set('unclustered-label', live && markerStyle === 'arrow')
     set('trails-line', trailMode === 'trails')

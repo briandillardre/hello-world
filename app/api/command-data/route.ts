@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingEpisodes } from '@/lib/db/tools'
+import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { historyWindow } from '@/lib/trails'
@@ -38,8 +39,12 @@ export async function GET() {
   const fullSince = new Date(earliestMs ?? Date.now() - 30 * 86_400_000).toISOString()
 
   let costToday: string | null = null
-  const [pairingEpisodes] = await Promise.all([
+  const [pairingEpisodes, alerts] = await Promise.all([
     getPairingEpisodes(companyId, fullSince),
+    // Fresh alerts ride along so the wall display's ticker/rail don't fossilize
+    // at whatever the server render saw (ship-check P2) — the client re-polls
+    // this endpoint every few minutes.
+    getAlertEvents(companyId),
     (async () => {
       if (!perms.canViewCosts) return
       const since24 = new Date(Date.now() - 24 * 3_600_000).toISOString()
@@ -57,7 +62,7 @@ export async function GET() {
   ])
 
   return NextResponse.json(
-    { earliestMs, pairingEpisodes, costToday },
+    { earliestMs, pairingEpisodes, costToday, alerts },
     { headers: { 'Cache-Control': 'private, no-store' } }
   )
 }

@@ -28,11 +28,24 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
 }) {
   const [open, setOpen] = useState(false)
   useEffect(() => {
-    try {
-      if (new Date().getHours() < 5) return
-      if (localStorage.getItem(SEEN_KEY) === localDayKey()) return
-      setOpen(true)
-    } catch { /* private mode — skip quietly */ }
+    // The gate re-checks when the tab wakes up and on a coarse tick — a phone
+    // left on /map overnight (or a PWA resumed at 7 AM) crosses 5 AM and day
+    // boundaries without ever re-mounting this component (ship-check).
+    const check = () => {
+      try {
+        if (new Date().getHours() < 5) return
+        if (localStorage.getItem(SEEN_KEY) === localDayKey()) return
+        setOpen(true)
+      } catch { /* private mode — skip quietly */ }
+    }
+    check()
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    const tick = window.setInterval(check, 15 * 60_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.clearInterval(tick)
+    }
   }, [])
   const dismiss = () => {
     setOpen(false)
@@ -52,15 +65,19 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
         href: '/alerts',
       })
     }
+    // Silent = has a tracker but stale 48h+ — OR has a tracker that has NEVER
+    // reported (no location at all), the failure mode a brand-new install hits.
     const silent = assets.filter((a) =>
-      (a.type === 'vehicle' || a.type === 'equipment') && a.location &&
-      Date.now() - new Date(a.location.timestamp).getTime() > 48 * 3_600_000)
+      (a.type === 'vehicle' || a.type === 'equipment') && (
+        (a.location && Date.now() - new Date(a.location.timestamp).getTime() > 48 * 3_600_000) ||
+        (!a.location && !!a.tracker_id)
+      ))
     if (silent.length) {
       out.push({
         key: 'silent',
         icon: <WifiOff className="h-4 w-4 text-amber" />,
         text: silent.length === 1
-          ? `${silent[0].name} hasn't reported in 2+ days`
+          ? (silent[0].location ? `${silent[0].name} hasn't reported in 2+ days` : `${silent[0].name}'s tracker has never reported`)
           : `${silent.length} trackers silent 2+ days (${silent.slice(0, 2).map((a) => a.name).join(', ')}${silent.length > 2 ? '…' : ''})`,
         href: silent.length === 1 ? `/assets/${silent[0].id}` : '/assets',
       })
