@@ -12,10 +12,18 @@ export async function acknowledgeAlertAction(id: string) {
 
 /** Ack a SPECIFIC visible set — replaces blanket ack-all in the UI so
  *  critical theft rows can never ride along unseen (Aug 22 rebuild). */
-export async function acknowledgeManyAlertsAction(ids: string[]) {
-  const clean = (Array.isArray(ids) ? ids : []).filter((v): v is string => typeof v === 'string' && v.length < 64).slice(0, 500)
-  await acknowledgeAlerts(clean)
+export async function acknowledgeManyAlertsAction(ids: string[]): Promise<{ ok: boolean }> {
+  // Strict UUIDs only — one malformed id used to fail the whole .in()
+  // UPDATE silently while the UI painted everything acked (sec-check P2).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const clean = (Array.isArray(ids) ? ids : []).filter((v): v is string => typeof v === 'string' && UUID.test(v)).slice(0, 500)
+  try {
+    await acknowledgeAlerts(clean)
+  } catch {
+    return { ok: false }
+  }
   revalidatePath('/alerts')
+  return { ok: true }
 }
 
 export async function acknowledgeAllAlertsAction() {

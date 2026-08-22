@@ -40,10 +40,13 @@ export async function acknowledgeAlerts(ids: string[]): Promise<void> {
   if (isMock || !ids.length) return
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  await supabase
+  const { error } = await supabase
     .from('alert_events')
     .update({ acknowledged_at: new Date().toISOString() })
     .in('id', ids.slice(0, 500))
+  // Surface failure — a swallowed error here means the UI shows theft
+  // alerts as acknowledged while nothing persisted (sec-check P2).
+  if (error) throw new Error(error.message)
 }
 
 export async function acknowledgeAllAlerts(companyId: string): Promise<void> {

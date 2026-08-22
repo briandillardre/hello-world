@@ -25,11 +25,20 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
 
   // Ack a SPECIFIC set (the "Ack visible" path) — the blanket ack-all is
   // gone from the UI: theft must never ride along in a bulk sweep (Aug 22).
-  const acknowledgeMany = (ids: string[]) => {
+  // On server failure the optimistic paint REVERTS — the one page that
+  // must never show theft as handled when nothing persisted (sec-check).
+  const acknowledgeMany = async (ids: string[]) => {
     const now = new Date().toISOString()
     const idSet = new Set(ids)
+    const prevById = new Map(alerts.filter((a) => idSet.has(a.id)).map((a) => [a.id, a.acknowledged_at]))
     setAlerts((prev) => prev.map((a) => (idSet.has(a.id) && !a.acknowledged_at ? { ...a, acknowledged_at: now } : a)))
-    if (editable) acknowledgeManyAlertsAction(ids)
+    if (!editable) return
+    const res = await acknowledgeManyAlertsAction(ids).catch(() => ({ ok: false }))
+    if (!res.ok) {
+      setAlerts((prev) => prev.map((a) => (idSet.has(a.id) ? { ...a, acknowledged_at: prevById.get(a.id) ?? null } : a)))
+      const { toast } = await import('@/components/ui/feedback')
+      toast('Could not acknowledge — check your connection and try again.', { variant: 'error' })
+    }
   }
 
   // ONE number, same rule as the nav bell: unread ACTIONABLE alerts —
