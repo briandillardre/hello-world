@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { DeleteAccountFlow } from '@/components/settings/DeleteAccountFlow'
+import { getMyPermissions } from '@/lib/permissions-server'
 
 export const metadata = { title: 'HammerTrack — Delete account' }
 
@@ -8,8 +9,11 @@ export const metadata = { title: 'HammerTrack — Delete account' }
  * Dedicated deletion screen (Brian, Aug 22): the Settings card only links
  * here, and the button below stays disabled until the user types DELETE —
  * an accidental deletion now takes a navigation, a typed word, and a tap.
+ * Admin-only, matching the server action's role check (sec-check, Aug 22).
  */
-export default function DeleteAccountPage() {
+export default async function DeleteAccountPage() {
+  const perms = await getMyPermissions()
+  const isAdmin = perms.role === 'admin'
   return (
     <div className="h-full overflow-auto pb-36 md:pb-24">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10 flex items-center gap-3">
@@ -40,9 +44,16 @@ export default function DeleteAccountPage() {
           and deleted data cannot be recovered.
         </p>
 
-        <div className="rounded-xl border border-navy-800 bg-navy-900 p-4">
-          <DeleteAccountFlow />
-        </div>
+        {isAdmin ? (
+          <div className="rounded-xl border border-navy-800 bg-navy-900 p-4">
+            <DeleteAccountFlow />
+          </div>
+        ) : (
+          <p className="rounded-xl border border-navy-800 bg-navy-900 px-4 py-3 text-[13px] text-muted">
+            Only a company admin can request account deletion. Ask your company owner, or email{' '}
+            <a href="mailto:support@hammertrack.ai" className="text-amber hover:underline">support@hammertrack.ai</a>.
+          </p>
+        )}
 
         <p className="text-xs text-faint">
           Just want to stop billing but keep your data? Manage your subscription from{' '}

@@ -117,3 +117,15 @@ matches exactly).
   `INGEST_API_KEY` you set in Netlify.
 - **Second run of `setup.sql` errors:** normal — it's a one‑time script; the
   errors just mean the tables already exist.
+
+---
+
+## Auth settings that must never be flipped
+
+- **Supabase Auth → "Confirm email" stays ON.** Signups without a verified
+  mailbox must never get a session. Two things quietly break if it's ever
+  turned off: (1) the `/model` founder gate's `@hammertrack.ai` fallback
+  becomes claimable by anyone who registers a lookalike address, and
+  (2) nothing in the codebase warns — registration silently works in
+  autoconfirm mode too. Belt-and-suspenders: keep `PLATFORM_OWNER_EMAILS`
+  set in Vercel (exact-match allow-list beats the domain fallback).
