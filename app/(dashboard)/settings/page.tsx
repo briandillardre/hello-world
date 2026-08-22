@@ -106,7 +106,10 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
             <h2 className="font-semibold text-sm text-muted">Tracker API Key</h2>
           </div>
           <div className="p-4 space-y-3">
-            <p className="text-xs text-muted">Use this key to authenticate tracker hardware pushing location data.</p>
+            <p className="text-xs text-muted">
+              Authenticates data pushed straight to the HammerTrack API and scopes it to your
+              company. Shipped HammerTrack trackers don&apos;t need it — they&apos;re pre-authenticated.
+            </p>
             {isMock ? (
               <ApiKeyReveal apiKey={MOCK_COMPANY.api_key} demo />
             ) : co.isAdmin && co.api_key ? (
@@ -115,8 +118,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
               <p className="text-xs text-faint">Only company admins can view the tracker API key.</p>
             )}
             <div className="bg-amber/15 border border-navy-800 rounded-lg p-3 text-xs text-amber">
-              <p className="font-semibold mb-1">How to use with OBD2 trackers</p>
-              <p>Send a POST request to <code className="bg-amber/15 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber/15 px-1 rounded">x-api-key: YOUR_KEY</code></p>
+              <p className="font-semibold mb-1">How to use</p>
+              <p>POST to <code className="bg-amber/15 px-1 rounded">/api/ingest/obd2</code> or <code className="bg-amber/15 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber/15 px-1 rounded">x-api-key: YOUR_KEY</code> — only assets in your company match.</p>
             </div>
           </div>
         </section>
@@ -138,6 +141,12 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
                 Advanced: send your own data (API)
               </summary>
               <div className="p-3 pt-1 space-y-4">
+                <p className="text-xs text-muted">
+                  Every endpoint below authenticates with the <code className="font-mono text-amber">x-api-key</code>{' '}
+                  header set to your company key — the one in the Tracker API Key card above. Pushes
+                  only resolve trackers on your company&apos;s assets, so create the asset (with its
+                  tracker ID) before the first POST.
+                </p>
                 <IntegrationCard
                   title="OBD2 (Vehicles)"
                   description="Use any OBD2 WiFi/BLE dongle that supports HTTP webhooks (e.g. Bouncie, AutoPi, Optimus 2.0). Configure the device to POST to /api/ingest/obd2."

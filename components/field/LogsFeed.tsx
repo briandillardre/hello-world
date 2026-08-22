@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download, Check, X } from 'lucide-react'
+import { ClipboardList, ShieldAlert, Fuel, Receipt, AlarmClock, Download, Check, X, Send, Loader2 } from 'lucide-react'
 import type { TimeEntry, DailyLog } from '@/lib/field-types'
 import type { PairSegment } from '@/lib/pairing'
 import { decidePairAction, type PairDecision } from '@/lib/actions/pairs'
+import { pushQboDayAction } from '@/lib/actions/qbo-time'
 import { toast } from '@/components/ui/feedback'
 
 /**
@@ -22,6 +23,9 @@ interface Props {
   pairs?: PairSegment[]
   /** Foreman decisions on pairs (confirm/reject), keyed by day+person+machine. */
   pairDecisions?: PairDecision[]
+  /** QBO timesheet push (065) — present only for billing admins with a live
+   *  QuickBooks connection; entry ids already pushed power the day badges. */
+  qboPush?: { pushedEntryIds: string[] } | null
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -43,9 +47,29 @@ function hoursOf(e: TimeEntry, now: number): number {
   return Math.max(0, (end - new Date(e.clock_in_at).getTime()) / 3_600_000)
 }
 
-export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisions = [] }: Props) {
+export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisions = [], qboPush = null }: Props) {
   const [lightbox, setLightbox] = useState<string | null>(null)
   const now = Date.now()
+
+  // QBO timesheet push — pushed ids grow optimistically as days post.
+  const [qboPushed, setQboPushed] = useState<Set<string>>(() => new Set(qboPush?.pushedEntryIds ?? []))
+  const [pushingDay, setPushingDay] = useState<string | null>(null)
+  const pushDay = async (day: string) => {
+    setPushingDay(day)
+    const r = await pushQboDayAction(day, tz)
+    setPushingDay(null)
+    if ('error' in r) { toast(r.error, { variant: 'error' }); return }
+    if (r.pushedEntryIds.length) {
+      setQboPushed((p) => new Set(Array.from(p).concat(r.pushedEntryIds)))
+    }
+    if (r.failed.length) {
+      toast(`${r.pushed} pushed, ${r.failed.length} failed — ${r.failed[0].person}: ${r.failed[0].error}`, { variant: 'error' })
+    } else if (r.pushed) {
+      toast(`${r.pushed} ${r.pushed === 1 ? 'entry' : 'entries'} pushed to QuickBooks.`)
+    } else {
+      toast('Nothing new to push — this day is already in QuickBooks.')
+    }
+  }
   // Foreman's confirm/reject on pairs — optimistic on top of the server rows.
   const [localDecisions, setLocalDecisions] = useState<Record<string, 'confirmed' | 'rejected'>>({})
   const decisionOf = (day: string, personId: string, machineId: string): 'confirmed' | 'rejected' | null => {
@@ -148,13 +172,39 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
           </button>
         </div>
       )}
-      {days.map(({ key, places, rows }) => (
+      {days.map(({ key, places, rows }) => {
+        // Admin QBO push state: only COMPLETED entries can post to payroll.
+        const completed = rows.filter((r) => r.entry.clock_out_at)
+        const pushedCount = completed.filter((r) => qboPushed.has(r.entry.id)).length
+        const allPushed = completed.length > 0 && pushedCount === completed.length
+        return (
         <section key={key}>
-          <div className="flex items-baseline justify-between mb-2">
+          <div className="flex items-center justify-between gap-2 mb-2">
             <h2 className="font-display font-bold text-ink">{dayLabel(key, tz)}</h2>
-            <span className="font-mono text-[11px] text-faint tabular-nums">
-              {rows.length} {rows.length === 1 ? 'entry' : 'entries'} · {rows.reduce((s, r) => s + hoursOf(r.entry, now), 0).toFixed(1)} h
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-faint tabular-nums">
+                {rows.length} {rows.length === 1 ? 'entry' : 'entries'} · {rows.reduce((s, r) => s + hoursOf(r.entry, now), 0).toFixed(1)} h
+              </span>
+              {qboPush && completed.length > 0 && (
+                allPushed ? (
+                  <span className="flex items-center gap-1 rounded-lg border border-teal/30 bg-teal/10 px-2 py-1 font-mono text-[10px] text-teal">
+                    <Check className="h-3 w-3" /> In QuickBooks
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => pushDay(key)}
+                    disabled={pushingDay === key}
+                    className="flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-2.5 py-1 text-[11px] font-semibold text-muted hover:text-ink hover:border-teal/50 transition disabled:opacity-60"
+                  >
+                    {pushingDay === key
+                      ? <Loader2 className="h-3 w-3 animate-spin text-teal" />
+                      : <Send className="h-3 w-3 text-teal" />}
+                    Push day to QuickBooks
+                    <span className="font-mono text-[10px] text-faint tabular-nums">{pushedCount}/{completed.length}</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
 
           {/* hours table — who, where, in/out, hours */}
@@ -304,7 +354,8 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
             </div>
           ))}
         </section>
-      ))}
+        )
+      })}
 
       {lightbox && (
         <button className="fixed inset-0 z-[70] bg-black/85 grid place-items-center p-4" onClick={() => setLightbox(null)}>

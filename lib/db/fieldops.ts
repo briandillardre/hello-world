@@ -84,6 +84,28 @@ export async function getRecentFieldDays(companyId: string, days = 7): Promise<{
   }
 }
 
+/** Time-entry ids already pushed to QuickBooks as TimeActivity rows (065),
+ *  for the per-day pushed/total badge on /logs. Empty in demo mode, before
+ *  migration 065, or on any error — the push button still works either way. */
+export async function getQboPushedEntryIds(companyId: string): Promise<string[]> {
+  if (isMock) return []
+  try {
+    const { createClient } = await import('../supabase-server')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('qbo_time_pushes')
+      .select('time_entry_id')
+      .eq('company_id', companyId)
+      .eq('status', 'pushed')
+      .order('pushed_at', { ascending: false })
+      .limit(2000)
+    if (error) return []
+    return (data ?? []).map((r) => r.time_entry_id as string)
+  } catch {
+    return []
+  }
+}
+
 /** Asset + its recent checks for the QR page. Slug is unique per asset. */
 export async function getAssetByQrSlug(slug: string): Promise<{
   asset: { id: string; name: string; type: string } | null

@@ -19,5 +19,14 @@ export function formatRelativeTime(date: string | Date): string {
 
 export function generateApiKey(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  // This key now authenticates the direct ingest API per-company, so use CSPRNG
+  // randomness where the runtime has it (all modern browsers + Node ≥19 expose
+  // globalThis.crypto). Math.random stays only as a last-resort fallback.
+  const webCrypto = globalThis.crypto
+  if (webCrypto?.getRandomValues) {
+    const buf = new Uint32Array(40)
+    webCrypto.getRandomValues(buf)
+    return 'tf_' + Array.from(buf, (n) => chars[n % chars.length]).join('')
+  }
   return 'tf_' + Array.from({ length: 40 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }

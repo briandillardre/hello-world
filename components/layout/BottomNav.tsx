@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
@@ -30,6 +30,7 @@ const moreItems = [
   { href: '/model', label: 'Op model', icon: TrendingUp },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', icon: Rocket },
+  { href: '/help', label: 'Help', icon: HelpCircle },
 ]
 
 export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, onSignOut }: {

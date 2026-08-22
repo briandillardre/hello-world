@@ -29,12 +29,37 @@ function missingColumn(error: { code?: string; message?: string } | null): boole
 
 const validCoord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
+/** Client-generated idempotency key (offline queue replays, migration 066).
+ *  Sanitized to a UUID-ish token; anything else is treated as absent. */
+const validIdem = (v: unknown): string | null =>
+  typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null
+
+/** 23505 = unique_violation on the idempotency index — the earlier attempt
+ *  already landed, so the replay reports success without inserting twice. */
+const isDuplicateKey = (error: { code?: string } | null): boolean => error?.code === '23505'
+
+/** Offline replays carry WHEN the tap actually happened, so a clock-in synced
+ *  three hours later doesn't shift the timesheet. Sane values only: parseable,
+ *  not in the future (2 min skew allowed), no older than 7 days. */
+const validPastIso = (v: unknown): string | null => {
+  if (typeof v !== 'string' || !v) return null
+  const t = Date.parse(v)
+  if (!Number.isFinite(t)) return null
+  const now = Date.now()
+  if (t > now + 2 * 60_000 || t < now - 7 * 86_400_000) return null
+  return new Date(t).toISOString()
+}
+
 export async function clockInAction(input: {
   category: ClockCategory
   projectGeofenceId?: string | null
   plan?: string
   lat?: number | null
   lng?: number | null
+  /** Offline-queue replay guard — retries with the same key are no-ops. */
+  idempotencyKey?: string | null
+  /** Offline replays only: when the tap actually happened. */
+  at?: string | null
 }): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock in.' }
   try {
@@ -43,7 +68,10 @@ export async function clockInAction(input: {
     const { data: open } = await supabase
       .from('time_entries').select('id').eq('user_id', userId).is('clock_out_at', null).limit(1)
     if (open?.length) return { ok: true }
+    const idem = validIdem(input.idempotencyKey)
+    const at = validPastIso(input.at)
     const base = {
+      ...(at ? { clock_in_at: at } : {}), // column exists since 015 — safe in the fallback too
       company_id: companyId,
       user_id: userId,
       person_name: personName,
@@ -51,11 +79,16 @@ export async function clockInAction(input: {
       project_geofence_id: input.category === 'project' ? (input.projectGeofenceId ?? null) : null,
       plan: (input.plan ?? '').slice(0, 500),
     }
-    const withPos = validCoord(input.lat) && validCoord(input.lng)
-      ? { ...base, in_lat: input.lat, in_lng: input.lng }
-      : base
-    let { error } = await supabase.from('time_entries').insert(withPos)
-    if (missingColumn(error) && withPos !== base) ({ error } = await supabase.from('time_entries').insert(base))
+    const hasPos = validCoord(input.lat) && validCoord(input.lng)
+    const full = {
+      ...base,
+      ...(hasPos ? { in_lat: input.lat, in_lng: input.lng } : {}),
+      ...(idem ? { idempotency_key: idem } : {}),
+    }
+    let { error } = await supabase.from('time_entries').insert(full)
+    if (isDuplicateKey(error)) return { ok: true } // replay — the first attempt won
+    // Lagging schema (059 pos columns or 066 idempotency_key) → plain insert.
+    if (missingColumn(error) && (hasPos || idem)) ({ error } = await supabase.from('time_entries').insert(base))
     if (error) return { ok: false, error: error.message }
     revalidatePath('/clock')
     return { ok: true }
@@ -99,6 +132,21 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
   try {
     const { supabase, userId, companyId, personName } = await requireUser()
 
+    // Offline-queue replay guard (migration 066): if a log with this key
+    // already exists, the earlier attempt won — report success, change nothing.
+    const idem = validIdem(form.get('idempotencyKey'))
+    // Set only when the offline queue replays WITHOUT the in-session photo
+    // Files (app was closed) — required-photo rules relax so the writeup
+    // isn't lost to a now-unmeetable requirement (see lib/offline-queue.ts).
+    const offlineReplay = form.get('_offlineReplay') === '1'
+    // When the queue replays, the clock-out happened at queue time — not now.
+    const backAt = validPastIso(form.get('_queuedAt'))
+    if (idem) {
+      const { data: dup, error: dupErr } = await supabase
+        .from('daily_logs').select('id').eq('idempotency_key', idem).limit(1)
+      if (!dupErr && dup?.length) return { ok: true }
+    }
+
     // The company's form drives validation + which answers exist. Tolerant:
     // any read failure falls back to the default form (pre-059 behavior).
     const { resolveLogForm } = await import('@/lib/log-form')
@@ -131,7 +179,7 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
           const url = await uploadFieldPhoto(companyId, f)
           if (url) { photos.push({ url, kind: it.std === 'receipts' ? 'receipt' : 'photo' }); uploaded++ }
         }
-        if (it.required && !uploaded) return { ok: false, error: `“${it.label}” needs at least one photo.` }
+        if (it.required && !uploaded && !offlineReplay) return { ok: false, error: `“${it.label}” needs at least one photo.` }
         continue
       }
       if (it.std === 'trucks_fueled' || it.std === 'equipment_fueled') {
@@ -166,6 +214,7 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const hasPos = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null
 
     const baseRow = {
+      ...(backAt ? { log_date: backAt.slice(0, 10) } : {}), // the day it was written, not the sync day
       company_id: companyId,
       user_id: userId,
       time_entry_id: entryId,
@@ -175,9 +224,19 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       equipment_fueled: form.get('equipmentFueled') === null ? null : form.get('equipmentFueled') === 'yes',
       photos,
     }
-    const fullRow = { ...baseRow, answers, ...(hasPos ? { lat, lng } : {}) }
+    const fullRow = { ...baseRow, answers, ...(hasPos ? { lat, lng } : {}), ...(idem ? { idempotency_key: idem } : {}) }
     let { data: logRow, error: logErr } = await supabase.from('daily_logs').insert(fullRow).select('id').single()
-    // Migration 059 not applied yet → store what the schema knows.
+    // Replay raced an attempt that already landed (unique idempotency index):
+    // just make sure the entry is closed, then report success.
+    if (isDuplicateKey(logErr)) {
+      await supabase.from('time_entries')
+        .update({ clock_out_at: backAt ?? new Date().toISOString() })
+        .eq('id', entryId).eq('user_id', userId).is('clock_out_at', null)
+      revalidatePath('/clock')
+      revalidatePath('/logs')
+      return { ok: true }
+    }
+    // Migration 059/066 not applied yet → store what the schema knows.
     if (missingColumn(logErr)) {
       ({ data: logRow, error: logErr } = await supabase.from('daily_logs').insert(baseRow).select('id').single())
     }
@@ -200,9 +259,10 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       if (rcptErr) console.error('Receipt indexing skipped:', rcptErr.message)
     }
 
+    const outAt = backAt ?? new Date().toISOString()
     const outPatch = hasPos
-      ? { clock_out_at: new Date().toISOString(), out_lat: lat, out_lng: lng }
-      : { clock_out_at: new Date().toISOString() }
+      ? { clock_out_at: outAt, out_lat: lat, out_lng: lng }
+      : { clock_out_at: outAt }
     let { error: outErr } = await supabase
       .from('time_entries')
       .update(outPatch)
@@ -211,7 +271,7 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     if (missingColumn(outErr) && hasPos) {
       ({ error: outErr } = await supabase
         .from('time_entries')
-        .update({ clock_out_at: new Date().toISOString() })
+        .update({ clock_out_at: outAt })
         .eq('id', entryId)
         .eq('user_id', userId))
     }
@@ -242,18 +302,30 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
 export async function addEquipmentCheckAction(
   assetId: string,
   checkType: string,
-  note = ''
+  note = '',
+  /** Offline-queue replay guard — retries with the same key are no-ops. */
+  idempotencyKey?: string | null,
+  /** Offline replays only: when the tap actually happened. */
+  occurredAt?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode' }
   try {
     const { supabase, userId, companyId } = await requireUser()
-    const { error } = await supabase.from('equipment_checks').insert({
+    const idem = validIdem(idempotencyKey)
+    const at = validPastIso(occurredAt)
+    const base = {
+      ...(at ? { created_at: at } : {}), // column exists since 015 — safe in the fallback too
       company_id: companyId,
       asset_id: assetId,
       user_id: userId,
       check_type: checkType,
       note: note.slice(0, 300),
-    })
+    }
+    let { error } = await supabase.from('equipment_checks')
+      .insert({ ...base, ...(idem ? { idempotency_key: idem } : {}) })
+    if (isDuplicateKey(error)) return { ok: true } // replay — the first tap won
+    // Migration 066 not applied yet → insert without the key.
+    if (missingColumn(error) && idem) ({ error } = await supabase.from('equipment_checks').insert(base))
     if (error) return { ok: false, error: error.message }
     return { ok: true }
   } catch (err) {

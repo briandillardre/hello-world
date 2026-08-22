@@ -1,34 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createHmac, timingSafeEqual } from 'crypto'
+import { verifyIngestKey } from '@/lib/ingest-auth'
 import type { IngestLocationPayload } from '@/lib/types'
-
-const HMAC_SECRET = 'hammertrack-api-key-comparison'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
-function verifyApiKey(request: NextRequest): boolean {
-  // Dedicated ingest credential — never the Supabase service-role key, which
-  // would hand every tracker integration full database access.
-  const expected = process.env.INGEST_API_KEY
-  // Demo mode accepts unauthenticated posts (nothing is persisted);
-  // with a real database but no key configured, fail closed.
-  if (!expected) return isMock
-
-  const key = request.headers.get('x-api-key') ?? ''
-  if (!key) return false
-
-  try {
-    const hashA = createHmac('sha256', HMAC_SECRET).update(key).digest()
-    const hashB = createHmac('sha256', HMAC_SECRET).update(expected).digest()
-    return timingSafeEqual(hashA, hashB)
-  } catch {
-    return false
-  }
-}
-
 export async function POST(request: NextRequest) {
-  if (!verifyApiKey(request)) {
+  // Platform INGEST_API_KEY (timing-safe, unscoped — existing devices) or a
+  // per-company key (companies.api_key — ingest scoped to that company).
+  const auth = await verifyIngestKey(request)
+  if (!auth.ok) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -55,11 +36,14 @@ export async function POST(request: NextRequest) {
   const { createServiceClient } = await import('@/lib/supabase-server')
   const supabase = createServiceClient()
 
-  const { data: asset } = await supabase
+  // A company key only resolves that company's assets — another tenant's
+  // tracker_id is indistinguishable from an unknown one (same 404).
+  let assetQuery = supabase
     .from('assets')
     .select('id, company_id')
     .eq('tracker_id', tracker_id)
-    .single()
+  if (auth.companyId) assetQuery = assetQuery.eq('company_id', auth.companyId)
+  const { data: asset } = await assetQuery.single()
 
   if (!asset) {
     return NextResponse.json({ error: 'No asset found with that tracker_id' }, { status: 404 })

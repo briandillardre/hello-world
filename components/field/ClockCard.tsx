@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Check, Images } from 'lucide-react'
+import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Check, Images, CloudOff, WifiOff } from 'lucide-react'
 import { clockInAction, clockOutAction } from '@/lib/actions/fieldops'
+import { enqueue, pending, stashFormData, newIdempotencyKey, type QueueFlushDetail } from '@/lib/offline-queue'
+import { toast } from '@/components/ui/feedback'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
 import type { LogFormItem } from '@/lib/log-form'
 
@@ -91,6 +93,35 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const photoFilesRef = useRef(photoFiles)
   photoFilesRef.current = photoFiles
 
+  // ── Offline queue awareness: coverage indicator + pending-sync counts ──
+  // (starts true/zero so server + client render the same HTML on hydration)
+  const [online, setOnline] = useState(true)
+  const [queued, setQueued] = useState({ in: 0, out: 0 })
+  useEffect(() => {
+    const syncOnline = () => setOnline(typeof navigator === 'undefined' ? true : navigator.onLine)
+    const recount = () => setQueued({ in: pending('clock-in').length, out: pending('clock-out').length })
+    syncOnline()
+    recount()
+    const onFlushed = (e: Event) => {
+      const d = (e as CustomEvent<QueueFlushDetail>).detail
+      if (d.entry.action !== 'clock-in' && d.entry.action !== 'clock-out') return
+      if (d.ok) toast(d.entry.action === 'clock-in' ? 'Back in coverage — clock-in synced.' : 'Back in coverage — daily log synced, you’re clocked out.', { variant: 'success' })
+      else toast(d.error ?? 'A saved entry couldn’t sync.', { variant: 'error', ttl: 6000 })
+      router.refresh()
+    }
+    window.addEventListener('online', syncOnline)
+    window.addEventListener('offline', syncOnline)
+    window.addEventListener('ht:queue-changed', recount)
+    window.addEventListener('ht:queue-flushed', onFlushed)
+    return () => {
+      window.removeEventListener('online', syncOnline)
+      window.removeEventListener('offline', syncOnline)
+      window.removeEventListener('ht:queue-changed', recount)
+      window.removeEventListener('ht:queue-flushed', onFlushed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(id)
@@ -151,16 +182,35 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     setBusy(true)
     setError(null)
     const pos = await getPos()
-    const res = await clockInAction({
+    const input = {
       category,
       projectGeofenceId: category === 'project' ? zoneId || null : null,
       plan,
       lat: pos?.lat ?? null,
       lng: pos?.lng ?? null,
-    })
-    setBusy(false)
-    if (!res.ok) setError(res.error ?? 'Clock-in failed')
-    else router.refresh()
+    }
+    const key = newIdempotencyKey()
+    const saveOffline = () => {
+      // Transport failure (dead zone) — never a server "no". Queue it.
+      const entry = enqueue('clock-in', input, key)
+      if (!entry) setError('No signal — and this phone is blocking offline storage. Try again in coverage.')
+      setBusy(false)
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return saveOffline()
+    try {
+      const res = await clockInAction({ ...input, idempotencyKey: key })
+      setBusy(false)
+      if (!res.ok) setError(res.error ?? 'Clock-in failed') // server said no — show it
+      else router.refresh()
+    } catch {
+      saveOffline()
+    }
+  }
+
+  const clearLogForm = () => {
+    for (const list of Object.values(photoFiles)) for (const f of list) URL.revokeObjectURL(f.url)
+    setPhotoFiles({})
+    setLoggingOut(false)
   }
 
   const submitLog = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -176,16 +226,40 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     }
     const pos = await getPos()
     if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
-    const res = await clockOutAction(fd)
-    setBusy(false)
-    if (!res.ok) setError(res.error ?? 'Clock-out failed')
-    else {
-      for (const list of Object.values(photoFiles)) for (const f of list) URL.revokeObjectURL(f.url)
-      setPhotoFiles({})
-      setLoggingOut(false)
-      router.refresh()
+    const key = newIdempotencyKey()
+    fd.set('idempotencyKey', key)
+    const saveOffline = () => {
+      // Dead zone: queue the TEXT of the log in localStorage; the photo Files
+      // ride along in a memory-only stash (files can't survive an app close —
+      // the amber panel below says so honestly).
+      const fields: Record<string, string[]> = {}
+      fd.forEach((v, k) => { if (typeof v === 'string') (fields[k] ??= []).push(v) })
+      const entry = enqueue('clock-out', { fields }, key)
+      setBusy(false)
+      if (!entry) { setError('No signal — and this phone is blocking offline storage. Try again in coverage.'); return }
+      stashFormData(key, fd)
+      clearLogForm()
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return saveOffline()
+    try {
+      const res = await clockOutAction(fd)
+      setBusy(false)
+      if (!res.ok) setError(res.error ?? 'Clock-out failed') // server said no — show it
+      else {
+        clearLogForm()
+        router.refresh()
+      }
+    } catch {
+      saveOffline()
     }
   }
+
+  // Subtle header chip when the phone has no coverage (dead-zone jobsites).
+  const offlineChip = !online ? (
+    <span className="flex flex-none items-center gap-1 rounded-full border border-amber/40 bg-amber/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-amber">
+      <WifiOff className="h-3 w-3" /> Offline
+    </span>
+  ) : null
 
   // ── Not clocked in ──
   if (!openEntry) {
@@ -194,8 +268,9 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     return (
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-4">
         <div className="flex items-center gap-2">
-          <HardHat className="h-5 w-5 text-amber" />
-          <p className="font-display font-bold text-ink">{greeting}, {personName.split(' ')[0]}. Where&apos;s the day going?</p>
+          <HardHat className="h-5 w-5 text-amber flex-none" />
+          <p className="font-display font-bold text-ink flex-1">{greeting}, {personName.split(' ')[0]}. Where&apos;s the day going?</p>
+          {offlineChip}
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -239,13 +314,25 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
 
         {error && <p className="text-[12.5px] text-alert">{error}</p>}
 
-        <button
-          onClick={clockIn}
-          disabled={busy}
-          className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 disabled:opacity-50 hover:brightness-110 transition"
-        >
-          <LogIn className="h-5 w-5" /> {busy ? 'Clocking in…' : 'Clock in'}
-        </button>
+        {queued.in > 0 ? (
+          <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">
+            <p className="flex items-center gap-2 font-display font-bold text-amber">
+              <CloudOff className="h-5 w-5 flex-none" /> Saved on your phone
+              <span className="ml-auto rounded-full border border-amber/40 bg-amber/15 px-2 py-0.5 font-mono text-[11px] tabular-nums">{queued.in}</span>
+            </p>
+            <p className="text-[12.5px] text-muted leading-snug">
+              Your clock-in will sync when you&apos;re back in coverage — nothing else to do.
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={clockIn}
+            disabled={busy}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 disabled:opacity-50 hover:brightness-110 transition"
+          >
+            <LogIn className="h-5 w-5" /> {busy ? 'Clocking in…' : 'Clock in'}
+          </button>
+        )}
       </div>
     )
   }
@@ -263,15 +350,29 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">On the clock · {whereLabel}</p>
           <p className="font-display font-bold text-2xl text-ink tabular-nums">{elapsedLabel(openEntry.clock_in_at, now)}</p>
         </div>
-        <span className="grid place-items-center w-11 h-11 rounded-full bg-teal/15 border border-teal/40">
-          <Clock className="h-5 w-5 text-teal" />
-        </span>
+        <div className="flex items-center gap-2">
+          {offlineChip}
+          <span className="grid place-items-center w-11 h-11 rounded-full bg-teal/15 border border-teal/40">
+            <Clock className="h-5 w-5 text-teal" />
+          </span>
+        </div>
       </div>
       {openEntry.plan && (
         <p className="text-[13px] text-muted border-l-2 border-navy-700 pl-2.5">Today&apos;s plan: {openEntry.plan}</p>
       )}
 
-      {!loggingOut ? (
+      {queued.out > 0 ? (
+        <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">
+          <p className="flex items-center gap-2 font-display font-bold text-amber">
+            <CloudOff className="h-5 w-5 flex-none" /> Saved on your phone
+            <span className="ml-auto rounded-full border border-amber/40 bg-amber/15 px-2 py-0.5 font-mono text-[11px] tabular-nums">{queued.out}</span>
+          </p>
+          <p className="text-[12.5px] text-muted leading-snug">
+            Your daily log and clock-out will sync when you&apos;re back in coverage.
+            Photos attach only if sync happens before you close the app — the writeup itself is safe either way.
+          </p>
+        </div>
+      ) : !loggingOut ? (
         <button
           onClick={() => setLoggingOut(true)}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-navy-900 border border-navy-700 text-ink font-display font-bold text-lg py-4 hover:border-amber/50 transition"

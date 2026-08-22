@@ -11,6 +11,7 @@ import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { confirmSheet } from '@/components/ui/feedback'
 import { formatRelativeTime } from '@/lib/utils'
 import { previewZoneInvoiceAction, pushZoneInvoiceAction, disconnectQboAction, type ZoneInvoiceDraft } from '@/lib/actions/qbo'
+import { QboTimeCard } from '@/components/accounting/QboTimeCard'
 
 interface AccountingViewProps {
   connection: QboConnection
@@ -175,6 +176,10 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
             <p className="mt-2 text-xs text-alert bg-alert/10 border border-alert/30 rounded-lg p-2">{connError}</p>
           )}
         </section>
+
+        {/* Crew → QBO employee mapping + the timesheet push explainer.
+            Pushing itself lives on /logs where the day's hours are reviewed. */}
+        <QboTimeCard demo={demo} />
 
         {/* Asset → QBO item mapping — demo showcase only (real flow bills usage
             per job; a fixed-asset catalog sync earns its keep later). */}

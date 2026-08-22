@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { QrCode } from 'lucide-react'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
-import { getRecentFieldDays } from '@/lib/db/fieldops'
+import { getRecentFieldDays, getQboPushedEntryIds } from '@/lib/db/fieldops'
+import { getMyPermissions } from '@/lib/permissions-server'
+import { getConnectionStatus } from '@/lib/qbo'
 import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { pairOperators, type PairSegment } from '@/lib/pairing'
 import { getPairDecisions } from '@/lib/actions/pairs'
@@ -33,6 +35,17 @@ export default async function LogsPage() {
     if (history?.length) pairs = pairOperators(history, assets)
   }
   const pairDecisions = pairs.length ? await getPairDecisions(7) : []
+
+  // QBO timesheet push (065): billing admins with a LIVE QuickBooks connection
+  // get a "Push day" button per day group. Everyone else sees the feed as-is;
+  // the setup path (connect + crew mapping) lives on /accounting.
+  let qboPush: { pushedEntryIds: string[] } | null = null
+  if (available) {
+    const [perms, qboStatus] = await Promise.all([getMyPermissions(), getConnectionStatus(companyId)])
+    if (perms.canManageBilling && qboStatus.connected && !qboStatus.demo) {
+      qboPush = { pushedEntryIds: await getQboPushedEntryIds(companyId) }
+    }
+  }
   const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
@@ -77,7 +90,7 @@ export default async function LogsPage() {
           )}
         </div>
       ) : (
-        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} pairDecisions={pairDecisions} />
+        <LogsFeed entries={entries} logs={logs} zoneNames={zoneNames} tz={tz} pairs={pairs} pairDecisions={pairDecisions} qboPush={qboPush} />
       )}
     </div></div>
   )

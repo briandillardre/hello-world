@@ -179,7 +179,9 @@ export async function getConnectionStatus(companyId?: string): Promise<{
 
 // ── Low-level API helpers ─────────────────────────────────────────────────────
 
-async function qboFetch(conn: LiveConnection, path: string, init?: RequestInit): Promise<Record<string, unknown>> {
+/** Authed QBO API call (exported for lib/qbo-time.ts — one fetch path, one
+ *  error/intuit_tid story for every QBO feature). */
+export async function qboFetch(conn: LiveConnection, path: string, init?: RequestInit): Promise<Record<string, unknown>> {
   const url = `${QBO_API_BASE}/v3/company/${conn.realmId}${path}${path.includes('?') ? '&' : '?'}${MINOR}`
   const res = await fetch(url, {
     ...init,
@@ -203,7 +205,7 @@ async function qboFetch(conn: LiveConnection, path: string, init?: RequestInit):
   return res.json()
 }
 
-function qboQuery(conn: LiveConnection, sql: string) {
+export function qboQuery(conn: LiveConnection, sql: string) {
   return qboFetch(conn, `/query?query=${encodeURIComponent(sql)}`)
 }
 

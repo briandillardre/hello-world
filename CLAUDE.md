@@ -34,6 +34,7 @@ sidebar (locked rows → /register). `isMock` flag checks
 ## Pricing sync rule (Brian, Aug 5; /demo added Aug 17)
 Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
 /pricing, the splash ladder + hero microcopy, **/demo's Founding-25 card**,
+**the /help/billing guide (app/(dashboard)/help/guides.tsx)**,
 docs/PRICING-TIERS.md — in the SAME commit. (/demo drifted to a dead $99-flat
 offer for 12 days because it wasn't on this list.) Run tier platform price
 stays UNPUBLISHED ("talk to us") — and never publish a typical-customer Run
@@ -91,6 +92,7 @@ re-audits the splash claims in the same commit.
 - Financials page (/finance, cost-permission gated) — LY/YTD revenue, revenue/employee + net margin vs trade benchmark bands (17 trades incl. trucking/ag/rental/field services), 3-method valuation (income=SDE×multiple, market=revenue comps, asset=fleet+assets−debt) with blended range. Owner types a plain-English company description → AI (Haiku) classifies the benchmark trade, keyword fallback without a key — migration 048, `lib/valuation.ts` (Growth Platform layer 1 v1; QBO auto-fill later)
 - Pricing page with Tenna comparison
 - Demo landing page at /demo (ad funnel landing page)
+- **Aug 22 wave (AI-resilience build-out):** per-company ingest API keys + rotation (lib/ingest-auth.ts; platform key still works) · **Agent Interface MCP server at /api/mcp** (5 read tools, company-key auth — docs/AGENT-INTERFACE.md) · QBO timesheet push (TimeActivity, claim-lock idempotent, migration 065 — dark until QBO connect) · offline field queue (migration 066, honest replay timestamps) · in-app help center (/help, 6 guides) · provisioning playbook (docs/PROVISIONING.md)
 - PWA (manifest.json)
 - Mobile bottom nav with "More" drawer
 
