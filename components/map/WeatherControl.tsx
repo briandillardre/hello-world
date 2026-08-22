@@ -83,6 +83,9 @@ interface WeatherControlProps {
    *  LEFT edge — the mirror of the right rail's tuck (Brian, Aug 22:
    *  "too cluttered… swiped out of the way fully just like the right side"). */
   hidden?: boolean
+  /** No collapsed pill at all — the drawer opens via the 'ht:open-layers'
+   *  window event instead (the bottom-right thumb cluster, Brian Aug 22). */
+  hidePill?: boolean
 }
 
 /** Shared tuck animation for both roots (collapsed row + open panel). */
@@ -207,8 +210,14 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, filter, onFilter, showZones = true, onShowZones, showDevices = false, onToggleDevices, waybackYears, waybackIdx = 0, onWaybackIdx, hidden = false, hidePill = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
+  // The thumb cluster's Layers FAB opens the drawer from outside.
+  useEffect(() => {
+    const onOpen = () => setOpen(true)
+    window.addEventListener('ht:open-layers', onOpen)
+    return () => window.removeEventListener('ht:open-layers', onOpen)
+  }, [])
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
@@ -414,6 +423,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // Collapsed: a compact pill — just Layers + what's-on status icons (the
   // weather readout moved to the top bar, Jul 21). Search rides to its right.
   if (!open) {
+    if (hidePill) return null
     return (
       <div style={{ top, zIndex: z }} data-tour="layers" className={`absolute ${sideCls} flex flex-col items-start gap-1.5 ${tuckCls(hidden)}`}>
       <div className="flex items-center gap-2">

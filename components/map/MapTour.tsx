@@ -28,14 +28,14 @@ const buildSteps = (canDrawZones: boolean): Step[] => [
   {
     selector: '[data-tour="layers"]',
     title: 'Layers & your fleet',
-    body: 'Everything the map shows lives here: switches for your trucks, machines, people, tools and zones up top, then basemaps, radar and weather, job-site money layers, and land checks.',
-    side: 'below',
+    body: 'Everything the map shows lives here: switches for your trucks, machines, people, tools and zones up top, then basemaps, radar and weather, site money layers, and land checks.',
+    side: 'above',
   },
   {
     selector: '[data-tour="askai"]',
     title: 'AskAI',
     body: 'Ask in plain English — "Where\'s the crew truck?" or "How long were we at the Smith job this week?" It answers from your live fleet data.',
-    side: 'below',
+    side: 'above',
   },
   {
     selector: '.maplibregl-ctrl-top-right',

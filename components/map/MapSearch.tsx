@@ -42,13 +42,16 @@ function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
 }
 
-export function MapSearch({ items, onPick, top = 58, inline = false }: {
+export function MapSearch({ items, onPick, top = 58, inline = false, anchor = 'top-left' }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
   top?: number
   /** Render as a flex-row member (beside the layers pill) instead of an
    *  absolutely positioned element; the open box overlays from that spot. */
   inline?: boolean
+  /** Which corner of the inline slot the open box grows from —
+   *  'bottom-right' for the thumb cluster (box grows up-left). */
+  anchor?: 'top-left' | 'bottom-right'
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -192,7 +195,7 @@ export function MapSearch({ items, onPick, top = 58, inline = false }: {
   if (inline) {
     return (
       <div className="relative w-9 h-9 flex-none">
-        <div className="absolute left-0 top-0 z-30 w-[248px]">{body}</div>
+        <div className={(anchor === 'bottom-right' ? 'absolute right-0 bottom-0' : 'absolute left-0 top-0') + ' z-30 w-[248px]'}>{body}</div>
       </div>
     )
   }

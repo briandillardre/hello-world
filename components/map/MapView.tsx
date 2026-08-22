@@ -1373,6 +1373,18 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     map.current.addControl(pdfControl, ctrlCorner)
 
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
+    // The compact attribution is a <details> that AUTO-OPENS on load and
+    // whenever attributions change — billboarding "Esri, Maxar…" across the
+    // map (Brian, twice tonight; the CSS-only fix lost to MapLibre's own
+    // stylesheet order). Fold it unless the USER opened it — their tap holds
+    // it 8s, then it tucks back to the (i). Credits stay one tap away, which
+    // is what the tile licenses require.
+    const attribEl = map.current.getContainer().querySelector('details.maplibregl-ctrl-attrib') as HTMLDetailsElement | null
+    let attribUserTap = 0
+    attribEl?.addEventListener('pointerdown', () => { attribUserTap = Date.now() })
+    const attribTimer = window.setInterval(() => {
+      if (attribEl?.open && Date.now() - attribUserTap > 8_000) attribEl.open = false
+    }, 1_000)
 
     // ALL app layers/handlers below used to hang off map 'load' — which waits
     // for the FIRST TILES to settle. One hung tile request (weak job-site
@@ -2213,6 +2225,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
     return () => {
       window.clearInterval(loadWatchdog)
+      window.clearInterval(attribTimer)
       map.current?.remove()
       map.current = null
       // The map died but the component may live on (dev StrictMode remount):
@@ -5742,12 +5755,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         </svg>
       </button>
 
-      {/* LEFT-edge tuck handle — the mirror image: slides the Layers pill +
-          search + fleet chips (and the open panel) fully off-screen for a
-          clean map (Brian, Aug 22). Same mid-edge spot as the right tab
-          (symmetry is the affordance) — at the pill's height it overlapped
-          the pill and stole its taps (ship-check P2). */}
-      <button
+      {/* LEFT-edge tuck handle — only where the pill still lives (kiosk).
+          On /map the launchers moved to the bottom-right thumb cluster, so
+          there's nothing at top-left to tuck. */}
+      {kiosk && <button
         type="button"
         onClick={() => setLeftHidden((h) => !h)}
         aria-label={leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls'}
@@ -5756,11 +5767,34 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {leftHidden ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
         </svg>
-      </button>
+      </button>}
 
-      {/* AskAI floats top-right on its own; the layers pill + search button
-          pair lives top-LEFT (owner layout, Jul 14 PM). */}
-      {!kiosk && askSlot && <div data-tour="askai" className="absolute top-3 right-3 z-20">{askSlot}</div>}
+      {/* Bottom-right THUMB CLUSTER (Brian, Aug 22): Search, Layers, AskAI
+          live where a phone thumb actually is, riding above the timeline on
+          the same lift variable the scale bar uses. AskAI keeps its amber
+          weight at the bottom of the stack; 92px base clears the (i). */}
+      {!kiosk && (
+        <div
+          className="ht-fab-cluster absolute right-3 z-20 flex flex-col items-end gap-2 transition-[bottom] duration-200"
+          style={{ bottom: 'calc(92px + var(--ht-sheet-lift, 0px))' }}
+        >
+          <MapSearch inline anchor="bottom-right" items={searchItems} onPick={pickSearchItem} />
+          <button
+            type="button"
+            data-tour="layers"
+            onClick={() => { try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ } }}
+            aria-label="Map layers"
+            className="grid place-items-center w-9 h-9 rounded-xl bg-navy-950/80 backdrop-blur border border-navy-700 shadow-panel text-faint hover:text-ink transition-colors"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+              <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+              <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+            </svg>
+          </button>
+          {askSlot && <span data-tour="askai">{askSlot}</span>}
+        </div>
+      )}
 
       {/* Measure toggle lives in the MapLibre control cluster (added at map
           init) — same size + column as zoom/locate/fit, below Zoom-to-all. */}
@@ -5893,7 +5927,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         top={kiosk ? 68 : 12}
         z={kiosk ? 45 : 15}
         hidden={leftHidden}
-        searchSlot={kiosk ? undefined : <MapSearch inline items={searchItems} onPick={pickSearchItem} />}
+        hidePill={!kiosk}
         // Fleet on/off is BACK inside Layers, first section (Brian, Aug 22
         // 2:38 AM — the chips-on-map experiment lost; the panel opens as a
         // Google-style left drawer now, so the toggles are one tap away).
