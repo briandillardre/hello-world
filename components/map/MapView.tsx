@@ -105,7 +105,13 @@ const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-badge
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
-const FOLLOW_ZOOM = 16.2     // zoom the entrance reveal settles at
+const FOLLOW_ZOOM = 14.8     // entrance zoom — wide enough for context (Brian,
+                             // Aug 22: "too zoomed in"); pinch owns it after
+const OVERHEAD_ZOOM = 15.5   // top-down entrance — was 17, same complaint
+const CAM_SMOOTH = 0.16      // low-pass factor: camera CHASES the target each
+                             // frame instead of pinning to every GPS vertex
+const CAM_SNAP_DEG = 0.05    // ~5 km — beyond this the target teleported (a
+                             // scrub drag), so snap instead of a slow pan
 const ORBIT_STEP = 0.14      // deg/frame the camera revolves in Orbit mode
 const HEADING_LERP = 0.06    // how fast bearing swings toward travel dir (Chase)
 const MOVE_EPS = 2e-5        // deg of travel below which the asset counts as parked
@@ -483,6 +489,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const bearingRef = useRef(0)   // smoothed camera bearing
   const pitchRef = useRef(0)     // eased camera pitch (ramps up on entrance)
   const entranceRef = useRef(1)  // 0→1 "pan up + zoom in" reveal progress
+  const camRef = useRef<[number, number] | null>(null) // smoothed follow-camera center
   // True while the USER's fingers own the camera (pinch/scroll/drag) — the
   // follow loop yields instead of stomping the gesture every frame, so you
   // can zoom in/out mid-chase. Tracking resumes the moment fingers lift.
@@ -2423,7 +2430,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // from the RAF loop and on discrete seeks. The bearing behaviour depends on
   // the mode — Orbit revolves at a constant rate (smooth, never jerks), Overhead
   // holds north-up top-down, Chase eases in behind the direction of travel.
-  const focusFollow = useCallback((t: number) => {
+  const focusFollow = useCallback((t: number, immediate = false) => {
     const m = map.current
     const id = followIdRef.current
     if (!m || !id) return
@@ -2469,6 +2476,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const mode = followModeRef.current
     const here = positionAt(tr, t)
 
+    // Low-pass the camera center (Brian, Aug 22: "very jerky — it follows
+    // exactly the points"): the camera chases the target a fraction per
+    // frame, which rounds every GPS corner and absorbs fix noise. Paused
+    // seeks pass immediate=true (a single scrub step must land, not lag);
+    // a teleporting target (scrub drag) snaps instead of slow-panning.
+    const cam = camRef.current
+    if (immediate || !cam || Math.hypot(here[0] - cam[0], here[1] - cam[1]) > CAM_SNAP_DEG) {
+      camRef.current = here
+    } else {
+      camRef.current = [cam[0] + (here[0] - cam[0]) * CAM_SMOOTH, cam[1] + (here[1] - cam[1]) * CAM_SMOOTH]
+    }
+    const center = camRef.current
+
     if (mode === 'orbit') {
       // Pure constant revolution around the asset — independent of its motion,
       // so it glides smoothly whether the truck is parked or driving.
@@ -2490,19 +2510,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (entranceRef.current < 1) {
       entranceRef.current = Math.min(1, entranceRef.current + 0.02)
       const z = m.getZoom()
-      const targetZoom = mode === 'overhead' ? 17 : FOLLOW_ZOOM
-      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (targetZoom - z) * 0.07 })
+      const targetZoom = mode === 'overhead' ? OVERHEAD_ZOOM : FOLLOW_ZOOM
+      m.jumpTo({ center, bearing: bearingRef.current, pitch: pitchRef.current, zoom: z + (targetZoom - z) * 0.07 })
     } else {
       // Entrance done — leave zoom alone so the user can pinch in/out mid-flight.
-      m.jumpTo({ center: here, bearing: bearingRef.current, pitch: pitchRef.current })
+      m.jumpTo({ center, bearing: bearingRef.current, pitch: pitchRef.current })
     }
   }, [])
 
-  // Re-arm the entrance ease whenever the camera mode changes mid-follow, so the
-  // pitch/zoom glide to the new style instead of snapping.
-  useEffect(() => {
-    if (followIdRef.current) entranceRef.current = 0
-  }, [followMode])
+  // Switching camera mode mid-follow does NOT re-run the entrance: pitch and
+  // bearing already glide via their per-frame eases, and re-arming would
+  // stomp the zoom the user pinched to (Brian, Aug 22: after the wider
+  // defaults, zoom belongs to the user — set once at follow start, then
+  // hands off).
 
   // Push trail/heat/head geometry on discrete changes (seek, filter, mode,
   // isolate, selection spotlight)
@@ -2516,7 +2536,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // playback the RAF loop drives it every frame, so skip to avoid double work.
   useEffect(() => {
     if (!mapReady || !followId || pbPlaying || range === 'live') return
-    focusFollow(displayT)
+    // immediate: a single paused seek must LAND on the asset, not ease 16%
+    // toward it and stop.
+    focusFollow(displayT, true)
   }, [mapReady, followId, pbPlaying, displayT, focusFollow, range])
 
   // LIVE follow: same camera modes as replay follow, but the target is the
