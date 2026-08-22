@@ -30,6 +30,16 @@
     </table>
   </div>
 
+  <h2 class="week">🤝 Triage — whose plate is what (Aug 21)</h2>
+  <div class="card">
+    <span class="why" style="margin-top:0"><b style="color:var(--ink)">YOURS (dashboards, hardware, money, legal — Claude can't reach these):</b><br>
+    Store watch + forwarding tap (0) · Stripe (1) · Google Ads by Aug 31 (2) · KORE reply — draft in your Gmail (3) · first five texts (4) · SIM day + installs (6) · Vercel env vars incl. FCM push key (7, 7b) · QBO production connect · cost rates on machines (13) · QSBS CPA + gifting attorney · Apple/Play verdict taps.</span>
+    <span class="why"><b style="color:var(--ink)">CLAUDE'S (all code — say "go" and they ship):</b><br>
+    QBO timesheet push (built now, live when you connect QBO) · offline field queue (dead-zone clock/QR events sync later) · multi-tenant hardening for customer #2 (per-company keys, zero-touch onboarding) · <b>Agent Interface (MCP)</b> — customers' own AI queries their fleet (docs/AI-RESILIENCE.md) · in-app help center · PM Tier 1 money loop when you call it · UX sweep batch 2 · wow-pack tier 2.</span>
+    <span class="why"><b style="color:var(--ink)">SHARED:</b><br>
+    Hardware provisioning playbook (Claude writes, you field-test) · app-store review replies (you screenshot, Claude drafts) · store screenshots (your phone, Claude's shot list).</span>
+  </div>
+
   <h2 class="now">🔴 This week — the money path</h2>
   <div class="card" style="border-color:rgba(248,113,113,.5)"><b>0 · Store watch: Play IN REVIEW · Apple N37H75H2FX pending</b><span class="min">check daily</span>
     <span class="why"><b>Play: SUBMITTED Aug 21</b> (production, all countries) — verdict typically 1–3 days, email to brian@hammertrack.ai. <b>Apple: enrollment N37H75H2FX</b> (filed Aug 9) — watch for a verification CALL from a California number; still pending by Aug 23 → contact Apple Developer Support with the ID. NEVER re-file. Both verdicts land at brian@hammertrack.ai — <b>tap the Aug 14 forwarding-confirmation email in your DCG inbox</b> ("HammerTrack Forwarding Confirmation") or nobody sees them.</span></div>
@@ -49,6 +59,8 @@
     <span class="why">Order of operations: (1) text Matt for SuperSIM APN settings — NOT Hologram's — and ask if KORE pushed our flespi profile (ch1401177.flespi.gw:24397); (2) ONE OBD unit: SIM in, plug into a truck, ignition on, confirm it appears in flespi then moves on /map; (3) only then do the other 12. FMM00A battery plug ships disconnected — click it in. Create each asset with its IMEI BEFORE power-on (ingest drops unknown trackers). Puck batteries won't survive outside — wire 12V where machines have it. Install last puck (Minor 4).</span></div>
   <div class="card"><b>7 · Vercel env odds &amp; ends</b>
     <span class="why">NEXT_PUBLIC_PARCEL_SERVICE_URL (Greenville parcels) · QBO redirect URI aligned in Vercel + Intuit app, then retry from /accounting · Supabase Auth → Site URL to https://hammertrack.ai (auth emails still point at vercel.app).</span></div>
+  <div class="card"><b>7b · FCM push key into Vercel</b><span class="min">~5 min</span>
+    <span class="why">FCM_SERVICE_ACCOUNT (the Firebase service-account JSON in your password manager) → Vercel env + redeploy. Without it the Android app can't put theft alerts on the LOCK SCREEN — the whole hook. Do before the app goes live in the store.</span></div>
   <div class="card"><b>8 · Assistant plumbing</b><span class="min">~5 min</span>
     <span class="why">brian@hammertrack.ai → DCG Gmail forward (Claude reads the verification code for you) · YouMail voicemail-to-email w/ transcript+MP3 → DCG address · add hammertrack.ai as "Send mail as" in DCG Gmail · add the app to your phone's home screen.</span></div>
 
