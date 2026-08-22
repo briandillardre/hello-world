@@ -784,6 +784,20 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               </button>
             </div>
           )}
+          {/* Name labels ride with the assets they name (Brian, Aug 22). */}
+          {onShowLabels && (
+            <div className="border-t border-navy-800">
+              <button
+                onClick={() => onShowLabels(!showLabels)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
+              >
+                <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (showLabels ? 'text-ink' : 'text-faint')}>
+                  <Type className={'h-3.5 w-3.5 ' + (showLabels ? 'text-teal' : 'text-faint')} /> Labels
+                </span>
+                <Toggle on={showLabels} />
+              </button>
+            </div>
+          )}
           </>)}
         </>
       )}
@@ -895,22 +909,6 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
               )}
             </div>
           )}
-        </div>
-      )}
-      {/* Labels master switch — cartography, so it lives with the map's look
-          (moved out of the old Show-on-map section, Aug 22: fleet visibility
-          is chips on the map now; this panel is context-only). */}
-      {onShowLabels && (
-        <div className="border-t border-navy-800">
-          <button
-            onClick={() => onShowLabels(!showLabels)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-navy-900 transition-colors"
-          >
-            <span className={'text-[13px] font-semibold flex items-center gap-2 ' + (showLabels ? 'text-ink' : 'text-faint')}>
-              <Type className={'h-3.5 w-3.5 ' + (showLabels ? 'text-teal' : 'text-faint')} /> Labels
-            </span>
-            <Toggle on={showLabels} />
-          </button>
         </div>
       )}
       </>)}
