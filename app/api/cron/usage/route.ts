@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+// 074's window snap can widen a rebuild to a parked machine's whole session
+// (capped at 60 days) — give the hourly run real headroom (ship-check P2).
+export const maxDuration = 300
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'

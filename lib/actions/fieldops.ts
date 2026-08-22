@@ -47,7 +47,12 @@ const validPastIso = (v: unknown): string | null => {
   const t = Date.parse(v)
   if (!Number.isFinite(t)) return null
   const now = Date.now()
-  if (t > now + 2 * 60_000 || t < now - 30 * 86_400_000) return null
+  // A FAST phone clock (auto-time off — common on cheap Androids) stamps
+  // queue entries slightly in the "future"; clamping to now records the
+  // event honestly instead of rejecting it and losing the crew's writeup
+  // (ship-check P1, Aug 22). Genuinely stale (>30d) still returns null.
+  if (t > now) return new Date(now).toISOString()
+  if (t < now - 30 * 86_400_000) return null
   return new Date(t).toISOString()
 }
 

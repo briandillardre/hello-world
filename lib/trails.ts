@@ -561,8 +561,11 @@ export function trailSegmentsBanded(
     bands[b].current.push([p.lng, p.lat])
     prevBand = b
   }
-  // Head position rides the newest band (snaps across gaps like the base fn).
-  if (prevBand !== null) bands[n - 1].current.push(positionAt(track, t))
+  // Head position continues the LAST point's band — pushing it into the
+  // newest band left a lone filtered point when the last fix landed in an
+  // older band, visibly detaching the head from its trail while scrubbing
+  // early in a long window (ship-check P2).
+  if (prevBand !== null) bands[prevBand].current.push(positionAt(track, t))
   for (const bd of bands) { if (bd.current.length) bd.segments.push(bd.current) }
   return bands.map(({ fade, segments }) => ({ fade, segments: segments.filter((s) => s.length >= 2) }))
 }

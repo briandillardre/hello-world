@@ -85,13 +85,24 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   // the latest arrangement only — rapid swaps must never commit out of order
   // and leave a stale profile beating the fresher local copy (ship-check).
   const saveTimer = useRef<number | null>(null)
+  const pendingSave = useRef<string[] | null>(null)
   const persist = (next: string[]) => {
     try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch {}
+    pendingSave.current = next
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
+      pendingSave.current = null
       import('@/lib/actions/nav').then(({ saveNavOrderAction }) => saveNavOrderAction(next)).catch(() => {})
     }, 800)
   }
+  // Flush a pending save on unmount — navigating to /command (its own nav
+  // tree) inside the debounce window must not drop the profile write
+  // (ship-check P2).
+  useEffect(() => () => {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    const last = pendingSave.current
+    if (last) import('@/lib/actions/nav').then(({ saveNavOrderAction }) => saveNavOrderAction(last)).catch(() => {})
+  }, [])
 
   // FIVE list items ride the bar — 3 · AskAI · 2 + More, so AskAI sits dead
   // center of the 7 cells (Brian, Aug 22: "update this to five and center
@@ -260,7 +271,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="whitespace-nowrap text-[10px]">{short ?? label}</span>
+                <span className="min-w-0 max-w-full truncate text-[10px]">{short ?? label}</span>
               </Link>
             )
           })}
@@ -290,7 +301,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                   <Icon className="h-5 w-5" />
                   {alertBadge(href)}
                 </span>
-                <span className="whitespace-nowrap text-[10px]">{short ?? label}</span>
+                <span className="min-w-0 max-w-full truncate text-[10px]">{short ?? label}</span>
               </Link>
             )
           })}
