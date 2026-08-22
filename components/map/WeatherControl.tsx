@@ -472,10 +472,15 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       // layer is on — no orphan toggle sitting there doing nothing.
       .filter(rowVisible)
     // Progressive disclosure (Aug 22 declutter): specialist rows wait behind
-    // one inline expander. A row that's ON always renders — never hide state.
-    const everyday = rows.filter((d) => !d.advanced || isOn(d.id))
-    const advanced = rows.filter((d) => d.advanced && !isOn(d.id))
+    // one inline expander. Rows NEVER change sections when toggled (Brian,
+    // 4:04 AM — flipping a switch must not move the row); an ON advanced row
+    // still renders while the section is collapsed, but stays below the
+    // expander in its own slot. Never hide state.
+    const everyday = rows.filter((d) => !d.advanced)
+    const advanced = rows.filter((d) => d.advanced)
     const showAll = moreRows.has(gid)
+    const advVisible = showAll ? advanced : advanced.filter((d) => isOn(d.id))
+    const tucked = advanced.length - advVisible.length
     return (
       <>
         {everyday.map(renderRow)}
@@ -485,10 +490,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
             className="w-full flex items-center gap-1.5 px-3 py-2 border-t border-navy-800 text-[11.5px] font-semibold text-faint hover:text-ink transition-colors"
           >
             <ChevronDown className={'h-3 w-3 transition-transform ' + (showAll ? '' : '-rotate-90')} />
-            {(gid === 'weather' ? 'Advanced weather' : 'More layers') + (showAll ? '' : ` (${advanced.length})`)}
+            {(gid === 'weather' ? 'Advanced weather' : 'More layers') + (tucked > 0 ? ` (${tucked})` : '')}
           </button>
         )}
-        {showAll && advanced.map(renderRow)}
+        {advVisible.map(renderRow)}
       </>
     )
   }
