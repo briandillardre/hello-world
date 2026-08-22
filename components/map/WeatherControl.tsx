@@ -55,6 +55,8 @@ interface WeatherControlProps {
   defaultViewId?: string | null
   onApplyView?: (id: string) => void
   onSaveView?: (name: string) => void
+  /** Overwrite a PERSONAL view's cfg with the current look — never presets. */
+  onUpdateView?: (id: string) => void
   onDeleteView?: (id: string) => void
   onSetDefaultView?: (id: string) => void
   top?: number
@@ -194,7 +196,7 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
 
 const STALE_MS = 15 * 60_000
 
-export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot, hidden = false }: WeatherControlProps) {
+export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = false, onTerrain3d, terrainExag = 1.3, onTerrainExag, radarOn, onRadar, radarPaused = false, onRadarPause, cloudsOn = false, onClouds, stormTopsOn = false, onStormTops, precipOn = false, onPrecip, precipPeriod = '24h', onPrecipPeriod, frameTime, parcelsOn = false, onParcels, overlays, onOverlay, showLabels = true, onShowLabels, zoom = 10, overlayOpacity = {}, onOverlayOpacity, onResetLayers, views, activeViewId = null, defaultViewId = null, onApplyView, onSaveView, onUpdateView, onDeleteView, onSetDefaultView, top = 58, z = 10, side = 'left', searchSlot, fleetSlot, hidden = false }: WeatherControlProps) {
   const [open, setOpen] = useState(false)
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
@@ -550,17 +552,33 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
                     <Toggle on={active} />
                   </button>
                 </div>
-                {active && onSetDefaultView && (
-                  <button
-                    onClick={() => onSetDefaultView(v.id)}
-                    className={
-                      'flex items-center gap-1 px-3 pb-2 -mt-0.5 text-[10.5px] font-semibold transition-colors ' +
-                      (defaultViewId === v.id ? 'text-amber' : 'text-faint hover:text-amber')
-                    }
-                  >
-                    <Star className={'h-3 w-3' + (defaultViewId === v.id ? ' fill-current' : '')} />
-                    {defaultViewId === v.id ? 'Opens with this view' : 'Use on open'}
-                  </button>
+                {active && (
+                  <div className="flex items-center gap-3 px-3 pb-2 -mt-0.5">
+                    {onSetDefaultView && (
+                      <button
+                        onClick={() => onSetDefaultView(v.id)}
+                        className={
+                          'flex items-center gap-1 text-[10.5px] font-semibold transition-colors ' +
+                          (defaultViewId === v.id ? 'text-amber' : 'text-faint hover:text-amber')
+                        }
+                      >
+                        <Star className={'h-3 w-3' + (defaultViewId === v.id ? ' fill-current' : '')} />
+                        {defaultViewId === v.id ? 'Opens with this view' : 'Use on open'}
+                      </button>
+                    )}
+                    {/* Personal views can be re-saved in place (Brian, Aug 22):
+                        tweak the layers, then stamp the view with the new
+                        look. Presets ship with the app and never change. */}
+                    {!v.preset && onUpdateView && (
+                      <button
+                        onClick={() => onUpdateView(v.id)}
+                        className="flex items-center gap-1 text-[10.5px] font-semibold text-faint hover:text-teal transition-colors"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Overwrite with current look
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )

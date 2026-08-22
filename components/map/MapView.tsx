@@ -1121,18 +1121,36 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     onSaveMapViews?.(s)
   }, [onSaveMapViews])
 
+  // One cfg builder for BOTH save-as-new and overwrite — the snapshot of
+  // every toggle that makes up "how the map looks right now".
+  const currentViewCfg = useCallback(() => ({
+    base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
+    overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones, markers: markerStyle,
+  }), [base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, markerStyle])
+
   const handleSaveView = useCallback((name: string) => {
     const v: SavedMapView = {
       id: `v-${Date.now().toString(36)}`,
       name: name.trim().slice(0, 40) || 'My view',
-      cfg: {
-        base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
-        overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones, markers: markerStyle,
-      },
+      cfg: currentViewCfg(),
     }
     persistViews({ views: [v, ...mapViews.views].slice(0, 20), defaultId: mapViews.defaultId })
     setActiveViewId(v.id)
-  }, [base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, markerStyle, mapViews, persistViews])
+  }, [currentViewCfg, mapViews, persistViews])
+
+  // Overwrite a PERSONAL view with the current look (Brian, Aug 22) — presets
+  // ship with the app and are never touched (they live outside mapViews.views
+  // anyway, but the guard keeps a spoofed id honest).
+  const handleUpdateView = useCallback((id: string) => {
+    const target = mapViews.views.find((v) => v.id === id)
+    if (!target || target.preset) return
+    persistViews({
+      views: mapViews.views.map((v) => (v.id === id ? { ...v, cfg: currentViewCfg() } : v)),
+      defaultId: mapViews.defaultId,
+    })
+    setActiveViewId(id)
+    toast(`"${target.name}" now opens with this exact look.`, { variant: 'success' })
+  }, [mapViews, persistViews, currentViewCfg])
 
   const handleDeleteView = useCallback((id: string) => {
     persistViews({
@@ -5501,7 +5519,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           loop; manual pause wins, per the timeline rule). Hidden in replays —
           there the radar follows the main timeline scrubber. */}
       {radarOn && !pbActive && radarChipPos && (
-        <div className="absolute z-20 flex items-center" style={{ top: radarChipPos.top, right: radarChipPos.right }}>
+        // z-[12]: above the map, BELOW the layers panel (15) and sheets (20) —
+        // at z-20 the chip printed straight across the open Views tab
+        // (Brian's 2:07 AM screenshot, "Site planning has some issues").
+        <div className="absolute z-[12] flex items-center" style={{ top: radarChipPos.top, right: radarChipPos.right }}>
           <div
             className={'overflow-hidden transition-[max-width,opacity] duration-300 ease-out ' +
               (radarChipOpen ? 'max-w-[320px] opacity-100' : 'max-w-0 opacity-0 pointer-events-none')}
@@ -5730,6 +5751,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         defaultViewId={mapViews.defaultId}
         onApplyView={(id) => { const v = allViews(mapViews).find((x) => x.id === id); if (v) applyView(v) }}
         onSaveView={handleSaveView}
+        onUpdateView={handleUpdateView}
         onDeleteView={handleDeleteView}
         onSetDefaultView={handleDefaultView}
         side="left"
