@@ -193,15 +193,21 @@ export function TimelinePlayback({
   // Range-pill overflow cue: fade the right edge while pills hide off-screen.
   const pillsRef = useRef<HTMLDivElement>(null)
   const [pillsMore, setPillsMore] = useState(false)
+  // Same cue for the phone control strip (chart/share/modes/camera) — a
+  // clipped "3D heat" has to read as scrollable, not broken.
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [stripMore, setStripMore] = useState(false)
   const measurePills = useCallback(() => {
     const el = pillsRef.current
     if (el) setPillsMore(el.scrollWidth - el.clientWidth - el.scrollLeft > 8)
+    const st = stripRef.current
+    if (st) setStripMore(st.scrollWidth - st.clientWidth - st.scrollLeft > 8)
   }, [])
   useEffect(() => {
     measurePills()
     window.addEventListener('resize', measurePills)
     return () => window.removeEventListener('resize', measurePills)
-  }, [measurePills, stage, live, range])
+  }, [measurePills, stage, live, range, trailMode])
   const dragRef = useRef<{ y: number; done: boolean } | null>(null)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
@@ -726,6 +732,13 @@ export function TimelinePlayback({
             <span className="text-faint">· cost {costLabel}</span>
           </div>
         )}
+        {/* One control strip on phones (Brian, Aug 23: "condense these into
+            one line") — chart, share, display modes, marker style, and Camera
+            share a single horizontally-scrollable row instead of wrapping
+            into three. sm:contents dissolves the wrapper on desktop so the
+            controls stay inline in the wrap row exactly as before. */}
+        <div className="relative w-full sm:contents">
+        <div ref={stripRef} onScroll={measurePills} className="flex items-center gap-2 overflow-x-auto no-scrollbar sm:contents">
         {/* Pull-up activity chart toggle (replay modes only) */}
         {!live && (
           <button
@@ -828,6 +841,9 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
+        </div>
+        {stripMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent sm:hidden" />}
+        </div>
       </div>
       )}
 
