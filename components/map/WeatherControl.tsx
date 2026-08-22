@@ -189,7 +189,9 @@ function GroupHeader({ gid, open, count, hasErr, onToggle }: {
     <button
       onClick={onToggle}
       aria-expanded={open}
-      className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 hover:bg-navy-900 transition-colors"
+      // Lighter band than the rows (Brian, Aug 22): heading vs layer option
+      // reads at a glance.
+      className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 bg-navy-900/70 hover:bg-navy-800 transition-colors"
     >
       <Icon className="h-3 w-3 text-teal flex-none" />
       <span className="flex-1 min-w-0 truncate text-left font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">{g?.label}</span>
@@ -709,7 +711,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           <button
             onClick={() => setFleetOpen((o) => !o)}
             aria-expanded={fleetOpen}
-            className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 hover:bg-navy-900 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2.5 border-t border-navy-800 bg-navy-900/70 hover:bg-navy-800 transition-colors"
           >
             <Box className="h-3 w-3 text-teal flex-none" />
             <span className="flex-1 min-w-0 truncate text-left font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Assets</span>

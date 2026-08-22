@@ -1,6 +1,10 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  // hover: styles only on devices that can actually hover — phones kept the
+  // last-tapped element painted in its hover state ("stays highlighted",
+  // Brian, Aug 22). Touch never sees hover styles now; desktop unchanged.
+  future: { hoverOnlyWhenSupported: true },
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
