@@ -59,9 +59,11 @@ export const GROUPS: { id: GroupId; label: string; defaultCollapsed?: boolean }[
 export const BASEMAPS: { id: BasemapId; label: string }[] = [
   { id: 'satellite', label: 'Satellite' },
   { id: 'hybrid', label: 'Hybrid' },
+  // Dark ahead of Streets (Brian, Aug 22) — it's the house look, so it
+  // earns the earlier slot in the thumbnail strip.
+  { id: 'dark', label: 'Dark' },
   { id: 'streets', label: 'Streets' },
   { id: 'terrain', label: 'Terrain' },
-  { id: 'dark', label: 'Dark' },
   { id: 'silver', label: 'Silver' },
   { id: 'plain', label: 'Plain' },
   { id: 'bw', label: 'B/W' },
