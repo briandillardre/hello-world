@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
 import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX, Search, SquarePen } from 'lucide-react'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
@@ -68,11 +67,9 @@ export function AssistantWidget() {
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const historyLoaded = useRef(false)
   const voiceOk = !!getSpeechCtor()
-  // On the map + command pages, PHONES reach Ask through the bottom nav's
-  // amber button (Brian, Aug 22) — the floater only shows there on desktop,
-  // where there is no bottom nav.
-  const pathname = usePathname()
-  const mapPage = pathname === '/map' || pathname === '/command'
+  // Phones reach Ask through the bottom nav's amber center button on every
+  // dashboard page (Brian, Aug 22 — the floater doubled it up on /settings).
+  // The floater is desktop-only now, where there is no bottom nav.
   const launcherPos = 'bottom-[84px] right-4 md:bottom-6 md:right-6'
 
   useEffect(() => {
@@ -223,7 +220,7 @@ export function AssistantWidget() {
       {!open && dialogDepth === 0 && !drawerOpen && (
         <button
           onClick={() => setOpen(true)}
-          className={`fixed ${launcherPos} z-[60] print:hidden ${mapPage ? 'hidden md:flex' : 'flex'} items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
+          className={`fixed ${launcherPos} z-[60] print:hidden hidden md:flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
           aria-label="Ask HammerTrack AI"
         >
           <Sparkles className="h-5 w-5" /> Ask
