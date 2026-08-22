@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
       (!co.last_sunday_digest_at || Date.now() - Date.parse(co.last_sunday_digest_at) > FRESH)
     if (!wantFriday && !wantSunday) continue
 
-    const facts = await gatherWeeklyFacts(db, co.id, co.name ?? 'Your company')
+    const facts = await gatherWeeklyFacts(db, co.id, co.name ?? 'Your company', prefs.tz)
 
     if (wantFriday) {
       let delivered = false

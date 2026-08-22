@@ -62,6 +62,9 @@ export interface WeeklyFacts {
   tasksDone: number
   activeZones: string[]
   darkAssets: string[]
+  /** Per-site "who was where" from the exact visit ledger (zone_sessions):
+   *  busiest sites first, each with per-asset hours + days-on-site lines. */
+  siteActivity: { zone: string; totalH: number; lines: string[] }[]
   // Ahead (open / next 7 days)
   receiptsOutstanding: { count: number; total: number }
   openTasks: { title: string; zone: string; due: string | null; overdue: boolean }[]
@@ -74,12 +77,12 @@ const wk = () => new Date(Date.now() - 7 * 86_400_000).toISOString()
 const ahead = () => new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10)
 
 /** One bounded sweep that feeds BOTH digest flavors. Missing tables → zeros. */
-export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, companyName: string): Promise<WeeklyFacts> {
+export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, companyName: string, tz = 'America/New_York'): Promise<WeeklyFacts> {
   const g = async <T,>(q: PromiseLike<{ data: T | null }>): Promise<T | null> => {
     try { return (await q).data } catch { return null }
   }
 
-  const [entries, logs, alertsWeek, zones, tasks, milestones, expenses, maint, assets, alertsOpen] = await Promise.all([
+  const [entries, logs, alertsWeek, zones, tasks, milestones, expenses, maint, assets, alertsOpen, sessions] = await Promise.all([
     g(db.from('time_entries').select('person_name, clock_in_at, clock_out_at').eq('company_id', companyId).gte('clock_in_at', wk()).limit(300)),
     g(db.from('daily_logs').select('id').eq('company_id', companyId).gte('created_at', wk()).limit(300)),
     g(db.from('alert_events').select('id').eq('company_id', companyId).gte('triggered_at', wk()).limit(200)),
@@ -90,6 +93,8 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     g(db.from('maintenance_schedules').select('id, asset_id, next_due_at').eq('company_id', companyId).limit(200)),
     g(db.from('assets').select('id, name, type').eq('company_id', companyId)),
     g(db.from('alert_events').select('asset_id, rule:alert_rules(trigger)').eq('company_id', companyId).is('acknowledged_at', null).gte('triggered_at', wk()).limit(10)),
+    // The exact visit ledger (056) — pre-aggregated, so a week is cheap.
+    g(db.from('zone_sessions').select('geofence_id, asset_id, entered_at, exited_at').eq('company_id', companyId).gte('entered_at', wk()).limit(2000)),
   ])
 
   const nameOf = new Map((assets ?? []).map((a) => [a.id as string, a.name as string]))
@@ -116,6 +121,41 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
       .map((a) => a.name as string).slice(0, 5)
   }
 
+  // Who was where: per site zone, per asset — hours + distinct local days
+  // (the ledger's sessions, same numbers as the zone pages and invoices).
+  const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+  const siteIds = new Set(siteZones.map((z) => z.id as string))
+  const byZone = new Map<string, Map<string, { ms: number; days: Set<string> }>>()
+  const now = Date.now()
+  for (const s of sessions ?? []) {
+    if (!siteIds.has(s.geofence_id as string)) continue
+    const enter = Date.parse(s.entered_at as string)
+    const exit = Math.min(Date.parse(s.exited_at as string) || now, now)
+    if (!Number.isFinite(enter) || exit <= enter) continue
+    let zoneMap = byZone.get(s.geofence_id as string)
+    if (!zoneMap) byZone.set(s.geofence_id as string, (zoneMap = new Map()))
+    let agg = zoneMap.get(s.asset_id as string)
+    if (!agg) zoneMap.set(s.asset_id as string, (agg = { ms: 0, days: new Set() }))
+    agg.ms += exit - enter
+    agg.days.add(dayFmt.format(new Date(enter)))
+  }
+  const siteActivity = Array.from(byZone.entries())
+    .map(([zoneId, zoneMap]) => {
+      const rows = Array.from(zoneMap.entries())
+        .map(([assetId, a]) => ({ name: nameOf.get(assetId) ?? 'Asset', h: a.ms / 3_600_000, d: a.days.size }))
+        .filter((r) => r.h >= 0.25)
+        .sort((a, b) => b.h - a.h)
+      return {
+        zone: zoneName.get(zoneId) ?? 'Site',
+        totalH: rows.reduce((s, r) => s + r.h, 0),
+        lines: rows.slice(0, 5).map((r) => `<b style="color:#e8f0f7">${r.name}</b> — ${r.h.toFixed(1)} h over ${r.d} day${r.d === 1 ? '' : 's'}`)
+          .concat(rows.length > 5 ? [`+ ${rows.length - 5} more`] : []),
+      }
+    })
+    .filter((z) => z.lines.length)
+    .sort((a, b) => b.totalH - a.totalH)
+    .slice(0, 5)
+
   const today = new Date().toISOString().slice(0, 10)
   const openTasks = (tasks ?? []).filter((t) => t.status === 'open')
     .map((t) => ({
@@ -135,6 +175,7 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     tasksDone: (tasks ?? []).filter((t) => t.done_at && (t.done_at as string) >= wk()).length,
     activeZones: siteZones.map((z) => z.name as string).slice(0, 8),
     darkAssets,
+    siteActivity,
     receiptsOutstanding: {
       count: (expenses ?? []).length,
       total: (expenses ?? []).reduce((s, e) => s + (Number(e.amount) || 0), 0),
@@ -181,6 +222,13 @@ export function fridayEmailHtml(f: WeeklyFacts): string {
   inner += f.hoursByPerson.length
     ? f.hoursByPerson.map(([n, h]) => li(`<b style="color:#e8f0f7">${n}</b> — ${h.toFixed(1)} h`)).join('')
     : none('No clocked hours this week.')
+  if (f.siteActivity.length) {
+    inner += h2('Who was where')
+    for (const z of f.siteActivity) {
+      inner += li(`<b style="color:#e8f0f7">${z.zone}</b> — ${z.totalH.toFixed(1)} h tracked on site`)
+      inner += z.lines.map((l) => `<p style="margin:0 0 4px 16px;font-size:12.5px;line-height:1.5;color:#9fb6cc">${l}</p>`).join('')
+    }
+  }
   inner += h2('Jobs & field')
   const jf: string[] = []
   if (f.activeZones.length) jf.push(li(`Active jobs: ${f.activeZones.join(', ')}`))
@@ -200,6 +248,7 @@ export function fridayEmailHtml(f: WeeklyFacts): string {
 export function fridaySms(f: WeeklyFacts): string {
   const hrs = f.hoursByPerson.reduce((s, [, h]) => s + h, 0)
   const bits = [`${f.company} week: ${hrs.toFixed(0)}h clocked`, `${f.logsFiled} logs`]
+  if (f.siteActivity.length) bits.push(`busiest site ${f.siteActivity[0].zone} (${f.siteActivity[0].totalH.toFixed(0)}h)`)
   if (f.tasksDone) bits.push(`${f.tasksDone} punch items done`)
   if (f.alertsFired) bits.push(`${f.alertsFired} alerts`)
   if (f.receiptsOutstanding.count) bits.push(`${f.receiptsOutstanding.count} receipts missing ($${f.receiptsOutstanding.total.toFixed(0)})`)
