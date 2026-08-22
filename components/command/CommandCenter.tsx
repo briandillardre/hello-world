@@ -75,6 +75,7 @@ interface CommandCenterProps {
    *  /command too (Brian, Aug 22: nav lives at the bottom, same as /map). */
   userName?: string | null
   navOrder?: string[] | null
+  role?: string | null
 }
 
 interface CommandData {
@@ -225,7 +226,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false, userName = null, navOrder = null }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false, userName = null, navOrder = null, role = null }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
 
   // Deferred heavy cargo — fetched once after the shell/basemap are up.
@@ -393,6 +394,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         companyName={company}
         userName={userName}
         navOrder={navOrder}
+        role={role}
         onSignOut={signOutAction}
       />
 

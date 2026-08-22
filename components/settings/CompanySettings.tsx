@@ -138,7 +138,15 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
     finally { setSaving(false); doneBar() }
   }
 
-  const hoursLabel = `${work_start}–${work_end} · ${work_days.map((d) => DAYS[d]).join(' ')}`
+  // "Mon–Fri · 7:00–18:00" — contiguous day runs compress to a range
+  // (the wrapped "Fri" on its own line read as broken; Grok-doc nit).
+  const dayLabel = (() => {
+    const d = [...work_days].sort((a, b) => a - b)
+    if (!d.length) return '—'
+    const contiguous = d.every((v, i) => i === 0 || v === d[i - 1] + 1)
+    return contiguous && d.length > 2 ? `${DAYS[d[0]]}–${DAYS[d[d.length - 1]]}` : d.map((v) => DAYS[v]).join(' ')
+  })()
+  const hoursLabel = `${dayLabel} · ${work_start}–${work_end}`
 
   return (
     <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
@@ -302,7 +310,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
         ) : (
           <div className="space-y-3">
             <Row label="Company Name" value={name} />
-            <Row label="Plan" value={<Badge>{plan}</Badge>} />
+            <Row label="Plan" value={<Badge>{({ founding25: 'Founding 25', starter: 'Starter', run: 'Run' } as Record<string, string>)[plan] ?? plan}</Badge>} />
             <Row label="Working hours" value={<span className="font-mono text-xs">{hoursLabel}</span>} />
             <Row label="Alerts to" value={<span className="font-mono text-xs">{alert_phone || alert_email || '— not set'}</span>} />
             {!editable && (

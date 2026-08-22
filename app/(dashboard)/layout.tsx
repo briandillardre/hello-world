@@ -29,7 +29,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
-  const company = await getCurrentCompany()
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  const [company, perms] = await Promise.all([getCurrentCompany(), getMyPermissions()])
   const alerts = await getAlertEvents(company.id)
   // Bell badge = ATTENTION alerts only. Routine enter/exit crossings are the
   // activity log — counting them made the badge cry wolf all day.
@@ -47,7 +48,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <TzCookie />
       <OfflineSync />
       <BusyBar />
-      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder}>
+      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role}>
         {children}
       </DashboardShell>
     </div>

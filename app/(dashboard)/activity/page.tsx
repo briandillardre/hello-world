@@ -39,12 +39,16 @@ export default async function ActivityPage() {
   const { data: me } = user
     ? await supabase.from('profiles').select('company_id, role').eq('id', user.id).single()
     : { data: null }
-  const amAdmin = me?.role === 'owner' || me?.role === 'admin'
-  if (!amAdmin) {
+  // OWNER only (Brian, Aug 22: "admin should get everything EXCEPT the
+  // ability to see what everyone in the org has used the app for") — the
+  // company founder is the one seat that may watch the team's app usage.
+  const amOwner = !!user && me?.company_id === user.id
+  if (!amOwner) {
     return (
       <Shell>
         <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
-          Owner/admin only — this page shows the whole team&apos;s app + AI activity.
+          Company owner only — this page shows the whole team&apos;s app + AI activity,
+          so it stays with the person who owns the company.
         </p>
       </Shell>
     )

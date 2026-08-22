@@ -18,12 +18,12 @@ const allItems = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/clock', label: 'Clock', icon: Clock },
+  { href: '/clock', label: 'Time clock', short: 'Clock', icon: Clock },
   { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/measurements', label: 'Measurements', short: 'Measure', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', short: 'Tags', icon: Bluetooth },
   { href: '/command', label: 'Command Center', short: 'Command', icon: MonitorPlay },
-  { href: '/track', label: 'Go Live (GPS)', short: 'Go Live', icon: Radio },
+  { href: '/track', label: 'Share location', short: 'Live', icon: Radio },
   { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },
@@ -41,26 +41,52 @@ const BAR_COUNT = 5
 // Plain object, not a Map — the lucide `Map` icon import shadows the global.
 const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(allItems.map((i) => [i.href, i]))
 
-// Drop unknown hrefs, splice newly-shipped pages in at their default slot
+// Role-DEFAULT bars (Grok-doc consensus, Brian: "yes i think so"): nobody
+// curates five slots on day one — the role picks a sensible bar, and the
+// Edit mode + profile save personalize from there.
+const ROLE_BARS: Record<string, string[]> = {
+  admin:   ['/map', '/command', '/alerts', '/clock', '/assets'],
+  manager: ['/map', '/assets', '/alerts', '/clock', '/reports'],
+  foreman: ['/map', '/clock', '/alerts', '/logs', '/track'],
+  viewer:  ['/map', '/assets', '/alerts', '/zones', '/reports'],
+}
+const canonOrder = (role?: string | null): string[] => {
+  const bar = ROLE_BARS[role ?? ''] ?? ROLE_BARS.admin
+  return [...bar, ...DEFAULT_ORDER.filter((h) => !bar.includes(h))]
+}
+
+// The More drawer groups by JOB (same architecture as the desktop sidebar —
+// the flat 19-tile grid threw that information away). Visual only: the
+// user's saved order still decides the bar and the edit grid.
+const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
+  { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
+  { title: 'Field',  hrefs: ['/clock', '/logs', '/assets', '/zones', '/measurements', '/tags', '/maintenance', '/track'] },
+  { title: 'Office', hrefs: ['/reports', '/accounting', '/receipts', '/finance', '/team'] },
+  { title: 'Setup',  hrefs: ['/settings', '/welcome', '/help'] },
+]
+
+// Drop unknown hrefs, splice newly-shipped pages in at their canonical slot
 // (never buried at the tail), or null if nothing usable survives.
-function sanitizeOrder(saved: unknown): string[] | null {
+function sanitizeOrder(saved: unknown, canon: string[]): string[] | null {
   if (!Array.isArray(saved)) return null
   const kept = (saved as string[]).filter((h) => h in byHref)
   if (!kept.length) return null
   const next = [...kept]
-  for (const h of DEFAULT_ORDER) {
-    if (!next.includes(h)) next.splice(DEFAULT_ORDER.indexOf(h), 0, h)
+  for (const h of canon) {
+    if (!next.includes(h)) next.splice(canon.indexOf(h), 0, h)
   }
   return next
 }
 
-export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, onSignOut }: {
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, onSignOut }: {
   alertCount?: number
   latestAlertAt?: string | null
   companyName?: string
   userName?: string | null
   /** Saved bar order from the user's profile (null = none saved / demo). */
   navOrder?: string[] | null
+  /** Signed-in role — picks the DEFAULT bar when nothing is saved. */
+  role?: string | null
   onSignOut?: () => void
 }) {
   const pathname = usePathname()
@@ -68,17 +94,19 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   const [moreOpen, setMoreOpen] = useState(false)
   // Profile order renders server-side (no flash, follows the user across
   // phones); localStorage only fills in for demo mode / pre-070 deploys.
-  const [order, setOrder] = useState<string[]>(() => sanitizeOrder(navOrder) ?? DEFAULT_ORDER)
+  // With nothing saved anywhere, the ROLE picks the bar.
+  const canon = canonOrder(role)
+  const [order, setOrder] = useState<string[]>(() => sanitizeOrder(navOrder, canon) ?? canon)
   const [editing, setEditing] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
 
   useEffect(() => {
     if (navOrder?.length) return
     try {
-      const saved = sanitizeOrder(JSON.parse(localStorage.getItem(ORDER_KEY) || 'null'))
+      const saved = sanitizeOrder(JSON.parse(localStorage.getItem(ORDER_KEY) || 'null'), canonOrder(role))
       if (saved) setOrder(saved)
     } catch { /* default order */ }
-  }, [navOrder])
+  }, [navOrder, role])
 
   // Write-through: localStorage for instant demo/offline recall, the profile
   // for "next open, any phone, same user". The server save is DEBOUNCED to
@@ -120,10 +148,10 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
     persist(next)
   }
   const resetOrder = () => {
-    setOrder(DEFAULT_ORDER)
+    setOrder(canon)
     setSel(null)
     try { localStorage.removeItem(ORDER_KEY) } catch {}
-    persist(DEFAULT_ORDER)
+    persist(canon)
   }
 
   // Tell the rest of the UI (the Ask launcher) the drawer is up: a body
@@ -171,10 +199,12 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             <p className="text-[11px] text-faint mb-3">
               {editing
                 ? 'Tap two tiles to swap them — the first 5 fill your bottom bar.'
-                : 'The first 5 (amber) are your bottom bar.'}
+                : 'Pinned tiles (amber) fill your bottom bar.'}
             </p>
-            <div className="grid grid-cols-3 gap-3">
-              {ordered.map(({ href, label, icon: Icon }, idx) => {
+            {(() => {
+              const renderTile = (item: (typeof allItems)[number]) => {
+                const { href, label, icon: Icon } = item
+                const idx = ordered.indexOf(item)
                 const inBar = idx < BAR_COUNT
                 const active = pathname.startsWith(href)
                 const tile = (
@@ -212,8 +242,27 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                     {tile}
                   </Link>
                 )
-              })}
-            </div>
+              }
+              // Edit mode: the FLAT ordered grid (order is what you're
+              // editing). Browsing: grouped by job, same architecture as the
+              // desktop sidebar (Grok-doc consensus).
+              return editing ? (
+                <div className="grid grid-cols-3 gap-3">{ordered.map(renderTile)}</div>
+              ) : (
+                <div className="space-y-4">
+                  {DRAWER_GROUPS.map((g) => {
+                    const items = ordered.filter((i) => g.hrefs.includes(i.href))
+                    if (!items.length) return null
+                    return (
+                      <div key={g.title}>
+                        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint mb-1.5">{g.title}</p>
+                        <div className="grid grid-cols-3 gap-3">{items.map(renderTile)}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
             {editing && (
               <button onClick={resetOrder} className="mt-3 text-xs text-faint underline underline-offset-2 hover:text-ink">
                 Reset to default order

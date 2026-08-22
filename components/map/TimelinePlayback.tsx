@@ -721,7 +721,9 @@ export function TimelinePlayback({
           <div className="flex-none flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap" title={`Project cost · ${costLabel}`}>
             <HardHat className="h-3.5 w-3.5" />
             {money(costTotal)}
-            <span className="hidden md:inline text-faint">· {costLabel}</span>
+            {/* Label ALWAYS visible — a bare "$11k" was mystery meat on
+                phones (Grok-doc: say what the number is). */}
+            <span className="text-faint">· cost {costLabel}</span>
           </div>
         )}
         {/* Pull-up activity chart toggle (replay modes only) */}

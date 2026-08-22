@@ -32,7 +32,8 @@ export default async function CommandPage() {
   // queries — the shell and basemap paint immediately. The heavy cargo
   // (24h trails, full timeline history, pairing episodes, cost-today) loads
   // client-side from /api/command-data behind a visible status chip.
-  const company = await getCurrentCompany()
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  const [company, perms] = await Promise.all([getCurrentCompany(), getMyPermissions()])
   const companyId = company.id
   const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
     getAssetsWithLocations(companyId),
@@ -86,6 +87,7 @@ export default async function CommandPage() {
       deferLoad={!isMock}
       userName={company.userName}
       navOrder={company.navOrder}
+      role={perms.role}
       brand={{ companyName: company.name, logoUrl: company.logoUrl }}
     />
   )
