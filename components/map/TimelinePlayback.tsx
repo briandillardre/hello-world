@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane, Gauge } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -42,13 +42,15 @@ const KIOSK_STAGE_KEY = 'ht_cc_timeline_stage'
 const STAGES = ['full', 'bar', 'min'] as const
 type Stage = (typeof STAGES)[number]
 
-const MODES: { key: TrailMode; label: string; icon: typeof Ban }[] = [
-  { key: 'off', label: 'Off', icon: Ban },
-  { key: 'trails', label: 'Trails', icon: Route },
-  { key: 'heatmap', label: 'Heatmap', icon: Flame },
+// `short` = the phone label — full words on sm+ (labels stay, Brian Aug 22;
+// they just tighten so the one-line strip fits a 400px screen, Aug 23).
+const MODES: { key: TrailMode; label: string; short: string; icon: typeof Ban }[] = [
+  { key: 'off', label: 'Off', short: 'Off', icon: Ban },
+  { key: 'trails', label: 'Trails', short: 'Trails', icon: Route },
+  { key: 'heatmap', label: 'Heatmap', short: 'Heat', icon: Flame },
   // '3d' is the hex activity terrain — towers of movement, i.e. a heatmap
   // with height. Named accordingly ("3D" read like a camera mode, Jul 21).
-  { key: '3d', label: '3D heat', icon: Box },
+  { key: '3d', label: '3D heat', short: '3D', icon: Box },
 ]
 
 interface TimelinePlaybackProps {
@@ -63,6 +65,11 @@ interface TimelinePlaybackProps {
    *  ground-aligned pucks in asset color with the type emoji on top. */
   markerStyle?: 'dot' | 'arrow'
   onMarkerStyle?: (s: 'dot' | 'arrow') => void
+  /** Speed-colored trails (Brian, Aug 23): trail ink shows how fast — teal
+   *  crawl · amber streets · orange highway · red 70+ — instead of the
+   *  per-asset color with age fading. */
+  speedTrails?: boolean
+  onSpeedTrails?: () => void
   t: number
   playing: boolean
   speed: number
@@ -120,7 +127,7 @@ interface TimelinePlaybackProps {
 }
 
 export function TimelinePlayback({
-  range, onRange, loading = false, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  range, onRange, loading = false, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, speedTrails = false, onSpeedTrails, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
@@ -208,7 +215,10 @@ export function TimelinePlayback({
     window.addEventListener('resize', measurePills)
     return () => window.removeEventListener('resize', measurePills)
   }, [measurePills, stage, live, range, trailMode])
-  const dragRef = useRef<{ y: number; done: boolean } | null>(null)
+  const dragRef = useRef<{ x: number; y: number; done: boolean } | null>(null)
+  // A stage-step just happened via swipe — the very next click (the tail of
+  // that same gesture, often on a button) gets swallowed.
+  const swipeStepped = useRef(false)
   const [showCustom, setShowCustom] = useState(false)
   const [showFollow, setShowFollow] = useState(false)
   // One Camera button folds 360/Fly/Follow (8c-c) — this is its popover.
@@ -588,23 +598,31 @@ export function TimelinePlayback({
       <ProtrudingClose onClick={() => setStage('min')} title="Minimize timeline" />
       <div
         className="rounded-2xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel overflow-hidden"
-        // The whole bar accepts the sheet gesture — a swipe that starts on
-        // any non-interactive surface steps the stage, so "drag down twice"
-        // reliably lands on the pill (the same state the X produces). Drags
-        // that begin on buttons/inputs (pills, sliders) are left alone.
+        // The whole bar accepts the sheet gesture — ANYWHERE, buttons and
+        // pills included (Brian, Aug 23: "any of this should be able to be
+        // swiped up or down"). Only real inputs (sliders, date pickers,
+        // search) keep their drags. A mostly-VERTICAL move steps the stage
+        // and the tail-end click is swallowed so the button under the finger
+        // doesn't also fire; horizontal drags still scroll the pill strips.
         onPointerDown={(e) => {
-          if ((e.target as HTMLElement).closest('button, input, select, a')) return
-          dragRef.current = { y: e.clientY, done: false }
+          if ((e.target as HTMLElement).closest('input, select, textarea, a, [role="slider"]')) return
+          dragRef.current = { x: e.clientX, y: e.clientY, done: false }
         }}
         onPointerMove={(e) => {
           const d = dragRef.current
           if (!d || d.done) return
           const dy = e.clientY - d.y
-          if (dy > 26) { d.done = true; stepDown() }
-          else if (dy < -26) { d.done = true; stepUp() }
+          const dx = e.clientX - d.x
+          if (Math.abs(dy) <= 26 || Math.abs(dy) < Math.abs(dx) * 1.2) return
+          d.done = true
+          swipeStepped.current = true
+          if (dy > 0) stepDown(); else stepUp()
         }}
         onPointerUp={() => { dragRef.current = null }}
         onPointerCancel={() => { dragRef.current = null }}
+        onClickCapture={(e) => {
+          if (swipeStepped.current) { swipeStepped.current = false; e.preventDefault(); e.stopPropagation() }
+        }}
       >
       {/* Drag handle + stage arrows (Brian, Aug 11: "add arrows here to
           simplify this function") — the chevrons make the three stages
@@ -737,7 +755,11 @@ export function TimelinePlayback({
             share a single horizontally-scrollable row instead of wrapping
             into three. sm:contents dissolves the wrapper on desktop so the
             controls stay inline in the wrap row exactly as before. */}
-        <div className="relative w-full sm:contents">
+        {/* Camera sits OUTSIDE the scroll area, pinned at the row's right end
+            (Brian, Aug 23: "fix this partially covered") — only the mode
+            pills scroll under the fade cue; nothing rests half-clipped. */}
+        <div className="w-full flex items-center gap-2 sm:contents">
+        <div className="relative flex-1 min-w-0 sm:contents">
         <div ref={stripRef} onScroll={measurePills} className="flex items-center gap-2 overflow-x-auto no-scrollbar sm:contents">
         {/* Pull-up activity chart toggle (replay modes only) */}
         {!live && (
@@ -771,20 +793,21 @@ export function TimelinePlayback({
         {/* Earth spin moved to the layers panel → Advanced (owner ask, Jul 21).
             360 + Fly folded into the single Camera button below (8c-c). */}
         <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
-          {MODES.map(({ key, label, icon: Icon }) => (
+          {MODES.map(({ key, label, short, icon: Icon }) => (
             <button
               key={key}
               onClick={() => onTrailMode(key)}
               title={label}
               className={
-                'flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ' +
+                'flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ' +
                 (trailMode === key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
               }
             >
               <Icon className="h-3.5 w-3.5" />
               {/* Label always visible (Brian, Aug 22: circled this row asking
                   where Trails lives — it was the unlabeled second glyph). */}
-              <span className="text-[10px] sm:text-[11px]">{label}</span>
+              <span className="text-[10px] sm:hidden">{short}</span>
+              <span className="hidden sm:inline text-[11px]">{label}</span>
             </button>
           ))}
         </div>
@@ -815,6 +838,27 @@ export function TimelinePlayback({
           </div>
         )}
 
+        </div>
+        {stripMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent sm:hidden" />}
+        </div>
+
+        {/* Speed-colored trails (Brian, Aug 23: "where do I find speed trail
+            color toggle") — pinned beside Camera so it can never rest
+            half-clipped in the scroll area. */}
+        {onSpeedTrails && trailMode === 'trails' && (
+          <button
+            onClick={onSpeedTrails}
+            title="Color trails by speed — teal under 10 · amber 10–45 · orange 45–70 · red 70+ mph"
+            className={
+              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
+              (speedTrails ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            <Gauge className="h-3.5 w-3.5" />
+            <span className="text-[10px] sm:text-[11px]">Speed</span>
+          </button>
+        )}
+
         {/* ONE Camera button (Brian, Aug 22, decision 8c-c): 360, Fly, and
             Follow fold behind it so the options row slims. The button wears
             the active mode's color + label; the follow MENU still renders
@@ -841,8 +885,6 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
-        </div>
-        {stripMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent sm:hidden" />}
         </div>
       </div>
       )}

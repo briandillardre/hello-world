@@ -570,6 +570,66 @@ export function trailSegmentsBanded(
   return bands.map(({ fade, segments }) => ({ fade, segments: segments.filter((s) => s.length >= 2) }))
 }
 
+// ── Speed-colored trails (Brian, Aug 23) ────────────────────────────────────
+// Same segment-building rules as the age bands (gaps break the line, class
+// handoffs share the boundary point) but bucketed by SPEED instead of age:
+// teal = crawl/on-site, amber = surface streets, orange = highway, red = 70+.
+export const SPEED_CLASS_MPH = [10, 45, 70]
+export const SPEED_CLASS_COLORS = ['#2dd4bf', '#ff9e16', '#fb923c', '#fb5d5d']
+export const SPEED_CLASS_LABELS = ['under 10 mph', '10–45 mph', '45–70 mph', '70+ mph']
+
+const EARTH_M = 6_371_000
+function metersBetween(a: [number, number], b: [number, number]): number {
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180
+  const dLng = ((b[0] - a[0]) * Math.PI) / 180
+  const la1 = (a[1] * Math.PI) / 180
+  const la2 = (b[1] * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
+  return 2 * EARTH_M * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+export function trailSegmentsSpeed(
+  track: AssetTrack,
+  t: number,
+  windowSeconds: number
+): { cls: number; segments: [number, number][][] }[] {
+  const n = SPEED_CLASS_MPH.length + 1
+  const buckets = Array.from({ length: n }, () => ({ segments: [] as [number, number][][], current: [] as [number, number][] }))
+  const classOf = (mph: number) => {
+    for (let i = 0; i < SPEED_CLASS_MPH.length; i++) if (mph < SPEED_CLASS_MPH[i]) return i
+    return n - 1
+  }
+  let prev: TrackPoint | null = null
+  let prevCls: number | null = null
+  for (const p of track.points) {
+    if (p.t > t) break
+    if (p.gap || !prev) {
+      for (const b of buckets) { if (b.current.length) { b.segments.push(b.current); b.current = [] } }
+      prev = p
+      prevCls = null
+      continue
+    }
+    // Segment speed: the fix's reported mph when the tracker sent one;
+    // otherwise derived from distance / elapsed (demo tracks + old rows).
+    const dtSec = Math.max(1, (p.t - prev.t) * windowSeconds)
+    const mph = p.mph ?? (metersBetween([prev.lng, prev.lat], [p.lng, p.lat]) / dtSec) * 2.23694
+    const cls = classOf(mph)
+    if (prevCls !== null && cls !== prevCls) {
+      // Class handoff shares the boundary point — continuous ink, new color.
+      buckets[prevCls].current.push([prev.lng, prev.lat])
+      buckets[prevCls].segments.push(buckets[prevCls].current)
+      buckets[prevCls].current = []
+    }
+    if (!buckets[cls].current.length) buckets[cls].current.push([prev.lng, prev.lat])
+    buckets[cls].current.push([p.lng, p.lat])
+    prev = p
+    prevCls = cls
+  }
+  if (prev && prevCls !== null) buckets[prevCls].current.push(positionAt(track, t))
+  for (const b of buckets) { if (b.current.length) b.segments.push(b.current) }
+  return buckets.map((b, cls) => ({ cls, segments: b.segments.filter((s) => s.length >= 2) }))
+}
+
 /** Trail polyline coordinates from the start of the window up to time t. */
 export function trailUpTo(track: AssetTrack, t: number): [number, number][] {
   const coords: [number, number][] = []

@@ -7,6 +7,7 @@ import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/t
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsBanded,
+  trailSegmentsSpeed, SPEED_CLASS_COLORS,
   defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds, RANGES,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
@@ -199,7 +200,26 @@ function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
 
 // selId marks the selected asset's features (sel) and everyone else's (dim)
 // so the paint expressions can spotlight one track without touching layers.
-function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null): GeoJSON.FeatureCollection {
+function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, speedWindowSec?: number | null): GeoJSON.FeatureCollection {
+  // Speed mode (Brian, Aug 23): color = how fast, not who — teal crawl,
+  // amber streets, orange highway, red 70+. Age fading is off here; the
+  // color IS the information.
+  if (speedWindowSec) {
+    return {
+      type: 'FeatureCollection',
+      features: tracks
+        .filter((tr) => filter.has(tr.type))
+        .flatMap((tr) =>
+          trailSegmentsSpeed(tr, t, speedWindowSec)
+            .filter((b) => b.segments.length)
+            .map((b) => ({
+              type: 'Feature' as const,
+              geometry: { type: 'MultiLineString' as const, coordinates: b.segments },
+              properties: { id: tr.assetId, color: SPEED_CLASS_COLORS[b.cls], fade: 1, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
+            }))
+        ),
+    }
+  }
   return {
     type: 'FeatureCollection',
     features: tracks
@@ -529,6 +549,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // pucks in the asset's color, rotated to the travel heading, with the type
   // emoji riding upright on top.
   const [markerStyle, setMarkerStyle] = useState<'dot' | 'arrow'>(lastState.markers ?? 'dot')
+  // Speed-colored trails (Brian, Aug 23): trail ink shows HOW FAST instead of
+  // per-asset color + age fade. Persisted per device.
+  const [speedTrails, setSpeedTrails] = useState(false)
+  useEffect(() => {
+    try { setSpeedTrails(localStorage.getItem('ht_trail_speed') === '1') } catch { /* private mode */ }
+  }, [])
+  const speedTrailsRef = useRef(speedTrails)
+  speedTrailsRef.current = speedTrails
+  const toggleSpeedTrails = useCallback(() => {
+    setSpeedTrails((v) => {
+      try { localStorage.setItem('ht_trail_speed', v ? '0' : '1') } catch { /* private mode */ }
+      return !v
+    })
+  }, [])
   const [terrain3d, setTerrain3d] = useState(lastState.terrain ?? false)
   const terrain3dRef = useRef(terrain3d)
   terrain3dRef.current = terrain3d
@@ -613,6 +647,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     try { window.dispatchEvent(new CustomEvent('ht:sheet-open', { detail: { open: sheetOpen } })) } catch { /* SSR */ }
   }, [sheetOpen])
   const [editingMeasure, setEditingMeasure] = useState<SavedMeasure | null>(null)
+  // Two-finger HOLD anywhere on the map = quick measure (Brian, Aug 23):
+  // both fingers still for ~½ s drops a measuring line BETWEEN the two
+  // touch points and opens the tool with it loaded. Any movement (a pinch,
+  // a pan) cancels the hold.
+  const [measureSeed, setMeasureSeed] = useState<{ id: string; name: string; kind: 'point' | 'line' | 'area'; personal: boolean; coords: [number, number][] } | null>(null)
   // Stable identity — an inline object literal re-triggered MeasureTool's
   // load effect on EVERY MapView render, stomping in-progress edits the
   // moment the user pinch-zoomed (ship-check P0, Aug 18).
@@ -1620,7 +1659,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.addSource('geofence-label-pts', { type: 'geojson', data: geofenceLabelPoints(geofences) })
 
       // ── Trail / heatmap layers (hidden until a movement mode is on) ──
-      m.addSource('trails', { type: 'geojson', data: trailsGeoJSON(tracksRef.current, filterRef.current, 0) })
+      m.addSource('trails', { type: 'geojson', data: trailsGeoJSON(tracksRef.current, filterRef.current, 0, null, speedTrailsRef.current ? windowSecRef.current : null) })
       m.addLayer({
         id: 'trails-line', type: 'line', source: 'trails',
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
@@ -2420,7 +2459,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts))
     if (mode === 'trails') {
-      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel))
+      ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
     } else if (mode === '3d') {
       ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current))
     } else {
@@ -2625,7 +2664,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     if (!mapReady) return
     updateMovementSources(displayT)
-  }, [mapReady, trailMode, displayT, filter, tracksEff, isolateId, selectedAsset, updateMovementSources])
+  }, [mapReady, trailMode, displayT, filter, tracksEff, isolateId, selectedAsset, speedTrails, updateMovementSources])
 
   // When paused (scrubbing), keep the camera pinned to the followed asset. During
   // playback the RAF loop drives it every frame, so skip to avoid double work.
@@ -4723,6 +4762,113 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     el.style.opacity = railHidden ? '0' : ''
     el.style.pointerEvents = railHidden ? 'none' : ''
   }, [railHidden, mapReady])
+  // The MAP TOOLS edge handle parks just BELOW the button column it controls
+  // — at a fixed 44% it sat on top of the ruler/zone buttons on phones
+  // (Brian, Aug 23: "fix overlap"). Measured, so any column height works.
+  const [railHandleTop, setRailHandleTop] = useState<number | null>(null)
+  useEffect(() => {
+    if (!mapReady) return
+    const wrap = mapContainer.current
+    const el = wrap?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
+    if (!wrap || !el) return
+    const measure = () => {
+      const wr = wrap.getBoundingClientRect()
+      const er = el.getBoundingClientRect()
+      if (er.height > 0) setRailHandleTop(er.bottom - wr.top + 8)
+    }
+    measure()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure) }
+  }, [mapReady])
+  // Swipe RIGHT anywhere on the button column to tuck it (Brian, Aug 23) —
+  // the same gesture the edge handle speaks, now the whole rail hears it.
+  // Move/up ride on document so the gesture survives the finger leaving the
+  // slim column; the tail-end click is swallowed so a button under the
+  // finger doesn't also fire.
+  useEffect(() => {
+    if (!mapReady) return
+    const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
+    if (!el) return
+    let st: { x: number; y: number } | null = null
+    let swiped = false
+    const move = (e: PointerEvent) => {
+      if (!st || swiped) return
+      const dx = e.clientX - st.x
+      const dy = e.clientY - st.y
+      if (dx > 40 && dx > Math.abs(dy) * 1.5) { swiped = true; setRailHidden(true) }
+    }
+    const up = () => {
+      st = null
+      document.removeEventListener('pointermove', move)
+      window.setTimeout(() => { swiped = false }, 80)
+    }
+    const down = (e: PointerEvent) => {
+      st = { x: e.clientX, y: e.clientY }
+      swiped = false
+      document.addEventListener('pointermove', move)
+      document.addEventListener('pointerup', up, { once: true })
+    }
+    const click = (e: MouseEvent) => { if (swiped) { e.preventDefault(); e.stopPropagation() } }
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('click', click, true)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('click', click, true)
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', up)
+    }
+  }, [mapReady])
+  // Two-finger HOLD = quick measure (see measureSeed above). Detached while
+  // the tool is already open so a slow pinch mid-measure can't reset it.
+  useEffect(() => {
+    if (!mapReady || kiosk || measureOn) return
+    const el = mapContainer.current
+    if (!el) return
+    let timer: number | null = null
+    let start: { x0: number; y0: number; x1: number; y1: number } | null = null
+    const cancel = () => {
+      if (timer != null) { window.clearTimeout(timer); timer = null }
+      start = null
+    }
+    const onTouches = (e: TouchEvent) => {
+      if (e.touches.length !== 2) { cancel(); return }
+      cancel()
+      const [a, b] = [e.touches[0], e.touches[1]]
+      start = { x0: a.clientX, y0: a.clientY, x1: b.clientX, y1: b.clientY }
+      timer = window.setTimeout(() => {
+        const m = map.current
+        const s = start
+        cancel()
+        if (!m || !s) return
+        const r = el.getBoundingClientRect()
+        const p0 = m.unproject([s.x0 - r.left, s.y0 - r.top])
+        const p1 = m.unproject([s.x1 - r.left, s.y1 - r.top])
+        setEditingMeasure(null)
+        setMeasureSeed({ id: '', name: '', kind: 'line', personal: true, coords: [[p0.lng, p0.lat], [p1.lng, p1.lat]] })
+        setMeasureOn(true)
+      }, 550)
+    }
+    const onMove = (e: TouchEvent) => {
+      if (!start || e.touches.length < 2) return
+      const [a, b] = [e.touches[0], e.touches[1]]
+      // Any real movement = a pinch/rotate, not a hold.
+      if (Math.hypot(a.clientX - start.x0, a.clientY - start.y0) > 14 ||
+          Math.hypot(b.clientX - start.x1, b.clientY - start.y1) > 14) cancel()
+    }
+    el.addEventListener('touchstart', onTouches, { passive: true })
+    el.addEventListener('touchend', onTouches, { passive: true })
+    el.addEventListener('touchcancel', onTouches, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: true })
+    return () => {
+      cancel()
+      el.removeEventListener('touchstart', onTouches)
+      el.removeEventListener('touchend', onTouches)
+      el.removeEventListener('touchcancel', onTouches)
+      el.removeEventListener('touchmove', onMove)
+    }
+  }, [mapReady, kiosk, measureOn])
 
   // Chip position: measured off the radar button so it hugs the rail.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
@@ -5866,7 +6012,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           setRailHidden((h) => !h)
         }}
         aria-label={railHidden ? 'Show map tools' : 'Hide map tools'}
-        className="absolute right-0 top-[44%] z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
+        // Measured top: just below the button column (overlap fix, Aug 23).
+        style={{ top: railHandleTop ?? '44%' }}
+        className="absolute right-0 z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
@@ -5932,8 +6080,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           map={mapReady ? map.current : null}
           active={measureOn}
           terrainOn={terrain3d}
-          initial={measureInitial}
-          onClose={() => { setMeasureOn(false); setEditingMeasure(null) }}
+          initial={measureInitial ?? measureSeed}
+          onClose={() => { setMeasureOn(false); setEditingMeasure(null); setMeasureSeed(null) }}
           onSaved={(saved) => {
             if (!saved) return
             setMeasures((prev) => {
@@ -6099,6 +6247,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           onTrailMode={setTrailMode}
           markerStyle={markerStyle}
           onMarkerStyle={setMarkerStyle}
+          speedTrails={speedTrails}
+          onSpeedTrails={toggleSpeedTrails}
           t={pbT}
           playing={pbPlaying}
           speed={pbSpeed}

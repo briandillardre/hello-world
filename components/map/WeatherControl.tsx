@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { CloudRain, Map as MapIcon, Satellite, Layers, ChevronDown, Box, Star, Check, Waves, Pause, Play, Hexagon, RotateCcw, Plus, Cctv, Bookmark, X, Type, HardHat, TrafficCone, LandPlot, Sparkles, Search, Sun } from 'lucide-react'
 import { PRECIP_PERIODS } from '@/lib/weather'
 import type { SavedMapView } from '@/lib/map-views'
@@ -221,6 +221,29 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     window.addEventListener('ht:open-layers', onOpen)
     return () => window.removeEventListener('ht:open-layers', onOpen)
   }, [])
+  // Swipe the drawer toward the LEFT EDGE anywhere on it to close (Brian,
+  // Aug 23) — a mostly-horizontal leftward drag ≥48px dismisses; vertical
+  // scrolling and taps are untouched, and the tail-end click is swallowed so
+  // the row under the finger doesn't also toggle.
+  const drawerSwipe = useRef<{ x: number; y: number } | null>(null)
+  const drawerSwiped = useRef(false)
+  const drawerDown = (e: React.PointerEvent) => {
+    drawerSwipe.current = { x: e.clientX, y: e.clientY }
+    drawerSwiped.current = false
+  }
+  const drawerMove = (e: React.PointerEvent) => {
+    const st = drawerSwipe.current
+    if (!st || drawerSwiped.current) return
+    const dx = e.clientX - st.x
+    const dy = e.clientY - st.y
+    if (dx < -48 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      drawerSwiped.current = true
+      setOpen(false)
+    }
+  }
+  const drawerClickCapture = (e: React.MouseEvent) => {
+    if (drawerSwiped.current) { drawerSwiped.current = false; e.preventDefault(); e.stopPropagation() }
+  }
   const sideCls = side === 'right' ? 'right-3' : 'left-3'
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
@@ -511,7 +534,14 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default" />
       {/* ~half the phone (Brian, Aug 22: "try half screen width") — the map
           stays alive beside the drawer; 320px cap keeps desktop sane. */}
-      <div className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in">
+      <div
+        onPointerDown={drawerDown}
+        onPointerMove={drawerMove}
+        onPointerUp={() => { drawerSwipe.current = null }}
+        onPointerCancel={() => { drawerSwipe.current = null }}
+        onClickCapture={drawerClickCapture}
+        className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in"
+      >
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
           saved looks. Sticky so the tab bar survives the scroll. */}
