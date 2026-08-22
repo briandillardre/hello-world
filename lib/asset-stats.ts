@@ -32,6 +32,10 @@ export const MAX_SEG_GAP_MS = 15 * 60_000
 // device checking in, not a running engine. (The old 15-min rule counted a
 // parked-but-awake device as idling — 19h of phantom idle in a day, Jul 16.)
 export const IDLE_CADENCE_MS = 3 * 60_000
+// Unknown-ignition stationary blocks longer than this are PARKING, not idle
+// — phones ping tightly all night, which racked 12h of phantom idle on the
+// RAM (Brian, Aug 23). Real OBD ignition is unaffected by this cap.
+export const IDLE_MAX_UNKNOWN_MS = 45 * 60_000
 // Speed at/above this = moving; awake below it = idling (engine on, parked
 // trackers sleep and check in ~hourly, so tight ping cadence means running).
 export const MOVE_MPH = 2
@@ -93,6 +97,11 @@ export function computeRangeStats(
   let idleMs = 0
   let starts = 0
   let lastMovingMs: number | null = null
+  // Unknown-ignition idle is BANKED, not committed (see below): it only
+  // becomes idle when movement bounds the stop, or the window ends first.
+  let pendingIdleMs = 0
+  let blockMs = 0
+  let blockDead = false
   for (let i = 0; i < win.length; i++) {
     const p = win[i]
     const prev = i > 0 ? win[i - 1] : null
@@ -126,21 +135,50 @@ export function computeRangeStats(
       miles += haversineMi(prev.lat, prev.lng, p.lat, p.lng)
       if ((prev.speed ?? 0) >= MOVE_MPH || mph >= MOVE_MPH) {
         movingMs += dt
+        // Movement vouches for the stop that just ended: an unknown-ignition
+        // stationary block bounded by driving on both sides was a truck
+        // waiting with the engine running — commit it as idle.
+        idleMs += pendingIdleMs
+        pendingIdleMs = 0
+        blockMs = 0
+        blockDead = false
       } else {
         // IDLE = engine ON and not moving. Trust the stored ignition when we
-        // have it; explicit engine-off is parked time, never idle. Unknown
-        // (no OBD) falls back to the strict engine-on cadence test.
+        // have it; explicit engine-off is parked time, never idle.
         const engineOn = p.ign ?? prev.ign
-        if (engineOn === true) idleMs += dt
-        else if (engineOn == null && dt <= IDLE_CADENCE_MS) idleMs += dt
+        if (engineOn === true) {
+          idleMs += dt + pendingIdleMs // real ignition absorbs any pending
+          pendingIdleMs = 0
+        } else if (engineOn === false) {
+          pendingIdleMs = 0
+          blockDead = true
+        } else if (!blockDead && dt <= IDLE_CADENCE_MS) {
+          // Unknown ignition (phone trackers, GPS-only units): tight cadence
+          // alone is NOT proof of a running engine — a phone parked at home
+          // pings all night and racked up 12h of phantom idle (Brian,
+          // Aug 23). Bank the time and only commit it when the truck MOVES
+          // again within the cap; a block that outlives the cap is parking.
+          pendingIdleMs += dt
+          blockMs += dt
+          if (blockMs > IDLE_MAX_UNKNOWN_MS) { pendingIdleMs = 0; blockDead = true }
+        }
         // else: parked (accrues via the span remainder below)
       }
+    } else if (prev) {
+      // Sleep gap — whatever stop was pending was parking, and the wake-up
+      // starts a fresh block.
+      pendingIdleMs = 0
+      blockMs = 0
+      blockDead = false
     }
     if (mph >= MOVE_MPH) {
       if (lastMovingMs === null || p.ms - lastMovingMs > START_GAP_MS) starts++
       lastMovingMs = p.ms
     }
   }
+  // A short stop still in progress at the window's edge counts — only blocks
+  // that already outlived the cap were written off as parking.
+  if (!blockDead) idleMs += pendingIdleMs
   // Stationary = the part of the window the asset existed but wasn't
   // moving or idling (device asleep, engine off).
   const spanFrom = earliestMs === null ? null : Math.max(from, earliestMs)
