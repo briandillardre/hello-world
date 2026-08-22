@@ -66,6 +66,18 @@ interface CommandCenterProps {
   pairingEpisodes?: import('@/lib/db/tools').PairingEpisode[]
   /** Company branding for the Create-PDF button. */
   brand?: { companyName: string; logoUrl: string | null; logoBg?: string | null } | null
+  /** Real mode: shell+basemap paint instantly, the heavy cargo (trails,
+   *  timeline history, pairing, cost-today) streams from /api/command-data
+   *  behind a status chip ("keep the app snappy", Brian, Aug 22). */
+  deferLoad?: boolean
+}
+
+interface CommandData {
+  tracks: AssetTrack[]
+  historyRows: import('@/lib/db/assets').LocationHistoryRow[] | null
+  earliestMs: number | null
+  pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
+  costToday: string
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -208,8 +220,28 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
+
+  // Deferred heavy cargo — fetched once after the shell/basemap are up.
+  // One quiet retry (transient cold-start blips), then an honest error chip.
+  const [dyn, setDyn] = useState<CommandData | null>(null)
+  const [dynErr, setDynErr] = useState(false)
+  useEffect(() => {
+    if (!deferLoad) return
+    let alive = true
+    const pull = () => fetch('/api/command-data').then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    pull()
+      .catch(() => new Promise((res) => setTimeout(res, 4000)).then(pull))
+      .then((j) => { if (alive) setDyn(j as CommandData) })
+      .catch(() => { if (alive) setDynErr(true) })
+    return () => { alive = false }
+  }, [deferLoad])
+  const liveTracks = dyn?.tracks ?? tracks
+  const liveRows = dyn?.historyRows ?? historyRows
+  const liveEarliest = dyn?.earliestMs ?? earliestMs
+  const livePairing = dyn?.pairingEpisodes ?? pairingEpisodes
+  const liveKpis = dyn ? { ...kpis, costToday: dyn.costToday } : kpis
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
 
@@ -279,12 +311,12 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <MapView
           assets={assets}
           geofences={geofences}
-          tracks={tracks}
-          historyRows={historyRows}
-          earliestMs={earliestMs}
+          tracks={liveTracks}
+          historyRows={liveRows}
+          earliestMs={liveEarliest}
           tz={tz}
           aboard={aboard}
-          pairingEpisodes={pairingEpisodes}
+          pairingEpisodes={livePairing}
           kiosk
           alerts={alerts}
           tourOn={tourOn}
@@ -299,6 +331,17 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         className="absolute inset-0 pointer-events-none z-30"
         style={{ background: 'repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.10) 3px)', mixBlendMode: 'multiply', opacity: 0.4 }}
       />
+      {/* Deferred-cargo status — same language as the map's layer chips.
+          Disappears the moment /api/command-data lands. */}
+      {deferLoad && !dyn && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
+          <span className={`h-2 w-2 rounded-full ${dynErr ? 'bg-alert' : 'bg-teal animate-blink'}`} />
+          <span className={`font-mono text-[10.5px] uppercase tracking-[0.12em] ${dynErr ? 'text-alert' : 'text-teal'}`}>
+            {dynErr ? 'History failed to load — refresh to retry' : 'Loading trails & history…'}
+          </span>
+        </div>
+      )}
+
       {/* corner brackets */}
       <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
@@ -316,7 +359,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // Jul 21). Only the rail itself accepts input.
         <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
+            <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} />
           </div>
         </div>
       ) : (
@@ -338,7 +381,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // must never block the map.
         <div className="absolute right-[58px] top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={historyRows} panels={panels} onPanel={onPanel} />
+            <EventRail assets={assets} alerts={alerts} geofences={geofences} historyRows={liveRows} panels={panels} onPanel={onPanel} />
           </div>
         </div>
       ) : (
@@ -391,7 +434,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
             <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" />
             <Chip label="Sites" value={`${kpis.sites}`} />
             <Chip label="Alerts" value={`${kpis.activeAlerts}`} tone={kpis.activeAlerts > 0 ? 'alert' : 'ink'} />
-            <Chip label="Cost today" value={kpis.costToday} tone="amber" />
+            <Chip label="Cost today" value={liveKpis.costToday} tone="amber" />
           </div>
         )}
 
