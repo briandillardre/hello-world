@@ -1766,30 +1766,34 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         ctx.beginPath(); ctx.arc(17, 45, 7, 0, Math.PI * 2); ctx.fill()
         ctx.beginPath(); ctx.arc(46, 45, 7, 0, Math.PI * 2); ctx.fill()
       })
-      // Excavator: tracks + cab + raised boom with bucket.
+      // Excavator: tracks + cab + raised boom with bucket. Boom drawn ~13px
+      // wide in 64-space — thinner broke up at 1x render sizes (the /command
+      // wall); features must survive the SDF threshold's erosion.
       addGlyph('type-equipment', (ctx) => {
         ctx.beginPath(); rr(ctx, 8, 44, 34, 11, 5.5); ctx.fill()
         ctx.beginPath(); rr(ctx, 12, 26, 20, 16, 3); ctx.fill()
         ctx.beginPath()
-        ctx.moveTo(30, 34); ctx.lineTo(46, 10); ctx.lineTo(54, 15); ctx.lineTo(38, 39)
+        ctx.moveTo(28, 34); ctx.lineTo(45, 8); ctx.lineTo(56, 16); ctx.lineTo(40, 41)
         ctx.closePath(); ctx.fill()
-        ctx.beginPath(); ctx.moveTo(48, 13); ctx.lineTo(60, 22); ctx.lineTo(50, 30); ctx.closePath(); ctx.fill()
+        ctx.beginPath(); ctx.moveTo(47, 12); ctx.lineTo(61, 22); ctx.lineTo(49, 31); ctx.closePath(); ctx.fill()
       })
       // Person: head + shoulders.
       addGlyph('type-personnel', (ctx) => {
         ctx.beginPath(); ctx.arc(32, 19, 10, 0, Math.PI * 2); ctx.fill()
         ctx.beginPath(); rr(ctx, 14, 33, 36, 24, 13); ctx.fill()
       })
-      // Wrench at 45°: open-jaw head + handle.
+      // Wrench at 45°: open-jaw head + handle. Hole and jaw cut WIDE
+      // (r 6.5 / 10px slot in 64-space) — narrower cutouts filled solid at
+      // the glyph's final ~10px on 1x screens, leaving a featureless blob.
       addGlyph('type-tool', (ctx) => {
         ctx.save()
         ctx.translate(32, 32)
         ctx.rotate(Math.PI / 4)
         ctx.beginPath(); rr(ctx, -5, -8, 10, 32, 5); ctx.fill()
-        ctx.beginPath(); ctx.arc(0, -16, 11, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(0, -16, 12, 0, Math.PI * 2); ctx.fill()
         ctx.globalCompositeOperation = 'destination-out'
-        ctx.beginPath(); ctx.arc(0, -16, 5, 0, Math.PI * 2); ctx.fill()
-        ctx.fillRect(-4, -32, 8, 12)
+        ctx.beginPath(); ctx.arc(0, -16, 6.5, 0, Math.PI * 2); ctx.fill()
+        ctx.fillRect(-5, -34, 10, 14)
         ctx.restore()
       })
       m.addLayer({
@@ -4548,6 +4552,17 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     try { localStorage.setItem('ht_left_hidden', leftHidden ? '1' : '0') } catch { /* private mode */ }
   }, [leftHidden])
+  // The tour must point at REAL chrome: pull both tucked columns back before
+  // it measures, or step 1's ring draws at x ≈ -250 around nothing
+  // (ship-check P2). Covers the ht:tour relaunch AND the ?tour=1 deep link.
+  useEffect(() => {
+    const untuck = () => { setLeftHidden(false); setRailHidden(false) }
+    window.addEventListener('ht:tour', untuck)
+    try {
+      if (new URLSearchParams(window.location.search).get('tour') === '1') untuck()
+    } catch { /* SSR-safe */ }
+    return () => window.removeEventListener('ht:tour', untuck)
+  }, [])
   useEffect(() => {
     const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
     if (!el) return
@@ -5609,14 +5624,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
       {/* LEFT-edge tuck handle — the mirror image: slides the Layers pill +
           search + fleet chips (and the open panel) fully off-screen for a
-          clean map (Brian, Aug 22). Rides at the pill's height so thumb
-          memory matches what it hides. */}
+          clean map (Brian, Aug 22). Same mid-edge spot as the right tab
+          (symmetry is the affordance) — at the pill's height it overlapped
+          the pill and stole its taps (ship-check P2). */}
       <button
         type="button"
         onClick={() => setLeftHidden((h) => !h)}
         aria-label={leftHidden ? 'Show layers & fleet controls' : 'Hide layers & fleet controls'}
-        style={{ top: (kiosk ? 68 : 12) + 4 }}
-        className="absolute left-0 z-20 rounded-r-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+        className="absolute left-0 top-[44%] z-20 rounded-r-lg bg-navy-950/75 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {leftHidden ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
