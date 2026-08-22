@@ -1,9 +1,7 @@
-import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { Key, Map, Wifi, Calculator } from 'lucide-react'
+import { Map, Wifi, Calculator } from 'lucide-react'
 import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
-import { Badge } from '@/components/ui/badge'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { ApiKeyReveal } from '@/components/settings/ApiKeyCard'
 import { WeeklyDigests } from '@/components/settings/WeeklyDigests'
@@ -83,8 +81,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           <section className="bg-navy-900 rounded-xl border border-navy-800 p-4">
             <h2 className="font-semibold text-sm text-muted mb-1">Alert delivery test</h2>
             <p className="text-xs text-faint mb-3">
-              Fires a clearly-labeled test through the real pipeline — SMS to the alert phone above
-              (needs Twilio env vars) and the webhook if configured.
+              Fires a clearly-labeled test through the real pipeline — SMS to the alert phone above,
+              so you know theft alerts reach you before you need them to.
             </p>
             <TestAlertButton />
           </section>
@@ -99,74 +97,55 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           <MapPrefs />
         </section>
 
-        {/* API Key */}
-        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
-            <Key className="h-4 w-4 text-faint" />
-            <h2 className="font-semibold text-sm text-muted">Tracker API Key</h2>
-          </div>
-          <div className="p-4 space-y-3">
-            <p className="text-xs text-muted">
-              Authenticates data pushed straight to the HammerTrack API and scopes it to your
-              company. Shipped HammerTrack trackers don&apos;t need it — they&apos;re pre-authenticated.
-            </p>
-            {isMock ? (
-              <ApiKeyReveal apiKey={MOCK_COMPANY.api_key} demo />
-            ) : co.isAdmin && co.api_key ? (
-              <ApiKeyReveal apiKey={co.api_key} demo={false} />
-            ) : (
-              <p className="text-xs text-faint">Only company admins can view the tracker API key.</p>
-            )}
-            <div className="bg-amber/15 border border-navy-800 rounded-lg p-3 text-xs text-amber">
-              <p className="font-semibold mb-1">How to use</p>
-              <p>POST to <code className="bg-amber/15 px-1 rounded">/api/ingest/obd2</code> or <code className="bg-amber/15 px-1 rounded">/api/ingest/location</code> with header <code className="bg-amber/15 px-1 rounded">x-api-key: YOUR_KEY</code> — only assets in your company match.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Integration guide — anchor target for /welcome's tracker step. */}
+        {/* Trackers — one card, minimum words (Brian, Aug 22: "only the
+            minimum"). The API key + endpoint recipes live behind an
+            admin-only Advanced fold; crew never sees developer surface. */}
         <section id="integration" className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden scroll-mt-20">
           <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
             <Wifi className="h-4 w-4 text-faint" />
-            <h2 className="font-semibold text-sm text-muted">Tracker Integration</h2>
+            <h2 className="font-semibold text-sm text-muted">Trackers</h2>
           </div>
           <div className="p-4 space-y-4">
             <p className="text-sm text-muted leading-relaxed">
-              Your HammerTrack trackers arrive pre-configured. Add each asset with the tracker ID
-              printed on its kit, plug the OBD unit into the truck or mount the GPS puck on the
-              machine, and it goes live on your map on first report.
+              Your HammerTrack trackers arrive pre-configured — add the asset with the tracker ID
+              printed on its kit, plug it in, and it&apos;s on your map on first report.
             </p>
-            <details className="group border border-navy-800 rounded-lg">
-              <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-semibold text-muted hover:text-ink transition-colors">
-                Advanced: send your own data (API)
-              </summary>
-              <div className="p-3 pt-1 space-y-4">
-                <p className="text-xs text-muted">
-                  Every endpoint below authenticates with the <code className="font-mono text-amber">x-api-key</code>{' '}
-                  header set to your company key — the one in the Tracker API Key card above. Pushes
-                  only resolve trackers on your company&apos;s assets, so create the asset (with its
-                  tracker ID) before the first POST.
-                </p>
-                <IntegrationCard
-                  title="OBD2 (Vehicles)"
-                  description="Use any OBD2 WiFi/BLE dongle that supports HTTP webhooks (e.g. Bouncie, AutoPi, Optimus 2.0). Configure the device to POST to /api/ingest/obd2."
-                  endpoint="POST /api/ingest/obd2"
-                  payload='{ "tracker_id": "obd-001", "lat": 34.85, "lng": -82.40, "speed": 45, "engine_on": true }'
-                />
-                <IntegrationCard
-                  title="GPS Equipment Trackers"
-                  description="Works with most commercial GPS fleet trackers. Use the standard location endpoint."
-                  endpoint="POST /api/ingest/location"
-                  payload='{ "tracker_id": "gps-002", "lat": 34.85, "lng": -82.40, "battery": 85 }'
-                />
-                <IntegrationCard
-                  title="Bluetooth Tools (BLE)"
-                  description="Tile, AirTag-style or custom BLE tags. A companion mobile app scans nearby BLE and relays positions."
-                  endpoint="POST /api/ingest/location"
-                  payload='{ "tracker_id": "bt-003", "lat": 34.85, "lng": -82.40, "accuracy": 15 }'
-                />
-              </div>
-            </details>
+            {(isMock || (co.isAdmin && co.api_key)) && (
+              <details className="group border border-navy-800 rounded-lg">
+                <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-semibold text-muted hover:text-ink transition-colors">
+                  Advanced: API access (admins)
+                </summary>
+                <div className="p-3 pt-1 space-y-4">
+                  <p className="text-xs text-muted">
+                    Push data from your own hardware with your company API key in the{' '}
+                    <code className="font-mono text-amber">x-api-key</code> header — only assets in
+                    your company match. Create the asset (with its tracker ID) before the first POST.
+                    Rotating the key instantly disables the old one.
+                  </p>
+                  {isMock
+                    ? <ApiKeyReveal apiKey={MOCK_COMPANY.api_key} demo />
+                    : <ApiKeyReveal apiKey={co.api_key!} demo={false} />}
+                  <IntegrationCard
+                    title="OBD2 (Vehicles)"
+                    description="Any OBD2 dongle that can POST JSON over HTTP."
+                    endpoint="POST /api/ingest/obd2"
+                    payload='{ "tracker_id": "obd-001", "lat": 34.85, "lng": -82.40, "speed": 45, "engine_on": true }'
+                  />
+                  <IntegrationCard
+                    title="GPS Equipment Trackers"
+                    description="Most commercial GPS fleet trackers work — use the standard location endpoint."
+                    endpoint="POST /api/ingest/location"
+                    payload='{ "tracker_id": "gps-002", "lat": 34.85, "lng": -82.40, "battery": 85 }'
+                  />
+                  <IntegrationCard
+                    title="Bluetooth Tools (BLE)"
+                    description="BLE tags relayed by a phone or gateway."
+                    endpoint="POST /api/ingest/location"
+                    payload='{ "tracker_id": "bt-003", "lat": 34.85, "lng": -82.40, "accuracy": 15 }'
+                  />
+                </div>
+              </details>
+            )}
           </div>
         </section>
 
@@ -196,35 +175,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           </div>
         </section>
 
-        {/* Map provider */}
-        <section className="bg-navy-900 rounded-xl border border-navy-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-navy-800 flex items-center gap-2">
-            <Map className="h-4 w-4 text-faint" />
-            <h2 className="font-semibold text-sm text-muted">Map Provider</h2>
-          </div>
-          <div className="p-4 space-y-2">
-            <Row
-              label="Tile Source"
-              value={process.env.NEXT_PUBLIC_MAPTILER_KEY && process.env.NEXT_PUBLIC_MAPTILER_KEY !== 'YOUR_MAPTILER_KEY'
-                ? <Badge variant="success">Maptiler</Badge>
-                : <Badge variant="secondary">CARTO (free)</Badge>}
-            />
-            <p className="text-xs text-faint">Set NEXT_PUBLIC_MAPTILER_KEY in .env.local to enable Maptiler Streets.</p>
-          </div>
-        </section>
-
         {/* Account deletion — in-app entry point (Apple 5.1.1(v)) */}
         <DeleteAccountCard />
       </div>
-    </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-muted">{label}</span>
-      <span className="text-sm font-medium text-muted">{value}</span>
     </div>
   )
 }

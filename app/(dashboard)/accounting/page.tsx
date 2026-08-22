@@ -67,9 +67,10 @@ export default async function AccountingPage() {
                 Connect to QuickBooks
               </a>
             ) : (
-              <p className="mt-5 text-xs text-amber bg-amber/15 border border-amber/30 rounded-lg p-3 text-left">
-                Setup needed: create an app at developer.intuit.com, then add QBO_CLIENT_ID,
-                QBO_CLIENT_SECRET, QBO_REDIRECT_URI and QBO_ENVIRONMENT to the Vercel env vars.
+              <p className="mt-5 text-xs text-muted bg-navy-900 border border-navy-800 rounded-lg p-3 text-left">
+                QuickBooks isn&apos;t connected for your account yet — contact{' '}
+                <a href="mailto:support@hammertrack.ai" className="text-amber hover:underline">support@hammertrack.ai</a>{' '}
+                and we&apos;ll switch it on.
               </p>
             )}
           </div>

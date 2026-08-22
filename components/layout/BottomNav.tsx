@@ -3,18 +3,19 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, TrendingUp, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
-const primaryItems = [
+// ONE ordered list of every phone destination. The first 4 fill the bottom
+// bar (AskAI keeps the center seat); everything shows in the More drawer,
+// bar members highlighted. The owner reorders from the drawer's Edit mode
+// (Brian, Aug 22) — per-device preference, stored locally.
+const allItems = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/clock', label: 'Clock', icon: Clock },
-]
-
-const moreItems = [
   { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/measurements', label: 'Measurements', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
@@ -27,11 +28,14 @@ const moreItems = [
   { href: '/accounting', label: 'Accounting', icon: Calculator },
   { href: '/receipts', label: 'Receipts', icon: Receipt },
   { href: '/finance', label: 'Financials', icon: Scale },
-  { href: '/model', label: 'Op model', icon: TrendingUp },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', icon: Rocket },
   { href: '/help', label: 'Help', icon: HelpCircle },
 ]
+const DEFAULT_ORDER = allItems.map((i) => i.href)
+const ORDER_KEY = 'ht_nav_order_v1'
+// Plain object, not a Map — the lucide `Map` icon import shadows the global.
+const byHref: Record<string, (typeof allItems)[number]> = Object.fromEntries(allItems.map((i) => [i.href, i]))
 
 export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, onSignOut }: {
   alertCount?: number
@@ -43,7 +47,42 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   const pathname = usePathname()
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const [moreOpen, setMoreOpen] = useState(false)
-  const moreActive = moreItems.some(i => pathname.startsWith(i.href))
+  const [order, setOrder] = useState<string[]>(DEFAULT_ORDER)
+  const [editing, setEditing] = useState(false)
+  const [sel, setSel] = useState<string | null>(null)
+
+  // Saved order loads after mount (SSR-safe). Unknown hrefs are dropped and
+  // newly-shipped pages append in default position, so app updates never
+  // brick a stored layout.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || 'null') as string[] | null
+      if (!Array.isArray(saved)) return
+      const kept = saved.filter((h) => h in byHref)
+      const missing = DEFAULT_ORDER.filter((h) => !kept.includes(h))
+      if (kept.length) setOrder([...kept, ...missing])
+    } catch { /* default order */ }
+  }, [])
+
+  const ordered = order.map((h) => byHref[h]).filter(Boolean)
+  const barItems = ordered.slice(0, 4)
+  const moreActive = ordered.slice(4).some((i) => pathname.startsWith(i.href))
+
+  const swap = (a: string, b: string) => {
+    setOrder((cur) => {
+      const next = [...cur]
+      const ia = next.indexOf(a), ib = next.indexOf(b)
+      if (ia < 0 || ib < 0) return cur
+      ;[next[ia], next[ib]] = [next[ib], next[ia]]
+      try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+  const resetOrder = () => {
+    setOrder(DEFAULT_ORDER)
+    setSel(null)
+    try { localStorage.removeItem(ORDER_KEY) } catch {}
+  }
 
   // Tell the rest of the UI (the Ask launcher) the drawer is up: a body
   // attribute for CSS, plus a ht:drawer event (same pattern as ht:dialog).
@@ -54,36 +93,90 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
     return () => document.body.removeAttribute('data-ht-drawer-open')
   }, [moreOpen])
 
+  const closeDrawer = () => { setMoreOpen(false); setEditing(false); setSel(null) }
+
+  const alertBadge = (href: string) => href === '/alerts' && unseen > 0 && (
+    <span className="absolute -top-1 -right-1 bg-alert text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
+      {unseen > 9 ? '9+' : unseen}
+    </span>
+  )
+
   return (
     <>
       {moreOpen && (
-        <div className="fixed inset-0 z-[70] bg-black/40 md:hidden print:hidden" onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-[70] bg-black/40 md:hidden print:hidden" onClick={closeDrawer}>
           <div
             className="absolute bottom-0 left-0 right-0 bg-navy-950 border-t border-navy-800 rounded-t-2xl p-4 max-h-[calc(100dvh-56px)] overflow-y-auto pb-[calc(76px+env(safe-area-inset-bottom))]"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-semibold text-muted">More</span>
-              <button onClick={() => setMoreOpen(false)} className="p-2.5 text-faint">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {moreItems.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMoreOpen(false)}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => { setEditing(v => !v); setSel(null) }}
                   className={cn(
-                    'flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-medium',
-                    pathname.startsWith(href) ? 'bg-amber/15 text-amber' : 'text-muted hover:bg-navy-900'
+                    'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold',
+                    editing ? 'bg-amber text-[#1a1100]' : 'text-faint hover:text-ink'
                   )}
                 >
-                  <Icon className="h-5 w-5" />
-                  {label}
-                </Link>
-              ))}
+                  {editing ? <><Check className="h-3.5 w-3.5" /> Done</> : <><Pencil className="h-3.5 w-3.5" /> Edit</>}
+                </button>
+                <button onClick={closeDrawer} className="p-2.5 text-faint">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
+            <p className="text-[11px] text-faint mb-3">
+              {editing
+                ? 'Tap two tiles to swap them — the first 4 fill your bottom bar.'
+                : 'The first 4 (amber) are your bottom bar.'}
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {ordered.map(({ href, label, icon: Icon }, idx) => {
+                const inBar = idx < 4
+                const active = pathname.startsWith(href)
+                const tile = (
+                  <>
+                    <span className="relative">
+                      <Icon className="h-5 w-5" />
+                      {alertBadge(href)}
+                    </span>
+                    {label}
+                    {inBar && <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-amber" />}
+                  </>
+                )
+                const base = cn(
+                  'relative flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-medium',
+                  active && !editing ? 'bg-amber/15 text-amber'
+                    : inBar ? 'bg-amber/[0.07] border border-amber/25 text-muted'
+                    : 'text-muted',
+                  !editing && 'hover:bg-navy-900'
+                )
+                return editing ? (
+                  <button
+                    key={href}
+                    onClick={() => {
+                      if (sel === null) setSel(href)
+                      else if (sel === href) setSel(null)
+                      else { swap(sel, href); setSel(null) }
+                    }}
+                    className={cn(base, 'border border-dashed',
+                      sel === href ? 'border-amber bg-amber/15 text-amber' : inBar ? 'border-amber/40' : 'border-navy-700')}
+                  >
+                    {tile}
+                  </button>
+                ) : (
+                  <Link key={href} href={href} onClick={closeDrawer} className={base}>
+                    {tile}
+                  </Link>
+                )
+              })}
+            </div>
+            {editing && (
+              <button onClick={resetOrder} className="mt-3 text-xs text-faint underline underline-offset-2 hover:text-ink">
+                Reset to default order
+              </button>
+            )}
 
             {/* Account — who's signed in + sign out */}
             <div className="mt-4 pt-3 border-t border-navy-800">
@@ -97,14 +190,14 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               <div className="grid grid-cols-2 gap-3">
                 <Link
                   href="/settings"
-                  onClick={() => setMoreOpen(false)}
+                  onClick={closeDrawer}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-ink"
                 >
                   <Settings className="h-4 w-4" /> Account
                 </Link>
                 {onSignOut && (
                   <button
-                    onClick={() => { setMoreOpen(false); onSignOut() }}
+                    onClick={() => { closeDrawer(); onSignOut() }}
                     className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-alert"
                   >
                     <LogOut className="h-4 w-4" /> Sign out
@@ -121,9 +214,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
           {/* AskAI rides the CENTER of the bar (Brian, Aug 22: "AskAI needs
               to be in the bottom bar, not on the map") — the classic raised
               middle action, one thumb-tap from anywhere. */}
-          {primaryItems.slice(0, 2).map(({ href, label, icon: Icon }) => {
+          {barItems.slice(0, 2).map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
-            const isAlerts = href === '/alerts'
             return (
               <Link
                 key={href}
@@ -135,11 +227,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               >
                 <span className="relative">
                   <Icon className="h-5 w-5" />
-                  {isAlerts && unseen > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-alert text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
-                      {unseen > 9 ? '9+' : unseen}
-                    </span>
-                  )}
+                  {alertBadge(href)}
                 </span>
                 <span>{label}</span>
               </Link>
@@ -156,9 +244,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </span>
             <span className="-mt-0.5 text-amber">AskAI</span>
           </button>
-          {primaryItems.slice(2).map(({ href, label, icon: Icon }) => {
+          {barItems.slice(2).map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href)
-            const isAlerts = href === '/alerts'
             return (
               <Link
                 key={href}
@@ -170,11 +257,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               >
                 <span className="relative">
                   <Icon className="h-5 w-5" />
-                  {isAlerts && unseen > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-alert text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-0.5">
-                      {unseen > 9 ? '9+' : unseen}
-                    </span>
-                  )}
+                  {alertBadge(href)}
                 </span>
                 <span>{label}</span>
               </Link>
