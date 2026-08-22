@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/types'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
-  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsUpTo,
+  type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsBanded,
   defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds, RANGES,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
@@ -201,13 +201,19 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
     type: 'FeatureCollection',
     features: tracks
       .filter((tr) => filter.has(tr.type))
-      .map((tr) => ({
-        type: 'Feature' as const,
-        // MultiLineString: segments break at data gaps (device asleep) so the
+      .flatMap((tr) =>
+        // Age bands: the older stretch of each trail dims, the newest runs
+        // full-strength (Brian, Aug 22 — the command-wall look on /map too).
+        // MultiLineString per band: segments still break at data gaps so the
         // trail never draws a straight chord across town.
-        geometry: { type: 'MultiLineString' as const, coordinates: trailSegmentsUpTo(tr, t) },
-        properties: { id: tr.assetId, color: tr.color, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
-      })),
+        trailSegmentsBanded(tr, t)
+          .filter((b) => b.segments.length)
+          .map((b) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'MultiLineString' as const, coordinates: b.segments },
+            properties: { id: tr.assetId, color: tr.color, fade: b.fade, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
+          }))
+      ),
   }
 }
 
@@ -1608,17 +1614,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         // Kiosk shows every asset's full history at once — fade the lines so the
         // wall display reads as ambiance, not spaghetti. A selected asset's
         // track brightens + widens; everyone else dims out of the way.
+        // Every trail also fades by AGE (× the feature's band fade): older
+        // stretches dim toward the tail, the newest runs full-strength.
         paint: kiosk
           ? {
               'line-color': ['get', 'color'],
               'line-width': ['case', ['==', ['get', 'sel'], 1], 3.5, 1.6],
-              'line-opacity': ['case', ['==', ['get', 'sel'], 1], 0.9, ['==', ['get', 'dim'], 1], 0.15, 0.3],
+              'line-opacity': ['*', ['case', ['==', ['get', 'sel'], 1], 0.9, ['==', ['get', 'dim'], 1], 0.15, 0.3], ['coalesce', ['get', 'fade'], 1]],
               'line-blur': 0.4,
             }
           : {
               'line-color': ['get', 'color'],
               'line-width': ['case', ['==', ['get', 'sel'], 1], 5.5, ['==', ['get', 'dim'], 1], 2, 3],
-              'line-opacity': ['case', ['==', ['get', 'sel'], 1], 1, ['==', ['get', 'dim'], 1], 0.3, 0.85],
+              'line-opacity': ['*', ['case', ['==', ['get', 'sel'], 1], 1, ['==', ['get', 'dim'], 1], 0.3, 0.85], ['coalesce', ['get', 'fade'], 1]],
               'line-blur': 0.3,
             },
       })

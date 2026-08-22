@@ -528,6 +528,45 @@ export function trailSegmentsUpTo(track: AssetTrack, t: number): [number, number
   return segments.filter((seg) => seg.length >= 2)
 }
 
+/**
+ * Like trailSegmentsUpTo, but split into AGE BANDS so the map can dim the
+ * older stretch of a trail and keep the newest at full strength — the
+ * command-wall look, everywhere (Brian, Aug 22: "older trail more dim").
+ * Bands are fractions of the visible window [0, t]; adjacent bands share
+ * their boundary point so the line never shows a seam, and gaps still
+ * break lines instead of drawing chords across town.
+ */
+export function trailSegmentsBanded(
+  track: AssetTrack,
+  t: number,
+  fades: number[] = [0.25, 0.45, 0.7, 1]
+): { fade: number; segments: [number, number][][] }[] {
+  const n = fades.length
+  const bands = fades.map((fade) => ({ fade, segments: [] as [number, number][][], current: [] as [number, number][] }))
+  const bandOf = (pt: number) => Math.min(n - 1, Math.max(0, Math.floor((t > 0 ? pt / t : 1) * n)))
+  let prevBand: number | null = null
+  for (const p of track.points) {
+    if (p.t > t) break
+    const b = bandOf(p.t)
+    if (p.gap) {
+      for (const bd of bands) { if (bd.current.length) { bd.segments.push(bd.current); bd.current = [] } }
+      prevBand = null
+    } else if (prevBand !== null && b !== prevBand) {
+      // Band handoff: the older band's line ends AT this point, the newer
+      // band's line starts here too — continuous ink, stepped opacity.
+      bands[prevBand].current.push([p.lng, p.lat])
+      bands[prevBand].segments.push(bands[prevBand].current)
+      bands[prevBand].current = []
+    }
+    bands[b].current.push([p.lng, p.lat])
+    prevBand = b
+  }
+  // Head position rides the newest band (snaps across gaps like the base fn).
+  if (prevBand !== null) bands[n - 1].current.push(positionAt(track, t))
+  for (const bd of bands) { if (bd.current.length) bd.segments.push(bd.current) }
+  return bands.map(({ fade, segments }) => ({ fade, segments: segments.filter((s) => s.length >= 2) }))
+}
+
 /** Trail polyline coordinates from the start of the window up to time t. */
 export function trailUpTo(track: AssetTrack, t: number): [number, number][] {
   const coords: [number, number][] = []

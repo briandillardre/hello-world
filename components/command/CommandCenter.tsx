@@ -73,11 +73,11 @@ interface CommandCenterProps {
 }
 
 interface CommandData {
-  tracks: AssetTrack[]
   historyRows: import('@/lib/db/assets').LocationHistoryRow[] | null
   earliestMs: number | null
   pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
-  costToday: string
+  /** Null = the caller's role may not see dollars (server-gated). */
+  costToday: string | null
 }
 
 const TRIGGER_LABEL: Record<string, string> = {
@@ -224,24 +224,33 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   const [now, setNow] = useState<Date | null>(null)
 
   // Deferred heavy cargo — fetched once after the shell/basemap are up.
-  // One quiet retry (transient cold-start blips), then an honest error chip.
+  // Trail/timeline rows come from /api/history, the SAME feed and window
+  // /map's baseline uses (2 days; longer ranges fetch on demand inside
+  // MapView) — one source of truth for both maps. /api/command-data adds
+  // only earliest/pairing/cost. One quiet retry, then an honest error chip.
   const [dyn, setDyn] = useState<CommandData | null>(null)
   const [dynErr, setDynErr] = useState(false)
   useEffect(() => {
     if (!deferLoad) return
     let alive = true
-    const pull = () => fetch('/api/command-data').then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    const pull = () => Promise.all([
+      fetch(`/api/history?from=${new Date(Date.now() - 2 * 86_400_000).toISOString()}&to=${new Date().toISOString()}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+      fetch('/api/command-data').then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status))))),
+    ])
     pull()
       .catch(() => new Promise((res) => setTimeout(res, 4000)).then(pull))
-      .then((j) => { if (alive) setDyn(j as CommandData) })
+      .then(([h, c]) => {
+        if (!alive) return
+        setDyn({ ...(c as Omit<CommandData, 'historyRows'>), historyRows: Array.isArray(h?.rows) ? h.rows : null })
+      })
       .catch(() => { if (alive) setDynErr(true) })
     return () => { alive = false }
   }, [deferLoad])
-  const liveTracks = dyn?.tracks ?? tracks
   const liveRows = dyn?.historyRows ?? historyRows
   const liveEarliest = dyn?.earliestMs ?? earliestMs
   const livePairing = dyn?.pairingEpisodes ?? pairingEpisodes
-  const liveKpis = dyn ? { ...kpis, costToday: dyn.costToday } : kpis
+  const liveKpis = dyn ? { ...kpis, costToday: dyn.costToday ?? '—' } : kpis
   // Radar center follows the map camera (MapView broadcasts on moveend).
   const [camCenter, setCamCenter] = useState<{ lng: number; lat: number } | null>(null)
 
@@ -311,7 +320,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <MapView
           assets={assets}
           geofences={geofences}
-          tracks={liveTracks}
+          tracks={tracks}
           historyRows={liveRows}
           earliestMs={liveEarliest}
           tz={tz}
@@ -359,7 +368,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // Jul 21). Only the rail itself accepts input.
         <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} />
+            <CommandRail assets={assets} geofences={geofences} tracks={tracks} panels={panels} onPanel={onPanel} />
           </div>
         </div>
       ) : (

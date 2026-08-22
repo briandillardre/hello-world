@@ -9,6 +9,12 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BRAND_NAME, BRAND_URL } from './brand'
+import { escapeHtml } from './email'
+
+// Free-text from the DB (asset/zone/person/task names) is user-editable —
+// escape EVERYTHING interpolated into email HTML (sec-check, Aug 22: a
+// crafted asset name must never land as live markup in the owner's inbox).
+const esc = escapeHtml
 
 // ── Preferences ────────────────────────────────────────────────────────────
 
@@ -148,7 +154,7 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
       return {
         zone: zoneName.get(zoneId) ?? 'Site',
         totalH: rows.reduce((s, r) => s + r.h, 0),
-        lines: rows.slice(0, 5).map((r) => `<b style="color:#e8f0f7">${r.name}</b> — ${r.h.toFixed(1)} h over ${r.d} day${r.d === 1 ? '' : 's'}`)
+        lines: rows.slice(0, 5).map((r) => `<b style="color:#e8f0f7">${esc(r.name)}</b> — ${r.h.toFixed(1)} h over ${r.d} day${r.d === 1 ? '' : 's'}`)
           .concat(rows.length > 5 ? [`+ ${rows.length - 5} more`] : []),
       }
     })
@@ -203,7 +209,7 @@ export function shell(title: string, inner: string): string {
   <div style="background:#001523;padding:28px 14px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif">
     <div style="max-width:520px;margin:0 auto;background:#00243d;border:1px solid #0e3a5c;border-radius:14px;padding:24px">
       <p style="margin:0 0 4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#7fa3bd">${BRAND_NAME}</p>
-      <h1 style="margin:0 0 16px;font-size:19px;color:#e8f0f7">${title}</h1>
+      <h1 style="margin:0 0 16px;font-size:19px;color:#e8f0f7">${esc(title)}</h1>
       ${inner}
       <p style="margin:20px 0 0;font-size:12px"><a href="${BRAND_URL}/command" style="color:#ff9e16;font-weight:700;text-decoration:none">Open the Command Center →</a></p>
       <p style="margin:14px 0 0;font-size:10.5px;color:#7fa3bd">Change the day, time, or channel any time in Settings → Weekly summaries.</p>
@@ -220,18 +226,18 @@ export function fridayEmailHtml(f: WeeklyFacts): string {
   let inner = ''
   inner += h2('The week in hours')
   inner += f.hoursByPerson.length
-    ? f.hoursByPerson.map(([n, h]) => li(`<b style="color:#e8f0f7">${n}</b> — ${h.toFixed(1)} h`)).join('')
+    ? f.hoursByPerson.map(([n, h]) => li(`<b style="color:#e8f0f7">${esc(n)}</b> — ${h.toFixed(1)} h`)).join('')
     : none('No clocked hours this week.')
   if (f.siteActivity.length) {
     inner += h2('Who was where')
     for (const z of f.siteActivity) {
-      inner += li(`<b style="color:#e8f0f7">${z.zone}</b> — ${z.totalH.toFixed(1)} h tracked on site`)
+      inner += li(`<b style="color:#e8f0f7">${esc(z.zone)}</b> — ${z.totalH.toFixed(1)} h tracked on site`)
       inner += z.lines.map((l) => `<p style="margin:0 0 4px 16px;font-size:12.5px;line-height:1.5;color:#9fb6cc">${l}</p>`).join('')
     }
   }
   inner += h2('Jobs & field')
   const jf: string[] = []
-  if (f.activeZones.length) jf.push(li(`Active jobs: ${f.activeZones.join(', ')}`))
+  if (f.activeZones.length) jf.push(li(`Active jobs: ${esc(f.activeZones.join(', '))}`))
   if (f.logsFiled) jf.push(li(`${f.logsFiled} daily log${f.logsFiled === 1 ? '' : 's'} filed`))
   if (f.tasksDone) jf.push(li(`${f.tasksDone} punch item${f.tasksDone === 1 ? '' : 's'} completed`))
   if (f.alertsFired) jf.push(li(`${f.alertsFired} alert${f.alertsFired === 1 ? '' : 's'} fired`))
@@ -239,7 +245,7 @@ export function fridayEmailHtml(f: WeeklyFacts): string {
   if (f.receiptsOutstanding.count || f.darkAssets.length) {
     inner += h2('Loose ends going into the weekend')
     if (f.receiptsOutstanding.count) inner += li(`<b style="color:#ff9e16">${f.receiptsOutstanding.count} receipt${f.receiptsOutstanding.count === 1 ? '' : 's'} still missing</b> ($${f.receiptsOutstanding.total.toFixed(2)})`)
-    if (f.darkAssets.length) inner += li(`Not reporting: ${f.darkAssets.join(', ')} — check power/parking`)
+    if (f.darkAssets.length) inner += li(`Not reporting: ${esc(f.darkAssets.join(', '))} — check power/parking`)
   }
   return shell(`${f.company} — Friday wrap-up`, inner)
 }
@@ -260,19 +266,19 @@ export function sundayEmailHtml(f: WeeklyFacts): string {
   let inner = ''
   if (f.openAlerts.length) {
     inner += h2('Deal with first')
-    inner += f.openAlerts.map((a) => li(`<b style="color:#f87171">${a}</b>`)).join('')
+    inner += f.openAlerts.map((a) => li(`<b style="color:#f87171">${esc(a)}</b>`)).join('')
   }
   inner += h2('Punch list this week')
   inner += f.openTasks.length
-    ? f.openTasks.map((t) => li(`${t.overdue ? '<b style="color:#f87171">OVERDUE</b> · ' : ''}${t.title}${t.zone ? ` <span style="color:#6f88a0">(${t.zone})</span>` : ''} — ${day(t.due)}`)).join('')
+    ? f.openTasks.map((t) => li(`${t.overdue ? '<b style="color:#f87171">OVERDUE</b> · ' : ''}${esc(t.title)}${t.zone ? ` <span style="color:#6f88a0">(${esc(t.zone)})</span>` : ''} — ${day(t.due)}`)).join('')
     : none('Punch lists are clear.')
   if (f.milestonesDue.length) {
     inner += h2('Milestones due')
-    inner += f.milestonesDue.map((m) => li(`${m.name}${m.zone ? ` <span style="color:#6f88a0">(${m.zone})</span>` : ''} — ${day(m.date)}`)).join('')
+    inner += f.milestonesDue.map((m) => li(`${esc(m.name)}${m.zone ? ` <span style="color:#6f88a0">(${esc(m.zone)})</span>` : ''} — ${day(m.date)}`)).join('')
   }
   if (f.maintenanceDue.length) {
     inner += h2('Maintenance due this week')
-    inner += f.maintenanceDue.map((m) => li(m)).join('')
+    inner += f.maintenanceDue.map((m) => li(esc(m))).join('')
   }
   if (f.receiptsOutstanding.count) {
     inner += h2('Paper to chase')
