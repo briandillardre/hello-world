@@ -339,7 +339,7 @@ export function TimelinePlayback({
       <button
         ref={attachMeasure}
         onClick={() => setStage('full')}
-        className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
+        className={'absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-[calc(104px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
         {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
@@ -358,7 +358,7 @@ export function TimelinePlayback({
     // Hug the bottom edge — the page already pads for the mobile tab bar, so
     // the old 80px offset left a dead strip of map under the controls. Kiosk
     // rides above the event ticker.
-    <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
+    <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-[calc(104px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
       {/* Follow popover — sibling of the bar so it escapes the overflow-hidden clip
           (rendering it inside the rounded bar made it invisible on iPad). When not
           following it's the asset picker; while following it's the camera styles. */}

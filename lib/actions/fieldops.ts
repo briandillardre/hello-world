@@ -184,6 +184,15 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       if (!dupErr && dup?.length) return { ok: true }
     }
 
+    // Staleness policy (#32, decided Aug 22 — mirrors clock-in): a replay
+    // whose queue timestamp is missing, garbage, or >30 days old must NOT
+    // close the shift stamped "now" — that invents a weeks-long shift ending
+    // today and bills it to this week. The person closes it manually with
+    // honest times instead.
+    if (form.get('_queuedAt') !== null && !backAt) {
+      return { ok: false, error: 'This queued clock-out is too old to record accurately — close the shift manually with the real times.' }
+    }
+
     // The company's form drives validation + which answers exist. Tolerant:
     // any read failure falls back to the default form (pre-059 behavior).
     const { resolveLogForm } = await import('@/lib/log-form')

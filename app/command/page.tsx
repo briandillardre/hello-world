@@ -84,6 +84,8 @@ export default async function CommandPage() {
       alerts={alerts}
       aboard={toolsAboard(rawAssets, toolAssociations)}
       deferLoad={!isMock}
+      userName={company.userName}
+      navOrder={company.navOrder}
       brand={{ companyName: company.name, logoUrl: company.logoUrl }}
     />
   )

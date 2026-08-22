@@ -9,6 +9,7 @@ import { tracksFromHistory, type AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { BottomNav } from '@/components/layout/BottomNav'
 import { signOutAction } from '@/lib/actions/auth'
 import { TacticalHud } from './TacticalHud'
 import { CommandRail } from './CommandRail'
@@ -70,6 +71,10 @@ interface CommandCenterProps {
    *  timeline history, pairing, cost-today) streams from /api/command-data
    *  behind a status chip ("keep the app snappy", Brian, Aug 22). */
   deferLoad?: boolean
+  /** Signed-in user's name + saved nav order — the phone bottom bar rides
+   *  /command too (Brian, Aug 22: nav lives at the bottom, same as /map). */
+  userName?: string | null
+  navOrder?: string[] | null
 }
 
 interface CommandData {
@@ -220,7 +225,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false, userName = null, navOrder = null }: CommandCenterProps) {
   const [now, setNow] = useState<Date | null>(null)
 
   // Deferred heavy cargo — fetched once after the shell/basemap are up.
@@ -373,11 +378,23 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {/* corner brackets */}
       <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
-      <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
-      <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
-      {/* app sidebar, kiosk edition — fully hidden until the arrow is tapped */}
-      <KioskNav company={company} alerts={alerts} />
+      {/* Desktop/TV: the slide-over sidebar. Phones navigate with the same
+          bottom bar as /map instead (Brian, Aug 22) — the overlay sidebar
+          ate the whole screen there. */}
+      <div className="hidden md:block">
+        <KioskNav company={company} alerts={alerts} />
+      </div>
+      <BottomNav
+        alertCount={alerts.filter((a) => !a.acknowledged_at).length}
+        latestAlertAt={alerts[0]?.triggered_at ?? null}
+        companyName={company}
+        userName={userName}
+        navOrder={navOrder}
+        onSignOut={signOutAction}
+      />
 
       {/* left instrument rail — below the layers pill; slim edge tab when hidden */}
       {leftVisible ? (
@@ -424,7 +441,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
 
       {/* tactical instrument — bottom-right, above the ticker; open ⇄ pill ⇄ gone */}
       {panels.hud !== 'hidden' && (
-        <div className="absolute bottom-14 right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
+        <div className="absolute bottom-[calc(112px+env(safe-area-inset-bottom))] right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
           {panels.hud === 'open' && (
             <TacticalHud
               assets={assets}
@@ -502,7 +519,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
 
       {/* live event ticker — the wall display's heartbeat (Screen menu turns it off) */}
       {showTicker && (
-        <div className="absolute bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
+        <div className="absolute bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
           <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[12px]">
             {[...ticker, ...ticker].map((item, i) => (
               // suppressHydrationWarning: items carry relative times ("53m ago")
