@@ -540,7 +540,13 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         onPointerUp={() => { drawerSwipe.current = null }}
         onPointerCancel={() => { drawerSwipe.current = null }}
         onClickCapture={drawerClickCapture}
-        className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in"
+        // touch-pan-y is what makes the swipe-left-to-close actually FIRE on
+        // phones: without it the browser claims any horizontal drag on this
+        // scrollable panel (pointercancel before the 48px threshold) — the
+        // gesture only ever worked with a mouse (Brian, Aug 24: "swipe to
+        // close is currently not working"). pan-y keeps vertical scroll
+        // native and hands horizontal drags to the pointer handlers.
+        className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in touch-pan-y"
       >
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your

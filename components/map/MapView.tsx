@@ -4929,7 +4929,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const click = (e: MouseEvent) => { if (swiped) { e.preventDefault(); e.stopPropagation() } }
     el.addEventListener('pointerdown', down)
     el.addEventListener('click', click, true)
+    // Without this the browser claims the horizontal drag (pointercancel
+    // fires before dx reaches the threshold) and the swipe-to-tuck only
+    // worked with a mouse — the edge tab always worked because it carries
+    // touch-none (Brian, Aug 24). The column doesn't scroll, so none is safe.
+    const prevTouchAction = el.style.touchAction
+    el.style.touchAction = 'none'
     return () => {
+      el.style.touchAction = prevTouchAction
       el.removeEventListener('pointerdown', down)
       el.removeEventListener('click', click, true)
       document.removeEventListener('pointermove', move)
