@@ -3230,6 +3230,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
     const rv = overlayOpacity.radar
     if (rv != null && m.getLayer('wx-layer')) m.setPaintProperty('wx-layer', 'raster-opacity', rv)
+    // Rain totals — its own add-once raster, same slider treatment (Brian,
+    // Aug 24: "rain totals needs opacity slider").
+    const pcv = overlayOpacity.precip
+    if (pcv != null && m.getLayer('precip-layer')) m.setPaintProperty('precip-layer', 'raster-opacity', pcv)
     // Airspace shelves — fill-extrusion, its own opacity property.
     const av = overlayOpacity.airspace3d
     if (av != null && m.getLayer('airspace3d-layer')) m.setPaintProperty('airspace3d-layer', 'fill-extrusion-opacity', av)
@@ -5324,7 +5328,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       const beforeId = m.getLayer('labels-overlay') ? 'labels-overlay'
         : m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
       // fade 0 per task #13 (first-show raster texture race).
-      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': 0.45, 'raster-fade-duration': 0 } }, beforeId)
+      m.addLayer({ id: 'precip-layer', type: 'raster', source: 'precip', paint: { 'raster-opacity': overlayOpacity.precip ?? 0.45, 'raster-fade-duration': 0 } }, beforeId)
       precipAdded.current = true
     } else if (m.getLayer('precip-layer')) {
       m.setLayoutProperty('precip-layer', 'visibility', 'visible')

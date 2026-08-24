@@ -126,7 +126,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // Nested display row directly under Wind speed (Aug 16 reorg) — same
   // persisted id as always, only the label carries the "↳" nesting mark.
   { id: 'windanim', label: '↳ Wind flow', group: 'weather', status: 'live', advanced: true, isLive: true, hint: 'animated wind — live view only' },
-  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', advanced: true, hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
+  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
   // Layer name discovered live from NOAA's server (like temp/feels/wind) —
   // GOES lightning mapper strike density. Row reports if NOAA drops it.
   { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },

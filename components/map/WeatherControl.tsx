@@ -485,7 +485,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         base={base}
         err={feedErr[d.id]}
         fresh={d.isLive && isOn(d.id) ? stamp(d.id) : null}
-        opacity={overlayOpacity[d.id] ?? 0.6}
+        opacity={overlayOpacity[d.id] ?? (d.id === 'precip' ? 0.45 : 0.6)}
         onOpacity={onOverlayOpacity ? (v: number) => onOverlayOpacity(d.id, v) : undefined}
         onToggle={() => toggle(d.id)}
         extra={rowExtra(d.id)}
@@ -748,7 +748,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
                 base={base}
                 err={feedErr[d.id]}
                 fresh={d.isLive && isOn(d.id) ? stamp(d.id) : null}
-                opacity={overlayOpacity[d.id] ?? 0.6}
+                opacity={overlayOpacity[d.id] ?? (d.id === 'precip' ? 0.45 : 0.6)}
                 onOpacity={onOverlayOpacity ? (v: number) => onOverlayOpacity(d.id, v) : undefined}
                 onToggle={() => toggle(d.id)}
                 extra={rowExtra(d.id)}
