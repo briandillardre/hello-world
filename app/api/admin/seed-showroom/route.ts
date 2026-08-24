@@ -26,12 +26,14 @@ export async function POST() {
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()
 
-  // Never convert a company with real hardware history.
+  // Never convert a company with real assets. NULL tracker_id rows count as
+  // real too — the app legitimately creates assets before hardware arrives,
+  // and NOT LIKE is NULL for NULL (sec-check).
   const { data: real } = await svc
     .from('assets')
     .select('id')
     .eq('company_id', companyId)
-    .not('tracker_id', 'like', 'sim-%')
+    .or('tracker_id.is.null,tracker_id.not.like.sim-%')
     .limit(1)
   if (real?.length) {
     return NextResponse.json(
@@ -57,19 +59,31 @@ export async function POST() {
     zonesAdded++
   }
 
-  // Assets (match by tracker_id).
+  // Assets (match by tracker_id). Tracker ids carry a per-company suffix —
+  // the bare seed constants are public in this repo, and the flespi ingest
+  // resolves idents globally, so another tenant registering 'sim-truck-1'
+  // could collide the showroom's feed (sec-check). Company-derived, so
+  // re-seeding stays idempotent.
+  const suffix = companyId.replace(/-/g, '').slice(0, 6)
+  const withSuffix = (t: string) => `${t}-${suffix}`
   const { data: existingAssets } = await svc.from('assets').select('id, tracker_id').eq('company_id', companyId)
   const assetByTracker = new Map((existingAssets ?? []).map((a) => [a.tracker_id as string, a]))
   let assetsAdded = 0
   for (const a of SEED_ASSETS) {
-    if (assetByTracker.has(a.tracker_id)) continue
+    const tracker = withSuffix(a.tracker_id)
+    if (assetByTracker.has(tracker)) continue
+    // Tool carriers reference their truck's tracker id — suffix those too.
+    const sim = (a.metadata.sim ?? {}) as Record<string, unknown>
+    const metadata = sim.carrier
+      ? { ...a.metadata, sim: { ...sim, carrier: withSuffix(String(sim.carrier)) } }
+      : a.metadata
     const { data: inserted, error } = await svc.from('assets').insert({
-      company_id: companyId, name: a.name, type: a.type, tracker_id: a.tracker_id,
-      metadata: a.metadata, active: true,
+      company_id: companyId, name: a.name, type: a.type, tracker_id: tracker,
+      metadata, active: true,
       daily_cost: a.daily_cost ?? null, hourly_rate: a.hourly_rate ?? null,
     }).select('id, tracker_id').single()
     if (error) return NextResponse.json({ error: `asset ${a.name}: ${error.message}` }, { status: 500 })
-    if (inserted) assetByTracker.set(a.tracker_id, inserted)
+    if (inserted) assetByTracker.set(tracker, inserted)
     assetsAdded++
   }
 
@@ -91,7 +105,7 @@ export async function POST() {
   }
 
   // One overdue service so the wrench badge / maintenance story shows.
-  const exc = assetByTracker.get('sim-exc-1')
+  const exc = assetByTracker.get(withSuffix('sim-exc-1'))
   if (exc) {
     const { data: sched } = await svc.from('maintenance_schedules').select('id').eq('asset_id', exc.id).limit(1)
     if (!sched?.length) {

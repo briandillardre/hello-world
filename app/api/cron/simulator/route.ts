@@ -41,8 +41,11 @@ async function osrmRoute(a: [number, number], b: [number, number]): Promise<{ co
  */
 export async function GET(req: NextRequest) {
   if (isMock) return NextResponse.json({ ok: true, skipped: 'demo' })
+  // FAIL CLOSED (sec-check, unlike the read-only crons): this route triggers
+  // outbound OSRM traffic and DB writes, so with no CRON_SECRET configured
+  // it must not run for anonymous callers at all.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   const token = process.env.FLESPI_WEBHOOK_TOKEN
@@ -59,6 +62,8 @@ export async function GET(req: NextRequest) {
   if (!companies?.length) return NextResponse.json({ ok: true, companies: 0 })
 
   const results: Record<string, unknown>[] = []
+  // Short id in responses/logs only — never full tenant UUIDs (sec-check).
+  const shortId = (id: string) => id.slice(0, 8)
   for (const co of companies) {
     const { data: assetRows } = await svc
       .from('assets')
@@ -67,7 +72,7 @@ export async function GET(req: NextRequest) {
       .eq('active', true)
       .like('tracker_id', 'sim-%')
     const assets = (assetRows ?? []) as SimAsset[]
-    if (!assets.length) { results.push({ company: co.id, skipped: 'no sim assets' }); continue }
+    if (!assets.length) { results.push({ company: shortId(co.id), skipped: 'no sim assets' }); continue }
 
     const { data: fenceRows } = await svc.from('geofences').select('id, name, kind, geometry').eq('company_id', co.id)
     const zones: SimZone[] = (fenceRows ?? [])
@@ -78,8 +83,13 @@ export async function GET(req: NextRequest) {
         kind: (g.kind as string | null) ?? null,
         ring: ((g.geometry as { coordinates?: [number, number][][] } | null)?.coordinates?.[0] ?? []) as [number, number][],
       }))
-      .filter((z) => z.ring.length >= 4)
-    if (!zones.length) { results.push({ company: co.id, skipped: 'no zones' }); continue }
+      // Rings are tenant-stored JSON — validate every coordinate so a
+      // malformed zone can't throw in keyFor()/the engine and 500 the whole
+      // cron for every showroom (sec-check).
+      .filter((z) => z.ring.length >= 4 && z.ring.every((p) =>
+        Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]) &&
+        Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90))
+    if (!zones.length) { results.push({ company: shortId(co.id), skipped: 'no zones' }); continue }
 
     // Window: newest stored fix → now (capped).
     const assetIds = assets.map((a) => a.id)
@@ -92,14 +102,16 @@ export async function GET(req: NextRequest) {
     const now = Date.now()
     const lastMs = newest?.[0] ? Date.parse(newest[0].timestamp as string) : 0
     const fromMs = Math.max(Number.isFinite(lastMs) ? lastMs + 30_000 : 0, now - MAX_CATCHUP_MS)
-    if (now - fromMs < 3 * 60_000) { results.push({ company: co.id, skipped: 'up to date' }); continue }
+    if (now - fromMs < 3 * 60_000) { results.push({ company: shortId(co.id), skipped: 'up to date' }); continue }
 
     // Pre-resolve road routes for every zone pair the plans can use.
     const yard = zones.find((z) => z.kind === 'yard') ?? null
     const sites = zones.filter((z) => !z.kind || z.kind === 'site')
     const vendors = zones.filter((z) => z.kind === 'vendor')
     const pairs: [[number, number], [number, number]][] = []
-    const anchors = [...(yard ? [yard] : []), ...sites, ...vendors].map((z) => centroid(z.ring))
+    // Anchor cap bounds the N² pair fan-out — zone count is tenant-
+    // controlled and must never translate into unbounded OSRM traffic.
+    const anchors = [...(yard ? [yard] : []), ...sites, ...vendors].slice(0, 8).map((z) => centroid(z.ring))
     for (const a of anchors) for (const b of anchors) {
       if (a !== b) pairs.push([a, b])
     }
@@ -107,9 +119,14 @@ export async function GET(req: NextRequest) {
     const keys = pairs.map(([a, b]) => keyFor(a, b))
     const { data: cached } = await svc.from('sim_routes').select('key, geometry, meters').eq('company_id', co.id).in('key', keys)
     for (const r of cached ?? []) routeMap.set(r.key as string, { coords: r.geometry as [number, number][], meters: r.meters as number })
+    // Per-run OSRM budget: cache misses beyond this fall back to bowed lines
+    // until later runs fill them in — a zone reshuffle never bursts the
+    // public router (sec-check).
+    let osrmBudget = 12
     for (const [a, b] of pairs) {
       const k = keyFor(a, b)
-      if (routeMap.has(k)) continue
+      if (routeMap.has(k) || osrmBudget <= 0) continue
+      osrmBudget--
       const road = await osrmRoute(a, b)
       if (road) {
         routeMap.set(k, road)
@@ -132,14 +149,14 @@ export async function GET(req: NextRequest) {
           body: JSON.stringify(chunk),
           signal: AbortSignal.timeout(60_000),
         })
-        if (!r.ok) { results.push({ company: co.id, error: `ingest ${r.status} at msg ${i}` }); break }
+        if (!r.ok) { results.push({ company: shortId(co.id), error: `ingest ${r.status} at msg ${i}` }); break }
         sent += chunk.length
       } catch (e) {
-        results.push({ company: co.id, error: `ingest failed at msg ${i}: ${e instanceof Error ? e.message : 'unknown'}` })
+        results.push({ company: shortId(co.id), error: `ingest failed at msg ${i}: ${e instanceof Error ? e.message : 'unknown'}` })
         break
       }
     }
-    results.push({ company: co.id, windowMin: Math.round((now - fromMs) / 60_000), messages: messages.length, sent, roads: routeMap.size })
+    results.push({ company: shortId(co.id), windowMin: Math.round((now - fromMs) / 60_000), messages: messages.length, sent, roads: routeMap.size })
   }
 
   return NextResponse.json({ ok: true, companies: companies.length, results })
