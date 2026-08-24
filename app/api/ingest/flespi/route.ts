@@ -27,6 +27,11 @@ function verifyToken(request: NextRequest): boolean {
   }
 }
 
+// Real flespi batches are small, but the showroom simulator's catch-up
+// batches (60 msgs × sequential per-message DB work + beacon round-trips)
+// need more than the platform default (ship-check P2, Aug 24).
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   if (!verifyToken(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

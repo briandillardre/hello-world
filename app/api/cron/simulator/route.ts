@@ -11,7 +11,9 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 // Catch-up window bounds: first run backfills a working stretch; a stalled
 // cron never tries to replay more than this in one go.
 const MAX_CATCHUP_MS = 6 * 3_600_000
-const CHUNK = 150
+// Sized to the ingest route's sequential per-message DB work — 150 risked
+// its function duration on a beacon-heavy backfill (ship-check P2).
+const CHUNK = 60
 
 function keyFor(a: [number, number], b: [number, number]): string {
   return `${a[0].toFixed(4)},${a[1].toFixed(4)}>${b[0].toFixed(4)},${b[1].toFixed(4)}`
@@ -74,7 +76,10 @@ export async function GET(req: NextRequest) {
     const assets = (assetRows ?? []) as SimAsset[]
     if (!assets.length) { results.push({ company: shortId(co.id), skipped: 'no sim assets' }); continue }
 
-    const { data: fenceRows } = await svc.from('geofences').select('id, name, kind, geometry').eq('company_id', co.id)
+    // Stable order (ship-check P2): the engine assigns machines/trucks to
+    // sites BY INDEX — unordered rows could reassign the excavator to a
+    // different site mid-day (teleport chord + spurious left-site alert).
+    const { data: fenceRows } = await svc.from('geofences').select('id, name, kind, geometry').eq('company_id', co.id).order('created_at', { ascending: true })
     const zones: SimZone[] = (fenceRows ?? [])
       .filter((g) => g.kind !== 'boundary')
       .map((g) => ({

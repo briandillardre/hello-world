@@ -149,6 +149,11 @@ export function computeRangeStats(
         if (engineOn === true) {
           idleMs += dt + pendingIdleMs // real ignition absorbs any pending
           pendingIdleMs = 0
+          // A proven-running engine vouches for the stop like movement does
+          // — reset the cap so a unit that intermittently drops the ignition
+          // param doesn't get its later banked time written off (ship-check).
+          blockMs = 0
+          blockDead = false
         } else if (engineOn === false) {
           pendingIdleMs = 0
           blockDead = true

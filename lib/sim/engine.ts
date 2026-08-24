@@ -336,8 +336,14 @@ export function simulateWindow(
   for (const asset of assets) {
     if (asset.type === 'tool') continue
     const jrng = mulberry32(hashStr(asset.id + 'jitter'))
+    // Emission is EPOCH-GRID aligned, not run-relative (ship-check P1: a
+    // per-run lastEmit forced one message per asset at every window start,
+    // so the "sleeping" fleet pinged every cron run all night instead of
+    // hourly). A given minute either emits or doesn't, no matter how the
+    // catch-up windows fall. Per-asset phase staggers the check-ins so the
+    // whole fleet doesn't ping in the same minute.
+    const phase = hashStr(asset.id + 'phase')
     let ms = fromMs
-    let lastEmit = 0
     while (ms <= toMs) {
       const lp = localParts(ms, tz)
       const planKey = `${asset.id}|${lp.dayKey}`
@@ -349,7 +355,7 @@ export function simulateWindow(
       const seg = segAt(plan, lp.minute)
       // Cadence by state: driving 1 min · idling/working 2 min · off hourly.
       const cadence = !seg || seg.kind === 'off' ? 60 * MIN : seg.kind === 'drive' ? MIN : 2 * MIN
-      if (ms - lastEmit >= cadence) {
+      if ((ms + (phase % cadence)) % cadence < MIN) {
         const { p, mph, head } = seg ? posIn(seg, lp.minute, jrng) : { p: [0, 0] as [number, number], mph: 0, head: null }
         if (seg) {
           const moving = mph >= 2
@@ -381,7 +387,6 @@ export function simulateWindow(
           }
           out.push(msg)
         }
-        lastEmit = ms
       }
       ms += MIN
     }
