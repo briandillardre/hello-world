@@ -266,11 +266,20 @@ export function mergeHistoryRows<T extends { asset_id: string; timestamp: string
   a: T[],
   b: T[]
 ): T[] {
+  // Key on the EPOCH SECOND, not the raw string: the rollup path emits
+  // "…:00.000Z" while PostgREST emits "…:00+00:00" for the same instant —
+  // exact-string keys let the 2-day baseline overlap duplicate every point
+  // and eat the per-asset track budget in the densest part of the window.
   const seen = new Set<string>()
-  const out: T[] = []
-  for (const r of a) { const k = `${r.asset_id}|${r.timestamp}`; if (!seen.has(k)) { seen.add(k); out.push(r) } }
-  for (const r of b) { const k = `${r.asset_id}|${r.timestamp}`; if (!seen.has(k)) { seen.add(k); out.push(r) } }
-  out.sort((x, y) => x.timestamp.localeCompare(y.timestamp))
+  const out: (T & { __ms: number })[] = []
+  const add = (r: T) => {
+    const ms = Date.parse(r.timestamp)
+    const k = `${r.asset_id}|${Math.floor(ms / 1000)}`
+    if (!seen.has(k)) { seen.add(k); out.push(Object.assign({ __ms: ms }, r)) }
+  }
+  for (const r of a) add(r)
+  for (const r of b) add(r)
+  out.sort((x, y) => x.__ms - y.__ms)
   return out
 }
 
@@ -380,10 +389,21 @@ export function historyWindow(rows: { timestamp: string }[]): TrackWindow | null
   return to > from ? { from, to } : null
 }
 
+// Intl.DateTimeFormat construction is the expensive part (~ms each) and the
+// tick ladders walk hundreds of steps — cache formatters per tz+shape so a
+// YTD walk reuses one instance instead of building 236 of them per render.
+const dtfCache = new Map<string, Intl.DateTimeFormat>()
+function dtf(tz: string | undefined, key: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const k = `${tz ?? ''}|${key}`
+  let f = dtfCache.get(k)
+  if (!f) { f = new Intl.DateTimeFormat('en-US', { timeZone: tz, ...opts }); dtfCache.set(k, f) }
+  return f
+}
+
 /** Short tick label inside a real window: clock time for ≤36h spans, else date. */
 /** "12A" / "7:30P" — the one-line clock (Brian, Aug 25: "12P etc"). */
 function compactClock(d: Date, tz?: string): string {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d)
+  const parts = dtf(tz, 'clock', { hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d)
   const h = parts.find((p) => p.type === 'hour')?.value ?? ''
   const m = parts.find((p) => p.type === 'minute')?.value ?? '00'
   const ap = (parts.find((p) => p.type === 'dayPeriod')?.value ?? 'AM').startsWith('A') ? 'A' : 'P'
@@ -396,7 +416,7 @@ function compactClock(d: Date, tz?: string): string {
  *  grows (Brian, Aug 25). */
 export function compactTick(ms: number, spanMs: number, isFirst: boolean, tz?: string): string {
   const d = new Date(ms)
-  const md = d.toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', day: 'numeric' })
+  const md = dtf(tz, 'md', { month: 'numeric', day: 'numeric' }).format(d)
   if (spanMs <= 36 * 3_600_000) return isFirst ? md : compactClock(d, tz)
   if (spanMs <= 5 * 86_400_000) return `${md} ${compactClock(d, tz)}`
   return md
@@ -420,7 +440,7 @@ export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: numbe
   const span = toMs - fromMs
   const DAY = 86_400_000
   const out: { f: number; label: string }[] = []
-  const md = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', day: 'numeric' })
+  const md = (ms: number) => dtf(tz, 'md', { month: 'numeric', day: 'numeric' }).format(new Date(ms))
   if (span <= 36 * 3_600_000) {
     for (const f of [0, 0.25, 0.5, 0.75, 1]) out.push({ f, label: compactTick(fromMs + f * span, span, f === 0, tz) })
     return out
@@ -429,7 +449,7 @@ export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: numbe
     out.push({ f: 0, label: md(fromMs) })
     // Local midnights via an hourly walk — accurate to the hour, which at
     // this span is a fraction of a pixel.
-    const dayOf = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, day: 'numeric', month: 'numeric' })
+    const dayOf = (ms: number) => md(ms)
     let prev = dayOf(fromMs)
     for (let ms = fromMs + 3_600_000; ms < toMs; ms += 3_600_000) {
       const cur = dayOf(ms)
@@ -438,8 +458,8 @@ export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: numbe
         const f = (ms - fromMs) / span
         if (f > 0.05 && f < 0.96) {
           const d = new Date(ms)
-          const w = d.toLocaleDateString('en-US', { timeZone: tz, weekday: 'narrow' })
-          const dom = d.toLocaleDateString('en-US', { timeZone: tz, day: 'numeric' })
+          const w = dtf(tz, 'w', { weekday: 'narrow' }).format(d)
+          const dom = dtf(tz, 'dom', { day: 'numeric' }).format(d)
           out.push({ f, label: `${w} ${dom}` })
         }
       }
@@ -451,7 +471,7 @@ export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: numbe
     return out
   }
   // Month boundaries (daily walk), thinned to ≤7 ticks; January names the year.
-  const monthOf = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', year: 'numeric' })
+  const monthOf = (ms: number) => dtf(tz, 'my', { month: 'numeric', year: 'numeric' }).format(new Date(ms))
   const bounds: { f: number; ms: number }[] = []
   let prevM = monthOf(fromMs)
   for (let ms = fromMs + DAY; ms < toMs; ms += DAY) {
@@ -464,9 +484,9 @@ export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: numbe
     const b = bounds[i]
     if (b.f <= 0.05 || b.f >= 0.97) continue
     const d = new Date(b.ms)
-    const mon = d.toLocaleDateString('en-US', { timeZone: tz, month: 'short' })
-    const isJan = d.toLocaleDateString('en-US', { timeZone: tz, month: 'numeric' }) === '1'
-    out.push({ f: b.f, label: isJan ? `${mon} ’${d.toLocaleDateString('en-US', { timeZone: tz, year: '2-digit' })}` : mon })
+    const mon = dtf(tz, 'mon', { month: 'short' }).format(d)
+    const isJan = dtf(tz, 'mnum', { month: 'numeric' }).format(d) === '1'
+    out.push({ f: b.f, label: isJan ? `${mon} ’${dtf(tz, 'y2', { year: '2-digit' }).format(d)}` : mon })
   }
   return out
 }

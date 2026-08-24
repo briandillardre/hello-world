@@ -18,8 +18,11 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  */
 export async function GET(req: NextRequest) {
   if (isMock) return NextResponse.json({ ok: true, skipped: 'demo' })
+  // FAIL CLOSED (sec-check): this route runs 300s of service-role rebuild
+  // work — with no CRON_SECRET set it must refuse, not run open to anyone.
+  // Vercel cron sends the Authorization header automatically once set.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -28,19 +31,28 @@ export async function GET(req: NextRequest) {
     p_from: new Date(Date.now() - 48 * 3600_000).toISOString(),
     p_to: new Date().toISOString(),
   })
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  if (error) {
+    console.error('rebuild_all_usage failed:', error.message)
+    return NextResponse.json({ ok: false, error: 'rebuild failed' }, { status: 500 })
+  }
 
-  // ── Daily trail rollups (077) — the long-range map's data shape. Refresh
-  // today (still accumulating) + yesterday (late backfills), then drain up
-  // to 90 missing history days per run. Errors don't fail the ledger run —
+  // ── Daily trail rollups (077/078) — the long-range map's data shape.
+  // Rebuild a trailing WEEK, not just today+yesterday: trackers buffer
+  // offline and upload with original timestamps (a TAT141 parked out of
+  // coverage surfaces days later), and the offline field queue replays
+  // honestly — without this, late pings landed in days the backfill had
+  // already marked done and vanished from every >2.5d range forever
+  // (ship-check P1). Each day is one indexed range scan since 078. Then
+  // drain up to 90 history days per run. Errors don't fail the ledger run —
   // a pre-077 DB just skips until the migration lands.
   const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10)
   const { error: tdErr } = await svc.rpc('build_trail_daily', { p_day: day(0) })
   let backfilled: number | null = null
   if (!tdErr) {
-    await svc.rpc('build_trail_daily', { p_day: day(1) })
+    for (let o = 1; o <= 7; o++) await svc.rpc('build_trail_daily', { p_day: day(o) })
     const { data } = await svc.rpc('trail_backfill', { p_days: 90 })
     backfilled = typeof data === 'number' ? data : null
   }
-  return NextResponse.json({ ok: true, trails: tdErr ? `skipped: ${tdErr.message}` : { backfilled } })
+  if (tdErr) console.error('build_trail_daily skipped:', tdErr.message)
+  return NextResponse.json({ ok: true, trails: tdErr ? 'skipped' : { backfilled } })
 }

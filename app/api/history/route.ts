@@ -55,29 +55,48 @@ export async function GET(req: NextRequest) {
   if (spanDays > 2.5) {
     const useLite = spanDays > 45
     const col = useLite ? 'pts_lite' : 'pts'
-    const { data: dayRows } = await supabase
-      .from('trail_daily')
-      .select(`asset_id, day, ${col}`)
-      .gte('day', new Date(fromMs).toISOString().slice(0, 10))
-      .lte('day', new Date(toMs).toISOString().slice(0, 10))
-      .order('day', { ascending: true })
-    if (dayRows && dayRows.length) {
+    // Page past Supabase's API Max Rows setting (silently caps a bare select
+    // at ~1000 rows — oldest-biased here, which would truncate the NEWEST
+    // days at 500-device × long-span scale). Same .range() paging trick as
+    // the legacy path below; ~10 asset-days per KB keeps this cheap.
+    const ROLLUP_PAGE = 1000
+    const ROLLUP_MAX_ROWS = 20_000
+    const dayRows: { asset_id: string; day: string; [k: string]: unknown }[] = []
+    for (let o = 0; o < ROLLUP_MAX_ROWS; o += ROLLUP_PAGE) {
+      const { data: page, error: pageErr } = await supabase
+        .from('trail_daily')
+        .select(`asset_id, day, ${col}`)
+        .gte('day', new Date(fromMs).toISOString().slice(0, 10))
+        .lte('day', new Date(toMs).toISOString().slice(0, 10))
+        .order('day', { ascending: true })
+        .order('asset_id', { ascending: true })
+        .range(o, o + ROLLUP_PAGE - 1)
+      if (pageErr) break // pre-077 DB — fall through to the live paths
+      dayRows.push(...((page ?? []) as unknown as typeof dayRows))
+      if (!page || page.length < ROLLUP_PAGE) break
+    }
+    if (dayRows.length) {
       type Pt = [number, number, number, number | null]
       const byAsset = new Map<string, { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string; ms: number }[]>()
-      for (const r of dayRows as unknown as { asset_id: string; day: string; [k: string]: unknown }[]) {
+      for (const r of dayRows) {
         const pts = (r[col] ?? []) as Pt[]
         if (!Array.isArray(pts)) continue
         const list = byAsset.get(r.asset_id) ?? []
         for (const p of pts) {
           const ms = (p?.[2] ?? 0) * 1000
-          if (ms < fromMs || ms >= toMs) continue
+          // Number.isFinite also rejects a malformed epoch (NaN would sail
+          // past the range checks and blow up toISOString with a 500).
+          if (!Number.isFinite(ms) || ms < fromMs || ms >= toMs) continue
           list.push({ asset_id: r.asset_id, lat: p[1], lng: p[0], speed: p[3] ?? null, timestamp: new Date(ms).toISOString(), ms })
         }
         byAsset.set(r.asset_id, list)
       }
-      // Fair per-asset budget, same philosophy as the live sampler.
+      // Fair per-asset budget, same philosophy as the live sampler. The
+      // floor is deliberately LOW (ship-check): rollup days are ≤288 pts
+      // already, and a 400-pt floor × 500 assets would ship a multi-MB
+      // payload to a phone. 60 points still draws a legible multi-day trail.
       const budgetTotal = 12_000
-      const per = Math.max(400, Math.floor(budgetTotal / Math.max(1, byAsset.size)))
+      const per = Math.max(60, Math.floor(budgetTotal / Math.max(1, byAsset.size)))
       const rows: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
       for (const list of Array.from(byAsset.values())) {
         const stride = Math.max(1, Math.ceil(list.length / per))
@@ -89,8 +108,12 @@ export async function GET(req: NextRequest) {
         }
       }
       rows.sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1))
+      // truncated is honest about the ROW cap (engages the client's
+      // snapshot-splice repair). It deliberately does NOT flag missing days
+      // — "history starts mid-window" is normal for All/YTD and would
+      // cry wolf forever; the 078 watermark drains real gaps within hours.
       return NextResponse.json(
-        { rows, truncated: false, source: 'rollup', count: rows.length },
+        { rows, truncated: dayRows.length >= ROLLUP_MAX_ROWS, source: 'rollup', count: rows.length },
         { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
       )
     }

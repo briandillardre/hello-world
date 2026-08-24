@@ -286,11 +286,19 @@ export function TimelinePlayback({
   // Per-horizon tick ladder (Brian, Aug 25): hour ticks for a day, weekday
   // letters for a week, dates for a month, months for a year — positioned
   // at their TRUE fraction of the window. Demo mode (no real window) keeps
-  // the simple 5-stop pretend clock.
-  const ticks: { f: number; label: string }[] = custom
-    ? tickMarks(customFrom, customTo, tz)
-    : realWindow ? tickMarks(realWindow.from, realWindow.to, tz)
-    : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) }))
+  // the simple 5-stop pretend clock. Memoized: the ladder walks the window
+  // hour-by-hour (7d) or day-by-day (YTD/All) through Intl formatting, and
+  // this component re-renders on EVERY playback tick and scrub pointermove
+  // — recomputing per frame stuttered the thumb on mid-range phones.
+  const rwFrom = realWindow?.from
+  const rwTo = realWindow?.to
+  const ticks = useMemo<{ f: number; label: string }[]>(
+    () => custom
+      ? tickMarks(customFrom, customTo, tz)
+      : rwFrom != null && rwTo != null ? tickMarks(rwFrom, rwTo, tz)
+      : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) })),
+    [custom, customFrom, customTo, rwFrom, rwTo, range, tz]
+  )
   const speeds = speedsForWindow(windowSeconds)
 
   // ticking "updated Ns ago" while live (cycles to feel real-time)
