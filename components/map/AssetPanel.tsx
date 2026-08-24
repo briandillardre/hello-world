@@ -463,7 +463,7 @@ function AssetDetails({
         href={`/assets/${asset.id}`}
         className="flex items-center justify-center gap-1.5 w-full rounded-lg bg-navy-800 border border-navy-700 text-ink text-sm font-medium py-2.5 hover:bg-navy-700 transition-colors"
       >
-        View full details <ArrowRight className="h-4 w-4" />
+        View full details &amp; edit <ArrowRight className="h-4 w-4" />
       </Link>
     </div>
   )
