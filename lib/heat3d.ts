@@ -123,6 +123,16 @@ export function hexHeatGeoJSON(
   for (const b of Array.from(smoothed.values())) if (b.val > maxVal) maxVal = b.val
   const ref = Math.max(units === 'dollars' ? DOLLARS_REF : HOURS_REF_SEC, maxVal)
 
+  // HILLS, not columns (Brian, Aug 25): each cell renders as a stack of
+  // tapering disks — wide low skirt up to a narrow cap — so neighboring
+  // stacks overlap into rounded terrain and a lone cell reads as a knoll.
+  // Color rides each tier's height, so hills gradient cool→hot upward.
+  const STACK: { rf: number; hf: number }[] = [
+    { rf: 1.5, hf: 0.28 },
+    { rf: 1.12, hf: 0.52 },
+    { rf: 0.8, hf: 0.76 },
+    { rf: 0.52, hf: 1.0 },
+  ]
   const features: GeoJSON.Feature[] = []
   for (const b of Array.from(smoothed.values())) {
     if (b.val <= 0) continue
@@ -132,26 +142,28 @@ export function hexHeatGeoJSON(
     // LINEAR response: drive-through cells sit near the floor (the mole
     // trail); only real accumulated work climbs.
     const ratio = b.val / ref
-    // 18-gon ≈ cylinder; busier cells swell so peaks read rounded
-    const radius = cellMeters * (0.85 + 0.35 * ratio)
-    const ring: [number, number][] = []
-    for (let k = 0; k < 18; k++) {
-      const ang = (k / 18) * Math.PI * 2
-      const vx = cx + radius * Math.cos(ang)
-      const vy = cy + radius * Math.sin(ang)
-      ring.push([vx / (cosLat * M_PER_DEG), vy / M_PER_DEG])
+    const peak = H_MIN + ratio * (H_MAX - H_MIN)
+    for (const s of STACK) {
+      const radius = cellMeters * s.rf * (0.7 + 0.35 * ratio)
+      const ring: [number, number][] = []
+      for (let k = 0; k < 14; k++) {
+        const ang = (k / 14) * Math.PI * 2
+        const vx = cx + radius * Math.cos(ang)
+        const vy = cy + radius * Math.sin(ang)
+        ring.push([vx / (cosLat * M_PER_DEG), vy / M_PER_DEG])
+      }
+      ring.push(ring[0])
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: {
+          ratio: ratio * s.hf,
+          h: peak * s.hf,
+          hours: Math.round((b.ownSec / 3600) * 10) / 10,
+          dollars: Math.round(b.ownUsd),
+        },
+      })
     }
-    ring.push(ring[0])
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Polygon', coordinates: [ring] },
-      properties: {
-        ratio,
-        h: H_MIN + ratio * (H_MAX - H_MIN),
-        hours: Math.round((b.ownSec / 3600) * 10) / 10,
-        dollars: Math.round(b.ownUsd),
-      },
-    })
   }
   return { type: 'FeatureCollection', features }
 }

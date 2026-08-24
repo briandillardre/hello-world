@@ -275,14 +275,13 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
         const dy = (n.lat - p.lat) * 111_320
         mph = (Math.hypot(dx, dy) / Math.max(1, dtSec)) * 2.23694
       }
-      // Working crawl (a machine cutting passes at 1-4 mph) is the hottest
-      // story; merely PARKED accrues at 40% so overnight yards read warm,
-      // not molten; road speed barely marks the map.
-      const motion = mph == null ? 1
-        : mph <= 0.5 ? 0.4
-        : mph <= 3 ? 1
-        : mph >= 10 ? 0.08
-        : 1 - ((mph - 3) / 7) * 0.92
+      // Stationary/working time counts FULL — parked and working ARE time on
+      // the spot (the legend's story). Only ROAD SPEED is damped, and gently:
+      // routes must stay a visible ribbon while dwell areas run red and
+      // large (Brian, Aug 25 — the first cut over-damped everything).
+      const motion = mph == null || mph <= 3 ? 1
+        : mph >= 10 ? 0.18
+        : 1 - ((mph - 3) / 7) * 0.82
       const w = (Math.min(dtSec, HEAT_DT_CAP) / HEAT_DT_CAP) * motion
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel, w } })
     }
@@ -1745,9 +1744,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           // drive-by pings get a small kernel — a thin, barely-there trace
           // along the road — while long stops bloom into wide hot blobs.
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
-            8, ['+', 3, ['*', 7, ['get', 'w']]],
-            11, ['+', 4, ['*', 11, ['get', 'w']]],
-            16, ['+', 8, ['*', 22, ['get', 'w']]],
+            8, ['+', 5, ['*', 8, ['get', 'w']]],
+            11, ['+', 8, ['*', 14, ['get', 'w']]],
+            16, ['+', 14, ['*', 30, ['get', 'w']]],
           ],
           'heatmap-opacity': 0.85,
           'heatmap-color': [

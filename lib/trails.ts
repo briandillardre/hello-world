@@ -381,12 +381,94 @@ export function historyWindow(rows: { timestamp: string }[]): TrackWindow | null
 }
 
 /** Short tick label inside a real window: clock time for ≤36h spans, else date. */
-export function windowTickLabel(w: TrackWindow, f: number, tz?: string): string {
-  const ms = w.from + f * (w.to - w.from)
+/** "12A" / "7:30P" — the one-line clock (Brian, Aug 25: "12P etc"). */
+function compactClock(d: Date, tz?: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(d)
+  const h = parts.find((p) => p.type === 'hour')?.value ?? ''
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00'
+  const ap = (parts.find((p) => p.type === 'dayPeriod')?.value ?? 'AM').startsWith('A') ? 'A' : 'P'
+  return m === '00' ? `${h}${ap}` : `${h}:${m}${ap}`
+}
+
+/** Compact single-line scrubber tick: hour scale shows "12A · 6A · 12P" with
+ *  the FIRST tick carrying the date ("8/23"); a few days out ticks read
+ *  "8/19 4P"; anything longer is "8/19" — month always visible as the span
+ *  grows (Brian, Aug 25). */
+export function compactTick(ms: number, spanMs: number, isFirst: boolean, tz?: string): string {
   const d = new Date(ms)
-  return w.to - w.from <= 36 * 3_600_000
-    ? d.toLocaleTimeString([], { timeZone: tz, hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString([], { timeZone: tz, month: 'short', day: 'numeric' })
+  const md = d.toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', day: 'numeric' })
+  if (spanMs <= 36 * 3_600_000) return isFirst ? md : compactClock(d, tz)
+  if (spanMs <= 5 * 86_400_000) return `${md} ${compactClock(d, tz)}`
+  return md
+}
+
+export function windowTickLabel(w: TrackWindow, f: number, tz?: string): string {
+  return compactTick(w.from + f * (w.to - w.from), w.to - w.from, f === 0, tz)
+}
+
+/** Scrubber ticks, one ladder per horizon (Brian, Aug 25: "clean, sexy,
+ *  easy to comprehend quickly on each time frame"):
+ *    ≤36h   →  8/23 · 6A · 12P · 6P · 12A   (date anchors the left edge)
+ *    ≤8.5d  →  8/18 · T 19 · W 20 · T 21 …  (weekday letter + day, at true
+ *                                            local midnights)
+ *    ≤70d   →  8/1 · 8/9 · 8/16 …           (even spread, month/day)
+ *    longer →  Jan · Mar · May …            (true month boundaries; Jan
+ *                                            carries the year)
+ *  Positions are fractions of the window — render absolutely, not
+ *  justify-between, so labels sit where their moment actually is. */
+export function tickMarks(fromMs: number, toMs: number, tz?: string): { f: number; label: string }[] {
+  const span = toMs - fromMs
+  const DAY = 86_400_000
+  const out: { f: number; label: string }[] = []
+  const md = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', day: 'numeric' })
+  if (span <= 36 * 3_600_000) {
+    for (const f of [0, 0.25, 0.5, 0.75, 1]) out.push({ f, label: compactTick(fromMs + f * span, span, f === 0, tz) })
+    return out
+  }
+  if (span <= 8.5 * DAY) {
+    out.push({ f: 0, label: md(fromMs) })
+    // Local midnights via an hourly walk — accurate to the hour, which at
+    // this span is a fraction of a pixel.
+    const dayOf = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, day: 'numeric', month: 'numeric' })
+    let prev = dayOf(fromMs)
+    for (let ms = fromMs + 3_600_000; ms < toMs; ms += 3_600_000) {
+      const cur = dayOf(ms)
+      if (cur !== prev) {
+        prev = cur
+        const f = (ms - fromMs) / span
+        if (f > 0.05 && f < 0.96) {
+          const d = new Date(ms)
+          const w = d.toLocaleDateString('en-US', { timeZone: tz, weekday: 'narrow' })
+          const dom = d.toLocaleDateString('en-US', { timeZone: tz, day: 'numeric' })
+          out.push({ f, label: `${w} ${dom}` })
+        }
+      }
+    }
+    return out
+  }
+  if (span <= 70 * DAY) {
+    for (const f of [0, 0.25, 0.5, 0.75, 1]) out.push({ f, label: md(fromMs + f * span) })
+    return out
+  }
+  // Month boundaries (daily walk), thinned to ≤7 ticks; January names the year.
+  const monthOf = (ms: number) => new Date(ms).toLocaleDateString('en-US', { timeZone: tz, month: 'numeric', year: 'numeric' })
+  const bounds: { f: number; ms: number }[] = []
+  let prevM = monthOf(fromMs)
+  for (let ms = fromMs + DAY; ms < toMs; ms += DAY) {
+    const cur = monthOf(ms)
+    if (cur !== prevM) { prevM = cur; bounds.push({ f: (ms - fromMs) / span, ms }) }
+  }
+  out.push({ f: 0, label: md(fromMs) })
+  const stride = Math.max(1, Math.ceil(bounds.length / 6))
+  for (let i = 0; i < bounds.length; i += stride) {
+    const b = bounds[i]
+    if (b.f <= 0.05 || b.f >= 0.97) continue
+    const d = new Date(b.ms)
+    const mon = d.toLocaleDateString('en-US', { timeZone: tz, month: 'short' })
+    const isJan = d.toLocaleDateString('en-US', { timeZone: tz, month: 'numeric' }) === '1'
+    out.push({ f: b.f, label: isJan ? `${mon} ’${d.toLocaleDateString('en-US', { timeZone: tz, year: '2-digit' })}` : mon })
+  }
+  return out
 }
 
 // How movement over the window is drawn — user-selectable on any time range.
@@ -497,8 +579,7 @@ export function customScrubLabel(fromMs: number, toMs: number, t: number, tz?: s
 
 /** Short tick label at scrub position t within a custom window. */
 export function customTickLabel(fromMs: number, toMs: number, t: number, tz?: string): string {
-  const ms = fromMs + t * (toMs - fromMs)
-  return new Date(ms).toLocaleDateString([], { timeZone: tz, month: 'short', day: 'numeric' })
+  return compactTick(fromMs + t * (toMs - fromMs), toMs - fromMs, t === 0, tz)
 }
 
 export function defaultSpeed(range: TimeRange): number {
@@ -523,13 +604,15 @@ export function scrubLabel(range: TimeRange, t: number): string {
     ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-/** Human label for the scrubber position within a range. */
+/** Human label for the scrubber position within a range — compact, one
+ *  line ("6A", "12P"), matching the real-window tick style. */
 export function rangeLabel(range: TimeRange, t: number): string {
   if (range === 'live') return 'LIVE'
-  if (range === 'today') return clockLabel(t)
-  if (range === 'yesterday') return 'Yest · ' + clockLabel(t)
+  if (range === 'today' || range === 'yesterday') {
+    return clockLabel(t).replace(/(\d+):00 ([AP])M/, '$1$2').replace(/:(\d\d) ([AP])M/, ':$1$2')
+  }
   const ms = Date.now() - (1 - t) * rangeSpanDays(range) * 86_400_000
-  return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return new Date(ms).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
 }
 
 /** Interpolated [lng, lat] position at normalized time t. */

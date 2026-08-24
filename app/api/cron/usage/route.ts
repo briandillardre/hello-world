@@ -29,5 +29,18 @@ export async function GET(req: NextRequest) {
     p_to: new Date().toISOString(),
   })
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true })
+
+  // ── Daily trail rollups (077) — the long-range map's data shape. Refresh
+  // today (still accumulating) + yesterday (late backfills), then drain up
+  // to 90 missing history days per run. Errors don't fail the ledger run —
+  // a pre-077 DB just skips until the migration lands.
+  const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10)
+  const { error: tdErr } = await svc.rpc('build_trail_daily', { p_day: day(0) })
+  let backfilled: number | null = null
+  if (!tdErr) {
+    await svc.rpc('build_trail_daily', { p_day: day(1) })
+    const { data } = await svc.rpc('trail_backfill', { p_days: 90 })
+    backfilled = typeof data === 'number' ? data : null
+  }
+  return NextResponse.json({ ok: true, trails: tdErr ? `skipped: ${tdErr.message}` : { backfilled } })
 }

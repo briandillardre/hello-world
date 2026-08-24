@@ -14,7 +14,7 @@ const CAMERA_MODES: { key: FollowMode; label: string; icon: typeof Orbit; note: 
 ]
 import {
   type TimeRange, type TrailMode, type TrackWindow, RANGES, rangeLabel, scrubLabel,
-  speedsForWindow, customScrubLabel, customTickLabel, windowTickLabel,
+  speedsForWindow, customScrubLabel, tickMarks,
 } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { money } from '@/lib/projects'
@@ -44,6 +44,10 @@ type Stage = (typeof STAGES)[number]
 
 // `short` = the phone label — full words on sm+ (labels stay, Brian Aug 22;
 // they just tighten so the one-line strip fits a 400px screen, Aug 23).
+const RANGE_SHORT: Record<string, string> = {
+  live: 'Live', today: 'Today', yesterday: 'Yest', '7d': '7d', '30d': '30d', ytd: 'YTD', all: 'All',
+}
+
 const MODES: { key: TrailMode; label: string; short: string; icon: typeof Ban }[] = [
   { key: 'off', label: 'Off', short: 'Off', icon: Ban },
   { key: 'trails', label: 'Trails', short: 'Trails', icon: Route },
@@ -279,11 +283,14 @@ export function TimelinePlayback({
       document.removeEventListener('touchstart', onDoc)
     }
   }, [showFollow, showCam])
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
-    custom ? customTickLabel(customFrom, customTo, f, tz)
-    : realWindow ? windowTickLabel(realWindow, f, tz)
-    : rangeLabel(range, f)
-  )
+  // Per-horizon tick ladder (Brian, Aug 25): hour ticks for a day, weekday
+  // letters for a week, dates for a month, months for a year — positioned
+  // at their TRUE fraction of the window. Demo mode (no real window) keeps
+  // the simple 5-stop pretend clock.
+  const ticks: { f: number; label: string }[] = custom
+    ? tickMarks(customFrom, customTo, tz)
+    : realWindow ? tickMarks(realWindow.from, realWindow.to, tz)
+    : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) }))
   const speeds = speedsForWindow(windowSeconds)
 
   // ticking "updated Ns ago" while live (cycles to feel real-time)
@@ -347,6 +354,48 @@ export function TimelinePlayback({
     const r = el.getBoundingClientRect()
     onSeek(Math.min(1, Math.max(0, (clientX - r.left) / r.width)))
   }, [onSeek])
+
+  // Day stepper — flip through calendar days one at a time (Brian, Aug 3).
+  // Appears whenever the view IS a single day (Today, Yesterday, or a
+  // one-day Custom); ◀ walks back through history as single-day Custom
+  // windows, ▶ walks forward and snaps back onto the named Yesterday/Today
+  // pills at the boundary. Built once; rendered in the options row (sm+) or
+  // beside the date readout (phones).
+  const dayStepper = (() => {
+    let base: number | null = null
+    if (range === 'today') base = Date.now()
+    else if (range === 'yesterday') base = Date.now() - 86_400_000
+    else if (custom && toDateInput(customFrom) === toDateInput(customTo)) base = customFrom + 12 * 3_600_000
+    if (base == null) return null
+    const key = toDateInput(base)
+    const todayKey = toDateInput(Date.now())
+    const isToday = key === todayKey
+    const label = new Date(dayStartMs(key) + 12 * 3_600_000)
+      .toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
+    const step = (delta: number) => {
+      const targetKey = toDateInput(dayStartMs(key) + 12 * 3_600_000 + delta * 86_400_000)
+      if (targetKey >= todayKey) { onRange('today'); return }
+      if (targetKey === toDateInput(Date.now() - 86_400_000)) { onRange('yesterday'); return }
+      onCustom(dayStartMs(targetKey), dayEndMs(targetKey))
+      onRange('custom')
+    }
+    return (
+      <div className="flex-none flex items-center gap-0.5 rounded-full bg-navy-900 border border-navy-700 px-1 py-0.5">
+        {/* 40px-wide touch boxes via negative margins — the visible pill
+            stays this slim, the date label between them soaks up the
+            invisible overlap (it isn't tappable anyway). */}
+        <button type="button" onClick={() => step(-1)} title="Previous day" aria-label="Previous day"
+          className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink">
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <span className="font-mono text-[10.5px] text-muted whitespace-nowrap px-0.5">{isToday ? 'Today' : label}</span>
+        <button type="button" onClick={() => step(1)} disabled={isToday} title="Next day" aria-label="Next day"
+          className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink disabled:opacity-30">
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    )
+  })()
 
   // Chart geometry (viewBox space — stretches to fill, labels stay HTML)
   const CW = 960
@@ -671,22 +720,38 @@ export function TimelinePlayback({
         <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px]">
         {/* Right-edge fade whenever more pills hide off-screen — a clipped
             "30d" read as broken, not scrollable ("7 days 3", Aug 11). */}
-        <div ref={pillsRef} onScroll={measurePills} className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        <div ref={pillsRef} onScroll={measurePills} className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
+          {/* Short labels on phones (Brian, Aug 25: "one line, use
+              abbreviations, whatever it takes") — every range plus Custom
+              fits a 400px row without wrapping. */}
           {RANGES.map((r) => (
             <button
               key={r.key}
               onClick={() => onRange(r.key)}
               className={
-                'flex-none px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
+                'flex-none px-2.5 sm:px-3 py-1 rounded-full text-[11.5px] sm:text-[12px] font-display font-bold transition-colors ' +
                 (range === r.key
                   ? r.key === 'live' ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
                   : 'text-faint hover:text-ink hover:bg-navy-900')
               }
             >
               {r.key === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
-              {r.label}
+              <span className="sm:hidden">{RANGE_SHORT[r.key] ?? r.label}</span>
+              <span className="hidden sm:inline">{r.label}</span>
             </button>
           ))}
+          {/* Custom rides the same strip on phones so the row never wraps;
+              its panel renders as a sibling of the bar, so scroll-clipping
+              never touches it. */}
+          <button
+            onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
+            className={
+              'sm:hidden flex-none flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-display font-bold transition-colors ' +
+              (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink hover:bg-navy-900')
+            }
+          >
+            <SlidersHorizontal className="h-3 w-3" /> Custom
+          </button>
           {/* Live status rides the same row — its own row wasted a strip of map */}
           {live && (
             <span className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap flex-none pl-2 min-w-0">
@@ -698,51 +763,15 @@ export function TimelinePlayback({
         </div>
         {pillsMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent" />}
         </div>
-        {/* Day stepper — flip through calendar days one at a time (Brian, Aug 3).
-            Appears whenever the view IS a single day (Today, Yesterday, or a
-            one-day Custom); ◀ walks back through history as single-day Custom
-            windows, ▶ walks forward and snaps back onto the named Yesterday/
-            Today pills at the boundary. Live and multi-day ranges untouched. */}
-        {(() => {
-          let base: number | null = null
-          if (range === 'today') base = Date.now()
-          else if (range === 'yesterday') base = Date.now() - 86_400_000
-          else if (custom && toDateInput(customFrom) === toDateInput(customTo)) base = customFrom + 12 * 3_600_000
-          if (base == null) return null
-          const key = toDateInput(base)
-          const todayKey = toDateInput(Date.now())
-          const isToday = key === todayKey
-          const label = new Date(dayStartMs(key) + 12 * 3_600_000)
-            .toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' })
-          const step = (delta: number) => {
-            const targetKey = toDateInput(dayStartMs(key) + 12 * 3_600_000 + delta * 86_400_000)
-            if (targetKey >= todayKey) { onRange('today'); return }
-            if (targetKey === toDateInput(Date.now() - 86_400_000)) { onRange('yesterday'); return }
-            onCustom(dayStartMs(targetKey), dayEndMs(targetKey))
-            onRange('custom')
-          }
-          return (
-            <div className="flex-none flex items-center gap-0.5 rounded-full bg-navy-900 border border-navy-700 px-1 py-0.5">
-              {/* 40px-wide touch boxes via negative margins — the visible
-                  pill stays this slim, the date label between them soaks up
-                  the invisible overlap (it isn't tappable anyway). */}
-              <button type="button" onClick={() => step(-1)} title="Previous day" aria-label="Previous day"
-                className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink">
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <span className="font-mono text-[10.5px] text-muted whitespace-nowrap px-0.5">{isToday ? 'Today' : label}</span>
-              <button type="button" onClick={() => step(1)} disabled={isToday} title="Next day" aria-label="Next day"
-                className="px-[13px] py-2 -mx-[13px] -my-2 text-faint hover:text-ink disabled:opacity-30">
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )
-        })()}
-        {/* Custom pill — pinned outside the scroll area so its panel isn't clipped */}
+        {/* Day stepper — desktop keeps it here; phones render it beside the
+            date readout below so this row stays ONE line (Brian, Aug 25). */}
+        {dayStepper && <span className="hidden sm:block flex-none">{dayStepper}</span>}
+        {/* Custom pill — desktop version outside the scroll area; phones use
+            the in-strip pill above. */}
         <button
           onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
           className={
-            'flex-none flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
+            'hidden sm:flex flex-none items-center gap-1 px-3 py-1 rounded-full text-[12px] font-display font-bold transition-colors ' +
             (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink hover:bg-navy-900')
           }
         >
@@ -948,7 +977,9 @@ export function TimelinePlayback({
         </div>
       ) : (
         <>
-        {/* date/time readout — tight against the slider row */}
+        {/* date/time readout — tight against the slider row. Phones park the
+            day stepper here (free space beside the date) so the range row
+            above stays one line. */}
         <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-1.5">
           <CalendarClock className="h-3.5 w-3.5 text-amber flex-none" />
           <span className="font-display font-bold text-amber text-[13px] tabular-nums">
@@ -956,6 +987,7 @@ export function TimelinePlayback({
               : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t, tz)
               : scrubLabel(range, t)}
           </span>
+          {dayStepper && <span className="ml-auto sm:hidden">{dayStepper}</span>}
         </div>
         <div className="flex items-center gap-3 px-4 pt-1 pb-2">
           <button
@@ -1008,8 +1040,17 @@ export function TimelinePlayback({
                 aria-label="Timeline position"
               />
             </div>
-            <div className="flex justify-between mt-1 font-mono text-[10px] text-faint">
-              {ticks.map((label, i) => <span key={i}>{label}</span>)}
+            <div className="relative mt-1 h-[13px] font-mono text-[10px] text-faint">
+              {ticks.map((tk, i) => (
+                <span
+                  key={i}
+                  className="absolute top-0 whitespace-nowrap"
+                  style={{
+                    left: `${(tk.f * 100).toFixed(2)}%`,
+                    transform: i === 0 ? 'none' : i === ticks.length - 1 && tk.f > 0.9 ? 'translateX(-100%)' : 'translateX(-50%)',
+                  }}
+                >{tk.label}</span>
+              ))}
             </div>
           </div>
 

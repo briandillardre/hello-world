@@ -44,6 +44,59 @@ export async function GET(req: NextRequest) {
   const spanDays = (toMs - fromMs) / 86_400_000
   const maxAge = spanDays <= 2 ? 30 : spanDays <= 31 ? 240 : 600
 
+  // ── LONG RANGES READ THE PRE-ROLLED DAILY TRAILS (077) ─────────────────
+  // The live sampler window-scans every raw ping in the range; on YTD/All
+  // that blows the DB's statement budget and used to fall back to a
+  // newest-first fetch — long ranges "lost" everything but the last days
+  // (Brian, Aug 25). trail_daily holds each asset-day compressed once to
+  // ≤288 points (≤36 for the lite tier), so this path reads hundreds of
+  // tiny rows at ANY fleet size. The hourly cron keeps today/yesterday
+  // fresh and drains history; missing days simply fall through below.
+  if (spanDays > 2.5) {
+    const useLite = spanDays > 45
+    const col = useLite ? 'pts_lite' : 'pts'
+    const { data: dayRows } = await supabase
+      .from('trail_daily')
+      .select(`asset_id, day, ${col}`)
+      .gte('day', new Date(fromMs).toISOString().slice(0, 10))
+      .lte('day', new Date(toMs).toISOString().slice(0, 10))
+      .order('day', { ascending: true })
+    if (dayRows && dayRows.length) {
+      type Pt = [number, number, number, number | null]
+      const byAsset = new Map<string, { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string; ms: number }[]>()
+      for (const r of dayRows as unknown as { asset_id: string; day: string; [k: string]: unknown }[]) {
+        const pts = (r[col] ?? []) as Pt[]
+        if (!Array.isArray(pts)) continue
+        const list = byAsset.get(r.asset_id) ?? []
+        for (const p of pts) {
+          const ms = (p?.[2] ?? 0) * 1000
+          if (ms < fromMs || ms >= toMs) continue
+          list.push({ asset_id: r.asset_id, lat: p[1], lng: p[0], speed: p[3] ?? null, timestamp: new Date(ms).toISOString(), ms })
+        }
+        byAsset.set(r.asset_id, list)
+      }
+      // Fair per-asset budget, same philosophy as the live sampler.
+      const budgetTotal = 12_000
+      const per = Math.max(400, Math.floor(budgetTotal / Math.max(1, byAsset.size)))
+      const rows: { asset_id: string; lat: number; lng: number; speed: number | null; timestamp: string }[] = []
+      for (const list of Array.from(byAsset.values())) {
+        const stride = Math.max(1, Math.ceil(list.length / per))
+        for (let i = 0; i < list.length; i++) {
+          if (i % stride === 0 || i === list.length - 1) {
+            const { ms: _ms, ...row } = list[i]
+            rows.push(row)
+          }
+        }
+      }
+      rows.sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1))
+      return NextResponse.json(
+        { rows, truncated: false, source: 'rollup', count: rows.length },
+        { headers: { 'Cache-Control': `private, max-age=${maxAge}` } }
+      )
+    }
+    // No rollups yet (backfill still draining) — fall through to the live paths.
+  }
+
   // ── ONE PATH FOR EVERY RANGE ───────────────────────────────────────────
   // Today / Yesterday / 7d / 30d / YTD / All / Custom all resolve through the
   // SAME per-asset sampler (039). This is deliberate and is the permanent fix
