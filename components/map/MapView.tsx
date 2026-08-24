@@ -244,12 +244,13 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
  *  every few seconds while DRIVING and every few minutes while working —
  *  raw point density painted highways red and job sites cold, exactly
  *  backwards ("should not show red for just someone driving down a road",
- *  Aug 10). Each fix carries the seconds until the next one (log-scaled,
- *  capped at 30 min so one overnight gap doesn't own the whole ramp):
- *  a drive-through sums to seconds, a workday on the pad sums to hours —
- *  same dwell story the 3D terrain already tells. */
+ *  Aug 10). Weight is LINEAR time (capped 30 min): the old log scale gave a
+ *  60-second drive-by ping HALF the weight of a 30-minute dwell, so a whole
+ *  trip rendered as one fat red sausage (Brian, Aug 24, the RAM's day). Now
+ *  a minute is worth a minute: routes read as thin cool traces, real dwell
+ *  stacks to red — and the kernel RADIUS also grows with weight, so stops
+ *  bloom while the road stays a narrow line. */
 const HEAT_DT_CAP = 1800
-const HEAT_DENOM = Math.log1p(HEAT_DT_CAP)
 function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, windowSec = 86_400): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = []
   for (const tr of tracks) {
@@ -263,7 +264,26 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
       // A fresh fix with no successor yet still counts a little (45 s floor)
       // so Live view isn't blank where an asset just reported.
       const dtSec = Math.max(45, (nextT - p.t) * windowSec)
-      const w = Math.min(1, Math.log1p(Math.min(dtSec, HEAT_DT_CAP)) / HEAT_DENOM)
+      // Motion damper: a MOVING fix's time was spread along the road, not
+      // spent on this spot — without it, sparse-cadence pings while driving
+      // still capped out and the whole trip glowed (Brian, Aug 24). Reported
+      // speed when the fix has one, else implied from the hop to the next.
+      let mph = p.mph ?? null
+      if (mph == null && i + 1 < pts.length) {
+        const n = pts[i + 1]
+        const dx = (n.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180) * 111_320
+        const dy = (n.lat - p.lat) * 111_320
+        mph = (Math.hypot(dx, dy) / Math.max(1, dtSec)) * 2.23694
+      }
+      // Working crawl (a machine cutting passes at 1-4 mph) is the hottest
+      // story; merely PARKED accrues at 40% so overnight yards read warm,
+      // not molten; road speed barely marks the map.
+      const motion = mph == null ? 1
+        : mph <= 0.5 ? 0.4
+        : mph <= 3 ? 1
+        : mph >= 10 ? 0.08
+        : 1 - ((mph - 3) / 7) * 0.92
+      const w = (Math.min(dtSec, HEAT_DT_CAP) / HEAT_DT_CAP) * motion
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel, w } })
     }
   }
@@ -563,6 +583,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       return !v
     })
   }, [])
+  // 3D terrain units (Brian, Aug 24): extrude hours worked or dollars
+  // accumulated. Persisted per device; $ needs the cost permission upstream.
+  const [heat3dUnits, setHeat3dUnits] = useState<'hours' | 'dollars'>('hours')
+  useEffect(() => {
+    // $ terrain is cost-gated — a persisted 'dollars' never survives into a
+    // role that can't see dollars.
+    try { if (canViewCosts && localStorage.getItem('ht_heat3d_units') === 'dollars') setHeat3dUnits('dollars') } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const heat3dUnitsRef = useRef(heat3dUnits)
+  heat3dUnitsRef.current = heat3dUnits
+  const pickHeat3dUnits = useCallback((u: 'hours' | 'dollars') => {
+    setHeat3dUnits(u)
+    try { localStorage.setItem('ht_heat3d_units', u) } catch { /* private mode */ }
+  }, [])
+  // $/hr per asset for the $ terrain — hourly rate, else daily cost spread
+  // over an 8-hour day. Assets with neither contribute $0 in dollars mode.
+  const heat3dRates = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const a of assets) {
+      const r = a.hourly_rate ?? (a.daily_cost != null ? a.daily_cost / 8 : 0)
+      if (r > 0) m.set(a.id, r)
+    }
+    return m
+  }, [assets])
+  const heat3dRatesRef = useRef(heat3dRates)
+  heat3dRatesRef.current = heat3dRates
   const [terrain3d, setTerrain3d] = useState(lastState.terrain ?? false)
   const terrain3dRef = useRef(terrain3d)
   terrain3dRef.current = terrain3d
@@ -1694,7 +1741,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           // Zoom-adaptive: gentle at county zooms (aggregation does the
           // talking), sharper as you close in on a site.
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 12, 1.4, 16, 3],
-          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 8, 9, 11, 15, 16, 34],
+          // Radius grows with the point's dwell weight (Brian, Aug 24):
+          // drive-by pings get a small kernel — a thin, barely-there trace
+          // along the road — while long stops bloom into wide hot blobs.
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
+            8, ['+', 3, ['*', 7, ['get', 'w']]],
+            11, ['+', 4, ['*', 11, ['get', 'w']]],
+            16, ['+', 8, ['*', 22, ['get', 'w']]],
+          ],
           'heatmap-opacity': 0.85,
           'heatmap-color': [
             'interpolate', ['linear'], ['heatmap-density'],
@@ -2464,7 +2518,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
     } else if (mode === '3d') {
-      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current))
+      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current))
     } else {
       ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel, windowSecRef.current))
     }
@@ -2667,7 +2721,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   useEffect(() => {
     if (!mapReady) return
     updateMovementSources(displayT)
-  }, [mapReady, trailMode, displayT, filter, tracksEff, isolateId, selectedAsset, speedTrails, updateMovementSources])
+  }, [mapReady, trailMode, displayT, filter, tracksEff, isolateId, selectedAsset, speedTrails, heat3dUnits, updateMovementSources])
 
   // When paused (scrubbing), keep the camera pinned to the followed asset. During
   // playback the RAF loop drives it every frame, so skip to avoid double work.
@@ -6260,6 +6314,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           onMarkerStyle={setMarkerStyle}
           speedTrails={speedTrails}
           onSpeedTrails={toggleSpeedTrails}
+          heat3dUnits={heat3dUnits}
+          onHeat3dUnits={pickHeat3dUnits}
           t={pbT}
           playing={pbPlaying}
           speed={pbSpeed}

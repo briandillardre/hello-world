@@ -245,10 +245,16 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 - Ad variants ready in marketing/ad-variants.md
 
 ## Competitors
-- Tenna: $15-25/asset + $500 setup, enterprise, no Bluetooth tools, no QuickBooks
-- Samsara: $20-40, built for trucking, overkill for GCs
-- Verizon Connect: $20-35, sticky contracts, dated UX
-- GPS Trackit: $15-25, vehicle-centric, weak on tools/equipment
+Full 10-competitor battle brief with sources: `docs/COMPETITORS.md` (Aug 24
+recon — FleetWatcher/AlignOps, EquipmentShare T3, Trackunit, HCSS, Linxup,
+Motive added). Correction from that recon: Tenna DOES have BLE tool tags +
+claims QBO now — sell on implementation cost/contract friction/small-crew
+fit, not missing features. Tenna is John Deere-owned since ~Feb 2026.
+- Tenna: ~$15-30/asset quote-only + $5k-20k implementations, enterprise
+- Samsara: $27-60/vehicle, 3-yr contracts (small fleets prepay all 3 years)
+- Verizon Connect: ~$23-45/vehicle, 36-mo auto-renew, contract-trap reputation
+- FleetWatcher (AlignOps): paving/e-ticketing hauler logistics, heavy setup
+- GPS Trackit: $24-36/vehicle, month-to-month but leased-hardware exit trap
 
 ## Sync rule (Brian, Aug 1 2026)
 Any change to the roadmap, to-do list, future/idea items, or cost picture —

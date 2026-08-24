@@ -14,23 +14,37 @@ import type { AssetType } from './types'
 
 const M_PER_DEG = 111_320
 const SQRT3 = Math.sqrt(3)
-/** Max prism height (m) — the tallest cell in the window; rest scale to it. */
 const H_MAX = 1400
-const H_MIN = 25
+const H_MIN = 12
+/** ABSOLUTE height references (Brian, Aug 24: "a single drive = flat long
+ *  mole trail; a busy jobsite grows over the timeframe"). Full height means
+ *  ~6 crew-hours (or ~$1,200) accumulated in one cell — so a drive-through
+ *  is honestly low no matter how quiet the rest of the window is, instead
+ *  of the old tallest-cell-wins relative scale. Windows that exceed the
+ *  reference still stretch it upward (a 30-day view stays sane). */
+const HOURS_REF_SEC = 6 * 3600
+const DOLLARS_REF = 1200
+
+export type Heat3dUnits = 'hours' | 'dollars'
 
 export function hexHeatGeoJSON(
   tracks: AssetTrack[],
   filter: Set<AssetType>,
   t: number,
   windowSec: number,
-  cellMeters = 110
+  cellMeters = 110,
+  /** 'dollars' extrudes $ (dwell-seconds × the asset's $/hr) instead of time. */
+  units: Heat3dUnits = 'hours',
+  /** assetId → $/hr; assets missing here contribute $0 in dollars mode. */
+  ratePerHr?: Map<string, number>
 ): GeoJSON.FeatureCollection {
-  const bins = new Map<string, { q: number; r: number; sec: number }>()
+  const bins = new Map<string, { q: number; r: number; sec: number; usd: number }>()
   let lat0: number | null = null
   let cosLat = 1
 
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
+    const rate = ratePerHr?.get(tr.assetId) ?? 0
     const pts = tr.points
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1]
@@ -39,6 +53,11 @@ export function hexHeatGeoJSON(
       const dt = (Math.min(b.t, t) - a.t) * windowSec
       if (dt <= 0) continue
       if (lat0 === null) { lat0 = a.lat; cosLat = Math.max(0.2, Math.cos((lat0 * Math.PI) / 180)) }
+      // Presence damping (Aug 24): a machine WORKING a cell builds it at
+      // full value; an asset merely parked there (speed ~0) accrues at 12%
+      // so overnight yards read as mounds, not towers. Unknown speed keeps
+      // full weight (old rows without speed).
+      const presence = a.mph == null ? 1 : a.mph > 0.5 ? 1 : 0.12
       // meters-ish planar coords → pointy-top axial hex → cube-round
       const x = a.lng * cosLat * M_PER_DEG
       const y = a.lat * M_PER_DEG
@@ -54,39 +73,67 @@ export function hexHeatGeoJSON(
       if (dq > dr && dq > ds) q = -r - s
       else if (dr > ds) r = -q - s
       const key = `${q},${r}`
+      const eff = dt * presence
+      const usd = (eff / 3600) * rate
       const bin = bins.get(key)
-      if (bin) bin.sec += dt
-      else bins.set(key, { q, r, sec: dt })
+      if (bin) { bin.sec += eff; bin.usd += usd }
+      else bins.set(key, { q, r, sec: eff, usd })
     }
   }
 
   if (bins.size === 0 || lat0 === null) return { type: 'FeatureCollection', features: [] }
 
-  // Rounded terrain, not a hex farm (owner ask Jul 14): blur each cell's
-  // dwell with its six neighbors so heights roll instead of step, then draw
-  // overlapping near-circular columns — adjacent cells merge into smooth
-  // rounded masses, and lone cells read as soft domes instead of crystals.
-  const NEIGHBORS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]
-  const smoothed = new Map<string, { q: number; r: number; sec: number; own: number }>()
+  // Rounded terrain, not a hex farm (owner ask Jul 14; smoothed further
+  // Aug 24): blur each cell's value across TWO neighbor rings so heights
+  // roll like a surface instead of stepping, then draw overlapping
+  // near-circular columns — adjacent cells merge into smooth masses.
+  const RING1: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]
+  const RING2: [number, number][] = [
+    [2, 0], [-2, 0], [0, 2], [0, -2], [2, -2], [-2, 2],
+    [2, -1], [-2, 1], [1, 1], [-1, -1], [1, -2], [-1, 2],
+  ]
+  // $ mode with no rates set anywhere falls back to hours — an empty map
+  // reads as broken, and heights are the same story either way until rates
+  // exist.
+  let effUnits = units
+  if (units === 'dollars') {
+    let anyUsd = false
+    for (const b of Array.from(bins.values())) if (b.usd > 0) { anyUsd = true; break }
+    if (!anyUsd) effUnits = 'hours'
+  }
+  const valOf = (b: { sec: number; usd: number }) => (effUnits === 'dollars' ? b.usd : b.sec)
+  const smoothed = new Map<string, { q: number; r: number; val: number; ownSec: number; ownUsd: number }>()
   for (const b of Array.from(bins.values())) {
-    let sec = b.sec
-    for (const [dq, dr] of NEIGHBORS) {
-      sec += (bins.get(`${b.q + dq},${b.r + dr}`)?.sec ?? 0) * 0.35
+    let val = valOf(b)
+    for (const [dq, dr] of RING1) {
+      const n = bins.get(`${b.q + dq},${b.r + dr}`)
+      if (n) val += valOf(n) * 0.3
     }
-    smoothed.set(`${b.q},${b.r}`, { q: b.q, r: b.r, sec, own: b.sec })
+    for (const [dq, dr] of RING2) {
+      const n = bins.get(`${b.q + dq},${b.r + dr}`)
+      if (n) val += valOf(n) * 0.1
+    }
+    smoothed.set(`${b.q},${b.r}`, { q: b.q, r: b.r, val, ownSec: b.sec, ownUsd: b.usd })
   }
 
-  let maxSec = 0
-  for (const b of Array.from(smoothed.values())) if (b.sec > maxSec) maxSec = b.sec
+  // Absolute reference (with adaptive headroom for very long windows): a
+  // lone drive's cells sit near the floor — the "mole trail" — while a
+  // worked site climbs toward full height as hours/$ accumulate.
+  let maxVal = 0
+  for (const b of Array.from(smoothed.values())) if (b.val > maxVal) maxVal = b.val
+  const ref = Math.max(units === 'dollars' ? DOLLARS_REF : HOURS_REF_SEC, maxVal)
 
   const features: GeoJSON.Feature[] = []
   for (const b of Array.from(smoothed.values())) {
+    if (b.val <= 0) continue
     // cell center back to planar meters, then to lng/lat
     const cx = cellMeters * SQRT3 * (b.q + b.r / 2)
     const cy = cellMeters * 1.5 * b.r
-    const ratio = b.sec / maxSec
-    // 18-gon ≈ cylinder; busier cells swell slightly so peaks look rounded
-    const radius = cellMeters * (1.0 + 0.25 * ratio)
+    // LINEAR response: drive-through cells sit near the floor (the mole
+    // trail); only real accumulated work climbs.
+    const ratio = b.val / ref
+    // 18-gon ≈ cylinder; busier cells swell so peaks read rounded
+    const radius = cellMeters * (0.85 + 0.35 * ratio)
     const ring: [number, number][] = []
     for (let k = 0; k < 18; k++) {
       const ang = (k / 18) * Math.PI * 2
@@ -101,7 +148,8 @@ export function hexHeatGeoJSON(
       properties: {
         ratio,
         h: H_MIN + ratio * (H_MAX - H_MIN),
-        hours: Math.round((b.own / 3600) * 10) / 10,
+        hours: Math.round((b.ownSec / 3600) * 10) / 10,
+        dollars: Math.round(b.ownUsd),
       },
     })
   }

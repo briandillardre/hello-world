@@ -20,7 +20,7 @@ export const MOCK_COMPANY: Company = {
 export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-1', company_id: 'mock-company-1', name: 'Chevy 1500 — Owner',
-    type: 'vehicle', tracker_id: 'obd-001', active: true,
+    type: 'vehicle', tracker_id: 'obd-001', active: true, hourly_rate: 68,
     metadata: { make: 'Chevrolet', model: 'Silverado 1500', year: 2021, license: 'SC-DCG-001' },
     created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -52,7 +52,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-2', company_id: 'mock-company-1', name: 'Link-Belt 130X2 Excavator',
-    type: 'equipment', tracker_id: 'gps-002', active: true,
+    type: 'equipment', tracker_id: 'gps-002', active: true, hourly_rate: 130, daily_cost: 410,
     metadata: { make: 'Link-Belt', model: '130X2', year: 2019 },
     created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -81,7 +81,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-3', company_id: 'mock-company-1', name: 'John Martinez',
-    type: 'personnel', tracker_id: 'bt-003', active: true,
+    type: 'personnel', tracker_id: 'bt-003', active: true, hourly_rate: 52,
     metadata: { role: 'Foreman', phone: '615-555-0103' },
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -103,7 +103,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-5', company_id: 'mock-company-1', name: 'Sakai SW990 Roller',
-    type: 'equipment', tracker_id: 'gps-005', active: true,
+    type: 'equipment', tracker_id: 'gps-005', active: true, hourly_rate: 85, daily_cost: 210,
     metadata: { make: 'Sakai', model: 'SW990', year: 2012 },
     created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -114,7 +114,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-6', company_id: 'mock-company-1', name: 'RAM 3500 Dump',
-    type: 'vehicle', tracker_id: 'obd-006', active: true,
+    type: 'vehicle', tracker_id: 'obd-006', active: true, hourly_rate: 95,
     metadata: { make: 'Ram', model: '3500', year: 2022, license: 'SC-DCG-002' },
     created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -125,7 +125,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-7', company_id: 'mock-company-1', name: 'Sarah Chen',
-    type: 'personnel', tracker_id: 'bt-007', active: true,
+    type: 'personnel', tracker_id: 'bt-007', active: true, hourly_rate: 48,
     metadata: { role: 'Site Engineer', phone: '615-555-0107' },
     created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -147,7 +147,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-9', company_id: 'mock-company-1', name: 'Takeuchi TB235 Mini-Ex',
-    type: 'equipment', tracker_id: 'gps-009', active: true,
+    type: 'equipment', tracker_id: 'gps-009', active: true, hourly_rate: 90, daily_cost: 175,
     metadata: { make: 'Takeuchi', model: 'TB235', year: 2014 },
     created_at: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
@@ -158,7 +158,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   },
   {
     id: 'asset-10', company_id: 'mock-company-1', name: 'Peterbilt 567 Tri-Axle',
-    type: 'vehicle', tracker_id: 'obd-010', active: true,
+    type: 'vehicle', tracker_id: 'obd-010', active: true, hourly_rate: 105,
     metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'SC-DCG-003' },
     created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     location: {

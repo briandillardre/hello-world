@@ -70,6 +70,9 @@ interface TimelinePlaybackProps {
    *  per-asset color with age fading. */
   speedTrails?: boolean
   onSpeedTrails?: () => void
+  /** 3D terrain units (Brian, Aug 24): extrude hours worked or $ accrued. */
+  heat3dUnits?: 'hours' | 'dollars'
+  onHeat3dUnits?: (u: 'hours' | 'dollars') => void
   t: number
   playing: boolean
   speed: number
@@ -127,7 +130,7 @@ interface TimelinePlaybackProps {
 }
 
 export function TimelinePlayback({
-  range, onRange, loading = false, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, speedTrails = false, onSpeedTrails, t, playing, speed, onSeek, onPlayPause, onSpeed,
+  range, onRange, loading = false, trailMode, onTrailMode, markerStyle = 'dot', onMarkerStyle, speedTrails = false, onSpeedTrails, heat3dUnits = 'hours', onHeat3dUnits, t, playing, speed, onSeek, onPlayPause, onSpeed,
   customFrom, customTo, onCustom, costTotal, costLabel, showCost = true, realWindow,
   activity = [], costCurve = null, windowSeconds = 12 * 3600,
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
@@ -847,13 +850,39 @@ export function TimelinePlayback({
         {stripMore && <div className="pointer-events-none absolute inset-y-0 right-0 w-9 bg-gradient-to-l from-navy-950 to-transparent sm:hidden" />}
         </div>
 
+        {/* 3D terrain units (Brian, Aug 24) — the growing surface extrudes
+            hours worked or dollars accrued; $ only for cost-permitted roles.
+            Pinned like Speed so it never rests half-clipped. */}
+        {onHeat3dUnits && trailMode === '3d' && (
+          <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+            <button
+              onClick={() => onHeat3dUnits('hours')}
+              title="Terrain height = hours on the spot"
+              className={
+                'px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-colors ' +
+                (heat3dUnits === 'hours' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')
+              }
+            >Hrs</button>
+            {showCost && (
+              <button
+                onClick={() => onHeat3dUnits('dollars')}
+                title="Terrain height = dollars accrued (asset rates × time on the spot)"
+                className={
+                  'px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-colors ' +
+                  (heat3dUnits === 'dollars' ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')
+                }
+              >$</button>
+            )}
+          </div>
+        )}
+
         {/* Speed-colored trails (Brian, Aug 23: "where do I find speed trail
             color toggle") — pinned beside Camera so it can never rest
             half-clipped in the scroll area. */}
         {onSpeedTrails && trailMode === 'trails' && (
           <button
             onClick={onSpeedTrails}
-            title="Color trails by speed — teal under 10 · amber 10–45 · orange 45–70 · red 70+ mph"
+            title="Color trails by speed — cool colors slow, hot colors fast (same scale as the activity bar); red = 65+ mph"
             className={
               'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors ' +
               (speedTrails ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')

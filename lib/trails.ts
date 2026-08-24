@@ -622,11 +622,13 @@ export function trailSegmentsBanded(
 
 // ── Speed-colored trails (Brian, Aug 23) ────────────────────────────────────
 // Same segment-building rules as the age bands (gaps break the line, class
-// handoffs share the boundary point) but bucketed by SPEED instead of age:
-// teal = crawl/on-site, amber = surface streets, orange = highway, red = 70+.
-export const SPEED_CLASS_MPH = [10, 45, 70]
-export const SPEED_CLASS_COLORS = ['#2dd4bf', '#ff9e16', '#fb923c', '#fb5d5d']
-export const SPEED_CLASS_LABELS = ['under 10 mph', '10–45 mph', '45–70 mph', '70+ mph']
+// handoffs share the boundary point) but bucketed by SPEED instead of age.
+// Eight classes on THE APP'S ramp (Brian, Aug 24: "more colors, match
+// conventions") — the same quiet-blue → teal → amber → red scale the
+// activity bar and heat legend use, sampled at each bucket's midpoint.
+export const SPEED_CLASS_MPH = [5, 15, 25, 35, 45, 55, 65]
+export const SPEED_CLASS_COLORS = ['#173f63', '#2dd4bf', '#72c287', '#a7b55e', '#dda733', '#ff9e16', '#fd8136', '#fb5d5d']
+export const SPEED_CLASS_LABELS = ['under 5 mph', '5–15 mph', '15–25 mph', '25–35 mph', '35–45 mph', '45–55 mph', '55–65 mph', '65+ mph']
 
 const EARTH_M = 6_371_000
 function metersBetween(a: [number, number], b: [number, number]): number {
