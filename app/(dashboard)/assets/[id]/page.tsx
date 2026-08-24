@@ -149,7 +149,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
       <div className="p-4 max-w-3xl space-y-5">
         {/* current status + drive history — needs the 7-day ping scan, so it
             streams in behind a skeleton that mirrors the finished card */}
-        <Suspense fallback={<StatusSkeleton showDriveStats={showDriveStats} loc={loc ?? null} />}>
+        <Suspense fallback={<StatusSkeleton showDriveStats={showDriveStats} isVehicle={asset.type === 'vehicle'} loc={loc ?? null} />}>
           <StatusAndTripsSection asset={asset} companyId={companyId} tz={tz} showDriveStats={showDriveStats} />
         </Suspense>
 
@@ -171,8 +171,12 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         </Suspense>
 
         {/* pairing history — which truck carried this tool / what this truck
-            carried, as episodes. Empty until migration 021 + first beacon. */}
-        <Suspense fallback={<SectionLoading label="Pairing history" />}>
+            carried, as episodes. Empty until migration 021 + first beacon.
+            fallback null on purpose: most assets have NO pairing rows, and a
+            progress bar that resolves to nothing reads as a failed load and
+            makes the sections below jump mid-tap (ship-check). The section
+            simply pops in when it has content. */}
+        <Suspense fallback={null}>
           <PairingSection companyId={companyId} assetId={asset.id} tz={tz} names={assets.map((a) => ({ id: a.id, name: a.name }))} />
         </Suspense>
 
@@ -276,9 +280,16 @@ async function StatusAndTripsSection({ asset, companyId, tz, showDriveStats }: {
               .order('timestamp', { ascending: false })
               .range(o, o + PAGE - 1)
           ))
-          for (const { data } of results) {
+          // Stop at the first error OR short page WITHOUT pushing the
+          // later-offset results of the same batch — appending pages from
+          // beyond a failed/final one would leave a silent hole in the
+          // middle of the week and trips/today-stats would render the gap
+          // as authoritative (ship-check P1). Worst case now matches the
+          // old sequential loop: truncated older history, never a hole.
+          for (const { data, error } of results) {
+            if (error) { console.error('trip-log page fetch failed:', error.message); done = true; break }
             acc.push(...(data ?? []))
-            if (!data || data.length < PAGE) done = true
+            if (!data || data.length < PAGE) { done = true; break }
           }
         }
         return acc.reverse() // chronological
@@ -503,8 +514,9 @@ function SectionLoading({ label }: { label: string }) {
 /** Mirrors the finished status card so nothing jumps when the data lands —
  *  the tiles that come straight off the last fix (speed / battery / coords)
  *  show real values immediately; only the computed today-numbers shimmer. */
-function StatusSkeleton({ showDriveStats, loc }: {
+function StatusSkeleton({ showDriveStats, isVehicle, loc }: {
   showDriveStats: boolean
+  isVehicle: boolean
   loc: AssetWithLocation['location'] | null
 }) {
   return (
@@ -518,7 +530,9 @@ function StatusSkeleton({ showDriveStats, loc }: {
         {showDriveStats && <SkeletonStat label="Drive time" />}
         <SkeletonStat label="Idle today" />
         <MiniStat label="Battery" value={loc?.battery != null ? `${loc.battery}` : '—'} unit="%" />
-        <SkeletonStat label="Starts today" />
+        {/* Vehicles resolve to the 12V tile here — same label while loading,
+            so nothing renames itself when the data lands (ship-check). */}
+        <SkeletonStat label={isVehicle ? '12V battery' : 'Starts today'} />
       </div>
       {loc && (
         <p className="text-[11px] text-faint">
