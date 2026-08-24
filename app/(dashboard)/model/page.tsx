@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { OperatingModel } from '@/components/model/OperatingModel'
+import { ShowroomCard } from '@/components/model/ShowroomCard'
 import { isPlatformOwner } from '@/lib/platform-owner'
 
 export const metadata = { title: 'HammerTrack — Operating model' }
@@ -23,6 +24,7 @@ export default async function ModelPage() {
           assumptions in docs/OPERATING-MODEL.md · pricing structure in docs/PRICING-TIERS.md
         </p>
       </div>
+      <ShowroomCard />
       <OperatingModel />
     </div></div>
   )

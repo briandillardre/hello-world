@@ -43,6 +43,10 @@
     {
       "path": "/api/cron/usage",
       "schedule": "25 * * * *"
+    },
+    {
+      "path": "/api/cron/simulator",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

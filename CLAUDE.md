@@ -39,6 +39,10 @@ checks `NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'`.
 Live public feeds (ADS-B planes, transit GTFS) were considered and declined
 for the front door: wrong story for a construction fleet + a third-party
 outage would break the demo; revisit only as a labeled extras layer.
+SHOWROOM COMPANY (Aug 23): a real production company driven by
+`/api/cron/simulator` through the real flespi ingest (alerts/sessions/tools
+all production paths); Brian logs in and reshapes zones, trucks re-route on
+real roads via OSRM. Seed from /model (founder-gated). `docs/SHOWROOM.md`.
 
 ## Pricing sync rule (Brian, Aug 5; /demo added Aug 17)
 Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
