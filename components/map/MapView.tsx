@@ -1211,6 +1211,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (c.markers) setMarkerStyle(c.markers)
     setRadarOn(c.radar)
     setCloudsOn(c.clouds ?? false)
+    // Storm tops isn't part of any view cfg — clear it so a precip-on view
+    // can't stack two surface weather layers while the highlight claims an
+    // exact match (ship-check).
+    setStormTopsOn(false)
     setPrecipOn(c.precip)
     if (c.precipPeriod) setPrecipPeriod(c.precipPeriod)
     setOverlaysOn({ ...c.overlays })
@@ -6137,8 +6141,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }}
         aria-label={railHidden ? 'Show map tools' : 'Hide map tools'}
         // Straight across from the LAYERS tab; slides with the pullout so
-        // the name travels with the tools it opens (Brian, Aug 24).
-        style={{ top: '44%', right: railHidden ? 0 : (railTabOffset ?? 0), transition: 'right .25s ease, color .15s ease' }}
+        // the name travels with the tools it opens (Brian, Aug 24). Hidden
+        // until the column is measured — at right:0 pre-measure it would sit
+        // ON the live buttons for the slow-tile seconds before map load and
+        // eat a geolocate/measure tap (ship-check).
+        style={{
+          top: '44%',
+          right: railHidden ? 0 : (railTabOffset ?? 0),
+          visibility: railTabOffset == null && !railHidden ? 'hidden' : undefined,
+          transition: 'right .25s ease, color .15s ease',
+        }}
         className="absolute z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 py-2.5 px-1 text-faint hover:text-ink touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
