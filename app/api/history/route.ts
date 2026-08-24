@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
         const stride = Math.max(1, Math.ceil(list.length / per))
         for (let i = 0; i < list.length; i++) {
           if (i % stride === 0 || i === list.length - 1) {
-            const { ms: _ms, ...row } = list[i]
-            rows.push(row)
+            const p = list[i]
+            rows.push({ asset_id: p.asset_id, lat: p.lat, lng: p.lng, speed: p.speed, timestamp: p.timestamp })
           }
         }
       }
