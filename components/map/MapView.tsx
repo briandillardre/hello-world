@@ -101,7 +101,7 @@ const ASSET_COLORS: Record<AssetType, string> = {
 
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
-const HEAD_LAYERS = ['trail-heads', 'trail-head-labels', 'trail-head-tools-badge']
+const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -302,7 +302,7 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, s
         // toolCount is the CURRENT ride, drawn on replay heads too — the
         // badge answers "what's in the truck NOW", whatever moment the
         // scrubber is showing (Brian asked for it on all trail modes).
-        properties: { id: tr.assetId, name: tr.name, color: tr.color, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0 },
+        properties: { id: tr.assetId, name: tr.name, color: tr.color, type: tr.type, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0 },
       })),
   }
 }
@@ -1204,7 +1204,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     setThreeD(c.threeD)
     setTerrain3d(c.terrain ?? false)
     setTerrainExag(c.terrainExag ?? 1.3)
-    setMarkerStyle(c.markers ?? 'dot')
+    // Views configure the MAP, not the asset grammar: only a view that
+    // explicitly saved a marker style changes it (user-saved views always
+    // do). Presets used to force everyone back to dots — the "assets look
+    // different after I tap a view" complaint (Brian, Aug 24).
+    if (c.markers) setMarkerStyle(c.markers)
     setRadarOn(c.radar)
     setCloudsOn(c.clouds ?? false)
     setPrecipOn(c.precip)
@@ -1290,6 +1294,37 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const handleDefaultView = useCallback((id: string) => {
     persistViews({ views: mapViews.views, defaultId: mapViews.defaultId === id ? null : id })
   }, [mapViews, persistViews])
+
+  // A view is a STARTING POINT (Brian, Aug 24): the highlight means "the map
+  // looks exactly like this view right now". The moment any layer or style
+  // toggle diverges from the applied view's snapshot, the highlight clears —
+  // and "Save current" is how the tweaked look becomes their own view.
+  useEffect(() => {
+    if (!activeViewId) return
+    const v = allViews(mapViews).find((x) => x.id === activeViewId)
+    if (!v) { setActiveViewId(null); return }
+    const c = v.cfg
+    const onKeys = (o: Record<string, boolean> | undefined) =>
+      Object.keys(o ?? {}).filter((k) => o?.[k]).sort().join(',')
+    const matches =
+      c.base === base &&
+      c.threeD === threeD &&
+      (c.terrain ?? false) === terrain3d &&
+      (c.terrainExag ?? 1.3) === terrainExag &&
+      // Views without a saved marker style don't constrain it (see applyView).
+      (c.markers == null || c.markers === markerStyle) &&
+      c.radar === radarOn &&
+      (c.clouds ?? false) === cloudsOn &&
+      c.precip === precipOn &&
+      (!c.precip || c.precipPeriod === precipPeriod) &&
+      onKeys(c.overlays) === onKeys(overlaysOn) &&
+      // Compare against what applyView could actually turn on — a view that
+      // wants parcels isn't "diverged from" on a device with no parcel URL.
+      (PARCEL_SERVICE_URL ? c.parcels : false) === parcelsOn &&
+      c.trailMode === trailMode &&
+      c.zones === showZones
+    if (!matches) setActiveViewId(null)
+  }, [activeViewId, mapViews, base, threeD, terrain3d, terrainExag, markerStyle, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones])
   // Conditions display moved to the top bar (TopBarWeather fetches its own);
   // MapView still resolves the weather PLACE (wxPlace/wxCoordsRef drive the
   // radar/layers) and keeps the fetch warm for the same 10-min cache.
@@ -1797,11 +1832,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
         layout: { visibility: 'none' },
+        // Same puck as the LIVE dots (Brian, Aug 24: "why do we have
+        // different conventions on the assets in views vs the regular map
+        // screen?") — replay heads used to be smaller plain circles, so any
+        // view/mode with trails on silently switched the asset language.
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 10, 7],
-          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2],
-          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#001523'],
+          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12, 10],
+          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
         },
       })
       m.addLayer({
@@ -1994,6 +2033,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
         },
       })
+      // Same silhouettes on the REPLAY heads — one asset language everywhere
+      // (registered here, after the SDF images exist; slotted into z-order
+      // right above the head puck).
+      m.addLayer({
+        id: 'trail-head-glyphs', type: 'symbol', source: 'trail-heads',
+        layout: {
+          'icon-image': ['concat', 'type-', ['get', 'type']],
+          'icon-size': 0.19,
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+          visibility: 'none',
+        },
+        paint: { 'icon-color': '#04121d' },
+      }, 'trail-head-labels')
       // Direction arrows — the alternate marker style: a ground-aligned puck
       // in the asset's color, nose pointing the travel heading. Drawn as an
       // SDF alpha mask so ONE image tints per-feature via icon-color.
@@ -4818,19 +4870,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     el.style.opacity = railHidden ? '0' : ''
     el.style.pointerEvents = railHidden ? 'none' : ''
   }, [railHidden, mapReady])
-  // The MAP TOOLS edge handle parks just BELOW the button column it controls
-  // — at a fixed 44% it sat on top of the ruler/zone buttons on phones
-  // (Brian, Aug 23: "fix overlap"). Measured, so any column height works.
-  const [railHandleTop, setRailHandleTop] = useState<number | null>(null)
+  // The MAP TOOLS handle sits straight across from LAYERS (Brian, Aug 24) —
+  // same 44% height, a matched pair of tray tabs. When the button column is
+  // out, the tab slides LEFT with it and rides the column's edge (the name
+  // moves with the pullout); the old below-the-column parking spot is gone.
+  // offsetWidth is layout-based, so the hide transform can't skew the
+  // measurement.
+  const [railTabOffset, setRailTabOffset] = useState<number | null>(null)
   useEffect(() => {
     if (!mapReady) return
-    const wrap = mapContainer.current
-    const el = wrap?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
-    if (!wrap || !el) return
+    const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
+    if (!el) return
     const measure = () => {
-      const wr = wrap.getBoundingClientRect()
-      const er = el.getBoundingClientRect()
-      if (er.height > 0) setRailHandleTop(er.bottom - wr.top + 8)
+      const mr = parseFloat(getComputedStyle(el).marginRight) || 10
+      if (el.offsetWidth > 0) setRailTabOffset(el.offsetWidth + mr)
     }
     measure()
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
@@ -6076,9 +6129,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           setRailHidden((h) => !h)
         }}
         aria-label={railHidden ? 'Show map tools' : 'Hide map tools'}
-        // Measured top: just below the button column (overlap fix, Aug 23).
-        style={{ top: railHandleTop ?? '44%' }}
-        className="absolute right-0 z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-r-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none"
+        // Straight across from the LAYERS tab; slides with the pullout so
+        // the name travels with the tools it opens (Brian, Aug 24).
+        style={{ top: '44%', right: railHidden ? 0 : (railTabOffset ?? 0), transition: 'right .25s ease, color .15s ease' }}
+        className="absolute z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 py-2.5 px-1 text-faint hover:text-ink touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
