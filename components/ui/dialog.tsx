@@ -5,7 +5,24 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const Dialog = DialogPrimitive.Root
+// Tell floating chrome (the Ask launcher) a dialog is up — it sits at a
+// higher z-index than the overlay and was hovering over edit forms. This has
+// to live HERE, on Root, keyed on the real `open` prop — every call site
+// keeps `<DialogContent>` mounted as a permanent CHILD of `<Dialog open={x}>`
+// (Radix's own presence logic is what actually hides it when x is false), so
+// an effect on DialogContent itself fires the moment that JSX first renders
+// ANYWHERE, regardless of x — permanently on for any Dialog consumer that's
+// itself always-mounted (map/25's GeofenceDrawer never unmounts while
+// browsing /map), which silently hid the desktop Ask launcher there forever
+// (ship-check, Aug 25: the button never dispatches its matching "close").
+function Dialog({ open, ...props }: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root>) {
+  React.useEffect(() => {
+    if (!open) return
+    window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: true } }))
+    return () => { window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: false } })) }
+  }, [open])
+  return <DialogPrimitive.Root open={open} {...props} />
+}
 const DialogTrigger = DialogPrimitive.Trigger
 const DialogPortal = DialogPrimitive.Portal
 const DialogClose = DialogPrimitive.Close
@@ -25,14 +42,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
-  // Tell floating chrome (the Ask launcher) a dialog is up — it sits at a
-  // higher z-index than the overlay and was hovering over edit forms.
-  React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: true } }))
-    return () => { window.dispatchEvent(new CustomEvent('ht:dialog', { detail: { open: false } })) }
-  }, [])
-  return (
+>(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -49,8 +59,7 @@ const DialogContent = React.forwardRef<
       </DialogClose>
     </DialogPrimitive.Content>
   </DialogPortal>
-  )
-})
+))
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
