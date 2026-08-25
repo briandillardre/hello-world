@@ -2388,13 +2388,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }
       })
 
-      // Opening view — DEFAULT is "exactly where you left it" (camera, tilt,
-      // zoom — per surface, so map and command remember separately).
-      // "Whole fleet" stays an explicit choice in Settings → Map opens to.
+      // Opening view — DEFAULT is the WHOLE FLEET: fit to the assets'
+      // extents (Brian, Aug 24: "it should open to extents of assets" —
+      // the old where-you-left-it default reopened on whatever corner of
+      // the county you last looked at, and the Settings UI already claimed
+      // Whole fleet was the default). "Last view" stays an explicit choice
+      // in Settings → Map opens to.
       const camKey = kiosk ? 'ht_command_last_camera' : 'ht_map_last_camera'
       let openedFromSaved = false
       try {
-        if (localStorage.getItem('ht_map_open_view') !== 'fit') {
+        if (localStorage.getItem('ht_map_open_view') === 'last') {
           const saved = JSON.parse(localStorage.getItem(camKey) ?? 'null')
           if (saved && Array.isArray(saved.center)) {
             // Pitch restores as-left, unconditionally — tilt belongs to the
@@ -2406,13 +2409,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }
       } catch { /* corrupt value — fall through to fit */ }
       if (!openedFromSaved) {
-        const pts: [number, number][] = [
-          ...assets.filter((a) => a.location).map((a) => [a.location!.lng, a.location!.lat] as [number, number]),
-          ...SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number]),
-        ]
-        for (const g of geofences) {
-          const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
-          if (ring) for (const c of ring) pts.push([c[0], c[1]])
+        // ASSETS define the opening frame. Zones and site devices only fill
+        // in when no asset has a fix yet (fresh company) — one county-wide
+        // boundary zone must never zoom the whole fleet out to a speck
+        // (that's what made the open view read as "wrong location").
+        let pts: [number, number][] = assets
+          .filter((a) => a.location)
+          .map((a) => [a.location!.lng, a.location!.lat] as [number, number])
+        if (pts.length === 0) {
+          pts = SITE_DEVICES.map((d) => [d.lng, d.lat] as [number, number])
+          for (const g of geofences) {
+            const ring = g.geometry?.coordinates?.[0] as [number, number][] | undefined
+            if (ring) for (const c of ring) pts.push([c[0], c[1]])
+          }
         }
         if (pts.length > 0) {
           const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))

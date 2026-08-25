@@ -22,8 +22,9 @@ export function MapPrefs() {
   return (
     <div className="p-4 space-y-2">
       <p className="text-xs text-muted">
-        What the map shows when you open it, on this device. Default: exactly where you left it —
-        camera, tilt, zoom, and layers all come back (map and command center remember separately).
+        What the map shows when you open it, on this device. Default: the whole fleet — every
+        asset framed on screen. Last view brings back exactly where you left it (camera, tilt,
+        zoom; map and command center remember separately).
       </p>
       <div className="flex items-center gap-0.5 bg-navy-950 rounded-lg p-0.5 border border-navy-800 max-w-xs">
         <button
