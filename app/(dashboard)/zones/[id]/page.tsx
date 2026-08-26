@@ -9,7 +9,9 @@ import { pointInPolygon } from '@/lib/alerts-engine'
 import { zoneAssetUsage, usageFromLedger, ledgerRowCost, type ZoneAssetUsage } from '@/lib/costs'
 import { ZoneActivityChart, type ChartRow } from '@/components/zones/ZoneActivityChart'
 import type { AssetType } from '@/lib/types'
-import { GeofenceEditor } from '@/components/zones/GeofenceEditor'
+// Lazy: GeofenceEditor pulls maplibre-gl (~1 MB) — loaded on demand, same
+// pattern as MapPageClient's dynamic MapView.
+import { GeofenceEditorLazy as GeofenceEditor } from '@/components/zones/GeofenceEditorLazy'
 import { ZoneUsage } from '@/components/zones/ZoneUsage'
 import { ZoneVisits } from '@/components/zones/ZoneVisits'
 import { ZoneWeather, type SiteWeatherRow } from '@/components/zones/ZoneWeather'

@@ -298,7 +298,10 @@ export function FleetRhythm({ scores, workStart, workEnd }: {
   const rows = scores.filter((s) => s.medFirstMove != null && s.medLastMove != null).slice(0, 8)
   if (rows.length < 2) return null
   const sorted = [...rows].sort((a, b) => (a.medFirstMove ?? 0) - (b.medFirstMove ?? 0))
-  const LGN = 128
+  // Label gutter sizes to the longest name (~6.6 viewBox px per char at
+  // fontSize 10.5) so "Chevy 1500 — Owner" doesn't truncate; capped so the
+  // clock still gets most of the width.
+  const LGN = Math.min(220, Math.max(128, 14 + Math.max(...sorted.map((s) => s.name.length)) * 6.6))
   const xr = (min: number) => LGN + (min / 1440) * (W - LGN - 10)
   const rowH = 24
   const H = AXIS + sorted.length * rowH + 4
@@ -320,7 +323,7 @@ export function FleetRhythm({ scores, workStart, workEnd }: {
         const cy = y + rowH / 2
         const f = s.medFirstMove!
         const l = Math.max(s.medLastMove!, f + 6)
-        const name = s.name.length > 17 ? `${s.name.slice(0, 16)}…` : s.name
+        const name = s.name.length > 31 ? `${s.name.slice(0, 30)}…` : s.name
         return (
           <g key={s.assetId}>
             <text x={LGN - 8} y={cy + 3.5} textAnchor="end" fontSize={10.5} fill="#9fb6cc">{name}</text>

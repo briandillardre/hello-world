@@ -35,8 +35,8 @@ const FEATURES = [
 
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
-  ['Bluetooth tools included', 'Tenna: paid add-on'],
-  ['QuickBooks built in', 'Tenna: enterprise only'],
+  ['Tool tags a flat $3/mo', 'Tenna: quote-only'],
+  ['QuickBooks built in', 'Tenna: claimed, but shallow'],
   ['$8/machine + $3/tool tag per mo', 'Tenna: $15–25 / asset / mo'],
 ]
 
@@ -174,14 +174,14 @@ export default function DemoLandingPage() {
               </h2>
               <p className="text-muted mt-2">Founder pricing locked for 12 months, hardware at cost, month-to-month. You&apos;re helping us build it — you keep the price.</p>
               <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
-                {['Free 30-day pilot', 'Hardware at cost — no markup, no setup fee', 'First install done with you', 'Cancel anytime'].map((t) => (
+                {['Free 30-day pilot', 'Hardware at cost — no markup, no setup fee', 'First install done with you, in person or on the phone', 'Cancel anytime'].map((t) => (
                   <span key={t} className="flex items-center gap-2 text-sm text-ink"><Check className="h-4 w-4 text-teal" /> {t}</span>
                 ))}
               </div>
               <Link href="/reserve" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
                 Claim a founding spot <ArrowRight className="h-4 w-4" />
               </Link>
-              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving holds yours. <Link href="/pricing" className="underline hover:text-ink">Full pricing →</Link></p>
+              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving holds yours. <Link href="/pricing" className="inline-block underline hover:text-ink whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link></p>
             </div>
           </Reveal>
         </section>

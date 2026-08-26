@@ -16,13 +16,14 @@ import { CommandRail } from './CommandRail'
 import { TopBarWeather } from '@/components/map/TopBarWeather'
 import { EventRail } from './EventRail'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
+import { MapSkeleton } from '@/components/ui/loading'
 
 const MapView = dynamic(() => import('@/components/map/MapView').then((m) => ({ default: m.MapView })), {
   ssr: false,
+  // Kit ghost map — the wall display boots with the same branded skeleton as
+  // /map instead of a lone ring spinner (kiosk panels overlay it anyway).
   loading: () => (
-    <div className="absolute inset-0 bg-navy-950 flex items-center justify-center">
-      <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-    </div>
+    <MapSkeleton className="absolute inset-0" message="loading the command wall…" showPills={false} showTimeline={false} />
   ),
 })
 

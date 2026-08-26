@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 
 // Every dashboard page is per-user (auth cookies). Without this, pages whose
@@ -11,6 +12,7 @@ import { TzCookie } from '@/components/TzCookie'
 import { OfflineSync } from '@/components/field/OfflineSync'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompany } from '@/lib/db/company'
+import { AlertBadgeBridge } from '@/components/layout/AlertBadgeBridge'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -31,15 +33,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { getMyPermissions } = await import('@/lib/permissions-server')
   const [company, perms] = await Promise.all([getCurrentCompany(), getMyPermissions()])
-  const alerts = await getAlertEvents(company.id)
-  // Bell badge = ATTENTION alerts only. Routine enter/exit crossings are the
-  // activity log — counting them made the badge cry wolf all day.
-  const isActivity = (a: (typeof alerts)[number]) =>
-    !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
-  const attention = alerts.filter(a => !isActivity(a))
-  const unreadAlerts = attention.filter(a => !a.acknowledged_at).length
-  const latestAlertAt = attention.reduce<string | null>(
-    (m, a) => (m === null || a.triggered_at > m ? a.triggered_at : m), null)
 
   return (
     // h-[100dvh]: dynamic viewport height — plain 100vh over-measures on iPad/
@@ -48,9 +41,31 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <TzCookie />
       <OfflineSync />
       <BusyBar />
-      <DashboardShell alertCount={unreadAlerts} latestAlertAt={latestAlertAt} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role}>
+      {/* The bell badge streams in AFTER the shell paints — every dashboard
+          navigation used to block on the alerts query (owner ask, Aug 25:
+          "almost always snappy"). Badge count pops in via the bridge. */}
+      <Suspense fallback={null}>
+        <AlertBadgeFeed companyId={company.id} />
+      </Suspense>
+      <DashboardShell alertCount={0} latestAlertAt={null} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role}>
         {children}
       </DashboardShell>
     </div>
   )
+}
+
+/** Async server component: fetches the alert list off the critical path and
+ *  hands the badge numbers to the client bridge (Sidebar + BottomNav pick
+ *  them up through useUnseenAlertCount). */
+async function AlertBadgeFeed({ companyId }: { companyId: string }) {
+  const alerts = await getAlertEvents(companyId)
+  // Bell badge = ATTENTION alerts only. Routine enter/exit crossings are the
+  // activity log — counting them made the badge cry wolf all day.
+  const isActivity = (a: (typeof alerts)[number]) =>
+    !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
+  const attention = alerts.filter(a => !isActivity(a))
+  const unreadAlerts = attention.filter(a => !a.acknowledged_at).length
+  const latestAlertAt = attention.reduce<string | null>(
+    (m, a) => (m === null || a.triggered_at > m ? a.triggered_at : m), null)
+  return <AlertBadgeBridge count={unreadAlerts} latest={latestAlertAt} />
 }

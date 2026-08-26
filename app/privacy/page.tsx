@@ -28,7 +28,7 @@ export default function PrivacyPage() {
             <p className="mt-2">
               <strong className="text-ink">Asset &amp; location data:</strong> GPS positions, speed,
               heading, battery level, and engine data reported by the trackers you install on your
-              vehicles, equipment, and tools, plus the zones (geofences) and asset records you
+              vehicles, equipment, and tools, plus the zones and asset records you
               create. This data exists so we can show it back to you — that&apos;s the product.
             </p>
             <p className="mt-2">
@@ -82,7 +82,7 @@ export default function PrivacyPage() {
             <ul className="mt-2 space-y-1.5 list-disc pl-5">
               <li>
                 <strong className="text-ink">Location</strong> — to show your own phone as a live
-                asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;) and to power geofence
+                asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;) and to power zone
                 check-ins. See the background-location note below.
               </li>
               <li>

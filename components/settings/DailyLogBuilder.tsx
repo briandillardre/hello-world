@@ -75,14 +75,17 @@ export function DailyLogBuilder({ initial, editable }: { initial: LogFormItem[];
 
       <div className="divide-y divide-navy-800 rounded-lg border border-navy-800 bg-navy-950">
         {items.map((it, idx) => (
-          <div key={it.id} className={`flex items-center gap-2 px-3 py-2 ${it.enabled ? '' : 'opacity-50'}`}>
+          // Phone (<sm): the title spans the full row next to the reorder arrows
+          // and the On/Required pair wraps onto its own line, so question titles
+          // never hard-clip mid-letter. Desktop (sm+): the original single row.
+          <div key={it.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${it.enabled ? '' : 'opacity-50'}`}>
             <div className="flex flex-col -my-1">
               <button type="button" disabled={!editable || idx === 0} onClick={() => move(idx, -1)}
                 aria-label="Move up" className="text-faint hover:text-ink disabled:opacity-30 p-0.5"><ChevronUp className="h-3.5 w-3.5" /></button>
               <button type="button" disabled={!editable || idx === items.length - 1} onClick={() => move(idx, 1)}
                 aria-label="Move down" className="text-faint hover:text-ink disabled:opacity-30 p-0.5"><ChevronDown className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 grow basis-[calc(100%-2.25rem)] sm:basis-0">
               <input
                 value={it.label}
                 disabled={!editable}

@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { MapSkeleton } from '@/components/ui/loading'
 
 export interface SharePoint { lat: number; lng: number; ms: number; mph?: number | null }
 
@@ -15,10 +16,9 @@ export interface SharedReplayProps {
 // MapLibre needs a window — same ssr:false dance as the dashboard map.
 const Inner = dynamic(() => import('./SharedReplayInner').then((m) => ({ default: m.SharedReplayInner })), {
   ssr: false,
+  // Kit ghost map — replay links open on the branded skeleton, not a spinner.
   loading: () => (
-    <div className="fixed inset-0 bg-navy-950 flex items-center justify-center">
-      <div className="w-10 h-10 border-4 border-teal border-t-transparent rounded-full animate-spin" />
-    </div>
+    <MapSkeleton className="fixed inset-0" message="loading the replay…" showPills={false} />
   ),
 })
 

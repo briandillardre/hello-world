@@ -46,7 +46,7 @@ export default function ContactPage() {
             Every email lands with the team that builds the product — not a call center.
           </p>
           <p className="text-xs text-faint pt-2">
-            Prefer to see it first? <Link href="/map" className="text-amber hover:underline">Open the live map →</Link>
+            Prefer to see it first? <Link href="/live" className="text-amber hover:underline whitespace-nowrap">Open the live demo&nbsp;→</Link>
           </p>
         </div>
       </main>

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SocialAuth } from '@/components/auth/SocialAuth'
 import { generateApiKey } from '@/lib/utils'
+import { mapAuthError } from '../auth-error'
 
 // Slugs appended by the /live demo's locked rows (?from=…) → display names.
 const FROM_LABELS: Record<string, string> = {
@@ -60,15 +61,23 @@ function RegisterInner() {
     // provisions company+profile for first-time sign-ins — without it a
     // confirm-email signup was NEVER provisioned (ship-check P1, Aug 18).
     // user_metadata.name seeds the company name in that provisioning path.
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email, password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome`,
-        data: { name: companyName },
-      },
-    })
-    if (authError || !authData.user) {
-      setError(authError?.message ?? 'Sign up failed')
+    let authData
+    try {
+      const res = await supabase.auth.signUp({
+        email, password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome`,
+          data: { name: companyName },
+        },
+      })
+      authData = res.data
+      if (res.error || !authData.user) {
+        setError(res.error ? mapAuthError(res.error) : 'Sign up failed — try again.')
+        setLoading(false)
+        return
+      }
+    } catch (e) {
+      setError(mapAuthError(e))
       setLoading(false)
       return
     }
@@ -131,10 +140,10 @@ function RegisterInner() {
         )}
 
         <form onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-ink">Create your account</h2>
+          <h1 className="text-lg font-semibold text-ink">Create your account</h1>
 
           {error && (
-            <div className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">
+            <div role="alert" className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">
               {error}
             </div>
           )}
@@ -148,6 +157,9 @@ function RegisterInner() {
             <Label htmlFor="company">Company name</Label>
             <Input
               id="company"
+              name="organization"
+              autoComplete="organization"
+              className="h-11 sm:h-10"
               placeholder="Acme Construction Co."
               value={companyName}
               onChange={e => setCompanyName(e.target.value)}
@@ -159,8 +171,10 @@ function RegisterInner() {
             <Label htmlFor="email">Work email</Label>
             <Input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
+              className="h-11 sm:h-10"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -171,8 +185,10 @@ function RegisterInner() {
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
+              name="new-password"
               type="password"
               autoComplete="new-password"
+              className="h-11 sm:h-10"
               minLength={8}
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -180,9 +196,15 @@ function RegisterInner() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full h-11 sm:h-10" disabled={loading}>
             {loading ? 'Creating account…' : 'Get started free'}
           </Button>
+
+          <p className="text-center text-[11.5px] text-faint">
+            By creating an account you agree to the{' '}
+            <Link href="/terms" className="underline hover:text-amber">Terms</Link> and{' '}
+            <Link href="/privacy" className="underline hover:text-amber">Privacy Policy</Link>.
+          </p>
 
           <SocialAuth next="/welcome" />
 

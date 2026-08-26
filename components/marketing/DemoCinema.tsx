@@ -234,7 +234,7 @@ export default function DemoCinema() {
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-2.5 bg-gradient-to-b from-[#001120]/90 to-transparent">
         <span className="font-mono text-[11px] text-teal flex items-center gap-2">
           <span className="w-[7px] h-[7px] rounded-full bg-teal shadow-glow-teal animate-blink" />
-          RIVERSIDE TOWER · LIVE REPLAY
+          RIVERSIDE TOWER · REPLAY DEMO
         </span>
         <span className={`font-mono text-[12px] font-bold tabular-nums px-2 py-0.5 rounded-md border transition-colors duration-700 ${night ? 'text-alert border-alert/40 bg-alert/10' : 'text-ink border-navy-700 bg-navy-950/60'}`}>
           {BEAT_CLOCK[beat]}
@@ -269,10 +269,10 @@ export default function DemoCinema() {
 
       {/* CTA bar */}
       <Link
-        href="/map"
+        href="/live"
         className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 px-4 py-3 bg-[#001120]/85 backdrop-blur border-t border-navy-800 font-display font-bold text-[13.5px] text-amber hover:bg-amber/10 transition-colors"
       >
-        This is our real replay engine — open the live map
+        Scripted demo, real map engine — see the real thing live
         <ArrowRight className="h-4 w-4" />
       </Link>
 

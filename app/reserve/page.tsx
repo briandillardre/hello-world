@@ -31,6 +31,7 @@ const TERMS = [
   'Price locked for 12 months',
   'Hardware at cost — no markup, no setup fee',
   'Month-to-month, cancel anytime',
+  'Free 30-day pilot',
   'First install done with you, in person or on the phone',
 ]
 

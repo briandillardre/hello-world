@@ -179,7 +179,7 @@ export function AddScheduleButton({ assetNames }: { assetNames: Record<string, s
         onClick={() => setOpen(true)}
         className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-1.5 inline-flex items-center gap-1 hover:bg-amber-600 transition-colors"
       >
-        <Plus className="h-3.5 w-3.5" /> Add schedule
+        <Plus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add schedule</span><span className="sm:hidden">Add</span>
       </button>
       {open && <NewScheduleDialog assetNames={assetNames} onClose={() => setOpen(false)} />}
     </>

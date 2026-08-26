@@ -43,10 +43,14 @@ const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, Bluetooth-tagged tools, and crews — live, with full replay of any day.' },
   { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site — then replay the whole route as evidence.' },
   { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and zone-verified daily logs.' },
-  { icon: Banknote, title: 'Books that keep themselves', body: 'QuickBooks two-way sync, live job cost, and a "snap the receipt?" ping seconds after a company card swipes.' },
+  { icon: Banknote, title: 'Books that keep themselves', body: 'QuickBooks job-cost sync, live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes.' },
   { icon: Wrench, title: 'A shop that stays ahead', body: 'Service intervals from real engine hours auto-open work orders — assign, track parts & labor, done.' },
   { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
 ]
+
+// Ladder bullets: strings are shipped features (✓); `roadmap: true` renders
+// the ROADMAP badge instead — never a ✓ on an unshipped item (splash truth rule).
+type LadderItem = string | { t: string; roadmap: true }
 
 const PRICE = [
   { k: '$0', v: 'setup — Tenna charges $500+' },
@@ -73,7 +77,7 @@ export default function HomePage() {
             <span className="text-amber"> right now.</span>
           </h1>
           <p className="text-muted text-lg sm:text-[19px] mt-6 max-w-[58ch] mx-auto">
-            Live GPS and job-site zones across the fleet, the crews, and the $20-tagged tools.
+            Live GPS and job-site zones across the fleet, the crews, and the Bluetooth-tagged tools.
             Exact job-site hours banked automatically. An AI you can ask anything about the
             operation. And when a machine moves at 2 AM, your phone knows in minutes.
           </p>
@@ -175,8 +179,12 @@ export default function HomePage() {
                   <p className="text-[13px] text-faint mt-1.5">{body}</p>
                   {tag === 'LIVE' ? (
                     // LIVE tag = a door, not a badge: straight into the map.
-                    <Link href="/live" className="inline-flex items-center gap-1 mt-2.5 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5 hover:bg-amber/10 transition-colors">
-                      <span className="w-1 h-1 rounded-full bg-amber animate-blink" /> LIVE — see it on the map
+                    // Outer link is a ≥44px hit area (padding + negative margin);
+                    // the inner span keeps the chip's visual size unchanged.
+                    <Link href="/live" className="group/live inline-flex items-center mt-1 -mb-2.5 -ml-1.5 py-3 px-1.5">
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5 group-hover/live:bg-amber/10 transition-colors">
+                        <span className="w-1 h-1 rounded-full bg-amber animate-blink" /> LIVE — see it on the map
+                      </span>
                     </Link>
                   ) : (
                     <span className="inline-block mt-2.5 font-mono text-[10px] text-amber border border-amber/30 rounded-md px-1.5 py-0.5">
@@ -190,7 +198,7 @@ export default function HomePage() {
             {/* Make the AI tangible: real questions the assistant answers from
                 live fleet data, shown with demo-fleet answers. */}
             <div className="mt-7">
-              <p className="font-mono text-[11.5px] text-faint mb-3">Ask it like you&apos;d ask your best superintendent — answers below are from the demo fleet:</p>
+              <p className="font-mono text-[11.5px] text-faint mb-3">Ask it like you&apos;d ask your best superintendent — and the kind of answer you get back (illustrative examples):</p>
               <div className="grid md:grid-cols-3 gap-4">
                 {[
                   {
@@ -265,13 +273,13 @@ export default function HomePage() {
               {
                 step: '3', name: 'Run', price: 'talk to us', fee: '100 tags included',
                 who: '“Run the company on it.”',
-                items: ['AI assistant + owner digests', 'Driver safety grades', 'Who-ran-what attribution', 'API + exports'],
+                items: ['AI assistant + owner digests', 'Driver safety grades', { t: 'Who-ran-what attribution', roadmap: true }, 'API + exports'] as LadderItem[],
                 hot: false,
               },
               {
                 step: '4', name: 'Fully integrated', price: 'the endgame', fee: 'everything connected',
                 who: 'The company runs itself on the data.',
-                items: ['Factory feeds from Cat/Komatsu — no hardware', 'Margins vs your trade + live valuation', 'Estimates → invoices → paid (coming)', 'One system instead of five subscriptions'],
+                items: ['Factory feeds from Cat/Komatsu — no hardware', 'Margins vs your trade + live valuation', { t: 'Estimates → invoices → paid', roadmap: true }, 'One system instead of five subscriptions'] as LadderItem[],
                 hot: false,
               },
             ].map((t) => (
@@ -285,13 +293,25 @@ export default function HomePage() {
                 <p className="font-mono text-[10.5px] text-faint">{t.fee}</p>
                 <p className="text-[12.5px] text-muted italic mt-2">{t.who}</p>
                 <ul className="mt-3 space-y-1.5 text-[12.5px] text-faint">
-                  {t.items.map((i) => <li key={i} className="flex gap-1.5"><span className="text-teal">✓</span>{i}</li>)}
+                  {(t.items as LadderItem[]).map((raw) => {
+                    const i = typeof raw === 'string' ? { t: raw, roadmap: false } : raw
+                    return (
+                      <li key={i.t} className="flex items-start gap-1.5">
+                        {i.roadmap ? (
+                          <span className="flex-none font-mono text-[9px] uppercase tracking-wide text-faint border border-navy-700 rounded-md px-1 py-px mt-0.5">Roadmap</span>
+                        ) : (
+                          <span className="text-teal">✓</span>
+                        )}
+                        <span>{i.t}</span>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             ))}
           </div>
           <p className="text-center font-mono text-[12.5px] text-faint mt-5">
-            Founding 25: <span className="text-amber">$6/machine + $3/tag with Operate included</span> — 12-month price lock, hardware at cost, cancel anytime. <Link href="/pricing" className="text-teal underline decoration-dotted">Full pricing →</Link>
+            Founding 25: <span className="text-amber">$6/machine + $3/tag with Operate included</span> — 12-month price lock, hardware at cost, cancel anytime. <Link href="/pricing" className="inline-block text-teal underline decoration-dotted whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link>
           </p>
         </section>
 
@@ -364,7 +384,7 @@ export default function HomePage() {
             ))}
           </div>
           <p className="text-center font-mono text-[13px] text-faint mt-5">
-            Same fleet visibility as the big guys. A fraction of the price.
+            Same fleet visibility as the big guys. About half the price.
           </p>
         </section>
 

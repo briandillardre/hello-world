@@ -270,7 +270,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
                 <Input id="alert-email" type="email" placeholder="you@company.com" value={form.alert_email} onChange={(e) => setForm((f) => ({ ...f, alert_email: e.target.value }))} />
               </div>
             </div>
-            <p className="text-[11px] text-faint -mt-1 leading-snug">Where theft &amp; geofence alerts are sent.</p>
+            <p className="text-[11px] text-faint -mt-1 leading-snug">Where theft &amp; zone alerts are sent.</p>
 
             {/* Carrier-required opt-in. The rule is explicit: the box must be
                 ACTIVELY ticked, never pre-checked — so `smsConsent` starts
