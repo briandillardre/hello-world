@@ -12,6 +12,7 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 - **Repo:** github.com/briandillardre/hello-world
 - **Branch:** master (main working branch — all v2 features merged)
 - **Dev branch convention:** `claude/...` branches, open PR → squash merge to master
+- **Ship-to-live rule (Brian, Aug 26):** once a session's work is validated (production build green + the reviewer agents have run), open the PR and squash-merge it to master YOURSELF — do not ask first. Live on hammertrack.ai is where Brian reviews. Never merge unvalidated work; the checks & balances rule still gates every merge.
 - **Pilot status:** T1-a live in Brian's Chevy 1500 since Jul 6 2026 (Greenville, SC area) — full pipeline verified: OBD → Hologram → flespi → webhook → Supabase → map
 
 ## Tech Stack
