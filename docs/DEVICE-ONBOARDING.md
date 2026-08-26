@@ -89,3 +89,71 @@ Same shape as OBD minus the OBD port: battery in, SIM in, SMS config with the
 same server params, magnet/bolt mount, asset type **Equipment**, tracker ID =
 IMEI. At 5-min moving reports, battery alone won't last — wire to aux 12/24V
 where the machine has it (no solar accessory exists per KORE Jul 13).
+
+*(For the KORE/SuperSIM batch, the SMS path above does NOT apply — use the
+FOTA WEB flow below with a TAT141 template config instead.)*
+
+---
+
+## KORE SuperSIM batch (Aug 2026 order) — the NO-CABLE playbook
+
+*Proven end-to-end on the first FMM00A (IMEI …048569) Aug 26 2026: SIM
+activated ~1:45 AM, config task queued ~2:45 AM, device picked it up on its
+own FOTA sync at 07:38 and connected. Nothing was plugged into a computer.
+The Hologram sections above are for the two July pilot units only.*
+
+**The three facts that make this batch different from the pilots:**
+- APN is **`super`** — printed right on the SuperSIM card ("SET DEVICE APN
+  TO: super"). Not `hologram`.
+- All order-#1 devices came **pre-registered in FOTA WEB**
+  (fota.teltonika.lt, login brian@hammertrack.ai, 2FA) — config is pushed
+  over the air from there. No USB, no Configurator-to-device connection.
+- KORE One's Send SMS diagnostic **does not work for SuperSIM**
+  ("Subscription service type is not supported"). SuperSIM SMS commands are
+  API-only (SMSCommand resource; sender shows as 000, retries 24 h). Don't
+  burn time hunting a console SMS button.
+
+**Per-device checklist (~10 min, from a desk):**
+
+1. **Activate the SIM** — connect-app.korewireless.com → Subscriptions →
+   find the ICCID (matches the card) → Activate:
+   - Data plan: **Super SIM 25MB US Pooled** (revisit sizing once real
+     usage data exists) · SMS plan: Pay Per Use
+   - Feature: **CHECK "Super SIM Standard APNs"** (enables the `super` APN;
+     KORE One Connect Service is mandatory/grayed)
+   - Skip Rules → Confirm. State flips to Active.
+2. **Config file** (once per model+firmware, then reused): Teltonika
+   Configurator OFFLINE — pick the template matching the device's firmware
+   shown in FOTA (FW 04.01.00 → "Configuration 13.0.0.0" template; do NOT
+   use a newer template than the firmware):
+   - **GPRS:** APN `super`, no user/pass · Domain `ch1401177.flespi.gw`,
+     Port `24397`, TCP, TLS None · leave FOTA WEB block ENABLED
+     (fm.teltonika.lt:5000 — that's the management lifeline)
+   - **System:** Data Protocol = Codec 8 Extended
+   - **Bluetooth:** BT Radio = Enable (hidden) — never "visible"
+   - **Bluetooth 4.0:** Non Stop Scan = Enable
+   - **Beacon List:** Beacon Detection = All (EYE panel stays Disabled)
+   - Never set a Security keyword. Save to file
+     (`hammertrack-<model>-fw<ver>.cfg`).
+3. **Push via FOTA WEB** — Files → Upload the .cfg (one time), then
+   Devices → tick the ONE target IMEI → Create task → task type
+   **"Upload configuration"** → pick the file from the dropdown.
+   GOTCHA: the dialog's "From file" tab is a CSV-of-devices selector, not
+   the config upload — stay on "Selected".
+4. **Wait — or force it.** The device syncs FOTA on power-up and every
+   720 min. GOTCHAS learned the hard way:
+   - A 10-second OBD unplug does NOT reboot it — the internal battery
+     rides through (same mechanism as theft detection).
+   - Ignition-on does NOT trigger a FOTA sync either.
+   - So: install it and let the timer work (overnight queue → applied by
+     morning), or truly power it down (battery would have to be
+     disconnected) to force a boot sync.
+5. **Verify:** FOTA row shows the .cfg name in Configuration + fresh
+   "Seen at" → flespi Toolbox channel 1401177 shows the IMEI → create the
+   asset in HammerTrack (Vehicle/Equipment, Tracker ID = full IMEI). The
+   webhook side needs zero work — any IMEI on the channel flows through.
+
+**SIM card ↔ device pairing tip:** log which ICCID went into which IMEI at
+insertion time (photo of card next to device label works) — the packing
+slip lists IMEIs, the cards carry ICCIDs, and matching them after the fact
+is guesswork.
