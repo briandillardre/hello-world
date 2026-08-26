@@ -5,6 +5,7 @@ import { AlertList } from './AlertList'
 import { AlertRulesManager } from './AlertRulesManager'
 import { acknowledgeAlertAction, acknowledgeManyAlertsAction } from '@/lib/actions/alerts'
 import type { AlertEvent, AlertRule, Geofence, AssetWithLocation } from '@/lib/types'
+import { unreadActionableCount } from '@/lib/alerts-engine'
 
 interface Props {
   alerts: AlertEvent[]
@@ -50,9 +51,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
 
   // ONE number, same rule as the nav bell: unread ACTIONABLE alerts —
   // routine enter/exit crossings are the zone log, not alerts.
-  const unread = alerts.filter((a) =>
-    !a.acknowledged_at && !(!a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit'))
-  ).length
+  const unread = unreadActionableCount(alerts)
 
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">

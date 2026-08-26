@@ -82,10 +82,15 @@ export function iemRadarUrl(ts?: string): string {
 }
 
 /** IEM archive timestamp (UTC, floored to the 5-min radar cadence) for any
- *  epoch ms — lets the radar layer time-travel with the playback scrubber. */
+ *  epoch ms — lets the radar layer time-travel with the playback scrubber.
+ *  Clamped to the newest frame that can exist (one step back, same backoff as
+ *  buildRadarFrames): replay windows end at a future midnight and the scrubber
+ *  opens at the window end, so an unclamped ts asked IEM for tomorrow's radar
+ *  — guaranteed 503s on every "Today" replay (logged-in review, Aug 26). */
 export function iemTsForMs(ms: number): string {
   const step = 5 * 60_000
-  const d = new Date(Math.floor(ms / step) * step)
+  const newest = Math.floor(Date.now() / step) * step - step
+  const d = new Date(Math.min(Math.floor(ms / step) * step, newest))
   return `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
 }
 

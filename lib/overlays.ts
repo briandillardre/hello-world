@@ -60,13 +60,18 @@ export const MAP_OVERLAYS: OverlayDef[] = [
   {
     key: 'flood',
     label: 'Flood zones',
-    note: 'FEMA flood hazard (NFHL) · bid intel',
+    note: 'FEMA flood hazard (NFHL) · bid intel · zoom to street level',
     // Layer 28 = flood hazard zone polygons (AE/A/X shading + floodway).
-    // ⚠ Endpoint is /gis/nfhl/rest — FEMA's documented public NFHL path.
-    // The old /arcgis/rest guess answered blanks, so the toggle drew nothing
-    // ("are flood zones actually doing anything", Aug 10).
-    tiles: exportTemplate('https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer', '&layers=show:28'),
-    minzoom: 10,
+    // ⚠ Endpoint is /arcgis/rest — the /gis/nfhl path 404s from browsers
+    // (FEMA's WebSEAL gateway) and sends no CORS header, so the toggle drew
+    // nothing on the live site (logged-in review, Aug 26). /arcgis/rest
+    // serves CORS-enabled PNGs, same URL shape /api/diag/layers probes.
+    // Layer 28 carries minScale 1:36,112 server-side — blank above ~z14.3,
+    // which is why the Aug 10 session saw "blanks" here. minzoom 15 keeps
+    // the toggle honest: the panel shows "(zoom in)" instead of silently
+    // drawing nothing at county scale.
+    tiles: exportTemplate('https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer', '&layers=show:28'),
+    minzoom: 15,
     maxzoom: 16,
     opacity: 0.65,
   },

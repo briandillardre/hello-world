@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { GeofencesManager } from '@/components/zones/GeofencesManager'
 import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
+import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { pointInPolygon } from '@/lib/alerts-engine'
 
@@ -14,10 +15,15 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 export default async function GeofencesPage() {
   const companyId = await getCurrentCompanyId()
-  const [geofences, assets] = await Promise.all([
+  const [geofences, rawAssets, toolAssociations] = await Promise.all([
     getGeofences(companyId),
     getAssetsWithLocations(companyId),
+    getToolAssociations(companyId),
   ])
+  // Tools inherit their carrier's position — without this, every BLE-tagged
+  // machine counted nowhere and this list said "0 assets inside" for a site
+  // /command showed 4 at (logged-in review, Aug 26).
+  const assets = resolveToolLocations(rawAssets, toolAssociations)
 
   const counts: Record<string, number> = {}
   for (const g of geofences) {

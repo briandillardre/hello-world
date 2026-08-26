@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { getAssetsWithLocations, getLocationHistory, getEarliestLocationTime } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, getPairingEpisodes } from '@/lib/db/tools'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
-import { historyWindow } from '@/lib/trails'
 import { buildCostCurve } from '@/lib/costs'
 import { moneyFull } from '@/lib/projects'
+import { rangeWindow, DEFAULT_TZ } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -47,15 +48,20 @@ export async function GET() {
     getAlertEvents(companyId),
     (async () => {
       if (!perms.canViewCosts) return
-      const since24 = new Date(Date.now() - 24 * 3_600_000).toISOString()
+      // Same window as the map timeline's "cost today" (rangeWindow 'live' in
+      // the viewer's tz): the header chip used a rolling 24h span and showed a
+      // different dollar figure than the timeline chip on the SAME screen
+      // ($375 vs $201, logged-in review Aug 26). "These should be the exact
+      // same map" (Brian, Aug 22) applies to the numbers too.
+      const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+      const w = rangeWindow(tz, 'live')
       const [rawAssets, toolAssociations, history] = await Promise.all([
         getAssetsWithLocations(companyId),
         getToolAssociations(companyId),
-        getLocationHistory(companyId, since24),
+        getLocationHistory(companyId, new Date(w.from).toISOString()),
       ])
       const assets = resolveToolLocations(rawAssets, toolAssociations)
-      const w = history ? historyWindow(history) : null
-      costToday = history && w
+      costToday = history
         ? moneyFull(buildCostCurve(assets, history, w.from, w.to).curve.at(-1) ?? 0)
         : moneyFull(0)
     })(),
