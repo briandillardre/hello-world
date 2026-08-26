@@ -765,6 +765,7 @@ export function TimelinePlayback({
               its panel renders as a sibling of the bar, so scroll-clipping
               never touches it. */}
           <button
+            data-active-pill={custom ? '' : undefined}
             onClick={() => { onRange('custom'); setShowCustom((s) => !s) }}
             className={
               'sm:hidden flex-none flex items-center gap-1 px-2.5 py-1 rounded-full text-[11.5px] font-display font-bold transition-colors ' +

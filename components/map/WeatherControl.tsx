@@ -236,6 +236,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     const t = e.target as HTMLElement | null
     if (t && t.closest('input, select, textarea, [data-no-swipe]')) {
       drawerSwipe.current = null
+      // Also disarm the click-swallow flag: a swipe-close leaves it true
+      // (the drawer unmounts before the tail click resets it), and a stale
+      // true would eat the first tap on a click-driven control here.
+      drawerSwiped.current = false
       return
     }
     drawerSwipe.current = { x: e.clientX, y: e.clientY }
