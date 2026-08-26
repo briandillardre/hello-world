@@ -12,7 +12,7 @@ const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
   description:
-    'Everything Tenna does — vehicles, equipment, Bluetooth tools — at about half the price, with AI alerts and QuickBooks built in.',
+    'Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price, with AI alerts and QuickBooks built in.',
   // Next replaces the root layout's openGraph wholesale (no deep merge) —
   // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
@@ -111,7 +111,7 @@ const FAQ = [
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
   ['Tool tags a flat $3/mo', 'Tenna: quote-only'],
-  ['AI alerts included', 'Tenna: varies by package'],
+  ['AI alerts included', 'Tenna: —'],
   ['QuickBooks built in', 'Tenna: claimed, but shallow'],
   ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
   ['$8/machine · $3/tag', 'Tenna: $15–25/asset + setup'],
@@ -129,7 +129,7 @@ export default function PricingPage() {
             Asset tracking that pays for itself
           </h1>
           <p className="text-muted mt-4 max-w-xl mx-auto text-lg">
-            Everything Tenna does — vehicles, equipment, Bluetooth tools — at about half the price,
+            Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price,
             with AI alerts and QuickBooks built in.
           </p>
         </div>

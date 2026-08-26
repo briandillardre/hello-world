@@ -29,7 +29,7 @@ Target keywords: `tenna alternative`, `equipment gps tracking`, `construction as
 - **Headline 2:** Bluetooth Tool Tracking Built In
 - **Headline 3:** Half Tenna’s Price · No Contracts
 - **Description 1:** Tag expensive tools, see which truck or machine they're riding in. Live map.
-- **Description 2:** Everything Tenna does for a fraction of the price. Try it free for 30 days.
+- **Description 2:** Everything most contractors use Tenna for, at about half the price. Try it free for 30 days.
 
 **Sitelinks:** Pricing · Live Demo · How It Works · vs Tenna
 

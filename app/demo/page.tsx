@@ -174,7 +174,7 @@ export default function DemoLandingPage() {
               </h2>
               <p className="text-muted mt-2">Founder pricing locked for 12 months, hardware at cost, month-to-month. You&apos;re helping us build it — you keep the price.</p>
               <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
-                {['Free 30-day pilot', 'Hardware at cost — no markup, no setup fee', 'First install done with you', 'Cancel anytime'].map((t) => (
+                {['Free 30-day pilot', 'Hardware at cost — no markup, no setup fee', 'First install done with you, in person or on the phone', 'Cancel anytime'].map((t) => (
                   <span key={t} className="flex items-center gap-2 text-sm text-ink"><Check className="h-4 w-4 text-teal" /> {t}</span>
                 ))}
               </div>
