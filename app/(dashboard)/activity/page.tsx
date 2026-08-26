@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { Activity, Bot, Users } from 'lucide-react'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 
 export const metadata = { title: 'HammerTrack — Team activity' }
 
@@ -19,7 +19,7 @@ interface Row { user_id: string; role: 'user' | 'assistant'; content: string; cr
  * client AFTER verifying the viewer's admin role server-side.
  */
 export default async function ActivityPage() {
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 

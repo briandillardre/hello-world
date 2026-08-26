@@ -8,7 +8,7 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import type { Viewport } from 'next'
 
@@ -40,7 +40,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
       searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
     ])
     const measurements = await getMeasurements(company.id)
-    const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+    const tz = safeTz(cookies().get('ht_tz')?.value)
     return (
       <div className="h-full flex flex-col pb-[54px] md:pb-0">
         <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
@@ -98,7 +98,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // (truck/equipment) that currently detects them over Bluetooth.
   const assets = resolveToolLocations(rawAssets, toolAssociations)
 
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
 
   // Real mode: history is NOT awaited here anymore — it was the bulk of the
   // "loading your fleet…" stall (the whole page blocked on a 12k-row sweep

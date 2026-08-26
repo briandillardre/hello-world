@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { X, Sparkles, ChevronRight, ChevronLeft, Radar, LayoutGrid, Check, Route } from 'lucide-react'
 import type { AssetWithLocation, Geofence, AlertEvent } from '@/lib/types'
+import { isZoneLogEvent, unreadActionableCount } from '@/lib/alerts-engine'
 import { tracksFromHistory, type AssetTrack } from '@/lib/trails'
 import { formatRelativeTime } from '@/lib/utils'
 import { Logo } from '@/components/brand/Logo'
@@ -115,8 +116,8 @@ function KioskNav({ company, alerts }: { company: string; alerts: AlertEvent[] }
   return (
     <Sidebar
       companyName={company}
-      alertCount={alerts.filter((a) => !a.acknowledged_at).length}
-      latestAlertAt={alerts[0]?.triggered_at ?? null}
+      alertCount={unreadActionableCount(alerts)}
+      latestAlertAt={alerts.find((a) => !isZoneLogEvent(a))?.triggered_at ?? null}
       collapsed={collapsed}
       onToggle={toggle}
       onSignOut={signOutAction}
@@ -408,8 +409,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <KioskNav company={company} alerts={liveAlerts} />
       </div>
       <BottomNav
-        alertCount={liveAlerts.filter((a) => !a.acknowledged_at).length}
-        latestAlertAt={liveAlerts[0]?.triggered_at ?? null}
+        alertCount={unreadActionableCount(liveAlerts)}
+        latestAlertAt={liveAlerts.find((a) => !isZoneLogEvent(a))?.triggered_at ?? null}
         companyName={company}
         userName={userName}
         navOrder={navOrder}
@@ -467,7 +468,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
             <TacticalHud
               assets={assets}
               geofences={geofences}
-              alertCount={liveAlerts.filter((a) => !a.acknowledged_at).length}
+              alertCount={unreadActionableCount(liveAlerts)}
               center={camCenter}
             />
           )}

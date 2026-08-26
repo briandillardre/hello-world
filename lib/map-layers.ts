@@ -147,7 +147,9 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // imagery with a year slider").
   { id: 'wayback', label: 'Historical imagery', group: 'land', status: 'live', isLive: true, hasOpacity: true, hint: 'satellite time machine — drag the year to see a site before you built it' },
   { id: 'parcels', label: 'Parcel lines', group: 'land', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, hint: 'county tax parcels · tap one for owner, address & acreage' },
-  { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 10, hint: 'FEMA flood hazard areas' },
+  // minZoom mirrors the overlay def in lib/overlays.ts (FEMA draws layer 28
+  // only at 1:36k and closer) — this row drives the "(zoom in)" chip.
+  { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 15, hint: 'FEMA flood hazard areas · zoom to street level' },
   { id: 'wetlands', label: 'Wetlands', group: 'land', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },
   { id: 'soils', label: 'Soils', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'soil survey map units' },
   { id: 'topo', label: 'Topo lines', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'elevation contours' },

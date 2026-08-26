@@ -17,7 +17,7 @@ import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 import { TripLog } from '@/components/assets/TripLog'
 import { getGeofences } from '@/lib/db/zones'
 import { segmentTrips, type Trip } from '@/lib/trips'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { vehiclePower } from '@/lib/vehicle-power'
 import { deriveLiveStatus } from '@/lib/live-status'
@@ -69,7 +69,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
 
   const loc = asset.location
   // Vercel renders in UTC — trip times format in the viewer's zone.
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   // Show every spec, but keep internal/UI-only keys out of the flat row list:

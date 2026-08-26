@@ -52,7 +52,7 @@ export default async function DiagPage() {
         <h1 className="font-display font-bold text-xl text-ink">Layer diagnostics</h1>
         <p className="text-[12.5px] text-faint">
           One sample request per external data source, tested from the server AND from this device.
-          Flood zones draw from zoom ~11, soils from ~12 — zoom in before judging those on the map.
+          Flood zones draw from zoom ~15 (FEMA renders them at street scale only), soils from ~12 — zoom in before judging those on the map.
         </p>
       </div>
 

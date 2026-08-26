@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { getGeofences } from '@/lib/db/zones'
 import { getAlertEvents } from '@/lib/db/alerts'
@@ -9,7 +9,7 @@ import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db
 import { getCurrentCompany } from '@/lib/db/company'
 import { generateTracks } from '@/lib/trails'
 import { PROJECTS, projectCost, LIVE_DAY_FRACTION, moneyFull } from '@/lib/projects'
-import { pointInPolygon } from '@/lib/alerts-engine'
+import { pointInPolygon, unreadActionableCount } from '@/lib/alerts-engine'
 import { CommandCenter, type CommandKpis } from '@/components/command/CommandCenter'
 
 export const metadata: Metadata = {
@@ -59,7 +59,7 @@ export default async function CommandPage() {
     getToolAssociations(companyId),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
 
   // Demo mode has no DB to defer to — synthetic tracks + seeded projects,
   // fully rendered server-side like before.
@@ -82,7 +82,8 @@ export default async function CommandPage() {
     crewOnSite: assets.filter(
       (a) => a.type === 'personnel' && a.location && onAnySite(a.location.lng, a.location.lat)
     ).length,
-    activeAlerts: alerts.filter((a) => !a.acknowledged_at).length,
+    // Same rule as the nav bell: zone-log crossings aren't alerts.
+    activeAlerts: unreadActionableCount(alerts),
     costToday,
     // Live accounts: real zones (job sites + yards; boundaries are perimeters,
     // not places). Demo keeps the seeded project count.

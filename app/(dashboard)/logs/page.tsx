@@ -9,7 +9,7 @@ import { getConnectionStatus } from '@/lib/qbo'
 import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { pairOperators, type PairSegment } from '@/lib/pairing'
 import { getPairDecisions } from '@/lib/actions/pairs'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { LogsFeed } from '@/components/field/LogsFeed'
 
 export const metadata = { title: 'HammerTrack — Daily logs' }
@@ -46,7 +46,7 @@ export default async function LogsPage() {
       qboPush = { pushedEntryIds: await getQboPushedEntryIds(companyId) }
     }
   }
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
   const zoneNames: Record<string, string> = {}
   for (const g of geofences) zoneNames[g.id] = g.name
 

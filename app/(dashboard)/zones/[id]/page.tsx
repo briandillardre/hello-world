@@ -23,7 +23,7 @@ import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
 import { segmentVisits, type Visit } from '@/lib/visits'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
@@ -45,7 +45,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
   if (!fence) notFound()
 
   // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
   const fmtDay = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString(undefined, { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric' }) : null
   const fmtWhen = (iso: string) => new Date(iso).toLocaleString(undefined, { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const activeFrom = fmtDay(fence.active_from)

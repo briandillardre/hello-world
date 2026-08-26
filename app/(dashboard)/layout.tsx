@@ -11,6 +11,7 @@ import { BusyBar } from '@/components/layout/BusyBar'
 import { TzCookie } from '@/components/TzCookie'
 import { OfflineSync } from '@/components/field/OfflineSync'
 import { getAlertEvents } from '@/lib/db/alerts'
+import { isZoneLogEvent } from '@/lib/alerts-engine'
 import { getCurrentCompany } from '@/lib/db/company'
 import { AlertBadgeBridge } from '@/components/layout/AlertBadgeBridge'
 
@@ -61,9 +62,7 @@ async function AlertBadgeFeed({ companyId }: { companyId: string }) {
   const alerts = await getAlertEvents(companyId)
   // Bell badge = ATTENTION alerts only. Routine enter/exit crossings are the
   // activity log — counting them made the badge cry wolf all day.
-  const isActivity = (a: (typeof alerts)[number]) =>
-    !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
-  const attention = alerts.filter(a => !isActivity(a))
+  const attention = alerts.filter(a => !isZoneLogEvent(a))
   const unreadAlerts = attention.filter(a => !a.acknowledged_at).length
   const latestAlertAt = attention.reduce<string | null>(
     (m, a) => (m === null || a.triggered_at > m ? a.triggered_at : m), null)

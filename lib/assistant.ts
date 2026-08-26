@@ -7,7 +7,7 @@
  * nicer phrasing, but the numbers always come from here.
  */
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from './types'
-import { pointInPolygon } from './alerts-engine'
+import { pointInPolygon, unreadActionableCount } from './alerts-engine'
 import { type Project, periodCost, moneyFull, WORKDAY_HOURS, LIVE_DAY_FRACTION } from './projects'
 
 export interface AssistantContext {
@@ -168,7 +168,8 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
 
   // ── Fleet summary ──
   const online = assets.filter((a) => a.location).length
-  const openAlerts = alerts.filter((a) => !a.acknowledged_at).length
+  // Same rule as the nav bell — zone-log crossings aren't "active alerts".
+  const openAlerts = unreadActionableCount(alerts)
   return {
     answer: `${online} of ${assets.length} assets are online across ${geofences.length} sites${openAlerts ? `, with ${openAlerts} active alert${openAlerts > 1 ? 's' : ''}` : ''}. Ask me who's at a site, what's on it, labor hours, or today's cost.`,
     facts: { online, total: assets.length, sites: geofences.length, openAlerts },

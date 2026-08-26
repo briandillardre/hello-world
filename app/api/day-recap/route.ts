@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { rangeWindow, DEFAULT_TZ, type TimeRangeKey } from '@/lib/dates'
+import { rangeWindow, type TimeRangeKey, safeTz } from '@/lib/dates'
 import { segmentStops } from '@/lib/poi'
 import { classifyStops, streetAt } from '@/lib/poi-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(req.cookies.get('ht_tz')?.value)
   const w = rangeWindow(tz, ['today', 'yesterday', '7d'].includes(range) ? range : 'today', {})
 
   // Tools: the recap narrates the carrying truck's movement while the tag was

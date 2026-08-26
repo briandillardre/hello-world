@@ -70,6 +70,25 @@ export function rangeWindow(
 
 export const DEFAULT_TZ = 'America/New_York'
 
+/** The viewer's tz from the client-set ht_tz cookie, made safe to hand to
+ *  Intl. Next's cookie parser already percent-decodes values, but the value
+ *  is client-tamperable and an invalid IANA name makes every Intl formatter
+ *  THROW — 500ing a server page or silently blanking a try/caught route.
+ *  Every reader validated nothing (and most double-decoded) before this
+ *  helper (logged-in review, Aug 26). Decode defensively, validate against
+ *  Intl, fall back to Eastern. */
+export function safeTz(raw: string | null | undefined): string {
+  if (!raw) return DEFAULT_TZ
+  let tz = raw
+  try { tz = decodeURIComponent(raw) } catch { return DEFAULT_TZ }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz })
+    return tz
+  } catch {
+    return DEFAULT_TZ
+  }
+}
+
 // ── Timezone-explicit formatters ─────────────────────────────────────────────
 // Server components render on Vercel in UTC, so bare toLocaleTimeString()
 // shows times 4-5 hours off for an East-coast crew. Every server-rendered

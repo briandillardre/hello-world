@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Bell, CheckCheck, AlertTriangle, MapPin, Clock, Moon, Siren, ChevronDown } from 'lucide-react'
 import type { AlertEvent, AlertRule } from '@/lib/types'
+import { isZoneLogEvent } from '@/lib/alerts-engine'
 import { formatRelativeTime } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { SortPills } from '@/components/ui/list-controls'
@@ -106,9 +107,8 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
     } catch { /* private mode */ }
   }, [alerts.length])
 
-  const isActivity = (a: AlertEvent) => !a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')
-  const actionable = alerts.filter((a) => !isActivity(a))
-  const activity = alerts.filter(isActivity)
+  const actionable = alerts.filter((a) => !isZoneLogEvent(a))
+  const activity = alerts.filter(isZoneLogEvent)
   const unreadActionable = actionable.filter((a) => !a.acknowledged_at)
 
   // ── Needs-attention groups: one card per asset, unread events only,

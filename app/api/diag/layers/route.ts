@@ -92,7 +92,23 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
   },
 ]
 
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
 export async function GET(req: NextRequest) {
+  // Auth gate (sec-check, Aug 26): each hit fans out ~15 upstream fetches
+  // plus two self-invocations with 25s budgets — the /diag PAGE is
+  // dashboard-gated, so anonymous callers have no business invoking the
+  // probe. Demo mode has no auth and stays open.
+  if (!isMock) {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    } catch {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
+  }
   // Our own wind route — tests the REAL path the map uses (with its run
   // fallbacks + cache), not just one raw NOMADS URL that may redirect.
   const selfWind = {
