@@ -737,7 +737,7 @@ export function TimelinePlayback({
             "30 days / YTD / All" hid behind the fade (the selected chip
             could sit clipped). Below the floor the controls wrap to a
             second line, the designed degrade. */}
-        <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px] lg:min-w-[430px]">
+        <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px] lg:min-w-[475px]">
         {/* Right-edge fade whenever more pills hide off-screen — a clipped
             "30d" read as broken, not scrollable ("7 days 3", Aug 11). */}
         <div ref={pillsRef} onScroll={measurePills} className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
