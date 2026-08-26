@@ -178,3 +178,81 @@ git history and working sessions. (Dates are commit dates, US Eastern.)
 - After-hours theft alert live test (move the truck outside 07:00–17:00).
 - QuickBooks production app keys; optional Windy webcams + TomTom traffic keys.
 - Queued: alerts UX (unseen badge, click-to-replay, sortable); region zones (at first multi-metro customer).
+
+---
+
+> **Gap, Jul 14 – Aug 23 2026 not yet logged here.** Six weeks of shipped
+> work in that window (the map wow-pack, demo realism rebuild, Showroom
+> company, AI-resilience wave — Agent Interface MCP, per-company ingest
+> keys, offline field queue — and more) is real and merged to master, just
+> not narrated in this file. See CLAUDE.md's "Features Built" for the
+> current list, or `git log --oneline` for the blow-by-blow. Backfilling
+> this doc properly is its own job — ask for it when there's time to do it
+> right rather than let it half-happen here.
+
+## Sun–Mon, Aug 24–25 2026 · Map scale fix + polish wave
+
+**The 500-device problem, solved**
+- **Trail rollups** (migrations 077/078): the live map history endpoint used
+  to window-scan every raw GPS ping for 30d/YTD/All ranges — cheap at 10
+  assets, a statement-timeout risk at fleet scale, and it silently fell back
+  to a newest-first snapshot that "lost" older trips (Brian: "this is not
+  going to work once we have 500 devices"). An hourly cron now compresses
+  each asset-day ONCE into ≤288 evenly-strided points (36 for spans over 45
+  days); a btree index + watermark-driven backfill keep builds cheap
+  forever, and a trailing 7-day rebuild catches trackers that buffer offline
+  and upload late. Long ranges now read hundreds of tiny rows instead of
+  scanning millions.
+- Two reviewer passes (sec-check, ship-check) on the rollup wave caught and
+  fixed: a fail-open cron secret, an uncapped read past Supabase's row cap,
+  a missing index causing hourly full-table scans, and late-data holes from
+  the old day-global backfill check.
+
+**Map visualization polish**
+- Speed trails: 8-color ramp matching the app's activity gradient.
+- Heatmap physics rebalanced twice — first pass under-weighted dwell time,
+  second pass overcorrected ("still want to see the trails" → parked/working
+  reads full weight, only road-speed passes stay faint).
+- 3D activity terrain renders as smoothed "hills" (not hex columns) in hours
+  or $, absolute height references so a single drive stays a flat mole-trail
+  and a worked site climbs over the window.
+- Scrubber ticks: per-horizon ladders (hour clock → weekday letters →
+  month/day → month names), positioned at their true fraction of the
+  window, memoized with cached `Intl.DateTimeFormat`s — was recomputing the
+  whole walk on every playback frame and scrub gesture (visible jank on
+  phones).
+- Timeline range row condensed to one line on phones.
+
+**Map UX fixes**
+- Saved/preset map Views are now "starting points": the highlight clears
+  the instant any layer or style diverges from the snapshot, and applying a
+  view no longer forces the marker style onto everyone (presets configure
+  the map, not the asset glyphs).
+- Replay/trail-head markers unified with the live dots (same puck + type
+  silhouette) — trails mode used to silently switch assets to a different,
+  older marker style.
+- MAP TOOLS edge tab now mirrors LAYERS (opposite screen edge, same height,
+  slides with the pullout instead of parking below it).
+- Swipe-to-close on both side trays actually fires on touch now (missing
+  `touch-action` was letting the browser eat the horizontal drag before it
+  reached the close handler — open worked, close silently didn't).
+- Map now opens framed to the fleet's actual extents by default (was
+  "wherever you last left the camera," and the fit briefly mixed in zone
+  boundaries, which could zoom a whole fleet out to a speck).
+- Fixed a real bug where the desktop Ask AI launcher was permanently
+  hidden on `/map` specifically: a shared Dialog primitive fired its
+  "a dialog is open" event once whenever its JSX existed at all, not when
+  it was actually open — and the map's always-mounted zone-draw dialog
+  tripped that the instant the page loaded, with no matching close, ever.
+  Confirmed against an actual production build (dev mode's double-effect
+  behavior initially pointed at the wrong cause).
+
+**Everything else**
+- Asset detail page now streams: instant header/shell, then trip log,
+  diagnostics, pairing history, and maintenance each pop in behind a
+  progress sweep as their (heavier) queries finish — was one blocking
+  render that could take a long time on a slow connection.
+- iOS Safari's sticky page-zoom bug killed: any input under 16px font
+  triggered a whole-page zoom that stuck through client-side navigation
+  into the map. Touch devices now render all text inputs at 16px.
+- Rain totals got the same opacity slider every other weather layer has.
