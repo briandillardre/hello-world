@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { rangeWindow, DEFAULT_TZ, type TimeRangeKey } from '@/lib/dates'
+import { rangeWindow, type TimeRangeKey, safeTz } from '@/lib/dates'
 import { computeRangeStats, estMpgForSpecs } from '@/lib/asset-stats'
 
 export const dynamic = 'force-dynamic'
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(req.cookies.get('ht_tz')?.value)
 
   // Fuel-burn rate from the vehicle's own VIN-decoded specs (SUV != dump truck).
   const { data: assetRow } = await supabase.from('assets').select('name, type, metadata').eq('id', assetId).single()

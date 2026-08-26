@@ -4,7 +4,7 @@ import { getGeofences } from '@/lib/db/zones'
 import { getAssets } from '@/lib/db/assets'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { usageFromLedger } from '@/lib/costs'
-import { zonedDayWindow, dayKey, DEFAULT_TZ } from '@/lib/dates'
+import { zonedDayWindow, dayKey, safeTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     // "Today" is the VIEWER's local calendar day (ht_tz cookie), matching how
     // every other window in the app is derived. The ledger keys rows by DATE,
     // so the local day label picks the rows.
-    const tz = decodeURIComponent(req.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
+    const tz = safeTz(req.cookies.get('ht_tz')?.value)
     const today = zonedDayWindow(tz, 0)
     const todayKey = dayKey(today.from, tz)
     const yesterdayKey = dayKey(zonedDayWindow(tz, 1).from, tz)

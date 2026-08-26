@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { getAssetByQrSlug } from '@/lib/db/fieldops'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { CheckButtons } from '@/components/field/CheckButtons'
 import { Logo } from '@/components/brand/Logo'
 
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
  */
 export default async function TagPage({ params }: { params: { slug: string } }) {
   const { asset, checks } = await getAssetByQrSlug(params.slug)
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
 
   return (
     <main className="min-h-dvh bg-navy-950 text-ink">

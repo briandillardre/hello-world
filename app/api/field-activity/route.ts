@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase-server'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +15,7 @@ export async function GET() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ events: [] })
-    const tz = cookies().get('ht_tz')?.value || DEFAULT_TZ
+    const tz = safeTz(cookies().get('ht_tz')?.value)
     const sinceIso = new Date(Date.now() - 7 * 86_400_000).toISOString()
     const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' })
 

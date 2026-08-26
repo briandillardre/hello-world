@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { getGeofences } from '@/lib/db/zones'
 import { getAlertEvents } from '@/lib/db/alerts'
@@ -59,7 +59,7 @@ export default async function CommandPage() {
     getToolAssociations(companyId),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
 
   // Demo mode has no DB to defer to — synthetic tracks + seeded projects,
   // fully rendered server-side like before.

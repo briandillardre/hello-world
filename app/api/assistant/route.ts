@@ -9,7 +9,7 @@ import { PROJECTS } from '@/lib/projects'
 import { answerQuestion, type AssistantContext } from '@/lib/assistant'
 import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai-tools'
 import { getMyPermissions } from '@/lib/permissions-server'
-import { DEFAULT_TZ } from '@/lib/dates'
+import { safeTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     getMyPermissions(),
   ])
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  const tz = decodeURIComponent(request.cookies.get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(request.cookies.get('ht_tz')?.value)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
 

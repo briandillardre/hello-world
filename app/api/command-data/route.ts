@@ -7,7 +7,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { buildCostCurve } from '@/lib/costs'
 import { moneyFull } from '@/lib/projects'
-import { rangeWindow, DEFAULT_TZ } from '@/lib/dates'
+import { rangeWindow, safeTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -53,7 +53,7 @@ export async function GET() {
       // different dollar figure than the timeline chip on the SAME screen
       // ($375 vs $201, logged-in review Aug 26). "These should be the exact
       // same map" (Brian, Aug 22) applies to the numbers too.
-      const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+      const tz = safeTz(cookies().get('ht_tz')?.value)
       const w = rangeWindow(tz, 'live')
       const [rawAssets, toolAssociations, history] = await Promise.all([
         getAssetsWithLocations(companyId),

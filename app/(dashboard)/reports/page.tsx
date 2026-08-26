@@ -8,7 +8,7 @@ import { getGeofences } from '@/lib/db/zones'
 import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getFleetScorecard } from '@/lib/db/scorecard'
 import { fmtClock, type VehicleScore } from '@/lib/scorecard'
-import { rangeWindow, DEFAULT_TZ, fmtDay, type TimeRangeKey } from '@/lib/dates'
+import { rangeWindow, fmtDay, type TimeRangeKey, safeTz } from '@/lib/dates'
 import { RANGES } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { POI_KIND_META } from '@/lib/poi'
@@ -84,7 +84,7 @@ const GRADE_CLS: Record<string, string> = {
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
   const companyId = await getCurrentCompanyId()
-  const tz = decodeURIComponent(cookies().get('ht_tz')?.value ?? DEFAULT_TZ)
+  const tz = safeTz(cookies().get('ht_tz')?.value)
   const keys = REPORT_RANGES.map((r) => r.key)
   // Default TODAY — the cheapest, freshest view. Long ranges are a tap away
   // and carry their own cost ("reports took 20 seconds for 7 day", Aug 10).
