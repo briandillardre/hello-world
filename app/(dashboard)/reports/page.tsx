@@ -317,8 +317,14 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
 
             {/* Everything, one table */}
             <section className="rounded-2xl border border-navy-800 bg-navy-900 p-4">
-              <h2 className="text-sm font-semibold text-faint uppercase tracking-wider mb-2">All the numbers</h2>
-              <div className="overflow-x-auto">
+              <div className="flex items-baseline justify-between mb-2">
+                <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">All the numbers</h2>
+                <span className="sm:hidden text-[10px] text-faint font-mono" aria-hidden>swipe →</span>
+              </div>
+              {/* Phone: right-edge fade signals the table scrolls sideways. */}
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-navy-900 to-transparent sm:hidden" aria-hidden />
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs whitespace-nowrap">
                   <thead>
                     <tr className="text-left text-faint border-b border-navy-800">
@@ -358,6 +364,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             </section>
 

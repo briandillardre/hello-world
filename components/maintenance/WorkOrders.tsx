@@ -99,6 +99,9 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
             const late = o.due_date && o.due_date < today
             return (
               <div key={o.id} className="p-3 space-y-2">
+                {/* Phone (<sm): title block full-width first, status pill on its own
+                    row, then the controls row full-width. Desktop (sm+): the original
+                    single row — pill · title · controls — pixel-identical. */}
                 <div className="flex items-start gap-2.5 flex-wrap">
                   <button
                     type="button"
@@ -113,11 +116,11 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                         if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
                       })
                     }}
-                    className={`flex-none rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.cls}`}
+                    className={`order-2 sm:order-none flex-none rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.cls}`}
                   >
                     {meta.label}{meta.next && <span aria-hidden> ›</span>}
                   </button>
-                  <div className="min-w-0 flex-1">
+                  <div className="order-1 sm:order-none min-w-0 grow basis-full sm:basis-0">
                     <p className="text-sm text-ink font-medium">
                       {o.priority !== 'normal' && <span className={`mr-1 font-bold ${o.priority === 'urgent' ? 'text-red-400' : 'text-amber'}`}>!</span>}
                       {o.title}
@@ -130,7 +133,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                     </p>
                     {o.detail && <p className="text-[11.5px] text-muted mt-0.5">{o.detail}</p>}
                   </div>
-                  <div className="flex-none flex items-center gap-1.5">
+                  <div className="order-3 sm:order-none flex w-full sm:w-auto sm:flex-none items-center gap-1.5">
                     <select
                       value={o.assignee_id ?? ''}
                       onChange={(e) => {
@@ -141,14 +144,14 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                           if (!r.ok) { patchLocal(o.id, { assignee_id: prev }); showError(r.error ?? 'Failed') }
                         })
                       }}
-                      className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1 text-[11px] text-muted max-w-[120px]"
+                      className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1 text-[11px] text-muted min-w-0 flex-1 sm:flex-initial sm:max-w-[120px]"
                       aria-label="Assignee"
                     >
                       <option value="">Unassigned</option>
                       {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <button type="button" onClick={() => setCompleting(o)}
-                      className="rounded-lg bg-teal/15 border border-teal/40 text-teal font-bold text-[11px] px-2.5 py-1">
+                      className="flex-none rounded-lg bg-teal/15 border border-teal/40 text-teal font-bold text-[11px] px-2.5 py-1">
                       Complete
                     </button>
                     <button type="button" aria-label="Cancel work order"
@@ -161,7 +164,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                           if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
                         })
                       }}
-                      className="text-faint hover:text-red-400 p-1">
+                      className="flex-none text-faint hover:text-red-400 p-1">
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>

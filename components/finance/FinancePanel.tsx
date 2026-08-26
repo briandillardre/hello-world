@@ -164,7 +164,7 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
           <label><span className={lbl}>Last year net profit $</span><input className={inp} {...num('lastYearProfit')} placeholder="180000" /></label>
           <label><span className={lbl}>Owner pay + perks $</span><input className={inp} {...num('ownerComp')} placeholder="120000" /></label>
           <label><span className={lbl}>Employees ({teamCount} on roster)</span><input className={inp} {...num('employees')} placeholder={String(teamCount || 10)} /></label>
-          <label><span className={lbl}>Fleet value $ (auto {fmtMoney(autoFleetValue)})</span><input className={inp} {...num('fleetValueOverride')} placeholder={String(autoFleetValue || '')} /></label>
+          <label><span className={lbl}>Fleet value $ (auto {fmtMoney(autoFleetValue)})</span><input className={inp} {...num('fleetValueOverride')} placeholder={autoFleetValue ? Number(autoFleetValue).toLocaleString('en-US') : ''} /></label>
           <label><span className={lbl}>Other assets $</span><input className={inp} {...num('otherAssets')} placeholder="0" /></label>
           <label><span className={lbl}>Debt / liabilities $</span><input className={inp} {...num('liabilities')} placeholder="0" /></label>
         </div>
