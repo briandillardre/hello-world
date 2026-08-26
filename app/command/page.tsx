@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { DEFAULT_TZ } from '@/lib/dates'
 import { cookies } from 'next/headers'
@@ -28,6 +29,22 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function CommandPage() {
+  // Auth gate — same contract as app/(dashboard)/layout.tsx (no Edge
+  // middleware in this app; gating lives in the server components). In real
+  // mode a logged-out visitor gets /login instead of an empty shell whose
+  // /api/command-data + /api/history calls all 401 ("HISTORY UNAVAILABLE").
+  // Demo mode (isMock) stays fully public — /command is part of the demo.
+  if (!isMock) {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) redirect('/login')
+    } catch (e) {
+      // Re-throw Next's redirect signal; ignore transient auth-check failures.
+      if ((e as { digest?: string })?.digest?.startsWith('NEXT_REDIRECT')) throw e
+    }
+  }
+
   // SNAPPY CONTRACT (Brian, Aug 22): this page awaits only the small, fast
   // queries — the shell and basemap paint immediately. The heavy cargo
   // (24h trails, full timeline history, pairing episodes, cost-today) loads

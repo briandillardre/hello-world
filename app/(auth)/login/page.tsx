@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SocialAuth } from '@/components/auth/SocialAuth'
+import { mapAuthError } from '../auth-error'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -66,15 +67,20 @@ export default function LoginPage() {
       return
     }
 
-    const { createClient } = await import('@/lib/supabase')
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
+    try {
+      const { createClient } = await import('@/lib/supabase')
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) {
+        setError(mapAuthError(error))
+        setLoading(false)
+      } else {
+        router.push(nextPath)
+        router.refresh()
+      }
+    } catch (e) {
+      setError(mapAuthError(e))
       setLoading(false)
-    } else {
-      router.push(nextPath)
-      router.refresh()
     }
   }
 
@@ -89,10 +95,10 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-ink">Sign in</h2>
+          <h1 className="text-lg font-semibold text-ink">Sign in</h1>
 
           {error && (
-            <div className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">
+            <div role="alert" className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">
               {error}
             </div>
           )}
@@ -101,8 +107,10 @@ export default function LoginPage() {
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
+              className="h-11 sm:h-10"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -113,8 +121,10 @@ export default function LoginPage() {
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
+              name="current-password"
               type="password"
               autoComplete="current-password"
+              className="h-11 sm:h-10"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -131,7 +141,7 @@ export default function LoginPage() {
             <span className="text-sm text-muted">Stay signed in for 30 days</span>
           </label>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full h-11 sm:h-10" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
 
