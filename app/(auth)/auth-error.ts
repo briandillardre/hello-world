@@ -21,5 +21,8 @@ export function mapAuthError(err: unknown): string {
   if (/auth session missing/i.test(raw)) {
     return EXPIRED_LINK_MESSAGE
   }
+  if (/already registered|already been registered/i.test(raw)) {
+    return 'That email already has an account — sign in instead.'
+  }
   return 'Something went wrong — try again.'
 }
