@@ -5,8 +5,12 @@ import Link from 'next/link'
 
 /**
  * Price-anchoring calculator: your fleet size → our bill vs the incumbent's,
- * using only PUBLISHED numbers (Track tier $8/machine + $3/tag, $0 setup;
- * Tenna's public $15–25/asset + $500 setup, computed at the $20 midpoint).
+ * using PUBLISHED numbers for machines (Track tier $8/machine + $3/tag, $0
+ * setup; Tenna's public $15–25/asset + $500 setup, computed at the $20
+ * midpoint). Tenna DOES sell BLE tool tags (TennaBLE — docs/COMPETITORS.md)
+ * but publishes no tag rate, so their tag side is MODELED at a modest $6/mo
+ * and labeled as modeled in the footnote. Never price their tags as full
+ * $20 assets — that overstates the gap.
  * Changing tier pricing? The pricing sync rule applies — update /pricing,
  * docs/PRICING-TIERS.md, and these constants together.
  */
@@ -14,7 +18,8 @@ const HT_MACHINE = 8
 const HT_TAG = 3
 const F25_MACHINE = 6
 const TENNA_ASSET_MID = 20
-const TENNA_SETUP = 500
+const TENNA_TAG_MODELED = 6
+const TENNA_SETUP = 500 // shown as the "+ $500 setup" chip
 
 const usd = (n: number) => '$' + Math.round(n).toLocaleString('en-US')
 
@@ -24,9 +29,7 @@ export function RoiCalculator() {
 
   const htMo = machines * HT_MACHINE + tags * HT_TAG
   const f25Mo = machines * F25_MACHINE + tags * HT_TAG
-  // Tenna has no $3 tool-tag class — tools ride as full assets there.
-  const tennaMo = (machines + tags) * TENNA_ASSET_MID
-  const yearOneSaved = tennaMo * 12 + TENNA_SETUP - htMo * 12
+  const tennaMo = machines * TENNA_ASSET_MID + tags * TENNA_TAG_MODELED
 
   return (
     <div className="rounded-2xl border border-navy-800 bg-navy-900 p-6 sm:p-8">
@@ -51,25 +54,23 @@ export function RoiCalculator() {
               className="w-full accent-amber" aria-label="Number of tool tags" />
           </label>
           <p className="font-mono text-[11px] text-faint mt-4 leading-relaxed">
-            Tenna math: their published $15–25/asset/mo (we use $20) + $500 setup — and no
-            $3 tool-tag class, so tools ride as full assets. Ours: Track tier list, $0 setup.
+            Tenna math: their published $15–25/asset/mo (we use $20) + $500 setup. Tenna
+            doesn&apos;t publish a tool-tag rate, so we model their tags at a modest $6/mo.
+            Ours: Track tier list price, $0 setup. Always confirm your own quote.
           </p>
         </div>
         <div className="space-y-3">
           <div className="flex items-baseline justify-between rounded-xl border border-navy-700 bg-navy-950 px-4 py-3">
             <span className="text-[13px] text-faint">Tenna, same fleet</span>
-            <span className="font-display font-bold text-lg text-muted tabular-nums">{usd(tennaMo)}/mo <span className="text-[11px] text-faint">+ $500 setup</span></span>
+            <span className="font-display font-bold text-lg text-muted tabular-nums">{usd(tennaMo)}/mo <span className="text-[11px] text-faint">+ {usd(TENNA_SETUP)} setup</span></span>
           </div>
           <div className="flex items-baseline justify-between rounded-xl border border-navy-700 bg-navy-950 px-4 py-3">
             <span className="text-[13px] text-faint">HammerTrack</span>
             <span className="font-display font-bold text-lg text-ink tabular-nums">{usd(htMo)}/mo <span className="text-[11px] text-teal">$0 setup</span></span>
           </div>
-          <div className="rounded-xl border border-teal/40 bg-teal/[0.08] px-4 py-3.5">
-            <p className="text-[12px] text-faint">Year one, you keep</p>
-            <p className="font-display font-black text-[2rem] leading-tight text-teal tabular-nums">{usd(Math.max(0, yearOneSaved))}</p>
-          </div>
           <p className="font-mono text-[11.5px] text-amber">
-            Founding 25 rate: {usd(f25Mo)}/mo — with the crews-and-jobs tier included. <Link href="/pricing" className="text-teal underline decoration-dotted">Full pricing →</Link>
+            Founding 25 rate: {usd(f25Mo)}/mo — with the crews-and-jobs tier included.{' '}
+            <Link href="/pricing" className="inline-block text-teal underline decoration-dotted whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link>
           </p>
         </div>
       </div>

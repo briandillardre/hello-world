@@ -88,7 +88,7 @@ const TIERS = [
 const FAQ = [
   {
     q: 'What do the trackers cost?',
-    a: 'At-cost, no markup: OBD2 plug-ins for trucks are about $86, GPS units for equipment about $85, and Bluetooth tool tags about $20 — exactly what we pay our supplier. Free pilots include loaner trackers.',
+    a: 'Trackers ship at our cost, no markup — what we pay our supplier is what you pay, and we’ll quote your exact kit before you commit. Free pilots include loaner trackers.',
   },
   {
     q: 'Is there a contract?',
@@ -96,7 +96,7 @@ const FAQ = [
   },
   {
     q: 'What counts as an asset?',
-    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, a crew member clocking in by phone, or a $20-tagged tool kit. You only pay for what you track.',
+    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, a crew member clocking in by phone, or a Bluetooth-tagged tool kit. You only pay for what you track.',
   },
   {
     q: 'Who installs the hardware?',
@@ -110,9 +110,9 @@ const FAQ = [
 
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
-  ['Bluetooth tools included', 'Tenna: paid add-on'],
-  ['AI alerts included', 'Tenna: enterprise only'],
-  ['QuickBooks built in', 'Tenna: enterprise only'],
+  ['Tool tags a flat $3/mo', 'Tenna: quote-only'],
+  ['AI alerts included', 'Tenna: varies by package'],
+  ['QuickBooks built in', 'Tenna: claimed, but shallow'],
   ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
   ['$8/machine · $3/tag', 'Tenna: $15–25/asset + setup'],
 ]
@@ -129,7 +129,7 @@ export default function PricingPage() {
             Asset tracking that pays for itself
           </h1>
           <p className="text-muted mt-4 max-w-xl mx-auto text-lg">
-            Everything Tenna does — vehicles, equipment, Bluetooth tools — at a fraction of the price,
+            Everything Tenna does — vehicles, equipment, Bluetooth tools — at about half the price,
             with AI alerts and QuickBooks built in.
           </p>
         </div>
@@ -140,7 +140,8 @@ export default function PricingPage() {
             <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-amber">Founding 25 — first 25 companies</p>
             <h2 className="font-display font-extrabold text-xl mt-1">$6/machine + $3/tag. Operate features included. No platform fee.</h2>
             <p className="text-[13px] text-muted mt-1.5 leading-relaxed">
-              Founder pricing locked for 12 months, hardware at cost, month-to-month, cancel anytime.
+              Free 30-day pilot · founder pricing locked for 12 months · hardware at cost ·
+              first install done with you, in person or on the phone · month-to-month, cancel anytime.
               You&apos;re helping us build it — you keep the price.
             </p>
           </div>
@@ -212,7 +213,7 @@ export default function PricingPage() {
           <div className="flex-1">
             <h3 className="font-display font-bold text-[15px]">Hardware at cost — no markup, no rental games</h3>
             <p className="text-[13px] text-faint mt-1">
-              OBD2 plug-ins ~$86 · equipment GPS ~$85 · Bluetooth tool tags ~$20 — what we pay is what you pay.
+              Trackers ship at our cost, no markup — we&apos;ll quote your exact kit before you commit.
               Yours to keep. Free pilots ship with loaner trackers.
             </p>
           </div>
@@ -249,7 +250,10 @@ export default function PricingPage() {
             The quote-comparison ads all lead to the same few platforms. Their published or
             typically-quoted terms, side by side with ours.
           </p>
-          <div className="overflow-x-auto rounded-2xl border border-navy-800">
+          <div className="relative rounded-2xl border border-navy-800">
+            {/* phone-only scroll affordance: right-edge fade over the table */}
+            <div className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-2xl bg-gradient-to-l from-navy-950 to-transparent z-10" />
+            <div className="overflow-x-auto rounded-2xl">
             <table className="w-full text-[12.5px] min-w-[640px]">
               <thead>
                 <tr className="bg-navy-900 text-left font-mono text-[10px] uppercase tracking-wide text-faint">
@@ -283,16 +287,16 @@ export default function PricingPage() {
                   <td className="text-muted">multi-year</td>
                 </tr>
                 <tr>
-                  <td className="text-faint">$20 Bluetooth tool tags</td>
-                  <td className="text-teal font-semibold">✓ included in the model</td>
-                  <td className="text-muted">paid add-on</td>
+                  <td className="text-faint">Bluetooth tool tags</td>
+                  <td className="text-teal font-semibold">✓ flat $3/mo per tag</td>
+                  <td className="text-muted">quote-only</td>
                   <td className="text-muted">—</td>
                   <td className="text-muted">—</td>
                 </tr>
                 <tr className="bg-navy-950/60">
                   <td className="text-faint">QuickBooks job costing</td>
-                  <td className="text-teal font-semibold">✓ built in</td>
-                  <td className="text-muted">enterprise only</td>
+                  <td className="text-teal font-semibold">✓ included</td>
+                  <td className="text-muted">claimed, shallow</td>
                   <td className="text-muted">via integrations</td>
                   <td className="text-muted">via integrations</td>
                 </tr>
@@ -312,7 +316,9 @@ export default function PricingPage() {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
+          <p className="sm:hidden font-mono text-[10.5px] text-faint text-center mt-2">swipe → to compare</p>
           <p className="text-[11px] text-faint text-center mt-3 max-w-2xl mx-auto">
             Fair&apos;s fair: if you need dashcams or DOT/ELD compliance for interstate trucking,
             Samsara and Verizon Connect are built for that — we&apos;re not. Competitor figures are
@@ -328,7 +334,10 @@ export default function PricingPage() {
               <details key={q} className="group rounded-xl border border-navy-800 bg-navy-900 px-5 py-4">
                 <summary className="cursor-pointer list-none flex items-center justify-between gap-3 font-display font-bold text-[14.5px] text-ink">
                   {q}
-                  <span className="text-faint transition-transform group-open:rotate-45 text-lg leading-none">+</span>
+                  <span className="text-faint text-lg leading-none" aria-hidden="true">
+                    <span className="group-open:hidden">+</span>
+                    <span className="hidden group-open:inline">−</span>
+                  </span>
                 </summary>
                 <p className="text-[13.5px] text-muted mt-3 leading-relaxed">{a}</p>
               </details>

@@ -57,6 +57,8 @@ hybrid does both jobs:
 
 - **$6/machine + $3/tag, Operate features included, no platform fee, 12-month price lock,
   hardware at cost, month-to-month, cancel anytime.**
+- **Free 30-day pilot** to start — no credit card.
+- **First install done with you, in person or on the phone.**
 - Positioning: "founder pricing — you're helping me build it, you keep the
   discount for life on assets you've already enrolled."
 - Every Founding 25 asset still clears its COGS floor (rule 1) — this is

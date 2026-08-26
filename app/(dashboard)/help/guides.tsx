@@ -329,7 +329,9 @@ export const GUIDES: HelpGuide[] = [
             <L
               items={[
                 <><B>$6/mo per tracked machine</B> and <B>$3/mo per tool tag</B> — Operate features included, no platform fee.</>,
+                <><B>Free 30-day pilot</B> to start — no credit card.</>,
                 <><B>12-month price lock</B> on assets you&apos;ve enrolled.</>,
+                <><B>First install done with you</B>, in person or on the phone.</>,
                 <><B>Hardware at cost</B> — trackers are a pass-through, we don&apos;t mark them up. No setup fees, ever.</>,
                 <><B>Month-to-month, cancel anytime.</B> No contract.</>,
                 <><B>Unlimited users</B> — every crew member gets a login. We never charge per seat.</>,
