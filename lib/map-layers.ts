@@ -149,7 +149,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'parcels', label: 'Parcel lines', group: 'land', status: process.env.NEXT_PUBLIC_PARCEL_SERVICE_URL ? 'live' : 'coming-soon', isLive: true, minZoom: 14, hint: 'county tax parcels · tap one for owner, address & acreage' },
   // minZoom mirrors the overlay def in lib/overlays.ts (FEMA draws layer 28
   // only at 1:36k and closer) — this row drives the "(zoom in)" chip.
-  { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 15, hint: 'FEMA flood hazard areas' },
+  { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 15, hint: 'FEMA flood hazard areas · zoom to street level' },
   { id: 'wetlands', label: 'Wetlands', group: 'land', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },
   { id: 'soils', label: 'Soils', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'soil survey map units' },
   { id: 'topo', label: 'Topo lines', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'elevation contours' },

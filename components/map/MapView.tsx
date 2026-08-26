@@ -5208,8 +5208,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const scrubWxMs = pbActive && realWindowEff
     ? realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from)
     : null
+  // Clamp to now — the scrubber opens at the window END (a future midnight),
+  // and an unclamped TIME= asked nowcoast for tomorrow's analysis (same
+  // future-frame class the radar clamp fixed, ship-check Aug 26).
   const scrubWxTs = scrubWxMs !== null && Date.now() - scrubWxMs <= RTMA_ARCHIVE_MS
-    ? new Date(Math.floor(scrubWxMs / 3_600_000) * 3_600_000).toISOString()
+    ? new Date(Math.floor(Math.min(scrubWxMs, Date.now()) / 3_600_000) * 3_600_000).toISOString()
     : null
   const wxOutOfRange = scrubWxMs !== null && scrubWxTs === null
   const rtmaHistoryNoted = useRef(false)

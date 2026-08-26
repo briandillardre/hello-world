@@ -10,6 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BRAND_NAME, BRAND_URL } from './brand'
 import { escapeHtml } from './email'
+import { isZoneLogEvent } from './alerts-engine'
 
 // Free-text from the DB (asset/zone/person/task names) is user-editable —
 // escape EVERYTHING interpolated into email HTML (sec-check, Aug 22: a
@@ -91,14 +92,14 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
   const [entries, logs, alertsWeek, zones, tasks, milestones, expenses, maint, assets, alertsOpen, sessions] = await Promise.all([
     g(db.from('time_entries').select('person_name, clock_in_at, clock_out_at').eq('company_id', companyId).gte('clock_in_at', wk()).limit(300)),
     g(db.from('daily_logs').select('id').eq('company_id', companyId).gte('created_at', wk()).limit(300)),
-    g(db.from('alert_events').select('id').eq('company_id', companyId).gte('triggered_at', wk()).limit(200)),
+    g(db.from('alert_events').select('kind, rule:alert_rules(trigger)').eq('company_id', companyId).gte('triggered_at', wk()).limit(200)),
     g(db.from('geofences').select('id, name, kind, completed_at').eq('company_id', companyId).is('owner_id', null)),
     g(db.from('project_tasks').select('title, status, due_date, done_at, geofence_id').eq('company_id', companyId).limit(400)),
     g(db.from('project_milestones').select('name, target_date, done_at, geofence_id').eq('company_id', companyId).is('done_at', null).limit(100)),
     g(db.from('expenses').select('amount').eq('company_id', companyId).eq('status', 'needs_receipt').limit(500)),
     g(db.from('maintenance_schedules').select('id, asset_id, next_due_at').eq('company_id', companyId).limit(200)),
     g(db.from('assets').select('id, name, type').eq('company_id', companyId)),
-    g(db.from('alert_events').select('asset_id, rule:alert_rules(trigger)').eq('company_id', companyId).is('acknowledged_at', null).gte('triggered_at', wk()).limit(10)),
+    g(db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', companyId).is('acknowledged_at', null).gte('triggered_at', wk()).limit(50)),
     // The exact visit ledger (056) — pre-aggregated, so a week is cheap.
     g(db.from('zone_sessions').select('geofence_id, asset_id, entered_at, exited_at').eq('company_id', companyId).gte('entered_at', wk()).limit(2000)),
   ])
@@ -187,7 +188,9 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     company: companyName,
     hoursByPerson: Object.entries(hoursByPerson).sort((a, b) => b[1] - a[1]).slice(0, 10),
     logsFiled: (logs ?? []).length,
-    alertsFired: (alertsWeek ?? []).length,
+    // Zone-log crossings excluded — "62 alerts fired" out of routine
+    // enter/exits would cry wolf in the owner's weekly email.
+    alertsFired: (alertsWeek ?? []).filter((e) => !isZoneLogEvent(e as { kind?: string | null; rule?: { trigger?: string | null } | null })).length,
     tasksDone: (tasks ?? []).filter((t) => t.done_at && (t.done_at as string) >= wk()).length,
     activeZones: siteZones.map((z) => z.name as string).slice(0, 8),
     darkAssets,
@@ -204,9 +207,11 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     maintenanceDue: (maint ?? [])
       .filter((m) => m.next_due_at && (m.next_due_at as string) <= new Date(Date.now() + 7 * 86_400_000).toISOString())
       .map((m) => nameOf.get(m.asset_id as string) ?? 'Asset').slice(0, 6),
-    openAlerts: (alertsOpen ?? []).map((e) =>
-      `${nameOf.get(e.asset_id as string) ?? 'Asset'} (${(((e.rule as { trigger?: string } | null)?.trigger) ?? 'alert').replace(/_/g, ' ')})`
-    ).slice(0, 5),
+    openAlerts: (alertsOpen ?? [])
+      .filter((e) => !isZoneLogEvent(e as { kind?: string | null; rule?: { trigger?: string | null } | null }))
+      .map((e) =>
+        `${nameOf.get(e.asset_id as string) ?? 'Asset'} (${(((e.rule as { trigger?: string } | null)?.trigger) ?? 'alert').replace(/_/g, ' ')})`
+      ).slice(0, 5),
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
 import { BRAND_URL } from '@/lib/brand'
+import { isZoneLogEvent } from '@/lib/alerts-engine'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest) {
   for (const co of companies ?? []) {
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ, geosQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
-      db.from('alert_events').select('asset_id, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', sinceIso).limit(10),
+      db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', sinceIso).limit(50),
       db.from('time_entries').select('person_name, category, project_geofence_id, clock_out_at').eq('company_id', co.id).gte('clock_in_at', sinceIso).limit(100),
       db.from('daily_logs').select('safety').eq('company_id', co.id).gte('created_at', sinceIso).limit(100),
       db.from('equipment_checks').select('asset_id, check_type, created_at').eq('company_id', co.id).gte('created_at', new Date(Date.now() - 60 * 86_400_000).toISOString()).limit(2000),
@@ -158,7 +159,7 @@ export async function GET(req: NextRequest) {
       assetsTotal: trackable.length,
       assetsMoved: trackable.filter((a) => moved.has(a.id)).map((a) => a.name),
       assetsDark: dark.slice(0, 5),
-      openAlerts: (alertsQ.data ?? []).map((e) => ({
+      openAlerts: (alertsQ.data ?? []).filter((e) => !isZoneLogEvent(e as { kind?: string | null; rule?: { trigger?: string | null } | null })).slice(0, 10).map((e) => ({
         asset: nameOf.get(e.asset_id) ?? 'Asset',
         trigger: ((e.rule as { trigger?: string } | null)?.trigger ?? 'alert').replace(/_/g, ' '),
       })),

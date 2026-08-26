@@ -1,17 +1,20 @@
-import type { Asset, AssetLocation, AlertRule, AlertEvent, Geofence, Company } from './types'
+import type { Asset, AssetLocation, AlertRule, Geofence, Company } from './types'
 
 /** Routine zone enter/exit crossings are the ZONE LOG, not alerts — the nav
- *  bell, /alerts "Needs attention", and every command-center readout must
- *  count the same number. This is the one shared definition ( /command's
- *  blinking dial said "26 ALERTS" while the bell said 9 — logged-in review,
- *  Aug 26). System alerts carry `kind` instead of a rule, so they're always
- *  actionable. */
-export function isZoneLogEvent(e: Pick<AlertEvent, 'kind' | 'rule'>): boolean {
+ *  bell, /alerts "Needs attention", every command-center readout, the AI
+ *  assistant, and the owner digests must count the same number. This is the
+ *  one shared definition ( /command's blinking dial said "26 ALERTS" while
+ *  the bell said 9 — logged-in review, Aug 26). System alerts carry `kind`
+ *  instead of a rule, so they're always actionable. Typed structurally so
+ *  slim digest queries (kind + rule.trigger only) can use it too. */
+export function isZoneLogEvent(e: { kind?: string | null; rule?: { trigger?: string | null } | null }): boolean {
   return !e.kind && (e.rule?.trigger === 'enter' || e.rule?.trigger === 'exit')
 }
 
 /** Unread actionable alerts — the ONE number every badge shows. */
-export function unreadActionableCount(events: Pick<AlertEvent, 'kind' | 'rule' | 'acknowledged_at'>[]): number {
+export function unreadActionableCount(
+  events: { kind?: string | null; rule?: { trigger?: string | null } | null; acknowledged_at?: string | null }[]
+): number {
   return events.filter((e) => !e.acknowledged_at && !isZoneLogEvent(e)).length
 }
 
