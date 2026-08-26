@@ -71,10 +71,27 @@ export function RealCinema() {
     let marker: import('maplibre-gl').Marker | null = null
     let visible = true
 
-    const io = new IntersectionObserver((es) => { visible = es[0]?.isIntersecting ?? true }, { threshold: 0.1 })
+    // Defer the 272 KB maplibre-gl chunk: nothing downloads until the hero
+    // actually scrolls into view (or the browser goes idle) — the headline +
+    // CTA paint first. The same observer keeps driving the pause-offscreen
+    // behavior once the map is running.
+    let started = false
+    const start = () => { if (started || disposed) return; started = true; void run() }
+    const io = new IntersectionObserver((es) => {
+      visible = es[0]?.isIntersecting ?? true
+      if (visible) start()
+    }, { threshold: 0.1 })
     if (el.current) io.observe(el.current)
+    else start()
+    // Idle fallback: warm the map even if the hero never intersects (edge
+    // cases: display:none containers, odd embeds) so behavior matches today.
+    const hasIdle = typeof window.requestIdleCallback === 'function'
+    const idleId = hasIdle
+      ? window.requestIdleCallback(start, { timeout: 4000 })
+      : window.setTimeout(start, 3500)
 
-    ;(async () => {
+    // Hoisted so `start` can fire synchronously above (function declaration).
+    async function run() {
       const maplibregl = (await import('maplibre-gl')).default
       await import('maplibre-gl/dist/maplibre-gl.css' as string).catch(() => {})
       if (disposed || !el.current) return
@@ -173,9 +190,16 @@ export function RealCinema() {
         }
         raf = requestAnimationFrame(frame)
       })
-    })()
+    }
 
-    return () => { disposed = true; cancelAnimationFrame(raf); io.disconnect(); map?.remove() }
+    return () => {
+      disposed = true
+      cancelAnimationFrame(raf)
+      io.disconnect()
+      if (hasIdle) window.cancelIdleCallback(idleId)
+      else window.clearTimeout(idleId)
+      map?.remove()
+    }
   }, [])
 
   // Poster fallback: same frame, same story, zero GL — a clean pitch

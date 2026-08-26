@@ -1,5 +1,10 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
+
+// Intrinsic aspect of /brand/hammertrack-mark.png (56×96 — downscaled from
+// the 201×344 original, kept as hammertrack-mark-full.png for print/large use).
+const MARK_RATIO = 56 / 96
 
 /**
  * HammerTrack logo lockup: the navy mark (pin + hammer + signal waves) plus a
@@ -23,12 +28,12 @@ export function Logo({
 }) {
   const inner = (
     <span className={cn('inline-flex items-center gap-3', className)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src="/brand/hammertrack-mark.png"
         alt="HammerTrack"
-        width={size}
+        width={Math.round(size * MARK_RATIO)}
         height={size}
+        sizes={`${Math.round(size * MARK_RATIO)}px`}
         style={{ height: size, width: 'auto' }}
         className={cn(onDark && 'mark-white', markClassName)}
       />

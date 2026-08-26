@@ -1,31 +1,11 @@
+import { FullPageLoading } from '@/components/ui/loading'
+
 /**
  * Branded skeleton for every dashboard route transition — a shimmering layout
- * ghost instead of a blank flash while server components fetch.
+ * ghost instead of a blank flash while server components fetch. Composed from
+ * the shared loading kit (components/ui/loading.tsx) so every route speaks
+ * the same loading language.
  */
 export default function DashboardLoading() {
-  return (
-    <div className="h-full overflow-hidden">
-      {/* Same thin teal sweep as the map timeline + layers panel — one
-          loading language everywhere (owner ask, Aug 5). */}
-      <div className="h-[3px] bg-navy-800 overflow-hidden">
-        <div className="h-full w-1/3 rounded-full bg-teal/80 animate-tl-sweep" />
-      </div>
-      <div className="h-full overflow-hidden p-4 space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="h-7 w-40 rounded-lg skeleton-shimmer" />
-        <div className="h-5 w-20 rounded-full skeleton-shimmer ml-auto" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-20 rounded-xl skeleton-shimmer" />
-        ))}
-      </div>
-      <div className="space-y-3 max-w-2xl">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-16 rounded-xl skeleton-shimmer" style={{ opacity: 1 - i * 0.15 }} />
-        ))}
-      </div>
-      </div>
-    </div>
-  )
+  return <FullPageLoading />
 }

@@ -23,6 +23,7 @@ import { vehiclePower } from '@/lib/vehicle-power'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { LiveStatusBadge } from '@/components/assets/LiveStatus'
 import { FolderLink } from '@/components/ui/FolderLink'
+import { SectionLoading, SweepBar } from '@/components/ui/loading'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -493,23 +494,8 @@ async function MaintenanceSection({ companyId, assetId }: { companyId: string; a
 
 // ── Loading states ───────────────────────────────────────────────────────────
 
-/** Generic section placeholder: label + thin indeterminate sweep, so it's
- *  always obvious something is still on its way (Brian, Aug 24: "always show
- *  progress bar or something for loading items"). */
-function SectionLoading({ label }: { label: string }) {
-  return (
-    <section aria-busy="true">
-      <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">{label}</h2>
-      <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
-        <div className="relative h-1 overflow-hidden rounded-full bg-navy-800">
-          <div className="absolute inset-y-0 w-1/3 rounded-full bg-teal/70 animate-tl-sweep" />
-        </div>
-        <div className="skeleton-shimmer h-3.5 w-2/3 rounded" />
-        <div className="skeleton-shimmer h-3.5 w-1/2 rounded" />
-      </div>
-    </section>
-  )
-}
+/** SectionLoading now lives in the shared kit (components/ui/loading.tsx) —
+ *  imported above, identical markup, so behavior here is unchanged. */
 
 /** Mirrors the finished status card so nothing jumps when the data lands —
  *  the tiles that come straight off the last fix (speed / battery / coords)
@@ -521,9 +507,7 @@ function StatusSkeleton({ showDriveStats, isVehicle, loc }: {
 }) {
   return (
     <section aria-busy="true" className="rounded-xl border border-navy-800 bg-navy-900 p-3.5 space-y-2.5">
-      <div className="relative h-1 overflow-hidden rounded-full bg-navy-800">
-        <div className="absolute inset-y-0 w-1/3 rounded-full bg-teal/70 animate-tl-sweep" />
-      </div>
+      <SweepBar />
       <div className={`grid ${showDriveStats ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'} gap-1.5 text-center`}>
         {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />}
         {showDriveStats && <SkeletonStat label="Miles today" />}
