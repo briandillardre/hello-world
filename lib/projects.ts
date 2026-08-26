@@ -116,6 +116,8 @@ export function projectCost(p: Project, t: number): ProjectCost {
 }
 
 export function money(n: number): string {
+  // ≥ $1M reads as "$3.4M" — YTD/All cost chips were showing "$3399k".
+  if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1000) return '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k'
   return '$' + Math.round(n).toLocaleString()
 }

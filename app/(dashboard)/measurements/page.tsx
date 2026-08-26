@@ -14,7 +14,7 @@ export default async function MeasurementsPage() {
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
       <div className="p-4 border-b border-navy-800 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
-        <h1 className="font-display font-black text-xl">Measurements</h1>
+        <h1 className="font-display font-black text-xl text-ink">Measurements</h1>
         <p className="text-[12.5px] text-faint mt-0.5">Points, lengths, areas &amp; takeoffs saved from the map&rsquo;s measure tool.</p>
       </div>
       <MeasurementsManager measurements={measurements} />

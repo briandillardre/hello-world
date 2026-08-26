@@ -222,6 +222,13 @@ export function TimelinePlayback({
     window.addEventListener('resize', measurePills)
     return () => window.removeEventListener('resize', measurePills)
   }, [measurePills, stage, live, range, trailMode])
+  // The picked range must never sit clipped behind the overflow fade — the
+  // selected "All" chip rendered half-faded at the strip's right edge on
+  // phones ("All tim" over Custom on /live). Scroll it fully into view.
+  useEffect(() => {
+    const el = pillsRef.current?.querySelector<HTMLElement>('[data-active-pill]')
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [range, stage])
   const dragRef = useRef<{ x: number; y: number; done: boolean } | null>(null)
   // A stage-step just happened via swipe — the very next click (the tail of
   // that same gesture, often on a button) gets swallowed.
@@ -725,7 +732,12 @@ export function TimelinePlayback({
         {/* Reserve real width for the range pills — without a floor, the pile
             of flex-none controls crushes this strip to a sliver ("Toda…") on
             mid-width screens; controls wrap to a second line instead. */}
-        <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px]">
+        {/* lg floor fits ALL seven pills at desktop widths — at 1440 the
+            flex-none control pile crushed the strip to the 270px floor and
+            "30 days / YTD / All" hid behind the fade (the selected chip
+            could sit clipped). Below the floor the controls wrap to a
+            second line, the designed degrade. */}
+        <div className="relative w-full sm:w-auto sm:flex-1 min-w-0 sm:min-w-[270px] lg:min-w-[430px]">
         {/* Right-edge fade whenever more pills hide off-screen — a clipped
             "30d" read as broken, not scrollable ("7 days 3", Aug 11). */}
         <div ref={pillsRef} onScroll={measurePills} className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
@@ -735,9 +747,10 @@ export function TimelinePlayback({
           {RANGES.map((r) => (
             <button
               key={r.key}
+              data-active-pill={range === r.key ? '' : undefined}
               onClick={() => onRange(r.key)}
               className={
-                'flex-none px-2.5 sm:px-3 py-1 rounded-full text-[11.5px] sm:text-[12px] font-display font-bold transition-colors ' +
+                'flex-none px-2.5 py-1 rounded-full text-[11.5px] sm:text-[12px] font-display font-bold transition-colors ' +
                 (range === r.key
                   ? r.key === 'live' ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
                   : 'text-faint hover:text-ink hover:bg-navy-900')
@@ -997,7 +1010,11 @@ export function TimelinePlayback({
           </span>
           {dayStepper && <span className="ml-auto sm:hidden">{dayStepper}</span>}
         </div>
-        <div className="flex items-center gap-3 px-4 pt-1 pb-2">
+        {/* md:pr clears the desktop Ask FAB (fixed bottom-6 right-6, ~90px
+            wide) that floats over the bar's right corner — it was covering
+            the scrubber's end, the end tick label, and the Speed chip on
+            both /map and /command. Phones hide the FAB, so no pad there. */}
+        <div className="flex items-center gap-3 px-4 pt-1 pb-2 md:pr-[112px]">
           <button
             onClick={onPlayPause}
             className="flex-none grid place-items-center w-9 h-9 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"

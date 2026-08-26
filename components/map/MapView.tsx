@@ -1339,6 +1339,14 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // "Greenville" — NC outranks SC by population).
   const wxCoordsRef = useRef<[number, number] | null>(null)
   const wxAdded = useRef(false)
+  // Radar tiles that failed to load since the last frame swap. setTiles()
+  // runs SourceCache.reload(true), which force-marks even ERRORED (texture-
+  // less) tiles as "expired" — a state hasData() calls renderable — so the
+  // raster draw derefs tile.texture on undefined ("reading 'bind'" storm,
+  // 26 uncaught errors in 6s with the feed down). When any wx tile has
+  // errored we swap the source wholesale instead: fresh tiles start in
+  // "loading" (not renderable) and failed tiles simply stay invisible.
+  const wxTileErr = useRef(false)
 
   // Animated radar (Iowa Environmental Mesonet). Frames rebuilt when radar turns
   // on; an interval steps through them so the loop plays and zooms deep.
@@ -2474,6 +2482,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       // toggle after remount takes the else-branch against a map that has no
       // such layer (task #13 secondary finding).
       wxAdded.current = false
+      wxTileErr.current = false
       cloudsAdded.current = false
       stormAdded.current = false
       precipAdded.current = false
@@ -3206,6 +3215,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!mapReady || !m) return
     const onErr = (e: unknown) => {
       const sid = (e as { sourceId?: string }).sourceId
+      // Radar tile failures: flag the source so the next frame swap rebuilds
+      // it instead of setTiles-ing errored tiles into a crash (wxTileErr).
+      // This listener existing at all is also what keeps maplibre from
+      // console.error-ing every failed tile — keep it registered.
+      if (sid === 'wx') { wxTileErr.current = true; return }
       if (!sid || !sid.startsWith('ovl-')) return
       const key = sid.slice(4)
       if (tileErrReported.current.has(key)) return
@@ -5089,6 +5103,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // beyond z10 rather than request tiles that don't add detail. Zooms far past
     // the old RainViewer z8 cap without the "Zoom Level Not Supported" tiles.
     const url = iemRadarUrl(ts)
+    if (wxAdded.current && wxTileErr.current) {
+      // A tile errored since the last swap: setTiles would force the errored
+      // (texture-less) tiles into a renderable "expired" state and crash the
+      // raster draw (see wxTileErr above). Tear the source down instead —
+      // the re-add below rebuilds it clean.
+      wxTileErr.current = false
+      if (m.getLayer('wx-layer')) m.removeLayer('wx-layer')
+      if (m.getSource('wx')) m.removeSource('wx')
+      wxAdded.current = false
+    }
     if (!wxAdded.current) {
       m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
       const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined

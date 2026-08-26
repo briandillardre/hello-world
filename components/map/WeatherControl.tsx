@@ -228,6 +228,16 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   const drawerSwipe = useRef<{ x: number; y: number } | null>(null)
   const drawerSwiped = useRef(false)
   const drawerDown = (e: React.PointerEvent) => {
+    // Never arm swipe-to-close from an interactive child that needs its own
+    // horizontal drags — the opacity/imagery-year/3D-height range sliders
+    // were closing the drawer instead of adjusting (mouse AND touch). One
+    // guard here covers both input paths because touch is delivered through
+    // the same pointer events (touch-pan-y on the panel).
+    const t = e.target as HTMLElement | null
+    if (t && t.closest('input, select, textarea, [data-no-swipe]')) {
+      drawerSwipe.current = null
+      return
+    }
     drawerSwipe.current = { x: e.clientX, y: e.clientY }
     drawerSwiped.current = false
   }
