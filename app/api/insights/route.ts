@@ -76,6 +76,14 @@ export async function GET() {
     if (Date.now() - builtAt > 26 * 3_600_000) {
       const { data: co } = await db.from('companies').select('digest_prefs').eq('id', companyId).limit(1)
       const tz = resolveDigestPrefs(co?.[0]?.digest_prefs).tz
+      // Claim the spine BEFORE the heavy gather: the tray and the Ask chips
+      // fetch together on first open, and both passed the staleness check —
+      // this upsert closes the door on the second runner (sec-check).
+      const { dayKey } = await import('@/lib/dates')
+      await db.from('company_metrics_daily').upsert(
+        { company_id: companyId, day: dayKey(Date.now(), tz), metrics: {}, built_at: new Date().toISOString() },
+        { onConflict: 'company_id,day' }
+      )
       await runInsightsEngine(db, companyId, tz)
     }
   } catch { /* pre-079 database — return empty below */ }
@@ -98,13 +106,17 @@ export async function POST(req: NextRequest) {
   const id = typeof body?.id === 'string' ? body.id : null
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  const companyId = await getCurrentCompanyId()
+  const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
   const { createServiceClient } = await import('@/lib/supabase-server')
-  const { error } = await createServiceClient()
+  let q = createServiceClient()
     .from('insights')
     .update({ dismissed_at: new Date().toISOString() })
     .eq('id', id)
     .eq('company_id', companyId)
+  // Dismissal is company-wide state: a role that can't SEE money rows must
+  // not be able to silence them off the owner's surfaces (sec-check).
+  if (!perms.canViewCosts) q = q.eq('money', false)
+  const { error } = await q
   if (error) return NextResponse.json({ error: 'dismiss failed' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

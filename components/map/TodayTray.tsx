@@ -147,7 +147,9 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
       critical: i.severity >= 3,
       icon: <Sparkles className={`h-4 w-4 ${i.severity >= 3 ? 'text-alert' : 'text-amber'}`} />,
       text: i.headline,
-      href: i.link ?? '/reports',
+      // Relative app paths only — a future link writer must never be able
+      // to turn a tray row into an outbound or javascript: link (sec-check).
+      href: i.link && i.link.startsWith('/') ? i.link : '/reports',
     }))
     const alertRow = out.filter((r) => r.key === 'alerts')
     const rest = out.filter((r) => r.key !== 'alerts')
