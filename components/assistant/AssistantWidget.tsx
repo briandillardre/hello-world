@@ -58,6 +58,23 @@ export function AssistantWidget() {
     try { cutoffRef.current = localStorage.getItem(CUTOFF_KEY) || '' } catch { cutoffRef.current = '' }
   }
   const [listening, setListening] = useState(false)
+  // Insight-engine chips: the empty state opens with the questions the data
+  // says are worth asking TODAY ("these guys won't know what to ask it") —
+  // static examples only fill in behind them.
+  const [liveQuestions, setLiveQuestions] = useState<string[] | null>(null)
+  useEffect(() => {
+    if (!open || liveQuestions !== null) return
+    let cancelled = false
+    fetch('/api/insights')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled) return
+        const qs = Array.isArray(j?.questions) ? (j.questions as string[]).filter((q) => typeof q === 'string') : []
+        setLiveQuestions(qs.slice(0, 3))
+      })
+      .catch(() => { if (!cancelled) setLiveQuestions([]) })
+    return () => { cancelled = true }
+  }, [open, liveQuestions])
   // Conversation mode: answers are spoken aloud, and when the voice finishes
   // the mic reopens — ask, listen, ask again, hands never touch the phone.
   const [voiceMode, setVoiceMode] = useState(false)
@@ -307,11 +324,21 @@ export function AssistantWidget() {
                 <HardHat className="h-9 w-9 text-amber mx-auto mb-2" />
                 <p className="text-sm text-muted">Ask about your fleet, sites, crews, and costs.</p>
                 <div className="mt-4 flex flex-col gap-2">
-                  {SUGGESTED_QUESTIONS.map((q) => (
-                    <button key={q} onClick={() => ask(q)} className="text-left text-[13px] rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-muted hover:text-ink hover:border-amber/40 transition">
+                  {/* Live chips first (amber spark = the engine noticed something
+                      TODAY), static examples fill the list to five. */}
+                  {(liveQuestions ?? []).map((q) => (
+                    <button key={q} onClick={() => ask(q)} className="text-left text-[13px] rounded-lg border border-amber/40 bg-navy-900 px-3 py-2 text-ink hover:border-amber transition">
+                      <Sparkles className="inline h-3.5 w-3.5 text-amber mr-1.5 -mt-0.5" />
                       {q}
                     </button>
                   ))}
+                  {SUGGESTED_QUESTIONS.filter((q) => !(liveQuestions ?? []).includes(q))
+                    .slice(0, Math.max(2, 5 - (liveQuestions?.length ?? 0)))
+                    .map((q) => (
+                      <button key={q} onClick={() => ask(q)} className="text-left text-[13px] rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-muted hover:text-ink hover:border-amber/40 transition">
+                        {q}
+                      </button>
+                    ))}
                 </div>
               </div>
             )}

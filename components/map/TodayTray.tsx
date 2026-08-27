@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { X, Siren, WifiOff, Wrench, DollarSign, Sun } from 'lucide-react'
+import { X, Siren, WifiOff, Wrench, DollarSign, Sun, Sparkles } from 'lucide-react'
 import type { AlertEvent, AssetWithLocation } from '@/lib/types'
+
+interface TrayInsight {
+  id: string
+  detector: string
+  severity: number
+  headline: string
+  link: string | null
+}
 
 /**
  * TODAY — the morning exceptions card, ON the map (Brian, Aug 22: "pop up
@@ -52,8 +60,33 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
     try { localStorage.setItem(SEEN_KEY, localDayKey()) } catch { /* private mode */ }
   }
 
+  // Insight-engine findings (severity ≥2 only — the card is a glance, not a
+  // feed). Fetched once the card decides to show; a failed fetch just means
+  // the card shows its local rows, never a broken morning.
+  const [insights, setInsights] = useState<TrayInsight[]>([])
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    fetch('/api/insights')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !Array.isArray(j?.insights)) return
+        setInsights((j.insights as TrayInsight[]).filter((i) => i.severity >= 2).slice(0, 2))
+      })
+      .catch(() => { /* quiet */ })
+    return () => { cancelled = true }
+  }, [open])
+  const dismissInsight = (id: string) => {
+    setInsights((prev) => prev.filter((i) => i.id !== id))
+    fetch('/api/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => { /* it re-suppresses server-side next run anyway */ })
+  }
+
   const rows = useMemo(() => {
-    const out: { key: string; icon: React.ReactNode; text: string; href: string; critical?: boolean }[] = []
+    const out: { key: string; icon: React.ReactNode; text: string; href: string; critical?: boolean; insightId?: string }[] = []
     const unread = alerts.filter((a) =>
       !a.acknowledged_at && !(!a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')))
     if (unread.length) {
@@ -92,7 +125,10 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
       })
     }
     if (canViewCosts) {
-      const burners = assets.filter((a) => (a.idleDays ?? -1) >= 2 && (a.daily_cost ?? 0) > 0)
+      // The engine's idle_money story (7d+ streak with cumulative $) replaces
+      // this local snapshot when it's live — one idleness story, not two.
+      const engineHasIdle = insights.some((i) => i.detector === 'idle_money')
+      const burners = engineHasIdle ? [] : assets.filter((a) => (a.idleDays ?? -1) >= 2 && (a.daily_cost ?? 0) > 0)
       if (burners.length) {
         const dollars = burners.reduce((s, a) => s + (a.idleDays ?? 0) * (a.daily_cost ?? 0), 0)
         out.push({
@@ -103,8 +139,20 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
         })
       }
     }
-    return out.slice(0, 4)
-  }, [assets, alerts, canViewCosts])
+    // Weave the engine's findings in after the alert row: the ✨ rows are
+    // the "AI noticed" moments, each dismissible on its own.
+    const insightRows = insights.map((i) => ({
+      key: `insight-${i.id}`,
+      insightId: i.id,
+      critical: i.severity >= 3,
+      icon: <Sparkles className={`h-4 w-4 ${i.severity >= 3 ? 'text-alert' : 'text-amber'}`} />,
+      text: i.headline,
+      href: i.link ?? '/reports',
+    }))
+    const alertRow = out.filter((r) => r.key === 'alerts')
+    const rest = out.filter((r) => r.key !== 'alerts')
+    return [...alertRow, ...insightRows, ...rest].slice(0, 4)
+  }, [assets, alerts, canViewCosts, insights])
 
   if (!open || rows.length === 0) return null
 
@@ -129,6 +177,16 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
           >
             <span className="flex-none">{r.icon}</span>
             <span className="min-w-0 flex-1">{r.text}</span>
+            {r.insightId && (
+              <button
+                aria-label="Dismiss this finding"
+                title="Dismiss — it comes back only if it grows"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissInsight(r.insightId!) }}
+                className="flex-none p-1 -m-1 text-faint hover:text-ink"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
             <span className="text-faint flex-none">→</span>
           </Link>
         ))}

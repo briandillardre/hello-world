@@ -104,6 +104,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ['name'],
     },
   },
+  {
+    name: 'whats_worth_a_look',
+    description:
+      'The insight engine\'s current findings for this company: budget overruns, cost running over the recent normal, idle machines burning ownership dollars, after-hours movement trends, missing receipts — each with the evidence numbers behind it. Findings are computed nightly from the usage ledger (never guessed). Use for "what should I look at", "how are we doing", "anything I should know", "any problems" questions.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
 ]
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
@@ -523,6 +529,28 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
   })
 }
 
+/** The insight engine's live findings (lib/insights.ts) — the same rows the
+ *  map's Today card and the owner digests show, so every door tells the
+ *  same story. Company keys are admin-grade: money rows included. */
+async function runWorthALook(companyId: string): Promise<McpToolResult> {
+  const { getActiveInsights } = await import('./insights')
+  const { createServiceClient } = await import('./supabase-server')
+  const rows = await getActiveInsights(createServiceClient(), companyId, { limit: 6, includeMoney: true })
+  if (!rows.length) {
+    return ok({ note: 'Nothing out of the ordinary right now — no budget overruns, cost spikes, long-idle machines, after-hours trends, or receipt piles worth flagging.' })
+  }
+  return ok({
+    findings: rows.map((r) => ({
+      severity: r.severity,
+      headline: r.headline,
+      detail: r.detail ?? undefined,
+      evidence: r.evidence,
+      since: r.fired_at,
+    })),
+    note: 'Computed nightly from the usage ledger and alert history — cite the numbers as-is.',
+  })
+}
+
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 /**
@@ -542,6 +570,7 @@ export async function runMcpTool(
       case 'list_alerts': return runListAlerts(companyId, args)
       case 'maintenance_status': return runMaintenanceStatus(companyId)
       case 'find_tool': return runFindTool(companyId, args)
+      case 'whats_worth_a_look': return runWorthALook(companyId)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

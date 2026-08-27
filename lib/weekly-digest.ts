@@ -78,6 +78,8 @@ export interface WeeklyFacts {
   milestonesDue: { name: string; zone: string; date: string | null }[]
   maintenanceDue: string[]
   openAlerts: string[]
+  /** Insight-engine headlines (≤3) — the trends worth opening the email with. */
+  noticed: string[]
 }
 
 const wk = () => new Date(Date.now() - 7 * 86_400_000).toISOString()
@@ -212,6 +214,12 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
       .map((e) =>
         `${nameOf.get(e.asset_id as string) ?? 'Asset'} (${(((e.rule as { trigger?: string } | null)?.trigger) ?? 'alert').replace(/_/g, ' ')})`
       ).slice(0, 5),
+    noticed: await (async () => {
+      try {
+        const { getInsightHeadlines } = await import('./insights')
+        return await getInsightHeadlines(db, companyId, 3)
+      } catch { return [] }
+    })(),
   }
 }
 
@@ -239,6 +247,10 @@ export const none = (t: string) => `<p style="margin:0;font-size:13px;color:#6f8
 /** Friday afternoon — the week that just happened. */
 export function fridayEmailHtml(f: WeeklyFacts): string {
   let inner = ''
+  if (f.noticed.length) {
+    inner += h2('Noticed this week')
+    for (const n of f.noticed) inner += li(`✨ ${esc(n)}`)
+  }
   inner += h2('The week in hours')
   inner += f.hoursByPerson.length
     ? f.hoursByPerson.map(([n, h]) => li(`<b style="color:#e8f0f7">${esc(n)}</b> — ${h.toFixed(1)} h`)).join('')
@@ -282,6 +294,10 @@ export function sundayEmailHtml(f: WeeklyFacts): string {
   if (f.openAlerts.length) {
     inner += h2('Deal with first')
     inner += f.openAlerts.map((a) => li(`<b style="color:#f87171">${esc(a)}</b>`)).join('')
+  }
+  if (f.noticed.length) {
+    inner += h2('Worth a look this week')
+    for (const n of f.noticed) inner += li(`✨ ${esc(n)}`)
   }
   inner += h2('Punch list this week')
   inner += f.openTasks.length

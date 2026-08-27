@@ -29,6 +29,8 @@ interface DayFacts {
   logsFiled: number
   safetyNotes: string[]
   checksOverdue: { asset: string; check: string; daysOver: number }[]
+  /** Insight-engine headlines (≤3) — trends, not today-noise. */
+  noticed: string[]
 }
 
 function plainDigest(f: DayFacts): string {
@@ -40,6 +42,7 @@ function plainDigest(f: DayFacts): string {
   if (f.openAlerts.length) lines.push(`Unacknowledged alerts: ${f.openAlerts.map((a) => `${a.asset} (${a.trigger})`).join(', ')}.`)
   if (f.assetsDark.length) lines.push(`Dark >24h: ${f.assetsDark.map((d) => d.name).join(', ')}.`)
   if (f.checksOverdue.length) lines.push(`Checks due: ${f.checksOverdue.map((c) => `${c.asset} ${c.check} (${c.daysOver}d over)`).join(', ')}.`)
+  if (f.noticed.length) lines.push(`Noticed: ${f.noticed.join(' · ')}`)
   if (lines.length <= 1 && !f.clockedIn.length) lines.push('All quiet — no alerts, nothing overdue.')
   return lines.join('\n')
 }
@@ -54,7 +57,7 @@ async function composeWithAi(f: DayFacts): Promise<string | null> {
       model: process.env.AI_MODEL || 'claude-opus-4-8',
       max_tokens: 400,
       system:
-        'You write a construction company owner\'s evening fleet digest. Plain sentences, sharp dispatcher voice, under 110 words, no markdown, no preamble. Lead with what needs action (still on the clock, safety notes, alerts, overdue checks); end with the routine. Use ONLY the facts given — never invent names or numbers. Never mention tracker hardware brands.',
+        'You write a construction company owner\'s evening fleet digest. Plain sentences, sharp dispatcher voice, under 110 words, no markdown, no preamble. Lead with what needs action (still on the clock, safety notes, alerts, overdue checks); end with the routine. Use ONLY the facts given — never invent names or numbers. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — weave the most important one in naturally.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
     })
     const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim()
@@ -169,6 +172,12 @@ export async function GET(req: NextRequest) {
       })),
       stillOnClock: entries.filter((e) => !e.clock_out_at).map((e) => e.person_name),
       logsFiled: (logsQ.data ?? []).length,
+      noticed: await (async () => {
+        try {
+          const { getInsightHeadlines } = await import('@/lib/insights')
+          return await getInsightHeadlines(db, co.id, 3)
+        } catch { return [] }
+      })(),
       safetyNotes: (logsQ.data ?? []).map((l) => l.safety).filter((s): s is string => !!s?.trim()).slice(0, 5),
       checksOverdue: checksOverdue.slice(0, 6),
     }
