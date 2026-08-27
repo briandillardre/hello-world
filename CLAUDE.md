@@ -222,7 +222,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 | **Mercury** | **APPROVED — live Aug 5 2026**; vendor migration underway (KORE first, via per-vendor virtual cards on the IO) | Partner bank Column N.A. $3,000 first deposit = **owner capital contribution, not income**. IO card issued. Rule: one named virtual card per vendor, limit set per vendor. No cash deposits ever; paper checks go to a mail-in lockbox. |
 | **Supabase** | Pro; billing entity **HAMMERTRACK LLC**, EIN on file | |
 | **Google Workspace** | live on hammertrack.ai | sales@ / hello@ / support@ all verified receiving (Jul 30) |
-| **D-U-N-S** | refiled, awaiting number | Gates Apple + Google **organization** developer accounts. D&B does not require an EIN — the thing that must match Apple's enrollment exactly is legal name + address. Verify the record when the number lands; never file a third time (duplicate records are slow to merge). |
+| **D-U-N-S** | ✅ **LANDED early Aug 2026** (D&B account created Jul 31; partner email Aug 8 confirms number issued) | Unblocks Apple + Google **organization** developer accounts — NEITHER enrollment started as of Aug 26 (no Apple/Play emails exist). Before enrolling: verify the dnb.com record matches HAMMERTRACK LLC legal name + address exactly (Apple matches verbatim). Never file again (duplicate records are slow to merge). Store listing pack + Capacitor shell + keystore all ready — enrollment is the only remaining gate (docs/APP-STORE-PLAYBOOK.md). |
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
