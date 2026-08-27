@@ -161,7 +161,10 @@ export async function POST(request: NextRequest) {
   // reaches the same rows through the whats_worth_a_look tool.
   const insights = await (async () => {
     try {
-      const { getActiveInsights } = await import('@/lib/insights')
+      const { DEMO_INSIGHTS, getActiveInsights } = await import('@/lib/insights')
+      // Demo mode: the same canned findings /api/insights serves, so the
+      // three sparkle chips get real answers instead of a generic shrug.
+      if (isMock) return DEMO_INSIGHTS
       const { createClient } = await import('@/lib/supabase-server')
       return await getActiveInsights(createClient(), companyId, { limit: 6, includeMoney: perms.canViewCosts })
     } catch { return [] }

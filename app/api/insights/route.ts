@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
-import { getActiveInsights, insightQuestion, runInsightsEngine, type InsightRow } from '@/lib/insights'
+import { DEMO_INSIGHTS, getActiveInsights, insightQuestion, runInsightsEngine } from '@/lib/insights'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 
 export const dynamic = 'force-dynamic'
@@ -11,29 +11,6 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 const NO_STORE = { headers: { 'Cache-Control': 'private, no-store' } }
-
-/** Demo mode: three canned findings that match the mock fleet's story, so
- *  the front-door demo shows the product noticing things. */
-const DEMO_INSIGHTS = [
-  {
-    id: 'demo-1', detector: 'idle_money', severity: 2, money: true,
-    headline: 'Sakai SW990 hasn\'t worked in 9 days — ~$315 of ownership burned',
-    detail: 'Ownership accrues at $35/day whether it works or sits.',
-    link: '/assets', fired_at: new Date().toISOString(), evidence: { idleDays: 9 },
-  },
-  {
-    id: 'demo-2', detector: 'cost_concentration', severity: 1, money: true,
-    headline: 'Riverfront Tower took $2,140 — 64% of this week\'s tracked cost',
-    detail: '4 sites saw machine time this week; $3,340 total tracked.',
-    link: '/zones', fired_at: new Date().toISOString(), evidence: {},
-  },
-  {
-    id: 'demo-3', detector: 'receipts_gap', severity: 1, money: true,
-    headline: '6 charges · $487 missing receipts — oldest 11d',
-    detail: 'Every one of these is a deduction waiting on a photo.',
-    link: '/receipts', fired_at: new Date().toISOString(), evidence: {},
-  },
-] as unknown as InsightRow[]
 
 async function requireUser(): Promise<boolean> {
   try {

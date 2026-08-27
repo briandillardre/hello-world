@@ -455,6 +455,36 @@ export async function getInsightHeadlines(db: SupabaseClient, companyId: string,
   return rows.map((r) => r.headline)
 }
 
+/** Demo mode's canned findings — numbers cross-checked against the mock
+ *  world so the "product noticing things" claims agree with the screens
+ *  next to them (truth-check): concentration math from PROJECTS'
+ *  equipCostPerDay (19,250 + 10,600 over a 5-day week), receipts from the
+ *  demo /receipts pile (3 charges / $464 / oldest 2d), after-hours from the
+ *  demo's theft-alert story. Detector thresholds hold for each. */
+export const DEMO_INSIGHTS: InsightRow[] = [
+  {
+    id: 'demo-1', detector: 'cost_concentration', severity: 2, money: true,
+    headline: 'Riverfront Tower took $19,250 — 64% of this week\'s tracked machine cost',
+    detail: '2 sites saw machine time this week; $29,850 total tracked.',
+    link: '/zones', fired_at: new Date().toISOString(),
+    evidence: { zone: 'Riverfront Tower', cost: 19250, share: 64, weekTotal: 29850 },
+  },
+  {
+    id: 'demo-2', detector: 'after_hours_trend', severity: 2, money: false,
+    headline: 'After-hours movement is up — 3 events this week vs ~1/wk normal',
+    detail: 'Worth a look even if each one had a reason: patterns are how equipment walks off.',
+    link: '/alerts', fired_at: new Date().toISOString(),
+    evidence: { week: 3, baselinePerWeek: 1 },
+  },
+  {
+    id: 'demo-3', detector: 'receipts_gap', severity: 1, money: true,
+    headline: '3 charges · $464 missing receipts — oldest 2d',
+    detail: 'Every one of these is a deduction waiting on a photo.',
+    link: '/receipts', fired_at: new Date().toISOString(),
+    evidence: { count: 3, total: 464, oldestDays: 2 },
+  },
+]
+
 /** The tap-to-ask question each insight suggests — every one lands on a
  *  question the assistant answers well (grounded intent or agent tools). */
 export function insightQuestion(row: Pick<InsightRow, 'detector' | 'evidence'>): string {
