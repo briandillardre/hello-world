@@ -45,6 +45,10 @@
       "schedule": "25 * * * *"
     },
     {
+      "path": "/api/cron/insights",
+      "schedule": "40 8 * * *"
+    },
+    {
       "path": "/api/cron/simulator",
       "schedule": "*/5 * * * *"
     }

@@ -14,6 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BRAND_URL } from './brand'
 import { shell, h2, li, none, day } from './weekly-digest'
+import { escapeHtml } from './email'
 import { zoneAssetUsage, type HistoryPoint } from './costs'
 import { rangeWindow } from './dates'
 
@@ -35,6 +36,8 @@ export interface BriefingFacts {
   maintenanceOverdue: string[]
   openWorkOrders: number
   alertsYesterday: number
+  /** Insight-engine headlines (≤3) — trends the morning read should open with. */
+  noticed: string[]
 }
 
 /** Today's essentials at a point — Open-Meteo, free + keyless, ~200ms. */
@@ -162,6 +165,12 @@ export async function gatherBriefingFacts(
       .slice(0, 6),
     openWorkOrders: (wos ?? []).filter((w) => w.status !== 'done' && w.status !== 'canceled').length,
     alertsYesterday: (alertsYest ?? []).length,
+    noticed: await (async () => {
+      try {
+        const { getInsightHeadlines } = await import('./insights')
+        return await getInsightHeadlines(db, companyId, 3)
+      } catch { return [] }
+    })(),
   }
 }
 
@@ -169,6 +178,12 @@ export async function gatherBriefingFacts(
 
 export function briefingEmailHtml(f: BriefingFacts): string {
   let inner = ''
+  // The engine's findings open the read — the "here's what I noticed"
+  // moment. Names inside headlines are user text: escape them.
+  if (f.noticed.length) {
+    inner += h2('Noticed')
+    for (const n of f.noticed) inner += li(`✨ ${escapeHtml(n)}`)
+  }
   if (f.sites.length) {
     for (const s of f.sites) {
       inner += h2(s.zone)
@@ -208,6 +223,7 @@ export function briefingSms(f: BriefingFacts): string {
   if (wetSite) bits.push(`rain at ${wetSite.zone}`)
   if (f.silentUnits.length) bits.push(`${f.silentUnits.length} tracker(s) silent`)
   if (f.maintenanceOverdue.length) bits.push(`${f.maintenanceOverdue.length} service overdue`)
+  if (f.noticed.length) bits.push(f.noticed[0])
   if (!bits.length) bits.push('quiet board — nothing urgent')
   return `${f.company} ${f.dateLabel}: ${bits.join(' · ')}. ${BRAND_URL}/command`
 }

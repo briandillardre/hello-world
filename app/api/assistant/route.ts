@@ -156,11 +156,25 @@ export async function POST(request: NextRequest) {
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = safeTz(request.cookies.get('ht_tz')?.value)
 
+  // Insight-engine findings (role-filtered) — grounds the tap-to-ask chips
+  // and "what should I look at" on the deterministic path; the agent path
+  // reaches the same rows through the whats_worth_a_look tool.
+  const insights = await (async () => {
+    try {
+      const { DEMO_INSIGHTS, getActiveInsights } = await import('@/lib/insights')
+      // Demo mode: the same canned findings /api/insights serves, so the
+      // three sparkle chips get real answers instead of a generic shrug.
+      if (isMock) return DEMO_INSIGHTS
+      const { createClient } = await import('@/lib/supabase-server')
+      return await getActiveInsights(createClient(), companyId, { limit: 6, includeMoney: perms.canViewCosts })
+    } catch { return [] }
+  })()
+
   const apiKey = process.env.ANTHROPIC_API_KEY
 
   // ── No API key → deterministic grounded engine (instant, free) ──
   if (!apiKey) {
-    const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts }
+    const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
     const grounded = answerQuestion(question, ctx)
     await enrichWithMovement(grounded, companyId, assets)
     return NextResponse.json({ answer: grounded.answer, grounded: true })
@@ -226,7 +240,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Agent failed (bad key, outage, loop cap) → grounded fallback, never a 500.
-  const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts }
+  const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
   const grounded = answerQuestion(question, ctx)
   await saveTurn(userId, userCompanyId, question, grounded.answer)
   return NextResponse.json({ answer: grounded.answer, grounded: true })

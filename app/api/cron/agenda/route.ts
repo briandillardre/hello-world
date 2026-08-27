@@ -29,6 +29,8 @@ interface WeekFacts {
   hoursByPerson: Record<string, number>  // clocked hours last week
   safetyNotes: string[]
   logsFiled: number
+  /** Insight-engine headlines (≤3) — the week's trends worth opening with. */
+  noticed: string[]
 }
 
 function plainAgenda(f: WeekFacts): string {
@@ -39,6 +41,7 @@ function plainAgenda(f: WeekFacts): string {
   if (f.darkAssets.length) lines.push(`Not reporting: ${f.darkAssets.join(', ')} — check power/parking.`)
   if (f.weakBatteries.length) lines.push(`Weak batteries: ${f.weakBatteries.map((b) => `${b.name} ${b.pct}%`).join(', ')}.`)
   if (f.unusedAssets.length) lines.push(`Sat all week: ${f.unusedAssets.join(', ')} — rent out, move, or sell?`)
+  if (f.noticed.length) lines.push(`Noticed: ${f.noticed.join(' · ')}`)
   const hrs = Object.entries(f.hoursByPerson)
   if (hrs.length) lines.push(`Hours last week: ${hrs.map(([n, h]) => `${n} ${h.toFixed(1)}h`).join(', ')} · ${f.logsFiled} logs filed.`)
   if (lines.length === 1) lines.push('Clean week — nothing flagged.')
@@ -55,7 +58,7 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
       model: process.env.AI_MODEL || 'claude-opus-4-8',
       max_tokens: 500,
       system:
-        'You write a construction company owner\'s MONDAY MORNING agenda from last week\'s fleet facts. Sharp dispatcher voice, plain sentences, under 140 words, no markdown. Order: 1) anything unsafe or alerting, 2) overdue maintenance/checks, 3) equipment problems (dark units, weak batteries), 4) money observations (machines that sat unused all week), 5) one-line crew hours recap. Use ONLY the facts given — never invent. Never mention tracker hardware brands.',
+        'You write a construction company owner\'s MONDAY MORNING agenda from last week\'s fleet facts. Sharp dispatcher voice, plain sentences, under 140 words, no markdown. Order: 1) anything unsafe or alerting, 2) overdue maintenance/checks, 3) equipment problems (dark units, weak batteries), 4) money observations (machines that sat unused all week), 5) one-line crew hours recap. Use ONLY the facts given — never invent. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — open with the most important one.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
     })
     const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim()
@@ -191,6 +194,12 @@ export async function GET(req: NextRequest) {
       hoursByPerson,
       safetyNotes: (logsQ.data ?? []).map((l) => l.safety).filter((s): s is string => !!s?.trim()).slice(0, 5),
       logsFiled: (logsQ.data ?? []).length,
+      noticed: await (async () => {
+        try {
+          const { getInsightHeadlines } = await import('@/lib/insights')
+          return await getInsightHeadlines(db, co.id, 3)
+        } catch { return [] }
+      })(),
     }
 
     const text = (await composeWithAi(facts)) ?? plainAgenda(facts)

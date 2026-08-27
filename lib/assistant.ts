@@ -9,12 +9,19 @@
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from './types'
 import { pointInPolygon, unreadActionableCount } from './alerts-engine'
 import { type Project, periodCost, moneyFull, WORKDAY_HOURS, LIVE_DAY_FRACTION } from './projects'
+import { insightQuestion, type InsightRow } from './insights'
+
+const insightQuestionFor = (i: { detector: string; evidence: Record<string, unknown> }) =>
+  insightQuestion(i as Pick<InsightRow, 'detector' | 'evidence'>)
 
 export interface AssistantContext {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   projects: Project[]
   alerts: AlertEvent[]
+  /** Insight-engine findings (already role-filtered by the caller) — powers
+   *  "what should I look at" and the tap-to-ask chips on the grounded path. */
+  insights?: { detector: string; headline: string; detail: string | null; evidence: Record<string, unknown> }[]
 }
 
 export interface AssistantAnswer {
@@ -74,6 +81,28 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
   const { assets, geofences, projects, alerts } = ctx
   const fence = resolveGeofence(ql, geofences)
   const project = fence ? projects.find((p) => p.geofenceId === fence.id) : undefined
+
+  // ── Insight engine: tap-to-ask chips + "what should I look at" ──
+  if (ctx.insights?.length) {
+    // A chip question matches its own insight exactly — answer with the
+    // finding's evidence, never a generic shrug.
+    const asked = ctx.insights.find((i) => insightQuestionFor(i).toLowerCase() === ql)
+    if (asked) {
+      return {
+        answer: `${asked.headline}.${asked.detail ? ` ${asked.detail}` : ''}`,
+        facts: { detector: asked.detector, ...asked.evidence },
+      }
+    }
+    // Guarded on !fence so "what's the problem at Creekside?" still routes
+    // to the site intents instead of the fleet-wide overview.
+    if (!fence && /(worth a look|should i (look|know|worry|watch)|anything i should|what should i be|how are we doing|any (problem|issue|trend)|insight)/.test(ql)) {
+      const top = ctx.insights.slice(0, 3)
+      return {
+        answer: `Worth a look right now: ${top.map((i) => i.headline).join(' · ')}. Tap any card on the map's Today panel to dig in.`,
+        facts: { findings: top.map((i) => i.headline) },
+      }
+    }
+  }
 
   // ── Alerts / theft ──
   if (/(alert|theft|stolen|after.?hours|left site)/.test(ql)) {
