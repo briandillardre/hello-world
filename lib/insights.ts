@@ -110,7 +110,7 @@ async function gather(db: SupabaseClient, companyId: string, tz: string) {
     try { return (await q).data } catch { return null }
   }
   const days = dayKeys(tz, WINDOW_DAYS)
-  const [assets, zones, ledger, alerts, expenses] = await Promise.all([
+  const [assets, zones, ledger, alerts, expenses, moving] = await Promise.all([
     g<AssetRow[]>(db.from('assets')
       .select('id, name, type, active, created_at, hourly_rate, mileage_rate, daily_cost, tracker_id')
       .eq('company_id', companyId).limit(1000)),
@@ -122,7 +122,10 @@ async function gather(db: SupabaseClient, companyId: string, tz: string) {
     // the 35-day slice feeds the daily spine.
     g<LedgerRow[]>(db.from('usage_daily')
       .select('geofence_id, asset_id, day, on_site_secs, active_secs')
-      .eq('company_id', companyId).limit(50_000)),
+      .eq('company_id', companyId)
+      // Newest-first so the 50k cap drops the OLDEST days if a huge fleet
+      // ever exceeds it (ship-check — same cap as /api/zone-burn).
+      .order('day', { ascending: false }).limit(50_000)),
     g<AlertRowSlim[]>(db.from('alert_events')
       .select('kind, triggered_at, rule:alert_rules(trigger)')
       .eq('company_id', companyId).gte('triggered_at', new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString())
@@ -130,8 +133,17 @@ async function gather(db: SupabaseClient, companyId: string, tz: string) {
     g<{ amount: number; txn_date: string }[]>(db.from('expenses')
       .select('amount, txn_date')
       .eq('company_id', companyId).eq('status', 'needs_receipt').limit(500)),
+    // Newest moving fixes — idleness must agree with the map's idle rings,
+    // which count movement ANYWHERE, not just inside drawn zones. A machine
+    // grading daily at an unfenced job is working, whatever the zone ledger
+    // says (ship-check P2).
+    g<{ asset_id: string; timestamp: string }[]>(db.from('asset_locations')
+      .select('asset_id, timestamp')
+      .eq('company_id', companyId).gt('speed', 2)
+      .gte('timestamp', new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString())
+      .order('timestamp', { ascending: false }).limit(2000)),
   ])
-  return { days, assets: assets ?? [], zones: zones ?? [], ledger: ledger ?? [], alerts: alerts ?? [], expenses: expenses ?? [] }
+  return { days, assets: assets ?? [], zones: zones ?? [], ledger: ledger ?? [], alerts: alerts ?? [], expenses: expenses ?? [], moving: moving ?? [] }
 }
 
 /** Per-local-day metrics for the whole window, derived from one ledger read. */
@@ -225,9 +237,14 @@ function detect(data: Awaited<ReturnType<typeof gather>>, spine: Map<string, Day
   // ── cost_spike: this week is running well over the recent weekly normal ──
   const sum = (ks: string[]) => ks.reduce((s, k) => s + (spine.get(k)?.cost ?? 0), 0)
   const week = sum(last7)
-  const priorDaysWithData = prior28.filter((k) => (spine.get(k)?.cost ?? 0) > 0).length
+  // "Normal" requires a FULL baseline: the ledger must predate the whole
+  // 35-day window. Dividing a 2-week-old company's history by four fixed
+  // weeks manufactured a "300% over normal" claim for exactly the
+  // onboarding month (ship-check P1).
+  const earliestLedgerDay = ledger.reduce<string | null>((m, r) => (!m || r.day < m ? r.day : m), null)
+  const fullBaseline = earliestLedgerDay !== null && earliestLedgerDay <= days[0]
   const base = sum(prior28) / 4
-  if (priorDaysWithData >= 7 && base >= 100 && week >= base * 1.4 && week - base >= 250) {
+  if (fullBaseline && base >= 100 && week >= base * 1.4 && week - base >= 250) {
     const zoneTotals = new Map<string, { name: string; cost: number }>()
     for (const k of last7) {
       for (const z of spine.get(k)?.byZone ?? []) {
@@ -311,14 +328,25 @@ function detect(data: Awaited<ReturnType<typeof gather>>, spine: Map<string, Day
       const prev = lastActive.get(r.asset_id)
       if (!prev || r.day > prev) lastActive.set(r.asset_id, r.day)
     }
+    // Movement ANYWHERE also counts as work — the map's idle rings use the
+    // GPS stream, and this claim must never contradict them (ship-check P2).
+    for (const f of data.moving) {
+      const d = f.timestamp.slice(0, 10)
+      const prev = lastActive.get(f.asset_id)
+      if (!prev || d > prev) lastActive.set(f.asset_id, d)
+    }
     for (const a of assets) {
       if (a.type !== 'equipment' || a.active === false || !(Number(a.daily_cost) > 0)) continue
       // Brand-new assets haven't had a chance to work yet — not an insight.
       if (a.created_at && Date.now() - Date.parse(a.created_at) < 10 * 86_400_000) continue
       const last = lastActive.get(a.id) ?? null
-      const idleDays = last
+      let idleDays = last
         ? Math.max(0, Math.round((Date.parse(todayK) - Date.parse(last)) / 86_400_000))
         : WINDOW_DAYS
+      // Never claim more idle days than the asset has existed (ship-check P2).
+      if (a.created_at) {
+        idleDays = Math.min(idleDays, Math.floor((Date.now() - Date.parse(a.created_at)) / 86_400_000))
+      }
       if (idleDays < 7) continue
       const burn = idleDays * Number(a.daily_cost)
       out.push({
@@ -368,24 +396,32 @@ export async function runInsightsEngine(db: SupabaseClient, companyId: string, t
 
   // Persist the spine — the whole window, idempotent. History exists from
   // the first run because usage_daily already holds it.
-  const spineRows = data.days.map((day) => ({
+  // Dedupe by day: a DST fall-back run can yield the same local day twice in
+  // the 35-step walk, and Postgres rejects an upsert that touches one row
+  // twice (ship-check). supabase-js reports failures via {error}, never by
+  // throwing — check it, or a dead spine goes unnoticed.
+  const spineByDay = new Map(data.days.map((day) => [day, {
     company_id: companyId,
     day,
     metrics: spine.get(day) ?? {},
     built_at: new Date().toISOString(),
-  }))
-  try {
-    await db.from('company_metrics_daily').upsert(spineRows, { onConflict: 'company_id,day' })
-  } catch { /* pre-079 database — detectors still run off the in-memory spine */ }
+  }]))
+  const spineRes = await db.from('company_metrics_daily')
+    .upsert(Array.from(spineByDay.values()), { onConflict: 'company_id,day' })
+  if (spineRes.error) console.error('Insights spine upsert failed', companyId, spineRes.error.message)
 
   const candidates = detect(data, spine)
-  let existing: { id: string; fingerprint: string; dismissed_at: string | null; evidence: Record<string, unknown> }[] = []
-  try {
-    const { data: rows } = await db.from('insights')
-      .select('id, fingerprint, dismissed_at, evidence')
-      .eq('company_id', companyId).limit(200)
-    existing = (rows ?? []) as typeof existing
-  } catch { return { fired: 0 } /* pre-079 database */ }
+  // supabase-js reports failure via {error}, never by throwing — a pre-079
+  // database (or any read failure) must stop here, not fall through to
+  // inserts against a table that answered with an error (ship-check).
+  const existingRes = await db.from('insights')
+    .select('id, fingerprint, dismissed_at, evidence')
+    .eq('company_id', companyId).limit(500)
+  if (existingRes.error) {
+    console.error('Insights read failed', companyId, existingRes.error.message)
+    return { fired: 0 }
+  }
+  const existing = (existingRes.data ?? []) as { id: string; fingerprint: string; dismissed_at: string | null; evidence: Record<string, unknown> }[]
   const byFp = new Map(existing.map((r) => [r.fingerprint, r]))
 
   const expiresAt = new Date(Date.now() + EXPIRES_DAYS * 86_400_000).toISOString()
@@ -396,29 +432,36 @@ export async function runInsightsEngine(db: SupabaseClient, companyId: string, t
       detail: c.detail ?? null, link: c.link ?? null, money: c.money,
       evidence: { ...c.evidence, magnitude: c.magnitude }, expires_at: expiresAt,
     }
-    try {
-      if (!prev) {
-        await db.from('insights').insert({ company_id: companyId, fingerprint: c.fingerprint, ...base, fired_at: new Date().toISOString() })
-        continue
+    const logErr = (r: { error: { message: string } | null }) => {
+      if (r.error) console.error('Insights write failed', companyId, c.fingerprint, r.error.message)
+    }
+    if (!prev) {
+      // Upsert, not insert: a fingerprint past the 500-row read window (or a
+      // concurrent racer) must refresh the existing row, never fail silently
+      // into a story that expires and can't come back (ship-check).
+      logErr(await db.from('insights').upsert(
+        { company_id: companyId, fingerprint: c.fingerprint, ...base, fired_at: new Date().toISOString() },
+        { onConflict: 'company_id,fingerprint' }
+      ))
+      continue
+    }
+    const prevMag = Number(prev.evidence?.magnitude) || 0
+    const moved = prevMag === 0 ? true : Math.abs(c.magnitude - prevMag) / Math.abs(prevMag) >= REFIRE_MOVE
+    if (prev.dismissed_at) {
+      // Dismissed stories stay quiet unless they GROW past the shrug —
+      // creeping ±20% wobble must not resurrect what the owner waved off.
+      if (c.magnitude >= prevMag * UNDISMISS_GROWTH) {
+        logErr(await db.from('insights').update({ ...base, dismissed_at: null, fired_at: new Date().toISOString() }).eq('id', prev.id))
       }
-      const prevMag = Number(prev.evidence?.magnitude) || 0
-      const moved = prevMag === 0 ? true : Math.abs(c.magnitude - prevMag) / Math.abs(prevMag) >= REFIRE_MOVE
-      if (prev.dismissed_at) {
-        // Dismissed stories stay quiet unless they GROW past the shrug —
-        // creeping ±20% wobble must not resurrect what the owner waved off.
-        if (c.magnitude >= prevMag * UNDISMISS_GROWTH) {
-          await db.from('insights').update({ ...base, dismissed_at: null, fired_at: new Date().toISOString() }).eq('id', prev.id)
-        }
-        continue
-      }
-      if (moved) {
-        await db.from('insights').update({ ...base, fired_at: new Date().toISOString() }).eq('id', prev.id)
-      } else {
-        // Story still true, magnitude steady: stay visible at the old
-        // fired_at (no fake freshness), just keep it from expiring.
-        await db.from('insights').update({ expires_at: expiresAt }).eq('id', prev.id)
-      }
-    } catch { /* row-level failure — never kill the whole run */ }
+      continue
+    }
+    if (moved) {
+      logErr(await db.from('insights').update({ ...base, fired_at: new Date().toISOString() }).eq('id', prev.id))
+    } else {
+      // Story still true, magnitude steady: stay visible at the old
+      // fired_at (no fake freshness), just keep it from expiring.
+      logErr(await db.from('insights').update({ expires_at: expiresAt }).eq('id', prev.id))
+    }
   }
   return { fired: candidates.length }
 }

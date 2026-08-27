@@ -81,7 +81,11 @@ export async function POST(req: NextRequest) {
   if (!(await requireUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const body = await req.json().catch(() => null) as { id?: string } | null
   const id = typeof body?.id === 'string' ? body.id : null
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  // UUID shape check up front: a malformed id should be a 400, not a
+  // Postgres cast error surfacing as a 500.
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: 'valid id required' }, { status: 400 })
+  }
 
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
   const { createServiceClient } = await import('@/lib/supabase-server')

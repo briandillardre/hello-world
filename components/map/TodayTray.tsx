@@ -64,6 +64,10 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
   // feed). Fetched once the card decides to show; a failed fetch just means
   // the card shows its local rows, never a broken morning.
   const [insights, setInsights] = useState<TrayInsight[]>([])
+  // Sticky: once the engine has (or had) an idle_money story this session,
+  // the engine owns idleness — dismissing its row must NOT resurrect the
+  // local "parked machines" snapshot in the same slot (ship-check).
+  const [engineOwnsIdle, setEngineOwnsIdle] = useState(false)
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -71,7 +75,9 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (cancelled || !Array.isArray(j?.insights)) return
-        setInsights((j.insights as TrayInsight[]).filter((i) => i.severity >= 2).slice(0, 2))
+        const rows = (j.insights as TrayInsight[]).filter((i) => i.severity >= 2).slice(0, 2)
+        setInsights(rows)
+        if ((j.insights as TrayInsight[]).some((i) => i.detector === 'idle_money')) setEngineOwnsIdle(true)
       })
       .catch(() => { /* quiet */ })
     return () => { cancelled = true }
@@ -126,9 +132,9 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
     }
     if (canViewCosts) {
       // The engine's idle_money story (7d+ streak with cumulative $) replaces
-      // this local snapshot when it's live — one idleness story, not two.
-      const engineHasIdle = insights.some((i) => i.detector === 'idle_money')
-      const burners = engineHasIdle ? [] : assets.filter((a) => (a.idleDays ?? -1) >= 2 && (a.daily_cost ?? 0) > 0)
+      // this local snapshot when it's live — one idleness story, not two,
+      // and a dismissed engine story stays replaced (engineOwnsIdle sticks).
+      const burners = engineOwnsIdle ? [] : assets.filter((a) => (a.idleDays ?? -1) >= 2 && (a.daily_cost ?? 0) > 0)
       if (burners.length) {
         const dollars = burners.reduce((s, a) => s + (a.idleDays ?? 0) * (a.daily_cost ?? 0), 0)
         out.push({
@@ -154,7 +160,7 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
     const alertRow = out.filter((r) => r.key === 'alerts')
     const rest = out.filter((r) => r.key !== 'alerts')
     return [...alertRow, ...insightRows, ...rest].slice(0, 4)
-  }, [assets, alerts, canViewCosts, insights])
+  }, [assets, alerts, canViewCosts, insights, engineOwnsIdle])
 
   if (!open || rows.length === 0) return null
 
