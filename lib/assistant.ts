@@ -205,10 +205,12 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
   }
 }
 
+// Account-agnostic on purpose: these render on REAL accounts too, and the
+// old demo-zone phrasings ("Who's at Riverfront Tower?") dead-ended for
+// every actual customer (live check, Aug 27).
 export const SUGGESTED_QUESTIONS = [
-  "Who's at Riverfront Tower?",
-  "What equipment is at Maple St?",
-  'Labor hours at Riverfront today?',
+  "Who's on site right now?",
   "What's costing me money?",
   'Any theft alerts?',
+  'What did the trucks do today?',
 ]

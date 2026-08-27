@@ -68,7 +68,9 @@ export async function GET() {
   const insights = await getActiveInsights(db, companyId, { limit: 8, includeMoney: perms.canViewCosts })
   return NextResponse.json({
     insights,
-    questions: insights.slice(0, 3).map((r) => insightQuestion(r)),
+    // Dedupe: two findings from the same detector suggest the same question
+    // (live check: twin idle machines → twin chips + colliding React keys).
+    questions: Array.from(new Set(insights.map((r) => insightQuestion(r)))).slice(0, 3),
   }, NO_STORE)
 }
 
