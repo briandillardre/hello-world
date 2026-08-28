@@ -64,18 +64,19 @@ no-wiring equipment default. (Solar accessory question to Teltonika still open.)
 |---|---|---|---|
 | FMM00A | FMM00A1KUS01 (NS 201139) | $86 | 5 |
 | TAT141 | TAT141BKBP01 (NS 201140) | $83 | 6 |
-| FMM650 | FMM650Y3US01 (NS 201141) | $112 | 2 |
-| ALL-CAN300 | ALC300RUVS01 (NS 201142) | $118 | 2 |
+| FMM650 | FMM650Y3US01 (NS 201141) | $112 | 3 |
+| ALL-CAN300 | ALC300RUVS01 (NS 201142) | $118 | 3 |
 | Eye Beacon | BTSID17RM402 (NS 201144) | $20 | 10 |
 | SuperSIM (triple-punch 2FF/3FF/4FF) | — | — | 13 |
 
-Hardware subtotal $1,588; invoice total $1,818 paid by card via KORE's
+Hardware subtotal $1,818 (= the invoice total) paid by card via KORE's
 Stripe/SuiteSync link. Connectivity agreement still pending in KORE's
 system. **Matt Ferrans confirmed pre-configuration before shipping**
 (SIMs enabled + tested, connectivity verified, plug-and-play) — send
 KORE the flespi config profile. ⚠ These are SuperSIMs, NOT Hologram:
 APN/config for the 13 new units differs from T1-a/b — get exact
-settings from Matt before boxes arrive.
+settings from Matt before boxes arrive. ⚠ 14 devices, 13 SIMs — one
+unit ships SIM-less; confirm with Matt on order #2.
 
 ## White-label (Billy Stalder, Teltonika — Aug 4 2026)
 
