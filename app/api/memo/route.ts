@@ -4,7 +4,9 @@ import { getMyPermissions } from '@/lib/permissions-server'
 import { ensureOwnerMemo } from '@/lib/memo'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+// Full function budget: the first production compose was killed at 120s
+// mid-model-call, stranding a pending claim — give the deep read room.
+export const maxDuration = 300
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -47,6 +49,9 @@ export async function GET() {
   const db = createServiceClient()
   const { data: co } = await db.from('companies').select('name').eq('id', auth.companyId).limit(1)
   const memo = await ensureOwnerMemo(db, auth.companyId, co?.[0]?.name ?? 'Your company')
+  // 'pending' = another runner is composing this very moment — tell the card
+  // to keep its composing state and ask again, instead of hiding for 30 min.
+  if (memo === 'pending') return NextResponse.json({ memo: null, pending: true }, NO_STORE)
   return NextResponse.json({ memo }, NO_STORE)
 }
 
@@ -61,5 +66,6 @@ export async function POST() {
   const db = createServiceClient()
   const { data: co } = await db.from('companies').select('name').eq('id', auth.companyId).limit(1)
   const memo = await ensureOwnerMemo(db, auth.companyId, co?.[0]?.name ?? 'Your company', { regenerate: true })
+  if (memo === 'pending') return NextResponse.json({ memo: null, pending: true }, NO_STORE)
   return NextResponse.json({ memo }, NO_STORE)
 }

@@ -222,14 +222,21 @@ async function composeWithAi(f: MemoFacts): Promise<string | null> {
 
 /** Recompose floor: at most one model call per company per 30 minutes. */
 const FLOOR_MS = 30 * 60_000
+/** A dead composer's 'pending' claim is reclaimable after this — a crashed
+ *  or platform-killed compose (it happened on day one: the first production
+ *  compose outlived the route budget) must not hide the card for 30 min.
+ *  Worst case spend if every compose dies: one call per 3 min, bounded. */
+const PENDING_FLOOR_MS = 3 * 60_000
 
 /** Generate (or return) the company's memo for the current local month.
  *  `db` must be the SERVICE client. `regenerate` recomposes unless the
- *  stored memo is under 30 minutes old (button-mash guard). */
+ *  stored memo is under 30 minutes old (button-mash guard). Returns
+ *  'pending' when another runner holds a fresh compose claim — callers
+ *  treat it as "composing right now, ask again shortly", never as a memo. */
 export async function ensureOwnerMemo(
   db: SupabaseClient, companyId: string, companyName: string,
   opts: { regenerate?: boolean } = {}
-): Promise<OwnerMemo | null> {
+): Promise<OwnerMemo | 'pending' | null> {
   const prefs = await db.from('companies').select('digest_prefs').eq('id', companyId).limit(1)
   const tz = resolveDigestPrefs(prefs.data?.[0]?.digest_prefs).tz
   const month = memoMonth(tz)
@@ -254,14 +261,15 @@ export async function ensureOwnerMemo(
   // passed the 30-min check before any of them wrote).
   const claimIso = new Date().toISOString()
   if (existing) {
-    // Row exists: take the slot only if nobody has inside the floor window.
-    const floorIso = new Date(Date.now() - FLOOR_MS).toISOString()
+    // Row exists: take the slot only if nobody has inside the floor window
+    // (short window for a pending claim — its holder may be dead).
+    const floorIso = new Date(Date.now() - (pending ? PENDING_FLOOR_MS : FLOOR_MS)).toISOString()
     const claim = await db.from('owner_memos')
       .update({ updated_at: claimIso })
       .eq('company_id', companyId).eq('month', month)
       .lt('updated_at', floorIso)
       .select('month')
-    if (claim.error || !claim.data?.length) return pending ? null : (existing as OwnerMemo)
+    if (claim.error || !claim.data?.length) return pending ? 'pending' : (existing as OwnerMemo)
   } else {
     // No row yet: first insert wins the compose; losers see the memo on
     // their next fetch (ignoreDuplicates = ON CONFLICT DO NOTHING).
@@ -271,7 +279,9 @@ export async function ensureOwnerMemo(
         { onConflict: 'company_id,month', ignoreDuplicates: true }
       )
       .select('month')
-    if (claim.error || !claim.data?.length) return null
+    if (claim.error) return null
+    // Lost the insert race — the winner is composing right now.
+    if (!claim.data?.length) return 'pending'
   }
 
   const facts = await gatherMemoFacts(db, companyId, companyName)
