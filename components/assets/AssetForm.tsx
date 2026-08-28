@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AssetType, AssetPhoto } from '@/lib/types'
+import { ASSET_ICONS, ICON_GROUPS, TYPE_DEFAULT_ICON, iconPreviewDataUrl } from '@/lib/asset-icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -139,6 +140,73 @@ const MAKE_SUGGESTIONS = [
   'New Holland', 'Takeuchi', 'Yanmar', 'Doosan', 'Develon', 'Hitachi', 'Link-Belt',
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
 ]
+
+// Map-dot colors by type — mirrors the map's ASSET_COLORS so the picker
+// previews exactly what the dot will look like on the live map.
+const TYPE_PUCK_COLORS: Record<AssetType, string> = {
+  vehicle: '#ff9e16', equipment: '#60a5fa', personnel: '#34d399', tool: '#a78bfa',
+}
+
+function IconPicker({ value, type, puck, onChange }: {
+  value: string; type: AssetType; puck: string; onChange: (key: string) => void
+}) {
+  // Previews are canvas-rendered — client only, so SSR markup stays stable.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const previews = useMemo(() => {
+    if (!mounted) return {} as Record<string, string>
+    return Object.fromEntries(Object.keys(ASSET_ICONS).map((k) => [k, iconPreviewDataUrl(k, puck)]))
+  }, [mounted, puck])
+  const autoKey = TYPE_DEFAULT_ICON[type]
+  return (
+    <div className="space-y-1.5">
+      <Label>Map icon</Label>
+      <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-2.5 space-y-2">
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className={
+            'flex items-center gap-2 h-8 pl-1 pr-3 rounded-full border text-[11px] font-semibold transition-colors ' +
+            (!value ? 'border-teal text-teal bg-teal/10' : 'border-navy-700 text-faint hover:text-muted')
+          }
+        >
+          {mounted && previews[autoKey]
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={previews[autoKey]} alt="" width={24} height={24} className="rounded-full" draggable={false} />
+            : <span className="inline-block w-6 h-6 rounded-full bg-navy-800" />}
+          Auto — follows type ({ASSET_ICONS[autoKey]?.label ?? 'default'})
+        </button>
+        {ICON_GROUPS.map((group) => {
+          const entries = Object.entries(ASSET_ICONS).filter(([, d]) => d.group === group)
+          if (!entries.length) return null
+          return (
+            <div key={group}>
+              <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-faint mb-1">{group}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {entries.map(([k, d]) => (
+                  <button
+                    key={k} type="button" title={d.label} aria-label={d.label}
+                    onClick={() => onChange(value === k ? '' : k)}
+                    className={
+                      'grid place-items-center w-10 h-10 rounded-lg border transition-colors ' +
+                      (value === k ? 'border-amber bg-amber/10' : 'border-navy-700 hover:border-navy-500')
+                    }
+                  >
+                    {mounted && previews[k]
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={previews[k]} alt={d.label} width={30} height={30} draggable={false} />
+                      : <span className="inline-block w-[30px] h-[30px] rounded-full bg-navy-800" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+        <p className="text-[10px] text-faint leading-tight">Shows inside the asset&rsquo;s dot on the live map and replays. Tap the selected icon again to go back to Auto.</p>
+      </div>
+    </div>
+  )
+}
 
 export function AssetForm({ onClose, onSubmit, saving = false, error = null, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
@@ -478,25 +546,26 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
             </div>
           </div>
 
-          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color' && k !== 'cost_basis').length > 0 && (
+          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color' && k !== 'icon' && k !== 'cost_basis').length > 0 && (
             <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Specs</p>
                 <button
                   type="button"
                   onClick={() => setSpecs((prev) => {
-                    // Clear decoded/typed specs but keep notes + color — they
-                    // have their own inputs and aren't part of this chip strip.
+                    // Clear decoded/typed specs but keep notes + color + icon —
+                    // they have their own inputs and aren't part of this strip.
                     const kept: Record<string, unknown> = {}
                     if (prev.notes != null) kept.notes = prev.notes
                     if (prev.color != null) kept.color = prev.color
+                    if (prev.icon != null) kept.icon = prev.icon
                     return kept
                   })}
                   className="text-[11px] text-faint hover:text-alert"
                 >clear</button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color' && k !== 'cost_basis').map(([k, v]) => (
+                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color' && k !== 'icon' && k !== 'cost_basis').map(([k, v]) => (
                   <span key={k} className="px-2 py-0.5 rounded-md bg-navy-800 text-[11px] text-muted">
                     <span className="text-faint">{k.replace(/_/g, ' ')}:</span> <span className="text-ink">{String(v)}</span>
                   </span>
@@ -601,6 +670,16 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
             />
             <p className="text-[10px] text-faint leading-tight">Used on the map dot, trail line, and radar dial. Auto assigns a stable color; the rainbow well picks anything.</p>
           </div>
+
+          {/* Map icon — the silhouette INSIDE the dot (Brian, Aug 28: "guys
+              would like to see different options here — dump truck, day cab,
+              mower"). Auto follows the asset type; a pick is metadata.icon. */}
+          <IconPicker
+            value={typeof specs.icon === 'string' ? specs.icon : ''}
+            type={type}
+            puck={/^#[0-9a-fA-F]{3,8}$/.test(String(specs.color ?? '')) ? String(specs.color) : TYPE_PUCK_COLORS[type]}
+            onChange={(k) => setSpecField('icon', k)}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="asset-folder">Project folder link <span className="text-faint font-normal">(optional)</span></Label>
