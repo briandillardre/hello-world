@@ -29,7 +29,8 @@ alongside; same formulas, three growth scenarios.*
 
 | Hire | Trigger | Cost/mo (loaded) | Fires (base case) |
 |---|---|---|---|
-| **H1 — PT installer/support** (contractor) | 30 customers — installs + tier-1 texts outgrow nights/weekends | $1,800 + $150 WC | **Aug 2027** @ 31 customers, $2.9k MRR |
+| **S1 — PT field sales & install** (contractor; founder call Aug 28 2026, ahead of trigger) | 0 customers — founder hours are the binding constraint, not demand | $800 base + $200/activated account + $1k bonus @ 25 | **Sep 2026** @ 0 customers |
+| **H1 — PT installer/support** (contractor) | 30 customers — installs + tier-1 texts outgrow nights/weekends | $1,800 + $150 WC | ~~Aug 2027~~ **absorbed by S1** — grow S1's hours at the 30-customer trigger instead of a second hire |
 | **H2 — FT ops/install tech** (replaces H1) | 90 customers | $5,200 + $200 WC | **Jul 2028** @ 91 customers, $8.4k MRR |
 | **H3 — PT admin/CS** | 110 customers | $1,200 | **Oct 2028** @ 115 customers, $10.6k MRR |
 
@@ -37,6 +38,17 @@ Rule of thumb encoded here: a hire lands when its loaded cost ≤ ~60% of the
 MRR added since the last hire — each jump knocks the P&L back to roughly
 breakeven and growth pays it off within 2–3 quarters. That's the sawtooth
 you'll see on the chart.
+
+**S1 is the one deliberate exception to the trigger rule** (Aug 28 2026,
+founder call): it fires at zero customers because the constraint it relieves
+is founder hours, not demand — Brian runs DCG full-time and founder-only
+selling made him the bottleneck. Its risk controls replace the trigger: a
+commission-weighted comp (~$336 all-in per activated account at pace, ~6-mo
+payback at founder-pricing margin), a 60-day kill rule (<8 demos/mo or <3
+activated accounts → pure commission or out), and the role absorbing H1 so
+the headcount plan nets zero extra people. Pre-close cash impact ~$2.4k/qtr;
+worst-case cumulative drawdown moves ~$8.5k → ~$11k — still under two
+excavator payments, still self-funding.
 
 ## The quarterly picture (base case, end-of-quarter month)
 
