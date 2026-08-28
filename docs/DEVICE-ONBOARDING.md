@@ -6,13 +6,22 @@ pucks. Times are realistic once you've done one.*
 
 ---
 
-## App side is now ONE SCAN (Aug 28)
+## App side is now ONE SCAN — or one paste (Aug 28)
 
 **Assets → Scan trackers** (`/assets/scan`): point the phone at the IMEI
 barcode on the Teltonika box (or type the 15 digits), pick Truck/Machine,
 done — the asset exists with a placeholder name and its dot appears on the
 map at the device's first report. Rename + icon + rates later on the edit
-form. Re-scanning a box is harmless (it answers "already added"). Everything
+form. Re-scanning a box is harmless (it answers "already added").
+
+**Assets → Bulk add** (`/assets/import`) is the other door: paste a fleet
+list straight out of Excel/Sheets (or upload a CSV). Column headings are
+matched by name so the sheet's own layout is fine, type + map icon are
+inferred from each machine's name, and IMEIs are Luhn-checked and
+duplicate-checked against the existing fleet before anything is written.
+Use it for a whole existing fleet — an insurance schedule, an equipment
+list, another system's export — and scan for boxes actually in hand.
+Everything
 below this line is the VENDOR side (SIM activation + config push) — that's
 where the remaining per-device minutes live, and the Aug 28 supply plan
 (buffer stock + Hologram-first SIMs + KORE pre-config on order #2) is how
@@ -224,3 +233,47 @@ is iBeacon `UUID:MAJOR:MINOR`, so each beacon must be switched to iBeacon in
 the Teltonika EYE app (default PIN `123456`, Advanced settings) before its
 tool asset will ever match. They may also ship in Hibernate mode — woken
 with a magnet.
+
+---
+
+## One unit stays dark while its siblings came up
+
+*Aug 28 2026: five of six OBD units went Online in FOTA within minutes of
+being plugged in and cycled; …4585 stayed Inactive / Pending with no
+firmware reported (= FOTA has never spoken to it).*
+
+Same batch, same config, same trucks — so the cause is device-specific, not
+setup. Rule out the per-model power-up gotchas above FIRST (a TAT141 with
+its switch off looks exactly like this), then work it in this order; the
+swap test is the one that actually splits the problem.
+
+1. **The SIM's APN feature.** KORE One → the ICCID paired with that IMEI →
+   confirm the subscription is **Active** AND that **"Super SIM Standard
+   APNs" is checked**. A SIM activated without that feature attaches to the
+   carrier and is then refused on the `super` APN — the device looks alive
+   from the truck and never reaches FOTA. Easiest single-device miss in the
+   whole activation flow.
+2. **Session history on that ICCID.** Zero data sessions EVER → SIM or
+   network side (step 1, or seating, or coverage). Sessions present but FOTA
+   still Inactive → it's reaching the network but not our server; recheck
+   the device's APN/domain config.
+3. **Swap test — 2 minutes, definitive.** Move the dark unit into a truck
+   whose device is Online, and that Online device into the dark unit's
+   truck.
+   - Dark unit comes up in the good truck → the original truck's **OBD port
+     has no power**. Check that fuse (frequently shared with the accessory /
+     cigarette-lighter circuit) before blaming the device.
+   - Dark unit stays dark AND the known-good unit works in that truck →
+     it's the device or its SIM. **Now swap just the SIMs between the two
+     devices** — that splits device-vs-SIM in one more move.
+4. **Physical seating.** The SuperSIM triple-punch can pop loose in the
+   tray (2FF frame separating from the 3FF); reseat and confirm
+   orientation. Then confirm the FMM00A case is fully clicked shut — the
+   case IS the OBD plug housing, so a partly-open case means the pins never
+   seat. While it's open, confirm the internal battery plug is connected
+   (ships disconnected — see the per-model table above).
+5. **Coverage.** Cat-M1 inside a steel shop building is a real failure
+   mode. Drive it out and cycle the ignition before condemning anything.
+
+If it survives all five, it's a warranty/RMA conversation with Teltonika
+via KORE (Matt Ferrans), not more field time.

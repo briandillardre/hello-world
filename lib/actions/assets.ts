@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPhotos, setAssetPhotoOrder } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { getMyPermissions } from '@/lib/permissions-server'
+import { extractImei, luhnOk, resolveSheet, MAX_IMPORT_ROWS, type ImportRow, type ExistingIndex } from '@/lib/bulk-import'
 import type { AssetType } from '@/lib/types'
 
 /** Document-folder link on an asset (Dropbox/Drive/etc.) — direct column update. */
@@ -164,7 +166,7 @@ export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equi
   // digits of longer runs, and the SuperSIM's 19-digit ICCID barcode sits in
   // the same box (ship-check: a truncated ICCID makes an asset that looks
   // fine and never reports).
-  const imei = (String(raw).match(/(?:^|\D)(\d{15})(?!\d)/) ?? [])[1]
+  const imei = extractImei(String(raw))
   if (!imei) return { ok: false, error: 'No 15-digit IMEI in that code — scan the IMEI barcode on the box, or type the number.' }
   // IMEIs are Luhn-checksummed — this rejects most wrong-barcode matches
   // (ICCID fragments, shipping barcodes) and typo'd manual entries.
@@ -203,15 +205,116 @@ export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equi
   return { ok: true, asset: asset ? { id: asset.id, name: asset.name } : null }
 }
 
-/** Standard IMEI Luhn check (double every second digit from the right). */
-function luhnOk(s: string): boolean {
-  let sum = 0
-  for (let i = 0; i < s.length; i++) {
-    let d = s.charCodeAt(s.length - 1 - i) - 48
-    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9 }
-    sum += d
+export interface BulkRowResult {
+  /** Index into the submitted rows — the grid highlights by this. */
+  i: number
+  ok: boolean
+  id?: string
+  name?: string
+  error?: string
+}
+
+/**
+ * Bulk asset load (Brian, Aug 28: "need a bulk load option, spreadsheet
+ * style"). Takes RAW cell strings and re-runs the exact validation the grid
+ * ran — a caller that skips the client can't write a row the grid rejected.
+ * Rows are attributed individually: one bad row never sinks the batch.
+ */
+export async function bulkCreateAssetsAction(rows: ImportRow[]):
+  Promise<{ ok: boolean; results?: BulkRowResult[]; created?: number; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode — importing works once connected to your real account.' }
+  if (!Array.isArray(rows) || rows.length === 0) return { ok: false, error: 'Nothing to import.' }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    return { ok: false, error: `That's ${rows.length} rows — import up to ${MAX_IMPORT_ROWS} at a time.` }
   }
-  return sum % 10 === 0
+
+  const perms = await getMyPermissions()
+  if (!perms.canEdit) return { ok: false, error: 'Your role can view assets but not add them.' }
+
+  const companyId = await getCurrentCompanyId()
+  const { createClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+
+  // Existing names (all) for the soft duplicate warning; existing trackers
+  // from ACTIVE assets only — that's exactly what the uniqueness index
+  // enforces, and deactivating an asset is how a tracker gets released for
+  // the next truck.
+  const existing: ExistingIndex = { names: new Set(), trackers: new Set() }
+  const { data: current } = await supabase
+    .from('assets').select('name, tracker_id, active').eq('company_id', companyId)
+  for (const a of current ?? []) {
+    if (a.name) existing.names.add(String(a.name).toLowerCase())
+    if (a.tracker_id && a.active) existing.trackers.add(String(a.tracker_id))
+  }
+
+  const verdicts = resolveSheet(rows, { existing, allowMoney: perms.canViewCosts })
+
+  // Everything that survived validation, paired with its original row index.
+  const ready = verdicts
+    .map((v, i) => ({ v, i }))
+    .filter((x) => x.v.resolved)
+    .map((x) => ({
+      i: x.i,
+      payload: {
+        company_id: companyId,
+        active: true,
+        name: x.v.resolved!.name,
+        type: x.v.resolved!.type,
+        tracker_id: x.v.resolved!.tracker,
+        category: x.v.resolved!.category,
+        serial: x.v.resolved!.serial,
+        metadata: x.v.resolved!.metadata,
+        hourly_rate: x.v.resolved!.hourly_rate,
+        mileage_rate: x.v.resolved!.mileage_rate,
+        daily_cost: x.v.resolved!.daily_cost,
+        purchase_price: x.v.resolved!.purchase_price,
+        purchase_value: x.v.resolved!.purchase_value,
+      },
+    }))
+
+  const results: BulkRowResult[] = verdicts.map((v, i) => {
+    if (v.empty) return { i, ok: true } // blank line — nothing attempted
+    const blocking = v.issues.find((x) => x.level === 'error')
+    // Resolved rows are all overwritten by the insert loop below; this
+    // placeholder only ever shows if one somehow never got attempted.
+    return v.resolved ? { i, ok: false, error: 'Not attempted — try importing again' } : { i, ok: false, error: blocking?.text ?? 'Could not read that row' }
+  })
+
+  // Chunked insert. A chunk that fails rolls back ENTIRELY (one statement), so
+  // its rows are retried one at a time to pin the error on the right line.
+  const CHUNK = 25
+  let created = 0
+  for (let start = 0; start < ready.length; start += CHUNK) {
+    const slice = ready.slice(start, start + CHUNK)
+    const { data, error } = await supabase.from('assets').insert(slice.map((r) => r.payload)).select('id, name')
+    if (!error) {
+      // No error = the whole statement committed, so every row in the slice
+      // exists. Pair ids positionally only when the counts line up; a short
+      // projection still reports success (re-inserting to "fix" a missing id
+      // would duplicate a row that already landed), just without a link.
+      const paired = data && data.length === slice.length
+      slice.forEach((r, k) => {
+        results[r.i] = { i: r.i, ok: true, id: paired ? data![k].id : undefined, name: r.payload.name }
+      })
+      created += slice.length
+      continue
+    }
+    for (const r of slice) {
+      const one = await supabase.from('assets').insert(r.payload).select('id, name').single()
+      if (one.error) {
+        results[r.i] = { i: r.i, ok: false, error: friendlyAssetError(one.error) }
+      } else {
+        results[r.i] = { i: r.i, ok: true, id: one.data.id, name: one.data.name }
+        created++
+      }
+    }
+  }
+
+  if (created > 0) {
+    revalidatePath('/assets')
+    revalidatePath('/map')
+  }
+  return { ok: true, results, created }
 }
 
 /** Remove one gallery photo, then set the hero/thumbnail to whatever is now

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Battery, Clock, ChevronRight, ScanLine } from 'lucide-react'
+import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2 } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
@@ -148,8 +148,15 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
           <h1 className="text-xl font-bold text-ink">Assets</h1>
           <span className="text-sm text-faint">{assets.length} total</span>
           {/* Labels hide below sm — four items in this row clipped the Add
-              button off-screen at 360px widths (header can't scroll). */}
+              button off-screen at 360px widths (header can't scroll). The
+              two bulk doors: a box in your hand → Scan · a list in a
+              spreadsheet → Bulk add. */}
           <Button asChild size="sm" variant="outline" className="ml-auto gap-1">
+            <Link href="/assets/import" aria-label="Bulk add from a spreadsheet" title="Bulk add from a spreadsheet">
+              <Table2 className="h-4 w-4" /><span className="hidden lg:inline">Bulk add</span>
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="gap-1">
             <Link href="/assets/scan" aria-label="Scan trackers" title="Scan trackers">
               <ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Scan trackers</span>
             </Link>
