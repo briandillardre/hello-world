@@ -73,10 +73,15 @@ export async function POST(request: NextRequest) {
   // driving around town re-fires "left site" every dedupe window all day).
   const prevFix = new Map<string, { lat: number; lng: number }>()
   for (const r of normalized) {
+    // active-only: a deactivated asset releases its tracker (the resale
+    // flow), and 082's one-active-owner index makes this lookup unique —
+    // a second company's registration can no longer silently kill the
+    // real device's readings via a two-row .single() error (sec-check).
     const { data: asset } = await supabase
       .from('assets')
       .select('id, company_id')
       .eq('tracker_id', r.tracker_id)
+      .eq('active', true)
       .single()
     if (!asset) continue
 
