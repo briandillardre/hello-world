@@ -2,13 +2,17 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Plus, Check, AlertTriangle, Radio, Trash2, ChevronRight, Cpu } from 'lucide-react'
+import { Plus, Check, AlertTriangle, Radio, Trash2, ChevronRight, Cpu, ExternalLink } from 'lucide-react'
 import {
   MODELS, MODEL_ORDER, pipeline, nextAction, imeiLooksValid, modelFromImei, radioNote,
   type DeviceModel, type Stage,
 } from '@/lib/devices'
 import type { DeviceWithLive } from '@/lib/db/devices'
-import { addDeviceAction, setDeviceStepAction, deleteDeviceAction } from '@/lib/actions/devices'
+import {
+  addDeviceAction, setDeviceStepAction, deleteDeviceAction,
+  addDevicesBulkAction, registerDeviceAssetAction,
+} from '@/lib/actions/devices'
+import { ImeiScanner, ScanButton, useCanScan } from './ImeiScanner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,6 +33,66 @@ function PipelineBar({ stages }: { stages: Stage[] }) {
       {stages.map((s) => (
         <span key={s.key} className={`h-1.5 flex-1 rounded-full ${STAGE_TINT[s.state]}`} />
       ))}
+    </div>
+  )
+}
+
+/** Where each vendor step actually gets done. Linking them turns "go find
+ *  the right console" into a tap — and stops people hunting for the SMS
+ *  button that SuperSIM does not have. */
+const STEP_LINKS: Record<string, { href: string; label: string }> = {
+  sim_active: { href: 'https://connect-app.korewireless.com', label: 'Open KORE subscriptions' },
+  config_queued: { href: 'https://fota.teltonika.lt', label: 'Open FOTA WEB' },
+}
+
+/**
+ * Create the asset from here rather than sending someone to /assets and back.
+ * The IMEI is already known and is the one thing that must not be retyped —
+ * a single wrong digit yields a device that reports perfectly into nothing.
+ */
+function RegisterAsset({ device }: { device: DeviceWithLive }) {
+  const spec = MODELS[device.model] ?? MODELS.OTHER
+  const [name, setName] = useState(device.label ?? '')
+  const [type, setType] = useState<'vehicle' | 'equipment' | 'tool'>(spec.assetType)
+  const [pending, start] = useTransition()
+
+  const go = () => {
+    start(async () => {
+      const res = await registerDeviceAssetAction(device.imei, name, type)
+      if (!res.ok) { toast(res.error ?? 'Could not create that asset.', { variant: 'error' }); return }
+      toast(`${name.trim()} registered.`)
+    })
+  }
+
+  return (
+    <div className="rounded-lg border border-amber/30 bg-amber/[0.04] p-3 space-y-2.5">
+      <div>
+        <p className="text-[13px] text-ink">No asset carries this IMEI yet</p>
+        <p className="text-[12px] text-faint mt-0.5 leading-relaxed">
+          Reports from an unrecognised device are dropped, so register it before it comes online.
+        </p>
+      </div>
+      <Input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Name it — the truck or machine it goes on"
+        aria-label="Asset name"
+      />
+      <div className="flex gap-1.5">
+        {(['vehicle', 'equipment', 'tool'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setType(t)}
+            className={`flex-1 rounded-md border px-2 py-1.5 text-[12px] capitalize transition-colors ${
+              type === t ? 'border-amber bg-amber/10 text-ink' : 'border-navy-700 text-faint hover:bg-navy-800'
+            }`}
+          >{t}</button>
+        ))}
+      </div>
+      <Button size="sm" onClick={go} disabled={pending || !name.trim()} className="w-full">
+        {pending ? 'Registering…' : 'Register asset'}
+      </Button>
     </div>
   )
 }
@@ -144,6 +208,18 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
                               If skipped: {step.ifSkipped}
                             </span>
                           )}
+                          {STEP_LINKS[step.key] && (
+                            <a
+                              href={STEP_LINKS[step.key].href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-[11.5px] text-amber hover:underline mt-1.5"
+                            >
+                              {STEP_LINKS[step.key].label}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
                         </>
                       )}
                     </span>
@@ -179,6 +255,8 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
             <p className="text-[12px] text-faint italic border-l-2 border-navy-700 pl-2.5">{device.notes}</p>
           )}
 
+          {!device.live.registered && <RegisterAsset device={device} />}
+
           <div className="flex items-center gap-2 pt-1">
             {device.live.assetId && (
               <Button asChild variant="outline" size="sm">
@@ -196,14 +274,19 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
 }
 
 function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [mode, setMode] = useState<'one' | 'many'>('one')
   const [imei, setImei] = useState('')
   const [model, setModel] = useState<DeviceModel>('FMM00A')
   const [label, setLabel] = useState('')
   const [iccid, setIccid] = useState('')
+  const [bulk, setBulk] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [skipped, setSkipped] = useState<{ value: string; reason: string }[]>([])
   // Tracks whether the user has overridden the IMEI-derived model guess, so
   // scanning a second device doesn't silently stomp a deliberate choice.
   const [touchedModel, setTouchedModel] = useState(false)
   const [pending, start] = useTransition()
+  const canScan = useCanScan()
 
   const check = imei ? imeiLooksValid(imei) : { ok: false as const, reason: undefined }
 
@@ -214,89 +297,186 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     if (guess) setModel(guess)
   }
 
-  const submit = () => {
+  const reset = () => {
+    setImei(''); setLabel(''); setIccid(''); setBulk('')
+    setTouchedModel(false); setSkipped([]); setScanning(false)
+  }
+
+  const submitOne = () => {
     start(async () => {
       const res = await addDeviceAction({ imei, model, label, iccid })
       if (!res.ok) { toast(res.error ?? 'Could not add that device.', { variant: 'error' }); return }
       toast('Device added to the checklist.')
-      setImei(''); setLabel(''); setIccid(''); setTouchedModel(false)
-      onOpenChange(false)
+      reset(); onOpenChange(false)
+    })
+  }
+
+  const submitMany = () => {
+    start(async () => {
+      const res = await addDevicesBulkAction(bulk, model)
+      if (res.error) { toast(res.error, { variant: 'error' }); return }
+      setSkipped(res.skipped)
+      toast(`Added ${res.added} device${res.added === 1 ? '' : 's'}.`)
+      if (!res.skipped.length) { reset(); onOpenChange(false) }
+      else setBulk('')
     })
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) setScanning(false); onOpenChange(v) }}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Add hardware</DialogTitle></DialogHeader>
-        <div className="space-y-4 mt-4">
-          <div>
-            <Label htmlFor="dev-imei">IMEI</Label>
-            <Input
-              id="dev-imei"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="15 digits from the device label"
-              value={imei}
-              onChange={(e) => onImei(e.target.value)}
-              className="font-mono mt-1"
-            />
-            {imei && !check.ok && check.reason && (
-              <p className="text-[12px] text-alert mt-1">{check.reason}</p>
-            )}
-            {imei && check.ok && (
-              <p className="text-[12px] text-teal mt-1">Valid IMEI.</p>
-            )}
-          </div>
 
-          <div>
-            <Label>Model</Label>
-            <div className="grid grid-cols-2 gap-1.5 mt-1">
-              {MODEL_ORDER.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => { setModel(m); setTouchedModel(true) }}
-                  className={`rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
-                    model === m ? 'border-amber bg-amber/10 text-ink' : 'border-navy-700 text-faint hover:bg-navy-800'
-                  }`}
-                >
-                  {m === 'OTHER' ? 'Other' : m}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11.5px] text-faint mt-1.5 leading-relaxed">{MODELS[model].role}</p>
-          </div>
-
-          <div>
-            <Label htmlFor="dev-label">Going on (optional)</Label>
-            <Input
-              id="dev-label"
-              placeholder="Chevy 1500, tool trailer…"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              className="mt-1"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="dev-iccid">SIM ICCID (optional)</Label>
-            <Input
-              id="dev-iccid"
-              inputMode="numeric"
-              placeholder="From the SIM card"
-              value={iccid}
-              onChange={(e) => setIccid(e.target.value)}
-              className="font-mono mt-1"
-            />
-            <p className="text-[11.5px] text-faint mt-1 leading-relaxed">
-              Log it now while the card is in your hand — nothing else links a SIM to a device afterwards.
-            </p>
-          </div>
-
-          <Button onClick={submit} disabled={pending || !check.ok} className="w-full">
-            {pending ? 'Adding…' : 'Add device'}
-          </Button>
+        <div className="flex gap-1.5 mt-4">
+          {(['one', 'many'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => { setMode(m); setSkipped([]) }}
+              aria-pressed={mode === m}
+              className={`flex-1 rounded-lg border px-3 py-2 text-[12.5px] transition-colors ${
+                mode === m ? 'border-amber bg-amber/10 text-ink' : 'border-navy-700 text-faint hover:bg-navy-800'
+              }`}
+            >
+              {m === 'one' ? 'One device' : 'Whole shipment'}
+            </button>
+          ))}
         </div>
+
+        {mode === 'one' ? (
+          <div className="space-y-4 mt-4">
+            {scanning ? (
+              <ImeiScanner
+                onFound={(found) => { setScanning(false); onImei(found); toast('IMEI scanned.') }}
+                onClose={() => setScanning(false)}
+              />
+            ) : (
+              <div>
+                <Label htmlFor="dev-imei">IMEI</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="dev-imei"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="15 digits from the device label"
+                    value={imei}
+                    onChange={(e) => onImei(e.target.value)}
+                    className="font-mono"
+                  />
+                  {canScan && <ScanButton onClick={() => setScanning(true)} />}
+                </div>
+                {imei && !check.ok && check.reason && (
+                  <p className="text-[12px] text-alert mt-1">{check.reason}</p>
+                )}
+                {imei && check.ok && <p className="text-[12px] text-teal mt-1">Valid IMEI.</p>}
+              </div>
+            )}
+
+            <div>
+              <Label>Model</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {MODEL_ORDER.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => { setModel(m); setTouchedModel(true) }}
+                    className={`rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
+                      model === m ? 'border-amber bg-amber/10 text-ink' : 'border-navy-700 text-faint hover:bg-navy-800'
+                    }`}
+                  >
+                    {m === 'OTHER' ? 'Other' : m}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11.5px] text-faint mt-1.5 leading-relaxed">{MODELS[model].role}</p>
+            </div>
+
+            <div>
+              <Label htmlFor="dev-label">Going on (optional)</Label>
+              <Input
+                id="dev-label"
+                placeholder="Chevy 1500, tool trailer…"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="dev-iccid">SIM ICCID (optional)</Label>
+              <Input
+                id="dev-iccid"
+                inputMode="numeric"
+                placeholder="From the SIM card"
+                value={iccid}
+                onChange={(e) => setIccid(e.target.value)}
+                className="font-mono mt-1"
+              />
+              <p className="text-[11.5px] text-faint mt-1 leading-relaxed">
+                Log it now while the card is in your hand — nothing else links a SIM to a device afterwards.
+              </p>
+            </div>
+
+            <Button onClick={submitOne} disabled={pending || !check.ok} className="w-full">
+              {pending ? 'Adding…' : 'Add device'}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="dev-bulk">Paste the IMEIs</Label>
+              <textarea
+                id="dev-bulk"
+                rows={7}
+                value={bulk}
+                onChange={(e) => setBulk(e.target.value)}
+                placeholder={'860813075166517\n863452084048247\n869267077050677'}
+                className="mt-1 w-full rounded-md border border-navy-700 bg-navy-900 text-ink px-3 py-2 text-sm font-mono placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-amber focus:border-transparent"
+              />
+              <p className="text-[11.5px] text-faint mt-1 leading-relaxed">
+                Straight off the packing slip — one per line, commas, or a pasted spreadsheet column. Each IMEI picks its
+                own model, so a mixed shipment sorts itself out.
+              </p>
+            </div>
+
+            <div>
+              <Label>Model for anything unrecognised</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {MODEL_ORDER.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setModel(m)}
+                    className={`rounded-lg border px-2.5 py-2 text-left text-[12.5px] transition-colors ${
+                      model === m ? 'border-amber bg-amber/10 text-ink' : 'border-navy-700 text-faint hover:bg-navy-800'
+                    }`}
+                  >
+                    {m === 'OTHER' ? 'Other' : m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {skipped.length > 0 && (
+              <div className="rounded-lg border border-alert/40 bg-alert/[0.06] p-3">
+                <p className="text-[12.5px] text-ink font-medium mb-1.5">
+                  {skipped.length} entr{skipped.length === 1 ? 'y' : 'ies'} not added
+                </p>
+                <ul className="space-y-1">
+                  {skipped.map((s) => (
+                    <li key={s.value} className="text-[11.5px] text-faint leading-relaxed">
+                      <span className="font-mono text-ink">{s.value}</span> — {s.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <Button onClick={submitMany} disabled={pending || !bulk.trim()} className="w-full">
+              {pending ? 'Adding…' : 'Add all'}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
