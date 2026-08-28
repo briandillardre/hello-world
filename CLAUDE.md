@@ -237,7 +237,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 4. ~~Point hammertrack.ai at Vercel~~ ✅ DONE Aug 5 2026 (task 173) — apex A → Vercel (216.150.1.1 is Vercel's current anycast IP), www CNAME → cname.vercel-dns.com, hammertrackai.com 301 → hammertrack.ai, Workspace MX intact. Unblocks final QBO_REDIRECT_URI + app-store remote URL. Follow-up: set Supabase Auth → URL Configuration Site URL to https://hammertrack.ai (else auth emails/redirects still point at vercel.app).
 5. **Remaining hardware** — ~~install T1-b~~ ✅ reporting since Aug 4 (…00200); finish pucks (task 160: Minors 3+5 configured, tool assets created; last puck = Minor 4); KORE order #1 in fulfillment (see Hardware section) — on arrival: SuperSIM APN settings ≠ Hologram (task 171)
 6. ~~After-hours theft alert live test~~ ✅ verified in production Aug 4–5 — real after-hours alerts fired on the RAM 3500 (phone tracker) at 6:33 AM/7:01 PM
-7. **QuickBooks go-live** — create app at developer.intuit.com, add QBO_ env vars to Vercel. NOTE (Aug 26): marketing copy still says "QuickBooks built in / job-cost sync" — the integration code is real but NO customer can connect until this ships. Truth-audit softened "two-way sync" already; if this slips much longer, the built-in claims need ROADMAP treatment too.
+7. **QuickBooks go-live** — create app at developer.intuit.com, add QBO_ env vars to Vercel. **Click-by-click checklist: docs/QBO-GO-LIVE.md (Aug 28).** NOTE (Aug 26): marketing copy still says "QuickBooks built in / job-cost sync" — the integration code is real but NO customer can connect until this ships. Truth-audit softened "two-way sync" already; if this slips much longer, the built-in claims need ROADMAP treatment too.
 8. **Twilio toll-free verification status** — Toll-Free Verification was "In Review" as of Jul 30; the splash's "your phone knows in minutes" / 2-minute-text theft hook rides on SMS actually sending. Brian: check the verdict email at brian@hammertrack.ai. If REJECTED or still pending, soften the SMS claims on / and /demo until it clears (Aug 26 site audit flagged this; claims left as-is pending the verdict).
 9. **Solar question** — confirm TAT141 solar accessory availability with Teltonika Americas
 10. ~~hammertrack.ai domain~~ ✅ OWNED + Google Workspace live (confirmed Jul 30 2026)
@@ -253,7 +253,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 - Lead funnel: FB/IG theft-hook ad → hammertrack.ai/demo → /register
 - Primary hook: after-hours theft alert ("Your excavator left at 2 AM")
 - Price position: $3-8/asset/mo vs Tenna $15-25/asset/mo + $500 setup
-- Beachhead: Nashville metro, local contractor Facebook groups + equipment dealer referrals
+- Beachhead: **Upstate SC (Greenville–Spartanburg–Anderson), then Charlotte/Atlanta corridors** — per docs/BUSINESS-PLAN.md ("Nashville was demo-data fiction; you sell where people already return your calls"). Local contractor Facebook groups + equipment dealer referrals; the demo stage stays on the Nashville grid (deliberate fiction) until a Greenville restage is worth it
 - Ad variants ready in marketing/ad-variants.md
 
 ## Competitors
