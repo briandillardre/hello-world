@@ -41,7 +41,7 @@ export const TASKS: BoardTask[] = [
   { id: 46, title: 'Pay the declined KORE invoice', why: 'Card declined 18 Aug. An account in arrears can suspend SIMs mid-rollout — put it on the Mercury vendor card. Invoice number is in the AR email.', owner: 'brian', state: 'open', sev: 'stop' },
   { id: 40, title: 'Revive T1-b in the 2003 Chevy', why: 'Silent since 13 Aug. SIM is healthy and unpaused, so it is the power path — bypass the OBD extension, check the port fuse.', owner: 'brian', state: 'open', sev: 'stop' },
   { id: 17, title: 'Revive the 2500HD tracker', why: 'Silent 75 h and counting.', owner: 'brian', state: 'open', sev: 'stop' },
-  { id: 41, title: 'Apple Developer + Play Console enrollment', why: 'D-U-N-S landed in early Aug and nothing else blocks the app stores. Match the dnb.com record to the LLC name verbatim first — Apple checks it literally.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 41, title: 'Apple enrollment verdict — Play is already live', why: 'Google Play is DONE: organization account, com.hammertrack.app in Production since 21 Aug. Apple is the one outstanding — documents submitted 27 Aug on Developer Support case 20000149520723, awaiting review. Nothing to do but watch for their reply.', owner: 'brian', state: 'open' },
   { id: 43, title: 'Send the KORE / Teltonika email', why: 'Draft is in Gmail: pre-configuration miss, the missing 14th SIM, and four hardware questions before order #2.', owner: 'brian', state: 'open', sev: 'warn' },
   { id: 45, title: 'Green Driving config to all five FMM00As', why: 'One round trip in Configurator + FOTA. Unblocks harsh accel/brake in driver grades, which today score only sustained speed and night driving.', owner: 'brian', state: 'open', sev: 'warn' },
   { id: 1, title: 'QuickBooks connect', why: 'Align the redirect URI in Vercel and the Intuit app, then retry from /accounting. Marketing claims this today and no customer can use it.', owner: 'brian', state: 'open', sev: 'warn' },
@@ -215,7 +215,8 @@ export const VENDORS: { name: string; state: 'live' | 'warn' | 'stop' | 'idle'; 
   { name: 'D-U-N-S', state: 'live', stateLabel: 'issued', note: 'Landed early Aug. Unblocks both app-store organisation accounts. Never file again — duplicates are slow to merge.' },
   { name: 'Twilio', state: 'warn', stateLabel: 'in review', note: 'Number bought and compliance profile approved, toll-free verification still pending. Voice is enabled but has no greeting — do not publish the number.' },
   { name: 'KORE', state: 'stop', stateLabel: 'invoice due', note: 'Declined card on the 14 Aug invoice — see the AR email for the number. Connectivity agreement still pending in their system.' },
-  { name: 'Apple / Google Play', state: 'idle', stateLabel: 'not started', note: 'Nothing blocks enrollment except the enrollment itself.' },
+  { name: 'Google Play', state: 'live', stateLabel: 'app live', note: 'Organization account; com.hammertrack.app in Production since 21 Aug, identity and website ownership verified 9 Aug. Installed audience is 0 — what is left is distribution, not enrollment.' },
+  { name: 'Apple Developer', state: 'warn', stateLabel: 'in review', note: 'Org enrollment documents submitted 27 Aug (Developer Support case 20000149520723). Awaiting verdict.' },
 ]
 
 export const ENV_PENDING: { text: string; tone: 'no' | 'wait' }[] = [

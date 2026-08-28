@@ -220,7 +220,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 
 ## Business Entity (Jul 2026)
 - **HAMMERTRACK LLC** — SC single-member LLC, formed Jul 2026; EIN issued Jul 14 2026. CP 575 G confirmation PDF is on Brian's phone (Downloads) — **keep the EIN itself out of the repo**. The IRS issues that PDF once and never again; a lost copy means a 147C call.
-- Unblocked: Twilio A2P 10DLC (SMS theft alerts), business bank → Stripe billing, Plaid (receipt-chase), D-U-N-S → Apple/Google developer org accounts
+- Unblocked: Twilio A2P 10DLC (SMS theft alerts), business bank → Stripe billing, Plaid (receipt-chase), D-U-N-S → Apple/Google developer org accounts (**Google Play org account is LIVE with the app in Production since Aug 21; Apple is in review**)
 - **App wrapper:** Capacitor shell committed (capacitor.config.ts, mobile-shell/, android/, ios/) loading hammertrack.ai remotely — web deploys update the apps instantly. Full checklist + architecture: `docs/APP-STORE-PLAYBOOK.md`
 
 ### Vendor accounts (status Jul 30 2026)
@@ -230,7 +230,9 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 | **Mercury** | **APPROVED — live Aug 5 2026**; vendor migration underway (KORE first, via per-vendor virtual cards on the IO) | Partner bank Column N.A. $3,000 first deposit = **owner capital contribution, not income**. IO card issued. Rule: one named virtual card per vendor, limit set per vendor. No cash deposits ever; paper checks go to a mail-in lockbox. |
 | **Supabase** | Pro; billing entity **HAMMERTRACK LLC**, EIN on file | |
 | **Google Workspace** | live on hammertrack.ai | sales@ / hello@ / support@ all verified receiving (Jul 30) |
-| **D-U-N-S** | ✅ **LANDED early Aug 2026** (D&B account created Jul 31; partner email Aug 8 confirms number issued) | Unblocks Apple + Google **organization** developer accounts — NEITHER enrollment started as of Aug 26 (no Apple/Play emails exist). Before enrolling: verify the dnb.com record matches HAMMERTRACK LLC legal name + address exactly (Apple matches verbatim). Never file again (duplicate records are slow to merge). Store listing pack + Capacitor shell + keystore all ready — enrollment is the only remaining gate (docs/APP-STORE-PLAYBOOK.md). |
+| **D-U-N-S** | ✅ **LANDED early Aug 2026** (D&B account created Jul 31; partner email Aug 8 confirms number issued) | Unblocked both **organization** developer accounts. Never file again (duplicate records are slow to merge). |
+| **Google Play** | ✅ **LIVE — org account, app in PRODUCTION** (verified in the console Aug 28) | HammerTrack **Organization** account, ID 5164665234986722552. Identity verified + website ownership verified via Search Console **Aug 9**; `com.hammertrack.app` published to **Production Aug 21**, update published Aug 27; all apps meet the Android developer verification requirements. Installed audience 0 — the remaining work is DISTRIBUTION (store listing completeness, discoverability), not enrollment. ⚠ Correction: this doc said "enrollment not started" through Aug 28 because no fee/verification email was findable in the Gmail account — the confirmations landed elsewhere. **Check the console, not the inbox.** |
+| **Apple Developer** | 🟡 **in review** | Org enrollment underway on brian@hammertrack.ai. Developer Support case **20000149520723** (Connor, Aug 27); requested documents submitted and acknowledged ("We received your documents", Aug 27). Awaiting Apple's verdict. dnb.com record must match HAMMERTRACK LLC legal name + address verbatim — Apple matches it literally. |
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
