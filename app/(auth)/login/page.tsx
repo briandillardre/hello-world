@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Eye, EyeOff } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SocialAuth } from '@/components/auth/SocialAuth'
+import { isNativeApp } from '@/lib/native'
 import { mapAuthError } from '../auth-error'
 
 export default function LoginPage() {
@@ -15,9 +17,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
+  const [inApp, setInApp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [nextPath, setNextPath] = useState('/map')
+
+  // Inside the app shell there is no marketing site to link back to.
+  useEffect(() => { setInApp(isNativeApp()) }, [])
 
   // /auth/callback lands here with ?error=… when an OAuth code exchange
   // fails — it was silently dropped before (a failed Google sign-in looked
@@ -110,6 +117,14 @@ export default function LoginPage() {
               name="email"
               type="email"
               autoComplete="email"
+              // Android keyboards capitalize the first letter and run
+              // spellcheck on a plain field — both mangle an email address
+              // before the user notices.
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="email"
+              enterKeyHint="next"
               className="h-11 sm:h-10"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -119,16 +134,33 @@ export default function LoginPage() {
 
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="current-password"
-              type="password"
-              autoComplete="current-password"
-              className="h-11 sm:h-10"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                name="current-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                className="h-11 sm:h-10 pr-11"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+              {/* A password you can't see is a password you retype three
+                  times in a truck with gloves on. */}
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 grid place-items-center w-11 text-faint hover:text-ink"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -147,24 +179,30 @@ export default function LoginPage() {
 
           <SocialAuth next={nextPath} />
 
-          <div className="flex items-center justify-between text-sm">
-            <Link href="/forgot" className="text-faint hover:text-amber hover:underline">
-              Forgot password?
-            </Link>
-            <span className="text-muted">
+          {/* Stacked and centered: side-by-side, both halves wrapped onto
+              two ragged lines on a phone (Brian's Galaxy screenshot). */}
+          <div className="pt-1 space-y-2.5 text-center text-sm">
+            <p className="text-muted">
               No account?{' '}
               <Link href="/register" className="text-amber font-medium hover:underline">
                 Sign up free
               </Link>
-            </span>
+            </p>
+            <p>
+              <Link href="/forgot" className="text-faint hover:text-amber hover:underline">
+                Forgot password?
+              </Link>
+            </p>
           </div>
         </form>
 
-        <p className="text-center text-xs text-muted">
-          <Link href="/pricing" className="text-faint hover:text-amber hover:underline">
-            See pricing & how we compare to Tenna →
-          </Link>
-        </p>
+        {!inApp && (
+          <p className="text-center text-xs text-muted">
+            <Link href="/pricing" className="text-faint hover:text-amber hover:underline">
+              See pricing & how we compare to Tenna →
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   )

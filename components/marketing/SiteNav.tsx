@@ -16,9 +16,15 @@ export function SiteNav() {
 
   return (
     <header className="relative z-30">
-      <nav className="max-w-6xl mx-auto px-6 flex items-center justify-between py-5">
-        <Logo size={32} />
-        <div className="flex items-center gap-6 text-[14.5px] font-medium text-muted">
+      {/* min-w-0 + shrink-0: without them the logo and the CTA both refused to
+          give, so on a narrow phone the amber button sat ON TOP of the
+          wordmark (Brian's Galaxy S26 screenshot — "HAMMERTRAC"). The logo
+          now scales down first, and the CTA drops to a short label. */}
+      <nav className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-3 py-5">
+        <div className="min-w-0 shrink">
+          <Logo size={32} wordmarkClassName="max-[380px]:hidden" />
+        </div>
+        <div className="flex items-center gap-3 sm:gap-6 shrink-0 text-[14.5px] font-medium text-muted">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="hidden sm:inline hover:text-ink transition-colors">
               {l.label}
@@ -26,9 +32,11 @@ export function SiteNav() {
           ))}
           <Link
             href="/register"
-            className="font-display font-bold text-[14px] rounded-xl px-4 py-2.5 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
+            className="font-display font-bold text-[13px] sm:text-[14px] whitespace-nowrap rounded-xl px-3 sm:px-4 py-2.5 bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
           >
-            Start free pilot
+            {/* "Start free pilot" is three words too many at 360px. */}
+            <span className="hidden min-[480px]:inline">Start free pilot</span>
+            <span className="min-[480px]:hidden">Start free</span>
           </Link>
           {/* phone-only menu toggle — the text links above are hidden below sm */}
           <button

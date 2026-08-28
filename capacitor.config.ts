@@ -14,10 +14,23 @@ const config: CapacitorConfig = {
   appName: 'HammerTrack',
   webDir: 'mobile-shell',
   server: {
-    url: 'https://hammertrack.ai',
+    // Opens the APP, not the marketing site (Brian, Aug 28: the first screen
+    // after downloading was the splash page — hamburger nav, "Start free
+    // pilot", pricing links, all wrong for someone who already installed it).
+    // /map is the right single destination for both states: the dashboard's
+    // auth gate sends a signed-out visitor to /login, and a signed-in one
+    // lands straight on the live map. No marketing page in between.
+    // This only takes effect in a NEW build — the Play app has been in
+    // production since Aug 21, so already-installed copies still request the
+    // root. app/AppEntryRedirect.tsx covers those on the next web deploy.
+    url: 'https://hammertrack.ai/map',
     // Never allow plain-HTTP content inside the shell.
     cleartext: false,
   },
+  // Lets the web side tell "inside the app" from "mobile browser" server-side
+  // (Capacitor's JS bridge is client-only), so app-inappropriate chrome can be
+  // dropped without shipping another native build.
+  appendUserAgent: 'HammerTrackApp/1',
   backgroundColor: '#0a1420',
   ios: {
     contentInset: 'automatic',

@@ -14,6 +14,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Native <select> popups are drawn by the OS, not by our CSS, and follow the
+   system light/dark setting. On our dark surfaces that meant light option
+   text on a white system popup — unreadable (Brian, Aug 28, on the bulk-add
+   Type column). `color-scheme` flips the whole native control (popup,
+   scrollbar, focus ring); the explicit option colors cover the browsers that
+   ignore it. Every select in this app sits on a dark surface. */
+select {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: #00203a;
+  color: #e8f0f7;
+}
+select optgroup {
+  font-style: normal;
+  font-weight: 700;
+}
+
 /* MapLibre GL overrides — touch-friendly + on-brand navy glass (not stark white) */
 .maplibregl-ctrl-group {
   background: rgba(0, 21, 35, 0.82) !important;
