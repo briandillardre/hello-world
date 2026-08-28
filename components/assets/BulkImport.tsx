@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Download, FileUp, Loader2, Plus
 import { Button } from '@/components/ui/button'
 import { ASSET_ICONS, ICON_GROUPS, TYPE_DEFAULT_ICON } from '@/lib/asset-icons'
 import {
-  IMPORT_COLUMNS, MAX_IMPORT_ROWS, inferFromName, parseDelimited, resolveSheet, rowsFromGrid, templateCsv,
+  IMPORT_COLUMNS, MAX_IMPORT_ROWS, inferFromName, matchHeaderRow, parseDelimited, resolveSheet, rowsFromGrid, templateCsv,
   type ColDef, type ColKey, type ImportRow, type RowVerdict,
 } from '@/lib/bulk-import'
 import { bulkCreateAssetsAction } from '@/lib/actions/assets'
@@ -43,6 +43,16 @@ let nextKey = 1
 const blankRow = (): GridRow => ({ key: nextKey++, cells: {} })
 
 const TYPE_OPTIONS: AssetType[] = ['vehicle', 'equipment', 'personnel', 'tool']
+
+/** Built ONCE. Rebuilding 28 options inside optgroups for every row on every
+ *  keystroke was the bulk of the grid's input lag (ship-check). */
+const ICON_OPTIONS = ICON_GROUPS.map((g) => (
+  <optgroup key={g} label={g}>
+    {Object.entries(ASSET_ICONS).filter(([, d]) => d.group === g).map(([key, d]) => (
+      <option key={key} value={key}>{d.label}</option>
+    ))}
+  </optgroup>
+))
 
 export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDemo }: Props) {
   const [rows, setRows] = useState<GridRow[]>(() => Array.from({ length: BLANK_ROWS }, blankRow))
@@ -90,9 +100,18 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
     setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== rowIdx) : [blankRow()]))
   }, [])
 
-  /** Write a parsed block into the grid at (r0,c0), growing rows as needed. */
+  /** Write a parsed block into the grid at visible column c0, growing rows as
+   *  needed. Columns walk the CANONICAL order from the anchor, not the
+   *  visible subset — mapping onto visible columns meant the same clipboard
+   *  block landed in different fields depending on the essentials toggle,
+   *  putting an IMEI into the icon dropdown (where it renders blank and only
+   *  warns) and a category into the tracker field, which is then written to
+   *  the database as a tag id (ship-check). */
   const applyBlock = (grid: string[][], r0: number, c0: number) => {
-    const keys = columns.map((c) => c.key)
+    const anchor = IMPORT_COLUMNS.findIndex((c) => c.key === columns[c0]?.key)
+    const keys = IMPORT_COLUMNS.slice(Math.max(0, anchor)).map((c) => c.key)
+    const width = Math.max(...grid.map((l) => l.length))
+    const landed = new Set<ColKey>()
     setRows((prev) => {
       const next = prev.slice()
       grid.forEach((line, dr) => {
@@ -100,13 +119,24 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
         while (next.length <= r) next.push(blankRow())
         const cells = { ...next[r].cells }
         line.forEach((v, dc) => {
-          const key = keys[c0 + dc]
-          if (key) cells[key] = v.trim()
+          const key = keys[dc]
+          if (key) { cells[key] = v.trim(); if (v.trim()) landed.add(key) }
         })
         next[r] = { ...next[r], cells, err: null }
       })
       return next.slice(0, MAX_IMPORT_ROWS)
     })
+    // Anything that landed outside the current view gets revealed, or the
+    // user is editing a sheet with fields they cannot see.
+    const shown = new Set(columns.map((c) => c.key))
+    const hidden = Array.from(landed).filter((k) => !shown.has(k))
+    if (hidden.length) setShowAll(true)
+    const overflow = width > keys.length
+    setBanner(
+      `Pasted ${grid.length} row${grid.length === 1 ? '' : 's'}` +
+      (hidden.length ? ` · showing all columns so you can see ${hidden.length} more field${hidden.length === 1 ? '' : 's'}` : '') +
+      (overflow ? ` · ${width - keys.length} column${width - keys.length === 1 ? '' : 's'} past the last field were dropped` : '')
+    )
   }
 
   /** A whole sheet (paste box / CSV file): header-matched, replaces the grid. */
@@ -136,11 +166,16 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
     if (r0 < 0 || c0 < 0) return
     e.preventDefault()
     const grid = parseDelimited(text)
-    // Pasting the whole sheet into the first cell is the natural gesture —
-    // honor its header row instead of writing "Name" into a name field.
-    if (r0 === 0 && c0 === 0 && grid.length > 1) { loadSheet(text); return }
+    // Pasting a sheet WITH ITS HEADER into the first cell is the natural
+    // "load this whole thing" gesture, so honor the header instead of
+    // writing "Name" into a name field. But loadSheet REPLACES the grid —
+    // doing that whenever row 0 col 0 was the anchor wiped out work in
+    // progress with no warning (ship-check), so a grid that already has
+    // data only gets replaced when the paste really does carry a header.
+    const carriesHeader = grid.length > 1 && matchHeaderRow(grid[0]) !== null
+    const empty = !rows.some((r) => Object.values(r.cells).some((v) => (v ?? '').trim()))
+    if (r0 === 0 && c0 === 0 && (empty || carriesHeader)) { loadSheet(text); return }
     applyBlock(grid, r0, c0)
-    setBanner(`Pasted ${grid.length} row${grid.length === 1 ? '' : 's'}`)
   }
 
   /** Spreadsheet keys: Enter/arrows walk rows, Enter on the last row grows it. */
@@ -169,41 +204,48 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
 
   // ── import ────────────────────────────────────────────────────────────────
   const runImport = async () => {
-    const send: { gridIdx: number; cells: ImportRow }[] = []
-    rows.forEach((r, i) => { if (verdicts[i]?.resolved) send.push({ gridIdx: i, cells: r.cells }) })
+    // The round trip is keyed on GridRow.key, never on position. The grid
+    // stays editable while the request is in flight, so a delete mid-import
+    // shifted every index: an already-inserted row survived in the grid and
+    // got imported TWICE on the next press, while the broken row the user
+    // was about to fix was silently dropped (ship-check P0).
+    const send: { key: number; cells: ImportRow }[] = []
+    rows.forEach((r, i) => { if (verdicts[i]?.resolved) send.push({ key: r.key, cells: r.cells }) })
     if (!send.length) return
     setBusy(true)
     setBanner(null)
     try {
       const res = await bulkCreateAssetsAction(send.map((s) => s.cells))
       if (!res.ok || !res.results) { setBanner(res.error ?? 'Import failed.'); return }
-      const failedIdx = new Map<number, string>()
+      const failedKeys = new Map<number, string>()
+      const sentKeys = new Set(send.map((s) => s.key))
       const madeIt: { id?: string; name: string }[] = []
       res.results.forEach((r) => {
         const target = send[r.i]
         if (!target) return
         if (r.ok) { if (r.name) madeIt.push({ id: r.id, name: r.name }) }
-        else failedIdx.set(target.gridIdx, r.error ?? 'Could not save')
+        else failedKeys.set(target.key, r.error ?? 'Could not save')
       })
       setImported((prev) => [...prev, ...madeIt])
-      // Imported rows leave the grid; anything still broken stays, with the
-      // server's reason attached, so the loop is "fix what's left, import again".
+      // Keep what failed server-side plus every row never sent (added or
+      // edited since, still broken, or blank). Anything sent and not
+      // reported failed is in the database — it must leave the grid.
       setRows((prev) => {
         const kept = prev
-          .map((row, i) => ({ row, i }))
-          // Keep what failed server-side, plus anything never sent (still
-          // broken, or blank). Everything else made it and leaves the grid.
-          .filter(({ i }) => failedIdx.has(i) || !verdicts[i]?.resolved)
-          .map(({ row, i }) => ({ ...row, err: failedIdx.get(i) ?? null }))
+          .filter((row) => failedKeys.has(row.key) || !sentKeys.has(row.key))
+          .map((row) => ({ ...row, err: failedKeys.get(row.key) ?? null }))
         return kept.length ? kept : [blankRow()]
       })
-      const failed = failedIdx.size
+      const failed = failedKeys.size
       setBanner(
         `${res.created ?? 0} asset${res.created === 1 ? '' : 's'} added` +
         (failed ? ` · ${failed} couldn't be saved — see the rows below` : ' — they show on the map at their first report')
       )
     } catch (err) {
-      setBanner(err instanceof Error ? err.message : 'Import failed.')
+      // A transport failure leaves the batch's fate genuinely unknown — don't
+      // invite a blind retry that could double-insert.
+      setBanner((err instanceof Error ? err.message : 'Import failed.') +
+        ' — reload the assets list to see what landed before importing again.')
     } finally {
       setBusy(false)
     }
@@ -278,11 +320,12 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
             Or type straight into the grid below.
           </p>
           <textarea
-            className="sr-only"
             aria-label="Paste spreadsheet rows"
+            rows={3}
+            placeholder="Paste or type rows here…"
+            className="mt-3 w-full bg-navy-900 border border-navy-700 rounded-lg px-3 py-2 text-[16px] text-ink placeholder:text-faint outline-none focus:border-amber/50 font-mono resize-y"
             onPaste={(e) => { e.preventDefault(); loadSheet(e.clipboardData.getData('text')) }}
-            onChange={() => { /* paste-only */ }}
-            value=""
+            onChange={(e) => { const t = e.target.value; if (t.includes('\n') || t.includes('\t')) { loadSheet(t); e.target.value = '' } }}
           />
         </label>
       ) : (
@@ -467,13 +510,7 @@ const Row = memo(function Row({
                 <option value="">
                   {`Auto — ${inferred.icon ?? (effectiveType ? TYPE_DEFAULT_ICON[effectiveType] : 'by type')}`}
                 </option>
-                {ICON_GROUPS.map((g) => (
-                  <optgroup key={g} label={g}>
-                    {Object.entries(ASSET_ICONS).filter(([, d]) => d.group === g).map(([key, d]) => (
-                      <option key={key} value={key}>{d.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
+                {ICON_OPTIONS}
               </select>
             ) : (
               <input

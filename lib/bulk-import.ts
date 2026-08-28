@@ -52,8 +52,11 @@ export const IMPORT_COLUMNS: ColDef[] = [
   { key: 'year', label: 'Year', hint: '', kind: 'text', width: 74, aliases: ['year', 'modelyear', 'yr'] },
   { key: 'make', label: 'Make', hint: '', kind: 'text', width: 118, aliases: ['make', 'manufacturer', 'brand', 'oem'] },
   { key: 'model', label: 'Model', hint: '', kind: 'text', width: 130, aliases: ['model', 'modelnumber', 'modelno'] },
+  // No bare 'unit' here — it's an alias of `name` too, and last-wins in the
+  // alias map handed a `Unit | Make | Model | Year` sheet (an ordinary
+  // equipment list) no name column at all (ship-check).
   { key: 'license', label: 'License', hint: 'plate / unit #', kind: 'text', width: 118,
-    aliases: ['license', 'licenseplate', 'plate', 'tagnumber', 'unitnumber', 'unitno', 'unit'] },
+    aliases: ['license', 'licenseplate', 'plate', 'tagnumber', 'unitnumber', 'unitno'] },
   { key: 'hourly_rate', label: 'Operating $/hr', hint: 'fuel + wear', kind: 'number', money: true, width: 126,
     aliases: ['hourlyrate', 'operatinghr', 'operatingrate', 'hourly', 'perhour', 'ratehr', 'hourlycost'] },
   { key: 'mileage_rate', label: '$/mile', hint: '', kind: 'number', money: true, width: 96,
@@ -84,13 +87,21 @@ export function parseDelimited(raw: string): string[][] {
   const text = raw.replace(/\r\n?/g, '\n')
   if (!text.trim()) return []
 
-  // Sniff the delimiter on the first line, ignoring anything inside quotes.
-  let tabs = 0, commas = 0, semis = 0, q = false
+  // Sniff the delimiter on the first line, ignoring anything inside quotes —
+  // using the SAME "a quote only opens at field start" rule as the parser
+  // below. Toggling on every quote let an inch mark (`5" pipe rack`) hide
+  // the rest of the line's tabs, so a TSV fell back to comma and every row
+  // collapsed into a single cell (ship-check).
+  let tabs = 0, commas = 0, semis = 0, q = false, atFieldStart = true
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
-    if (c === '"') q = !q
-    else if (c === '\n' && !q) break
-    else if (!q) { if (c === '\t') tabs++; else if (c === ',') commas++; else if (c === ';') semis++ }
+    if (q) { if (c === '"') q = false; continue }
+    if (c === '"' && atFieldStart) { q = true; atFieldStart = false; continue }
+    if (c === '\n') break
+    if (c === '\t') { tabs++; atFieldStart = true }
+    else if (c === ',') { commas++; atFieldStart = true }
+    else if (c === ';') { semis++; atFieldStart = true }
+    else atFieldStart = false
   }
   const delim = tabs > 0 ? '\t' : semis > commas ? ';' : ','
 
@@ -151,7 +162,10 @@ export function rowsFromGrid(grid: string[][]): { rows: ImportRow[]; headerUsed:
   if (!grid.length) return { rows: [], headerUsed: false }
   const header = matchHeaderRow(grid[0])
   const body = header ? grid.slice(1) : grid
-  const keys: (ColKey | null)[] = header ?? COLUMN_KEYS.slice(0, grid[0].length)
+  // Width from the WIDEST row, not row 0 — a CSV whose first data row is
+  // short was silently dropping every later row's extra cells (ship-check).
+  const width = Math.max(...grid.map((r) => r.length))
+  const keys: (ColKey | null)[] = header ?? COLUMN_KEYS.slice(0, width)
   const rows = body
     .filter((cells) => cells.some((c) => c.trim()))
     .map((cells) => {
@@ -170,6 +184,14 @@ export function rowsFromGrid(grid: string[][]): { rows: ImportRow[]; headerUsed:
 /** Name keyword → type + map icon. Most specific first: "dump truck" must beat
  *  the bare "truck", "mini excavator" must not land on "mixer". */
 const NAME_HINTS: [RegExp, AssetType, string][] = [
+  // Towed things first: "Dump Trailer" is a trailer, and a unit code like
+  // "Trailer D2" must not read as a Cat dozer (ship-check).
+  [/trailer|lowboy|goose.?neck|\bpup\b/i, 'equipment', 'trailer'],
+  // Machines whose names contain tool words — these must beat the generic
+  // tool rule at the bottom, or a $30k grinder becomes type 'tool' and loses
+  // its own trail, hours and idle-$ (tools inherit a carrier's location).
+  [/stump grinder|drill rig|hydraulic hammer|hammer attachment|breaker/i, 'equipment', 'excavator'],
+
   [/\bdump\b|\bdumptruck\b|tri.?axle/i, 'vehicle', 'dump-truck'],
   [/mixer|concrete truck|redi.?mix|ready.?mix/i, 'vehicle', 'mixer'],
   [/water truck|water tender/i, 'vehicle', 'water-truck'],
@@ -201,6 +223,19 @@ const NAME_HINTS: [RegExp, AssetType, string][] = [
   [/\bsaw\b|drill|grinder|hammer|impact|\bkit\b|\blevel\b|laser|\btool\b|wrench|nailer|welder/i, 'tool', 'wrench'],
 ]
 
+/**
+ * Brand fallback — type only, no icon. Real fleet lists are full of names
+ * like "Chevy 1500", "Peterbilt 567", "Link-Belt 130X2", "Takeuchi TB235":
+ * unmistakable to a human, invisible to the keyword rules above, and each
+ * one was a hard error the owner had to clear by hand (ship-check). Naming
+ * the TYPE is enough to import; the icon falls back to the type default.
+ */
+const BRAND_HINTS: [RegExp, AssetType][] = [
+  [/\b(chevy|chevrolet|silverado|ford|f-?\d{3}|gmc|sierra|ram|dodge|toyota|tundra|tacoma|nissan|titan|jeep)\b/i, 'vehicle'],
+  [/\b(peterbilt|kenworth|freightliner|mack|international|western star)\b/i, 'vehicle'],
+  [/\b(caterpillar|\bcat\b|komatsu|link.?belt|john deere|\bdeere\b|kubota|takeuchi|case\b|new holland|\bjcb\b|hitachi|doosan|hyundai|sany|volvo|bomag|wirtgen|sakai|dynapac|vermeer|ditch witch|manitou|wacker)\b/i, 'equipment'],
+]
+
 /** Best-guess type + icon for a bare name. Returns nulls when nothing is
  *  confident — a blank type on import is an error the owner fixes, never a
  *  silent "vehicle". */
@@ -209,6 +244,9 @@ export function inferFromName(name: string): { type: AssetType | null; icon: str
   if (!n) return { type: null, icon: null }
   for (const [re, type, icon] of NAME_HINTS) {
     if (re.test(n)) return { type, icon }
+  }
+  for (const [re, type] of BRAND_HINTS) {
+    if (re.test(n)) return { type, icon: null }
   }
   return { type: null, icon: null }
 }
@@ -278,10 +316,27 @@ const TYPE_WORDS: Record<string, AssetType> = {
   tool: 'tool', tools: 'tool', tag: 'tool', smalltool: 'tool',
 }
 
+/**
+ * A Type column's value → our four types. Exact word first, then the same
+ * name inference the Name column gets: a real equipment list's Type column
+ * reads "Dump Truck / Excavator / Skid Steer", and exact-match-only turned
+ * every one of those rows red while the identical string in the Name column
+ * inferred perfectly (ship-check).
+ */
 export function parseType(raw: string | undefined): AssetType | null {
   const n = norm(raw ?? '')
   if (!n) return null
-  return TYPE_WORDS[n] ?? null
+  // hasOwn, not a bare lookup: 'constructor' is an inherited member and
+  // returned a function, which then serialized out of the insert payload.
+  if (Object.hasOwn(TYPE_WORDS, n)) return TYPE_WORDS[n]
+  const byName = inferFromName(String(raw)).type
+  if (byName) return byName
+  // Last pass: any single type word inside the phrase — "Heavy Equipment",
+  // "Small Tools", "Field Personnel".
+  for (const word of String(raw).toLowerCase().split(/[^a-z]+/)) {
+    if (word && Object.hasOwn(TYPE_WORDS, word)) return TYPE_WORDS[word]
+  }
+  return null
 }
 
 export interface ResolvedRow {
@@ -333,7 +388,10 @@ export function resolveRow(
   const issues: RowIssue[] = []
   // Every cell is bounded HERE, once, before any regex or length check runs
   // downstream — see MAX_CELL.
-  const val = (k: ColKey) => (row[k] ?? '').trim().slice(0, MAX_CELL)
+  // String(): the action takes this array straight off the wire, so a
+  // non-string cell used to throw "trim is not a function" and surface as a
+  // bare "Import failed" (ship-check).
+  const val = (k: ColKey) => String(row[k] ?? '').trim().slice(0, MAX_CELL)
   const empty = COLUMN_KEYS.every((k) => !val(k))
   if (empty) return { resolved: null, issues: [], empty: true }
 
@@ -375,7 +433,20 @@ export function resolveRow(
   const trackerRaw = val('tracker')
   if (trackerRaw) {
     const digits = trackerRaw.replace(/\s|-/g, '')
-    if (/^\d+$/.test(digits)) {
+    // Excel formats a 15-digit number in a General column as 8.68996E+14.
+    // That isn't all-digits, so it used to sail through as "a BLE tag id":
+    // asset created green, ingest never matches the bare IMEI, truck never
+    // appears on the map (ship-check). Name it instead of accepting it.
+    if (/^\d[.,]?\d*[eE][+-]?\d+$/.test(digits)) {
+      issues.push({ col: 'tracker', level: 'error', text: `Excel turned this into "${trackerRaw}" — format that column as Text and re-copy the IMEI` })
+    } else if (!/^\d+$/.test(digits) && extractImei(trackerRaw)) {
+      // "IMEI: 868996068802222" / "868996068802222 (T1-a)" — pull the real
+      // 15-digit run out rather than storing the label around it.
+      const found = extractImei(trackerRaw)!
+      if (!luhnOk(found)) {
+        issues.push({ col: 'tracker', level: 'error', text: 'Fails the IMEI checksum — check the digits on the box label' })
+      } else tracker = found
+    } else if (/^\d+$/.test(digits)) {
       if (digits.length !== 15) {
         issues.push({ col: 'tracker', level: 'error', text: `IMEIs are 15 digits — this is ${digits.length}` })
       } else if (!luhnOk(digits)) {

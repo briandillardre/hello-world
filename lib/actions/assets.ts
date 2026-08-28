@@ -248,10 +248,13 @@ export async function bulkCreateAssetsAction(rows: ImportRow[]):
     for (const a of data ?? []) if (a.name) existing.names.add(String(a.name).toLowerCase())
   }
   for (const part of chunked(claimedTrackers, 100)) {
+    // ACTIVE AND INACTIVE, for our own company: 001's
+    // UNIQUE (company_id, tracker_id) is not partial on `active`, so reusing
+    // an IMEI from a deactivated asset showed green in the grid and then
+    // failed at insert with 23505 (ship-check). The cross-tenant check below
+    // is the one that only cares about active rows.
     const { data } = await supabase
-      .from('assets').select('tracker_id').eq('company_id', companyId).eq('active', true).in('tracker_id', part)
-    // ACTIVE only: that's what the uniqueness index enforces, and
-    // deactivating an asset is how a tracker is released for the next truck.
+      .from('assets').select('tracker_id').eq('company_id', companyId).in('tracker_id', part)
     for (const a of data ?? []) if (a.tracker_id) existing.trackers.add(trackerKey(String(a.tracker_id)))
   }
 
@@ -333,6 +336,17 @@ export async function bulkCreateAssetsAction(rows: ImportRow[]):
         results[r.i] = { i: r.i, ok: true, id: paired ? data![k].id : undefined, name: r.payload.name }
       })
       created += slice.length
+      continue
+    }
+    // Retry row-by-row ONLY for a real Postgres error, where the whole
+    // statement rolled back. postgrest-js reports a transport failure (reset
+    // connection, 502/504 after the insert committed) in the same `error`
+    // shape with an empty code — retrying that duplicates every row in the
+    // chunk (ship-check).
+    if (!/^\d{5}$/.test(String(error.code ?? ''))) {
+      for (const r of slice) {
+        results[r.i] = { i: r.i, ok: false, error: "Connection dropped mid-import — reload the assets list to see whether this one landed before trying it again." }
+      }
       continue
     }
     for (const r of slice) {
