@@ -15,6 +15,7 @@ export function Logo({
   href = '/',
   className,
   markClassName,
+  wordmarkClassName,
   wordmark = true,
   onDark = true,
   size = 32,
@@ -22,6 +23,9 @@ export function Logo({
   href?: string | null
   className?: string
   markClassName?: string
+  /** Extra classes on the wordmark alone — e.g. `max-[400px]:hidden` to fall
+   *  back to the bare mark where a header runs out of room. */
+  wordmarkClassName?: string
   wordmark?: boolean
   onDark?: boolean
   size?: number
@@ -41,7 +45,8 @@ export function Logo({
         <span
           className={cn(
             'font-display font-black uppercase tracking-[0.05em] leading-none',
-            onDark ? 'text-ink' : 'text-navy'
+            onDark ? 'text-ink' : 'text-navy',
+            wordmarkClassName
           )}
           style={{ fontSize: size * 0.58 }}
         >

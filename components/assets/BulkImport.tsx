@@ -82,6 +82,16 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
     [rows, existing, canViewCosts]
   )
 
+  // Rows that carry data but still have no type — neither typed nor inferred.
+  const needType = rows.filter((r, i) =>
+    !verdicts[i]?.empty && !(r.cells.type ?? '').trim() && !inferFromName((r.cells.name ?? '').trim()).type
+  ).length
+  const fillTypes = (t: AssetType) => setRows((prev) => prev.map((r, i) => (
+    verdicts[i]?.empty || (r.cells.type ?? '').trim() || inferFromName((r.cells.name ?? '').trim()).type
+      ? r
+      : { ...r, cells: { ...r.cells, type: t }, err: null }
+  )))
+
   const ready = verdicts.filter((v) => v.resolved).length
   const broken = verdicts.filter((v) => !v.empty && !v.resolved).length
   const warned = verdicts.filter((v) => v.resolved && v.issues.length).length
@@ -347,6 +357,22 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
         >
           {showAll ? 'Show just the essentials' : `Show all columns${hiddenWithData ? ' •' : ''}`}
         </button>
+        {/* Fill-down: a batch of identical units (six TAT141s, a row of
+            trailers) otherwise needs the same pick once per row. Only offered
+            when rows actually lack a type. */}
+        {needType > 0 && (
+          <label className="flex items-center gap-1.5 text-[12px] text-muted">
+            Set {needType} blank type{needType === 1 ? '' : 's'} to
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) fillTypes(e.target.value as AssetType) }}
+              className="bg-navy-900 border border-navy-700 rounded px-1.5 py-1 text-ink cursor-pointer"
+            >
+              <option value="">choose…</option>
+              {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+        )}
         <Button size="sm" variant="outline" className="gap-1" onClick={() => addRows(5)}>
           <Plus className="h-4 w-4" /> 5 rows
         </Button>

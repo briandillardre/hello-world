@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { MapPin, Bell, Wrench, Calculator, ShieldAlert, TrendingUp, ArrowRight, Users, Sparkles, Banknote, Package } from 'lucide-react'
+import { AppEntryRedirect } from './AppEntryRedirect'
 import { SiteNav } from '@/components/marketing/SiteNav'
 import { SiteFooter } from '@/components/marketing/SiteFooter'
 import { RealCinema } from '@/components/marketing/RealCinema'
@@ -61,7 +62,9 @@ const PRICE = [
 
 export default function HomePage() {
   return (
-    <div className="relative min-h-screen bg-navy-950 text-ink font-sans">
+    <>
+      <AppEntryRedirect />
+      <div className="relative min-h-screen bg-navy-950 text-ink font-sans">
       <div className="fixed inset-0 z-0 pointer-events-none brand-glow" />
       <SiteNav />
 
@@ -436,6 +439,7 @@ export default function HomePage() {
       </main>
 
       <SiteFooter />
-    </div>
+      </div>
+    </>
   )
 }
