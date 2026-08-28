@@ -152,6 +152,43 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
   return { ok: true, asset }
 }
 
+/** Scan-to-map (Brian, Aug 28: "get the devices QUICKLY, scan QR code or
+ *  similar, and they show up on the map — then I can edit them"). One scan
+ *  of the IMEI barcode on the tracker's box creates the asset with a
+ *  placeholder name; the dot appears the moment the device first reports.
+ *  Renaming/rates/icon come later on the edit form. */
+export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equipment'):
+  Promise<{ ok: boolean; asset?: { id: string; name: string } | null; existing?: { id: string; name: string }; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode — scanning works once connected to your real account.' }
+  // Teltonika box labels carry the IMEI as a barcode/QR; scanned payloads can
+  // wrap it in other text, so take the first 15-digit run.
+  const imei = (String(raw).match(/\d{15}/) ?? [])[0]
+  if (!imei) return { ok: false, error: 'No 15-digit IMEI in that code — scan the IMEI barcode on the box, or type the number.' }
+
+  const companyId = await getCurrentCompanyId()
+  const { createClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+  // Already claimed → hand back the existing asset instead of erroring; the
+  // scan flow is batch-first and re-scanning a box must be harmless.
+  const { data: dup } = await supabase.from('assets')
+    .select('id, name').eq('company_id', companyId).eq('tracker_id', imei).limit(1)
+  if (dup?.[0]) return { ok: true, existing: { id: dup[0].id, name: dup[0].name } }
+
+  const { asset, error } = await createAsset(companyId, {
+    name: (kind === 'vehicle' ? 'New truck …' : 'New machine …') + imei.slice(-4),
+    type: kind,
+    tracker_id: imei,
+    category: null, serial: null, folder_url: null, photo_url: null,
+    hourly_rate: null, mileage_rate: null, daily_cost: null,
+    purchase_price: null, purchase_value: null,
+    metadata: {},
+  })
+  if (error) return { ok: false, error: friendlyAssetError(error) }
+  revalidatePath('/assets')
+  revalidatePath('/map')
+  return { ok: true, asset: asset ? { id: asset.id, name: asset.name } : null }
+}
+
 /** Remove one gallery photo, then set the hero/thumbnail to whatever is now
  *  first (or null when the gallery is empty). */
 export async function deleteAssetPhotoAction(assetId: string, photoId: string) {
