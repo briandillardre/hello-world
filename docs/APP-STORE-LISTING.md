@@ -1,8 +1,20 @@
 # App Store & Play Store Listing Pack — HammerTrack
 
-*Ready to paste when the Apple Developer / Google Play accounts open (gated on
-the D-U-N-S number). Reviewer-notes + privacy answers included — those are what
-actually stall a first submission.*
+*Reviewer-notes + privacy answers included — those are what actually stall a
+first submission.*
+
+> **Aug 28 2026 — listing cleanup.** The app has been live in Play Production
+> since Aug 21, but the listing was showing RAW BROWSER SCREENSHOTS (URL bar,
+> tabs, Android nav buttons visible) and no tagline under the title. Fresh
+> assets are in `store-assets/` — 6 captioned phone screenshots per platform
+> plus a rebuilt feature graphic, all shot against real satellite imagery
+> (the previous set was captured with no map tiles loaded, so the map read as
+> a black void). **What to re-upload in Play Console → Store listing:**
+> 1. Short description — the field that renders as the italic line under
+>    "HammerTrack · Business" in search results. It is currently EMPTY.
+> 2. Phone screenshots — replace all with `store-assets/android-phone/*.png`
+>    (1080×1920, in filename order).
+> 3. Feature graphic — `store-assets/feature-graphic-1024x500.png`.
 
 ---
 
@@ -40,9 +52,13 @@ gps,fleet,tracker,construction,equipment,tools,geofence,telematics,theft,obd2,jo
 > • After-hours theft & left-site alerts to your phone's lock screen
 > • Bluetooth tool tags — see which truck your laser level is in
 > • Job-site hours & cost tracking — turn location into job costs
+> • Replay any day: speed-coloured trails, every stop, every site
 > • Maintenance reminders by engine hours, mileage, or date
-> • Trip history & daily site logs
-> • QuickBooks-ready job costing
+> • Trip history, daily site logs, and a time clock that knows the job
+> • Weekly owner digest and a workday-morning site briefing
+> • Set up in minutes — scan a tracker's barcode, or paste your whole
+>   fleet in from a spreadsheet
+> • Ask it anything about your operation, in plain English
 >
 > **Priced for contractors, not corporations** — a fraction of what the big
 > enterprise platforms charge, with no per-site setup fees.
