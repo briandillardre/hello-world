@@ -340,7 +340,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             <span className="grid place-items-center w-10 h-10 -mt-5 rounded-full bg-amber text-[#1a1100] shadow-glow-amber border-4 border-navy-950">
               <Sparkles className="h-5 w-5" />
             </span>
-            <span className="-mt-0.5 text-amber">AskAI</span>
+            <span className="-mt-0.5 text-amber">Ask AI</span>
           </button>
           {barItems.slice(3).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
