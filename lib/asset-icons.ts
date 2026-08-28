@@ -341,7 +341,10 @@ export const ICON_GROUPS: AssetIconDef['group'][] =
 /** metadata.icon → validated registry key, else the type default. */
 export function resolveAssetIcon(type: AssetType, metadata?: Record<string, unknown> | null): string {
   const k = metadata?.icon
-  if (typeof k === 'string' && ASSET_ICONS[k]) return k
+  // hasOwn, not truthiness: 'constructor'/'__proto__' are inherited object
+  // members and would pass a plain lookup, then request an unregistered
+  // glyph image (ship-check).
+  if (typeof k === 'string' && Object.hasOwn(ASSET_ICONS, k)) return k
   return TYPE_DEFAULT_ICON[type] ?? 'pickup'
 }
 
@@ -349,7 +352,7 @@ export function resolveAssetIcon(type: AssetType, metadata?: Record<string, unkn
  *  puck with the dark silhouette inside. Client-only (canvas). */
 export function iconPreviewDataUrl(key: string, puck = '#ff9e16', glyph = '#04121d', size = 44): string {
   if (typeof document === 'undefined') return ''
-  const def = ASSET_ICONS[key]
+  const def = Object.hasOwn(ASSET_ICONS, key) ? ASSET_ICONS[key] : undefined
   if (!def) return ''
   const c = document.createElement('canvas')
   const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)

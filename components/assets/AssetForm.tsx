@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { AssetType, AssetPhoto } from '@/lib/types'
 import { ASSET_ICONS, ICON_GROUPS, TYPE_DEFAULT_ICON, iconPreviewDataUrl } from '@/lib/asset-icons'
 import { Button } from '@/components/ui/button'
@@ -153,10 +153,14 @@ function IconPicker({ value, type, puck, onChange }: {
   // Previews are canvas-rendered — client only, so SSR markup stays stable.
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+  // Deferred: dragging the rainbow color well fires input events at pointer
+  // rate, and each puck change re-encodes 28 canvases — defer so the grid
+  // repaints once per settled color, not per pointer move (ship-check).
+  const settledPuck = useDeferredValue(puck)
   const previews = useMemo(() => {
     if (!mounted) return {} as Record<string, string>
-    return Object.fromEntries(Object.keys(ASSET_ICONS).map((k) => [k, iconPreviewDataUrl(k, puck)]))
-  }, [mounted, puck])
+    return Object.fromEntries(Object.keys(ASSET_ICONS).map((k) => [k, iconPreviewDataUrl(k, settledPuck)]))
+  }, [mounted, settledPuck])
   const autoKey = TYPE_DEFAULT_ICON[type]
   return (
     <div className="space-y-1.5">
@@ -553,12 +557,15 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
                 <button
                   type="button"
                   onClick={() => setSpecs((prev) => {
-                    // Clear decoded/typed specs but keep notes + color + icon —
-                    // they have their own inputs and aren't part of this strip.
+                    // Clear decoded/typed specs but keep the keys with their
+                    // own inputs/surfaces: notes, color, icon, and cost_basis
+                    // (the AI cost note — the chip strip never shows it, so
+                    // clearing it here silently killed the cost-card note).
                     const kept: Record<string, unknown> = {}
                     if (prev.notes != null) kept.notes = prev.notes
                     if (prev.color != null) kept.color = prev.color
                     if (prev.icon != null) kept.icon = prev.icon
+                    if (prev.cost_basis != null) kept.cost_basis = prev.cost_basis
                     return kept
                   })}
                   className="text-[11px] text-faint hover:text-alert"
