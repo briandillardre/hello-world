@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { ChevronDown, ChevronLeft, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, X, Sparkles } from 'lucide-react'
 import type { AssetWithLocation, Geofence } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import { buildActivityCurve, areaPath } from '@/lib/activity'
@@ -47,12 +47,15 @@ export function Module({ k, title, state, onPanel, children }: {
   )
 }
 
-export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
+export function CommandRail({ assets, geofences, tracks, panels, onPanel, noticed = [] }: {
   assets: AssetWithLocation[]
   geofences: Geofence[]
   tracks: AssetTrack[]
   panels: Record<PanelKey, PanelState>
   onPanel: (k: PanelKey, s: PanelState) => void
+  /** Insight-engine findings for the "Worth a look" window (already capped
+   *  and role-stripped by the caller/API). */
+  noticed?: { id: string; severity: number; headline: string; link: string | null }[]
 }) {
   // ── fleet activity waveform (24h of movement) ──
   const activity = useMemo(() => buildActivityCurve(tracks, 48), [tracks])
@@ -136,6 +139,25 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
         )}
       </Module>
 
+      {/* The insight engine's top findings — only renders when it has
+          something to say (a quiet wall needs no empty window). */}
+      {noticed.length > 0 && (
+        <Module k="noticed" title="Worth a look" state={panels.noticed} onPanel={onPanel}>
+          <div className="space-y-1.5">
+            {noticed.map((n) => (
+              <a
+                key={n.id}
+                href={n.link && n.link.startsWith('/') ? n.link : '/reports'}
+                className="flex items-start gap-2 group"
+              >
+                <Sparkles className={`h-3 w-3 mt-0.5 flex-none ${n.severity >= 3 ? 'text-alert' : 'text-amber'}`} />
+                <span className="min-w-0 flex-1 text-[11px] leading-snug text-muted group-hover:text-ink transition-colors">{n.headline}</span>
+              </a>
+            ))}
+          </div>
+        </Module>
+      )}
+
       <Module k="status" title="Fleet status" state={panels.status} onPanel={onPanel}>
         <div className="grid grid-cols-3 text-center mb-1.5">
           <div>
@@ -170,7 +192,7 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel }: {
       </Module>
 
       <button
-        onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}
+        onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('noticed', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}
         aria-label="Hide instrument rail"
         className="self-start flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors px-1"
       >

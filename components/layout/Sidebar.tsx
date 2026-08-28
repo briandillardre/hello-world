@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
@@ -81,11 +81,22 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
       )}
     >
       {/* brand */}
-      <div className={cn('border-b border-navy-800 flex items-center min-h-[54px]', collapsed ? 'justify-center px-2' : 'px-4')}>
+      <div className={cn('border-b border-navy-800 flex items-center min-h-[54px]', collapsed ? 'justify-center px-2 py-2' : 'px-4 py-3')}>
         {collapsed ? (
-          <Logo wordmark={false} size={26} href="/map" />
+          <div className="flex flex-col items-center gap-2.5">
+            <Logo wordmark={false} size={26} href="/map" />
+            <button
+              data-tour="askai"
+              onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
+              title="Ask AI"
+              aria-label="Ask HammerTrack AI"
+              className="grid place-items-center w-9 h-9 rounded-lg bg-amber text-[#1a1100] shadow-glow-amber hover:brightness-110 transition"
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+          </div>
         ) : (
-          <div className="min-w-0">
+          <div className="min-w-0 w-full">
             <Logo size={26} href="/map" />
             {/* Client's own logo (Settings → Company) rides above their name,
                 rendered AS UPLOADED — no forced white backing; a transparent
@@ -98,6 +109,16 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             )}
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
+            {/* Ask AI lives up here in the chrome now — the desktop floater
+                kept covering page content (Brian, Aug 28). */}
+            <button
+              data-tour="askai"
+              onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
+              aria-label="Ask HammerTrack AI"
+              className="mt-2.5 w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[13px] py-2 shadow-glow-amber hover:brightness-110 transition"
+            >
+              <Sparkles className="h-4 w-4" /> Ask AI
+            </button>
           </div>
         )}
       </div>

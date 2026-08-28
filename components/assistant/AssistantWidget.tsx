@@ -84,42 +84,20 @@ export function AssistantWidget() {
   const recRef = useRef<SpeechRecognitionLike | null>(null)
   const historyLoaded = useRef(false)
   const voiceOk = !!getSpeechCtor()
-  // Phones reach Ask through the bottom nav's amber center button on every
-  // dashboard page (Brian, Aug 22 — the floater doubled it up on /settings).
-  // The floater is desktop-only now, where there is no bottom nav.
-  const launcherPos = 'bottom-[84px] right-4 md:bottom-6 md:right-6'
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [msgs, loading])
 
-  // Allow other UI (e.g. the map top-banner "Ask" button) to open the assistant.
+  // There is no floating launcher any more — it kept covering page content
+  // on desktop (Brian, Aug 28). Every entry point lives in the chrome and
+  // opens the panel through this event: the sidebar header's Ask AI button
+  // (desktop), the bottom nav's amber center button (phones), and the
+  // command-center banner button.
   useEffect(() => {
     const openIt = () => setOpen(true)
     window.addEventListener('ht:ask', openIt)
     return () => window.removeEventListener('ht:ask', openIt)
-  }, [])
-
-  // Edit dialogs announce themselves (ht:dialog from DialogContent). The
-  // launcher sits ABOVE the dialog z-index and was floating over edit forms,
-  // covering fields — get out of the way while any dialog is open.
-  const [dialogDepth, setDialogDepth] = useState(0)
-  useEffect(() => {
-    const onDialog = (e: Event) => {
-      const isOpen = !!(e as CustomEvent).detail?.open
-      setDialogDepth((d) => Math.max(0, d + (isOpen ? 1 : -1)))
-    }
-    window.addEventListener('ht:dialog', onDialog)
-    return () => window.removeEventListener('ht:dialog', onDialog)
-  }, [])
-
-  // The BottomNav "More" drawer announces itself the same way (ht:drawer) —
-  // hide the launcher while it's up so it never covers the Sign out button.
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  useEffect(() => {
-    const onDrawer = (e: Event) => setDrawerOpen(!!(e as CustomEvent).detail?.open)
-    window.addEventListener('ht:drawer', onDrawer)
-    return () => window.removeEventListener('ht:drawer', onDrawer)
   }, [])
 
   // First open: pull the persisted thread so the conversation survives
@@ -232,18 +210,6 @@ export function AssistantWidget() {
 
   return (
     <>
-      {/* Floating launcher (hidden on the map — it lives in the banner there —
-          and while any edit dialog is open, so it never covers a form) */}
-      {!open && dialogDepth === 0 && !drawerOpen && (
-        <button
-          onClick={() => setOpen(true)}
-          className={`fixed ${launcherPos} z-[60] print:hidden hidden md:flex items-center gap-2 rounded-full bg-amber text-[#1a1100] font-display font-bold px-4 py-3 shadow-glow-amber hover:brightness-110 transition`}
-          aria-label="Ask HammerTrack AI"
-        >
-          <Sparkles className="h-5 w-5" /> Ask
-        </button>
-      )}
-
       {/* Chat panel */}
       {open && (
         <div className="fixed z-[60] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">

@@ -1,6 +1,7 @@
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { FinancePanel } from '@/components/finance/FinancePanel'
+import { OwnerMemoCard } from '@/components/finance/OwnerMemoCard'
 import type { FinanceProfile } from '@/lib/valuation'
 
 export const metadata = { title: 'HammerTrack — Financials' }
@@ -59,6 +60,7 @@ export default async function FinancePage() {
           three appraisal methods, one honest range. Owners only.
         </p>
       </div>
+      <OwnerMemoCard />
       <FinancePanel
         initial={profile}
         teamCount={teamCount}

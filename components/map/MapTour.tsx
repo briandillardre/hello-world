@@ -33,7 +33,7 @@ const buildSteps = (canDrawZones: boolean): Step[] => [
   },
   {
     selector: '[data-tour="askai"]',
-    title: 'AskAI',
+    title: 'Ask AI',
     body: 'Ask in plain English — "Where\'s the crew truck?" or "How long were we at the Smith job this week?" It answers from your live fleet data.',
     side: 'above',
   },
@@ -96,11 +96,14 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
   useEffect(() => {
     if (step === null) return
     const measure = () => {
-      const el = document.querySelector(steps[step].selector)
-      if (!el) { setBox(null); return }
-      const r = el.getBoundingClientRect()
-      if (r.width === 0 && r.height === 0) { setBox(null); return }
-      setBox({ x: r.left, y: r.top, w: r.width, h: r.height })
+      // First VISIBLE match: askai exists twice (sidebar header on desktop,
+      // bottom nav on phones) and the hidden one measures 0×0.
+      const els = Array.from(document.querySelectorAll(steps[step].selector))
+      for (const el of els) {
+        const r = el.getBoundingClientRect()
+        if (r.width > 0 || r.height > 0) { setBox({ x: r.left, y: r.top, w: r.width, h: r.height }); return }
+      }
+      setBox(null)
     }
     measure()
     window.addEventListener('resize', measure)
