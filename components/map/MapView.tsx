@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/types'
+import { ASSET_ICONS, resolveAssetIcon, TYPE_DEFAULT_ICON } from '@/lib/asset-icons'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsBanded,
@@ -155,6 +156,9 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           // Sanitize: an invalid stored color must degrade to the type color,
           // never feed the circle layers an unparseable paint value.
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS[a.type],
+          // Silhouette inside the dot — per-asset choice (metadata.icon,
+          // validated against the registry) or the type default.
+          icon: resolveAssetIcon(a.type, a.metadata),
           battery: a.location!.battery, speed: a.location!.speed, timestamp: a.location!.timestamp,
           // Travel direction for the arrow marker style (null → arrow points N).
           heading: a.location!.heading ?? 0,
@@ -192,6 +196,7 @@ function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         properties: {
           id: a.id, name: a.name, type: 'tool',
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS.tool,
+          icon: resolveAssetIcon('tool', a.metadata),
           state: Date.now() - new Date(a.location!.timestamp).getTime() < 25 * 60_000 ? 'live' : 'dropped',
         },
       })),
@@ -289,7 +294,7 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   return { type: 'FeatureCollection', features }
 }
 
-function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>): GeoJSON.FeatureCollection {
+function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>, iconOf?: Map<string, string>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: tracks
@@ -302,7 +307,7 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, s
         // toolCount is the CURRENT ride, drawn on replay heads too — the
         // badge answers "what's in the truck NOW", whatever moment the
         // scrubber is showing (Brian asked for it on all trail modes).
-        properties: { id: tr.assetId, name: tr.name, color: tr.color, type: tr.type, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0 },
+        properties: { id: tr.assetId, name: tr.name, color: tr.color, type: tr.type, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0, icon: iconOf?.get(tr.assetId) ?? TYPE_DEFAULT_ICON[tr.type] },
       })),
   }
 }
@@ -964,6 +969,11 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   }, [alerts])
   const alertIdsRef = useRef(alertAssetIds)
   alertIdsRef.current = alertAssetIds
+  // Per-asset silhouette lookup for the replay heads (tracks don't carry
+  // metadata, so heads resolve their icon from the live asset list).
+  const iconById = useMemo(() => new Map(assets.map((a) => [a.id, resolveAssetIcon(a.type, a.metadata)])), [assets])
+  const iconByIdRef = useRef(iconById)
+  iconByIdRef.current = iconById
   const episodesRef = useRef(pairingEpisodes)
   episodesRef.current = pairingEpisodes
   tracksRef.current = tracksEff
@@ -1840,7 +1850,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           m.addImage('tool-badge', ctx.getImageData(0, 0, 48, 48), { pixelRatio: 3 })
         }
       }
-      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current) })
+      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current, iconByIdRef.current) })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
         layout: { visibility: 'none' },
@@ -1989,52 +1999,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         draw(ctx)
         m.addImage(name, ctx.getImageData(0, 0, 64, 64), { sdf: true })
       }
-      const rr = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-        if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r) } else { ctx.rect(x, y, w, h) }
-      }
-      // Truck, side view: box bed + stepped cab + two wheels.
-      addGlyph('type-vehicle', (ctx) => {
-        ctx.beginPath()
-        rr(ctx, 6, 20, 30, 22, 3)
-        ctx.moveTo(36, 26); ctx.lineTo(47, 26); ctx.lineTo(56, 35); ctx.lineTo(56, 42); ctx.lineTo(36, 42)
-        ctx.closePath(); ctx.fill()
-        ctx.beginPath(); ctx.arc(17, 45, 7, 0, Math.PI * 2); ctx.fill()
-        ctx.beginPath(); ctx.arc(46, 45, 7, 0, Math.PI * 2); ctx.fill()
-      })
-      // Excavator: tracks + cab + raised boom with bucket. Boom drawn ~13px
-      // wide in 64-space — thinner broke up at 1x render sizes (the /command
-      // wall); features must survive the SDF threshold's erosion.
-      addGlyph('type-equipment', (ctx) => {
-        ctx.beginPath(); rr(ctx, 8, 44, 34, 11, 5.5); ctx.fill()
-        ctx.beginPath(); rr(ctx, 12, 26, 20, 16, 3); ctx.fill()
-        ctx.beginPath()
-        ctx.moveTo(28, 34); ctx.lineTo(45, 8); ctx.lineTo(56, 16); ctx.lineTo(40, 41)
-        ctx.closePath(); ctx.fill()
-        ctx.beginPath(); ctx.moveTo(47, 12); ctx.lineTo(61, 22); ctx.lineTo(49, 31); ctx.closePath(); ctx.fill()
-      })
-      // Person: head + shoulders.
-      addGlyph('type-personnel', (ctx) => {
-        ctx.beginPath(); ctx.arc(32, 19, 10, 0, Math.PI * 2); ctx.fill()
-        ctx.beginPath(); rr(ctx, 14, 33, 36, 24, 13); ctx.fill()
-      })
-      // Wrench at 45°: open-jaw head + handle. Hole and jaw cut WIDE
-      // (r 6.5 / 10px slot in 64-space) — narrower cutouts filled solid at
-      // the glyph's final ~10px on 1x screens, leaving a featureless blob.
-      addGlyph('type-tool', (ctx) => {
-        ctx.save()
-        ctx.translate(32, 32)
-        ctx.rotate(Math.PI / 4)
-        ctx.beginPath(); rr(ctx, -5, -8, 10, 32, 5); ctx.fill()
-        ctx.beginPath(); ctx.arc(0, -16, 12, 0, Math.PI * 2); ctx.fill()
-        ctx.globalCompositeOperation = 'destination-out'
-        ctx.beginPath(); ctx.arc(0, -16, 6.5, 0, Math.PI * 2); ctx.fill()
-        ctx.fillRect(-5, -34, 10, 14)
-        ctx.restore()
-      })
+      // The whole silhouette library registers up front (lib/asset-icons.ts
+      // — the four originals plus the trade set: dump truck, day cab, dozer,
+      // mower…). ~28 tiny canvases, drawn once per map load; per-asset
+      // choice arrives on the feature as `icon` (metadata.icon, validated).
+      for (const [key, def] of Object.entries(ASSET_ICONS)) addGlyph('glyph-' + key, def.draw)
       m.addLayer({
         id: 'asset-type-glyph', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
         layout: {
-          'icon-image': ['concat', 'type-', ['get', 'type']],
+          'icon-image': ['concat', 'glyph-', ['get', 'icon']],
           // Images register at 64px base (same as nav-arrow) — 0.19 ≈ 12px,
           // inside the 20px dot: identity without growing the marker.
           'icon-size': 0.19,
@@ -2051,7 +2024,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.addLayer({
         id: 'trail-head-glyphs', type: 'symbol', source: 'trail-heads',
         layout: {
-          'icon-image': ['concat', 'type-', ['get', 'type']],
+          'icon-image': ['concat', 'glyph-', ['get', 'icon']],
           'icon-size': 0.19,
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
           visibility: 'none',
@@ -2146,7 +2119,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         id: 'tool-dots-glyph', type: 'symbol', source: 'tools-live',
         minzoom: 6,
         layout: {
-          'icon-image': 'type-tool',
+          'icon-image': ['concat', 'glyph-', ['get', 'icon']],
           // 64px base image → ~9.5px wrench inside the 16px tool dot.
           'icon-size': 0.15,
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
@@ -2587,7 +2560,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         }
       }
     }
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts))
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts, iconByIdRef.current))
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
     } else if (mode === '3d') {

@@ -79,6 +79,28 @@ Goal: **Dillard Construction fully live** — every truck, machine, and tool bag
 ### Phase 1 — Founding 25 (Aug–Oct 2026) — *"Sell with your boots on"*
 Goal: **10–25 paying accounts, ~$1.5–2.5k MRR**, 3 written testimonials, 1 filmed case study.
 
+> **Aug 28 2026 amendment — S1, the field sales & install hire (founder
+> call).** DCG hours make founder-only selling the bottleneck, so the sales
+> hire comes forward from Phase 3 — with the shape that keeps it from being
+> the classic pre-pitch sales-hire mistake: ONE part-time **field sales &
+> install** person, hired for their **rolodex** (equipment-dealer counter or
+> sales guy, rental coordinator, retired super — someone Upstate contractors
+> already return calls from), comp weighted to commission, demoing on the
+> showroom company and closing with the DCG field-report one-pager. They
+> demo AND do the first install on the spot — the offer's "first install
+> done with you" becomes their job, which means **S1 absorbs H1**: the
+> Aug '27 installer hire simply arrives early and earns its keep selling.
+> Founder still does the first 3 demos (pitch calibration), writes the
+> warm-intro list, and keeps the account-level tasks (Twilio verdict, QBO
+> keys, showroom seed). **Comp:** $800/mo base (10–15 hrs/wk) +
+> $200/activated account (first autopay month) + $1,000 bonus at 25
+> activated — all-in ≈ $336/account at pace, richer than the model's ~$250
+> CAC lever but it buys back founder hours; payback stays ~6 months at
+> founder-pricing margin. **Kill rule** (same discipline as every hire):
+> 60 days — fewer than 8 demos/month or 3 activated accounts → restructure
+> to pure commission or part ways. **Cash:** ~+$2.4k/quarter pre-close
+> burn; worst-case drawdown moves ~$8.5k → ~$11k. Still self-funding.
+
 Selling motion (in order of expected yield):
 1. **The 25-name list.** Personal demo on *your* live fleet, on your phone, at their yard. Close rate should be 40%+ with the Founding 25 offer.
 2. **Local dealer pilots (2).** Give two Upstate dealers free tracking on their rental fleet. Rental theft/recovery is *their* pain — when it saves them once, they become your channel.
