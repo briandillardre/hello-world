@@ -171,3 +171,56 @@ The Hologram sections above are for the two July pilot units only.*
 insertion time (photo of card next to device label works) — the packing
 slip lists IMEIs, the cards carry ICCIDs, and matching them after the fact
 is guesswork.
+
+---
+
+### Per-model physical gotchas (Aug 28 2026 — learned the hard way on order #1)
+
+Every model in order #1 powers up differently. Getting this wrong produces
+a device that looks like a config or SIM failure and isn't.
+
+| Model | SIM size | Ships how | To power it on |
+|---|---|---|---|
+| FMM00A | mini (2FF) | **battery DISCONNECTED**, no switch | plug the battery in, close the case fully, then OBD port |
+| TAT141 | **micro (3FF)** | **battery CONNECTED, switch OFF** | **flip the internal ON/OFF switch to ON** |
+| FMM650 | mini (2FF) | cover loose, screws bagged, battery unplugged | SIM first, then battery, then 8–32 V through the harness |
+
+**TAT141 — the switch is the whole trick.** Six units read Inactive in FOTA
+for hours because the covers went back on without it being flipped. Quick
+Manual v1.8 p.4 step 3: "Flip the switch to ON." Confirm with the status
+LED (p.11): solid = self-test, **blink every 5 s = working, modem on**,
+dark = asleep or off. Default stationary reporting is **28,800 s (8 h)**,
+so a switched-on unit on a shelf is *supposed* to go quiet after its first
+check-in — judge by FOTA, not by chatter.
+
+**FMM650 — four things:**
+- Cover ships loose with the screws bagged, so there is nothing to pry.
+  4 screws, counterclockwise, on the bottom.
+- **A blank white dummy card sits in the SIM holder.** It is not a SIM and
+  not a pre-installed subscription — pull it. The holder is a **stacked
+  dual-deck**: slot 1 is the LOWER deck, closer to the PCB, and that is the
+  one the config uses. A card in slot 2 registers on nothing.
+- **Insert the SIM with the battery disconnected** (manual: "external
+  voltage and internal battery disconnected"), then connect the battery.
+  Backwards risks a damaged or undetected card.
+- **External antennas, and they are not interchangeable.** The **square**
+  ceramic puck is GNSS; the **long flat strip** is cellular. Port labels are
+  on the case faces, not the connector edge — antenna cables may carry their
+  own "GSM" label, which identifies the *antenna*, not the socket it is in.
+  Finger-tight plus a nip; never pliers.
+- It is wired-only for provisioning: the 550 mAh cell is backup, not a power
+  source, so it will not self-configure on a bench without 12 V. Easiest
+  source is any truck's accessory socket — and if the engine is running, the
+  alternator's ~14 V clears the 13,200 mV ignition threshold, so you verify
+  ignition detection and active tracking in the same test.
+
+**"Pending" in the FOTA queue is normal.** A task can only apply when the
+device checks in, so every never-connected unit sits Pending by design.
+Queue the config BEFORE first power-up — the device syncs FOTA on boot, and
+that is the fast path (otherwise you wait out the 720-minute timer).
+
+**BLE Eye Beacons default to Eddystone, not iBeacon.** Our tool convention
+is iBeacon `UUID:MAJOR:MINOR`, so each beacon must be switched to iBeacon in
+the Teltonika EYE app (default PIN `123456`, Advanced settings) before its
+tool asset will ever match. They may also ship in Hibernate mode — woken
+with a magnet.
