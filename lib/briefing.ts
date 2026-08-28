@@ -78,7 +78,10 @@ export async function gatherBriefingFacts(
     g(db.from('assets').select('*').eq('company_id', companyId).eq('active', true)),
     g(db.from('project_tasks').select('title, status, due_date, geofence_id').eq('company_id', companyId).eq('status', 'open').limit(300)),
     g(db.from('project_milestones').select('name, target_date, done_at, geofence_id').eq('company_id', companyId).is('done_at', null).limit(100)),
-    g(db.from('maintenance_schedules').select('asset_id, description, next_due_at').eq('company_id', companyId).limit(200)),
+    // Overdue is DERIVED (computeStatus) — there is no next_due_at column;
+    // the old select 400'd and this list has been silently empty. Without
+    // live meter readings only day-interval schedules are decidable here.
+    g(db.from('maintenance_schedules').select('asset_id, description, interval_type, interval_value, last_service_date').eq('company_id', companyId).limit(200)),
     g(db.from('work_orders').select('id, status').eq('company_id', companyId).limit(200)),
     g(db.from('alert_events').select('id').eq('company_id', companyId)
       .gte('triggered_at', new Date(yesterday.from).toISOString())
@@ -152,7 +155,6 @@ export async function gatherBriefingFacts(
     .map((a) => a.name).slice(0, 5)
 
   const nameOf = new Map(((assets ?? []) as AssetRow[]).map((a) => [a.id, a.name]))
-  const nowIso = new Date().toISOString()
 
   return {
     company: companyName,
@@ -160,7 +162,8 @@ export async function gatherBriefingFacts(
     sites,
     silentUnits,
     maintenanceOverdue: (maint ?? [])
-      .filter((m) => m.next_due_at && (m.next_due_at as string) <= nowIso)
+      .filter((m) => m.interval_type === 'days' && m.last_service_date && Number(m.interval_value) > 0 &&
+        (Date.now() - Date.parse(m.last_service_date as string)) / 86_400_000 >= Number(m.interval_value))
       .map((m) => `${nameOf.get(m.asset_id as string) ?? 'Asset'} — ${m.description}`)
       .slice(0, 6),
     openWorkOrders: (wos ?? []).filter((w) => w.status !== 'done' && w.status !== 'canceled').length,

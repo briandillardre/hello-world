@@ -19,8 +19,10 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * Manual test: GET /api/cron/memo with `Authorization: Bearer $CRON_SECRET`.
  */
 export async function GET(req: NextRequest) {
+  // FAIL CLOSED (sec-check): this cron spends model tokens and mails every
+  // company — without CRON_SECRET it must refuse, same as usage/simulator.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
@@ -33,7 +35,9 @@ export async function GET(req: NextRequest) {
     try {
       const memo = await ensureOwnerMemo(db, co.id, co.name ?? 'Your company')
       let mailed = false
-      if (memo && co.alert_email) {
+      // mailed_at stamp: a re-run (manual kick, platform retry) must never
+      // re-mail a memo the company already got this month.
+      if (memo && !memo.mailed_at && co.alert_email) {
         const { sendEmail } = await import('@/lib/email')
         const paras = memo.memo.split(/\n{2,}/).map((p) =>
           `<p style="margin:0 0 12px;font-size:13.5px;line-height:1.6;color:#c7d6e4">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`
@@ -44,6 +48,10 @@ export async function GET(req: NextRequest) {
         )
         const r = await sendEmail(co.alert_email, `${co.name ?? 'Your company'} — this month's owner memo`, html)
         mailed = r.ok
+        if (mailed) {
+          await db.from('owner_memos').update({ mailed_at: new Date().toISOString() })
+            .eq('company_id', co.id).eq('month', memo.month)
+        }
       }
       results.push({ company: co.name ?? co.id, composed: !!memo, mailed })
     } catch (err) {

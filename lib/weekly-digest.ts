@@ -99,7 +99,9 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     g(db.from('project_tasks').select('title, status, due_date, done_at, geofence_id').eq('company_id', companyId).limit(400)),
     g(db.from('project_milestones').select('name, target_date, done_at, geofence_id').eq('company_id', companyId).is('done_at', null).limit(100)),
     g(db.from('expenses').select('amount').eq('company_id', companyId).eq('status', 'needs_receipt').limit(500)),
-    g(db.from('maintenance_schedules').select('id, asset_id, next_due_at').eq('company_id', companyId).limit(200)),
+    // No next_due_at column exists — due-ness is derived from the interval
+    // (day-interval schedules only, without live meter readings).
+    g(db.from('maintenance_schedules').select('id, asset_id, interval_type, interval_value, last_service_date').eq('company_id', companyId).limit(200)),
     g(db.from('assets').select('id, name, type').eq('company_id', companyId)),
     g(db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', companyId).is('acknowledged_at', null).gte('triggered_at', wk()).limit(50)),
     // The exact visit ledger (056) — pre-aggregated, so a week is cheap.
@@ -207,7 +209,9 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
       .map((m) => ({ name: m.name as string, zone: zoneName.get(m.geofence_id as string) ?? '', date: (m.target_date as string | null) ?? null }))
       .slice(0, 8),
     maintenanceDue: (maint ?? [])
-      .filter((m) => m.next_due_at && (m.next_due_at as string) <= new Date(Date.now() + 7 * 86_400_000).toISOString())
+      // Due inside the next 7 days: days since last service ≥ interval − 7.
+      .filter((m) => m.interval_type === 'days' && m.last_service_date && Number(m.interval_value) > 0 &&
+        (Date.now() - Date.parse(m.last_service_date as string)) / 86_400_000 >= Number(m.interval_value) - 7)
       .map((m) => nameOf.get(m.asset_id as string) ?? 'Asset').slice(0, 6),
     openAlerts: (alertsOpen ?? [])
       .filter((e) => !isZoneLogEvent(e as { kind?: string | null; rule?: { trigger?: string | null } | null }))

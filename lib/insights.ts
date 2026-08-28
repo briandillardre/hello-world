@@ -367,20 +367,23 @@ function detect(data: Awaited<ReturnType<typeof gather>>, spine: Map<string, Day
   // ── site_quiet: an active job that stopped seeing machines ──
   {
     const openSites = new Map(zones.filter((z) => (z.kind ?? 'site') === 'site' && !z.completed_at).map((z) => [z.id, z.name]))
-    // Per-zone hours per day, from the spine.
+    // Per-zone hours per day from the ALL-TIME ledger, not the 35-day spine —
+    // otherwise the last worked day ages out of the window right as the stall
+    // passes ~28 days and the story vanishes while the site is still stalled
+    // (ship-check P2). The ledger read is already all-time for burn-vs-budget.
     const hoursByZoneDay = new Map<string, Map<string, number>>()
-    for (const k of days) {
-      for (const z of spine.get(k)?.byZone ?? []) {
-        if (!openSites.has(z.id)) continue
-        let m = hoursByZoneDay.get(z.id)
-        if (!m) hoursByZoneDay.set(z.id, (m = new Map()))
-        m.set(k, z.hours)
-      }
+    for (const r of ledger) {
+      if (!r.geofence_id || !openSites.has(r.geofence_id)) continue
+      const h = (Number(r.active_secs) || 0) / 3600
+      if (h <= 0) continue
+      let m = hoursByZoneDay.get(r.geofence_id)
+      if (!m) hoursByZoneDay.set(r.geofence_id, (m = new Map()))
+      m.set(r.day, (m.get(r.day) ?? 0) + h)
     }
     const last7Set = new Set(last7)
     const todayK = days[days.length - 1]
     hoursByZoneDay.forEach((perDay, zoneId) => {
-      // Real work in the prior three weeks…
+      // Real work before the quiet week…
       let priorH = 0
       let lastWorkedDay: string | null = null
       perDay.forEach((h, k) => {
@@ -399,7 +402,7 @@ function detect(data: Awaited<ReturnType<typeof gather>>, spine: Map<string, Day
         fingerprint: `site_quiet:${zoneId}`,
         severity: 2,
         headline: `${name} has gone quiet — no machine time in ${quietDays} days`,
-        detail: `The site logged ${Math.round(priorH)} working hours in the weeks before. If the job's done, mark the zone complete; if it isn't, something's stalled.`,
+        detail: `The site logged ${Math.round(priorH)} working hours before it stopped. If the job's done, mark the zone complete; if it isn't, something's stalled.`,
         link: `/zones/${zoneId}`,
         money: false,
         magnitude: quietDays,

@@ -262,7 +262,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
     }
     load()
     const iv = window.setInterval(load, 10 * 60_000)
-    return () => { alive = false; window.clearInterval(iv) }
+    // A tab opened in the background skips the initial fetch (visibility
+    // guard above) — catch up the moment it actually becomes visible.
+    const onVis = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { alive = false; window.clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
   }, [])
   useEffect(() => {
     if (!deferLoad) return
@@ -536,7 +540,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
             className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
           >
-            <Sparkles className="h-4 w-4" /> Ask
+            <Sparkles className="h-4 w-4" /> Ask AI
           </button>
           <ScreenMenu
             panels={panels}

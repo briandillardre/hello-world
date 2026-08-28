@@ -11,11 +11,17 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 const NO_STORE = { headers: { 'Cache-Control': 'private, no-store' } }
 
-const DEMO_MEMO = `Riverfront Tower carried the month: $19,250 of the $29,850 in tracked machine cost, with Maple St taking most of the rest. Working hours held steady around the fleet's normal pace, and the trucks kept their runs tight between the yard and the two active sites.
+// Demo-world numbers, all cross-checked against lib/projects.ts +
+// lib/insights.ts DEMO_INSIGHTS: week machine cost $29,850 ($19,250
+// Riverfront + $10,600 Maple St) × 4 weeks = $119,400 month ($77,000 /
+// $42,400); Riverfront budget $260,000 with $181,000 spent → $79,000 left
+// ≈ one month at the $77,000 pace. Receipts $464 / after-hours 3-vs-1
+// match DEMO_INSIGHTS verbatim.
+const DEMO_MEMO = `Riverfront Tower carried the month: $77,000 of the $119,400 in tracked machine cost, with Maple St Grading taking most of the rest. Working hours held steady around the fleet's normal pace, and the trucks kept their runs tight between the yard and the two active sites.
 
 What's dragging: $464 in charges are still waiting on receipts, and after-hours movement ticked up to three events this week against your usual one. None of them turned into a loss — but that pattern is exactly how equipment walks off.
 
-The lever for next month: put a budget on Maple St Grading. Riverfront already shows its burn against the $260,000 budget on the map; Maple St is flying blind, and it's the site most likely to surprise you. Two minutes on the zone page turns every workday there into a green-to-red burn reading.`
+The lever for next month: Riverfront Tower is at $181,000 of its $260,000 budget — 70 cents of every budgeted dollar already spent — and at this month's $77,000 machine pace the remaining $79,000 is about one more month of runway, less once labor lands on top. If there's more than a month of work left out there, start the change-order conversation now, while it's still a conversation.`
 
 async function requireCostUser(): Promise<{ ok: boolean; companyId?: string }> {
   try {

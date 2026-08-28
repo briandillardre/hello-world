@@ -29,6 +29,7 @@ until customers exist, then they scale with revenue below.
 | SIM-carrying machine (OBD / TAT / CAN) | ~$2.50 SIM + $0 flespi | $0.70–1.56 SIM + ~$0.50 flespi |
 | Bluetooth tool tag | $0 | $0 |
 | AI (Run tier only) | — | ~$0.50–2/customer (Haiku tokens) |
+| AI owner memo (all tiers, Aug 27) | — | pennies/customer (one deep-model compose per company per month + on-demand refresh, 30-min floor) |
 
 Hardware is a **pass-through at cost** (OBD ~$86, equipment GPS ~$85, tag
 ~$20) — no margin, no inventory risk beyond the PoC batch. The $6/mo floor

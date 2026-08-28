@@ -21,6 +21,8 @@ export interface OwnerMemo {
   memo: string
   composer: 'ai' | 'plain'
   updated_at: string
+  /** Set once the monthly cron has emailed this memo (re-runs skip it). */
+  mailed_at?: string | null
 }
 
 const money0 = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
@@ -69,8 +71,14 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
         .eq('company_id', companyId).limit(1000)),
     g<{ amount: number }[]>(db.from('expenses')
       .select('amount').eq('company_id', companyId).eq('status', 'needs_receipt').limit(500)),
-    g<{ next_due_at: string | null }[]>(db.from('maintenance_schedules')
-      .select('next_due_at').eq('company_id', companyId).limit(300)),
+    // Overdue is DERIVED (computeStatus), not a column. Without live meter
+    // readings only day-interval schedules are decidable here; hour/mileage
+    // debt still reaches the memo because overdue schedules auto-open work
+    // orders (050) and those are counted below.
+    g<{ interval_type: string; interval_value: number; last_service_date: string | null }[]>(
+      db.from('maintenance_schedules')
+        .select('interval_type, interval_value, last_service_date')
+        .eq('company_id', companyId).limit(300)),
     g<{ status: string }[]>(db.from('work_orders')
       .select('status').eq('company_id', companyId).limit(300)),
     g<{ finance_profile: FinanceProfile | null }[]>(db.from('companies')
@@ -88,7 +96,9 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
     afterHours += Number(m.afterHours) || 0
     actionable += Number(m.actionable) || 0
     for (const z of m.byZone ?? []) {
-      const t = byZone.get(z.id) ?? { zone: z.name, cost: 0, hours: 0 }
+      // Names are member-editable text headed into a model prompt — flatten
+      // newlines and cap length so a zone name can't smuggle instructions.
+      const t = byZone.get(z.id) ?? { zone: String(z.name ?? '').replace(/\s+/g, ' ').slice(0, 60), cost: 0, hours: 0 }
       t.cost += Number(z.cost) || 0
       t.hours += Number(z.hours) || 0
       byZone.set(z.id, t)
@@ -126,7 +136,6 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
     }
   }
 
-  const nowIso = new Date().toISOString()
   return {
     company: companyName,
     windowDays: 30,
@@ -135,7 +144,12 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
     costByZone: Array.from(byZone.values()).sort((a, b) => b.cost - a.cost).slice(0, 5),
     afterHoursEvents30d: afterHours,
     actionableAlerts30d: actionable,
-    findings: findings.map((f) => ({ headline: f.headline, detail: f.detail ?? undefined })),
+    // Headlines embed zone/asset names (member-editable) — same flatten+cap
+    // treatment before they ride into the prompt.
+    findings: findings.map((f) => ({
+      headline: String(f.headline ?? '').replace(/\s+/g, ' ').slice(0, 160),
+      detail: f.detail ? String(f.detail).replace(/\s+/g, ' ').slice(0, 240) : undefined,
+    })),
     fleet: {
       vehicles: byType('vehicle'), equipment: byType('equipment'),
       tools: byType('tool'), personnel: byType('personnel'),
@@ -145,7 +159,10 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
       count: (expenses ?? []).length,
       total: Math.round((expenses ?? []).reduce((s, e) => s + (Number(e.amount) || 0), 0)),
     },
-    maintenanceOverdue: (maint ?? []).filter((m) => m.next_due_at && m.next_due_at <= nowIso).length,
+    maintenanceOverdue: (maint ?? []).filter((m) =>
+      m.interval_type === 'days' && m.last_service_date && m.interval_value > 0 &&
+      (Date.now() - Date.parse(m.last_service_date)) / 86_400_000 >= m.interval_value
+    ).length,
     openWorkOrders: (wos ?? []).filter((w) => w.status !== 'done' && w.status !== 'canceled').length,
     finance,
   }
@@ -184,11 +201,15 @@ async function composeWithAi(f: MemoFacts): Promise<string | null> {
     // default on Opus 5. Cost: pennies per company per month.
     const res = await client.messages.create({
       model: process.env.AI_MODEL_DEEP || 'claude-opus-5',
-      max_tokens: 2000,
+      // Adaptive thinking draws from the same budget — leave headroom so a
+      // heavy-thinking pass can't truncate the memo itself.
+      max_tokens: 8000,
       system: MEMO_SYSTEM,
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
     })
-    if (res.stop_reason === 'refusal') return null
+    // A refusal has no memo; a max_tokens stop is a memo cut mid-sentence —
+    // either way fall back to the deterministic plain read, never store it.
+    if (res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens') return null
     const text = res.content
       .filter((b) => b.type === 'text')
       .map((b) => (b as { text: string }).text).join('').trim()
@@ -198,6 +219,9 @@ async function composeWithAi(f: MemoFacts): Promise<string | null> {
     return null
   }
 }
+
+/** Recompose floor: at most one model call per company per 30 minutes. */
+const FLOOR_MS = 30 * 60_000
 
 /** Generate (or return) the company's memo for the current local month.
  *  `db` must be the SERVICE client. `regenerate` recomposes unless the
@@ -211,13 +235,43 @@ export async function ensureOwnerMemo(
   const month = memoMonth(tz)
 
   const existingRes = await db.from('owner_memos')
-    .select('month, memo, composer, updated_at')
+    .select('month, memo, composer, updated_at, mailed_at')
     .eq('company_id', companyId).eq('month', month).limit(1)
   if (existingRes.error) return null // pre-080 database
-  const existing = existingRes.data?.[0] as OwnerMemo | undefined
-  if (existing) {
+  const existing = existingRes.data?.[0] as
+    (Omit<OwnerMemo, 'composer'> & { composer: 'ai' | 'plain' | 'pending' }) | undefined
+  // A 'pending' row is a compose-slot claim, never a memo — fall through to
+  // the claim logic (fresh claim = someone's composing; stale = they died).
+  const pending = existing?.composer === 'pending'
+  if (existing && !pending) {
     const ageMs = Date.now() - Date.parse(existing.updated_at)
-    if (!opts.regenerate || ageMs < 30 * 60_000) return existing
+    if (!opts.regenerate || ageMs < FLOOR_MS) return existing as OwnerMemo
+  }
+
+  // Claim the compose slot ATOMICALLY before touching the model, so N
+  // parallel requests cost one API call, not N (sec-check: the old
+  // read-then-compose gap was a TOCTOU race — every concurrent caller
+  // passed the 30-min check before any of them wrote).
+  const claimIso = new Date().toISOString()
+  if (existing) {
+    // Row exists: take the slot only if nobody has inside the floor window.
+    const floorIso = new Date(Date.now() - FLOOR_MS).toISOString()
+    const claim = await db.from('owner_memos')
+      .update({ updated_at: claimIso })
+      .eq('company_id', companyId).eq('month', month)
+      .lt('updated_at', floorIso)
+      .select('month')
+    if (claim.error || !claim.data?.length) return pending ? null : (existing as OwnerMemo)
+  } else {
+    // No row yet: first insert wins the compose; losers see the memo on
+    // their next fetch (ignoreDuplicates = ON CONFLICT DO NOTHING).
+    const claim = await db.from('owner_memos')
+      .upsert(
+        { company_id: companyId, month, memo: '', composer: 'pending', updated_at: claimIso },
+        { onConflict: 'company_id,month', ignoreDuplicates: true }
+      )
+      .select('month')
+    if (claim.error || !claim.data?.length) return null
   }
 
   const facts = await gatherMemoFacts(db, companyId, companyName)

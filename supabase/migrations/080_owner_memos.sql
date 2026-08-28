@@ -15,8 +15,12 @@ CREATE TABLE IF NOT EXISTS owner_memos (
   memo TEXT NOT NULL,
   -- The exact fact bag the composer saw — the audit trail for every number.
   facts JSONB NOT NULL DEFAULT '{}',
-  -- 'ai' or 'plain' (deterministic fallback when no API key).
+  -- 'ai', 'plain' (deterministic fallback when no API key), or 'pending'
+  -- (compose-slot claim while a runner is mid-compose — never shown).
   composer TEXT NOT NULL DEFAULT 'plain',
+  -- Stamped by the monthly cron after the email sends, so a re-run
+  -- (manual kick, platform retry) never re-mails the same memo.
+  mailed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (company_id, month)

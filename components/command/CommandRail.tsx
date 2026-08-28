@@ -192,7 +192,7 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel, notice
       </Module>
 
       <button
-        onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}
+        onClick={() => { onPanel('activity', 'hidden'); onPanel('sites', 'hidden'); onPanel('noticed', 'hidden'); onPanel('status', 'hidden'); onPanel('weather', 'hidden') }}
         aria-label="Hide instrument rail"
         className="self-start flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint hover:text-teal transition-colors px-1"
       >
