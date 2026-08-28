@@ -52,6 +52,29 @@ export async function GET() {
   // 'pending' = another runner is composing this very moment — tell the card
   // to keep its composing state and ask again, instead of hiding for 30 min.
   if (memo === 'pending') return NextResponse.json({ memo: null, pending: true }, NO_STORE)
+  if (!memo) {
+    // A null memo means a swallowed DB error somewhere in the ensure path.
+    // Surface WHICH step fails to the (cost-gated, own-company) caller —
+    // Vercel function logs aren't at hand when this bites in the field.
+    const read = await db.from('owner_memos')
+      .select('month, composer, updated_at')
+      .eq('company_id', auth.companyId).order('month', { ascending: false }).limit(3)
+    let claim: string = 'skipped'
+    if (!read.error) {
+      const probe = await db.from('owner_memos')
+        .upsert(
+          { company_id: auth.companyId, month: '1970-01-01', memo: '', composer: 'pending', updated_at: new Date(0).toISOString() },
+          { onConflict: 'company_id,month', ignoreDuplicates: true }
+        )
+        .select('month')
+      claim = probe.error ? probe.error.message : `ok:${probe.data?.length ?? 0}`
+      await db.from('owner_memos').delete().eq('company_id', auth.companyId).eq('month', '1970-01-01')
+    }
+    return NextResponse.json({
+      memo: null,
+      debug: { read: read.error?.message ?? null, rows: read.data ?? [], claim },
+    }, NO_STORE)
+  }
   return NextResponse.json({ memo }, NO_STORE)
 }
 
