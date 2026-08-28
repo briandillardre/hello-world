@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPhotos, setAssetPhotoOrder } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
-import { extractImei, luhnOk, resolveSheet, MAX_IMPORT_ROWS, type ImportRow, type ExistingIndex } from '@/lib/bulk-import'
+import { extractImei, luhnOk, resolveSheet, trackerKey, MAX_IMPORT_ROWS, type ImportRow, type ExistingIndex } from '@/lib/bulk-import'
 import type { AssetType } from '@/lib/types'
 
 /** Document-folder link on an asset (Dropbox/Drive/etc.) — direct column update. */
@@ -235,19 +235,55 @@ export async function bulkCreateAssetsAction(rows: ImportRow[]):
   const { createClient } = await import('@/lib/supabase-server')
   const supabase = createClient()
 
-  // Existing names (all) for the soft duplicate warning; existing trackers
-  // from ACTIVE assets only — that's exactly what the uniqueness index
-  // enforces, and deactivating an asset is how a tracker gets released for
-  // the next truck.
+  // Duplicate detection, scoped to what this batch actually claims rather
+  // than the whole fleet: PostgREST caps an unfiltered select at ~1000 rows,
+  // so a big fleet would have silently stopped being checked.
+  const claimedNames = Array.from(new Set(rows.map((r) => (r.name ?? '').trim().slice(0, 120)).filter(Boolean)))
+  const claimedTrackers = Array.from(new Set(rows.map((r) => (r.tracker ?? '').trim().slice(0, 128)).filter(Boolean)))
+  const chunked = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n))
+
   const existing: ExistingIndex = { names: new Set(), trackers: new Set() }
-  const { data: current } = await supabase
-    .from('assets').select('name, tracker_id, active').eq('company_id', companyId)
-  for (const a of current ?? []) {
-    if (a.name) existing.names.add(String(a.name).toLowerCase())
-    if (a.tracker_id && a.active) existing.trackers.add(String(a.tracker_id))
+  for (const part of chunked(claimedNames, 100)) {
+    const { data } = await supabase.from('assets').select('name').eq('company_id', companyId).in('name', part)
+    for (const a of data ?? []) if (a.name) existing.names.add(String(a.name).toLowerCase())
+  }
+  for (const part of chunked(claimedTrackers, 100)) {
+    const { data } = await supabase
+      .from('assets').select('tracker_id').eq('company_id', companyId).eq('active', true).in('tracker_id', part)
+    // ACTIVE only: that's what the uniqueness index enforces, and
+    // deactivating an asset is how a tracker is released for the next truck.
+    for (const a of data ?? []) if (a.tracker_id) existing.trackers.add(trackerKey(String(a.tracker_id)))
+  }
+
+  // Trackers held ACTIVE by ANOTHER company. Migration 082's unique index
+  // only covers 15-digit IMEIs, but the flespi/obd2/location lookups resolve
+  // tracker_id UNSCOPED — so two tenants sharing any other active id (a unit
+  // number, a VIN) makes .single() see two rows and silently kills BOTH
+  // feeds. Bulk import is the first surface that writes these in volume, so
+  // it refuses to create the collision (sec-check).
+  const foreign = new Set<string>()
+  if (claimedTrackers.length) {
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    const svc = createServiceClient()
+    for (const part of chunked(claimedTrackers, 100)) {
+      const { data } = await svc
+        .from('assets').select('tracker_id, company_id').eq('active', true).in('tracker_id', part)
+      for (const a of data ?? []) {
+        if (a.tracker_id && a.company_id !== companyId) foreign.add(trackerKey(String(a.tracker_id)))
+      }
+    }
   }
 
   const verdicts = resolveSheet(rows, { existing, allowMoney: perms.canViewCosts })
+  // Same wording whether the id is held by this company's INACTIVE asset or
+  // by another account — a per-row verdict on 500 guesses would otherwise be
+  // a cheap "is this IMEI registered anywhere" oracle (sec-check).
+  verdicts.forEach((v) => {
+    if (v.resolved?.tracker && foreign.has(trackerKey(v.resolved.tracker))) {
+      v.issues.push({ col: 'tracker', level: 'error', text: "That tracker ID isn't available — check the number on the box label" })
+      v.resolved = null
+    }
+  })
 
   // Everything that survived validation, paired with its original row index.
   const ready = verdicts

@@ -240,7 +240,14 @@ with a magnet.
 
 *Aug 28 2026: five of six OBD units went Online in FOTA within minutes of
 being plugged in and cycled; …4585 stayed Inactive / Pending with no
-firmware reported (= FOTA has never spoken to it).*
+firmware reported (= FOTA had never spoken to it) — **and then came up on
+its own a few hours later, with nothing done to it.***
+
+**So: give it the timer before you touch it.** A device syncs FOTA on
+power-up and every 720 minutes. A unit that didn't get a clean power cycle
+(the FMM00A's internal battery rides through a short unplug) simply waits
+out that window. Check the cheap things below, then let it sit overnight —
+tearing into hardware on hour two is how you break a working unit.
 
 Same batch, same config, same trucks — so the cause is device-specific, not
 setup. Rule out the per-model power-up gotchas above FIRST (a TAT141 with

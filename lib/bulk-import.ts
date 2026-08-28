@@ -215,16 +215,44 @@ export function inferFromName(name: string): { type: AssetType | null; icon: str
 
 // ── Field coercion + validation ────────────────────────────────────────────
 
+/** Longest a cell is ever allowed to be — applied at the door, before any
+ *  regex sees it. Comfortably above every per-field limit below, so the
+ *  friendly "too long" errors still fire for realistic input. Without it
+ *  `^-?\d*\.?\d+$` backtracks quadratically on a long digit run with a
+ *  non-matching tail: 160k characters pegged a CPU for 22 seconds, and one
+ *  such cell would hold a server action open until it timed out (sec-check). */
+const MAX_CELL = 256
+/** No fleet has a machine costing more than this; the cap keeps an absurd
+ *  figure (1e308 is finite and ≥ 0) out of the ledger, idle-$ rings, insight
+ *  detectors and the owner memo. */
+const MAX_MONEY = 1e9
+
 /** "$1,250.50" / "1 250,50" → 1250.5 · blank → null · junk → undefined. */
 export function parseMoney(raw: string | undefined): number | null | undefined {
   const s = (raw ?? '').trim()
   if (!s) return null
+  if (s.length > 32) return undefined // exported — never trust the caller to have capped it
   const cleaned = s.replace(/[$\s,]/g, '').replace(/^\((.*)\)$/, '-$1')
   if (!/^-?\d*\.?\d+$/.test(cleaned)) return undefined
   const n = Number(cleaned)
-  if (!Number.isFinite(n) || n < 0) return undefined
+  if (!Number.isFinite(n) || n < 0 || n > MAX_MONEY) return undefined
   return n
 }
+
+/**
+ * Dedupe key for a tracker id. IMEIs are digits and compare as-is; everything
+ * else folds to lower case, because the tool lookup that consumes these
+ * resolves with `.ilike` — importing `abc123` alongside an existing `ABC123`
+ * would otherwise pass every check here and then bind that tag's sightings to
+ * an arbitrary one of the two assets (sec-check).
+ */
+export function trackerKey(t: string): string {
+  return /^\d+$/.test(t) ? t : t.toLowerCase()
+}
+
+/** Prefixes the platform issues itself — a customer-supplied tracker must
+ *  never shadow a showroom simulator or a phone tracker. */
+const RESERVED_TRACKER_PREFIXES = ['sim-', 'phone-']
 
 /** Standard IMEI Luhn check (double every second digit from the right). */
 export function luhnOk(s: string): boolean {
@@ -303,7 +331,9 @@ export function resolveRow(
   opts: { existing?: ExistingIndex; seen?: ExistingIndex; allowMoney?: boolean } = {}
 ): RowVerdict {
   const issues: RowIssue[] = []
-  const val = (k: ColKey) => (row[k] ?? '').trim()
+  // Every cell is bounded HERE, once, before any regex or length check runs
+  // downstream — see MAX_CELL.
+  const val = (k: ColKey) => (row[k] ?? '').trim().slice(0, MAX_CELL)
   const empty = COLUMN_KEYS.every((k) => !val(k))
   if (empty) return { resolved: null, issues: [], empty: true }
 
@@ -353,10 +383,13 @@ export function resolveRow(
       } else tracker = digits
     } else if (trackerRaw.length > 128) {
       issues.push({ col: 'tracker', level: 'error', text: 'Tracker/tag id is too long' })
+    } else if (RESERVED_TRACKER_PREFIXES.some((p) => trackerRaw.toLowerCase().startsWith(p))) {
+      issues.push({ col: 'tracker', level: 'error', text: `"${trackerRaw.slice(0, 24)}" starts with a reserved prefix — pick a different id` })
     } else tracker = trackerRaw
     if (tracker) {
-      if (opts.seen?.trackers.has(tracker)) issues.push({ col: 'tracker', level: 'error', text: 'Same tracker listed twice in this sheet' })
-      else if (opts.existing?.trackers.has(tracker)) issues.push({ col: 'tracker', level: 'error', text: 'Already on one of your assets' })
+      const key = trackerKey(tracker)
+      if (opts.seen?.trackers.has(key)) issues.push({ col: 'tracker', level: 'error', text: 'Same tracker listed twice in this sheet' })
+      else if (opts.existing?.trackers.has(key)) issues.push({ col: 'tracker', level: 'error', text: 'Already on one of your assets' })
     }
   }
 
@@ -395,8 +428,10 @@ export function resolveRow(
       type,
       icon,
       tracker,
-      category: val('category') || null,
-      serial: val('serial') || null,
+      // Capped like every sibling field — these two reach an unbounded TEXT
+      // column that /assets and the map payload both select('*') (sec-check).
+      category: val('category').slice(0, 80) || null,
+      serial: val('serial').slice(0, 80) || null,
       metadata,
       hourly_rate: money.hourly_rate ?? null,
       mileage_rate: money.mileage_rate ?? null,
@@ -417,7 +452,7 @@ export function resolveSheet(
     const verdict = resolveRow(row, { ...opts, seen })
     if (verdict.resolved) {
       seen.names.add(verdict.resolved.name.toLowerCase())
-      if (verdict.resolved.tracker) seen.trackers.add(verdict.resolved.tracker)
+      if (verdict.resolved.tracker) seen.trackers.add(trackerKey(verdict.resolved.tracker))
     }
     return verdict
   })

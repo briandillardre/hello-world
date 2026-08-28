@@ -282,16 +282,21 @@ in the SAME commit:
   `docs/OPERATING-MODEL.md`) whenever a decision changes a dollar figure
 The infographic is a rendered view of the roadmap — never let them drift.
 
-## Checks & balances rule (Brian, Aug 11 2026)
+## Checks & balances rule (Brian, Aug 11 2026; cadence revised Aug 28)
 "Create a few more agents within here as a checks and balances to your
-decisions… don't forget about this!" — any session that ships substantive
-code or public copy runs the repo's reviewer agents (.claude/agents/)
-before it ends, and fixes confirmed findings the same session:
+decisions… don't forget about this!" — the repo's reviewer agents
+(.claude/agents/) exist to second-guess shipped work:
 - **ship-check** — adversarial code review of the day's diff
 - **truth-check** — splash truth + pricing sync + public-repo hygiene
 - **sec-check** — new/changed endpoints, service-role writes, ingest paths
-Spawn them in parallel on the day's commit range. Real findings get fixed
-or tracked with a task number in the final report — never silently noted.
+
+**Cadence (Brian, Aug 28: "this is too slow"):** ONE review pass per DAY
+that had major changes — not per session, not per PR — unless Brian asks
+for one. Reviewing must NOT gate a merge: ship the work, then run the pass
+over that day's commit range and fix what's real in a follow-up commit.
+**Scope the pass to the changes** (the day's diff), never the whole repo,
+unless Brian asks for a broader audit. Real findings get fixed or tracked
+with a task number in the final report — never silently noted.
 
 ## Testing rule (Brian, Jul 2026)
 Any change touching the timeline, radar, or history data: click through EVERY
