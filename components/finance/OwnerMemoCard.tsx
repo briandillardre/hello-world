@@ -19,15 +19,23 @@ export function OwnerMemoCard() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/memo')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (cancelled) return
-        if (j?.memo?.memo) { setMemo(j.memo as Memo); setState('ready') }
-        else setState('failed')
-      })
-      .catch(() => { if (!cancelled) setState('failed') })
-    return () => { cancelled = true }
+    let timer: number | undefined
+    // pending = the server is composing this month's memo right now (first
+    // view of the month, or another tab beat us) — keep the composing state
+    // and check back rather than hiding the card.
+    const load = (attempt: number) => {
+      fetch('/api/memo')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (cancelled) return
+          if (j?.memo?.memo) { setMemo(j.memo as Memo); setState('ready') }
+          else if (j?.pending && attempt < 12) { timer = window.setTimeout(() => load(attempt + 1), 20_000) }
+          else setState('failed')
+        })
+        .catch(() => { if (!cancelled) setState('failed') })
+    }
+    load(0)
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer) }
   }, [])
 
   const refresh = async () => {

@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
   const results: { company: string; composed: boolean; mailed: boolean }[] = []
   for (const co of companies ?? []) {
     try {
-      const memo = await ensureOwnerMemo(db, co.id, co.name ?? 'Your company')
+      const res = await ensureOwnerMemo(db, co.id, co.name ?? 'Your company')
+      // 'pending' = a lazy /finance view is composing this same memo right
+      // now — skip; the retry/next run mails it once it exists.
+      const memo = res === 'pending' ? null : res
       let mailed = false
       // mailed_at stamp: a re-run (manual kick, platform retry) must never
       // re-mail a memo the company already got this month.
