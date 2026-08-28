@@ -35,37 +35,59 @@ export function TrackerScan() {
   const [camera, setCamera] = useState<'starting' | 'on' | 'off'>('starting')
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  // IMEIs handled this session — a barcode in frame fires the detector many
-  // times a second; each box must land exactly one row.
-  const seenRef = useRef<Set<string>>(new Set())
+  // Per-IMEI throttle: the detector re-fires the SAME barcode ~3×/sec for
+  // as long as the box is in frame, so a handled IMEI gets a cooldown —
+  // Infinity once it lands (created/existing), ~6s after a failure so an
+  // offline yard or demo mode can't flood error rows and server calls
+  // (ship-check P1). Moving the camera on is the workflow either way.
+  const cooldownRef = useRef<Map<string, number>>(new Map())
   const typeRef = useRef(type)
   typeRef.current = type
   const busyRef = useRef(false)
 
-  const submit = async (raw: string) => {
-    const imei = (raw.match(/\d{15}/) ?? [])[0]
-    if (imei) {
-      if (seenRef.current.has(imei)) return
-      seenRef.current.add(imei)
-    }
-    if (busyRef.current) { if (imei) seenRef.current.delete(imei); return }
+  const pushError = (text: string) =>
+    // Consecutive identical errors collapse into one row.
+    setRows((r) => (r[0]?.kind === 'error' && r[0].text === text ? r : [{ kind: 'error', text }, ...r]))
+
+  /** 'submitted' = the server saw it (row added either way) · 'dropped' =
+   *  busy/cooldown, silently ignored · 'invalid' = no usable IMEI. */
+  const submit = async (raw: string): Promise<'submitted' | 'dropped' | 'invalid'> => {
+    const imei = (raw.match(/(?:^|\D)(\d{15})(?!\d)/) ?? [])[1]
+    if (!imei) return 'invalid'
+    const now = Date.now()
+    const until = cooldownRef.current.get(imei)
+    if (until && now < until) return 'dropped'
+    if (busyRef.current) return 'dropped'
     busyRef.current = true
+    cooldownRef.current.set(imei, now + 6000)
     setBusy(true)
     try {
       const res = await quickAddTrackerAction(raw, typeRef.current)
-      if (res.existing) setRows((r) => [{ kind: 'existing', id: res.existing!.id, name: res.existing!.name }, ...r])
-      else if (res.ok && res.asset) setRows((r) => [{ kind: 'created', id: res.asset!.id, name: res.asset!.name }, ...r])
-      else {
-        if (imei) seenRef.current.delete(imei) // let a failed one retry
-        setRows((r) => [{ kind: 'error', text: res.error ?? 'Could not add that tracker.' }, ...r])
+      if (res.existing) {
+        cooldownRef.current.set(imei, Infinity)
+        setRows((r) => [{ kind: 'existing', id: res.existing!.id, name: res.existing!.name }, ...r])
+      } else if (res.ok && res.asset) {
+        cooldownRef.current.set(imei, Infinity)
+        setRows((r) => [{ kind: 'created', id: res.asset!.id, name: res.asset!.name }, ...r])
+      } else {
+        pushError(res.error ?? 'Could not add that tracker.')
       }
     } catch {
-      if (imei) seenRef.current.delete(imei)
-      setRows((r) => [{ kind: 'error', text: 'Network hiccup — try that one again.' }, ...r])
+      pushError('Network hiccup — it will retry if the code stays in frame, or type the IMEI.')
     } finally {
       busyRef.current = false
       setBusy(false)
     }
+    return 'submitted'
+  }
+
+  // Manual entry keeps the typed value unless the server actually saw it —
+  // a camera scan mid-flight was silently eating typed IMEIs (ship-check).
+  const submitManual = async () => {
+    const outcome = await submit(manual)
+    if (outcome === 'submitted') setManual('')
+    else if (outcome === 'invalid') pushError('That needs the full 15-digit IMEI (no more, no less).')
+    // 'dropped' (busy) keeps the input — press Add again in a second.
   }
 
   // Camera + native barcode loop. No library: BarcodeDetector covers the
@@ -86,6 +108,8 @@ export function TrackerScan() {
           videoRef.current.srcObject = stream
           await videoRef.current.play().catch(() => {})
         }
+        // Unmount during play() — cleanup already ran; don't resurrect a timer.
+        if (cancelled) return
         const detector = new Detector({ formats: ['code_128', 'qr_code', 'code_39', 'ean_13', 'itf'] })
         setCamera('on')
         timer = setInterval(async () => {
@@ -94,7 +118,7 @@ export function TrackerScan() {
           try {
             const codes = await detector.detect(v)
             for (const c of codes) {
-              if (/\d{15}/.test(c.rawValue)) { void submit(c.rawValue); break }
+              if (/(?:^|\D)\d{15}(?!\d)/.test(c.rawValue)) { void submit(c.rawValue); break }
             }
           } catch { /* a frame that fails to decode is just the next frame */ }
         }, 350)
@@ -161,12 +185,12 @@ export function TrackerScan() {
           <input
             value={manual}
             onChange={(e) => setManual(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && manual.trim()) { void submit(manual); setManual('') } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && manual.trim()) void submitManual() }}
             inputMode="numeric"
             placeholder="15-digit IMEI"
             className="flex-1 bg-navy-900 border border-navy-700 rounded-lg px-3 py-2 text-[16px] text-ink placeholder:text-faint outline-none focus:border-amber/50 font-mono"
           />
-          <Button disabled={!manual.trim() || busy} onClick={() => { void submit(manual); setManual('') }}>Add</Button>
+          <Button disabled={!manual.trim() || busy} onClick={() => void submitManual()}>Add</Button>
         </div>
       </div>
 

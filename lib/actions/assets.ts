@@ -160,10 +160,15 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
 export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equipment'):
   Promise<{ ok: boolean; asset?: { id: string; name: string } | null; existing?: { id: string; name: string }; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode — scanning works once connected to your real account.' }
-  // Teltonika box labels carry the IMEI as a barcode/QR; scanned payloads can
-  // wrap it in other text, so take the first 15-digit run.
-  const imei = (String(raw).match(/\d{15}/) ?? [])[0]
+  // EXACTLY 15 digits, bounded — an unbounded \d{15} matched the first 15
+  // digits of longer runs, and the SuperSIM's 19-digit ICCID barcode sits in
+  // the same box (ship-check: a truncated ICCID makes an asset that looks
+  // fine and never reports).
+  const imei = (String(raw).match(/(?:^|\D)(\d{15})(?!\d)/) ?? [])[1]
   if (!imei) return { ok: false, error: 'No 15-digit IMEI in that code — scan the IMEI barcode on the box, or type the number.' }
+  // IMEIs are Luhn-checksummed — this rejects most wrong-barcode matches
+  // (ICCID fragments, shipping barcodes) and typo'd manual entries.
+  if (!luhnOk(imei)) return { ok: false, error: `${imei} fails the IMEI checksum — double-check the digits on the box label.` }
 
   const companyId = await getCurrentCompanyId()
   const { createClient } = await import('@/lib/supabase-server')
@@ -183,10 +188,30 @@ export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equi
     purchase_price: null, purchase_value: null,
     metadata: {},
   })
-  if (error) return { ok: false, error: friendlyAssetError(error) }
+  if (error) {
+    // Two phones scanning the same box pile: the loser of the select-then-
+    // insert race hits 23505 — that's "already added", not an error.
+    if (error.code === '23505') {
+      const { data: race } = await supabase.from('assets')
+        .select('id, name').eq('company_id', companyId).eq('tracker_id', imei).limit(1)
+      if (race?.[0]) return { ok: true, existing: { id: race[0].id, name: race[0].name } }
+    }
+    return { ok: false, error: friendlyAssetError(error) }
+  }
   revalidatePath('/assets')
   revalidatePath('/map')
   return { ok: true, asset: asset ? { id: asset.id, name: asset.name } : null }
+}
+
+/** Standard IMEI Luhn check (double every second digit from the right). */
+function luhnOk(s: string): boolean {
+  let sum = 0
+  for (let i = 0; i < s.length; i++) {
+    let d = s.charCodeAt(s.length - 1 - i) - 48
+    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9 }
+    sum += d
+  }
+  return sum % 10 === 0
 }
 
 /** Remove one gallery photo, then set the hero/thumbnail to whatever is now

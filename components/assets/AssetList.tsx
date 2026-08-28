@@ -147,11 +147,15 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-ink">Assets</h1>
           <span className="text-sm text-faint">{assets.length} total</span>
+          {/* Labels hide below sm — four items in this row clipped the Add
+              button off-screen at 360px widths (header can't scroll). */}
           <Button asChild size="sm" variant="outline" className="ml-auto gap-1">
-            <Link href="/assets/scan"><ScanLine className="h-4 w-4" /> Scan trackers</Link>
+            <Link href="/assets/scan" aria-label="Scan trackers" title="Scan trackers">
+              <ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Scan trackers</span>
+            </Link>
           </Button>
-          <Button size="sm" onClick={() => { setError(null); setShowForm(true) }} className="gap-1">
-            <Plus className="h-4 w-4" /> Add Asset
+          <Button size="sm" onClick={() => { setError(null); setShowForm(true) }} className="gap-1" aria-label="Add asset" title="Add asset">
+            <Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Asset</span>
           </Button>
         </div>
 
