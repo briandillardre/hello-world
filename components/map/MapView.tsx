@@ -1833,13 +1833,15 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         },
       })
       // 3D activity terrain — hex prisms extruded by time-spent-per-cell.
-      // Two sources so selection can split the terrain: the selected asset's
-      // hills stay full-strength on 'heat3d' while everyone else's drop into
-      // the ghosted 'heat3d-dim' (same selection language as trails/heatmap).
+      // ONE source: selection tags each stack dim 0/1 inside hexHeatGeoJSON
+      // (one lattice, one height reference — a two-source split rescaled
+      // whichever half held the tallest cell) and these two layers divide
+      // on it, ghost pass under the full-strength pass (same selection
+      // language as trails/heatmap).
       m.addSource('heat3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      m.addSource('heat3d-dim', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({
-        id: 'heat3d-dim-layer', type: 'fill-extrusion', source: 'heat3d-dim',
+        id: 'heat3d-dim-layer', type: 'fill-extrusion', source: 'heat3d',
+        filter: ['==', ['get', 'dim'], 1],
         layout: { visibility: 'none' },
         paint: {
           'fill-extrusion-color': [
@@ -1857,6 +1859,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
       m.addLayer({
         id: 'heat3d-layer', type: 'fill-extrusion', source: 'heat3d',
+        filter: ['!=', ['get', 'dim'], 1],
         layout: { visibility: 'none' },
         paint: {
           'fill-extrusion-color': [
@@ -2601,13 +2604,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const mode = trailModeRef.current
     if (mode === 'off' || !m) return
     const iso = isolateIdRef.current
-    const sel = selectedIdRef.current
     let trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
     // LIVE + trails: tools keep their single tools-live dot (current truth,
     // "left here" labels) — a trail head on top painted the same tag twice
     // (Tool A aboard the Ram AND left near Hawkins Rd, Jul 17). Replay ranges
     // are the opposite: the head IS the tool marker and the dot hides.
     if (rangeRef.current === 'live') trs = trs.filter((tr) => tr.type !== 'tool')
+    // Spotlight only when the selection has a footprint HERE: a tool in live
+    // mode (stripped above) or a dark tracker with no fixes in the window
+    // would otherwise ghost 100% of the data with nothing lit — at heat's
+    // ×0.08 weight that reads as "the map broke" (ship-check). 3D needs a
+    // segment (two fixes) to raise a cell; trails/heat light from one.
+    const sel0 = selectedIdRef.current
+    const minPts = mode === '3d' ? 2 : 1
+    const sel = sel0 && trs.some((tr) => tr.assetId === sel0 && filterRef.current.has(tr.type) && tr.points.length >= minPts) ? sel0 : null
     // Replay heads show what was aboard AT the scrubbed moment (pairing_log
     // episodes) — never today's tools painted onto last week's map. Live (and
     // demo, which has no log) uses the current associations. No episodes for
@@ -2633,18 +2643,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
     } else if (mode === '3d') {
-      // Selection splits the terrain: selected asset's hills full-strength,
-      // everyone else ghosted underneath (heights stay absolute-referenced
-      // in hexHeatGeoJSON, so subsetting doesn't rescale the hills).
-      const bright = m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined
-      const ghost = m.getSource('heat3d-dim') as maplibregl.GeoJSONSource | undefined
-      if (sel) {
-        bright?.setData(hexHeatGeoJSON(trs.filter((tr) => tr.assetId === sel), filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current))
-        ghost?.setData(hexHeatGeoJSON(trs.filter((tr) => tr.assetId !== sel), filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current))
-      } else {
-        bright?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current))
-        ghost?.setData({ type: 'FeatureCollection', features: [] })
-      }
+      // ONE build for both halves of the terrain — the selected asset's
+      // share of each cell tagged dim:0, everyone else's dim:1 — so bright
+      // and ghost share one hex lattice and one height reference. (Two
+      // subset calls let whichever half held the tallest cell rescale
+      // itself once past the absolute reference — ship-check.)
+      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current, sel))
     } else {
       ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel, windowSecRef.current))
     }
@@ -4357,7 +4361,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // them once the live dots hid).
     const on = !!overlaysOn.idledollars && !pbActive && trailMode === 'off'
     if (!m.getLayer('idle-label')) {
-      const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']]
+      // 'dead' excluded: idleDays counts since the last MOVING fix, so a
+      // tracker silent 48h+ always passes ≥2 — but its idle math is stale
+      // guesswork, and a red $ chip contradicted the gray ring (ship-check).
+      const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving'], ['!=', ['get', 'state'], 'dead']]
       // The RING moved into the always-on state ring (marker grammar — red
       // thickness = days idle); this opt-in overlay keeps only the $ chip.
       m.addLayer({
