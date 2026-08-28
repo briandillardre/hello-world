@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
 
@@ -31,6 +32,7 @@ const allItems = [
   { href: '/accounting', label: 'Accounting', short: 'Books', icon: Calculator },
   { href: '/receipts', label: 'Receipts', icon: Receipt },
   { href: '/finance', label: 'Financials', short: 'Finance', icon: Scale },
+  { href: '/assets/onboard', label: 'Hardware setup', short: 'Hardware', icon: Cpu },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', short: 'Start', icon: Rocket },
   { href: '/help', label: 'Help', icon: HelpCircle },

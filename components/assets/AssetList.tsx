@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Battery, Clock, ChevronRight } from 'lucide-react'
+import { Plus, Battery, Clock, ChevronRight, Cpu } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
@@ -147,7 +147,12 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-ink">Assets</h1>
           <span className="text-sm text-faint">{assets.length} total</span>
-          <Button size="sm" onClick={() => { setError(null); setShowForm(true) }} className="ml-auto gap-1">
+          {/* Registering an asset and bringing a tracker online are different
+              jobs — the hardware side has its own checklist and live status. */}
+          <Button asChild size="sm" variant="outline" className="ml-auto gap-1">
+            <Link href="/assets/onboard"><Cpu className="h-4 w-4" /> Hardware</Link>
+          </Button>
+          <Button size="sm" onClick={() => { setError(null); setShowForm(true) }} className="gap-1">
             <Plus className="h-4 w-4" /> Add Asset
           </Button>
         </div>
