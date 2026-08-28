@@ -41,12 +41,12 @@ export interface CommandKpis {
 /** Every window on the wall display: open, minimized to its title, or gone.
  *  Arranged once, remembered per device — the TV comes back how you left it. */
 export type PanelState = 'open' | 'min' | 'hidden'
-export type PanelKey = 'activity' | 'sites' | 'status' | 'weather' | 'events' | 'fleet' | 'hud' | 'chips' | 'ticker' | 'zoom'
+export type PanelKey = 'activity' | 'sites' | 'noticed' | 'status' | 'weather' | 'events' | 'fleet' | 'hud' | 'chips' | 'ticker' | 'zoom'
 
-const LEFT_KEYS: PanelKey[] = ['activity', 'sites', 'status']
+const LEFT_KEYS: PanelKey[] = ['activity', 'sites', 'noticed', 'status']
 const RIGHT_KEYS: PanelKey[] = ['events', 'fleet']
 const DEFAULT_PANELS: Record<PanelKey, PanelState> = {
-  activity: 'open', sites: 'open', status: 'open', weather: 'open',
+  activity: 'open', sites: 'open', noticed: 'open', status: 'open', weather: 'open',
   events: 'open', fleet: 'open', hud: 'open', chips: 'open', ticker: 'open', zoom: 'open',
 }
 const PANELS_LS = 'ht_cc_panels_v2'
@@ -164,6 +164,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   const ROWS: { k: PanelKey; label: string }[] = [
     { k: 'activity', label: 'Fleet activity' },
     { k: 'sites', label: 'Site presence' },
+    { k: 'noticed', label: 'Worth a look' },
     { k: 'status', label: 'Fleet status' },
     { k: 'weather', label: 'On-site weather' },
     { k: 'events', label: 'Event log' },
@@ -241,6 +242,28 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   // only earliest/pairing/cost. One quiet retry, then an honest error chip.
   const [dyn, setDyn] = useState<CommandData | null>(null)
   const [dynErr, setDynErr] = useState(false)
+
+  // "Worth a look" findings for the wall — the insight engine's top rows,
+  // light 10-min poll. Money/role stripping is server-side; the panel hides
+  // itself when there's nothing to say.
+  const [noticed, setNoticed] = useState<{ id: string; severity: number; headline: string; link: string | null }[]>([])
+  useEffect(() => {
+    let alive = true
+    const load = () => {
+      if (document.visibilityState !== 'visible') return
+      fetch('/api/insights')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!alive || !Array.isArray(j?.insights)) return
+          setNoticed((j.insights as { id: string; severity: number; headline: string; link: string | null }[])
+            .filter((i) => i.severity >= 2).slice(0, 2))
+        })
+        .catch(() => { /* wall stays quiet */ })
+    }
+    load()
+    const iv = window.setInterval(load, 10 * 60_000)
+    return () => { alive = false; window.clearInterval(iv) }
+  }, [])
   useEffect(() => {
     if (!deferLoad) return
     let alive = true
@@ -426,7 +449,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // Jul 21). Only the rail itself accepts input.
         <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
           <div className="pointer-events-auto max-h-full">
-            <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} />
+            <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} noticed={noticed} />
           </div>
         </div>
       ) : (

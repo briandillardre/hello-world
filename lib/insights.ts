@@ -27,6 +27,7 @@ import { dayKey } from './dates'
 export type InsightDetector =
   | 'burn_pace' | 'cost_spike' | 'cost_concentration'
   | 'after_hours_trend' | 'idle_money' | 'receipts_gap'
+  | 'site_quiet' | 'util_drop'
 
 export interface InsightRow {
   id: string
@@ -363,6 +364,71 @@ function detect(data: Awaited<ReturnType<typeof gather>>, spine: Map<string, Day
     }
   }
 
+  // ── site_quiet: an active job that stopped seeing machines ──
+  {
+    const openSites = new Map(zones.filter((z) => (z.kind ?? 'site') === 'site' && !z.completed_at).map((z) => [z.id, z.name]))
+    // Per-zone hours per day, from the spine.
+    const hoursByZoneDay = new Map<string, Map<string, number>>()
+    for (const k of days) {
+      for (const z of spine.get(k)?.byZone ?? []) {
+        if (!openSites.has(z.id)) continue
+        let m = hoursByZoneDay.get(z.id)
+        if (!m) hoursByZoneDay.set(z.id, (m = new Map()))
+        m.set(k, z.hours)
+      }
+    }
+    const last7Set = new Set(last7)
+    const todayK = days[days.length - 1]
+    hoursByZoneDay.forEach((perDay, zoneId) => {
+      // Real work in the prior three weeks…
+      let priorH = 0
+      let lastWorkedDay: string | null = null
+      perDay.forEach((h, k) => {
+        if (h < 0.5) return
+        if (!last7Set.has(k)) priorH += h
+        if (!lastWorkedDay || k > lastWorkedDay) lastWorkedDay = k
+      })
+      // …and none in the last seven days = the job went quiet.
+      const recentH = last7.reduce((s, k) => s + (perDay.get(k) ?? 0), 0)
+      if (priorH < 8 || recentH >= 0.5 || !lastWorkedDay) return
+      const quietDays = Math.max(0, Math.round((Date.parse(todayK) - Date.parse(lastWorkedDay)) / 86_400_000))
+      if (quietDays < 7) return
+      const name = openSites.get(zoneId)!
+      out.push({
+        detector: 'site_quiet',
+        fingerprint: `site_quiet:${zoneId}`,
+        severity: 2,
+        headline: `${name} has gone quiet — no machine time in ${quietDays} days`,
+        detail: `The site logged ${Math.round(priorH)} working hours in the weeks before. If the job's done, mark the zone complete; if it isn't, something's stalled.`,
+        link: `/zones/${zoneId}`,
+        money: false,
+        magnitude: quietDays,
+        evidence: { zone: name, quietDays, priorHours: Math.round(priorH) },
+      })
+    })
+  }
+
+  // ── util_drop: the whole fleet is working far less than its normal ──
+  {
+    const sumH = (ks: string[]) => ks.reduce((s, k) => s + (spine.get(k)?.activeH ?? 0), 0)
+    const weekH = sumH(last7)
+    const baseH = sumH(prior28) / 4
+    if (fullBaseline && baseH >= 10 && weekH <= baseH * 0.6 && baseH - weekH >= 5) {
+      const dropPct = Math.round(((baseH - weekH) / baseH) * 100)
+      out.push({
+        detector: 'util_drop',
+        fingerprint: 'util_drop:week',
+        severity: 1,
+        headline: `Fleet activity is down ${dropPct}% — ${Math.round(weekH)}h worked this week vs ~${Math.round(baseH)}h/wk normal`,
+        detail: 'Slow week, weather, or iron waiting on work — worth knowing which.',
+        link: '/reports',
+        money: false,
+        magnitude: dropPct,
+        evidence: { weekHours: Math.round(weekH), baselineHours: Math.round(baseH), dropPct },
+      })
+    }
+  }
+
   // ── receipts_gap: missing-receipt pile worth chasing ──
   {
     const count = expenses.length
@@ -538,5 +604,7 @@ export function insightQuestion(row: Pick<InsightRow, 'detector' | 'evidence'>):
     case 'after_hours_trend': return 'What moved after hours this week?'
     case 'idle_money': return `Which machines are sitting idle?`
     case 'receipts_gap': return 'Which receipts are we missing?'
+    case 'site_quiet': return `What's going on at ${String(row.evidence?.zone ?? 'that site')}?`
+    case 'util_drop': return 'Why is fleet activity down this week?'
   }
 }

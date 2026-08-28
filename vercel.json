@@ -49,6 +49,10 @@
       "schedule": "40 8 * * *"
     },
     {
+      "path": "/api/cron/memo",
+      "schedule": "0 12 1 * *"
+    },
+    {
       "path": "/api/cron/simulator",
       "schedule": "*/5 * * * *"
     }
