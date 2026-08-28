@@ -247,6 +247,11 @@ setup. Rule out the per-model power-up gotchas above FIRST (a TAT141 with
 its switch off looks exactly like this), then work it in this order; the
 swap test is the one that actually splits the problem.
 
+0. **Is there a SIM in it at all?** Order #1 shipped **14 devices and 13
+   SuperSIMs** (docs/HARDWARE-PRICING.md) — one unit is SIM-less by
+   arithmetic, and with no ICCID↔IMEI log the odd one out is whichever
+   device nobody got to. Pop the tray before anything else; it's a 30-second
+   check that beats every step below.
 1. **The SIM's APN feature.** KORE One → the ICCID paired with that IMEI →
    confirm the subscription is **Active** AND that **"Super SIM Standard
    APNs" is checked**. A SIM activated without that feature attaches to the
