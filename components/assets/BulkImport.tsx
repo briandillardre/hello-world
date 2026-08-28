@@ -381,6 +381,22 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
         </div>
       )}
 
+      {/* warnings import fine — but a hover tooltip is invisible on a phone,
+          so the reason gets said out loud here too. */}
+      {warned > 0 && (
+        <div className="rounded-xl border border-amber/30 bg-amber/5 p-3 space-y-1.5">
+          <p className="text-[12.5px] font-semibold text-amber flex items-center gap-1.5">
+            <AlertTriangle className="h-4 w-4" /> {warned} row{warned === 1 ? '' : 's'} worth a look — these still import
+          </p>
+          {verdicts.map((v, i) => (v.resolved && v.issues.length ? (
+            <p key={i} className="text-[12px] text-muted">
+              <span className="font-mono text-faint">Row {i + 1}</span>{' '}
+              {v.issues.map((x) => x.text).join(' · ')}
+            </p>
+          ) : null))}
+        </div>
+      )}
+
       {/* what landed */}
       {imported.length > 0 && (
         <div className="rounded-xl border border-teal/30 bg-teal/5 p-3">

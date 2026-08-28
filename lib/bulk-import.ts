@@ -39,9 +39,9 @@ export interface ColDef {
 export const IMPORT_COLUMNS: ColDef[] = [
   { key: 'name', label: 'Name', hint: 'required', kind: 'text', essential: true, width: 200,
     aliases: ['name', 'assetname', 'asset', 'description', 'unit', 'unitname', 'equipment', 'vehicle', 'item'] },
-  { key: 'type', label: 'Type', hint: 'vehicle · equipment · personnel · tool', kind: 'type', essential: true, width: 118,
+  { key: 'type', label: 'Type', hint: 'vehicle · equipment · personnel · tool', kind: 'type', essential: true, width: 140,
     aliases: ['type', 'assettype', 'kind', 'class', 'classification'] },
-  { key: 'icon', label: 'Map icon', hint: 'auto from the name', kind: 'icon', essential: true, width: 130,
+  { key: 'icon', label: 'Map icon', hint: 'auto from the name', kind: 'icon', essential: true, width: 156,
     aliases: ['icon', 'mapicon', 'symbol', 'glyph'] },
   { key: 'tracker', label: 'Tracker / IMEI', hint: '15-digit IMEI or a tag ID', kind: 'text', essential: true, width: 158,
     aliases: ['tracker', 'trackerid', 'imei', 'device', 'deviceid', 'gpsid', 'tag', 'tagid', 'beacon', 'serialimei'] },
