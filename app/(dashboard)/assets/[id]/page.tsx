@@ -73,10 +73,10 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   const serial = asset.serial ?? (meta.serial ?? meta.serial_number ?? meta.vin) as string | undefined
   // Show every spec, but keep internal/UI-only keys out of the flat row list:
-  // serial variants are shown above; `color` is a map setting; `cost_basis`
-  // is the AI cost-assumption note rendered under the cost card; `notes` gets
-  // its own card (a paragraph, not a one-line truncated Field row).
-  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'cost_basis', 'notes'].includes(k))
+  // serial variants are shown above; `color` and `icon` are map settings;
+  // `cost_basis` is the AI cost-assumption note rendered under the cost card;
+  // `notes` gets its own card (a paragraph, not a truncated Field row).
+  const detailRows = Object.entries(meta).filter(([k]) => !['serial', 'serial_number', 'vin', 'color', 'icon', 'cost_basis', 'notes'].includes(k))
   // Tools and people have no engine — the drive-stat tiles read as nonsense.
   const showDriveStats = asset.type === 'vehicle' || asset.type === 'equipment'
 

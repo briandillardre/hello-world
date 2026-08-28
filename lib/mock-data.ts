@@ -104,7 +104,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-5', company_id: 'mock-company-1', name: 'Sakai SW990 Roller',
     type: 'equipment', tracker_id: 'gps-005', active: true, hourly_rate: 85, daily_cost: 210,
-    metadata: { make: 'Sakai', model: 'SW990', year: 2012 },
+    metadata: { make: 'Sakai', model: 'SW990', year: 2012, icon: 'roller' },
     created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-5', asset_id: 'asset-5', company_id: 'mock-company-1',
@@ -115,7 +115,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-6', company_id: 'mock-company-1', name: 'RAM 3500 Dump',
     type: 'vehicle', tracker_id: 'obd-006', active: true, hourly_rate: 95,
-    metadata: { make: 'Ram', model: '3500', year: 2022, license: 'SC-DCG-002' },
+    metadata: { make: 'Ram', model: '3500', year: 2022, license: 'SC-DCG-002', icon: 'dump-truck' },
     created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-6', asset_id: 'asset-6', company_id: 'mock-company-1',
@@ -159,7 +159,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-10', company_id: 'mock-company-1', name: 'Peterbilt 567 Tri-Axle',
     type: 'vehicle', tracker_id: 'obd-010', active: true, hourly_rate: 105,
-    metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'SC-DCG-003' },
+    metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'SC-DCG-003', icon: 'dump-truck' },
     created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-10', asset_id: 'asset-10', company_id: 'mock-company-1',
