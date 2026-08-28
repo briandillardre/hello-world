@@ -1,10 +1,11 @@
 -- 084: one ACTIVE owner per IMEI, platform-wide.
 --
 -- DELIBERATE DUPLICATE of 082_tracker_uniqueness.sql, which a parallel
--- session authored the same evening. Same index NAME and same predicate, so
--- whichever migration lands first creates it and the other is a genuine
--- no-op (CREATE UNIQUE INDEX IF NOT EXISTS matches on name). Both branches
--- therefore stand alone and merge cleanly in either order.
+-- session authored the same evening and has since merged to master. Same
+-- index NAME and same predicate, so 082 creates it and this file is now a
+-- genuine no-op (CREATE UNIQUE INDEX IF NOT EXISTS matches on name). Kept
+-- rather than deleted: the file may already have applied from a preview
+-- build of this branch, and a migration is frozen once any push carries it.
 --
 -- Why this branch cannot wait for the other one: /assets/onboard added
 -- registerDeviceAssetAction, a one-tap way for any authenticated user to

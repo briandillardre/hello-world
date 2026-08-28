@@ -36,14 +36,21 @@ export function hexHeatGeoJSON(
   /** 'dollars' extrudes $ (dwell-seconds × the asset's $/hr) instead of time. */
   units: Heat3dUnits = 'hours',
   /** assetId → $/hr; assets missing here contribute $0 in dollars mode. */
-  ratePerHr?: Map<string, number>
+  ratePerHr?: Map<string, number>,
+  /** Selection spotlight: this asset's share of each cell emits `dim: 0`
+   *  (full-strength layer), everyone else's `dim: 1` (ghost layer) — built
+   *  in ONE pass so both halves share the same hex lattice and the same
+   *  height reference. Two subset calls let whichever half held the tallest
+   *  cell rescale itself once past the absolute reference (ship-check). */
+  selId?: string | null
 ): GeoJSON.FeatureCollection {
-  const bins = new Map<string, { q: number; r: number; sec: number; usd: number }>()
+  const bins = new Map<string, { q: number; r: number; sec: number; usd: number; selSec: number; selUsd: number }>()
   let lat0: number | null = null
   let cosLat = 1
 
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
+    const isSel = selId != null && tr.assetId === selId
     const rate = ratePerHr?.get(tr.assetId) ?? 0
     const pts = tr.points
     for (let i = 1; i < pts.length; i++) {
@@ -76,8 +83,8 @@ export function hexHeatGeoJSON(
       const eff = dt * presence
       const usd = (eff / 3600) * rate
       const bin = bins.get(key)
-      if (bin) { bin.sec += eff; bin.usd += usd }
-      else bins.set(key, { q, r, sec: eff, usd })
+      if (bin) { bin.sec += eff; bin.usd += usd; if (isSel) { bin.selSec += eff; bin.selUsd += usd } }
+      else bins.set(key, { q, r, sec: eff, usd, selSec: isSel ? eff : 0, selUsd: isSel ? usd : 0 })
     }
   }
 
@@ -102,18 +109,22 @@ export function hexHeatGeoJSON(
     if (!anyUsd) effUnits = 'hours'
   }
   const valOf = (b: { sec: number; usd: number }) => (effUnits === 'dollars' ? b.usd : b.sec)
-  const smoothed = new Map<string, { q: number; r: number; val: number; ownSec: number; ownUsd: number }>()
+  const selValOf = (b: { selSec: number; selUsd: number }) => (effUnits === 'dollars' ? b.selUsd : b.selSec)
+  const smoothed = new Map<string, { q: number; r: number; val: number; selVal: number; own: { sec: number; usd: number }; ownSel: { sec: number; usd: number } }>()
   for (const b of Array.from(bins.values())) {
+    // The sel share smooths with the SAME weights as the total, so
+    // selVal ≤ val holds cell-by-cell and the ghost share is val − selVal.
     let val = valOf(b)
+    let selVal = selValOf(b)
     for (const [dq, dr] of RING1) {
       const n = bins.get(`${b.q + dq},${b.r + dr}`)
-      if (n) val += valOf(n) * 0.3
+      if (n) { val += valOf(n) * 0.3; selVal += selValOf(n) * 0.3 }
     }
     for (const [dq, dr] of RING2) {
       const n = bins.get(`${b.q + dq},${b.r + dr}`)
-      if (n) val += valOf(n) * 0.1
+      if (n) { val += valOf(n) * 0.1; selVal += selValOf(n) * 0.1 }
     }
-    smoothed.set(`${b.q},${b.r}`, { q: b.q, r: b.r, val, ownSec: b.sec, ownUsd: b.usd })
+    smoothed.set(`${b.q},${b.r}`, { q: b.q, r: b.r, val, selVal, own: { sec: b.sec, usd: b.usd }, ownSel: { sec: b.selSec, usd: b.selUsd } })
   }
 
   // Absolute reference (with adaptive headroom for very long windows): a
@@ -134,14 +145,14 @@ export function hexHeatGeoJSON(
     { rf: 0.52, hf: 1.0 },
   ]
   const features: GeoJSON.Feature[] = []
-  for (const b of Array.from(smoothed.values())) {
-    if (b.val <= 0) continue
+  const pushStack = (b: { q: number; r: number }, val: number, own: { sec: number; usd: number }, dim: 0 | 1) => {
+    if (val <= 0) return
     // cell center back to planar meters, then to lng/lat
     const cx = cellMeters * SQRT3 * (b.q + b.r / 2)
     const cy = cellMeters * 1.5 * b.r
     // LINEAR response: drive-through cells sit near the floor (the mole
     // trail); only real accumulated work climbs.
-    const ratio = b.val / ref
+    const ratio = val / ref
     const peak = H_MIN + ratio * (H_MAX - H_MIN)
     for (const s of STACK) {
       const radius = cellMeters * s.rf * (0.7 + 0.35 * ratio)
@@ -159,10 +170,24 @@ export function hexHeatGeoJSON(
         properties: {
           ratio: ratio * s.hf,
           h: peak * s.hf,
-          hours: Math.round((b.ownSec / 3600) * 10) / 10,
-          dollars: Math.round(b.ownUsd),
+          dim,
+          hours: Math.round((own.sec / 3600) * 10) / 10,
+          dollars: Math.round(own.usd),
         },
       })
+    }
+  }
+  for (const b of Array.from(smoothed.values())) {
+    if (selId == null) {
+      pushStack(b, b.val, b.own, 0)
+    } else {
+      // A cell both parties worked emits two co-located stacks — bright at
+      // the selected asset's share, ghost at everyone else's — each honest
+      // against the one shared reference. All-sel cells accumulate the
+      // identical float sequence into both counters, so their ghost share
+      // is exactly 0, not an epsilon knoll.
+      pushStack(b, b.selVal, b.ownSel, 0)
+      pushStack(b, b.val - b.selVal, { sec: b.own.sec - b.ownSel.sec, usd: b.own.usd - b.ownSel.usd }, 1)
     }
   }
   return { type: 'FeatureCollection', features }

@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     .from('assets')
     .select('id, company_id')
     .eq('tracker_id', tracker_id)
+    // active-only + 082's one-active-owner index (same rule as obd2).
+    .eq('active', true)
   if (auth.companyId) assetQuery = assetQuery.eq('company_id', auth.companyId)
   const { data: asset } = await assetQuery.single()
 

@@ -100,6 +100,12 @@ const ASSET_COLORS: Record<AssetType, string> = {
   tool: '#a78bfa',
 }
 
+// Silent past this long = the DEVICE is dark, not the machine parked —
+// trackers check in hourly even asleep, so 48h of nothing is a dead/unplugged
+// unit. Those dots go gray (color is for living hardware) — Brian, Aug 28.
+const DEAD_MS = 48 * 3_600_000
+const DEAD_GRAY = '#46586a'
+
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
 const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge']
@@ -138,7 +144,7 @@ function lerpAngle(from: number, to: number, f: number): number {
  *  every popup shares one rule (sec-check, Aug 12). */
 const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>): GeoJSON.FeatureCollection {
+function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>, selId?: string | null): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     // Tools live in their own unclustered source (tools-live) so they stay
@@ -151,6 +157,8 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
           id: a.id, name: a.name, type: a.type,
+          // Selected = white ring + size-up, same as replay heads/tool dots.
+          sel: selId === a.id ? 1 : 0,
           // Tools riding this gateway — drawn as a corner count badge.
           toolCount: toolCounts?.[a.id] ?? 0,
           // Sanitize: an invalid stored color must degrade to the type color,
@@ -169,11 +177,13 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           alert: alertIds?.has(a.id) ? 1 : 0,
           idleDays: a.idleDays ?? -1,
           dailyCost: a.daily_cost ?? 0,
-          // Three glance-states: moving (fresh fix + speed), idle (device awake
+          // Four glance-states: moving (fresh fix + speed), idle (device awake
           // and reporting — trackers sleep minutes after ignition-off, so fresh
-          // data ≈ powered up), off (stale — asleep/parked).
+          // data ≈ powered up), off (stale — asleep/parked), dead (silent past
+          // DEAD_MS — the hardware itself is dark, drawn gray).
           state: (() => {
             const age = Date.now() - new Date(a.location!.timestamp).getTime()
+            if (age > DEAD_MS) return 'dead'
             if (age < 15 * 60_000 && (a.location!.speed ?? 0) > 2) return 'moving'
             return age < 15 * 60_000 ? 'idle' : 'off'
           })(),
@@ -185,7 +195,7 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
 /** Tools as standalone dots — no clustering, visible in every trail mode.
  *  `state` distinguishes a live ride (fresh sighting) from a dropped tag
  *  sitting at its last-seen spot. */
-function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJSON.FeatureCollection {
+function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, selId?: string | null): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: assets
@@ -195,6 +205,7 @@ function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>): GeoJ
         geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
           id: a.id, name: a.name, type: 'tool',
+          sel: selId === a.id ? 1 : 0,
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS.tool,
           icon: resolveAssetIcon('tool', a.metadata),
           state: Date.now() - new Date(a.location!.timestamp).getTime() < 25 * 60_000 ? 'live' : 'dropped',
@@ -261,6 +272,7 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
     const sel = selId === tr.assetId ? 1 : 0
+    const dim = selId && selId !== tr.assetId ? 1 : 0
     const pts = tr.points
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i]
@@ -288,7 +300,7 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
         : mph >= 10 ? 0.18
         : 1 - ((mph - 3) / 7) * 0.82
       const w = (Math.min(dtSec, HEAT_DT_CAP) / HEAT_DT_CAP) * motion
-      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel, w } })
+      features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { sel, dim, w } })
     }
   }
   return { type: 'FeatureCollection', features }
@@ -1792,8 +1804,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         layout: { visibility: 'none' },
         paint: {
           // Weight = time-on-the-spot (see pointsGeoJSON); the selected
-          // asset's footprint runs 1.5× hotter so it stands out.
-          'heatmap-weight': ['case', ['==', ['get', 'sel'], 1], ['*', 1.5, ['get', 'w']], ['get', 'w']],
+          // asset's footprint runs 1.5× hotter while everyone ELSE fades to
+          // a ghost (same selection language as the trails' dim).
+          'heatmap-weight': ['case',
+            ['==', ['get', 'sel'], 1], ['*', 1.5, ['get', 'w']],
+            ['==', ['get', 'dim'], 1], ['*', 0.08, ['get', 'w']],
+            ['get', 'w']],
           // Zoom-adaptive: gentle at county zooms (aggregation does the
           // talking), sharper as you close in on a site.
           'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 12, 1.4, 16, 3],
@@ -1817,9 +1833,33 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         },
       })
       // 3D activity terrain — hex prisms extruded by time-spent-per-cell.
+      // ONE source: selection tags each stack dim 0/1 inside hexHeatGeoJSON
+      // (one lattice, one height reference — a two-source split rescaled
+      // whichever half held the tallest cell) and these two layers divide
+      // on it, ghost pass under the full-strength pass (same selection
+      // language as trails/heatmap).
       m.addSource('heat3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       m.addLayer({
+        id: 'heat3d-dim-layer', type: 'fill-extrusion', source: 'heat3d',
+        filter: ['==', ['get', 'dim'], 1],
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': [
+            'interpolate', ['linear'], ['get', 'ratio'],
+            0, '#14506f',
+            0.25, '#2dd4bf',
+            0.55, '#ff9e16',
+            0.85, '#fb5d5d',
+            1, '#ffe8e8',
+          ],
+          'fill-extrusion-height': ['get', 'h'],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.16,
+        },
+      })
+      m.addLayer({
         id: 'heat3d-layer', type: 'fill-extrusion', source: 'heat3d',
+        filter: ['!=', ['get', 'dim'], 1],
         layout: { visibility: 'none' },
         paint: {
           'fill-extrusion-color': [
@@ -1903,7 +1943,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
       // ── Live asset cluster source ──
       m.addSource('assets', {
-        type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current),
+        type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current, selectedIdRef.current),
         cluster: true, clusterMaxZoom: 15, clusterRadius: 40,
         // Roll the alert flag up into clusters so a theft alert can't hide
         // inside an amber blob at low zoom (ship-check, Aug 22).
@@ -1936,7 +1976,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         id: 'asset-glow', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 0.14],
+          'circle-opacity': ['match', ['get', 'state'], 'moving', 0.38, 'idle', 0.22, 'dead', 0.04, 0.14],
           // Scale with zoom — a fixed 24px halo turned into a county-sized
           // blob at state zoom, which is what it looked like in the Jul 30
           // screenshots. Small marker glow far out, full halo up close.
@@ -1955,17 +1995,25 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         paint: {
           'circle-radius': 14,
           'circle-color': 'rgba(0,0,0,0)',
+          // Precedence: live ALERT first (a ripped-out tracker is exactly
+          // alert + dead — the red must survive), then 'dead' gray (which
+          // outranks the idle-$ red: a dark device's idleDays are stale
+          // math, and a loud ring on gray hardware reads as a live signal
+          // that isn't there), then the normal state grammar.
           'circle-stroke-color': ['case',
             ['==', ['get', 'alert'], 1], '#fb5d5d',
+            ['==', ['get', 'state'], 'dead'], DEAD_GRAY,
             ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']], '#ef4444',
             ['match', ['get', 'state'], 'moving', '#ff9e16', 'idle', '#2dd4bf', '#6f88a0']],
           'circle-stroke-width': ['case',
             ['==', ['get', 'alert'], 1], 3.5,
+            ['==', ['get', 'state'], 'dead'], 1.5,
             ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']],
               ['interpolate', ['linear'], ['get', 'idleDays'], 2, 3, 14, 6.5],
             ['match', ['get', 'state'], 'off', 1.5, 2.5]],
           'circle-stroke-opacity': ['case',
             ['==', ['get', 'alert'], 1], 0.95,
+            ['==', ['get', 'state'], 'dead'], 0.35,
             ['all', ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']], 0.85,
             ['match', ['get', 'state'], 'off', 0.5, 0.85]],
         },
@@ -1973,14 +2021,19 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       m.addLayer({
         id: 'unclustered-circle', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-color': ['get', 'color'],
+          // Dead hardware loses its color — gray puck says "this DEVICE is
+          // dark", which color would otherwise hide.
+          'circle-color': ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY, ['get', 'color']],
           // Slimmed to read like the replay trail-head dots — the emoji badge
           // is gone from the default look ("drop the icon on the live map in
-          // favor of the colored dot", owner, Jul 31).
-          'circle-radius': 10, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#04121d',
+          // favor of the colored dot", owner, Jul 31). Selected = same white
+          // ring + size-up as the replay heads (one selection language).
+          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12, 10],
+          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
           // Parked is the NORMAL overnight state — read as calm, never absent.
           // (0.45 made trucks near-invisible on satellite at night.)
-          'circle-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
+          'circle-opacity': ['match', ['get', 'state'], 'off', 0.85, 'dead', 0.55, 1],
         },
       })
       // ── Type silhouettes INSIDE the dots (Brian, Aug 22: "change these dots
@@ -2015,7 +2068,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
         },
         paint: {
           'icon-color': '#04121d',
-          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
+          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 'dead', 0.45, 1],
         },
       })
       // Same silhouettes on the REPLAY heads — one asset language everywhere
@@ -2063,9 +2116,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           visibility: 'none',
         },
         paint: {
-          'icon-color': ['get', 'color'],
+          'icon-color': ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY, ['get', 'color']],
           'icon-halo-color': '#04121d', 'icon-halo-width': 1.2,
-          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 1],
+          'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 'dead', 0.55, 1],
         },
       })
       m.addLayer({
@@ -2094,22 +2147,40 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           'text-justify': 'auto',
           'text-optional': true,
         },
-        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+        paint: {
+          'text-color': ['case', ['==', ['get', 'state'], 'dead'], '#8fa2b3', '#e8f0f7'],
+          'text-opacity': ['match', ['get', 'state'], 'dead', 0.7, 1],
+          'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5,
+        },
       })
       // Tools — their OWN unclustered source so a Bluetooth tag is visible in
       // every trail mode (they have no GPS history → no trail head; the live
       // dots hide in Trails mode, which made tools vanish entirely, Jul 16).
       // A dropped tag sits dimmer at its true last-seen spot.
       m.addSource('tools-live', { type: 'geojson', data: toolsGeoJSON(assets, filterRef.current) })
+      // Tools wear the SAME ring grammar as every other asset (Brian, Aug 28:
+      // "carry the same look throughout") — teal = tag sighted recently,
+      // quiet gray = left somewhere. Scaled to the smaller tool dot.
+      m.addLayer({
+        id: 'tool-state-ring', type: 'circle', source: 'tools-live',
+        paint: {
+          'circle-radius': 11.5,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': ['match', ['get', 'state'], 'live', '#2dd4bf', '#6f88a0'],
+          'circle-stroke-width': ['match', ['get', 'state'], 'live', 2.5, 1.5],
+          'circle-stroke-opacity': ['match', ['get', 'state'], 'live', 0.85, 0.5],
+        },
+      })
       m.addLayer({
         id: 'tool-dots', type: 'circle', source: 'tools-live',
         paint: {
           'circle-color': ['get', 'color'],
           // One step SMALLER than asset dots (Brian, Aug 22): the floating 🔧
           // emoji made tools read bigger than the trucks carrying them.
-          'circle-radius': 8,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#04121d',
+          // Selected = the same white ring + size-up as every other marker.
+          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 10, 8],
+          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 2.5, 2],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
           'circle-opacity': ['match', ['get', 'state'], 'dropped', 0.75, 1],
         },
       })
@@ -2468,7 +2539,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (!mapReady) return
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
-    source?.setData(buildGeoJSON(visible, filter, toolCounts, alertAssetIds))
+    source?.setData(buildGeoJSON(visible, filter, toolCounts, alertAssetIds, selectedAsset?.id ?? null))
     const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
     // Replaying with trails on: a tool that has a synthesized track gets a
     // moving trail head like any other asset — drop its static "now" dot so
@@ -2477,8 +2548,8 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const replayToolIds = range !== 'live' && trailMode !== 'off'
       ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
       : null
-    tools?.setData(toolsGeoJSON(replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible, filter))
-  }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff])
+    tools?.setData(toolsGeoJSON(replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible, filter, selectedAsset?.id ?? null))
+  }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff, selectedAsset])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {
@@ -2510,6 +2581,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     set('trails-line', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
     set('heat3d-layer', trailMode === '3d')
+    set('heat3d-dim-layer', trailMode === '3d')
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
     // Labels master switch (Brian, Aug 11) overrides the per-mode defaults
     // set above — OFF hides every name at every zoom, ON keeps the ladder.
@@ -2532,13 +2604,20 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     const mode = trailModeRef.current
     if (mode === 'off' || !m) return
     const iso = isolateIdRef.current
-    const sel = selectedIdRef.current
     let trs = iso ? tracksRef.current.filter((tr) => tr.assetId === iso) : tracksRef.current
     // LIVE + trails: tools keep their single tools-live dot (current truth,
     // "left here" labels) — a trail head on top painted the same tag twice
     // (Tool A aboard the Ram AND left near Hawkins Rd, Jul 17). Replay ranges
     // are the opposite: the head IS the tool marker and the dot hides.
     if (rangeRef.current === 'live') trs = trs.filter((tr) => tr.type !== 'tool')
+    // Spotlight only when the selection has a footprint HERE: a tool in live
+    // mode (stripped above) or a dark tracker with no fixes in the window
+    // would otherwise ghost 100% of the data with nothing lit — at heat's
+    // ×0.08 weight that reads as "the map broke" (ship-check). 3D needs a
+    // segment (two fixes) to raise a cell; trails/heat light from one.
+    const sel0 = selectedIdRef.current
+    const minPts = mode === '3d' ? 2 : 1
+    const sel = sel0 && trs.some((tr) => tr.assetId === sel0 && filterRef.current.has(tr.type) && tr.points.length >= minPts) ? sel0 : null
     // Replay heads show what was aboard AT the scrubbed moment (pairing_log
     // episodes) — never today's tools painted onto last week's map. Live (and
     // demo, which has no log) uses the current associations. No episodes for
@@ -2564,7 +2643,12 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     if (mode === 'trails') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
     } else if (mode === '3d') {
-      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current))
+      // ONE build for both halves of the terrain — the selected asset's
+      // share of each cell tagged dim:0, everyone else's dim:1 — so bright
+      // and ghost share one hex lattice and one height reference. (Two
+      // subset calls let whichever half held the tallest cell rescale
+      // itself once past the absolute reference — ship-check.)
+      ;(m.getSource('heat3d') as maplibregl.GeoJSONSource | undefined)?.setData(hexHeatGeoJSON(trs, filterRef.current, t, windowSecRef.current, 110, heat3dUnitsRef.current, heat3dRatesRef.current, sel))
     } else {
       ;(m.getSource('trail-points') as maplibregl.GeoJSONSource | undefined)?.setData(pointsGeoJSON(trs, filterRef.current, t, sel, windowSecRef.current))
     }
@@ -4277,7 +4361,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // them once the live dots hid).
     const on = !!overlaysOn.idledollars && !pbActive && trailMode === 'off'
     if (!m.getLayer('idle-label')) {
-      const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving']]
+      // 'dead' excluded: idleDays counts since the last MOVING fix, so a
+      // tracker silent 48h+ always passes ≥2 — but its idle math is stale
+      // guesswork, and a red $ chip contradicted the gray ring (ship-check).
+      const idleFilter: maplibregl.FilterSpecification = ['all', ['!', ['has', 'point_count']], ['>=', ['get', 'idleDays'], 2], ['>', ['get', 'dailyCost'], 0], ['!=', ['get', 'state'], 'moving'], ['!=', ['get', 'state'], 'dead']]
       // The RING moved into the always-on state ring (marker grammar — red
       // thickness = days idle); this opt-in overlay keeps only the $ chip.
       m.addLayer({

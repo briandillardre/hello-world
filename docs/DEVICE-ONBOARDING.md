@@ -6,6 +6,20 @@ pucks. Times are realistic once you've done one.*
 
 ---
 
+## App side is now ONE SCAN (Aug 28)
+
+**Assets → Scan trackers** (`/assets/scan`): point the phone at the IMEI
+barcode on the Teltonika box (or type the 15 digits), pick Truck/Machine,
+done — the asset exists with a placeholder name and its dot appears on the
+map at the device's first report. Rename + icon + rates later on the edit
+form. Re-scanning a box is harmless (it answers "already added"). Everything
+below this line is the VENDOR side (SIM activation + config push) — that's
+where the remaining per-device minutes live, and the Aug 28 supply plan
+(buffer stock + Hologram-first SIMs + KORE pre-config on order #2) is how
+they shrink.
+
+---
+
 ## BLE tool puck — ~5 minutes each
 
 **You need:** the puck, your phone with the FeasyBeacon app, the HammerTrack

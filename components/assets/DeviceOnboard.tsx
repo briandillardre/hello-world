@@ -12,7 +12,6 @@ import {
   addDeviceAction, setDeviceStepAction, deleteDeviceAction,
   addDevicesBulkAction, registerDeviceAssetAction,
 } from '@/lib/actions/devices'
-import { ImeiScanner, ScanButton, useCanScan } from './ImeiScanner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -70,6 +69,7 @@ function RegisterAsset({ device }: { device: DeviceWithLive }) {
         <p className="text-[13px] text-ink">No asset carries this IMEI yet</p>
         <p className="text-[12px] text-faint mt-0.5 leading-relaxed">
           Reports from an unrecognised device are dropped, so register it before it comes online.
+          Several to do? <Link href="/assets/scan" className="text-amber hover:underline">Scan trackers</Link> is faster.
         </p>
       </div>
       <Input
@@ -283,13 +283,11 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const [label, setLabel] = useState('')
   const [iccid, setIccid] = useState('')
   const [bulk, setBulk] = useState('')
-  const [scanning, setScanning] = useState(false)
   const [skipped, setSkipped] = useState<{ value: string; reason: string }[]>([])
   // Tracks whether the user has overridden the IMEI-derived model guess, so
   // scanning a second device doesn't silently stomp a deliberate choice.
   const [touchedModel, setTouchedModel] = useState(false)
   const [pending, start] = useTransition()
-  const canScan = useCanScan()
 
   // Beacons carry no IMEI — their identity is a hex tag id. Mirrors the
   // server rule in addDeviceAction so the button and the action agree.
@@ -310,7 +308,7 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
   const reset = () => {
     setImei(''); setLabel(''); setIccid(''); setBulk('')
-    setTouchedModel(false); setSkipped([]); setScanning(false)
+    setTouchedModel(false); setSkipped([])
   }
 
   const submitOne = () => {
@@ -334,7 +332,7 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) setScanning(false); onOpenChange(v) }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Add hardware</DialogTitle></DialogHeader>
 
@@ -356,16 +354,10 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
         {mode === 'one' ? (
           <div className="space-y-4 mt-4">
-            {scanning ? (
-              <ImeiScanner
-                onFound={(found) => { setScanning(false); onImei(found); toast('IMEI scanned.') }}
-                onClose={() => setScanning(false)}
-              />
-            ) : (
-              <div>
+            <div>
                 <Label htmlFor="dev-imei">{isBeacon ? 'Tag id (Minor or MAC)' : 'IMEI'}</Label>
-                <div className="flex gap-2 mt-1">
-                  <Input
+              <div className="flex gap-2 mt-1">
+                <Input
                     id="dev-imei"
                     inputMode={isBeacon ? 'text' : 'numeric'}
                     autoComplete="off"
@@ -374,16 +366,20 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                     onChange={(e) => onImei(e.target.value)}
                     className="font-mono"
                   />
-                  {canScan && !isBeacon && <ScanButton onClick={() => setScanning(true)} />}
-                </div>
-                {imei && !check.ok && check.reason && (
-                  <p className="text-[12px] text-alert mt-1">{check.reason}</p>
-                )}
-                {imei && check.ok && (
-                  <p className="text-[12px] text-teal mt-1">{isBeacon ? 'Looks like a tag id.' : 'Valid IMEI.'}</p>
-                )}
               </div>
-            )}
+              {imei && !check.ok && check.reason && (
+                <p className="text-[12px] text-alert mt-1">{check.reason}</p>
+              )}
+              {imei && check.ok && (
+                <p className="text-[12px] text-teal mt-1">{isBeacon ? 'Looks like a tag id.' : 'Valid IMEI.'}</p>
+              )}
+              {!isBeacon && (
+                <p className="text-[11.5px] text-faint mt-1.5 leading-relaxed">
+                  Unboxing a shipment? <Link href="/assets/scan" className="text-amber hover:underline">Scan trackers</Link>{' '}
+                  is faster — camera, one after another. Come back here for the setup checklist.
+                </p>
+              )}
+            </div>
 
             <div>
               <Label>Model</Label>
