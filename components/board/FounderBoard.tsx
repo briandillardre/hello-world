@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   TASKS, STAGES, TIER_ROWS, COST_CURVE, COST_COLS, HIRES, COMPETITORS,
   VENDORS, ENV_PENDING, ENV_LIVE, RULES, TRUTH_WATCH, DOC_INDEX, IRON, BURN,
+  SELLING_MOTION, S1_SHAPE,
   taskCounts, type BoardTask,
 } from '@/lib/board'
 import { MODELS, MODEL_ORDER } from '@/lib/devices'
@@ -16,7 +17,7 @@ export interface BoardLive {
   assets: { total: number; reporting: number; tools: number }
 }
 
-const TABS = ['Now', 'Build', 'Roadmap', 'Money', 'Fleet', 'Market', 'Ops'] as const
+const TABS = ['Now', 'Build', 'Roadmap', 'Sales', 'Money', 'Fleet', 'Market', 'Ops'] as const
 type Tab = typeof TABS[number]
 
 const STORE_KEY = 'ht-board-tab'
@@ -306,16 +307,24 @@ function MoneyTab() {
 
       <H>Hire triggers</H>
       <Scroll>
-        <thead><tr><Th>Hire</Th><Th>Trigger</Th><Th right>Loaded /mo</Th><Th>Base case</Th></tr></thead>
+        <thead><tr><Th>Hire</Th><Th>Trigger</Th><Th right>Loaded /mo</Th><Th>Fires</Th></tr></thead>
         <tbody>
           {HIRES.map((h) => (
-            <tr key={h.role}><Td strong>{h.role}</Td><Td>{h.trigger}</Td><Td right>{h.cost}</Td><Td>{h.when}</Td></tr>
+            <tr key={h.role}>
+              <Td strong>
+                {h.role}
+                {h.note && <span className="block text-[11.5px] text-faint font-normal mt-0.5 leading-relaxed">{h.note}</span>}
+              </Td>
+              <Td>{h.trigger}</Td><Td right>{h.cost}</Td><Td>{h.when}</Td>
+            </tr>
           ))}
         </tbody>
       </Scroll>
       <p className="text-[12.5px] text-faint leading-relaxed mt-3">
         A hire lands when its loaded cost is ≤ ~60% of the MRR added since the last one. Each jump knocks the P&amp;L back
-        to roughly breakeven and growth pays it off in two to three quarters.
+        to roughly breakeven and growth pays it off in two to three quarters.{' '}
+        <span className="text-muted font-semibold">S1 is the one deliberate exception</span> — it fires at zero customers
+        because the constraint it relieves is founder hours, not demand, and its risk controls replace the trigger. See the Sales tab.
       </p>
     </>
   )
@@ -422,7 +431,7 @@ function MarketTab() {
       <div className="grid md:grid-cols-3 gap-2.5">
         <Box><h3 className="font-display font-bold text-[15px] text-ink mb-1">The hook</h3><p className="text-[13px] text-faint leading-relaxed">&ldquo;Your excavator left at 2 AM.&rdquo; Theft is the fear that opens the wallet — everything else is what keeps it open.</p></Box>
         <Box><h3 className="font-display font-bold text-[15px] text-ink mb-1">The funnel</h3><p className="text-[13px] text-faint leading-relaxed">Facebook/Instagram theft ad → hammertrack.ai/demo → /register. Ad variants written and waiting.</p></Box>
-        <Box><h3 className="font-display font-bold text-[15px] text-ink mb-1">The beachhead</h3><p className="text-[13px] text-faint leading-relaxed">Greenville first, then Charlotte and Nashville. Local contractor Facebook groups plus equipment-dealer referrals.</p></Box>
+        <Box><h3 className="font-display font-bold text-[15px] text-ink mb-1">The beachhead</h3><p className="text-[13px] text-faint leading-relaxed">Upstate SC — Greenville, Spartanburg, Anderson — then the Charlotte and Atlanta corridors. Contractor Facebook groups plus equipment-dealer referrals.</p></Box>
       </div>
 
       <H>Claims currently ahead of reality</H>
@@ -512,6 +521,51 @@ function OpsTab() {
   )
 }
 
+function SalesTab() {
+  return (
+    <>
+      <p className="text-faint text-[14px] max-w-[72ch] mb-5">
+        Founder-only selling made you the bottleneck, so the sales hire came forward from Phase 3 —
+        with a shape built to avoid the classic mistake of hiring a closer before the pitch is proven.
+      </p>
+
+      <H>The motion, in order of expected yield</H>
+      <div className="rounded-xl border border-navy-800 bg-navy-900 px-4">
+        {SELLING_MOTION.map((m, i) => (
+          <div key={m.step} className={`grid grid-cols-[26px_1fr] gap-3 py-3 ${i ? 'border-t border-navy-800/60' : ''}`}>
+            <span className="font-mono text-[11px] text-faint pt-0.5">{i + 1}</span>
+            <span>
+              <span className="block font-display font-bold text-[14px] text-ink">{m.step}</span>
+              <span className="block text-[13px] text-faint mt-0.5 leading-relaxed">{m.detail}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[12.5px] text-faint leading-relaxed mt-3">
+        <span className="text-muted font-semibold">Beachhead:</span> Upstate SC — Greenville, Spartanburg, Anderson —
+        then the Charlotte and Atlanta corridors. Nashville was demo-data fiction; you sell where people already return
+        your calls. The demo stage stays on the Nashville grid deliberately until a Greenville restage earns its keep.
+      </p>
+
+      <H>S1 — the field sales &amp; install hire</H>
+      <Box tone="amber">
+        <dl className="grid md:grid-cols-[auto_1fr] gap-x-5 gap-y-2 text-[13px]">
+          {S1_SHAPE.map((r) => (
+            <div key={r.label} className="contents">
+              <dt className="text-faint whitespace-nowrap md:pt-px">{r.label}</dt>
+              <dd className="text-ink m-0 leading-relaxed">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Box>
+      <p className="text-[12.5px] text-faint leading-relaxed mt-3">
+        <span className="text-muted font-semibold">S1 absorbs H1</span> — the Aug &rsquo;27 installer hire simply arrives
+        early and earns its keep selling, so the headcount plan nets zero extra people.
+      </p>
+    </>
+  )
+}
+
 /* ── shell ───────────────────────────────────────────────────────────── */
 
 export function FounderBoard({ live }: { live: BoardLive }) {
@@ -568,6 +622,7 @@ export function FounderBoard({ live }: { live: BoardLive }) {
         {tab === 'Now' && <NowTab live={live} />}
         {tab === 'Build' && <BuildTab />}
         {tab === 'Roadmap' && <RoadmapTab />}
+        {tab === 'Sales' && <SalesTab />}
         {tab === 'Money' && <MoneyTab />}
         {tab === 'Fleet' && <FleetTab live={live} />}
         {tab === 'Market' && <MarketTab />}

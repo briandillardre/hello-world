@@ -1,5 +1,14 @@
--- 082: device onboarding tracker — the single pane that replaces four vendor
--- consoles (Brian, Aug 28: "this process should be much simpler...").
+-- 083: device onboarding tracker
+--
+-- (Renumbered from 082 the same evening: a parallel session landed
+-- 082_tracker_uniqueness.sql. Every statement below is idempotent —
+-- IF NOT EXISTS / DROP POLICY IF EXISTS — so re-applying under the new
+-- filename is a no-op even where the 082-named file already ran on a
+-- preview build. Fix-ups still go in a NEW file; this is a rename, not
+-- an edit to an applied migration.)
+--
+-- The single pane that replaces four vendor consoles (Brian, Aug 28:
+-- "this process should be much simpler...").
 --
 -- Bringing up KORE order #1 meant bouncing between KORE One (activate the
 -- SIM), FOTA WEB (upload the config, queue the task), flespi Toolbox (did the

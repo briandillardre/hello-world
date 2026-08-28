@@ -113,7 +113,7 @@ export const STAGES: Stage[] = [
     mark: '$1M', when: 'Stage 1 · 2027–28', title: 'Prove distribution repeats',
     summary: '~350 companies at ~$250/mo blended. Valuation roughly $6–10M.',
     points: [
-      { text: 'The theft-hook ad funnel, run properly in Greenville, Charlotte, Nashville' },
+      { text: 'The theft-hook ad funnel, run properly across Upstate SC, then the Charlotte and Atlanta corridors' },
       { text: 'Equipment dealers as resellers — a tracker with every used-iron sale. One productive dealer is 5–15 customers a year, forever. Sign ten.' },
       { text: 'Expansion revenue starts: the $49 and $199 platform tiers lift ACV without new logos' },
     ],
@@ -165,11 +165,37 @@ export const COST_CURVE: { label: string; cells: string[]; emphasis?: boolean }[
 ]
 export const COST_COLS = ['Now (pilot)', '25 customers', '100', '500']
 
-/** docs/OPERATING-MODEL.md — the step-jumps in the cash curve. */
-export const HIRES: { role: string; trigger: string; cost: string; when: string }[] = [
-  { role: 'PT installer / support', trigger: '30 customers', cost: '$1,950', when: 'Aug 2027' },
-  { role: 'FT ops / install tech', trigger: '90 customers', cost: '$5,400', when: 'Jul 2028' },
-  { role: 'PT admin / CS', trigger: '110 customers', cost: '$1,200', when: 'Oct 2028' },
+/** docs/OPERATING-MODEL.md — the step-jumps in the cash curve. S1 is the one
+ *  deliberate exception to the trigger rule: it fires at zero customers
+ *  because the constraint it relieves is founder hours, not demand. */
+export const HIRES: { role: string; trigger: string; cost: string; when: string; note?: string }[] = [
+  { role: 'S1 — PT field sales & install', trigger: '0 customers — founder hours are the binding constraint, not demand', cost: '$800 base + $200/account', when: 'Sep 2026',
+    note: 'Hired for the rolodex, comp weighted to commission. 60-day kill rule: under 8 demos/mo or 3 activated accounts → pure commission or part ways.' },
+  { role: 'H1 — PT installer / support', trigger: '30 customers', cost: '—', when: 'absorbed by S1',
+    note: 'Grow S1\u2019s hours at the 30-customer trigger instead of adding a second person.' },
+  { role: 'H2 — FT ops / install tech', trigger: '90 customers', cost: '$5,400', when: 'Jul 2028' },
+  { role: 'H3 — PT admin / CS', trigger: '110 customers', cost: '$1,200', when: 'Oct 2028' },
+]
+
+/**
+ * The outreach plan — docs/BUSINESS-PLAN.md Phase 1 plus the Aug 28 S1
+ * amendment. Ordered by expected yield, which is also the order to work it:
+ * warm names first, because a beachhead is defined by who returns your calls.
+ */
+export const SELLING_MOTION: { step: string; detail: string }[] = [
+  { step: 'The 25-name list', detail: 'Personal demo on YOUR live fleet, on your phone, at their yard. Close rate should be 40%+ with the Founding 25 offer.' },
+  { step: 'Local dealer pilots (2)', detail: 'Free tracking on two Upstate dealers\u2019 rental fleets. Rental theft is THEIR pain — when it saves them once, they become the channel.' },
+  { step: 'Contractor Facebook groups', detail: 'Where Upstate crews already talk. The theft hook travels by word of mouth in these faster than by ad spend.' },
+  { step: 'The theft-hook ad funnel', detail: 'Facebook/Instagram → hammertrack.ai/demo → /register. Ad variants written and waiting in marketing/ad-variants.md.' },
+]
+
+export const S1_SHAPE: { label: string; value: string }[] = [
+  { label: 'Who', value: 'ONE part-time field sales & install person, hired for their rolodex — dealer counter or sales guy, rental coordinator, retired super. Someone Upstate contractors already return calls from.' },
+  { label: 'What they do', value: 'Demo on the showroom company, close with the DCG field-report one-pager, and do the first install on the spot — the offer\u2019s "first install done with you" becomes their job.' },
+  { label: 'Comp', value: '$800/mo base (10–15 hrs/wk) + $200 per activated account + $1,000 bonus at 25. All-in ≈ $336/account at pace; payback stays ~6 months at founder-pricing margin.' },
+  { label: 'Founder keeps', value: 'The first 3 demos (pitch calibration), the warm-intro list, and the account-level tasks — Twilio verdict, QBO keys, showroom seed.' },
+  { label: 'Kill rule', value: '60 days. Fewer than 8 demos/month or 3 activated accounts → restructure to pure commission or part ways.' },
+  { label: 'Cash', value: '~+$2.4k/quarter pre-close burn. Worst-case cumulative drawdown moves ~$8.5k → ~$11k. Still self-funding.' },
 ]
 
 /** docs/COMPETITORS.md — the Aug 24 recon. Sell on friction, not features. */
