@@ -63,19 +63,22 @@ export async function GET() {
     const tz = resolveDigestPrefs(prefs.data?.[0]?.digest_prefs).tz
     let month = 'THREW'
     try { month = memoMonth(tz) } catch (e) { month = `THREW:${String(e).slice(0, 120)}` }
+    // The exact select ensureOwnerMemo makes (mailed_at included) — this is
+    // the read that 400'd when 080 landed without the column (see 081).
     const read = await db.from('owner_memos')
-      .select('month, composer, updated_at')
+      .select('month, memo, composer, updated_at, mailed_at')
       .eq('company_id', auth.companyId).eq('month', month).limit(1)
     let claim: string = 'skipped'
     if (!read.error) {
+      // Sentinel month on the write probe — never touches a real claim row.
       const probe = await db.from('owner_memos')
         .upsert(
-          { company_id: auth.companyId, month, memo: '', composer: 'pending', updated_at: new Date(0).toISOString() },
+          { company_id: auth.companyId, month: '1970-01-01', memo: '', composer: 'pending', updated_at: new Date(0).toISOString() },
           { onConflict: 'company_id,month', ignoreDuplicates: true }
         )
         .select('month')
       claim = probe.error ? probe.error.message : `ok:${probe.data?.length ?? 0}`
-      await db.from('owner_memos').delete().eq('company_id', auth.companyId).eq('month', month).eq('composer', 'pending').eq('memo', '')
+      await db.from('owner_memos').delete().eq('company_id', auth.companyId).eq('month', '1970-01-01')
     }
     return NextResponse.json({
       memo: null,
