@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { upsertDevice, setDeviceStep, deleteDevice } from '@/lib/db/devices'
+import { upsertDevice, upsertDevices, setDeviceStep, deleteDevice } from '@/lib/db/devices'
 import { imeiLooksValid, MODELS, modelFromImei, type DeviceModel } from '@/lib/devices'
 import { createAsset } from '@/lib/db/assets'
 
@@ -15,20 +15,36 @@ export interface AddDeviceInput {
 }
 
 export async function addDeviceAction(input: AddDeviceInput): Promise<{ ok: boolean; error?: string }> {
-  const imei = input.imei.replace(/\D/g, '')
-  // Validate server-side too — the client check is a convenience, not a gate,
-  // and a mistyped IMEI here produces a device that looks broken forever.
-  const check = imeiLooksValid(imei)
-  if (!check.ok) return { ok: false, error: check.reason }
   if (!MODELS[input.model]) return { ok: false, error: 'Pick a device model.' }
 
+  // A BLE beacon has no IMEI — its identity is a hex tag id. Holding it to the
+  // 15-digit Luhn check made all ten Eye Beacons in the KORE order impossible
+  // to add, and took their gotchas (Eddystone → iBeacon, unique Minor, mark
+  // the tag) offline with them (ship-check, Aug 28 — P1).
+  const identifier = input.model === 'EYE_BEACON'
+    ? input.imei.replace(/[^0-9a-fA-F]/g, '').toLowerCase()
+    : input.imei.replace(/\D/g, '')
+
+  if (input.model === 'EYE_BEACON') {
+    if (identifier.length < 4 || identifier.length > 32) {
+      return { ok: false, error: 'Enter the tag’s Minor or its MAC — 4 to 32 hex characters.' }
+    }
+  } else {
+    // Validate server-side too — the client check is a convenience, not a gate,
+    // and a mistyped IMEI here produces a device that looks broken forever.
+    const check = imeiLooksValid(identifier)
+    if (!check.ok) return { ok: false, error: check.reason }
+  }
+
   const companyId = await getCurrentCompanyId()
+  // Cap the free-text columns. They are bare TEXT, and nothing else bounds
+  // them (sec-check, Aug 28).
   const res = await upsertDevice(companyId, {
-    imei,
+    imei: identifier,
     model: input.model,
-    label: input.label?.trim() || null,
-    iccid: input.iccid?.replace(/\s/g, '') || null,
-    notes: input.notes?.trim() || null,
+    label: input.label?.trim().slice(0, 120) || null,
+    iccid: input.iccid?.replace(/\s/g, '').slice(0, 22) || null,
+    notes: input.notes?.trim().slice(0, 2000) || null,
   })
   if (!res.ok) return res
 
@@ -43,10 +59,11 @@ export async function setDeviceStepAction(imei: string, stepKey: string, done: b
   return res
 }
 
-export async function deleteDeviceAction(imei: string) {
+export async function deleteDeviceAction(imei: string): Promise<{ ok: boolean; error?: string }> {
   const companyId = await getCurrentCompanyId()
-  await deleteDevice(companyId, imei)
+  const res = await deleteDevice(companyId, imei)
   revalidatePath('/assets/onboard')
+  return res
 }
 
 /**
@@ -65,27 +82,36 @@ export async function addDevicesBulkAction(
   text: string,
   fallbackModel: DeviceModel,
 ): Promise<{ ok: boolean; added: number; skipped: { value: string; reason: string }[]; error?: string }> {
-  const tokens = text.split(/[^0-9]+/).map((t) => t.trim()).filter(Boolean)
-  if (!tokens.length) return { ok: false, added: 0, skipped: [], error: 'Nothing to add — paste a list of IMEIs.' }
-  if (tokens.length > 200) return { ok: false, added: 0, skipped: [], error: 'That is more than 200 entries. Add them in smaller batches.' }
+  // Only IMEI-SHAPED runs. Splitting on every non-digit turned a real
+  // spreadsheet paste into noise: ICCIDs, dates and the "00" out of FMM00A all
+  // became "entries", blowing the cap on a 40-row shipment and burying the
+  // real result under a skipped list longer than the added one. A 14–16 digit
+  // window still catches genuine typos, which is what the report is for
+  // (ship-check, Aug 28).
+  const tokens = text.match(/(?<!\d)\d{14,16}(?!\d)/g) ?? []
+  if (!tokens.length) return { ok: false, added: 0, skipped: [], error: 'No IMEIs found in that text. They are 15 digits each.' }
+  if (tokens.length > 200) return { ok: false, added: 0, skipped: [], error: `That is ${tokens.length} IMEIs. Add them in batches of 200 or fewer.` }
 
-  const companyId = await getCurrentCompanyId()
   const skipped: { value: string; reason: string }[] = []
   const seen = new Set<string>()
-  let added = 0
+  const valid: { imei: string; model: DeviceModel }[] = []
 
   for (const token of tokens) {
     if (seen.has(token)) continue           // the same IMEI twice in one paste
     seen.add(token)
     const check = imeiLooksValid(token)
     if (!check.ok) { skipped.push({ value: token, reason: check.reason ?? 'not a valid IMEI' }); continue }
-    const res = await upsertDevice(companyId, { imei: token, model: modelFromImei(token) ?? fallbackModel })
-    if (res.ok) added++
-    else skipped.push({ value: token, reason: res.error ?? 'could not save' })
+    valid.push({ imei: token, model: modelFromImei(token) ?? fallbackModel })
   }
 
+  if (!valid.length) return { ok: false, added: 0, skipped, error: 'None of those were valid IMEIs.' }
+
+  const companyId = await getCurrentCompanyId()
+  const res = await upsertDevices(companyId, valid)
+  if (!res.ok) return { ok: false, added: 0, skipped, error: res.error }
+
   revalidatePath('/assets/onboard')
-  return { ok: added > 0, added, skipped }
+  return { ok: true, added: valid.length, skipped }
 }
 
 /**
@@ -116,9 +142,11 @@ export async function registerDeviceAssetAction(
   })
 
   if (error) {
-    // 23505 is the one a user can actually act on: migration 082 allows only
+    // 23505 is the one a user can actually act on. Migration 084 allows only
     // one ACTIVE owner per 15-digit IMEI platform-wide, so this means the
-    // device is already registered — here or on a deactivated asset.
+    // device is already registered — in this company or another one. Without
+    // that index this action would let anyone claim a live IMEI and silently
+    // kill the real fleet's telemetry, so the two ship together.
     if (error.code === '23505') {
       return { ok: false, error: 'That IMEI is already on another asset. Search your Assets list for it — it may be on an inactive one.' }
     }

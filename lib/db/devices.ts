@@ -1,5 +1,8 @@
 import type { DeviceModel, LiveSignals } from '../devices'
-import { MODELS } from '../devices'
+import { MODELS, MODEL_ORDER } from '../devices'
+
+/** Every step key any model defines — the only keys allowed into `steps`. */
+const KNOWN_STEP_KEYS = new Set(MODEL_ORDER.flatMap((m) => MODELS[m].prep.map((p) => p.key)))
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -102,31 +105,74 @@ export async function getDevices(companyId: string): Promise<DeviceWithLive[]> {
   })
 }
 
+/**
+ * Build the upsert payload, OMITTING keys the caller didn't supply.
+ *
+ * PostgREST turns every key present in the payload into an ON CONFLICT DO
+ * UPDATE SET clause, so coercing absent optional fields to null wipes them on
+ * a re-upsert. The bulk path passes only { imei, model } — so re-pasting a
+ * packing slip to pick up two stragglers would have erased every ICCID,
+ * label and note logged against the other twelve, silently, including the
+ * IMEI↔ICCID pairing that nothing else in the system records
+ * (ship-check, Aug 28 — P1).
+ */
+function upsertRow(
+  companyId: string,
+  input: { imei: string; model: DeviceModel; label?: string | null; iccid?: string | null; notes?: string | null },
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    company_id: companyId,
+    imei: input.imei,
+    model: input.model,
+    updated_at: new Date().toISOString(),
+  }
+  if (input.label !== undefined) row.label = input.label
+  if (input.iccid !== undefined) row.iccid = input.iccid
+  if (input.notes !== undefined) row.notes = input.notes
+  return row
+}
+
 export async function upsertDevice(
   companyId: string,
   input: { imei: string; model: DeviceModel; label?: string | null; iccid?: string | null; notes?: string | null },
 ): Promise<{ ok: boolean; error?: string }> {
-  if (isMock) return { ok: true }
+  if (isMock) return { ok: false, error: 'Demo mode — changes are not saved.' }
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
   const { error } = await supabase
     .from('device_onboarding')
-    .upsert({
-      company_id: companyId,
-      imei: input.imei,
-      model: input.model,
-      label: input.label ?? null,
-      iccid: input.iccid ?? null,
-      notes: input.notes ?? null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'company_id,imei' })
+    .upsert(upsertRow(companyId, input), { onConflict: 'company_id,imei' })
 
   // Never surface a raw Postgres string — it leaks schema and reads as noise
   // to the person holding the device (sec-check, Aug 25).
   if (error) {
     console.error('device upsert failed:', error.message)
     return { ok: false, error: 'Could not save that device. Check the IMEI and try again.' }
+  }
+  return { ok: true }
+}
+
+
+/** Add many devices in ONE round trip. The sequential version was 200×RTT of
+ *  wall clock in a single server-action invocation — long enough to time out
+ *  after a partial write, with the client told only that it failed. */
+export async function upsertDevices(
+  companyId: string,
+  inputs: { imei: string; model: DeviceModel }[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (!inputs.length) return { ok: true }
+  if (isMock) return { ok: false, error: 'Demo mode — changes are not saved.' }
+
+  const { createClient } = await import('../supabase-server')
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('device_onboarding')
+    .upsert(inputs.map((i) => upsertRow(companyId, i)), { onConflict: 'company_id,imei' })
+
+  if (error) {
+    console.error('device bulk upsert failed:', error.message)
+    return { ok: false, error: 'Could not save those devices. Check the IMEIs and try again.' }
   }
   return { ok: true }
 }
@@ -142,7 +188,12 @@ export async function setDeviceStep(
   stepKey: string,
   done: boolean,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (isMock) return { ok: true }
+  // Whitelist the key. Without it an authenticated caller can append
+  // arbitrary, arbitrarily large keys to this row's JSONB and grow it until
+  // Postgres refuses (sec-check, Aug 28). The valid set is already knowable
+  // from the model specs, so there is no reason to trust the client's string.
+  if (!KNOWN_STEP_KEYS.has(stepKey)) return { ok: false, error: 'Unknown step.' }
+  if (isMock) return { ok: false, error: 'Demo mode — changes are not saved.' }
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
@@ -175,8 +226,8 @@ export async function setDeviceStep(
   return { ok: true }
 }
 
-export async function deleteDevice(companyId: string, imei: string): Promise<void> {
-  if (isMock) return
+export async function deleteDevice(companyId: string, imei: string): Promise<{ ok: boolean; error?: string }> {
+  if (isMock) return { ok: false, error: 'Demo mode — changes are not saved.' }
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
   const { error } = await supabase
@@ -184,7 +235,13 @@ export async function deleteDevice(companyId: string, imei: string): Promise<voi
     .delete()
     .eq('company_id', companyId)
     .eq('imei', imei)
-  if (error) console.error('device delete failed:', error.message)
+  // Returning void here meant an RLS-blocked delete read as success until the
+  // row reappeared on revalidate (ship-check, Aug 28).
+  if (error) {
+    console.error('device delete failed:', error.message)
+    return { ok: false, error: 'Could not remove that device.' }
+  }
+  return { ok: true }
 }
 
 /** Fleet-level rollup for the page header: how many devices are actually

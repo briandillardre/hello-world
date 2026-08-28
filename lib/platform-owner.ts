@@ -18,9 +18,23 @@ export async function isPlatformOwner(): Promise<boolean> {
     const { data: { user } } = await createClient().auth.getUser()
     const email = user?.email?.toLowerCase() ?? ''
     if (!email) return false
+
+    // An UNVERIFIED address is just a string the user typed. GoTrue lets a
+    // signed-in user change their own email, so without this check anyone
+    // could claim an @hammertrack.ai address and walk into the founder-only
+    // pages (sec-check, Aug 28). Confirmation is what makes the claim mean
+    // something.
+    if (!user?.email_confirmed_at) return false
+
     const listed = (process.env.PLATFORM_OWNER_EMAILS ?? '')
       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
     if (listed.length) return listed.includes(email)
+
+    // Fallback while PLATFORM_OWNER_EMAILS is unset. It is deliberately still
+    // here rather than failing closed, because doing so would lock the founder
+    // out of /model and /board the moment this ships — but it is the weaker
+    // check, and it should go away: set PLATFORM_OWNER_EMAILS in Vercel and
+    // this branch becomes dead code.
     return email.endsWith('@hammertrack.ai')
   } catch {
     return false

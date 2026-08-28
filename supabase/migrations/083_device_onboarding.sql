@@ -1,7 +1,9 @@
 -- 083: device onboarding tracker
 --
 -- (Renumbered from 082 the same evening: a parallel session landed
--- 082_tracker_uniqueness.sql. Every statement below is idempotent —
+-- 082_tracker_uniqueness.sql (a platform-wide unique IMEI index, which this
+-- branch carries as its own 084 so it stands alone). Every statement below
+-- is idempotent —
 -- IF NOT EXISTS / DROP POLICY IF EXISTS — so re-applying under the new
 -- filename is a no-op even where the 082-named file already ran on a
 -- preview build. Fix-ups still go in a NEW file; this is a rename, not

@@ -1,0 +1,34 @@
+-- 084: one ACTIVE owner per IMEI, platform-wide.
+--
+-- DELIBERATE DUPLICATE of 082_tracker_uniqueness.sql, which a parallel
+-- session authored the same evening. Same index NAME and same predicate, so
+-- whichever migration lands first creates it and the other is a genuine
+-- no-op (CREATE UNIQUE INDEX IF NOT EXISTS matches on name). Both branches
+-- therefore stand alone and merge cleanly in either order.
+--
+-- Why this branch cannot wait for the other one: /assets/onboard added
+-- registerDeviceAssetAction, a one-tap way for any authenticated user to
+-- create an asset carrying an arbitrary 15-digit tracker_id. Without a
+-- platform-wide constraint, the only uniqueness is 001's per-company
+-- UNIQUE (company_id, tracker_id) — so a second company could register an
+-- IMEI that is already live elsewhere, and the flespi webhook's unscoped
+-- .single() device lookup would then match two rows, return null, and
+-- SILENTLY DROP that device's readings. No error, no alert, no theft
+-- detection: a real fleet goes dark and nothing says why. Shipping the
+-- convenience without the constraint would have made that a one-tap
+-- operation (sec-check, Aug 28 — P0 against this branch).
+--
+-- Scope deliberately narrow, matching 082:
+--   · 15-digit IMEIs only — BLE tool tags (UUID:major:minor) ship with a
+--     factory-default UUID+Major, so DIFFERENT companies legitimately hold
+--     identical tag ids; tags never resolve through the unscoped device
+--     lookups (they ride gateway payloads, scoped per company).
+--   · active = true only — deactivating an asset releases its IMEI, which
+--     is exactly the resale / hand-me-down flow.
+--
+-- Still open and NOT fixed here: the flespi ingest lookup itself remains
+-- unscoped (board task #38). This constraint removes the way to CREATE the
+-- ambiguity; scoping the read is the belt to this pair of braces.
+CREATE UNIQUE INDEX IF NOT EXISTS assets_imei_one_active_owner
+  ON assets (tracker_id)
+  WHERE tracker_id ~ '^\d{15}$' AND active = true;

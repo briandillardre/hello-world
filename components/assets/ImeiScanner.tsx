@@ -40,17 +40,21 @@ export function useCanScan() {
   return can
 }
 
-/** Device labels print the IMEI plain, but some barcodes carry a prefix or
- *  pack several fields. Pull the first 15-digit run that passes Luhn. */
+/**
+ * Pull an IMEI out of a decoded barcode.
+ *
+ * EXACTLY fifteen digits, never a window slid along a longer run. An ICCID is
+ * 19–20 digits, so a sliding window offers it five or six chances at a Luhn
+ * pass — measured at ~47% on real SIM numbers, including the ones in this
+ * repo's own fixtures. And a SIM card sitting on the device label is not a
+ * hypothetical: our own pairing step tells people to photograph exactly that.
+ * A false positive here writes a bogus tracker_id, and the device then reports
+ * forever into a company with no asset matching it — precisely the failure
+ * this scanner exists to prevent (ship-check, Aug 28 — P0).
+ */
 function imeiFrom(raw: string): string | null {
-  const runs = raw.match(/\d{15,}/g) ?? []
-  for (const run of runs) {
-    for (let i = 0; i + 15 <= run.length; i++) {
-      const candidate = run.slice(i, i + 15)
-      if (imeiLooksValid(candidate).ok) return candidate
-    }
-  }
-  return null
+  const runs = raw.match(/(?<!\d)\d{15}(?!\d)/g) ?? []
+  return runs.find((run) => imeiLooksValid(run).ok) ?? null
 }
 
 export function ImeiScanner({ onFound, onClose }: { onFound: (imei: string) => void; onClose: () => void }) {
@@ -64,6 +68,12 @@ export function ImeiScanner({ onFound, onClose }: { onFound: (imei: string) => v
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
   const doneRef = useRef(false)
+  // Held in a ref so the effect does not depend on the caller's identity.
+  // onFound is an inline arrow at the call site, so a new identity every
+  // render would restart the camera constantly — and, with doneRef latched,
+  // restart it DEAD (ship-check, Aug 28 — P0).
+  const onFoundRef = useRef(onFound)
+  onFoundRef.current = onFound
 
   const stop = useCallback(() => {
     doneRef.current = true
@@ -78,6 +88,11 @@ export function ImeiScanner({ onFound, onClose }: { onFound: (imei: string) => v
     if (!Detector) { setError('This browser can’t scan barcodes. Type the IMEI instead.'); return }
 
     let cancelled = false
+    // Re-arm. stop() latches this true, and without resetting it here a second
+    // run of the effect — a re-render, or React StrictMode's double-invoke in
+    // dev — leaves a live camera preview whose detect loop returns on its
+    // first line forever: visibly running, permanently blind.
+    doneRef.current = false
     const detector = new Detector({ formats: ['code_128', 'code_39', 'qr_code', 'data_matrix', 'itf'] })
 
     ;(async () => {
@@ -97,9 +112,13 @@ export function ImeiScanner({ onFound, onClose }: { onFound: (imei: string) => v
           if (doneRef.current || cancelled) return
           try {
             const codes = await detector.detect(v)
+            // Re-check after the await: the user can tap "Type it instead"
+            // mid-frame, and firing onFound then would fill in a value they
+            // just declined to scan.
+            if (doneRef.current || cancelled) return
             for (const c of codes) {
               const imei = imeiFrom(c.rawValue)
-              if (imei) { stop(); onFound(imei); return }
+              if (imei) { stop(); onFoundRef.current(imei); return }
             }
             // Seeing barcodes but none of them an IMEI is worth saying — it
             // usually means the SIM tray or a packaging code is in frame.
@@ -121,7 +140,7 @@ export function ImeiScanner({ onFound, onClose }: { onFound: (imei: string) => v
     })()
 
     return () => { cancelled = true; stop() }
-  }, [onFound, stop])
+  }, [stop])
 
   return (
     <div className="space-y-3">

@@ -119,7 +119,10 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
       confirmLabel: 'Remove',
       destructive: true,
     }))) return
-    start(async () => { await deleteDeviceAction(device.imei) })
+    start(async () => {
+      const res = await deleteDeviceAction(device.imei)
+      if (!res.ok && res.error) toast(res.error, { variant: 'error' })
+    })
   }
 
   return (
@@ -288,7 +291,15 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const [pending, start] = useTransition()
   const canScan = useCanScan()
 
-  const check = imei ? imeiLooksValid(imei) : { ok: false as const, reason: undefined }
+  // Beacons carry no IMEI — their identity is a hex tag id. Mirrors the
+  // server rule in addDeviceAction so the button and the action agree.
+  const isBeacon = model === 'EYE_BEACON'
+  const hex = imei.replace(/[^0-9a-fA-F]/g, '')
+  const check = isBeacon
+    ? (hex.length >= 4 && hex.length <= 32
+        ? { ok: true as const, reason: undefined }
+        : { ok: false as const, reason: imei ? 'Tag ids are 4 to 32 hex characters.' : undefined })
+    : (imei ? imeiLooksValid(imei) : { ok: false as const, reason: undefined })
 
   const onImei = (v: string) => {
     setImei(v)
@@ -352,23 +363,25 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
               />
             ) : (
               <div>
-                <Label htmlFor="dev-imei">IMEI</Label>
+                <Label htmlFor="dev-imei">{isBeacon ? 'Tag id (Minor or MAC)' : 'IMEI'}</Label>
                 <div className="flex gap-2 mt-1">
                   <Input
                     id="dev-imei"
-                    inputMode="numeric"
+                    inputMode={isBeacon ? 'text' : 'numeric'}
                     autoComplete="off"
-                    placeholder="15 digits from the device label"
+                    placeholder={isBeacon ? 'e.g. 000B, or the tag MAC' : '15 digits from the device label'}
                     value={imei}
                     onChange={(e) => onImei(e.target.value)}
                     className="font-mono"
                   />
-                  {canScan && <ScanButton onClick={() => setScanning(true)} />}
+                  {canScan && !isBeacon && <ScanButton onClick={() => setScanning(true)} />}
                 </div>
                 {imei && !check.ok && check.reason && (
                   <p className="text-[12px] text-alert mt-1">{check.reason}</p>
                 )}
-                {imei && check.ok && <p className="text-[12px] text-teal mt-1">Valid IMEI.</p>}
+                {imei && check.ok && (
+                  <p className="text-[12px] text-teal mt-1">{isBeacon ? 'Looks like a tag id.' : 'Valid IMEI.'}</p>
+                )}
               </div>
             )}
 
