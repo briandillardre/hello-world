@@ -45,6 +45,7 @@ import { formatRelativeTime } from '@/lib/utils'
 import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
 import { PlaceSheet, PLACE_KIND_META } from './PlaceSheet'
+import { detectConvoys, convoyRingGeoJSON } from '@/lib/convoy'
 import { DirectionsSheet } from './DirectionsSheet'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
@@ -463,6 +464,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string } | null>(null)
   const placesRef = useRef<Place[]>(places)
   placesRef.current = places
+  const convoysRef = useRef<import('@/lib/convoy').Convoy[]>([])
   // Isolate: show ONLY this asset's dot + trails (timeline still drives it).
   // Cleared when the panel closes or a different asset is selected.
   const [isolateId, setIsolateId] = useState<string | null>(null)
@@ -1976,6 +1978,31 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       })
 
       // ── Live asset cluster source ──
+      // ── Convoy lassos (Brian, Aug 30: devices riding together get "looped
+      // in" — literally). Teal dashed ring + a "Truck 3 +2" tag over any
+      // group of GPS assets moving as one; membership itself is computed in
+      // lib/convoy.ts from motion agreement, never mere proximity.
+      m.addSource('convoys', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'convoy-ring', type: 'line', source: 'convoys',
+        paint: {
+          'line-color': '#2dd4bf', 'line-width': 2, 'line-dasharray': [2.5, 1.8],
+          'line-opacity': 0.85,
+        },
+      })
+      m.addLayer({
+        id: 'convoy-label', type: 'symbol', source: 'convoys', minzoom: 9,
+        layout: {
+          'text-field': ['get', 'label'], 'text-size': 10.5,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'symbol-placement': 'line', 'text-offset': [0, -0.8], 'text-optional': true,
+        },
+        paint: {
+          'text-color': '#2dd4bf',
+          'text-halo-color': '#001523', 'text-halo-width': 1.8,
+        },
+      })
+
       // ── Navigation route line — under the asset stack, over zones/imagery.
       // Casing + amber stroke so it reads over both satellite and dark tiles.
       m.addSource('nav-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -2663,6 +2690,17 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
       : null
     tools?.setData(toolsGeoJSON(replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible, filter, selectedAsset?.id ?? null))
+    // Convoy lassos ride the same tick — live view only (a replay shows
+    // history; drawing NOW's groupings over it would lie).
+    const convoySrc = map.current?.getSource('convoys') as maplibregl.GeoJSONSource | undefined
+    if (range === 'live' && trailMode === 'off') {
+      const groups = detectConvoys(visible)
+      convoysRef.current = groups
+      convoySrc?.setData(convoyRingGeoJSON(groups, visible))
+    } else {
+      convoysRef.current = []
+      convoySrc?.setData({ type: 'FeatureCollection', features: [] })
+    }
   }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff, selectedAsset])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
@@ -6716,6 +6754,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       {selectedAsset && (
         <AssetPanel
           onDirections={(d) => { setNavDest(d); setSelectedAsset(null) }}
+          travelingWith={(() => {
+            const c = convoysRef.current.find((x) => x.anchorId === selectedAsset.id || x.memberIds.includes(selectedAsset.id))
+            if (!c) return undefined
+            const ids = [c.anchorId, ...c.memberIds].filter((id) => id !== selectedAsset.id)
+            return ids
+              .map((id) => assets.find((a) => a.id === id))
+              .filter((a): a is AssetWithLocation => !!a)
+              .map((a) => ({ id: a.id, name: a.name, type: a.type }))
+          })()}
           asset={selectedAsset}
           gateway={toolGateways?.[selectedAsset.id]}
           aboard={aboard?.[selectedAsset.id]}

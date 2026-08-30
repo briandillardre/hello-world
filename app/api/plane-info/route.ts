@@ -13,9 +13,12 @@ export const maxDuration = 15
  *    visible photographer attribution AND a link back to the photo page
  *    wherever the image appears, so both ride along in the response — never
  *    render the image without the credit + link.
- *  - Route: adsb.lol routeset (the tar1090 community route DB) by callsign.
- *    "unknown" is a real answer (VFR traffic files nothing) → route: null,
- *    not an error.
+ *  - Route: adsbdb by callsign (keyless; adsb.lol's routeset endpoint was
+ *    verified returning empty 201s upstream, Aug 30). No filed route is a
+ *    real answer (VFR traffic files nothing) → route: null, not an error.
+ *    Routes are SCHEDULE-derived with no position plausibility check, so
+ *    the popup labels them "filed route", never gospel. adsbdb's route DB
+ *    is query-and-display only — never bulk-import it into our tables.
  *
  * Upstream failure text never reaches the client — a map popup is the wrong
  * place to debug someone else's API.
@@ -44,10 +47,14 @@ interface SpotterPhoto {
   link?: string
 }
 
-// Routeset: one entry per queried plane; _airport_codes_iata is "CLT-ATL"
-// style (falls back to ICAO codes for fields with no IATA), or "unknown".
-interface RoutesetEntry {
-  _airport_codes_iata?: string
+// adsbdb: flightroute carries full airport objects; we keep just the codes.
+interface AdsbdbRoute {
+  response?: {
+    flightroute?: {
+      origin?: { iata_code?: string; icao_code?: string }
+      destination?: { iata_code?: string; icao_code?: string }
+    }
+  }
 }
 
 // Keyed by identity, not position — a flight keeps the same route and photo
@@ -77,25 +84,21 @@ async function fetchPhoto(hex: string): Promise<PlanePhoto | null> {
   return { url, photographer: p?.photographer?.trim() || '', link }
 }
 
-async function fetchRoute(callsign: string, lat: number, lon: number): Promise<PlaneRoute | null> {
-  // Position rides along so the DB can sanity-check the route against where
-  // the aircraft actually is (their "plausible" flag).
-  const resp = await fetch('https://api.adsb.lol/api/0/routeset', {
-    method: 'POST',
+async function fetchRoute(callsign: string): Promise<PlaneRoute | null> {
+  const resp = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(callsign)}`, {
     signal: AbortSignal.timeout(6_000),
     cache: 'no-store',
-    headers: { 'user-agent': UA, 'content-type': 'application/json' },
-    body: JSON.stringify({ planes: [{ callsign, lat, lng: lon }] }),
+    headers: { 'user-agent': UA },
   })
-  if (!resp.ok) throw new Error(`routeset ${resp.status}`)
-  const j: unknown = await resp.json()
-  const codes = Array.isArray(j) ? (j[0] as RoutesetEntry | undefined)?._airport_codes_iata : undefined
-  if (!codes || codes === 'unknown') return null
-  // Multi-stop flight numbers come back as "AVL-CLT-DFW"; first → last is
-  // the flight's overall route, which is all the popup has room to say.
-  const legs = codes.split('-').filter((c) => /^[A-Z0-9]{3,4}$/.test(c))
-  if (legs.length < 2) return null
-  return { from: legs[0], to: legs[legs.length - 1] }
+  // adsbdb answers 404 for a callsign with no filed route — an answer.
+  if (resp.status === 404) return null
+  if (!resp.ok) throw new Error(`adsbdb ${resp.status}`)
+  const j = (await resp.json()) as AdsbdbRoute
+  const fr = j.response?.flightroute
+  const from = fr?.origin?.iata_code || fr?.origin?.icao_code
+  const to = fr?.destination?.iata_code || fr?.destination?.icao_code
+  if (!from || !to || !/^[A-Z0-9]{3,4}$/.test(from) || !/^[A-Z0-9]{3,4}$/.test(to)) return null
+  return { from, to }
 }
 
 export async function GET(req: NextRequest) {
@@ -126,7 +129,7 @@ export async function GET(req: NextRequest) {
   // with it — the popup shows whatever we managed to learn.
   const [photoRes, routeRes] = await Promise.allSettled([
     fetchPhoto(hex),
-    callsign ? fetchRoute(callsign, lat, lon) : Promise.resolve<PlaneRoute | null>(null),
+    callsign ? fetchRoute(callsign) : Promise.resolve<PlaneRoute | null>(null),
   ])
   const info: PlaneInfo = {
     photo: photoRes.status === 'fulfilled' ? photoRes.value : null,

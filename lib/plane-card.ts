@@ -67,7 +67,7 @@ export async function fetchPlaneInfoRaw(
 /** `route CLT → ATL` line in the popup's grammar, or '' when nothing filed. */
 export function buildRouteHtml(route: PlaneRoute | null): string {
   if (!route?.from || !route?.to) return ''
-  return `<div style="margin-top:3px">route <b style="color:#2dd4bf">${esc(route.from)} → ${esc(route.to)}</b></div>`
+  return `<div style="margin-top:3px">filed route <b style="color:#2dd4bf">${esc(route.from)} → ${esc(route.to)}</b></div>`
 }
 
 /** Thumbnail + required credit line, or '' when the airframe has no photo. */

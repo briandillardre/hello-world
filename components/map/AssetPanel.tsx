@@ -164,9 +164,12 @@ interface AssetPanelProps {
   /** In-app preview routing to this machine (Brian, Aug 29) — replaces the
    *  Google handoff as the primary; Google stays in the directions sheet. */
   onDirections?: (dest: { lat: number; lng: number; name: string }) => void
+  /** Live convoy — other GPS assets moving with this one right now (Brian,
+   *  Aug 30: the phone, the truck, and the trailer are one unit). */
+  travelingWith?: { id: string; name: string; type: AssetType }[]
 }
 
-export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose, onDirections }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose, onDirections, travelingWith }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -177,7 +180,7 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} travelingWith={travelingWith} />
     </MapSheet>
   )
 }
@@ -204,6 +207,7 @@ function AssetDetails({
   onStops,
   onFocusStop,
   onDirections,
+  travelingWith,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
@@ -216,6 +220,7 @@ function AssetDetails({
   onStops?: (stops: PanelStop[]) => void
   onFocusStop?: (lat: number, lng: number) => void
   onDirections?: (dest: { lat: number; lng: number; name: string }) => void
+  travelingWith?: { id: string; name: string; type: AssetType }[]
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
   const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
@@ -429,6 +434,28 @@ function AssetDetails({
             {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
             {loc.accuracy && ` ±${loc.accuracy}m`}
           </p>
+        </div>
+      )}
+
+      {/* Riding together, right now — the phone in the cab, the trailer
+          behind, the mini-ex on the lowboy. Motion agreement, not proximity
+          (lib/convoy.ts), so a parked yard never reads as one unit. */}
+      {travelingWith && travelingWith.length > 0 && (
+        <div className="rounded-xl border border-teal/30 bg-teal/5 p-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-2">⛓ Traveling together</p>
+          <div className="space-y-1.5">
+            {travelingWith.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onPick?.(t.id)}
+                className="w-full flex items-center gap-2 rounded-lg bg-navy-900/60 border border-navy-800 px-2.5 py-2 text-left hover:border-teal/40 transition-colors"
+              >
+                <span className="text-base flex-none">{TYPE_EMOJI[t.type]}</span>
+                <span className="text-[13px] text-ink font-medium truncate">{t.name}</span>
+                <span className="ml-auto text-[11px] text-faint flex-none">riding along →</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
