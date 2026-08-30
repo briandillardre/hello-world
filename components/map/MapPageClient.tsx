@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import type { AssetWithLocation, Geofence } from '@/lib/types'
+import type { AssetWithLocation, Geofence, Place } from '@/lib/types'
 import type { AssetTrack } from '@/lib/trails'
 import type { LocationHistoryRow } from '@/lib/db/assets'
 import { MOCK_COMPANY } from '@/lib/mock-data'
@@ -29,6 +29,8 @@ const MapView = dynamic(
 interface MapPageClientProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
+  /** Saved destinations (085) — pins crews navigate to. */
+  places?: Place[]
   tracks: AssetTrack[]
   /** Raw location history (real mode). MapView builds per-range datasets from it. */
   historyRows?: LocationHistoryRow[] | null
@@ -68,6 +70,7 @@ interface MapPageClientProps {
 interface MapBootData {
   assets: AssetWithLocation[]
   geofences: Geofence[]
+  places?: Place[]
   toolGateways: Record<string, { name: string; lastSeen: string }>
   aboard: Record<string, import('@/lib/tools-resolve').AboardTool[]>
   pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
@@ -80,8 +83,9 @@ interface MapBootData {
 
 const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 
-export function MapPageClient({ assets, geofences: initialGeofences, tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], brand = null, bootstrap = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], brand = null, bootstrap = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
+  const [places, setPlaces] = useState<Place[]>(initialPlaces)
   const router = useRouter()
 
   // ── Shell-first boot: last visit's pins from localStorage paint instantly,
@@ -118,6 +122,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
           setBoot(j)
           // Keep optimistic just-drawn zones (temp fence-* ids) on top.
           setGeofences((prev) => [...j.geofences, ...prev.filter((g) => g.id.startsWith('fence-'))])
+          if (Array.isArray(j.places)) setPlaces(j.places)
           try {
             // Preserve the cached history slice — this write fires every 20s
             // and clobbering `hist` would undo the instant-trails boot.
@@ -281,6 +286,8 @@ export function MapPageClient({ assets, geofences: initialGeofences, tracks, his
         brand={brand}
         assets={effAssets}
         geofences={geofences}
+        places={places}
+        onPlacesChanged={setPlaces}
         tracks={tracks}
         historyRows={effectiveHistory}
         siteOverlays={effSiteOverlays}

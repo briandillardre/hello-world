@@ -10,6 +10,7 @@ import { DashboardShell } from '@/components/layout/DashboardShell'
 import { BusyBar } from '@/components/layout/BusyBar'
 import { TzCookie } from '@/components/TzCookie'
 import { OfflineSync } from '@/components/field/OfflineSync'
+import { LocationPrimer } from '@/components/LocationPrimer'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
 import { getCurrentCompany } from '@/lib/db/company'
@@ -41,6 +42,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen supports-[height:100dvh]:h-[100dvh] overflow-hidden bg-navy-950">
       <TzCookie />
       <OfflineSync />
+      {/* First-open GPS ask on phones — see the component for the Play-policy story. */}
+      <LocationPrimer />
       <BusyBar />
       {/* The bell badge streams in AFTER the shell paints — every dashboard
           navigation used to block on the alerts query (owner ask, Aug 25:

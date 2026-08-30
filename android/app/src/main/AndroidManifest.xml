@@ -38,4 +38,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Foreground ("while using the app") location: powers Go Live crew
+         tracking and the map's locate-me. Without these the WebView
+         auto-denies navigator.geolocation and the OS prompt never shows.
+         DELIBERATELY no ACCESS_BACKGROUND_LOCATION — background tracking is
+         a separate Play policy review; the crew tracker runs foreground. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
+import { getPlaces } from '@/lib/db/places'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
@@ -99,12 +100,14 @@ async function getAssetHealth(companyId: string): Promise<AssetHealthMaps> {
 export async function GET() {
   try {
     const companyId = await getCurrentCompanyId()
-    const [perms, savedMapViews, rawAssets, geofences, toolAssociations, earliestMs, alerts, siteOverlays, health] =
+    const [perms, savedMapViews, rawAssets, geofences, places, toolAssociations, earliestMs, alerts, siteOverlays, health] =
       await Promise.all([
         getMyPermissions(),
         getMyMapViews(),
         getAssetsWithLocations(companyId),
         getGeofences(companyId),
+        // Saved Places (085) — the pins crews navigate to.
+        getPlaces(companyId),
         getToolAssociations(companyId),
         getEarliestLocationTime(companyId),
         getAlertEvents(companyId),
@@ -141,7 +144,7 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        assets, geofences, toolGateways, aboard, pairingEpisodes,
+        assets, geofences, places, toolGateways, aboard, pairingEpisodes,
         alerts, siteOverlays, earliestMs, savedMapViews,
         canViewCosts: perms.canViewCosts,
       },

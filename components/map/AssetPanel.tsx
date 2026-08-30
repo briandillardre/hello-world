@@ -161,9 +161,12 @@ interface AssetPanelProps {
   /** Tap a stop row → the map flies there. */
   onFocusStop?: (lat: number, lng: number) => void
   onClose: () => void
+  /** In-app preview routing to this machine (Brian, Aug 29) — replaces the
+   *  Google handoff as the primary; Google stays in the directions sheet. */
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
 }
 
-export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose, onDirections }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -174,7 +177,7 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} />
     </MapSheet>
   )
 }
@@ -200,6 +203,7 @@ function AssetDetails({
   onToggleIsolate,
   onStops,
   onFocusStop,
+  onDirections,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
@@ -211,6 +215,7 @@ function AssetDetails({
   onToggleIsolate?: () => void
   onStops?: (stops: PanelStop[]) => void
   onFocusStop?: (lat: number, lng: number) => void
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
   const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
@@ -431,13 +436,22 @@ function AssetDetails({
           Street View of that spot, and share-the-pin (Brian, Aug 4). */}
       {loc && (
         <div className="flex gap-2">
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
-          >
-            🧭 Navigate to it
-          </a>
+          {onDirections ? (
+            <button
+              onClick={() => onDirections({ lat: loc.lat, lng: loc.lng, name: asset.name })}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+            >
+              🧭 Directions
+            </button>
+          ) : (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+            >
+              🧭 Navigate to it
+            </a>
+          )}
           <a
             href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc.lat},${loc.lng}`}
             target="_blank" rel="noopener noreferrer" title="Street View here" aria-label="Street View here"

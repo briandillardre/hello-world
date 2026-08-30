@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { AssetWithLocation, AssetType, Geofence, AlertEvent } from '@/lib/types'
+import type { AssetWithLocation, AssetType, Geofence, AlertEvent, Place } from '@/lib/types'
 import { ASSET_ICONS, resolveAssetIcon, TYPE_DEFAULT_ICON } from '@/lib/asset-icons'
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
@@ -29,7 +29,8 @@ import { twilightBands } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
-import { createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
+import { fetchPlaneInfo } from '@/lib/plane-card'
+import { advancePlane, createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -43,6 +44,9 @@ import { MapTour } from './MapTour'
 import { formatRelativeTime } from '@/lib/utils'
 import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
+import { PlaceSheet, PLACE_KIND_META } from './PlaceSheet'
+import { DirectionsSheet } from './DirectionsSheet'
+import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
@@ -306,6 +310,22 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   return { type: 'FeatureCollection', features }
 }
 
+/** Saved Places (085) → pin features. Colour + emoji ride as properties so
+ *  one layer trio serves every kind (same pattern as the asset pucks). */
+function placesGeoJSON(places: Place[]): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: places.map((p) => {
+      const meta = PLACE_KIND_META[p.kind] ?? PLACE_KIND_META.other
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+        properties: { id: p.id, name: p.name, glyph: meta.emoji, color: meta.color },
+      }
+    }),
+  }
+}
+
 function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>, iconOf?: Map<string, string>): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -352,6 +372,10 @@ function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
 interface MapViewProps {
   assets: AssetWithLocation[]
   geofences: Geofence[]
+  /** Saved destinations (085) — pins crews navigate to. */
+  places?: Place[]
+  /** Optimistic list updates after create/edit/remove from the map sheets. */
+  onPlacesChanged?: (places: Place[]) => void
   /** Synthetic demo tracks (demo mode only). Real mode uses historyRows. */
   tracks?: AssetTrack[]
   /** Raw location history (real mode). Per-range tracks/cost/zones built here. */
@@ -405,7 +429,7 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
-export function MapView({ assets, geofences, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
   // reading the map at noon in the truck — pure CSS filter on the canvas
@@ -429,6 +453,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   // MapSheet (bottom sheet on mobile, right panel on desktop). Zone/device used
   // to be tiny anchored map popups; now every tap opens the same surface.
   const [selectedAsset, setSelectedAsset] = useState<AssetWithLocation | null>(null)
+  // ── Navigation (Brian, Aug 29: "pins with an actual destination, routing,
+  // traffic — an app my guys stay in all day"). A tapped place opens its
+  // sheet; Directions turns the map into preview-nav mode: route line +
+  // steps + honest no-traffic ETA. Refs mirror state for init-time handlers.
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  const [navDest, setNavDest] = useState<{ lat: number; lng: number; name: string } | null>(null)
+  // A searched address drops a candidate pin offering Directions / Save.
+  const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string } | null>(null)
+  const placesRef = useRef<Place[]>(places)
+  placesRef.current = places
   // Isolate: show ONLY this asset's dot + trails (timeline still drives it).
   // Cleared when the panel closes or a different asset is selected.
   const [isolateId, setIsolateId] = useState<string | null>(null)
@@ -1942,6 +1976,63 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
       })
 
       // ── Live asset cluster source ──
+      // ── Navigation route line — under the asset stack, over zones/imagery.
+      // Casing + amber stroke so it reads over both satellite and dark tiles.
+      m.addSource('nav-route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'nav-route-casing', type: 'line', source: 'nav-route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#04121d', 'line-width': 9, 'line-opacity': 0.85 },
+      })
+      m.addLayer({
+        id: 'nav-route-line', type: 'line', source: 'nav-route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ff9e16', 'line-width': 5.5, 'line-opacity': 0.95 },
+      })
+
+      // ── Saved Places — always-on pins (they are the company's own data,
+      // same standing as zones): kind-coloured puck, emoji glyph, name label.
+      m.addSource('places', { type: 'geojson', data: placesGeoJSON(placesRef.current) })
+      m.addLayer({
+        id: 'place-pins', type: 'circle', source: 'places',
+        paint: {
+          'circle-radius': 9,
+          'circle-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#04121d',
+          'circle-opacity': 0.95,
+        },
+      })
+      m.addLayer({
+        id: 'place-glyphs', type: 'symbol', source: 'places',
+        layout: { 'text-field': ['get', 'glyph'], 'text-size': 10, 'text-allow-overlap': true },
+        paint: { 'text-opacity': 1 },
+      })
+      m.addLayer({
+        id: 'place-names', type: 'symbol', source: 'places', minzoom: 10,
+        layout: {
+          'text-field': ['get', 'name'], 'text-size': 10,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-variable-anchor': ['top', 'bottom', 'left', 'right'], 'text-radial-offset': 1.2,
+          'text-justify': 'auto', 'text-optional': true, 'text-max-width': 12,
+        },
+        paint: {
+          'text-color': '#cfe0ee',
+          'text-halo-color': '#001523', 'text-halo-width': 1.8, 'text-halo-blur': 0.4,
+        },
+      })
+      m.on('click', 'place-pins', (e) => {
+        const id = e.features?.[0]?.properties?.id as string | undefined
+        const hit = id ? placesRef.current.find((pl) => pl.id === id) : null
+        if (hit) {
+          e.preventDefault()
+          setSelectedPlace(hit)
+          setSelectedAsset(null)
+        }
+      })
+      m.on('mouseenter', 'place-pins', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'place-pins', () => { m.getCanvas().style.cursor = '' })
+
       m.addSource('assets', {
         type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current, selectedIdRef.current),
         cluster: true, clusterMaxZoom: 15, clusterRadius: 40,
@@ -2151,6 +2242,29 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           'text-color': ['case', ['==', ['get', 'state'], 'dead'], '#8fa2b3', '#e8f0f7'],
           'text-opacity': ['match', ['get', 'state'], 'dead', 0.7, 1],
           'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5,
+        },
+      })
+      // Speed callout while moving (Brian, Aug 29: "show a speed bubble while
+      // I'm moving") — the live truth of "how fast, right now", riding the
+      // same fix that turned the ring amber. Opposite anchor bias from the
+      // name label so the two don't fight for the same corner; text-optional
+      // lets a crowded junction drop the bubble before it drops the name.
+      m.addLayer({
+        id: 'speed-callout', type: 'symbol', source: 'assets',
+        filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'state'], 'moving'], ['>', ['coalesce', ['get', 'speed'], 0], 2]],
+        minzoom: 9,
+        layout: {
+          'text-field': ['concat', ['to-string', ['round', ['get', 'speed']]], ' mph'],
+          'text-size': 10,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-variable-anchor': ['top', 'bottom', 'right', 'left'],
+          'text-radial-offset': 1.9,
+          'text-justify': 'auto',
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': '#ffd166',
+          'text-halo-color': '#0b2536', 'text-halo-width': 2, 'text-halo-blur': 0.4,
         },
       })
       // Tools — their OWN unclustered source so a Bluetooth tag is visible in
@@ -2564,6 +2678,13 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences))
   }, [mapReady, geofences])
 
+  // Saved Places stay current as the list changes (create/edit/remove or the
+  // 20 s live tick).
+  useEffect(() => {
+    if (!mapReady) return
+    ;(map.current?.getSource('places') as maplibregl.GeoJSONSource | undefined)?.setData(placesGeoJSON(places))
+  }, [mapReady, places])
+
   // Show live pins vs trails vs heatmap based on the movement-display mode
   useEffect(() => {
     const m = map.current
@@ -2586,6 +2707,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     // Labels master switch (Brian, Aug 11) overrides the per-mode defaults
     // set above — OFF hides every name at every zoom, ON keeps the ladder.
     set('unclustered-name', live && showLabels)
+    // The bubble is live truth — replay modes must not show NOW's speed over
+    // last week's trails. Rides both marker styles (dot and arrow).
+    set('speed-callout', live)
     set('trail-head-labels', trailMode !== 'off' && showLabels)
     set('tool-dots-name', showLabels)
     // The terrain reads flat from straight overhead — tilt in on entry.
@@ -3692,6 +3816,9 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
   const starCatRef = useRef<{ ra: number; dec: number; mag: number; bv: number }[] | null>(null)
   const planesRef = useRef<Plane3D[] | null>(null)
   const planePrevRef = useRef<Map<string, { track: number; at: number }>>(new Map())
+  // Where each aircraft is drawn RIGHT NOW (not where it last reported) — the
+  // smoothing loop owns this, and the poll reads it so a fresh fix eases in.
+  const planeShownRef = useRef<Map<string, { lon: number; lat: number }>>(new Map())
   // Rolling flight-path history per aircraft (flat lon,lat,altM triplets),
   // accumulated each poll; a clicked plane's path renders as a 3D trail.
   const planeHistRef = useRef<Map<string, number[]>>(new Map())
@@ -3834,7 +3961,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           const pl = planesRef.current?.find((x) => x.hex === hex)
           return pl ? { sx: pl.sx, sy: pl.sy } : null
         }
-        popup(e.lngLat, `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`, locatePlane)
+        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
+        popup(e.lngLat, baseHtml, locatePlane)
+        // FlightAware-lite (Brian, Aug 29): the route this flight is flying
+        // and a photo of the ACTUAL airframe stream in a beat later. Only
+        // append while this same plane's popup is still the open one.
+        void fetchPlaneInfo(hit.hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
+          if ((photoHtml || routeHtml) && selPlaneRef.current === hit.hex && skyPopup?.isOpen()) {
+            skyPopup.setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7;max-width:230px">${baseHtml.replace('flight trail on — tap empty sky to clear', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">flight trail on — tap empty sky to clear</div></div>`)
+          }
+        })
       } else {
         const facts: string[] = []
         if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
@@ -4027,6 +4163,40 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
     }
   }, [mapReady, overlaysOn.satellites, overlaysOn.satswarm])
 
+  // Aircraft smoothing: ADS-B lands every ~6 s and an airliner covers half a
+  // mile between fixes, so drawing each fix as it arrives reads as teleporting
+  // (Brian, Aug 29). This RAF loop dead-reckons every aircraft along its own
+  // track at its own ground speed and eases the sprite toward that prediction,
+  // which also absorbs the correction when a fix disagrees — a course change
+  // becomes a banking turn instead of a snap.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !overlaysOn.planes) return
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.25) // a backgrounded tab must not leap
+      last = now
+      const list = planesRef.current
+      if (list && list.length) {
+        for (const pl of list) {
+          advancePlane(pl, Date.now(), dt)
+          planeShownRef.current.set(pl.hex, { lon: pl.lon, lat: pl.lat })
+        }
+        // The sky layer caches each object's screen position every frame and
+        // the existing popup timer re-anchors from that, so a tracked
+        // aircraft's info box follows the smoothed sprite for free.
+        m.triggerRepaint()
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      planeShownRef.current.clear()
+    }
+  }, [mapReady, overlaysOn.planes])
+
   // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
   useEffect(() => {
     const m = map.current
@@ -4074,10 +4244,16 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
             }
           }
           if (p.track != null) planePrevRef.current.set(p.hex, { track: p.track, at: nowMs })
+          // An aircraft we're already drawing keeps its CURRENT rendered
+          // position and eases to the new fix; only a newly-seen one starts
+          // exactly on its fix. Without this every poll is a visible jump.
+          const shown = planeShownRef.current.get(p.hex)
           return {
             hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
             typeLabel: info.label, shape: info.cls, spanM: info.spanM,
-            lon: p.lon, lat: p.lat, altFt: p.altFt,
+            lon: shown?.lon ?? p.lon, lat: shown?.lat ?? p.lat,
+            fixLon: p.lon, fixLat: p.lat, fixAt: nowMs,
+            altFt: p.altFt,
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
             track: p.track, bankRad,
             sx: 0, sy: 0, visible: false,
@@ -6306,7 +6482,10 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           items={searchItems}
           onPick={pickSearchItem}
           bias={assets.find((a) => a.location)?.location ?? null}
-          onPickPlace={(p) => map.current?.flyTo({ center: [p.lng, p.lat], zoom: 16, duration: 1400 })}
+          onPickPlace={(p) => {
+            map.current?.flyTo({ center: [p.lng, p.lat], zoom: 16, duration: 1400 })
+            setSearchedPin({ lat: p.lat, lng: p.lng, name: p.name, sub: p.sub })
+          }}
         />
       )}
 
@@ -6536,6 +6715,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
       {selectedAsset && (
         <AssetPanel
+          onDirections={(d) => { setNavDest(d); setSelectedAsset(null) }}
           asset={selectedAsset}
           gateway={toolGateways?.[selectedAsset.id]}
           aboard={aboard?.[selectedAsset.id]}
@@ -6636,6 +6816,7 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
           .map((a) => ({ id: a.id, name: a.name, type: a.type }))
         return (
         <ZonePanel
+          onDirections={(d) => { setNavDest(d); setSelectedZone(null) }}
           fence={selectedZone}
           presence={pres}
           insideAssets={insideAssets}
@@ -6660,6 +6841,81 @@ export function MapView({ assets, geofences, tracks = [], historyRows = null, si
 
       {selectedDevice && (
         <DevicePanel device={selectedDevice} onClose={() => setSelectedDevice(null)} />
+      )}
+
+      {/* ── Navigation ──────────────────────────────────────────────────── */}
+      {selectedPlace && !navDest && (
+        <PlaceSheet
+          place={selectedPlace}
+          canEdit={!isMock}
+          isMock={isMock}
+          onDirections={(pl: Place) => { setNavDest({ lat: pl.lat, lng: pl.lng, name: pl.name }); setSelectedPlace(null) }}
+          onChanged={(pl: Place) => {
+            setSelectedPlace(pl)
+            onPlacesChanged?.(placesRef.current.map((x) => (x.id === pl.id ? pl : x)))
+          }}
+          onRemoved={(id: string) => {
+            setSelectedPlace(null)
+            onPlacesChanged?.(placesRef.current.filter((x) => x.id !== id))
+          }}
+          onClose={() => setSelectedPlace(null)}
+        />
+      )}
+
+      {navDest && (
+        <DirectionsSheet
+          dest={navDest}
+          origin={null}
+          mapCenter={map.current ? { lat: map.current.getCenter().lat, lng: map.current.getCenter().lng } : undefined}
+          onRouteGeometry={(geo: GeoJSON.LineString | null) => {
+            const src = map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined
+            if (!geo) { src?.setData({ type: 'FeatureCollection', features: [] }); return }
+            src?.setData({ type: 'Feature', geometry: geo, properties: {} })
+            // Frame the whole route once per fetch, leaving room for the sheet.
+            const coords = geo.coordinates as [number, number][]
+            if (coords.length > 1 && map.current) {
+              const b = coords.reduce((bb, c) => bb.extend(c as [number, number]), new maplibregl.LngLatBounds(coords[0], coords[0]))
+              map.current.fitBounds(b, { padding: { top: 80, bottom: 260, left: 60, right: 60 }, duration: 900 })
+            }
+          }}
+          onEnd={() => {
+            setNavDest(null)
+            ;(map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+          }}
+          trafficOn={!!overlaysOn.traffic}
+          onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
+        />
+      )}
+
+      {/* A searched address becomes a candidate pin: route to it now, or keep
+          it forever as a Place. The bar sits above the timeline. */}
+      {searchedPin && !navDest && (
+        <div className="absolute inset-x-3 md:inset-x-auto md:right-4 md:w-[360px] bottom-[132px] md:bottom-auto md:top-16 z-30 rounded-xl border border-navy-700 bg-navy-950/95 backdrop-blur px-3 py-2.5 shadow-panel flex items-center gap-2">
+          <span className="text-base flex-none">📍</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-ink truncate">{searchedPin.name}</p>
+            {searchedPin.sub && <p className="text-[11px] text-faint truncate">{searchedPin.sub}</p>}
+          </div>
+          <button
+            onClick={() => { setNavDest({ lat: searchedPin.lat, lng: searchedPin.lng, name: searchedPin.name }); setSearchedPin(null) }}
+            className="flex-none rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[12.5px] px-3 py-2 hover:bg-amber-600 transition-colors"
+          >
+            Directions
+          </button>
+          {!isMock && (
+            <button
+              onClick={() => {
+                void createPlaceAction({ name: searchedPin.name, kind: 'other', lat: searchedPin.lat, lng: searchedPin.lng, address: searchedPin.sub || null }).then((res) => {
+                  if (res.ok && res.place) { onPlacesChanged?.([...placesRef.current, res.place]); setSearchedPin(null); setSelectedPlace(res.place) }
+                })
+              }}
+              className="flex-none rounded-lg border border-navy-700 bg-navy-900 text-[12.5px] text-ink px-3 py-2 hover:border-amber/50 transition-colors"
+            >
+              Save
+            </button>
+          )}
+          <button onClick={() => setSearchedPin(null)} aria-label="Dismiss" className="flex-none p-1.5 text-faint hover:text-ink">✕</button>
+        </div>
       )}
     </div>
   )

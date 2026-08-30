@@ -2,6 +2,18 @@
 
 *Created Jul 15, 2026 — the day the LLC + EIN unlocked store accounts.*
 
+> **Next Play/App Store release must carry the LOCATION permissions (Aug 30).**
+> `AndroidManifest.xml` now declares `ACCESS_COARSE_LOCATION` +
+> `ACCESS_FINE_LOCATION` (foreground only — deliberately NOT
+> `ACCESS_BACKGROUND_LOCATION`, which triggers Play's heavy background-
+> location review we don't need for foreground Go Live tracking). Until that
+> release ships, the installed Android app CANNOT show the OS location
+> prompt — the WebView auto-denies. The web-side first-open primer
+> (`components/LocationPrimer.tsx`) is live everywhere already and doubles as
+> the Play-required prominent disclosure. When submitting: Play Console will
+> ask for a location declaration — answer: foreground only, core feature =
+> live crew map + site clock-in, disclosure shown in-app before the prompt.
+
 ## Architecture (decided)
 
 **Capacitor thin shell around the live web app.** The native app loads

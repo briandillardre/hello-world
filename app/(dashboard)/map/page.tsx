@@ -1,5 +1,6 @@
 import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
+import { getPlaces } from '@/lib/db/places'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
@@ -78,7 +79,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const { getMeasurement, getMeasurements } = await import('@/lib/db/measurements')
   const [
     focusMeasurement, measurements, prefs, perms, savedMapViews,
-    rawAssets, geofences, toolAssociations, earliestMs, alerts, siteOverlays,
+    rawAssets, geofences, places, toolAssociations, earliestMs, alerts, siteOverlays,
   ] = await Promise.all([
     // ?m=<id> — deep link from /measurements: draw it and fly the camera to it.
     searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
@@ -88,7 +89,8 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     getMyMapViews(),
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
-    getToolAssociations(companyId),
+    getPlaces(companyId),
+        getToolAssociations(companyId),
     getEarliestLocationTime(companyId),
     getAlertEvents(companyId),
     getPlacedSiteOverlays(companyId),
@@ -127,6 +129,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
         <MapPageClient
           assets={assets}
           geofences={geofences}
+          places={places}
           tracks={demoTracks}
           historyRows={isRealMode ? [] : null}
           deferHistory={isRealMode}

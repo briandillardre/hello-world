@@ -34,7 +34,7 @@ const STAT = [
  *  inline — rename, recolor, or delete right from the map. */
 export function ZonePanel({
   fence, presence, range, t, real, onClose, canEdit = false, onEdit, onDelete, showCosts = true,
-  insideAssets = [], onPickAsset,
+  insideAssets = [], onPickAsset, onDirections,
 }: {
   fence: Geofence
   presence: SitePresence
@@ -42,6 +42,8 @@ export function ZonePanel({
   t: number
   real?: ZoneReal | null
   onClose: () => void
+  /** In-app preview routing to the site (Brian, Aug 29). */
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
   canEdit?: boolean
   onEdit?: (id: string, name: string, color: string) => void
   onDelete?: (id: string) => void
@@ -197,13 +199,22 @@ export function ZonePanel({
             const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length
             return (
               <div className="mt-2 flex gap-2">
-                <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${cy},${cx}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
-                >
-                  🧭 Navigate to site
-                </a>
+                {onDirections ? (
+                  <button
+                    onClick={() => onDirections({ lat: cy, lng: cx, name: fence.name })}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+                  >
+                    🧭 Directions
+                  </button>
+                ) : (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${cy},${cx}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+                  >
+                    🧭 Navigate to site
+                  </a>
+                )}
                 <a
                   href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${cy},${cx}`}
                   target="_blank" rel="noopener noreferrer" title="Street View at the site" aria-label="Street View at the site"

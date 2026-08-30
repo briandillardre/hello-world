@@ -182,6 +182,25 @@ export interface AssetWithLocation extends Asset {
   idleDays?: number | null
 }
 
+/** Pin categories for saved Places — drives glyph + colour on the map. */
+export type PlaceKind = 'supplier' | 'fuel' | 'dump' | 'shop' | 'customer' | 'rental' | 'other'
+
+/**
+ * A saved destination crews navigate to (migration 085). A POINT, not an
+ * area — zones own areas (alerts + hours); places own "drive here".
+ */
+export interface Place {
+  id: string
+  name: string
+  kind: PlaceKind
+  lat: number
+  lng: number
+  address: string | null
+  notes: string | null
+  active: boolean
+  created_at: string
+}
+
 export interface Geofence {
   id: string
   company_id: string

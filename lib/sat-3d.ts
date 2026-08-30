@@ -51,8 +51,14 @@ export interface Plane3D {
   /** Silhouette class + real wingspan — drives shape + on-screen size. */
   shape: PlaneClass
   spanM: number
+  /** RENDERED position — eased toward the dead-reckoned truth every frame, so
+   *  a 6-second poll cadence doesn't read as a teleport (see advancePlane). */
   lon: number
   lat: number
+  /** Last real ADS-B fix and when it landed; the baseline DR extrapolates from. */
+  fixLon: number
+  fixLat: number
+  fixAt: number
   altFt: number
   mph: number | null
   track: number | null
@@ -61,6 +67,42 @@ export interface Plane3D {
   sx: number
   sy: number
   visible: boolean
+}
+
+/** Metres per degree of latitude — good enough for a few seconds of flight. */
+const M_PER_DEG_LAT = 111_320
+/** Never extrapolate further than this past a fix: a stalled feed should let
+ *  aircraft coast to a stop, not fly them into the next state. */
+const MAX_DR_MS = 30_000
+
+/**
+ * Advance one aircraft from its last fix along its own track at its own
+ * ground speed, then ease the rendered position toward that prediction.
+ *
+ * ADS-B arrives every ~6 s. Drawing each fix the instant it lands makes
+ * aircraft hop across the sky; airliners cover half a mile between updates.
+ * Dead reckoning fills the gap the way every flight tracker does, and the
+ * exponential ease absorbs the correction when a fix disagrees with the
+ * prediction — so course changes read as banking turns, not snaps.
+ *
+ * @param dtSec frame time, for a frame-rate-independent ease.
+ */
+export function advancePlane(pl: Plane3D, nowMs: number, dtSec: number): void {
+  let tLon = pl.fixLon
+  let tLat = pl.fixLat
+  const age = Math.min(nowMs - pl.fixAt, MAX_DR_MS)
+  if (age > 0 && pl.mph != null && pl.mph > 0 && pl.track != null) {
+    const metres = pl.mph * 0.44704 * (age / 1000)
+    const th = (pl.track * Math.PI) / 180
+    tLat += (metres * Math.cos(th)) / M_PER_DEG_LAT
+    // cos(lat) guards the poles; a plane at 85° would otherwise sprint east.
+    tLon += (metres * Math.sin(th)) / (M_PER_DEG_LAT * Math.max(0.05, Math.cos((tLat * Math.PI) / 180)))
+  }
+  // ~250 ms time constant, computed from real frame time so a 30 fps phone
+  // and a 120 fps tablet settle at the same rate.
+  const k = 1 - Math.exp(-dtSec / 0.25)
+  pl.lon += (tLon - pl.lon) * k
+  pl.lat += (tLat - pl.lat) * k
 }
 
 export interface CelestialBody {
