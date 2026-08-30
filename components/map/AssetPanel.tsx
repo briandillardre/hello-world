@@ -161,9 +161,15 @@ interface AssetPanelProps {
   /** Tap a stop row → the map flies there. */
   onFocusStop?: (lat: number, lng: number) => void
   onClose: () => void
+  /** In-app preview routing to this machine (Brian, Aug 29) — replaces the
+   *  Google handoff as the primary; Google stays in the directions sheet. */
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
+  /** Live convoy — other GPS assets moving with this one right now (Brian,
+   *  Aug 30: the phone, the truck, and the trailer are one unit). */
+  travelingWith?: { id: string; name: string; type: AssetType }[]
 }
 
-export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose }: AssetPanelProps) {
+export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose, onDirections, travelingWith }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
@@ -174,7 +180,7 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} travelingWith={travelingWith} />
     </MapSheet>
   )
 }
@@ -200,6 +206,8 @@ function AssetDetails({
   onToggleIsolate,
   onStops,
   onFocusStop,
+  onDirections,
+  travelingWith,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
@@ -211,6 +219,8 @@ function AssetDetails({
   onToggleIsolate?: () => void
   onStops?: (stops: PanelStop[]) => void
   onFocusStop?: (lat: number, lng: number) => void
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
+  travelingWith?: { id: string; name: string; type: AssetType }[]
 }) {
   const place = usePlaceName(loc?.lat, loc?.lng)
   const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
@@ -427,17 +437,48 @@ function AssetDetails({
         </div>
       )}
 
+      {/* Riding together, right now — the phone in the cab, the trailer
+          behind, the mini-ex on the lowboy. Motion agreement, not proximity
+          (lib/convoy.ts), so a parked yard never reads as one unit. */}
+      {travelingWith && travelingWith.length > 0 && (
+        <div className="rounded-xl border border-teal/30 bg-teal/5 p-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-teal mb-2">⛓ Traveling together</p>
+          <div className="space-y-1.5">
+            {travelingWith.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onPick?.(t.id)}
+                className="w-full flex items-center gap-2 rounded-lg bg-navy-900/60 border border-navy-800 px-2.5 py-2 text-left hover:border-teal/40 transition-colors"
+              >
+                <span className="text-base flex-none">{TYPE_EMOJI[t.type]}</span>
+                <span className="text-[13px] text-ink font-medium truncate">{t.name}</span>
+                <span className="ml-auto text-[11px] text-faint flex-none">riding along →</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Google-Maps-style handoffs: turn-by-turn to the machine's last fix,
           Street View of that spot, and share-the-pin (Brian, Aug 4). */}
       {loc && (
         <div className="flex gap-2">
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
-          >
-            🧭 Navigate to it
-          </a>
+          {onDirections ? (
+            <button
+              onClick={() => onDirections({ lat: loc.lat, lng: loc.lng, name: asset.name })}
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+            >
+              🧭 Directions
+            </button>
+          ) : (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors"
+            >
+              🧭 Navigate to it
+            </a>
+          )}
           <a
             href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc.lat},${loc.lng}`}
             target="_blank" rel="noopener noreferrer" title="Street View here" aria-label="Street View here"
