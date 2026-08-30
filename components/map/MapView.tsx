@@ -8,7 +8,7 @@ import { ASSET_ICONS, resolveAssetIcon, TYPE_DEFAULT_ICON } from '@/lib/asset-ic
 import { DEMO_MAP_CENTER, DEMO_MAP_ZOOM } from '@/lib/mock-data'
 import {
   type AssetTrack, type TimeRange, type TrailMode, positionAt, trailSegmentsBanded,
-  trailSegmentsSpeed, SPEED_CLASS_COLORS,
+  trailSegmentsSpeed, SPEED_CLASS_COLORS, SPEED_CLASS_MPH, sparseHops,
   defaultSpeedForWindow, tracksFromHistory, mergeHistoryRows, rangeWindowSeconds, RANGES,
 } from '@/lib/trails'
 import { rangeWindow } from '@/lib/dates'
@@ -222,14 +222,33 @@ function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, selId
 // selId marks the selected asset's features (sel) and everyone else's (dim)
 // so the paint expressions can spotlight one track without touching layers.
 function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, speedWindowSec?: number | null): GeoJSON.FeatureCollection {
+  // Tools draw NO trail line of their own (Brian, Aug 30: parallel colored
+  // chords along his drive were three tags re-drawing the truck's path).
+  // Their path IS the carrier's path — the carrier draws it once; tools
+  // keep their moving replay head.
+  const lineTracks = tracks.filter((tr) => filter.has(tr.type) && tr.type !== 'tool')
+  // Sparse hops render as dashed "went roughly this way" connectors — never
+  // solid ink (a 5-min-cadence tracker at 65 mph is a 5-mile straight chord).
+  const sparse: GeoJSON.Feature[] = lineTracks.flatMap((tr) =>
+    sparseHops(tr, t).map((h) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: h.seg },
+      properties: {
+        id: tr.assetId,
+        sparse: 1,
+        color: speedWindowSec ? SPEED_CLASS_COLORS[speedClassOf(h.mph ?? 0)] : tr.color,
+        fade: 1,
+        sel: selId === tr.assetId ? 1 : 0,
+        dim: selId && selId !== tr.assetId ? 1 : 0,
+      },
+    })))
   // Speed mode (Brian, Aug 23): color = how fast, not who — teal crawl,
   // amber streets, orange highway, red 70+. Age fading is off here; the
   // color IS the information.
   if (speedWindowSec) {
     return {
       type: 'FeatureCollection',
-      features: tracks
-        .filter((tr) => filter.has(tr.type))
+      features: [...lineTracks
         .flatMap((tr) =>
           trailSegmentsSpeed(tr, t, speedWindowSec)
             .filter((b) => b.segments.length)
@@ -238,13 +257,12 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
               geometry: { type: 'MultiLineString' as const, coordinates: b.segments },
               properties: { id: tr.assetId, color: SPEED_CLASS_COLORS[b.cls], fade: 1, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
             }))
-        ),
+        ), ...sparse],
     }
   }
   return {
     type: 'FeatureCollection',
-    features: tracks
-      .filter((tr) => filter.has(tr.type))
+    features: [...lineTracks
       .flatMap((tr) =>
         // Age bands: the older stretch of each trail dims, the newest runs
         // full-strength (Brian, Aug 22 — the command-wall look on /map too).
@@ -257,8 +275,14 @@ function trailsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
             geometry: { type: 'MultiLineString' as const, coordinates: b.segments },
             properties: { id: tr.assetId, color: tr.color, fade: b.fade, sel: selId === tr.assetId ? 1 : 0, dim: selId && selId !== tr.assetId ? 1 : 0 },
           }))
-      ),
+      ), ...sparse],
   }
+}
+
+/** SPEED_CLASS_MPH bucket for a single hop's mph. */
+function speedClassOf(mph: number): number {
+  for (let i = 0; i < SPEED_CLASS_MPH.length; i++) if (mph < SPEED_CLASS_MPH[i]) return i
+  return SPEED_CLASS_MPH.length
 }
 
 /** Heat points weighted by TIME REPRESENTED, not existence. Trackers emit
@@ -276,6 +300,9 @@ function pointsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, 
   const features: GeoJSON.Feature[] = []
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
+    // Tool paths clone the carrier's — heat-weighting them re-counts the
+    // same dwell once per tag aboard (see the matching skip in heat3d).
+    if (tr.type === 'tool') continue
     const sel = selId === tr.assetId ? 1 : 0
     const dim = selId && selId !== tr.assetId ? 1 : 0
     const pts = tr.points
@@ -461,7 +488,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
   const [navDest, setNavDest] = useState<{ lat: number; lng: number; name: string } | null>(null)
   // A searched address drops a candidate pin offering Directions / Save.
-  const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string } | null>(null)
+  const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string; err?: string } | null>(null)
   const placesRef = useRef<Place[]>(places)
   placesRef.current = places
   const convoysRef = useRef<import('@/lib/convoy').Convoy[]>([])
@@ -1813,6 +1840,9 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       m.addSource('trails', { type: 'geojson', data: trailsGeoJSON(tracksRef.current, filterRef.current, 0, null, speedTrailsRef.current ? windowSecRef.current : null) })
       m.addLayer({
         id: 'trails-line', type: 'line', source: 'trails',
+        // Sparse hops render on their own dashed layer below — solid ink
+        // here would draw the very chords this split exists to kill.
+        filter: ['!=', ['get', 'sparse'], 1],
         layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
         // Kiosk shows every asset's full history at once — fade the lines so the
         // wall display reads as ambiance, not spaghetti. A selected asset's
@@ -1833,6 +1863,22 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
               'line-blur': 0.3,
             },
       })
+      // Dashed "went roughly this way" connectors for sparse hops (Brian,
+      // Aug 30: default-config trackers reporting every 5-15 min drew
+      // 5-mile straight chords). Same source; the honest read is a faint
+      // dotted line between the two real fixes, clearly not a road.
+      m.addLayer({
+        id: 'trails-sparse', type: 'line', source: 'trails',
+        filter: ['==', ['get', 'sparse'], 1],
+        layout: { 'line-cap': 'round', visibility: 'none' },
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['==', ['get', 'sel'], 1], 2.5, 1.8],
+          'line-opacity': ['case', ['==', ['get', 'sel'], 1], 0.65, ['==', ['get', 'dim'], 1], 0.12, 0.45],
+          'line-dasharray': [1.2, 2.4],
+        },
+      })
+
       // Heatmap of movement density (alternative to trails)
       m.addSource('trail-points', { type: 'geojson', data: pointsGeoJSON(tracksRef.current, filterRef.current, 0) })
       m.addLayer({
@@ -2052,9 +2098,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         const id = e.features?.[0]?.properties?.id as string | undefined
         const hit = id ? placesRef.current.find((pl) => pl.id === id) : null
         if (hit) {
-          e.preventDefault()
           setSelectedPlace(hit)
           setSelectedAsset(null)
+          setSelectedZone(null)
+          setSelectedDevice(null)
         }
       })
       m.on('mouseenter', 'place-pins', () => { m.getCanvas().style.cursor = 'pointer' })
@@ -2484,6 +2531,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (asset) {
           setSelectedZone(null)
           setSelectedDevice(null)
+          setSelectedPlace(null)
           setSelectedAsset(asset)
         }
       }
@@ -2512,6 +2560,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (!device) return
         setSelectedAsset(null)
         setSelectedZone(null)
+        setSelectedPlace(null)
         setSelectedDevice(device)
       })
 
@@ -2530,7 +2579,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         ]
         // tool-dots + trail-heads INCLUDED: tools "left here" inside a zone
         // were unreachable — the zone sheet stole every tap (Brian, Aug 23).
-        const pinLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg', 'tool-dots', 'trail-heads'].filter((l) => m.getLayer(l))
+        const pinLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'device-bg', 'tool-dots', 'trail-heads', 'place-pins'].filter((l) => m.getLayer(l))
         if (m.queryRenderedFeatures(box, { layers: pinLayers }).length) return
         // Saved measurements sit ON TOP of zones — a tap on one opens the
         // measurement sheet, never the zone underneath (Brian, Aug 17: could
@@ -2543,6 +2592,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (!fence) return
         setSelectedAsset(null)
         setSelectedDevice(null)
+        setSelectedPlace(null)
         setSelectedZone(fence)
       }
       m.on('click', 'geofence-fill', selectZoneAt)
@@ -2694,9 +2744,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     // history; drawing NOW's groupings over it would lie).
     const convoySrc = map.current?.getSource('convoys') as maplibregl.GeoJSONSource | undefined
     if (range === 'live' && trailMode === 'off') {
-      const groups = detectConvoys(visible)
+      // Same visibility rules as the dots: a type filtered off the map must
+      // not be lassoed (a ring around invisible members reads as a bug).
+      const shown = visible.filter((a) => filter.has(a.type))
+      const groups = detectConvoys(shown)
       convoysRef.current = groups
-      convoySrc?.setData(convoyRingGeoJSON(groups, visible))
+      convoySrc?.setData(convoyRingGeoJSON(groups, shown))
     } else {
       convoysRef.current = []
       convoySrc?.setData({ type: 'FeatureCollection', features: [] })
@@ -2738,6 +2791,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     set('asset-arrows', live && markerStyle === 'arrow')
     set('unclustered-label', live && markerStyle === 'arrow')
     set('trails-line', trailMode === 'trails')
+    set('trails-sparse', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
     set('heat3d-layer', trailMode === '3d')
     set('heat3d-dim-layer', trailMode === '3d')
@@ -3999,14 +4053,17 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           const pl = planesRef.current?.find((x) => x.hex === hex)
           return pl ? { sx: pl.sx, sy: pl.sy } : null
         }
-        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${title}</div><div style="color:#9fb6cc;font-size:10.5px">${kindLine}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
+        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${escHtml(title)}</div><div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
         popup(e.lngLat, baseHtml, locatePlane)
         // FlightAware-lite (Brian, Aug 29): the route this flight is flying
-        // and a photo of the ACTUAL airframe stream in a beat later. Only
-        // append while this same plane's popup is still the open one.
+        // and a photo of the ACTUAL airframe stream in a beat later. Guard on
+        // the popup INSTANCE, not just the selected hex — tapping a satellite
+        // while this fetch is in flight rebinds skyPopup, and isOpen() alone
+        // would let a plane card overwrite the satellite's box (ship-check).
+        const ownPopup = skyPopup
         void fetchPlaneInfo(hit.hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
-          if ((photoHtml || routeHtml) && selPlaneRef.current === hit.hex && skyPopup?.isOpen()) {
-            skyPopup.setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7;max-width:230px">${baseHtml.replace('flight trail on — tap empty sky to clear', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">flight trail on — tap empty sky to clear</div></div>`)
+          if ((photoHtml || routeHtml) && selPlaneRef.current === hit.hex && ownPopup && skyPopup === ownPopup && ownPopup.isOpen()) {
+            ownPopup.setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7;max-width:230px">${baseHtml.replace('flight trail on — tap empty sky to clear', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">flight trail on — tap empty sky to clear</div></div>`)
           }
         })
       } else {
@@ -4310,6 +4367,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             if (buf.length > 600) buf.splice(0, buf.length - 600)
             planeHistRef.current.set(p.hex, buf)
           }
+        }
+        // Prune the shown-position cache to aircraft still in the feed — a
+        // hex that leaves and returns must start at its fresh fix, not
+        // streak in from a minutes-old position (ship-check).
+        for (const k of Array.from(planeShownRef.current.keys())) {
+          if (!seen.has(k)) planeShownRef.current.delete(k)
         }
         if (planeHistRef.current.size > 400) {
           for (const k of Array.from(planeHistRef.current.keys())) {
@@ -6751,6 +6814,88 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         />
       )}
 
+      {/* ── Navigation (rendered BEFORE the asset/zone panels on purpose:
+          tapping a machine mid-directions must put ITS sheet on top; ending
+          that sheet drops back to the route — ship-check P1). ─────────── */}
+      {selectedPlace && !navDest && (
+        <PlaceSheet
+          place={selectedPlace}
+          canEdit={!isMock}
+          isMock={isMock}
+          onDirections={(pl: Place) => { setNavDest({ lat: pl.lat, lng: pl.lng, name: pl.name }); setSelectedPlace(null) }}
+          onChanged={(pl: Place) => {
+            setSelectedPlace(pl)
+            onPlacesChanged?.(placesRef.current.map((x) => (x.id === pl.id ? pl : x)))
+          }}
+          onRemoved={(id: string) => {
+            setSelectedPlace(null)
+            onPlacesChanged?.(placesRef.current.filter((x) => x.id !== id))
+          }}
+          onClose={() => setSelectedPlace(null)}
+        />
+      )}
+
+      {navDest && (
+        <DirectionsSheet
+          dest={navDest}
+          origin={null}
+          mapCenter={map.current ? { lat: map.current.getCenter().lat, lng: map.current.getCenter().lng } : undefined}
+          onRouteGeometry={(geo: GeoJSON.LineString | null) => {
+            const src = map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined
+            if (!geo) { src?.setData({ type: 'FeatureCollection', features: [] }); return }
+            src?.setData({ type: 'Feature', geometry: geo, properties: {} })
+            // Frame the whole route once per fetch, leaving room for the sheet.
+            const coords = geo.coordinates as [number, number][]
+            if (coords.length > 1 && map.current) {
+              const b = coords.reduce((bb, c) => bb.extend(c as [number, number]), new maplibregl.LngLatBounds(coords[0], coords[0]))
+              map.current.fitBounds(b, { padding: { top: 80, bottom: 260, left: 60, right: 60 }, duration: 900 })
+            }
+          }}
+          onEnd={() => {
+            setNavDest(null)
+            ;(map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+          }}
+          trafficOn={!!overlaysOn.traffic}
+          onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
+        />
+      )}
+
+      {/* A searched address becomes a candidate pin: route to it now, or keep
+          it forever as a Place. The bar sits above the timeline. */}
+      {searchedPin && !navDest && (
+        <div className="absolute inset-x-3 md:inset-x-auto md:right-4 md:w-[360px] bottom-[132px] md:bottom-auto md:top-16 z-30 rounded-xl border border-navy-700 bg-navy-950/95 backdrop-blur px-3 py-2.5 shadow-panel flex items-center gap-2">
+          <span className="text-base flex-none">📍</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-ink truncate">{searchedPin.name}</p>
+            {searchedPin.err
+              ? <p className="text-[11px] text-alert truncate">{searchedPin.err}</p>
+              : searchedPin.sub && <p className="text-[11px] text-faint truncate">{searchedPin.sub}</p>}
+          </div>
+          <button
+            onClick={() => { setNavDest({ lat: searchedPin.lat, lng: searchedPin.lng, name: searchedPin.name }); setSearchedPin(null) }}
+            className="flex-none rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[12.5px] px-3 py-2 hover:bg-amber-600 transition-colors"
+          >
+            Directions
+          </button>
+          {!isMock && (
+            <button
+              onClick={() => {
+                createPlaceAction({ name: searchedPin.name, kind: 'other', lat: searchedPin.lat, lng: searchedPin.lng, address: searchedPin.sub || null }).then((res) => {
+                  if (res.ok && res.place) { onPlacesChanged?.([...placesRef.current, res.place]); setSearchedPin(null); setSelectedPlace(res.place) }
+                  // A refusal (viewer role, demo) must say so — a Save that
+                  // silently does nothing reads as saved (ship-check).
+                  else setSearchedPin((sp) => (sp ? { ...sp, err: res.error ?? 'Could not save that place.' } : sp))
+                }).catch(() => setSearchedPin((sp) => (sp ? { ...sp, err: 'Could not save — check your signal and try again.' } : sp)))
+              }}
+              className="flex-none rounded-lg border border-navy-700 bg-navy-900 text-[12.5px] text-ink px-3 py-2 hover:border-amber/50 transition-colors"
+            >
+              Save
+            </button>
+          )}
+          <button onClick={() => setSearchedPin(null)} aria-label="Dismiss" className="flex-none p-1.5 text-faint hover:text-ink">✕</button>
+        </div>
+      )}
+
       {selectedAsset && (
         <AssetPanel
           onDirections={(d) => { setNavDest(d); setSelectedAsset(null) }}
@@ -6890,80 +7035,6 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         <DevicePanel device={selectedDevice} onClose={() => setSelectedDevice(null)} />
       )}
 
-      {/* ── Navigation ──────────────────────────────────────────────────── */}
-      {selectedPlace && !navDest && (
-        <PlaceSheet
-          place={selectedPlace}
-          canEdit={!isMock}
-          isMock={isMock}
-          onDirections={(pl: Place) => { setNavDest({ lat: pl.lat, lng: pl.lng, name: pl.name }); setSelectedPlace(null) }}
-          onChanged={(pl: Place) => {
-            setSelectedPlace(pl)
-            onPlacesChanged?.(placesRef.current.map((x) => (x.id === pl.id ? pl : x)))
-          }}
-          onRemoved={(id: string) => {
-            setSelectedPlace(null)
-            onPlacesChanged?.(placesRef.current.filter((x) => x.id !== id))
-          }}
-          onClose={() => setSelectedPlace(null)}
-        />
-      )}
-
-      {navDest && (
-        <DirectionsSheet
-          dest={navDest}
-          origin={null}
-          mapCenter={map.current ? { lat: map.current.getCenter().lat, lng: map.current.getCenter().lng } : undefined}
-          onRouteGeometry={(geo: GeoJSON.LineString | null) => {
-            const src = map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined
-            if (!geo) { src?.setData({ type: 'FeatureCollection', features: [] }); return }
-            src?.setData({ type: 'Feature', geometry: geo, properties: {} })
-            // Frame the whole route once per fetch, leaving room for the sheet.
-            const coords = geo.coordinates as [number, number][]
-            if (coords.length > 1 && map.current) {
-              const b = coords.reduce((bb, c) => bb.extend(c as [number, number]), new maplibregl.LngLatBounds(coords[0], coords[0]))
-              map.current.fitBounds(b, { padding: { top: 80, bottom: 260, left: 60, right: 60 }, duration: 900 })
-            }
-          }}
-          onEnd={() => {
-            setNavDest(null)
-            ;(map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
-          }}
-          trafficOn={!!overlaysOn.traffic}
-          onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
-        />
-      )}
-
-      {/* A searched address becomes a candidate pin: route to it now, or keep
-          it forever as a Place. The bar sits above the timeline. */}
-      {searchedPin && !navDest && (
-        <div className="absolute inset-x-3 md:inset-x-auto md:right-4 md:w-[360px] bottom-[132px] md:bottom-auto md:top-16 z-30 rounded-xl border border-navy-700 bg-navy-950/95 backdrop-blur px-3 py-2.5 shadow-panel flex items-center gap-2">
-          <span className="text-base flex-none">📍</span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-ink truncate">{searchedPin.name}</p>
-            {searchedPin.sub && <p className="text-[11px] text-faint truncate">{searchedPin.sub}</p>}
-          </div>
-          <button
-            onClick={() => { setNavDest({ lat: searchedPin.lat, lng: searchedPin.lng, name: searchedPin.name }); setSearchedPin(null) }}
-            className="flex-none rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[12.5px] px-3 py-2 hover:bg-amber-600 transition-colors"
-          >
-            Directions
-          </button>
-          {!isMock && (
-            <button
-              onClick={() => {
-                void createPlaceAction({ name: searchedPin.name, kind: 'other', lat: searchedPin.lat, lng: searchedPin.lng, address: searchedPin.sub || null }).then((res) => {
-                  if (res.ok && res.place) { onPlacesChanged?.([...placesRef.current, res.place]); setSearchedPin(null); setSelectedPlace(res.place) }
-                })
-              }}
-              className="flex-none rounded-lg border border-navy-700 bg-navy-900 text-[12.5px] text-ink px-3 py-2 hover:border-amber/50 transition-colors"
-            >
-              Save
-            </button>
-          )}
-          <button onClick={() => setSearchedPin(null)} aria-label="Dismiss" className="flex-none p-1.5 text-faint hover:text-ink">✕</button>
-        </div>
-      )}
     </div>
   )
 }

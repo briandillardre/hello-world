@@ -15,6 +15,11 @@ export interface TrackPoint {
   lng: number
   lat: number
   t: number // normalized 0..1 across the playback window
+  /** Sparse hop: the fix cadence was fine but the chord to the previous
+   *  point is miles long (default-config trackers report every 5–15 min —
+   *  at highway speed that's a straight line across town if drawn solid).
+   *  Rendered as a dashed connector, never trail ink (Brian, Aug 30). */
+  sparse?: boolean
   /** True when there's a data gap before this point (device asleep / out of
    *  coverage). Interpolation must SNAP across it, not glide, and trails
    *  break the line here instead of drawing a chord across town. */
@@ -289,6 +294,9 @@ export function mergeHistoryRows<T extends { asset_id: string; timestamp: string
  * playback heads move in sync. Assets with no history get an empty track —
  * an honest "no movement recorded" rather than a fabricated walk.
  */
+/** Chord length above which a single hop stops being drawable as trail ink. */
+const SPARSE_M = 2000
+
 export function tracksFromHistory(
   assets: AssetWithLocation[],
   rows: { asset_id: string; lat: number; lng: number; speed?: number | null; timestamp: string }[],
@@ -352,13 +360,21 @@ export function tracksFromHistory(
             { lng: thinned[0].lng, lat: thinned[0].lat, t: 0 },
             { lng: thinned[0].lng, lat: thinned[0].lat, t: 1 },
           ]
-        : thinned.map((p, i) => ({
-            lng: p.lng,
-            lat: p.lat,
-            t: (p.ms - minTs) / span,
-            gap: i > 0 && p.ms - thinned[i - 1].ms > GAP_MS ? true : undefined,
-            mph: p.mph,
-          }))
+        : thinned.map((p, i) => {
+            const gap = i > 0 && p.ms - thinned[i - 1].ms > GAP_MS
+            // A hop over ~2 km with no intermediate fixes can't honestly be
+            // drawn as a road — the truck didn't fly a chord over Greer.
+            const sparse = !gap && i > 0 &&
+              metersBetween([thinned[i - 1].lng, thinned[i - 1].lat], [p.lng, p.lat]) > SPARSE_M
+            return {
+              lng: p.lng,
+              lat: p.lat,
+              t: (p.ms - minTs) / span,
+              gap: gap ? true : undefined,
+              sparse: sparse ? true : undefined,
+              mph: p.mph,
+            }
+          })
 
     return {
       assetId: a.id,
@@ -368,6 +384,22 @@ export function tracksFromHistory(
       points,
     }
   })
+}
+
+/**
+ * The dashed side of the sparse story: each long hop as its own two-point
+ * segment, so the map can draw "went roughly this way" connectors where
+ * solid trail ink would have lied a straight road across town.
+ */
+export function sparseHops(track: AssetTrack, t: number): { seg: [[number, number], [number, number]]; mph: number | null }[] {
+  const out: { seg: [[number, number], [number, number]]; mph: number | null }[] = []
+  const pts = track.points
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i]
+    if (p.t > t) break
+    if (p.sparse) out.push({ seg: [[pts[i - 1].lng, pts[i - 1].lat], [p.lng, p.lat]], mph: p.mph ?? null })
+  }
+  return out
 }
 
 /** Epoch-ms window real tracks were normalized over (t=0 → from, t=1 → to). */
@@ -668,7 +700,7 @@ export function trailSegmentsUpTo(track: AssetTrack, t: number): [number, number
   let current: [number, number][] = []
   for (const p of track.points) {
     if (p.t > t) break
-    if (p.gap && current.length) {
+    if ((p.gap || p.sparse) && current.length) {
       segments.push(current)
       current = []
     }
@@ -701,7 +733,9 @@ export function trailSegmentsBanded(
   for (const p of track.points) {
     if (p.t > t) break
     const b = bandOf(p.t)
-    if (p.gap) {
+    if (p.gap || p.sparse) {
+      // Sparse hops break the solid line exactly like gaps — the dashed
+      // connector layer (sparseHops) tells that part of the story.
       for (const bd of bands) { if (bd.current.length) { bd.segments.push(bd.current); bd.current = [] } }
       prevBand = null
     } else if (prevBand !== null && b !== prevBand) {
@@ -758,7 +792,7 @@ export function trailSegmentsSpeed(
   let prevCls: number | null = null
   for (const p of track.points) {
     if (p.t > t) break
-    if (p.gap || !prev) {
+    if (p.gap || p.sparse || !prev) {
       for (const b of buckets) { if (b.current.length) { b.segments.push(b.current); b.current = [] } }
       prev = p
       prevCls = null

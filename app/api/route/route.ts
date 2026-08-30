@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ipRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 20
@@ -60,15 +61,32 @@ function instructionFor(m: { type?: string; modifier?: string; exit?: number }, 
 
 const pair = (v: string | null) => {
   const [a, b] = (v ?? '').split(',').map(Number)
-  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(b) <= 90 ? ([a, b] as [number, number]) : null
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 180 && Math.abs(b) <= 90 ? ([a, b] as [number, number]) : null
+}
+
+/** Great-circle km — bounds how much OSRM compute one call can demand. */
+function kmBetween(a: [number, number], b: [number, number]): number {
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180
+  const dLng = ((b[0] - a[0]) * Math.PI) / 180
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos((a[1] * Math.PI) / 180) * Math.cos((b[1] * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
 export async function GET(req: NextRequest) {
+  // A person taps a map a few times a minute; a relay scraper doesn't.
+  if (ipRateLimited(req, 'route', 30)) {
+    return NextResponse.json({ error: 'Slow down a little — try again in a minute.' }, { status: 429 })
+  }
   const sp = req.nextUrl.searchParams
   const from = pair(sp.get('from'))
   const to = pair(sp.get('to'))
   if (!from || !to) {
     return NextResponse.json({ error: 'from and to are required as lng,lat' }, { status: 400 })
+  }
+  // Crews drive to the supply house, not across the continent — the cap
+  // also destroys this endpoint's value as a bulk OD-matrix relay.
+  if (kmBetween(from, to) > 400) {
+    return NextResponse.json({ error: 'That trip is beyond in-app directions — use your maps app for long hauls.' }, { status: 400 })
   }
 
   const key = `${from.map((n) => n.toFixed(4))}|${to.map((n) => n.toFixed(4))}`

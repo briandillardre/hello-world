@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ipRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 15
@@ -102,6 +103,9 @@ async function fetchRoute(callsign: string): Promise<PlaneRoute | null> {
 }
 
 export async function GET(req: NextRequest) {
+  if (ipRateLimited(req, 'plane', 30)) {
+    return NextResponse.json({ error: 'slow down' }, { status: 429 })
+  }
   const sp = req.nextUrl.searchParams
   // These interpolate into upstream URLs/bodies — reject anything that isn't
   // shaped exactly like an icao24 hex or an ADS-B callsign.
@@ -114,12 +118,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'bad callsign' }, { status: 400 })
   }
   const callsign = cs || null
-  const lat = Number(sp.get('lat'))
-  const lon = Number(sp.get('lon'))
-  const posOk = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
-  if (callsign && !posOk) {
-    return NextResponse.json({ error: 'lat/lon required' }, { status: 400 })
-  }
+  // (lat/lon were only needed by the retired adsb.lol routeset body — adsbdb
+  // looks up by callsign alone, so position is no longer required.)
 
   const key = `${hex}|${callsign ?? ''}`
   const hit = cache.get(key)

@@ -50,6 +50,10 @@ export function hexHeatGeoJSON(
 
   for (const tr of tracks) {
     if (!filter.has(tr.type)) continue
+    // Tools clone their carrier's path (pairing episodes) — counting them
+    // here doubles the carrier's dwell once per tag aboard (Brian's truck
+    // with 3 tags would stack 4× hills). The carrier already tells it.
+    if (tr.type === 'tool') continue
     const isSel = selId != null && tr.assetId === selId
     const rate = ratePerHr?.get(tr.assetId) ?? 0
     const pts = tr.points

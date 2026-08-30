@@ -32,7 +32,9 @@ export interface PlaneInfo {
 const cache = new Map<string, Promise<PlaneInfo>>()
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c])
+/** Shared HTML escaper — MapView's sky popup interpolates ADS-B feed text
+ *  (flight idents, type codes) into setHTML and must run it through here. */
+export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c])
 
 const httpsOnly = (u: string | undefined): string | null =>
   typeof u === 'string' && u.startsWith('https://') ? u : null

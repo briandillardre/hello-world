@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { AssetWithLocation, Geofence, Place } from '@/lib/types'
@@ -86,6 +86,15 @@ const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], brand = null, bootstrap = false }: MapPageClientProps) {
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const [places, setPlaces] = useState<Place[]>(initialPlaces)
+  // A just-saved/renamed/removed place must not flicker away when a
+  // /api/map-data tick that was already in flight answers without it —
+  // same class of race the fence-* guard above solves for zones. Local
+  // edits win for one full tick cycle.
+  const placesDirtyUntil = useRef(0)
+  const changePlaces = useCallback((p: Place[]) => {
+    placesDirtyUntil.current = Date.now() + 25_000
+    setPlaces(p)
+  }, [])
   const router = useRouter()
 
   // ── Shell-first boot: last visit's pins from localStorage paint instantly,
@@ -122,7 +131,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
           setBoot(j)
           // Keep optimistic just-drawn zones (temp fence-* ids) on top.
           setGeofences((prev) => [...j.geofences, ...prev.filter((g) => g.id.startsWith('fence-'))])
-          if (Array.isArray(j.places)) setPlaces(j.places)
+          if (Array.isArray(j.places) && Date.now() > placesDirtyUntil.current) setPlaces(j.places)
           try {
             // Preserve the cached history slice — this write fires every 20s
             // and clobbering `hist` would undo the instant-trails boot.
@@ -287,7 +296,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
         assets={effAssets}
         geofences={geofences}
         places={places}
-        onPlacesChanged={setPlaces}
+        onPlacesChanged={changePlaces}
         tracks={tracks}
         historyRows={effectiveHistory}
         siteOverlays={effSiteOverlays}
