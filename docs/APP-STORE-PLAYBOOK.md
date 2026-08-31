@@ -13,6 +13,18 @@
 > the Play-required prominent disclosure. When submitting: Play Console will
 > ask for a location declaration — answer: foreground only, core feature =
 > live crew map + site clock-in, disclosure shown in-app before the prompt.
+>
+> **The same release carries the NEW LAUNCHER ICONS (Aug 30).** Old icon was
+> flat #002946 — read GRAY next to other apps at 48px (Brian's home-screen
+> screenshot). New: rich navy gradient ground, white pin+hammer, AMBER
+> signal arcs, regenerated at every density (legacy + round + adaptive
+> foreground), plus a `<monochrome>` layer so Material-You themed-icon users
+> get a crisp tinted mark instead of a blob. iOS 1024 and the Play 512
+> (`store-assets/play-icon-512.png` — upload in Play Console → Store
+> listing) match. NOTE: a launcher icon is a STATIC resource — Android has
+> no supported way to recolor it at runtime on events (activity-alias swaps
+> break home-screen placement), so the arcs are amber always and the
+> NOTIFICATION BADGE is the "something happened" signal.
 
 ## Architecture (decided)
 
