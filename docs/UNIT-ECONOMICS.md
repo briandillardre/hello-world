@@ -9,7 +9,7 @@ Internal doc — vendor names live here and in CLAUDE.md only, never user-facing
 ## The one-paragraph answer
 
 **KORE quote landed Jul 13 (Felix — docs/HARDWARE-PRICING.md) and it beats
-the worst case:** pooled 10–25 MB plans run **$0.70–$1.56/SIM/mo** vs the
+the worst case:** pooled 10–25 MB plans run **well under $2/mo (confidential KORE quote)** vs the
 $1.75 planning number, and hardware came in at $86 OBD / $83 battery unit /
 $20 tags. At quoted SIM pricing, all-in COGS for a tracked machine is
 **~$3.40/mo at Founding-25 scale, falling to ~$1.50 at 1,000 devices** — so a $6–8/tracked-asset price is
@@ -58,7 +58,7 @@ device #11).
   $0.0106/GB-hr. No hard spend cap on Pro — set spend alerts.
 - **Hologram (pilot actuals)** — ~$1–2/SIM/mo at our usage profile
   (~5–10 MB/mo per truck: Codec 8E records are ~100–150 bytes on the wire).
-- **KORE (quoted Jul 13, Felix)** — pooled 10 MB $0.70–1.20, 25 MB
+- **KORE (quoted Jul 13, Felix)** — pooled 10 MB <$1–1.20, 25 MB
   $0.81–1.56, 50 MB $1.08–2.04 per SIM/mo; SIM $1.50 one-time. New
   planning number: **$1.00/SIM/mo** (volume breaks still to ask).
 - **MapTiler** — Free tier is non-commercial. **Flex $25/mo** (+$0.10 per
@@ -179,7 +179,7 @@ in dozens per week, not thousands per day.
 
 ## 5 · Felix / Kore ask list — status after the Jul 13 quote
 
-1. ~~Price structure at ~10 MB profile~~ ✅ **$0.70–1.56/SIM/mo pooled** (docs/HARDWARE-PRICING.md)
+1. ~~Price structure at ~10 MB profile~~ ✅ **well under $2/mo (confidential KORE quote) pooled** (docs/HARDWARE-PRICING.md)
 2. ~~Multi-IMSI fallback~~ ✅ two families quoted: SuperSIM (AT&T/T-Mo/Verizon) and Carrier+ (AT&T native + failover) — **still to confirm which column is which**
 3. Volume breaks at 100 / 1,000 / 10,000 SIMs (quote reads flat)
 4. **Zero-usage months** — dormant winter SIM cost + suspend/reactivate API

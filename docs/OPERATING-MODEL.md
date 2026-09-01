@@ -8,11 +8,18 @@ alongside; same formulas, three growth scenarios.*
 
 ## Base-case assumptions (change these, everything recomputes)
 
-- **ARPU $92/customer/mo** — 8 tracked machines × $7 + 12 tool tags × $3.
-  Hardware passes through at cost (not in the P&L; see float note).
+- **ARPU: $84 founding / $113 list** — 8 tracked machines + 12 tool tags.
+  Founding = 8 × $6 + 12 × $3 = $84; list = 8 × $8 + 12 × $3 plus the
+  platform fee blended at 60% Operate ≈ $113 (same numbers as
+  COST-SCALE-2026-07.md). The quarterly table below was run at $92, roughly
+  the midpoint — the /model page recomputes live. Hardware passes through at
+  cost (not in the P&L; see float note).
 - **Customer adds/mo:** 1 (Aug–Dec 2026, Founding 25) → 3 (2027 H1) → 4
   (2027 H2) → 6 (2028 H1, dealer channel live) → 8 (2028 H2).
   Ends 2028 at **131 customers ≈ $12.1k MRR ($145k ARR)**.
+  **Actuals:** Aug 2026 produced 0 adds — 0 paying customers on Sep 1 2026,
+  hardware order #1 installed, selling is the constraint. S1 is due this
+  month and no hire is recorded as of Sep 1.
 - **COGS** per docs/UNIT-ECONOMICS.md: $1.75/SIM + the fixed-stack tiers
   (flespi from device 11, Supabase/Vercel/tile steps).
 - **Software & office:** $120/mo base (Google Workspace, QuickBooks, Twilio,
@@ -73,8 +80,10 @@ excavator payments, still self-funding.
 2. **First breakeven month: May 2027 at ~20 customers.** After that the P&L
    oscillates around zero on purpose — every surplus gets spent on the next
    hire or more ads. Profit is a choice you defer while growth is working.
-3. **The sawtooth is the plan, not a problem.** H1 (Aug '27) and H2 (Jul '28)
-   each erase the margin for ~2 quarters. If a jump doesn't recover within 3
+3. **The sawtooth is the plan, not a problem.** The jumps are S1 (Sep '26 —
+   the Aug '27 H1 step is absorbed into it: S1's hours grow at the
+   30-customer trigger instead of a second head) and H2 (Jul '28); each
+   erases the margin for ~2 quarters. If a jump doesn't recover within 3
    quarters, growth stalled — freeze hiring, fix acquisition.
 4. **Watch two dials, ignore the rest:** customer adds/mo (the only real
    growth lever) and churn (assumed ~0 here — Founding 25 lock-ins make that

@@ -80,7 +80,7 @@ dashboard, flespi Toolbox open.
    (Send SMS). Every command starts with **two leading spaces** (empty
    login/password):
    - APN: `  setparam 2001:hologram`
-   - Server: `  setparam 2004:ch1401177.flespi.gw;2005:24397;2006:0`
+   - Server: `  setparam 2004:<channel-host>:<port> (flespi console);2005:24397;2006:0`
    - Beacons + records: `  setparam 113:1;800:2;1115:1;134:1;136:1`
    The device replies "New value …" — check the SIM's message log (Events)
    for the confirmation. USB + Teltonika Configurator works too, but SMS is
@@ -149,7 +149,7 @@ The Hologram sections above are for the two July pilot units only.*
    Configurator OFFLINE — pick the template matching the device's firmware
    shown in FOTA (FW 04.01.00 → "Configuration 13.0.0.0" template; do NOT
    use a newer template than the firmware):
-   - **GPRS:** APN `super`, no user/pass · Domain `ch1401177.flespi.gw`,
+   - **GPRS:** APN `super`, no user/pass · Domain `<channel-host>:<port> (flespi console)`,
      Port `24397`, TCP, TLS None · leave FOTA WEB block ENABLED
      (fm.teltonika.lt:5000 — that's the management lifeline)
    - **System:** Data Protocol = Codec 8 Extended

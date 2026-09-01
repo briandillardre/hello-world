@@ -2,12 +2,21 @@
 
 *Created Jul 15, 2026 — the day the LLC + EIN unlocked store accounts.*
 
-> **Next Play/App Store release must carry the LOCATION permissions (Aug 30).**
+> **Status Sep 1 2026 — Android v1.2 (versionCode 5) is BUILT, upload
+> pending.** The android-release workflow produced the signed AAB on Sep 1
+> (run 4, green). It carries the LOCATION permissions, the new launcher
+> icons and the /map entry described below. Brian uploads it in Play Console
+> → Production → Create release — or adds the `PLAY_SERVICE_ACCOUNT_JSON`
+> secret (setup below) and the workflow uploads by itself from then on.
+> Android has been live in Play Production since Aug 21; iOS is blocked on
+> Apple's Aug 31 document request (account checklist below).
+>
+> **v1.2 carries the LOCATION permissions (Aug 30).**
 > `AndroidManifest.xml` now declares `ACCESS_COARSE_LOCATION` +
 > `ACCESS_FINE_LOCATION` (foreground only — deliberately NOT
 > `ACCESS_BACKGROUND_LOCATION`, which triggers Play's heavy background-
-> location review we don't need for foreground Go Live tracking). Until that
-> release ships, the installed Android app CANNOT show the OS location
+> location review we don't need for foreground Go Live tracking). Until
+> v1.2 rolls out, the installed Android app CANNOT show the OS location
 > prompt — the WebView auto-denies. The web-side first-open primer
 > (`components/LocationPrimer.tsx`) is live everywhere already and doubles as
 > the Play-required prominent disclosure. When submitting: Play Console will
@@ -36,7 +45,13 @@
 ## Architecture (decided)
 
 **Capacitor thin shell around the live web app.** The native app loads
-`https://hammertrack.ai` directly (`capacitor.config.ts` → `server.url`).
+`https://hammertrack.ai/map` directly (`capacitor.config.ts` → `server.url`)
+and appends `HammerTrackApp/1` to its user agent. The entry is /map, not the
+marketing root — Brian's screen 1 after installing was the hero page with a
+hamburger and "Start free pilot" (Aug 28). Builds installed before v1.2 still
+point at the root, so `app/AppEntryRedirect.tsx` sends any Capacitor shell
+that lands there to /map client-side — that layer reaches already-installed
+apps on the next web deploy, no store release needed.
 
 Why this shape — it optimizes for Brian's #1 constraint (*"keep maintenance
 and new features as streamlined and simple as possible"*):
@@ -56,8 +71,11 @@ projects, committed).
 Apple sometimes rejects pure web wrappers. Mitigation plan, in order:
 1. Ship v1.0 with **push notifications** wired (theft alerts to the lock
    screen — genuinely native, and our killer feature).
-2. Add **background location** for the crew phone-tracking (/track) and
-   **camera** for receipt capture — both native-only capabilities.
+2. Add **camera** for receipt capture (native-only). Location stays
+   **foreground only** by decision — Android deliberately does not request
+   `ACCESS_BACKGROUND_LOCATION` (top note). Whether iOS ever adds background
+   location is a separate, future per-platform decision, not a planned
+   mitigation.
 3. In App Review notes, lead with the native capabilities + demo login.
 If rejected anyway: appeal with the native feature list; worst case we bundle
 more UI into the shell. Android has no equivalent rule — Play will approve
@@ -65,37 +83,51 @@ the wrapper as-is.
 
 ## Account checklist (Brian — in this order)
 
-1. **D-U-N-S number** — FREE, **do this first, it's the longest pole**
-   (typically ~2–5 business days, can take longer).
-   dnb.com → "Get a D-U-N-S Number" → HAMMERTRACK LLC, Greenville SC address
-   exactly as on the IRS CP 575 G. Both Apple *and* Google now require it for
-   organization accounts.
-2. **Apple Developer Program** — $99/yr — developer.apple.com/programs →
-   enroll as **Organization** (needs the D-U-N-S, legal entity name
-   HAMMERTRACK LLC, website hammertrack.ai, and an Apple ID). Org enrollment
-   makes the App Store seller show "HammerTrack LLC" instead of a personal name.
-3. **Google Play Console** — $25 one-time — play.google.com/console →
-   **Organization** account (also wants D-U-N-S, business email on the domain,
-   verified website). Org accounts skip the 12-tester/14-day closed-testing
-   requirement that personal accounts have.
-4. **Firebase project** (free) — needed for Android push later; also gives us
-   FCM keys. console.firebase.google.com → new project "HammerTrack".
+1. **D-U-N-S number** — ✅ LANDED early Aug 2026 (D&B account created Jul
+   31; number confirmed Aug 8). Never file again — duplicate records are slow
+   to merge. The dnb.com record must read HAMMERTRACK LLC + the Greenville
+   address verbatim; Apple matches it literally.
+2. **Apple Developer Program** — 🔴 BLOCKED (Aug 31). Enrollment
+   N37H75H2FX, case 20000149520723. Apple cannot verify Brian's identity nor
+   his association with HAMMERTRACK LLC. Upload at
+   developer.apple.com/contact/file-upload: (1) driver's license, front AND
+   back; (2) employment/ownership verification; (3) an LLC formation
+   document — SC Articles of Organization / Certificate of Formation (a
+   business license is also accepted). Case replies land on
+   Brian’s personal inbox (the Aug 27 ones went to brian@hammertrack.ai —
+   watch both). The $99/yr is charged on approval.
+3. **Google Play Console** — ✅ DONE. Organization account; identity +
+   website ownership verified Aug 9; `com.hammertrack.app` live in
+   Production since Aug 21 (update Aug 27; v1.2 built Sep 1, upload
+   pending). Org accounts skip the 12-tester/14-day closed-testing rule.
+   **Sep 30 2026 check:** Google requires every Play app to be registered
+   for Android developer verification by then — >99% were auto-registered;
+   confirm the package reads "registered" on the Play Console home page
+   rather than assuming.
+4. **Firebase project** — ✅ DONE (project hammertrack-app, FCM v1 sender;
+   `FCM_SERVICE_ACCOUNT` in Vercel; Android push end-to-end since Aug 9).
 
-When these exist, hand over: Apple team ID + an App Store Connect invite,
-Play Console invite, Firebase config files (`google-services.json` /
-`GoogleService-Info.plist`).
+Still to hand over once Apple clears: Apple team ID + an App Store Connect
+invite, and the 3 ASC_* secrets that arm the TestFlight lane.
 
-## Build + submit (once accounts exist)
+## Build + submit
 
-Native builds need Android Studio (any OS) and Xcode (Mac) — or a CI service.
-- `npx cap sync` — pushes web config + plugins into both native projects
-- **Icons/splash:** `npx @capacitor/assets generate` from a 1024×1024 logo
-  (use the HammerTrack mark on navy #0a1420)
-- Android: open `android/` in Android Studio → generate signed AAB → Play
-  Console upload. Keep the signing keystore backed up (losing it = losing the
-  app listing).
-- iOS: open `ios/App` in Xcode → set the team → Archive → upload to
-  App Store Connect → TestFlight first, then submit.
+- **Android — the `android-release` workflow does it** (proven Sep 1 2026,
+  v1.2): bump `versionCode` / `versionName` in `android/app/build.gradle`
+  (Play rejects a REUSED versionCode; skipped numbers are free — when in
+  doubt, jump higher), dispatch the workflow on master → it runs `cap sync`,
+  signs the AAB from the 4 `ANDROID_*` secrets, and — with
+  `PLAY_SERVICE_ACCOUNT_JSON` set — uploads straight to the production
+  track; without it the signed AAB is the artifact to upload by hand in Play
+  Console → Production → Create release. Release rule (Brian, Aug 31):
+  always release, no permission needed. Keep the signing keystore backed up
+  (losing it = losing the app listing). Android Studio is for local
+  debugging only.
+- **Icons/splash:** regenerated Aug 30 at every density from the navy/amber
+  mark (`store-assets/play-icon-512.png` is the Play 512).
+- **iOS:** `ios/App/fastlane/Fastfile` (produce → certs → build →
+  TestFlight) arms with the 3 ASC_* secrets on enrollment-approval day;
+  nothing to do until Apple clears. Xcode only for local debugging.
 
 ## Store listing prep (can be done anytime)
 - Name: **HammerTrack** · subtitle: "Know where everything is"
@@ -108,17 +140,25 @@ Native builds need Android Studio (any OS) and Xcode (Mac) — or a CI service.
   user-initiated). No ads, no tracking-for-advertising.
 
 ## Native roadmap after v1
-1. **Push notifications** (theft alert → lock screen; the reason the app exists)
-2. **Background location** — /track "Go Live" keeps reporting with screen off
+1. **Push notifications** — ✅ DONE for Android (FCM v1, Aug 9 — theft alerts
+   to the lock screen). iOS push (APNs) waits on Apple enrollment.
+2. **Location** — foreground "while using the app" ships in v1.2 (Android).
+   Background location is deliberately NOT requested on Android; iOS is a
+   separate decision at submission time.
 3. **Camera** — receipt-chase capture flow
 4. **BLE scanning** — every crew phone becomes a roaming tool-tag gateway
 
-## Timeline (realistic)
-- Day 0: D-U-N-S request submitted
-- Day ~3–7: Apple + Google enrollments approved
-- Same week: icons, signed builds, TestFlight + Play internal track
-- Store review: Apple 1–3 days, Google similar for new apps
-- **Live in roughly 2–3 weeks**, gated almost entirely by account approvals
+## Timeline (actuals)
+- Jul 31: D-U-N-S requested · early Aug: landed.
+- Aug 9: Apple enrollment + Play org account filed; Play verified identity +
+  website the same day.
+- Aug 21: **Android LIVE in Play Production — 12 days after enrollment.**
+- Aug 27: Play update published · Aug 31: Apple, 3+ weeks in, asks for
+  identity + LLC documents — blocked until Brian uploads them.
+- Sep 1: v1.2 built by the release workflow; Play upload pending.
+- The old estimate ("live in 2–3 weeks, gated by account approvals") held
+  for Google and missed for Apple — Apple's organization verification is the
+  long pole, not store review.
 
 ## Shipping a new Android build (the icon lesson, Aug 31 2026)
 
@@ -150,7 +190,10 @@ build contains them.
    first and fails fast with a pointer if it is missing. Values are in the
    password manager — never in the repo.
 3. **Run the `android-release` workflow** (Actions → android-release → Run
-   workflow). Manual dispatch only, deliberately: releases are not automatic.
+   workflow). Manual dispatch only — and since Brian's Aug 31 release rule,
+   Claude dispatches it without asking once native-affecting changes merge.
+   With the optional `PLAY_SERVICE_ACCOUNT_JSON` secret set, steps 4–5 below
+   happen inside the workflow.
 4. **Download the signed AAB artifact** from that run.
 5. **Play Console → Production → Create new release**, upload the AAB, add
    release notes, roll out.

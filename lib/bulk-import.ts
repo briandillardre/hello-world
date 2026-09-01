@@ -440,7 +440,7 @@ export function resolveRow(
     if (/^\d[.,]?\d*[eE][+-]?\d+$/.test(digits)) {
       issues.push({ col: 'tracker', level: 'error', text: `Excel turned this into "${trackerRaw}" — format that column as Text and re-copy the IMEI` })
     } else if (!/^\d+$/.test(digits) && extractImei(trackerRaw)) {
-      // "IMEI: 868996068802222" / "868996068802222 (T1-a)" — pull the real
+      // "IMEI: 8689960688xxxxx" / "8689960688xxxxx (T1-a)" — pull the real
       // 15-digit run out rather than storing the label around it.
       const found = extractImei(trackerRaw)!
       if (!luhnOk(found)) {

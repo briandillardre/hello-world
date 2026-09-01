@@ -6,7 +6,7 @@
 -- wasn't empty before hardware arrived. Hardware is live now — clear them out.
 --
 -- KEEPS: any asset wired to a real T1 tracker (15-digit IMEI tracker_id),
--- e.g. "Chevy 1500 - Brian" (868996068802222), and all of its history.
+-- e.g. "Chevy 1500 - Brian" (<pilot-truck-imei>), and all of its history.
 -- The marketing /demo page is unaffected — its data lives in code
 -- (lib/mock-data.ts), not in this database.
 --
