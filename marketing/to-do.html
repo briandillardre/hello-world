@@ -1,85 +1,20 @@
-<!-- HammerTrack to-do — rendered view of the live action list. Updated Aug 22 2026.
-     PUBLIC REPO: no vendor pricing, no EIN, no personal contact details. -->
-<title>HammerTrack — To Do</title>
+<!-- HammerTrack to-do — RETIRED Sep 1 2026. The founder to-do now lives at
+     https://hammertrack.ai/board (live, generated from lib/board.ts). This
+     stub exists only so old links land somewhere honest. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HammerTrack — to-do moved</title>
 <style>
-  :root { --navy:#001523; --panel:#00243d; --line:#0e3a5c; --ink:#e8f0f7; --muted:#9fb6cc; --amber:#ff9e16; --teal:#2dd4bf; --red:#f87171; }
-  body { background:var(--navy); color:var(--ink); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; margin:0; padding:28px 16px 60px; }
-  .wrap { max-width:780px; margin:0 auto; }
-  h1 { font-size:24px; margin:0 0 2px; } .sub { color:var(--muted); font-size:12.5px; margin:0 0 22px; }
-  h2 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; margin:26px 0 10px; }
-  h2.now { color:var(--red); } h2.week { color:var(--amber); } h2.wait { color:var(--teal); } h2.later { color:var(--muted); }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:10px; }
-  .card b { font-size:15px; } .why { color:var(--muted); font-size:13px; display:block; margin-top:3px; }
-  .min { color:var(--teal); font-size:11.5px; font-weight:700; margin-left:6px; }
+  :root { --navy:#001523; --panel:#00243d; --line:#0e3a5c; --ink:#e8f0f7; --muted:#9fb6cc; --amber:#ff9e16; }
+  body { background:var(--navy); color:var(--ink); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; margin:0; padding:48px 16px; }
+  .card { max-width:560px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px 24px; }
+  h1 { font-size:22px; margin:0 0 10px; }
+  p { color:var(--muted); margin:0 0 14px; }
+  a { color:var(--amber); font-weight:700; text-decoration:none; }
+  a:hover { text-decoration:underline; }
 </style>
-<div class="wrap">
-  <h1>HammerTrack — To Do</h1>
-  <p class="sub">Ordered by importance · updated Aug 22, 2026 · items Claude can't do for you</p>
-
-  <h2 class="week">🗓 Timeline — what lands when</h2>
-  <div class="card">
-    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">SAT Aug 22, 9–11am</td><td style="padding:4px 8px;color:var(--muted)">SIM day (on your calendar) — send Matt the KORE draft (fill the address) → APN answer → one-unit pipeline test → 13-unit install begins Sun 10am. Tap the mail-forwarding confirm.</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 22–25</td><td style="padding:4px 8px;color:var(--muted)">Google Play review verdict expected (submitted Aug 21). App goes LIVE on approval — Founding-25 texts get a store link.</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 23</td><td style="padding:4px 8px;color:var(--muted)">Apple 2-week mark — if N37H75H2FX still pending, contact Apple Developer Support.</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--red);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Aug 31</td><td style="padding:4px 8px;color:var(--muted)"><b>HARD DEADLINE:</b> Google Ads advertiser verification (acct 346-100-1886) or the ads account pauses.</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">This week</td><td style="padding:4px 8px;color:var(--muted)">Stripe on (card 1) · first five outreach texts (card 4) · KORE reply to Matt (card 3).</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Early Sept</td><td style="padding:4px 8px;color:var(--muted)">Founding-25 push with fleet installed + app in the store · QBO connect + timesheet push · cost rates on the big iron (Burn Map tells truth).</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">Sept–Oct</td><td style="padding:4px 8px;color:var(--muted)">$50k decision gate: Stripe live + first 5 paying + KORE units 30 days churn-free + $1k ad test CAC ≤ $400 (docs/OPERATING-MODEL.md).</td></tr>
-      <tr><td style="padding:4px 8px;color:var(--amber);font-family:ui-monospace,Menlo,monospace;white-space:nowrap">This quarter</td><td style="padding:4px 8px;color:var(--muted)">QSBS C-corp conversation with CPA + equity gifting with attorney — the clock only starts when shares exist.</td></tr>
-    </table>
-  </div>
-
-  <h2 class="week">🤝 Triage — whose plate is what (Aug 22)</h2>
-  <div class="card">
-    <span class="why" style="margin-top:0"><b style="color:var(--ink)">YOURS (dashboards, hardware, money, legal — Claude can't reach these):</b><br>
-    Store watch + forwarding tap (0) · Stripe (1) · Google Ads by Aug 31 (2) · KORE reply — draft in your Gmail (3) · first five texts (4) · SIM day + installs (6) · Vercel env vars incl. FCM push key (7, 7b) · QBO production connect · cost rates on machines (13) · QSBS CPA + gifting attorney · Apple/Play verdict taps.</span>
-    <span class="why"><b style="color:var(--ink)">CLAUDE'S (all code — say "go" and they ship):</b><br>
-    ✅ SHIPPED Aug 21–22 while you slept: <b>Agent Interface (MCP) LIVE</b> at /api/mcp (any AI + your company key) · QBO timesheet push (live the moment you connect QBO) · offline field queue · per-company keys · in-app help center · in-app Ask now answers from the same brain as the MCP door · <b>map/pages UX batch</b> — fleet chips replace the layers-panel clutter, /command first-switch crash fixed, asset list shows status + place instead of an IMEI, maintenance dollars gated to cost roles. ALSO SHIPPED in the 2–3 AM burst, all from your phone feedback: radar slide-out with hand scrubber · type silhouettes in the dots + smaller tools · layers as a half-width LEFT DRAWER (assets dropdown first, "Basemap", "Advanced weather", banded headers, no sticky tap-glow) · bottom-right thumb cluster (Search + Layers + AskAI) · smooth follow camera with your pinch preserved · save-view overwrite · plane info box that tracks the plane · Wayback HISTORICAL IMAGERY year slider · human durations ("8d 19h") · company logo in the top bar, best-in-class order · Maxar credits folded to the (i) · Measurements toggle fixed. <b>SECOND BURST (4–6 AM, your feedback + "run the backlog"):</b> account deletion behind its own type-DELETE screen (admins only — reviewer caught crew could file it) · Op model out of customer nav, founder-gated at /model · bottom bar EDITABLE (More → Edit; first 5 fill the bar, AskAI dead center, order follows your login to any phone) · Settings minimum-info pass (dev text gone, API key behind an admin-only fold) · advanced-weather rows stay put when toggled · road closures copy state-neutral + honest errors · AskAI zone visits + NEW Friday-digest "Who was where" both read the exact ledger (the old path silently showed only the newest day — and the hourly rebuild was EATING sessions past 48h; both fixed, year re-healed) · /command paints instantly, same data feed as /map, phone bottom bar + matching trays/timeline · trails fade with age on both maps · api_key + billing columns locked at the DB (072) · 30-day staleness policy on queued clock-outs · BusyBar on every slow flow. <b>THIRD WAVE (Brian's 8c picks + the 4-AI review doc):</b> top-bar search that also finds ADDRESSES · one Camera button (360/Fly/Follow folded) · Sunlight mode · marker grammar LIVE (one state ring: amber moving / teal working / grey asleep / red thickening with idle days / red pulse = alert; ⚠-beats-🛠 attention slot top-right; tools-aboard count bottom-right, kept per your call; badges wait for town zoom) · ALERTS REBUILT (one honest number, grouped per machine, repeats coalesce ×N, theft pinned red and never bulk-acked or snoozed, snooze-til-6AM for the rest) · role-default bottom bars + More grouped Watch/Field/Office/Setup · Team activity now OWNER-only · TODAY card pops on the map each morning with the exceptions that matter · marker-glyph sketch + Regrid/ReportAll draft emails in your Gmail. NEXT UP: PM Tier 1 when you call it · wow-pack tier 2 · remaining 8c letters (b/d/g/h/i) whenever.</span>
-    <span class="why"><b style="color:var(--ink)">SHARED:</b><br>
-    Hardware provisioning playbook (Claude writes, you field-test) · app-store review replies (you screenshot, Claude drafts) · store screenshots (your phone, Claude's shot list).</span>
-  </div>
-
-  <h2 class="now">🔴 This week — the money path</h2>
-  <div class="card" style="border-color:rgba(248,113,113,.5)"><b>0 · Store watch: Play IN REVIEW · Apple N37H75H2FX pending</b><span class="min">check daily</span>
-    <span class="why"><b>Play: SUBMITTED Aug 21</b> (production, all countries) — verdict typically 1–3 days, email to brian@hammertrack.ai. <b>Apple: enrollment N37H75H2FX</b> (filed Aug 9) — watch for a verification CALL from a California number; still pending by Aug 23 → contact Apple Developer Support with the ID. NEVER re-file. Both verdicts land at brian@hammertrack.ai — <b>tap the Aug 14 forwarding-confirmation email in your DCG inbox</b> ("HammerTrack Forwarding Confirmation") or nobody sees them.</span></div>
-  <div class="card"><b>1 · Turn on Stripe</b><span class="min">~30 min, once</span>
-    <span class="why">dashboard.stripe.com → account under HAMMERTRACK LLC (Mercury account + EIN) → two recurring prices: Tracked machine $6/mo, Tool tag $3/mo → webhook endpoint hammertrack.ai/api/stripe/webhook → paste the 4 STRIPE_ env vars into Vercel → redeploy. Unlocks billing AND the deposit Payment Links that fund the next hardware order.</span></div>
-  <div class="card"><b>2 · Google Ads advertiser verification — deadline Aug 31</b><span class="min">~15 min</span>
-    <span class="why">Account 346-100-1886 gets PAUSED if verification isn't finished by Aug 31 (email from Aug 1 in your DCG inbox). ads.google.com → the verification notice (bell icon or Billing → Advertiser verification) → answer the about-your-business questions → upload the EIN letter (CP 575 on your phone) or SC LLC registration when asked. Review takes a few days — don't let it eat the funnel. (Old item here — SQL Editor migrations — is dead: auto-migrations run on every deploy.)</span></div>
-  <div class="card"><b>3 · Reply to KORE (Matt)</b><span class="min">2 min</span>
-    <span class="why">Two lines: legal name HAMMERTRACK LLC + the business address, exactly as it should appear on the connectivity agreement. Unblocks the DocuSign → SIMs ship with the order. No CP 575 needed.</span></div>
-  <div class="card"><b>4 · Send the first five</b><span class="min">this week</span>
-    <span class="why">marketing/founding-25-outreach.md — 5 texts Monday, 2 dealer counter asks Wednesday, theft-post script within the hour when one appears. Demo link + hammertrack.ai/reserve. First five signups are the references that sell the next twenty.</span></div>
-
-  <h2 class="week">🟠 Next — product &amp; pipeline</h2>
-  <div class="card"><b>5 · Field-test the latest ships on your phone</b>
-    <span class="why">The map got rebuilt around your thumb tonight — field-test: bottom-right cluster (Search/Layers/AskAI) · left drawer with Assets dropdown · dot silhouettes at your normal zooms · radar pull-handle + drag scrubber · follow camera smoothness (Orbit/Overhead/Chase on yesterday's RAM replay) · Historical imagery year slider on a site you've worked · /command gets all of it too. Screenshot anything off.</span></div>
-  <div class="card" style="border-color:rgba(255,158,22,.6)"><b>6 · SIM DAY (units arrived Aug 20, SIMs Aug 21)</b><span class="min">today</span>
-    <span class="why">Order of operations: (1) text Matt for SuperSIM APN settings — NOT Hologram's — and ask if KORE pushed our flespi profile (ch1401177.flespi.gw:24397); (2) ONE OBD unit: SIM in, plug into a truck, ignition on, confirm it appears in flespi then moves on /map; (3) only then do the other 12. FMM00A battery plug ships disconnected — click it in. Create each asset with its IMEI BEFORE power-on (ingest drops unknown trackers). Puck batteries won't survive outside — wire 12V where machines have it. Install last puck (Minor 4).</span></div>
-  <div class="card"><b>7 · Vercel env odds &amp; ends</b>
-    <span class="why">NEXT_PUBLIC_PARCEL_SERVICE_URL (Greenville parcels) · QBO redirect URI aligned in Vercel + Intuit app, then retry from /accounting · Supabase Auth → Site URL to https://hammertrack.ai (auth emails still point at vercel.app).</span></div>
-  <div class="card"><b>7b · FCM push key into Vercel</b><span class="min">~5 min</span>
-    <span class="why">FCM_SERVICE_ACCOUNT (the Firebase service-account JSON in your password manager) → Vercel env + redeploy. Without it the Android app can't put theft alerts on the LOCK SCREEN — the whole hook. Do before the app goes live in the store.</span></div>
-  <div class="card"><b>8 · Assistant plumbing</b><span class="min">~5 min</span>
-    <span class="why">brian@hammertrack.ai → DCG Gmail forward (Claude reads the verification code for you) · YouMail voicemail-to-email w/ transcript+MP3 → DCG address · add hammertrack.ai as "Send mail as" in DCG Gmail · add the app to your phone's home screen.</span></div>
-
-  <div class="card"><b>8b · QuickBooks timesheets — ✅ BUILT, waiting on your QBO connect</b>
-    <span class="why">Shipped Aug 22: /logs gets a "Push day to QuickBooks" button per day (GPS-verified hours → TimeActivity, job-costed by zone, double-post-proof). The ONLY gate left is card 7's QBO production connect — the moment that's done, payroll runs off tracker-verified hours.</span></div>
-
-  <div class="card"><b>8c · Decisions Claude needs (best-in-class UX, P2) — one text each</b>
-    <span class="why">Tonight's audit shipped every safe fix; these change layouts you use daily, so they wait for your yes/no: (a) search moves into the top bar as a real field (finds assets, zones AND addresses) · (b) Layers + Ask buttons become bottom corners, thumb-reach · (c) camera toys (360/Fly/Follow) fold behind one Camera button so the timeline bar slims · (d) desktop side panel moves LEFT and widens · (e) marker badges redrawn as one glyph system (needs a sketch) · (f) "sunlight mode" high-contrast toggle for noon in the truck · (g) asset list becomes photo-led cards · (h) Add Asset becomes a 3-step flow for new customers · (i) reports range chips switch instantly instead of a 20s reload. Reply like "yes a, c, f — sketch e".</span></div>
-
-  <div class="card"><b>8d · Let build sessions see the live fleet</b><span class="min">~2 min</span>
-    <span class="why">claude.ai/code → your environment's network policy → allow <b>hammertrack.ai</b>. After that, any build session can query DCG's real fleet through the Agent Interface (read-only, your company key) instead of flying blind on mock data.</span></div>
-
-  <h2 class="wait">🟢 Waiting on others — check, don't push</h2>
-  <div class="card"><b>9 · Twilio toll-free verification</b><span class="why">In review; verdict emails brian@hammertrack.ai. Don't publish the number until the voice greeting exists.</span></div>
-  <div class="card"><b>10 · D-U-N-S</b><span class="why">✅ Landed — both store enrollments filed Aug 9 on the back of it.</span></div>
-  <div class="card"><b>11 · App stores</b><span class="why">Play: ✅ SUBMITTED to production Aug 21 (in review — listing, ratings, data safety, review account all filed; signed AAB v1). Apple: N37H75H2FX processing. On Apple approval: $99 fee → App Store Connect keys into GitHub (3 ASC_* secrets) → TestFlight workflow fires. Android internal-test track also live for crew builds.</span></div>
-
-  <h2 class="later">⚪ Rolling / when you get to it</h2>
-  <div class="card"><b>12 · Mercury vendor migration</b><span class="why">One named virtual card per vendor; get the stragglers off personal cards (Vercel, Supabase, Twilio, Hologram, Workspace, Namecheap, Resend, Anthropic).</span></div>
-  <div class="card"><b>13 · Cost rates on assets</b><span class="why">The Burn Map and Idle $ rings only tell the truth once $/hr and $/day are set per machine — the AI advise-from-specs button helps. Do the big iron first.</span></div>
-  <div class="card"><b>14 · Teltonika solar question</b><span class="why">TAT141 solar accessory availability for equipment parked outside.</span></div>
+<div class="card">
+  <h1>HammerTrack — to-do moved</h1>
+  <p>The founder to-do now lives at <a href="https://hammertrack.ai/board">hammertrack.ai/board</a> — a live page generated from <code>lib/board.ts</code>, so it can't go stale the way this one did. This page was retired Sep 1 2026.</p>
+  <a href="https://hammertrack.ai/board">Open the live board →</a>
 </div>

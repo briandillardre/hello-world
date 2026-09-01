@@ -172,7 +172,10 @@ git history and working sessions. (Dates are commit dates, US Eastern.)
 | Deploys | `claude/...` branch → master, Vercel auto-deploys |
 | Secrets | `hammertrack-*` HMAC prefixes; timing-safe ingest auth |
 
-## Open items
+## Open items (Jul 13 — SUPERSEDED)
+*Everything below was done or overtaken by late August: migrations auto-apply
+on every deploy, hammertrack.ai is on Vercel, T1-b + KORE order #1 are in,
+the theft-alert drill passed Aug 4–5. The live list is hammertrack.ai/board.*
 - Run migrations 018 (pair confirmations), 019 (site weather), 020 (notes) in Supabase.
 - Point remaining DNS fully at Vercel; install T1-b; order equipment trackers + solar, tool tags.
 - After-hours theft alert live test (move the truck outside 07:00–17:00).
@@ -256,3 +259,19 @@ git history and working sessions. (Dates are commit dates, US Eastern.)
   triggered a whole-page zoom that stuck through client-side navigation
   into the map. Touch devices now render all text inputs at 16px.
 - Rain totals got the same opacity slider every other weather layer has.
+
+---
+
+## Aug 24 – Sep 1 2026 · at a glance (one line per ship)
+
+- **Aug 24** — **Showroom company**: a real production account driven by `/api/cron/simulator` through the real flespi ingest; Brian reshapes zones and the trucks re-route on real roads (OSRM). `docs/SHOWROOM.md`.
+- **Aug 24–25** — **Trail rollups** (migrations 077/078), the 500-device scale fix — detail in the block above.
+- **Aug 26** — **KORE no-cable onboarding proven**: SuperSIM (APN `super`) activated in KORE One, config pushed via FOTA WEB, unit on the map without a cable. `docs/DEVICE-ONBOARDING.md`. Full-site audit fixes shipped the same day.
+- **Aug 27** — **Insights engine** (migration 079): nightly deterministic trend watch, 8 detectors, one live row per story with anti-cry-wolf suppression; "Worth a look" on /command.
+- **Aug 27–28** — **Owner memo** (migrations 080/081): monthly facts-only "what lever next" read on /finance, mailed on the 1st; 081 added the `mailed_at` column production never got.
+- **Aug 28** — **Scan-to-map onboarding** (/assets/scan) · **bulk import** (/assets/import) · **per-asset map icons** (28 silhouettes) · **map selection & state language** (dim the rest, gray the dead, ring the tools) · **hardware setup pane** (/assets/onboard) + founder board (/board) · S1 hire amendment · QBO go-live checklist · **app shell opens /map** (server.url + a web-side redirect for already-installed builds).
+- **Aug 28** — **Store listing pack**: real captioned screenshots, tagline, rebuilt feature graphic in `store-assets/` (Play Console re-upload still pending).
+- **Aug 30** — **Navigation wave**: saved Places, OSRM directions with an honest no-traffic ETA, convoys, smoothed aircraft, first-open GPS primer; Android manifest gains foreground location.
+- **Aug 30** — **Launcher icons**: navy that reads navy, amber signal arcs, every density plus a monochrome layer.
+- **Aug 31 – Sep 1** — **Android v1.2** (versionCode 5) cut by the android-release workflow (hands-off Play upload once the service-account secret exists) + the **release rule**: always release, no permission needed. Apple replied Aug 31 asking for identity + LLC documents.
+- **Sep 1** — **RLS lockdown** (migration 086): the Supabase advisor's critical `rls_disabled_in_public` closed on the two tables born outside the migration files; migration runner hardened.

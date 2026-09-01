@@ -33,11 +33,11 @@ hybrid does both jobs:
 | Tracked machine | $8/mo | $8/mo | $8/mo |
 | Tool tags | $3/mo | **25 included**, then $3 | **100 included**, then $2 |
 | Platform fee | $0 | **$49/mo** | **$199/mo** |
-| Live map, theft/after-hours alerts, geofences | ✅ | ✅ | ✅ |
+| Live map, theft/after-hours alerts, zones | ✅ | ✅ | ✅ |
 | Site log, trips, utilization reports | ✅ | ✅ | ✅ |
 | Time clock + daily logs + QR maintenance | — | ✅ | ✅ |
 | Maintenance schedules + service history | — | ✅ | ✅ |
-| QuickBooks sync (invoices, expenses, receipts) | — | ✅ | ✅ |
+| QuickBooks sync (invoices, expenses, receipts) — coming, production connect pending | — | ✅ | ✅ |
 | AI assistant + daily digest | — | — | ✅ |
 | Worker↔machine hour attribution (when it ships) | — | — | ✅ |
 | API / exports / priority support | — | — | ✅ |
@@ -57,10 +57,12 @@ hybrid does both jobs:
 
 - **$6/machine + $3/tag, Operate features included, no platform fee, 12-month price lock,
   hardware at cost, month-to-month, cancel anytime.**
-- **Free 30-day pilot** to start — no credit card.
+- **Free 30-day pilot** to start — no credit card. We ship **5 loaner trackers**
+  (returned or bought if you don't continue). Synced surfaces: splash + /demo
+  final CTAs, /pricing FAQ.
 - **First install done with you, in person or on the phone.**
 - Positioning: "founder pricing — you're helping me build it, you keep the
-  discount for life on assets you've already enrolled."
+  price. 12-month price lock on everything you enroll."
 - Every Founding 25 asset still clears its COGS floor (rule 1) — this is
   margin-thin, not margin-negative. No exceptions below $6; discount with
   tags and platform-fee waivers instead of touching the SIM price.

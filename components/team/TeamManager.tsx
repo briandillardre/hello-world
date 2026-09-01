@@ -140,7 +140,9 @@ export function TeamManager({ data }: { data: TeamData }) {
                       const created = (inv as typeof inv & { created_at?: string }).created_at
                       return created ? <> · created {formatRelativeTime(created)}</> : null
                     })()}
-                    {' · expires '}{new Date(inv.expires_at).toLocaleDateString()}
+                    {Date.parse(inv.expires_at) < Date.now()
+                      ? <> · <span className="text-red-400 font-semibold">expired {new Date(inv.expires_at).toLocaleDateString()}</span> — resend to issue a fresh link</>
+                      : <> · expires {new Date(inv.expires_at).toLocaleDateString()}</>}
                   </p>
                 </div>
                 {inv.email && (

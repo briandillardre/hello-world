@@ -30,12 +30,12 @@ export async function isPlatformOwner(): Promise<boolean> {
       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
     if (listed.length) return listed.includes(email)
 
-    // Fallback while PLATFORM_OWNER_EMAILS is unset. It is deliberately still
-    // here rather than failing closed, because doing so would lock the founder
-    // out of /model and /board the moment this ships — but it is the weaker
-    // check, and it should go away: set PLATFORM_OWNER_EMAILS in Vercel and
-    // this branch becomes dead code.
-    return email.endsWith('@hammertrack.ai')
+    // Fallback while PLATFORM_OWNER_EMAILS is unset: the founder's own
+    // address, exactly. Until Sep 1 any confirmed @hammertrack.ai mailbox
+    // (the reviewer account included) could open /board and /model — the
+    // production sweep walked straight in. Set PLATFORM_OWNER_EMAILS in
+    // Vercel and this branch becomes dead code.
+    return email === 'brian@hammertrack.ai'
   } catch {
     return false
   }

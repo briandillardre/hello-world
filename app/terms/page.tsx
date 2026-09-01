@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'The terms that govern your use of HammerTrack.',
 }
 
-const UPDATED = 'July 3, 2026'
+const UPDATED = 'September 1, 2026'
 
 export default function TermsPage() {
   return (
@@ -31,7 +31,8 @@ export default function TermsPage() {
           <section>
             <h2>Subscriptions &amp; cancellation</h2>
             <p className="mt-2">
-              Plans are billed per asset, per month, month-to-month. There are no long-term
+              Plans are billed per tracked machine and tag, per month, plus the platform fee on
+              Operate and Run — month-to-month. There are no long-term
               contracts and no setup fees. You can cancel anytime from your account; service runs
               through the end of the paid period. Pilot/trial periods are free and require no
               credit card.

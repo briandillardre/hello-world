@@ -24,9 +24,13 @@ Shopify Capital, Square → Square Loans. All started as ops tools.)
   billed hours — we have both fields already).
 - **Benchmarking vs industry**: QBO's benchmarking API + trade peers ("your
   equipment idle % is 34% — top-quartile paving companies run 19%").
-- Already 60% built: reports, scorecard, cost tracker, AI digests. This layer
-  is packaging + QBO pulls, not new infrastructure.
-- Gate: none. Start when Tier 1 PM money loop ships.
+- **v1 SHIPPED Aug 1 2026** — /finance: LY/YTD revenue, revenue/employee +
+  net margin vs 17 trade benchmark bands, and the 3-method valuation
+  (migration 048, `lib/valuation.ts`) — ahead of the PM Tier 1 gate.
+- Still to come: QBO auto-fill (waits on the production QBO connect —
+  docs/QBO-GO-LIVE.md), utilization trends, equipment ROI charts.
+- Gate: none — v1 is live. The remainder is packaging + QBO pulls, not new
+  infrastructure.
 
 ### 2. RAMP-STYLE SPEND — "manage" (the fintech wedge)
 - **HammerTrack Card** (Stripe Issuing or Lithic; Mercury IO covers our own
@@ -38,8 +42,9 @@ Shopify Capital, Square → Square Loans. All started as ops tools.)
   their SaaS fee.
 - The Aug 2026 receipt-chase (email forwarding) is the v0 proving demand; the
   card is v1 that makes it native.
-- Gates: Mercury live, Stripe live, ~25 paying companies (issuing programs
-  need volume + KYC ops), sponsor-bank diligence.
+- Gates: Mercury live ✅ (Aug 5), Stripe live ✅ (first charge Jul 31),
+  ~25 paying companies ❌ (0 on Sep 1 2026 — issuing programs need volume +
+  KYC ops), sponsor-bank diligence.
 
 ### 3. LENDING — "grow" (partner-first, NEVER balance-sheet-first)
 - **Equipment financing referrals** first: customer eyes a $180k excavator;
@@ -65,8 +70,12 @@ Shopify Capital, Square → Square Loans. All started as ops tools.)
 - **Data room generator**: one click → the closeout-binder engine builds a
   buyer package: audited utilization, job history, margins, fleet condition.
 - Owners check a number that goes UP weekly = retention no feature matches.
-- Gates: needs 12+ months of customer data to be honest. Ship the card early
-  with wide confidence bands; tighten as data accrues.
+- **Valuation card SHIPPED inside layer 1 v1 (Aug 1)** — income (SDE ×
+  multiple), market (revenue comps), asset (fleet + assets − debt), blended
+  range on /finance. Exit-readiness score and the data-room generator are
+  still to build.
+- Gates (for the rest): needs 12+ months of customer data to be honest. The
+  card shipped early with wide confidence bands; tighten as data accrues.
 
 ### 5. INSURANCE ARM — "protect" (one day, if it makes sense — Brian, Aug 1)
 - The data case is the strongest of all five layers: theft alerts + geofenced
@@ -102,16 +111,23 @@ Grounded in telemetry + QBO + benchmarks, proactive not reactive:
   drops below 30% — here's the delegation plan."
 - **Protect**: "Your zero-theft year + geofenced yard qualifies you for the
   partner rate — renewing at your current premium leaves $4.2k on the table."
-- v0 exists (Ask-AI + digests + anomaly agenda). Each layer above adds levers
-  it can pull. The advisor is WHY the platform retains — the levers are why
-  it expands.
+- **v1 SHIPPED** = the insights engine (migration 079, Aug 27 — nightly
+  deterministic trend watch, 8 detectors, anti-cry-wolf suppression, findings
+  on the map Today card / digests / Ask AI chips / MCP) + the monthly owner
+  memo (migrations 080/081, Aug 27–28 — facts-only 3-paragraph "what lever
+  next" read on /finance, mailed on the 1st). v0 was Ask-AI + digests +
+  anomaly agenda. Each layer above adds levers it can pull. The advisor is
+  WHY the platform retains — the levers are why it expands.
 
 ## Sequencing & the honest gates
 1 (charts/benchmarks) → 4-lite (valuation card, wide bands) → 2 (card) →
 3 (referral lending) → 5a (insurance discount referrals) → 3b (capital
 advances) → 5b (embedded agency) → 4-full (exit suite) → 5c (MGA, maybe).
-Nothing here starts before: PM Tier 1 shipped, Founding-25 filling, Mercury +
-Stripe live. Fintech kills startups through compliance shortcuts — partner
+The read-only layers already shipped ahead of any gate (1 v1 + 4-lite on Aug
+1, the advisor v1 on Aug 27–28). **The money-moving layers — card (2),
+lending (3), insurance (5) — do not start before:** PM Tier 1 shipped,
+Founding-25 filling (~25 paying; 0 on Sep 1 2026), Mercury + Stripe live
+(both ✅). Fintech kills startups through compliance shortcuts — partner
 structures only, no balance-sheet risk, no licensing gambles.
 
 ## Positioning line (for the deck)

@@ -100,7 +100,12 @@ export async function GET(req: NextRequest) {
   // plus two self-invocations with 25s budgets — the /diag PAGE is
   // dashboard-gated, so anonymous callers have no business invoking the
   // probe. Demo mode has no auth and stays open.
-  if (!isMock) {
+  // The GitHub `diag.yml` probe (Claude's only window into production) has
+  // no user session, so it presents the same bearer the crons use — the
+  // gate went up Aug 26 and the daily probe has read "unauthorized" since.
+  const secret = process.env.CRON_SECRET
+  const viaCron = !!secret && req.headers.get('authorization') === `Bearer ${secret}`
+  if (!isMock && !viaCron) {
     try {
       const { createClient } = await import('@/lib/supabase-server')
       const { data: { user } } = await createClient().auth.getUser()

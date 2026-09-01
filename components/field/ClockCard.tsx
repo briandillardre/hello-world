@@ -85,7 +85,13 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [now, setNow] = useState(Date.now())
+  // Wall-clock lives in state and is only ever read on the CLIENT: the server
+  // renders with `null` (no greeting hour, no elapsed minutes), the first
+  // client render matches it byte for byte, then the mount effect sets the
+  // real time. Seeding this with Date.now() made every /clock load throw
+  // React #425/#422 (server hour is UTC, the phone's is not; the elapsed
+  // minute could tick between render and hydrate) — found by the Sep 1 sweep.
+  const [now, setNow] = useState<number | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   // Picked log photos, per form field — accumulated across picks (a camera-
   // forced input that replaces its FileList was silently eating photo 1 when
@@ -124,6 +130,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   }, [])
 
   useEffect(() => {
+    setNow(Date.now())
     const id = setInterval(() => setNow(Date.now()), 30_000)
     return () => clearInterval(id)
   }, [])
@@ -270,8 +277,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
 
   // ── Not clocked in ──
   if (!openEntry) {
-    const hour = new Date().getHours()
-    const greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'
+    const hour = now == null ? null : new Date(now).getHours()
+    const greeting = hour == null ? 'Hey' : hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'
     return (
       <div className="rounded-xl border border-navy-700 bg-navy-950 p-4 space-y-4">
         <div className="flex items-center gap-2">
@@ -355,7 +362,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">On the clock · {whereLabel}</p>
-          <p className="font-display font-bold text-2xl text-ink tabular-nums">{elapsedLabel(openEntry.clock_in_at, now)}</p>
+          <p className="font-display font-bold text-2xl text-ink tabular-nums">{now == null ? '—' : elapsedLabel(openEntry.clock_in_at, now)}</p>
         </div>
         <div className="flex items-center gap-2">
           {offlineChip}

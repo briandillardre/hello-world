@@ -12,7 +12,7 @@ import { BRAND_EMAIL_SALES } from '@/lib/brand'
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine & tool is. Right now.',
   description:
-    'Put your whole fleet on one map and get a text the second something moves when it shouldn\'t. About half the price of Tenna, set up in a day. Start a free pilot.',
+    'Put your whole fleet on one map, and your phone knows within minutes when something moves when it shouldn\'t. About half the price of Tenna, set up in a day. Start a free pilot.',
   // Next replaces the root layout's openGraph wholesale (no deep merge) —
   // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
@@ -28,15 +28,15 @@ export const metadata: Metadata = {
 
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live on one map, on your phone.' },
-  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Get a text the moment a machine moves outside work hours or leaves the jobsite.' },
+  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves outside work hours or leaves the jobsite.' },
   { icon: Wrench, title: 'Maintenance built in', body: 'Service schedules by engine hours, mileage, or days. Never miss an oil change again.' },
-  { icon: Calculator, title: 'QuickBooks built in', body: 'Equipment cost lands on the right job by itself. Your bookkeeper gets their Fridays back.' },
+  { icon: Calculator, title: 'Job cost, ready for your books', body: 'Every hour and dollar lands on the right job automatically. QuickBooks sync is next.' },
 ]
 
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
   ['Tool tags a flat $3/mo', 'Tenna: quote-only'],
-  ['QuickBooks built in', 'Tenna: claimed, but shallow'],
+  ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
   ['$8/machine + $3/tool tag per mo', 'Tenna: $15–25 / asset / mo'],
 ]
 
@@ -66,7 +66,7 @@ export default function DemoLandingPage() {
             </h1>
             <p className="text-muted mt-5 text-lg">
               HammerTrack puts every truck, machine, and power tool on one live map — and it alerts your phone
-              the second something moves when it shouldn&apos;t. About half the price of Tenna.
+              within minutes of something moving when it shouldn&apos;t. About half the price of Tenna.
               Set up in a day, no install crew.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-8">
@@ -100,7 +100,7 @@ export default function DemoLandingPage() {
               <p className="font-display font-black text-2xl md:text-4xl text-amber">
                 <CountUp value={2} prefix="" suffix=" min" />
               </p>
-              <p className="text-xs md:text-sm text-faint mt-1">from movement to text alert</p>
+              <p className="text-xs md:text-sm text-faint mt-1">from movement to alert on your phone</p>
             </Reveal>
             <Reveal delay={120}>
               <p className="font-display font-black text-2xl md:text-4xl text-teal">
@@ -181,7 +181,7 @@ export default function DemoLandingPage() {
               <Link href="/reserve" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
                 Claim a founding spot <ArrowRight className="h-4 w-4" />
               </Link>
-              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving holds yours. <Link href="/pricing" className="inline-block underline hover:text-ink whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link></p>
+              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving costs nothing today; a refundable deposit holds your hardware once your batch is scheduled. <Link href="/pricing" className="inline-block underline hover:text-ink whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link></p>
             </div>
           </Reveal>
         </section>

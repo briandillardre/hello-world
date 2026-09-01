@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { cartoTiles } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Play, Pause } from 'lucide-react'
@@ -64,7 +65,7 @@ export function SharedReplayInner({ name, points, fromMs, toMs, startT }: Shared
         sources: {
           base: {
             type: 'raster',
-            tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'],
+            tiles: [cartoTiles('dark_all')],
             tileSize: 256,
             attribution: '© OpenStreetMap contributors © CARTO',
           },

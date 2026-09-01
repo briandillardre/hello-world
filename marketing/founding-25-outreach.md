@@ -16,8 +16,8 @@ script leans on that — peer-to-peer, not sales-to-prospect.
 ## 1. Text / DM — contractor you know (the workhorse)
 
 > Built something you'll want to see. I got tired of not knowing where my
-> iron was at 2am, so I built a tracker that alerts me the second a machine
-> moves after hours — it tripped on my own dump truck at 6:33 one morning
+> iron was at 2am, so I built a tracker that alerts me within minutes when a
+> machine moves after hours — it tripped on my own dump truck at 6:33 one morning
 > during testing. Runs my trucks and tools today; machines go on as the
 > next hardware batch lands.
 >
@@ -30,7 +30,7 @@ script leans on that — peer-to-peer, not sales-to-prospect.
 ## 2. Text / DM — short version (busy guy)
 
 > You still using nothing to track your equipment? I built the thing I
-> couldn't buy — live map of every truck/machine/tool + a text when
+> couldn't buy — live map of every truck/machine/tool + an alert on your phone when
 > anything moves after hours. $6/machine. hammertrack.ai/demo. First beer's
 > on me if you don't want it after seeing my fleet live on it.
 
@@ -38,15 +38,15 @@ script leans on that — peer-to-peer, not sales-to-prospect.
 
 > Quick one — when a customer gets a machine stolen or asks you about GPS
 > trackers, who do you point them at? I built HammerTrack (Dillard
-> Construction Group — that's me): theft alerts, live map, tool tracking, QuickBooks
-> job costing. $6-8/machine vs Tenna's $15-25 + $500 setup. Send anybody my
+> Construction Group — that's me): theft alerts, live map, tool tracking, job
+> costing (QuickBooks sync coming). $6-8/machine vs Tenna's $15-25 + $500 setup. Send anybody my
 > way and I'll take care of you on the referral. hammertrack.ai
 
 ## 4. Contractor Facebook group post (theft hook — post after any local theft story)
 
 > Seeing another stolen skid steer post in here. After almost losing gear
-> myself I built an app that texts you the second anything moves after
-> hours — machine, trailer, or a $400 demo saw with a $20 tag on it. Live
+> myself I built an app that alerts your phone within minutes when anything
+> moves after hours — machine, trailer, or a $400 demo saw with a $20 tag on it. Live
 > map of your whole fleet, built by a GC in the Upstate, not a Silicon
 > Valley outfit. First 25 companies get founder pricing ($6/machine,
 > locked for a year, cancel anytime). Live demo you can play with:
@@ -65,7 +65,7 @@ Subject: **Your fleet on a live map — founder pricing (25 spots)**
 >   at 2am (this fired for real on my own truck during the pilot)
 > - Tool tags: $20 Bluetooth tag on anything; it inherits the location of
 >   whatever truck it's near — no more "who has the plate compactor"
-> - Job costing: hours-on-site per machine per job, pushed to QuickBooks
+> - Job costing: hours-on-site per machine per job (QuickBooks sync coming)
 >
 > Founding 25 deal: **$6/machine + $3/tag per month, full Operate feature
 > set, price locked 12 months, hardware at cost, month-to-month.** For
@@ -82,7 +82,7 @@ Subject: **Your fleet on a live map — founder pricing (25 spots)**
 | They say | You say |
 |---|---|
 | "I've got LoJack / a dealer tracker on the big iron" | That covers recovery on two machines. This is your whole operation — every truck, attachment, and $400 tool — on one map, plus the alert BEFORE it's gone, not the recovery after. |
-| "Tenna/Samsara quoted us" | Great — take their quote, divide by two or three, and you've got my list price. Founder deal is even under that, locked for a year. And no $500 setup, no contract. |
+| "Tenna/Samsara quoted us" | Great — take their quote, cut it about in half, and you've got my list price. Founder deal is even under that, locked for a year. And no $500 setup, no contract. |
 | "I don't have time to set it up" | It's a plug into the OBD port on trucks and a zip-tie puck on machines. I'll do your first install with you — 15 minutes. |
 | "What if you go out of business?" | Month-to-month, cancel anytime, and the hardware is standard Teltonika — it'd work with other platforms. You're risking one month's coffee budget. |
 | "Is my data safe?" | Your data's in the same enterprise database stack (Supabase/Postgres) the big guys use, and I'm a contractor — I'm not selling your locations to anybody. |

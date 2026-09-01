@@ -18,7 +18,7 @@ hardware batch — customer #2 and beyond, and our own reorders.
 - [ ] Supply KORE the flespi config profile so devices arrive pre-configured
       (Matt confirmed KORE pre-configures: SIMs enabled + tested, connectivity
       verified, plug-and-play):
-  - Server: `ch1401177.flespi.gw:24397` (TCP)
+  - Server: `<channel-host>:<port> (flespi console)` (TCP)
   - Protocol: **Codec 8 Extended**
   - APN: per SIM — see the SuperSIM caveat below
 - [ ] **SuperSIM APN caveat:** KORE SuperSIM settings are NOT the same as

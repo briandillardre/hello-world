@@ -245,19 +245,19 @@ export default function DemoCinema() {
       <div className="absolute left-3 right-3 bottom-14 sm:left-4 sm:right-auto sm:max-w-[330px] space-y-2 pointer-events-none">
         {beat === 0 && (
           <StoryCard tone="teal" icon={<MapPin className="h-4 w-4" />} title="Every machine on one live map"
-            body="12 assets on site · zones armed · AI watching for after-hours movement." />
+            body="12 assets on site · zones armed · watching for after-hours movement." />
         )}
         {beat === 1 && (
           <StoryCard tone="amber" icon={<span className="text-[15px] leading-none">🏗️</span>} title="Excavator 320 — working"
-            body="14 mph · trail records every move · hours auto-billed to Riverside Tower." />
+            body="14 mph · trail records every move · hours auto-logged to Riverside Tower." />
         )}
         {beat === 2 && (
           <>
             <StoryCard tone="alert" icon={<ShieldAlert className="h-4 w-4" />} title="THEFT ALERT — 2:14 AM"
               body="Excavator 320 left Riverside Tower outside work hours. Moving northwest." pulse />
-            <div className="demo-sms rounded-2xl rounded-bl-md bg-[#1c9b45] text-white px-3.5 py-2.5 text-[12.5px] leading-snug shadow-xl max-w-[300px]">
-              <span className="font-semibold">HammerTrack:</span> 🚨 Excavator 320 moving OFF-SITE at 2:14 AM.
-              Live location → hammertrack.app/t/9X2
+            <div className="demo-sms rounded-2xl bg-navy-800/95 border border-navy-600 text-ink px-3.5 py-2.5 text-[12.5px] leading-snug shadow-xl max-w-[300px]">
+              <span className="font-semibold text-amber">HammerTrack · push · now</span><br />🚨 Excavator 320 moving OFF-SITE at 2:14 AM.
+              Live location → hammertrack.ai/share/9X2
             </div>
           </>
         )}

@@ -73,6 +73,16 @@ export async function POST(request: NextRequest) {
   // driving around town re-fires "left site" every dedupe window all day).
   const prevFix = new Map<string, { lat: number; lng: number }>()
   for (const r of normalized) {
+    // Plausibility gate (sec-check, Sep 1): a fix dated in the future would sit
+    // as the asset's 'latest' position forever (every read orders by
+    // timestamp desc) and one older than a month is a replay or a device with
+    // a broken clock — trackers buffering offline surface days late, not
+    // months. Dropped fixes are logged by ident so a real clock fault shows.
+    const tsMs = Date.parse(r.timestamp)
+    if (!Number.isFinite(tsMs) || tsMs > Date.now() + 5 * 60_000 || tsMs < Date.now() - 30 * 86_400_000) {
+      console.warn(`flespi ingest: implausible timestamp ${r.timestamp} from ${r.tracker_id} — dropped`)
+      continue
+    }
     // active-only: a deactivated asset releases its tracker (the resale
     // flow), and 082's one-active-owner index makes this lookup unique —
     // a second company's registration can no longer silently kill the

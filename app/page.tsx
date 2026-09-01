@@ -10,7 +10,7 @@ import { RoiCalculator } from '@/components/marketing/RoiCalculator'
 export const metadata: Metadata = {
   title: 'HammerTrack — Know where every truck, machine, crew & tool is. Right now.',
   description:
-    'Built by a contractor, running on his own fleet. Live GPS + job-site zones, exact hours banked automatically, an AI you can ask anything, and a text within minutes when something moves at 2 AM. About half the price of Tenna, live in a day.',
+    'Built by a contractor, running on his own fleet. Live GPS + job-site zones, exact hours banked automatically, an AI you can ask anything, and your phone knows within minutes when something moves at 2 AM. About half the price of Tenna, live in a day.',
 }
 
 const AI = [
@@ -42,9 +42,9 @@ const AI = [
 
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, Bluetooth-tagged tools, and crews — live, with full replay of any day.' },
-  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'A text the moment a machine moves off-hours or leaves the site — then replay the whole route as evidence.' },
+  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves off-hours or leaves the site — then replay the whole route as evidence.' },
   { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and zone-verified daily logs.' },
-  { icon: Banknote, title: 'Books that keep themselves', body: 'QuickBooks job-cost sync, live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes.' },
+  { icon: Banknote, title: 'Books that keep themselves', body: 'Job-cost sync into QuickBooks (connecting soon), live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes (coming — turns on with your card alerts).' },
   { icon: Wrench, title: 'A shop that stays ahead', body: 'Service intervals from real engine hours auto-open work orders — assign, track parts & labor, done.' },
   { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
 ]
@@ -57,7 +57,7 @@ const PRICE = [
   { k: '$0', v: 'setup — Tenna charges $500+' },
   { k: '$8 + $3', v: '/machine + /tool tag per mo — Tenna is $15–25/asset' },
   { k: '1 day', v: 'to live — no install crew' },
-  { k: 'AI', v: 'included — not an enterprise tier' },
+  { k: '∞', v: 'users — never per-seat' },
 ]
 
 export default function HomePage() {
@@ -85,7 +85,7 @@ export default function HomePage() {
             operation. And when a machine moves at 2 AM, your phone knows in minutes.
           </p>
           <p className="font-mono text-[12px] text-faint mt-4 tracking-wide">
-            About half the price of Tenna, with $0 setup · live in a day · from 5 assets up
+            About half the price of Tenna, with $0 setup · live in a day
           </p>
           <div className="flex flex-col sm:flex-row gap-3.5 mt-7 justify-center">
             <Link
@@ -103,7 +103,7 @@ export default function HomePage() {
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
             Founding 25 — first 25 companies: free 30-day pilot · hardware ships in
-            batches, a refundable deposit holds yours · founder pricing locked · cancel anytime
+            batches, a refundable deposit holds yours · founder pricing locked 12 months · cancel anytime
           </p>
         </section>
 
@@ -140,7 +140,7 @@ export default function HomePage() {
               },
               {
                 t: '2:09 AM', tone: 'amber' as const, title: 'Your phone buzzes',
-                body: '“THEFT ALERT — Excavator left Yard after hours.” Live pin and direction of travel as a text — then replay the whole route on the map.',
+                body: '“THEFT ALERT — Excavator left Yard after hours.” Live pin and direction of travel on your phone — then replay the whole route on the map.',
               },
               {
                 t: '2:31 AM', tone: 'teal' as const, title: 'You call it in with a location',
@@ -160,7 +160,7 @@ export default function HomePage() {
           </div>
           <p className="text-center font-mono text-[12px] text-faint mt-5 max-w-2xl mx-auto">
             Not a mockup: after-hours alerts run in production on our own fleet — movement to
-            text in under two minutes. Theft is the night it pays for itself; knowing where
+            alert on your phone within minutes. Theft is the night it pays for itself; knowing where
             everything is at 2 PM is why it earns its keep every day.
           </p>
         </section>
@@ -168,9 +168,9 @@ export default function HomePage() {
         {/* AI band */}
         <section id="ai" className="max-w-6xl mx-auto px-6 mt-16">
           <div className="rounded-2xl p-8 sm:p-9 border border-navy-800 bg-gradient-to-br from-teal/[0.07] to-amber/[0.05]">
-            <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal">◇ The AI layer</p>
+            <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-teal">◇ It watches the yard so you don&apos;t</p>
             <h2 className="font-display font-extrabold text-[1.85rem] mt-2 max-w-[24ch]">
-              It doesn&apos;t just track. It watches, learns, and warns.
+              It doesn&apos;t just track. It notices, and it tells you.
             </h2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
               {AI.map(({ icon: Icon, title, body, tag }) => (
@@ -235,7 +235,7 @@ export default function HomePage() {
             {[
               { n: '1', icon: Package, title: 'We ship the trackers', body: 'Plug the OBD2 into trucks, drop a GPS on equipment, stick a Bluetooth tag on tools. Crews clock in from their phones.' },
               { n: '2', icon: MapPin, title: 'Everything appears on your map', body: 'Trucks, machines, tools, and people show up live within minutes of powering on — no IT, no setup crew.' },
-              { n: '3', icon: Bell, title: 'It watches and warns', body: 'After-hours theft texts, zone-verified hours, and live job cost — automatically, the moment something moves.' },
+              { n: '3', icon: Bell, title: 'It watches and warns', body: 'After-hours theft alerts to your phone, zone-verified hours, and live job cost — automatically, within minutes of something moving.' },
             ].map(({ n, icon: Icon, title, body }) => (
               <div key={n} className="bg-navy-900 border border-navy-800 rounded-2xl p-6">
                 <div className="flex items-center gap-3 mb-3.5">
@@ -270,7 +270,7 @@ export default function HomePage() {
               {
                 step: '2', name: 'Operate', price: 'adds $49/mo', fee: '25 tool tags included',
                 who: '“Run my crews and jobs on it.”',
-                items: ['Crew clock-in + daily logs', 'Punch lists, milestones, budgets', 'Maintenance → auto work orders', 'QuickBooks + receipt chase'],
+                items: ['Crew clock-in + daily logs', 'Punch lists, milestones, budgets', 'Maintenance → auto work orders', { t: 'QuickBooks + receipt chase', roadmap: true }] as LadderItem[],
                 hot: true,
               },
               {

@@ -77,19 +77,39 @@ export const BASEMAPS: { id: BasemapId; label: string }[] = [
   { id: 'ifr', label: 'IFR Low' },
 ]
 
+/**
+ * CARTO raster basemaps now require an API key (Sep 2026: unkeyed tiles come
+ * back stamped "API KEY REQUIRED"). Free tier is 5M tile requests a month —
+ * request the key at carto.com/basemaps/apikey (email + domain, no account),
+ * set NEXT_PUBLIC_CARTO_KEY in Vercel, redeploy. Every CARTO tile URL in the
+ * app is built here so the key rides along everywhere. Attribution
+ * (© OpenStreetMap © CARTO) stays on the map — that is the deal.
+ */
+export type CartoStyle = 'dark_all' | 'voyager' | 'light_all' | 'light_nolabels' | 'dark_only_labels'
+const CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_KEY ?? ''
+const cartoQ = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : ''
+/** MapLibre tile template for a CARTO raster style. */
+export function cartoTiles(style: CartoStyle): string {
+  return `https://a.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}@2x.png${cartoQ}`
+}
+/** One concrete tile (picker thumbnails). */
+export function cartoTileAt(style: CartoStyle, z: number, x: number, y: number): string {
+  return `https://a.basemaps.cartocdn.com/rastertiles/${style}/${z}/${x}/${y}@2x.png${cartoQ}`
+}
+
 // One representative tile per source for the picker thumbnails (z8 tile over
 // upstate SC — recognizable home turf, cached hard by the CDNs).
 const THUMB = { z: 8, x: 69, y: 101 }
 export const BASEMAP_TILE: Record<BasemapId, string> = {
-  dark: `https://a.basemaps.cartocdn.com/rastertiles/dark_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
-  streets: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  dark: cartoTileAt('dark_all', THUMB.z, THUMB.x, THUMB.y),
+  streets: cartoTileAt('voyager', THUMB.z, THUMB.x, THUMB.y),
   terrain: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
   satellite: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
   hybrid: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
-  silver: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
-  plain: `https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
-  bw: `https://a.basemaps.cartocdn.com/rastertiles/light_all/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
-  aubergine: `https://a.basemaps.cartocdn.com/rastertiles/voyager/${THUMB.z}/${THUMB.x}/${THUMB.y}@2x.png`,
+  silver: cartoTileAt('light_all', THUMB.z, THUMB.x, THUMB.y),
+  plain: cartoTileAt('light_nolabels', THUMB.z, THUMB.x, THUMB.y),
+  bw: cartoTileAt('light_all', THUMB.z, THUMB.x, THUMB.y),
+  aubergine: cartoTileAt('voyager', THUMB.z, THUMB.x, THUMB.y),
   night: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/${THUMB.z}/${THUMB.y}/${THUMB.x}.png`,
   vfr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/VFR_Sectional/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,
   ifr: `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/IFR_AreaLow/MapServer/tile/${THUMB.z}/${THUMB.y}/${THUMB.x}`,

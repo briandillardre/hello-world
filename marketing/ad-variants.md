@@ -12,26 +12,26 @@ Target keywords: `tenna alternative`, `equipment gps tracking`, `construction as
 
 ### Variant A — "Tenna alternative" intent
 - **Headline 1:** Tenna Costs Too Much
-- **Headline 2:** Half the Price of Tenna
+- **Headline 2:** About Half the Price of Tenna
 - **Headline 3:** No Setup Fees, Cancel Anytime
-- **Description 1:** Trucks, equipment & Bluetooth tools on one map. Half the price of Tenna, $0 setup.
-- **Description 2:** Get a text the second a machine moves after hours. Start a free 30-day pilot.
+- **Description 1:** Trucks, equipment & Bluetooth tools on one map. About half the price of Tenna, $0 setup.
+- **Description 2:** Your phone knows within minutes when a machine moves after hours. Free 30-day pilot.
 
 ### Variant B — "theft" intent
 - **Headline 1:** Stop Equipment Theft Tonight
 - **Headline 2:** After-Hours Movement Alerts
 - **Headline 3:** GPS + Bluetooth Tool Tracking
-- **Description 1:** Know the moment a machine leaves the jobsite. Recover gear before it's gone.
-- **Description 2:** Built for construction. QuickBooks built in. Free 30-day pilot, we ship the trackers.
+- **Description 1:** Know within minutes when a machine leaves the jobsite. Recover gear before it's gone.
+- **Description 2:** Built for construction. Job costing built in. Free 30-day pilot, we ship the trackers.
 
 ### Variant C — "tool tracking" intent
 - **Headline 1:** Which Truck Is Your Tool In?
 - **Headline 2:** Bluetooth Tool Tracking Built In
-- **Headline 3:** Half Tenna’s Price · No Contracts
+- **Headline 3:** About Half Tenna’s Price · No Contracts
 - **Description 1:** Tag expensive tools, see which truck or machine they're riding in. Live map.
 - **Description 2:** Everything most contractors use Tenna for, at about half the price. Try it free for 30 days.
 
-**Sitelinks:** Pricing · Live Demo · How It Works · vs Tenna
+**Sitelinks:** Pricing (/pricing) · Live Demo (/demo) · How It Works (/#features) · vs Tenna (/pricing)
 
 ---
 
@@ -49,11 +49,11 @@ Co-branded; revenue-share per activation.
 >
 > We've partnered with **HammerTrack** — GPS + Bluetooth tracking built for
 > construction crews. Put every machine, truck, and tool on one map, and get
-> an instant text if anything moves after hours or leaves the jobsite.
+> an alert on your phone within minutes if anything moves after hours or leaves the jobsite.
 >
 > - About half the price of Tenna — $8/machine, $3/tool tag, zero setup fees
 > - Tracks heavy equipment, trucks, AND small tools (Bluetooth)
-> - QuickBooks built in — bill equipment usage to job sites automatically
+> - Job costing built in — equipment hours land on the right job automatically (QuickBooks sync coming)
 >
 > As a [Dealer Name] customer, your first 30 days are free and we ship the
 > trackers to you.
@@ -63,8 +63,8 @@ Co-branded; revenue-share per activation.
 ### Counter-card / flyer (printed, handed out at the parts counter)
 > **JUST BOUGHT A $80K MACHINE?**
 > Don't let it disappear at 2 AM.
-> HammerTrack texts you the second it moves.
-> GPS + Bluetooth tracking · half the price of Tenna · free 30-day pilot.
+> HammerTrack alerts your phone within minutes if it moves.
+> GPS + Bluetooth tracking · about half the price of Tenna · free 30-day pilot.
 > **hammertrack.ai/demo** — ask [Dealer] for your activation code.
 
 ---
@@ -82,8 +82,8 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 > the crew showed up at 7?
 >
 > HammerTrack puts your whole fleet — trucks, equipment, even Bluetooth-tagged
-> tools — on one map and texts you the second something moves when it
-> shouldn't. Half the price of Tenna, set up in a day, no install crew.
+> tools — on one map and alerts your phone within minutes when something
+> moves when it shouldn't. About half the price of Tenna, set up in a day, no install crew.
 >
 > Worth a 60-second look? Live demo (no signup): hammertrack.ai/demo
 >
@@ -95,7 +95,7 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 > [First Name] — are you on Tenna or Samsara for fleet tracking?
 >
 > Same live map, same after-hours zone alerts, plus Bluetooth tool tracking
-> and QuickBooks — at about half the price, and no $500 setup.
+> and job costing (QuickBooks sync coming) — at about half the price, and no $500 setup.
 >
 > 30-day free pilot, we ship the trackers. Live demo here: hammertrack.ai/demo
 >
@@ -122,8 +122,8 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 ## 4. Facebook / Instagram (already built — see lead-funnel-infographic.html)
 
 **Primary text:** Your $80K excavator just left the jobsite at 2 AM. Did you know?
-HammerTrack puts every truck, machine, and power tool on one map — and texts
-you the second something moves when it shouldn't. Half the price of Tenna.
+HammerTrack puts every truck, machine, and power tool on one map — and alerts
+your phone within minutes when something moves when it shouldn't. About half the price of Tenna.
 Setup in a day, no install crew.
 **Headline:** Start a Free 30-Day Pilot
 **CTA button:** Learn More → hammertrack.ai/demo

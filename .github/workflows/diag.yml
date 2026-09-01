@@ -18,7 +18,9 @@ jobs:
       - name: Layer health (/api/diag/layers)
         run: |
           echo "=== DIAG LAYERS ==="
-          curl -sS --max-time 60 https://hammertrackjune28.vercel.app/api/diag/layers | python3 -m json.tool
+          # Same bearer the Vercel crons use; add CRON_SECRET (Vercel's value) as a
+          # repo Actions secret or this step keeps printing "unauthorized".
+          curl -sS --max-time 60 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" https://hammertrackjune28.vercel.app/api/diag/layers | python3 -m json.tool
       - name: RTMA discovered names (/api/rtma-layers)
         run: |
           echo "=== RTMA NAMES ==="

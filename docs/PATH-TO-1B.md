@@ -27,9 +27,13 @@ The risk is never TAM; it's distribution and retention.
 ---
 
 ## Stage 0 → Founding 25 (now – mid-2027) · proves it's a business
-**Target: 25 paying, <$100k ARR, near-zero churn.**
+**Target: 25 paying, <$100k ARR, near-zero churn.** (25 × $84 founding ≈
+$25k ARR — the $84 is COST-SCALE-2026-07.md's founding blend, 8 machines ×
+$6 + 12 tags × $3; the list blend is $113. Stage 0 uses the founding number
+because every one of these 25 is on founder pricing.)
 - Everything currently in flight IS this stage: pilot truck live, Stripe
-  billing live, PM Tier 1 next, receipt chase, Holy City Paving.
+  billing live, PM Tier 1 next, receipt chase, Holy City Paving (first
+  target, unsigned).
 - The only metrics that matter: logo retention (25/25 stay) and weekly
   active owners (do they open the map when nothing is stolen?).
 - Funding: none. $130/mo burn, Mercury account, Brian's time.
@@ -37,16 +41,19 @@ The risk is never TAM; it's distribution and retention.
 
 ## Stage 1 → $1M ARR (2027–2028) · proves distribution repeats
 **~350 companies · $250/mo blended · valuation ~$6–10M.**
-- Channel #1: the theft-hook ad funnel (already built) run properly in 3
-  Southeast metros — Greenville, Charlotte, Nashville.
+- Channel #1: the theft-hook ad funnel (already built) run properly in
+  Upstate SC first, then the Charlotte and Atlanta corridors (Nashville was
+  demo fiction — you sell where people already return your calls).
 - Channel #2 (the unlock): **equipment dealers as resellers** — the dealer
   installs a tracker with every used-iron sale, splits first-year revenue.
   One productive dealer = 5–15 customers/yr forever. Sign 10.
 - Expansion revenue starts: PM tiers ($49/$199) raise blended ACV without
   new logos.
-- Team: Brian + 1 support/onboarding hire + 1 sales hire (from OPERATING-
-  MODEL hire curve). Funding: still optional — revenue + maybe $250–500k
-  angel/friends round if dealer channel needs install subsidy.
+- Team: Brian + S1 (part-time field sales & install, Sep 2026 — hired for
+  the rolodex, absorbs the installer role) → H2 (full-time ops/install tech)
+  at ~90 customers, per docs/OPERATING-MODEL.md. Funding: still optional —
+  revenue + maybe $250–500k angel/friends round if dealer channel needs
+  install subsidy.
 - **Gate: CAC < 6 months of gross profit; net revenue retention > 100%.**
 
 ## Stage 2 → $10–12M ARR ≈ **$100M** (2029–2030) · proves the platform
@@ -108,7 +115,7 @@ companies that own iron."**
 ## The dashboard version
 | Stage | ARR | Customers | Blended $/mo | Valuation | Years |
 |---|---|---|---|---|---|
-| 0 · Founding 25 | <$0.1M | 25 | $250 | — | 2026–27 |
+| 0 · Founding 25 | <$0.1M | 25 | $84 (founding; $113 list) | — | 2026–27 |
 | 1 · Repeatable | $1M | ~350 | $250 | $6–10M | 2027–28 |
 | 2 · Platform | $10–12M | ~2,500 | $400 | **~$100M** | 2029–30 |
 | 3 · Category | $90–120M | ~20,000 | $450–550 | **~$1B** | 2031–34 |

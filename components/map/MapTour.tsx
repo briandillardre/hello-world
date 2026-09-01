@@ -69,15 +69,24 @@ export function MapTour({ canDrawZones = true }: { canDrawZones?: boolean }) {
   // Auto-start once per device; relaunchable via window event or ?tour=1.
   useEffect(() => {
     const start = () => setStep(0)
+    // Never over the location primer (first open on a phone): wait for its
+    // dismissal, then give the layout a beat before measuring targets.
+    const startWhenClear = () => {
+      if (document.documentElement.dataset.htPrimer) {
+        window.addEventListener('ht:primer-done', () => setTimeout(start, 900), { once: true })
+        return
+      }
+      start()
+    }
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tour') === '1') {
-      const t = setTimeout(start, 900)
+      const t = setTimeout(startWhenClear, 900)
       window.addEventListener('ht:tour', start)
       return () => { clearTimeout(t); window.removeEventListener('ht:tour', start) }
     }
     try {
       if (!localStorage.getItem(DONE_KEY)) {
         // Small delay so the map chrome has mounted before we measure it.
-        const t = setTimeout(start, 1600)
+        const t = setTimeout(startWhenClear, 1600)
         window.addEventListener('ht:tour', start)
         return () => { clearTimeout(t); window.removeEventListener('ht:tour', start) }
       }

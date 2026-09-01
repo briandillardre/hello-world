@@ -10,6 +10,7 @@ import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
 import { resolveLogForm } from '@/lib/log-form'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
+import { isQboConfigured } from '@/lib/qbo'
 import { BillingCard } from '@/components/settings/BillingCard'
 import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
@@ -158,7 +159,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           <div className="p-4 space-y-3">
             <p className="text-xs text-muted">
               Sync assets as fixed assets, push equipment-usage invoices per job site, and record
-              service costs as expenses — automatically.
+              service costs as expenses — automatically, once the QuickBooks connection is live.
             </p>
             <div className="flex gap-2">
               <Link href="/accounting" className="flex-1">
@@ -166,11 +167,17 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
                   Open Accounting
                 </span>
               </Link>
-              <a href="/api/qbo/connect" className="flex-1">
-                <span className="block text-center text-sm font-medium border border-navy-800 text-muted rounded-lg py-2.5 hover:bg-navy-800 transition-colors">
-                  Connect QuickBooks
+              {isQboConfigured ? (
+                <a href="/api/qbo/connect" className="flex-1">
+                  <span className="block text-center text-sm font-medium border border-navy-800 text-muted rounded-lg py-2.5 hover:bg-navy-800 transition-colors">
+                    Connect QuickBooks
+                  </span>
+                </a>
+              ) : (
+                <span className="flex-1 block text-center text-sm font-medium border border-navy-800 text-faint rounded-lg py-2.5">
+                  QuickBooks sync — coming
                 </span>
-              </a>
+              )}
             </div>
           </div>
         </section>

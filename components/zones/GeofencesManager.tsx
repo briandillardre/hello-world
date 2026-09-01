@@ -160,8 +160,8 @@ function GeofenceRow({
   // the matching QuickBooks customer, so the crews' pick list follows.
   const flip = async () => {
     const ok = await confirmSheet(done
-      ? { title: `Reopen "${fence.name}"?`, message: 'The Z comes off here and in QuickBooks.', confirmLabel: 'Reopen' }
-      : { title: `Mark "${fence.name}" complete?`, message: "It's renamed with a Z here and in QuickBooks, and drops to the bottom of the crews' pick list.", confirmLabel: 'Complete' })
+      ? { title: `Reopen "${fence.name}"?`, message: 'The Z comes off here and, if connected, in QuickBooks.', confirmLabel: 'Reopen' }
+      : { title: `Mark "${fence.name}" complete?`, message: "It's renamed with a Z here (and in QuickBooks, if connected), and drops to the bottom of the crews' pick list.", confirmLabel: 'Complete' })
     if (!ok) return
     start(async () => {
       const r = await setZoneCompletedAction(fence.id, !done)

@@ -42,6 +42,9 @@ if (!files.length) {
 }
 
 const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+// Migrations report non-fatal outcomes with RAISE NOTICE (086: 'could not enable
+// RLS on spatial_ref_sys'); pg only surfaces them through this handler.
+client.on('notice', (n) => console.log(`[migrate] NOTICE ${n.message}`))
 
 try {
   await client.connect()

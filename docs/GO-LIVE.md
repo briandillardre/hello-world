@@ -76,7 +76,7 @@ setup.)
 2. Go to **Assets → Add Asset**:
    - Name: `F-350 Pilot Truck T1-a`
    - Type: **Vehicle**
-   - Tracker ID: `868996068802222`
+   - Tracker ID: `…02222`
 3. Submit. It now saves to the database and appears in the Assets list.
 
 ## 6. Make it show on the **map**
@@ -86,7 +86,7 @@ An asset in the list only gets a **map pin** once it has a location. Two ways:
 **A — real hardware (the eventual path):** your flespi webhook already POSTs to
 `https://hammertrackjune28.vercel.app/api/ingest/flespi` (channel 1401177). Once
 the DB + `FLESPI_WEBHOOK_TOKEN` are set and T1‑a reports in, the normalizer
-matches on `tracker_id` `868996068802222` and drops a pin. If you later move the
+matches on `tracker_id` `…02222` and drops a pin. If you later move the
 app to a different URL, update the webhook URI to match.
 
 **B — post a test location now (instant pin, no hardware):** run this from a
@@ -97,7 +97,7 @@ below are a Nashville job site:
 curl -X POST https://hammertrackjune28.vercel.app/api/ingest/location \
   -H "x-api-key: YOUR_INGEST_API_KEY" \
   -H "content-type: application/json" \
-  -d '{"tracker_id":"868996068802222","lat":36.1627,"lng":-86.7816,"battery":88}'
+  -d '{"tracker_id":"…02222","lat":36.1627,"lng":-86.7816,"battery":88}'
 ```
 
 Expect `{"ok":true}`. Reload `/map` — the F‑350 pin is at the site. A `404 No
