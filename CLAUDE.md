@@ -285,6 +285,17 @@ in the SAME commit:
   `docs/OPERATING-MODEL.md`) whenever a decision changes a dollar figure
 The infographic is a rendered view of the roadmap — never let them drift.
 
+## Release rule (Brian, Aug 31 2026)
+"Always release new version. You do not need permission from me any more."
+When native-affecting changes merge (android/, ios/, capacitor.config.ts,
+mobile-shell/), bump versionCode/versionName in android/app/build.gradle and
+dispatch the `android-release` workflow on master — do not ask first. The
+workflow builds the signed AAB; with the optional PLAY_SERVICE_ACCOUNT_JSON
+secret it uploads straight to the Play production track, otherwise the AAB
+artifact + a Play Console upload note is the deliverable. iOS releases stay
+manual until the Apple org enrollment clears. Play rejects a REUSED
+versionCode (skipped numbers are free) — when in doubt, jump higher.
+
 ## Checks & balances rule (Brian, Aug 11 2026; cadence revised Aug 28)
 "Create a few more agents within here as a checks and balances to your
 decisions… don't forget about this!" — the repo's reviewer agents
