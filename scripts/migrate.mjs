@@ -51,6 +51,12 @@ try {
       applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       baseline   BOOLEAN NOT NULL DEFAULT FALSE
     )`)
+  // Never expose the deploy ledger through PostgREST (Supabase's default
+  // grants give anon/authenticated every new public table; migration 086
+  // closed that hole in production — this keeps fresh installs closed too).
+  // No policies = PostgREST roles see nothing; this connection is the table
+  // owner and owners bypass RLS, so the runner's own reads/inserts work.
+  await client.query('ALTER TABLE schema_migrations ENABLE ROW LEVEL SECURITY')
 
   const { rows } = await client.query('SELECT name FROM schema_migrations')
   const applied = new Set(rows.map((r) => r.name))
