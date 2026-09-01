@@ -8,6 +8,15 @@
 #   ANDROID_KEY_PASSWORD
 # Manual dispatch only — releases are deliberate. Bump versionCode/versionName
 # in android/app/build.gradle before each store upload.
+#
+# OPTIONAL 5th secret makes releases fully hands-off (Brian, Aug 31:
+# "always release, you do not need permission"):
+#   PLAY_SERVICE_ACCOUNT_JSON   full JSON key of a Play Console service
+#                               account with Release manager on the app
+#                               (Play Console → Setup → API access).
+# With it set, the built AAB uploads straight to the PRODUCTION track with
+# in-app-update priority defaults; without it, the job still succeeds and
+# the signed AAB artifact is the deliverable for a manual upload.
 name: android-release
 
 on:
@@ -17,6 +26,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - name: Guard — signing secrets present?
         run: |
@@ -59,3 +70,17 @@ jobs:
             android/app/build/outputs/bundle/release/app-release.aab
             android/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
+
+      - name: Upload to Play (production) — skips until the service-account secret exists
+        if: ${{ env.HAS_PLAY_SA == 'true' }}
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.hammertrack.app
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: production
+          status: completed
+
+      - name: Note the manual step when Play upload was skipped
+        if: ${{ env.HAS_PLAY_SA != 'true' }}
+        run: echo "::notice::Signed AAB built but NOT uploaded — add PLAY_SERVICE_ACCOUNT_JSON to make releases hands-off, or upload the artifact in Play Console → Production → Create release."

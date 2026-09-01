@@ -25,6 +25,13 @@
 > no supported way to recolor it at runtime on events (activity-alias swaps
 > break home-screen placement), so the arcs are amber always and the
 > NOTIFICATION BADGE is the "something happened" signal.
+>
+> **Hands-off releases (one-time setup):** Play Console → Setup → API
+> access → create a service account → grant it **Release manager** on
+> com.hammertrack.app → download its JSON key → add it as the
+> `PLAY_SERVICE_ACCOUNT_JSON` Actions secret. From then on the
+> android-release workflow uploads straight to production; until then it
+> produces the signed AAB artifact to upload by hand.
 
 ## Architecture (decided)
 
@@ -124,16 +131,19 @@ permissions.** Those are native resources compiled into the bundle. Anything
 under `android/` reaches a phone only through a new Play release. Reinstalling
 just re-downloads the build that is already published.
 
-The store carries versionCode 1 (published 21 Aug). The new launcher icons
-landed in the repo on 30 Aug, which is AFTER that upload — so no published
+The store carries at least versionCode 1 (published 21 Aug) and possibly
+more — the console has builds this repo never saw. The new launcher icons
+landed in the repo on 30 Aug, which is AFTER those uploads, so no published
 build contains them.
 
 **Order of operations:**
 
 1. **Bump `versionCode`** in `android/app/build.gradle` — Play rejects an
-   upload whose versionCode already exists. It has been `1` since the first
-   build; each release needs the next integer. (`versionName` is the human
-   string and does not have to change, but keeping them in step helps.)
+   upload whose versionCode already exists. Do NOT assume the repo's number
+   matches the console's: builds have been uploaded that this repo never
+   recorded, which is why it jumped straight to 5 rather than 2. When in
+   doubt, read the highest versionCode in Play Console → Production →
+   Releases and go above it; skipped numbers cost nothing.
 2. **Check the four signing secrets exist** in GitHub → Settings → Secrets →
    Actions: `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
    `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. The workflow guards on the

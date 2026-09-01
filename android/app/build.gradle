@@ -7,8 +7,11 @@ android {
         applicationId "com.hammertrack.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1"
+        // Jumped to 5 deliberately: the console carries builds this repo
+        // never saw (Aug 21 prod + Aug 27 update), and Play hard-rejects a
+        // reused versionCode while skipped numbers cost nothing.
+        versionCode 5
+        versionName "1.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

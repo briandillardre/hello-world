@@ -234,7 +234,7 @@ PLAID_WEBHOOK_URL=           # optional: /api/... for SYNC_UPDATES_AVAILABLE
 | **Google Workspace** | live on hammertrack.ai | sales@ / hello@ / support@ all verified receiving (Jul 30) |
 | **D-U-N-S** | ✅ **LANDED early Aug 2026** (D&B account created Jul 31; partner email Aug 8 confirms number issued) | Unblocked both **organization** developer accounts. Never file again (duplicate records are slow to merge). |
 | **Google Play** | ✅ **LIVE — org account, app in PRODUCTION** (verified in the console Aug 28) | HammerTrack **Organization** account, ID 5164665234986722552. Identity verified + website ownership verified via Search Console **Aug 9**; `com.hammertrack.app` published to **Production Aug 21**, update published Aug 27; all apps meet the Android developer verification requirements. Installed audience 0 — the remaining work is DISTRIBUTION (store listing completeness, discoverability), not enrollment. ⚠ Correction: this doc said "enrollment not started" through Aug 28 because no fee/verification email was findable in the Gmail account — the confirmations landed elsewhere. **Check the console, not the inbox.** |
-| **Apple Developer** | 🟡 **in review** | Org enrollment underway on brian@hammertrack.ai. Developer Support case **20000149520723** (Connor, Aug 27); requested documents submitted and acknowledged ("We received your documents", Aug 27). Awaiting Apple's verdict. dnb.com record must match HAMMERTRACK LLC legal name + address verbatim — Apple matches it literally. |
+| **Apple Developer** | 🔴 **more documents requested (Aug 31)** | Enrollment N37H75H2FX, case **20000149520723**. Aug 27 batch submitted; Aug 31 Mike (senior Advisor) replied: **cannot verify Brian's identity nor his association with HAMMERTRACK LLC** — upload at developer.apple.com/contact/file-upload: driver's license **front AND back**, employment/ownership verification, and an LLC business document (SC Articles of Organization / Certificate of Formation; business license also accepted). Case emails now land on **briandillardre@gmail.com** (Aug 27 ones went to brian@hammertrack.ai — watch both). dnb.com record must match HAMMERTRACK LLC legal name + address verbatim — Apple matches it literally. |
 
 ## Pending / Next Steps
 1. ~~flespi account + webhook~~ ✅ DONE Jul 6 2026 (see webhook gotcha above)
@@ -284,6 +284,17 @@ in the SAME commit:
 - the cost/growth metrics docs it draws from (`docs/COST-SCALE-2026-07.md`,
   `docs/OPERATING-MODEL.md`) whenever a decision changes a dollar figure
 The infographic is a rendered view of the roadmap — never let them drift.
+
+## Release rule (Brian, Aug 31 2026)
+"Always release new version. You do not need permission from me any more."
+When native-affecting changes merge (android/, ios/, capacitor.config.ts,
+mobile-shell/), bump versionCode/versionName in android/app/build.gradle and
+dispatch the `android-release` workflow on master — do not ask first. The
+workflow builds the signed AAB; with the optional PLAY_SERVICE_ACCOUNT_JSON
+secret it uploads straight to the Play production track, otherwise the AAB
+artifact + a Play Console upload note is the deliverable. iOS releases stay
+manual until the Apple org enrollment clears. Play rejects a REUSED
+versionCode (skipped numbers are free) — when in doubt, jump higher.
 
 ## Checks & balances rule (Brian, Aug 11 2026; cadence revised Aug 28)
 "Create a few more agents within here as a checks and balances to your
