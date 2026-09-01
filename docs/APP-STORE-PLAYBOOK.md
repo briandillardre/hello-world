@@ -25,6 +25,13 @@
 > no supported way to recolor it at runtime on events (activity-alias swaps
 > break home-screen placement), so the arcs are amber always and the
 > NOTIFICATION BADGE is the "something happened" signal.
+>
+> **Hands-off releases (one-time setup):** Play Console → Setup → API
+> access → create a service account → grant it **Release manager** on
+> com.hammertrack.app → download its JSON key → add it as the
+> `PLAY_SERVICE_ACCOUNT_JSON` Actions secret. From then on the
+> android-release workflow uploads straight to production; until then it
+> produces the signed AAB artifact to upload by hand.
 
 ## Architecture (decided)
 
