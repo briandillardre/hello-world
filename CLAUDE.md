@@ -207,6 +207,7 @@ STRIPE_PRICE_TAG=              # price_… recurring $3/mo, "Tool tag"
 SHARE_LINK_SECRET=             # optional: signs public replay links (unset = derived from service-role key)
 WINDY_WEBCAMS_KEY=             # optional: Webcams map layer (free key at api.windy.com/webcams)
 NEXT_PUBLIC_TOMTOM_KEY=        # optional: Traffic map layer (free key at developer.tomtom.com, 2.5k tiles/day)
+NEXT_PUBLIC_VERCEL_ANALYTICS=  # optional: '1' turns on Vercel Web Analytics (enable Analytics on the project first, else the script 404s on every page)
 NEXT_PUBLIC_PARCEL_SERVICE_URL= # optional: county ArcGIS parcel layer URL (…/MapServer/<n>); enables Parcel lines + tap-for-owner. Greenville SC: gcgis.org ArcGIS REST directory
 # ── Home weather station (optional; unset = hidden) ──
 PWS_PROVIDER=                  # ambient | tempest | wunderground (inferred from keys if unset)

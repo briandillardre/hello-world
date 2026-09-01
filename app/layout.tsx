@@ -64,6 +64,12 @@ export const viewport: Viewport = {
   themeColor: '#002946',
 }
 
+// Vercel Web Analytics loads /_vercel/insights/script.js, which 404s (a console
+// error on every page) until the project has Analytics enabled. Flip both in
+// one sitting: Vercel → Analytics → Enable, then NEXT_PUBLIC_VERCEL_ANALYTICS=1
+// in the project env + redeploy. Board #86.
+const analyticsOn = process.env.NEXT_PUBLIC_VERCEL_ANALYTICS === '1'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${archivo.variable} ${mono.variable}`}>
@@ -81,7 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           every surface — /command and /live render MapView outside the
           dashboard layout, and a feedback call nobody hears is a dead
           button (ship-check P0, Aug 12). */}
-      <body className="font-sans"><ErrorReporter /><NativePush /><FeedbackHost />{children}<Analytics /></body>
+      <body className="font-sans"><ErrorReporter /><NativePush /><FeedbackHost />{children}{analyticsOn && <Analytics />}</body>
     </html>
   )
 }
