@@ -211,7 +211,7 @@ function RoadmapTab() {
       <Box tone="amber">
         <ul className="space-y-1.5 text-[13px] text-faint leading-relaxed">
           <li><span className="text-ink font-semibold">PM Tier 1 money loop</span> — estimates → e-sign proposals → change orders → pay apps</li>
-          <li><span className="text-ink font-semibold">Growth Platform</span> — charts &amp; benchmarks → valuation card → HammerTrack Card → referral lending → insurance referrals</li>
+          <li><span className="text-ink font-semibold">Growth Platform</span> — HammerTrack Card → referral lending → insurance referrals (charts, the valuation card and the memo advisor are live)</li>
           <li><span className="text-ink font-semibold">HammerTrack Aerial</span> — wrap OpenDroneMap, dated-flight differencing, &ldquo;X yd³ moved&rdquo; at $10–25/flight against DroneDeploy&apos;s $329/mo</li>
           <li>Camera pilot over the Teltonika rails</li>
         </ul>
@@ -393,8 +393,8 @@ function FleetTab({ live }: { live: BoardLive }) {
         <Box tone="stop">
           <h3 className="font-display font-bold text-[15px] text-ink mb-1">T1-b — 2003 Chevy</h3>
           <p className="text-[13px] text-faint leading-relaxed">
-            Silent since 13 Aug. SIM healthy, unpaused, 5.17 MB of 100 used — so it is the power path, not config.
-            Bypass the OBD extension and check the port fuse.
+            Dark since 13 Aug with a healthy, unpaused SIM — so it is the power path, not config.
+            Bypass the OBD extension and check the port fuse; /assets/onboard shows the live state.
           </p>
         </Box>
       </div>

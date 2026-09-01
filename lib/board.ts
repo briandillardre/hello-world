@@ -31,25 +31,52 @@ export interface BoardTask {
   sev?: Severity
 }
 
-/** Mirrors the working task list. Ids match so a conversation and the board
- *  can refer to the same number. */
+/** Board ids are stable handles ("board #66") — new items take the next free
+ *  number; ids are never reused. Refreshed against reality 1 Sep 2026. */
 export const TASKS: BoardTask[] = [
-  { id: 4, title: 'Exact hours & cost engine', why: 'Zone sessions at ingest, daily rollups, retroactive backfill. The spine every money feature sits on.', owner: 'build', state: 'flight' },
-  { id: 47, title: 'Device onboarding single pane', why: 'Shipped — /assets/onboard. Per-model checklist plus live status, so nobody opens a vendor console.', owner: 'build', state: 'flight' },
-  { id: 48, title: 'Founder board at /board', why: 'This page.', owner: 'build', state: 'flight' },
+  // ── Yours, blocking ──────────────────────────────────────────────────
+  { id: 46, title: 'Pay the declined KORE invoice', why: 'Card declined 18 Aug on the 14 Aug invoice. An account in arrears can suspend the 13 SuperSIMs activating now — pay it from the Mercury KORE virtual card. Invoice number is in the AR email. Mark done when paid.', owner: 'brian', state: 'open', sev: 'stop' },
+  { id: 66, title: 'Google Ads account is PAUSED — finish advertiser verification', why: 'Google paused the ads account 31 Aug because the verification tasks were not completed by the deadline. Nothing runs until it clears: Google Ads → Billing → Advertiser verification (business questions plus the EIN letter or SC LLC registration). The theft-hook funnel cannot spend until then.', owner: 'brian', state: 'open', sev: 'stop' },
+  { id: 40, title: 'Revive T1-b in the 2003 Chevy', why: 'Dark since 13 Aug with a healthy, unpaused SIM — so it is power, not config. Bypass the OBD extension and check the port fuse. /assets/onboard shows the live state; close this the day it reports.', owner: 'brian', state: 'open', sev: 'stop' },
+  { id: 17, title: 'Revive the 2500HD tracker', why: 'Dark since about 25 Aug. Same ladder as T1-b: SIM tray, power path, then FOTA config. /assets/onboard shows whether it has come back.', owner: 'brian', state: 'open', sev: 'stop' },
 
-  { id: 46, title: 'Pay the declined KORE invoice', why: 'Card declined 18 Aug. An account in arrears can suspend SIMs mid-rollout — put it on the Mercury vendor card. Invoice number is in the AR email.', owner: 'brian', state: 'open', sev: 'stop' },
-  { id: 40, title: 'Revive T1-b in the 2003 Chevy', why: 'Silent since 13 Aug. SIM is healthy and unpaused, so it is the power path — bypass the OBD extension, check the port fuse.', owner: 'brian', state: 'open', sev: 'stop' },
-  { id: 17, title: 'Revive the 2500HD tracker', why: 'Silent 75 h and counting.', owner: 'brian', state: 'open', sev: 'stop' },
-  { id: 41, title: 'Apple wants more documents — upload three things', why: 'Apple replied 31 Aug (Mike, case 20000149520723): they cannot verify your identity or your association with HammerTrack LLC from the 27 Aug batch. Upload at developer.apple.com/contact/file-upload: (1) driver’s license FRONT AND BACK, (2) proof you work for/own the LLC, (3) an LLC formation document — the SC Articles of Organization or Certificate of Formation is the strongest. Reply lands on briandillardre@gmail.com now, not the hammertrack address.', owner: 'brian', state: 'open', sev: 'warn' },
-  { id: 43, title: 'Send the KORE / Teltonika email', why: 'Draft is in Gmail: pre-configuration miss, the missing 14th SIM, and four hardware questions before order #2.', owner: 'brian', state: 'open', sev: 'warn' },
-  { id: 45, title: 'Green Driving config to all five FMM00As', why: 'One round trip in Configurator + FOTA. Unblocks harsh accel/brake in driver grades, which today score only sustained speed and night driving.', owner: 'brian', state: 'open', sev: 'warn' },
-  { id: 1, title: 'QuickBooks connect', why: 'Align the redirect URI in Vercel and the Intuit app, then retry from /accounting. Marketing claims this today and no customer can use it.', owner: 'brian', state: 'open', sev: 'warn' },
+  // ── Yours, soon ──────────────────────────────────────────────────────
+  { id: 81, title: 'Fix www.hammertrack.ai — visitors get a browser warning', why: 'The certificate served for www only covers the apex, so anyone typing www sees a security warning page. Vercel → project → Settings → Domains → add www.hammertrack.ai as a redirect to hammertrack.ai; the certificate issues itself. hammertrackai.com has no www record at all — add one there too.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 64, title: 'Upload Android v1.2 to Play — or make releases hands-off', why: 'The android-release workflow built the signed v1.2 AAB (versionCode 5) on 1 Sep: opens to /map, asks for location, new icon. Download the hammertrack-release artifact from the green run and upload it in Play Console → Production (location: foreground only). Or add the PLAY_SERVICE_ACCOUNT_JSON secret once and never do this by hand again.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 41, title: 'Apple wants three documents', why: 'Apple (Mike, case 20000149520723) cannot verify your identity or your link to HAMMERTRACK LLC. Upload at developer.apple.com/contact/file-upload: driver’s license front AND back, proof you own the LLC, and the SC Articles of Organization. Replies now land in your personal inbox, not brian@hammertrack.ai.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 68, title: 'Check the Twilio toll-free verdict', why: '“In review” is a month old and no verdict email exists anywhere. Twilio console → Regulatory Compliance → Toll-Free Verification. Approved: SMS theft alerts go live and the text claims go back on the splash. Rejected: fix the use-case description and resubmit. The splash was softened to “alert on your phone” on 1 Sep so nothing is claimed that has not delivered.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 43, title: 'Answer KORE: onboarding call + order #2 asks', why: 'Claire (KORE customer success) asked 26 Aug for a time for the onboarding call — unanswered. Reply with a slot, and keep the asks only KORE can answer: the skipped pre-configuration, the 14-devices-to-13-SIMs gap, order #2 pre-config and lead time. docs/TELTONIKA-DEVICES.md already settled the gateway and camera questions.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 45, title: 'Push the real config to every FMM00A (FOTA)', why: 'One FOTA WEB push to all five trucks: enable Green Driving IO (harsh accel/brake for driver grades) and the fast reporting profile — the default 5–15 minute intervals are why some trucks draw straight dashed chords instead of roads.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 1, title: 'QuickBooks connect — 45 minutes', why: 'docs/QBO-GO-LIVE.md is the click-by-click: create the Intuit app, paste four QBO_ vars into Vercel, redeploy, connect from /accounting. Until then the splash, /demo and /pricing label QuickBooks as coming (softened 1 Sep). Connecting flips them back.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 67, title: 'Hire S1 — the model says this month', why: 'The operating model fires S1 in Sep 2026 at zero customers because founder hours are the constraint. One-paragraph job: rolodex hire, $800 base + $200 per activated account, 60-day kill rule. Put it in front of two or three Upstate names.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 83, title: 'Confirm the Play app is registered for developer verification (by 30 Sep)', why: 'Google Play’s final reminder (31 Aug): every Play app must be registered by 30 Sep 2026 or it is removed. Over 99% were auto-registered — open the Play Console home page and confirm com.hammertrack.app reads “registered”. Two minutes.', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 87, title: 'Decide: private home for the prospect list + hardware pricing', why: 'docs/FOUNDING-25.md carried 25 named prospects with personal emails and phones in the public repo; the contact details were redacted 1 Sep but live on in git history. docs/HARDWARE-PRICING.md is labelled confidential and is public too. Move both to Drive and say whether you want the history scrubbed (a force-push everyone re-clones from).', owner: 'brian', state: 'open', sev: 'warn' },
+  { id: 65, title: 'Re-upload the Play listing assets', why: 'The live listing still shows raw browser screenshots and no tagline. Paste the short description from docs/APP-STORE-LISTING.md, replace the phone screenshots with store-assets/android-phone/*.png, add the feature graphic, and write the v1.2 What’s New.', owner: 'brian', state: 'open' },
+  { id: 70, title: 'Bring the rest of KORE order #1 online', why: 'Five of six OBD units came up 28 Aug. The six TAT141s, three FMM650s, ten Eye Beacons and the last pairing puck still need SIM → FOTA config → scan. /assets/onboard shows each device’s first unfinished step.', owner: 'brian', state: 'open' },
+  { id: 71, title: 'Cost rates on the big iron', why: 'Burn Map, Idle $ rings, the insights engine and the owner memo all read $/hr and $/day per machine — without rates on the big iron they tell half a story. The advise-from-specs button gives a starting number.', owner: 'brian', state: 'open' },
+  { id: 69, title: 'Turn on the receipt chase (Resend inbound)', why: 'Built 1 Aug, dark since. Resend → enable inbound on hammertrack.ai → webhook to /api/inbound/receipts → whsec_ secret into Vercel as RESEND_INBOUND_SECRET → redeploy → Enable on /receipts, map card last-4s, point the bank’s per-swipe alerts at the inbound address.', owner: 'brian', state: 'open' },
+  { id: 72, title: 'Seed the showroom company', why: 'S1 demos on it and /model expects it. docs/SHOWROOM.md: create a fresh account, then /model → Showroom company → Seed. Until then the only demo is the mock stage or DCG’s live books.', owner: 'brian', state: 'open' },
+  { id: 84, title: 'Supabase: rerun the security linter', why: 'The advisor flagged two public tables without row-level security (the deploy ledger and the PostGIS reference table). Migration 086 locked them down 1 Sep. Dashboard → Advisors → Security → Rerun linter should show no critical issue; if it still does, send the table name.', owner: 'brian', state: 'open' },
+  { id: 85, title: 'Two GitHub secrets: CRON_SECRET and PLAY_SERVICE_ACCOUNT_JSON', why: 'Repo → Settings → Secrets → Actions. CRON_SECRET (Vercel’s value) lets the daily diag probe read production health again — it has printed “unauthorized” since 26 Aug. PLAY_SERVICE_ACCOUNT_JSON (Play Console → Setup → API access → service account with Release manager) makes every Android release upload itself.', owner: 'brian', state: 'open' },
+  { id: 86, title: 'Turn on Vercel Web Analytics', why: 'The marketing site had no analytics at all — the ad funnel was unmeasured. The tracking component shipped 1 Sep and is a no-op until you flip it on: Vercel → project → Analytics → Enable. Cookieless, no banner needed.', owner: 'brian', state: 'open' },
+  { id: 73, title: 'Move vendor payments to Mercury', why: 'One named virtual card per vendor. Get Vercel, Supabase, Twilio, Hologram, Workspace, Namecheap, Resend, KORE and Anthropic off personal cards so the LLC’s books are clean from month zero. Vercel and Supabase receipts still land in the personal inbox.', owner: 'brian', state: 'open' },
   { id: 19, title: 'Supabase auth config', why: 'Enable the Google provider and fix the Site URL — it still points at vercel.app, so auth emails and redirects land wrong.', owner: 'brian', state: 'open' },
-  { id: 3, title: 'Set the Greenville parcel service URL', why: 'Turns on parcel lines and tap-for-owner on the map.', owner: 'brian', state: 'open' },
-  { id: 18, title: 'Decide the tow-latency wording', why: '"2 min movement to text" on the splash and /demo — depends on the Twilio verdict.', owner: 'brian', state: 'open' },
+  { id: 3, title: 'Set the Greenville parcel service URL', why: 'Paste the Greenville County parcel MapServer layer URL (gcgis.org ArcGIS REST directory) into NEXT_PUBLIC_PARCEL_SERVICE_URL in Vercel. Turns on parcel lines and tap-for-owner on the map.', owner: 'brian', state: 'open' },
+  { id: 74, title: 'TAT141 solar accessory', why: 'Ask Teltonika Americas (Billy) whether a solar charging accessory exists — at 5-minute tracking the battery alone will not last on machines parked outside; otherwise wire to 12/24 V aux.', owner: 'brian', state: 'open' },
+  { id: 75, title: 'Confirm: QSBS / C-corp and equity-gifting conversation', why: 'Carried only on the retired Aug 22 to-do page: CPA on QSBS/C-corp conversion, attorney on equity gifting — the five-year clock only starts when shares exist. Say whether this is still wanted.', owner: 'brian', state: 'open' },
 
-  { id: 44, title: 'Tool trailer gateway', why: 'Wired FMM650 inside the trailer plus manifest alerts — "you left the yard with 38 of 40 tags."', owner: 'build', state: 'open' },
+  // ── Build, open ──────────────────────────────────────────────────────
+  { id: 88, title: 'Absolute last-seen date + time on the assets list', why: 'Brian, Aug 28: tools (and really every asset) should show what day and time they were last seen — not just “3d ago”.', owner: 'build', state: 'open' },
+  { id: 89, title: 'Ping-dots layer on the timeline', why: 'An option to draw every true GPS fix as a dot, so a trail can be read against the raw pings. Honest about rollups past 30 days.', owner: 'build', state: 'open' },
+  { id: 90, title: 'Shared requireEdit() gate on every asset write action', why: 'deleteAssetAction runs on the service client with no role check; one shared gate for all asset writes.', owner: 'build', state: 'open' },
+  { id: 76, title: 'Convoys into the AI context', why: 'Convoys are on the map but not in what the assistant reads — “who was riding with the RAM at 2 PM” should answer from the same motion-agreement math.', owner: 'build', state: 'open' },
+  { id: 80, title: 'Fault codes → work orders', why: 'A stored fault code on a machine should open or annotate a work order the way overdue schedules already do.', owner: 'build', state: 'open' },
+  { id: 38, title: 'Scope flespi ingest ident lookup per company', why: 'Mitigated 28 Aug: ingest lookups filter active=true and 082/084 guarantee one active owner per 15-digit IMEI; bulk import refuses cross-tenant collisions. Still open for non-IMEI tracker ids — needs a production duplicate check, then the schema fix on the other write paths.', owner: 'build', state: 'open' },
+  { id: 35, title: 'Reconcile setup.sql with the migration series', why: 'setup.sql is still migrations 001–010 concatenated (its own header says so); the series is at 086. Regenerate it from the full series, or point GO-LIVE at scripts/migrate.mjs and retire it.', owner: 'build', state: 'open' },
+  { id: 79, title: 'Open-data layers ranked 30 Aug', why: 'FAA TFR + LAANC ceilings (serves the daily Mavic flights), POI tap-for-phone/hours via Nominatim/Overpass, NWS alerts + USGS river gauges for pour/flood. Verified by live probes; boats, freight rail and arrivals boards are honest NOs.', owner: 'build', state: 'open' },
+  { id: 78, title: 'iOS push (APNs) after Apple clears', why: 'Capacitor registers APNs tokens; our sender speaks FCM. Either an APNs key in Firebase + the FCM iOS SDK, or teach lib/push.ts APNs HTTP/2 for platform=ios. Post-TestFlight.', owner: 'build', state: 'open' },
+  { id: 91, title: 'Memo cron scale past ~25 companies', why: 'The monthly owner memo composes serially; batch or parallelise before the Founding 25 fill up.', owner: 'build', state: 'open' },
+  { id: 44, title: 'Tool trailer gateway', why: 'Wired FMM650 inside the trailer plus manifest alerts — “you left the yard with 38 of 40 tags.”', owner: 'build', state: 'open' },
   { id: 42, title: 'Vehicle & equipment camera pilot', why: 'DualCam-class over the Teltonika rails. Research says this likely needs FMC650 (Cat 1), not the FMM650 we own.', owner: 'build', state: 'open' },
   { id: 8, title: 'Zone financials', why: 'Contract bid, change orders and cost-code budgets against the DCG master list.', owner: 'build', state: 'open' },
   { id: 15, title: 'Map wow-pack tier 2', why: 'Bid Ghost, storm-$ ledger, vendor money map, then/now split.', owner: 'build', state: 'open' },
@@ -57,9 +84,29 @@ export const TASKS: BoardTask[] = [
   { id: 21, title: 'UX sweep batch 2', why: 'Deferred audit items.', owner: 'build', state: 'open' },
   { id: 12, title: 'UI polish tier 2', why: 'Motion pass, empty states, haptics.', owner: 'build', state: 'open' },
   { id: 34, title: 'Nationwide parcels add-on', why: 'Evaluate Regrid vs ReportAll and price it as an upsell.', owner: 'build', state: 'open' },
-  { id: 35, title: 'Reconcile setup.sql with the migration series', why: 'Missing 056–073 hardening, so fresh installs drift from production.', owner: 'build', state: 'open' },
-  { id: 38, title: 'Scope flespi ingest ident lookup per company', why: 'Pre-existing; both reviewers flagged it.', owner: 'build', state: 'open' },
 
+  // ── Shipped ──────────────────────────────────────────────────────────
+  { id: 93, title: 'Founder audit pass — board refresh, marketing truth sweep, SEO basics, security headers', owner: 'build', state: 'done' },
+  { id: 92, title: 'RLS lockdown — deploy ledger + PostGIS table (migration 086)', owner: 'build', state: 'done' },
+  { id: 63, title: 'Android v1.2 (versionCode 5) + hands-off Play upload step', owner: 'build', state: 'done' },
+  { id: 62, title: 'Launcher icons — navy ground, amber signal arcs', owner: 'build', state: 'done' },
+  { id: 61, title: 'Sparse trails drawn honestly + route/plane rate limits', owner: 'build', state: 'done' },
+  { id: 60, title: 'Navigation wave — Places, directions, convoys, smooth planes, location primer', owner: 'build', state: 'done' },
+  { id: 59, title: 'Store listing pack refresh — real screenshots, tagline, feature graphic', owner: 'build', state: 'done' },
+  { id: 58, title: 'App shell opens /map + sign-in polish', owner: 'build', state: 'done' },
+  { id: 57, title: 'Map selection & state language — dim the rest, gray the dead, ring the tools', owner: 'build', state: 'done' },
+  { id: 56, title: 'Bulk add, spreadsheet style (/assets/import)', owner: 'build', state: 'done' },
+  { id: 55, title: 'Scan-to-map onboarding (/assets/scan)', owner: 'build', state: 'done' },
+  { id: 54, title: 'Per-asset map icons', owner: 'build', state: 'done' },
+  { id: 53, title: 'Monthly owner memo + Ask AI in the chrome', owner: 'build', state: 'done' },
+  { id: 52, title: 'Insights engine — 8 detectors, anti-cry-wolf schema', owner: 'build', state: 'done' },
+  { id: 51, title: 'Full-site audit + logged-in review fix batch', owner: 'build', state: 'done' },
+  { id: 50, title: 'KORE SuperSIM no-cable onboarding playbook, proven on the first FMM00A', owner: 'build', state: 'done' },
+  { id: 49, title: 'Showroom company + simulator cron', owner: 'build', state: 'done' },
+  { id: 47, title: 'Device onboarding single pane (/assets/onboard)', owner: 'build', state: 'done' },
+  { id: 48, title: 'Founder board at /board', owner: 'build', state: 'done' },
+  { id: 4, title: 'Exact hours & cost engine (056 ledger)', owner: 'build', state: 'done' },
+  { id: 18, title: 'Tow-latency wording — softened to “alert on your phone” pending Twilio', owner: 'build', state: 'done' },
   { id: 39, title: 'Trail rollups + map viz polish', owner: 'build', state: 'done' },
   { id: 37, title: 'Demo realism overhaul', owner: 'build', state: 'done' },
   { id: 36, title: 'Phone gesture wave', owner: 'build', state: 'done' },
@@ -104,6 +151,8 @@ export const STAGES: Stage[] = [
     summary: '25 paying companies, under $100k ARR, near-zero churn. Funded by nothing but the monthly burn and your own time.',
     points: [
       { text: 'Pilot truck live since 6 Jul · Stripe billing live · Mercury live', tone: 'ok' },
+      { text: 'Android app live in Play since 21 Aug; v1.2 built 1 Sep, upload pending', tone: 'ok' },
+      { text: 'Apple enrollment blocked on identity + LLC documents (31 Aug)', tone: 'wait' },
       { text: 'PM Tier 1 money loop is the next real build', tone: 'wait' },
       { text: 'Zero paying customers today — this is the whole job', tone: 'no' },
     ],
@@ -155,11 +204,11 @@ export const TIER_ROWS: { label: string; track: string; operate: string; run: st
 /** docs/COST-SCALE-2026-07.md */
 export const COST_CURVE: { label: string; cells: string[]; emphasis?: boolean }[] = [
   { label: 'MRR', cells: ['$0', '$2,100', '~$11,000', '~$56,000'], emphasis: true },
-  { label: 'SIMs in field', cells: ['2', '200', '800', '4,000'] },
+  { label: 'SIMs in field', cells: ['~15', '200', '800', '4,000'] },
   { label: 'SIM + flespi COGS', cells: ['$5', '~$400', '~$1,360', '~$6,000'] },
   { label: 'Fixed infra', cells: ['$130', '$130', '~$300', '~$900'] },
   { label: 'Stripe fees', cells: ['$0', '~$70', '~$330', '~$1,650'] },
-  { label: 'Plaid + AI usage', cells: ['$0', '~$30', '~$150', '~$700'] },
+  { label: 'AI usage (Haiku dispatcher + monthly memo)', cells: ['$0', '~$30', '~$150', '~$700'] },
   { label: 'Total cost', cells: ['$135', '~$630', '~$2,140', '~$9,250'] },
   { label: 'Gross margin', cells: ['—', '70%', '81%', '83%'], emphasis: true },
 ]
@@ -170,7 +219,7 @@ export const COST_COLS = ['Now (pilot)', '25 customers', '100', '500']
  *  because the constraint it relieves is founder hours, not demand. */
 export const HIRES: { role: string; trigger: string; cost: string; when: string; note?: string }[] = [
   { role: 'S1 — PT field sales & install', trigger: '0 customers — founder hours are the binding constraint, not demand', cost: '$800 base + $200/account', when: 'Sep 2026',
-    note: 'Hired for the rolodex, comp weighted to commission. 60-day kill rule: under 8 demos/mo or 3 activated accounts → pure commission or part ways.' },
+    note: 'DUE NOW — no hire recorded as of 1 Sep. Hired for the rolodex, comp weighted to commission. 60-day kill rule: under 8 demos/mo or 3 activated accounts → pure commission or part ways.' },
   { role: 'H1 — PT installer / support', trigger: '30 customers', cost: '—', when: 'absorbed by S1',
     note: 'Grow S1\u2019s hours at the 30-customer trigger instead of adding a second person.' },
   { role: 'H2 — FT ops / install tech', trigger: '90 customers', cost: '$5,400', when: 'Jul 2028' },
@@ -210,19 +259,25 @@ export const COMPETITORS: { name: string; note?: string; price: string; friction
 
 export const VENDORS: { name: string; state: 'live' | 'warn' | 'stop' | 'idle'; stateLabel: string; note: string }[] = [
   { name: 'Mercury', state: 'live', stateLabel: 'live', note: 'Approved 5 Aug. One named virtual card per vendor. The opening deposit is owner capital, not income.' },
+  { name: 'Stripe', state: 'live', stateLabel: 'live', note: 'Subscriptions live since 31 Jul — $8 machine / $3 tag prices, webhook wired. Founding-25 pricing applied per company.' },
   { name: 'Google Workspace', state: 'live', stateLabel: 'live', note: 'hammertrack.ai · sales@, hello@ and support@ all verified receiving.' },
-  { name: 'Supabase', state: 'live', stateLabel: 'live', note: 'Pro. Billing entity is the LLC.' },
+  { name: 'Supabase', state: 'live', stateLabel: 'live · linter rerun due', note: 'Pro; billing entity is the LLC. The security advisor flagged two public tables without RLS on 31 Aug — fixed by migration 086 on 1 Sep. Rerun the linter to confirm it reads clean.' },
+  { name: 'Vercel', state: 'warn', stateLabel: 'www broken', note: 'Apex healthy, auto-deploys master, migrations run on every build. www.hammertrack.ai serves the apex-only certificate → browser warning; add www as a redirect domain in the project. Web Analytics not yet enabled.' },
   { name: 'D-U-N-S', state: 'live', stateLabel: 'issued', note: 'Landed early Aug. Unblocks both app-store organisation accounts. Never file again — duplicates are slow to merge.' },
-  { name: 'Twilio', state: 'warn', stateLabel: 'in review', note: 'Number bought and compliance profile approved, toll-free verification still pending. Voice is enabled but has no greeting — do not publish the number.' },
-  { name: 'KORE', state: 'stop', stateLabel: 'invoice due', note: 'Declined card on the 14 Aug invoice — see the AR email for the number. Connectivity agreement still pending in their system.' },
-  { name: 'Google Play', state: 'live', stateLabel: 'app live', note: 'Organization account; com.hammertrack.app in Production since 21 Aug, identity and website ownership verified 9 Aug. Installed audience is 0 — what is left is distribution, not enrollment.' },
+  { name: 'Twilio', state: 'warn', stateLabel: 'verdict unchecked', note: 'Toll-free verification has read “in review” since 30 Jul and no verdict email exists anywhere. Check the console. Voice still has no greeting — do not publish the number.' },
+  { name: 'KORE', state: 'stop', stateLabel: 'invoice + call', note: '14 Aug invoice, card declined 18 Aug — status unknown. 13 SuperSIMs activating in KORE One; onboarding call unanswered since 26 Aug; connectivity agreement still pending in their system.' },
+  { name: 'Google Play', state: 'live', stateLabel: 'app live · v1.2 waiting', note: 'Organization account; com.hammertrack.app in Production since 21 Aug. v1.2 (versionCode 5) signed AAB built 1 Sep — upload it, or add PLAY_SERVICE_ACCOUNT_JSON. Confirm the developer-verification registration before 30 Sep. Listing still shows raw browser screenshots.' },
+  { name: 'Google Ads', state: 'stop', stateLabel: 'paused', note: 'Account paused 31 Aug — advertiser verification incomplete by the deadline. Finish the verification tasks before any campaign can run.' },
   { name: 'Apple Developer', state: 'warn', stateLabel: 'docs requested', note: 'Apple replied 31 Aug: identity + LLC association not verifiable from the 27 Aug batch. Upload DL front+back, employment/ownership proof, and an LLC formation document at developer.apple.com/contact/file-upload (case 20000149520723).' },
+  { name: 'Resend', state: 'warn', stateLabel: 'inbound off', note: 'Outbound email live (invites, digests, memo). Inbound is not enabled, so the receipt chase built 1 Aug has never fired.' },
 ]
 
 export const ENV_PENDING: { text: string; tone: 'no' | 'wait' }[] = [
-  { text: 'QBO_* — no customer can connect QuickBooks until this ships', tone: 'no' },
+  { text: 'QBO_* — no customer can connect QuickBooks until this ships (docs/QBO-GO-LIVE.md)', tone: 'no' },
+  { text: 'RESEND_INBOUND_SECRET — the receipt chase fails closed until it is set', tone: 'no' },
   { text: 'PLATFORM_OWNER_EMAILS — until it is set, the founder-page gate falls back to a weaker @hammertrack.ai domain check', tone: 'no' },
-  { text: 'CRON_SECRET — the usage cron fails closed without it, so ledger and trail rollups stop', tone: 'wait' },
+  { text: 'CRON_SECRET in Vercel — verify it is set: usage, trail-rollup, insights and memo crons all fail closed without it', tone: 'wait' },
+  { text: 'GitHub Actions secrets: CRON_SECRET (diag probe) and PLAY_SERVICE_ACCOUNT_JSON (hands-off Play uploads)', tone: 'wait' },
   { text: 'NEXT_PUBLIC_PARCEL_SERVICE_URL — turns on parcel lines and tap-for-owner', tone: 'wait' },
   { text: 'Supabase Auth Site URL still points at vercel.app, so auth emails land wrong', tone: 'wait' },
 ]
@@ -231,11 +286,13 @@ export const ENV_LIVE: string[] = [
   'Auto-migrations run on every master build — pushing a migration file IS the migration',
   'flespi channel 1401177 → webhook → ingest, verified end to end',
   'hammertrack.ai on Vercel since 5 Aug; the .com 301s to it; Workspace MX intact',
-  'Stripe billing, Resend and push registration all wired',
+  'Stripe billing, Resend outbound and push registration all wired',
+  'android-release builds a signed AAB from the 4 ANDROID_* secrets — proven on v1.2, 1 Sep',
 ]
 
 export const RULES: { name: string; text: string }[] = [
-  { name: 'Checks & balances', text: 'Any session shipping substantive code or public copy runs ship-check, truth-check and sec-check before it ends, and fixes confirmed findings the same session.' },
+  { name: 'Checks & balances', text: 'One reviewer pass (ship-check, truth-check, sec-check) per day that had major changes, scoped to that day’s diff — never a merge gate. Ship, review, fix what is real in a follow-up commit.' },
+  { name: 'Release rule', text: 'Native-affecting merges bump versionCode/versionName and dispatch android-release without asking (Brian, 31 Aug). Play rejects a reused versionCode — jump higher when in doubt. iOS stays manual until Apple clears.' },
   { name: 'Sync rule', text: 'Any roadmap, to-do or cost change updates the system-map infographic, this board and the cost docs in the same commit. The graphic is a view of the roadmap; never let them drift.' },
   { name: 'Splash truth', text: 'Nothing on a marketing page may claim functionality that does not exist. Roadmap items say ROADMAP; shipped items may say LIVE. Every session that ships or re-scopes a feature re-audits the splash in the same commit.' },
   { name: 'Pricing sync', text: 'Any change to tiers, Founding-25 terms or the pilot offer updates /pricing, the splash ladder, /demo, the billing guide and the tiers doc — all in one commit.' },
@@ -246,14 +303,15 @@ export const RULES: { name: string; text: string }[] = [
 /** Standing marketing exposure — claims that are currently ahead of reality.
  *  Kept on the board so they can't quietly age. */
 export const TRUTH_WATCH: string[] = [
-  'QuickBooks is claimed as built-in, but no customer can connect until the Intuit app ships.',
-  'The two-minute theft-text claim depends on Twilio toll-free verification clearing.',
+  'QuickBooks is labelled “coming” on every public page as of 1 Sep — the integration is built; the Intuit app is not. Connecting (docs/QBO-GO-LIVE.md) flips the copy back.',
+  'Theft-alert copy says “alert on your phone within minutes” (push), not “text” — the toll-free verdict is unconfirmed. Approved verdict → texts go back on.',
+  'The receipt-chase “seconds after the swipe” line describes a built feature that is dark until Resend inbound is enabled.',
 ]
 
 export const DOC_INDEX: { group: string; files: string[] }[] = [
-  { group: 'Money', files: ['PRICING-TIERS.md', 'UNIT-ECONOMICS.md', 'COST-SCALE-2026-07.md', 'OPERATING-MODEL.md', 'BUSINESS-PLAN.md'] },
+  { group: 'Money', files: ['PRICING-TIERS.md', 'UNIT-ECONOMICS.md', 'COST-SCALE-2026-07.md', 'OPERATING-MODEL.md', 'BUSINESS-PLAN.md', 'QBO-GO-LIVE.md'] },
   { group: 'Strategy', files: ['PATH-TO-1B.md', 'GROWTH-PLATFORM.md', 'AI-RESILIENCE.md', 'COMPETITORS.md', 'FOUNDING-25.md'] },
-  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md'] },
+  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md', 'SHOWROOM.md'] },
 ]
 
 /** Where each class of iron belongs — the allocation that stops someone

@@ -2,6 +2,23 @@
 const nextConfig = {
   // The zones pages lived at /geofences until Aug 6 2026 — keep old links,
   // bookmarks, and AI deep links working forever.
+  // Baseline browser hardening on every response. No Permissions-Policy: the
+  // app legitimately uses camera (barcode + receipt capture), geolocation and
+  // Web Bluetooth (tag scanner), and no CSP yet — map tiles, weather feeds and
+  // OSRM make that a project of its own. SAMEORIGIN (not DENY) keeps the
+  // in-app share preview working; nothing here is meant to be framed by others.
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ]
+  },
   async redirects() {
     return [
       { source: '/geofences', destination: '/zones', permanent: true },
