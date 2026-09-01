@@ -181,7 +181,7 @@ export default function DemoLandingPage() {
               <Link href="/reserve" className="inline-flex items-center justify-center gap-2 bg-amber hover:bg-amber-600 text-[#1a1100] font-display font-bold rounded-xl px-6 py-3.5 mt-6 shadow-glow-amber transition-colors">
                 Claim a founding spot <ArrowRight className="h-4 w-4" />
               </Link>
-              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving holds yours. <Link href="/pricing" className="inline-block underline hover:text-ink whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link></p>
+              <p className="text-xs text-faint mt-3">Hardware ships in batches — reserving costs nothing today; a refundable deposit holds your hardware once your batch is scheduled. <Link href="/pricing" className="inline-block underline hover:text-ink whitespace-nowrap py-3.5 -my-3.5 px-1 -mx-1">Full pricing&nbsp;→</Link></p>
             </div>
           </Reveal>
         </section>

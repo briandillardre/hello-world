@@ -270,7 +270,7 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
             sit here as flex-shrink-0 siblings and squeezed the name down to a
             few characters — they live on the meta line now. */}
         <div className="flex items-center gap-2">
-          <p className="font-medium text-ink truncate min-w-0 flex-1">{asset.name}</p>
+          <p className="font-medium text-ink min-w-0 flex-1 line-clamp-2 leading-snug">{asset.name}</p>
           <Badge variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>

@@ -8,7 +8,7 @@ Work top to bottom. Goal: 10 yeses on the Founding-25 terms by Halloween — **$
 Operate features included, 12-month price lock, free 30-day pilot** (the live offer is docs/PRICING-TIERS.md;
 the old $99-flat offer is dead).
 
-> Source note: built from (email in CRM) email. Phone/text-only
+> Source note: built from Brian’s email history. Phone/text-only
 > relationships aren't in here — add the handshake names by hand. QuickBooks customer
 > mining needs a one-time approval (ask Claude to retry when you've approved the QBO
 > connector) and will add the invoice-history names.

@@ -255,8 +255,8 @@ export default function DemoCinema() {
           <>
             <StoryCard tone="alert" icon={<ShieldAlert className="h-4 w-4" />} title="THEFT ALERT — 2:14 AM"
               body="Excavator 320 left Riverside Tower outside work hours. Moving northwest." pulse />
-            <div className="demo-sms rounded-2xl rounded-bl-md bg-[#1c9b45] text-white px-3.5 py-2.5 text-[12.5px] leading-snug shadow-xl max-w-[300px]">
-              <span className="font-semibold">HammerTrack:</span> 🚨 Excavator 320 moving OFF-SITE at 2:14 AM.
+            <div className="demo-sms rounded-2xl bg-navy-800/95 border border-navy-600 text-ink px-3.5 py-2.5 text-[12.5px] leading-snug shadow-xl max-w-[300px]">
+              <span className="font-semibold text-amber">HammerTrack · push · now</span><br />🚨 Excavator 320 moving OFF-SITE at 2:14 AM.
               Live location → hammertrack.ai/share/9X2
             </div>
           </>

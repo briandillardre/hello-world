@@ -33,6 +33,15 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 const USAGE_DAYS = 30
 
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  try {
+    const fence = await getGeofence(params.id)
+    return { title: fence ? `${fence.name} — HammerTrack` : 'Zone — HammerTrack' }
+  } catch {
+    return { title: 'Zone — HammerTrack' }
+  }
+}
+
 export default async function GeofenceDetailPage({ params }: { params: { id: string } }) {
   const companyId = await getCurrentCompanyId()
   const [fence, allFences, assets, perms, zoneEvents] = await Promise.all([

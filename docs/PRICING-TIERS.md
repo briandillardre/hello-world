@@ -37,7 +37,7 @@ hybrid does both jobs:
 | Site log, trips, utilization reports | ✅ | ✅ | ✅ |
 | Time clock + daily logs + QR maintenance | — | ✅ | ✅ |
 | Maintenance schedules + service history | — | ✅ | ✅ |
-| QuickBooks sync (invoices, expenses, receipts) | — | ✅ | ✅ |
+| QuickBooks sync (invoices, expenses, receipts) — coming, production connect pending | — | ✅ | ✅ |
 | AI assistant + daily digest | — | — | ✅ |
 | Worker↔machine hour attribution (when it ships) | — | — | ✅ |
 | API / exports / priority support | — | — | ✅ |

@@ -146,7 +146,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
         </div>
         <div className="flex gap-1 ml-2 flex-wrap">
           {REPORT_RANGES.map((r) => (
-            <Link key={r.key} href={`/reports?range=${r.key}`}
+            <Link key={r.key} href={`/reports?range=${r.key}`} prefetch={false}
               className={'px-2.5 py-1 rounded-full text-[11.5px] font-semibold transition-colors whitespace-nowrap ' + (key === r.key ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}>
               {r.label}
             </Link>

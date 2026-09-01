@@ -147,7 +147,7 @@ export default function PricingPage() {
             <Link href="/reserve" className="inline-block text-center font-display font-bold rounded-xl px-6 py-3 bg-amber text-[#1a1100] hover:bg-amber-600 transition-colors">
               Claim a founding spot
             </Link>
-            <p className="text-[10.5px] text-faint text-center">Hardware ships in batches — reserving holds yours.</p>
+            <p className="text-[10.5px] text-faint text-center">Hardware ships in batches — reserving costs nothing today; a refundable deposit holds your hardware once your batch is scheduled.</p>
           </div>
         </section>
 

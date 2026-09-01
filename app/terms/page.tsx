@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'The terms that govern your use of HammerTrack.',
 }
 
-const UPDATED = 'July 3, 2026'
+const UPDATED = 'September 1, 2026'
 
 export default function TermsPage() {
   return (

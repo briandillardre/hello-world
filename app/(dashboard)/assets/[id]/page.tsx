@@ -47,6 +47,16 @@ const isMockEnv = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * math) is its own async server component behind <Suspense>, so each one
  * streams in when its data lands, with a visible loading bar until then.
  */
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  try {
+    const assets = await getAssetsWithLocations(await getCurrentCompanyId())
+    const a = assets.find((x) => x.id === params.id)
+    return { title: a ? `${a.name} — HammerTrack` : 'Asset — HammerTrack' }
+  } catch {
+    return { title: 'Asset — HammerTrack' }
+  }
+}
+
 export default async function AssetDetailPage({ params }: { params: { id: string } }) {
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
   const canEdit = perms.canEdit
@@ -327,7 +337,7 @@ async function StatusAndTripsSection({ asset, companyId, tz, showDriveStats }: {
           lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
         />
         <div className={`grid ${showDriveStats ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'} gap-1.5 text-center`}>
-          {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />}
+          {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null && loc.timestamp && Date.now() - Date.parse(loc.timestamp) < 48 * 3_600_000 ? `${loc.speed}` : '—'} unit="mph" />}
           {showDriveStats && <MiniStat label="Miles today" value={todayStats ? `${todayStats.miles}` : '—'} unit="mi" />}
           {showDriveStats && <MiniStat label="Drive time" value={todayStats ? `${Math.floor(todayStats.movingMin / 60)}:${String(todayStats.movingMin % 60).padStart(2, '0')}` : '—'} unit="h" />}
           <MiniStat label="Idle today" value={todayStats ? `${Math.floor(todayStats.idleMin / 60)}:${String(todayStats.idleMin % 60).padStart(2, '0')}` : '—'} unit="h" />
@@ -509,7 +519,7 @@ function StatusSkeleton({ showDriveStats, isVehicle, loc }: {
     <section aria-busy="true" className="rounded-xl border border-navy-800 bg-navy-900 p-3.5 space-y-2.5">
       <SweepBar />
       <div className={`grid ${showDriveStats ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'} gap-1.5 text-center`}>
-        {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null ? `${loc.speed}` : '—'} unit="mph" />}
+        {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null && loc.timestamp && Date.now() - Date.parse(loc.timestamp) < 48 * 3_600_000 ? `${loc.speed}` : '—'} unit="mph" />}
         {showDriveStats && <SkeletonStat label="Miles today" />}
         {showDriveStats && <SkeletonStat label="Drive time" />}
         <SkeletonStat label="Idle today" />

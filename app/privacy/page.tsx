@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'How HammerTrack collects, uses, and protects your data.',
 }
 
-const UPDATED = 'July 16, 2026'
+const UPDATED = 'September 1, 2026'
 
 export default function PrivacyPage() {
   return (
@@ -83,7 +83,7 @@ export default function PrivacyPage() {
               <li>
                 <strong className="text-ink">Location</strong> — to show your own phone as a live
                 asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;) and to power zone
-                check-ins. See the background-location note below.
+                check-ins. See the location note below.
               </li>
               <li>
                 <strong className="text-ink">Camera &amp; Photos</strong> — to take or attach asset,
@@ -101,7 +101,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2>Background location</h2>
+            <h2>Location while Go Live is on</h2>
             <p className="mt-2">
               When — and only when — you turn on live crew tracking (&ldquo;Go Live&rdquo;), the app
               collects that device&apos;s location <strong className="text-ink">while the app is open

@@ -5,6 +5,9 @@ import { safeTz } from '@/lib/dates'
 import { CheckButtons } from '@/components/field/CheckButtons'
 import { Logo } from '@/components/brand/Logo'
 
+// Token-addressed like /share and /r — never index a QR check-in page.
+export const metadata = { robots: { index: false, follow: false } }
+
 export const dynamic = 'force-dynamic'
 
 /**

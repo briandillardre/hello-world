@@ -17,10 +17,10 @@ export default function robots(): MetadataRoute.Robots {
           '/api/',
           // dashboard (auth-gated)
           '/accounting', '/activity', '/alerts', '/assets', '/board', '/clock', '/diag',
-          '/finance', '/help/', '/logs', '/maintenance', '/map', '/measurements', '/model',
+          '/finance', '/help', '/logs', '/maintenance', '/map', '/measurements', '/model',
           '/qr', '/receipts', '/reports', '/settings', '/tags', '/team', '/welcome', '/zones',
           // token / magic-link surfaces
-          '/r/', '/share/', '/s/', '/t/', '/join', '/track',
+          '/r/', '/share/', '/t/', '/join', '/track', '/auth/', '/command',
           '/login', '/register', '/forgot', '/reset',
         ],
       },

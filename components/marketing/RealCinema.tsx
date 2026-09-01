@@ -114,6 +114,10 @@ export function RealCinema() {
       } catch { setDead(true); return }
       // Top-right keeps Esri credit clear of the CTA and the site label.
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-right')
+      // Compact attribution opens expanded and only folds on interaction —
+      // this map is non-interactive, so fold it ourselves once it exists.
+      const mapEl = map.getContainer()
+      map.once('load', () => mapEl.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'))
 
       map.on('load', () => {
         if (!map) return
@@ -234,7 +238,7 @@ export function RealCinema() {
         </span>
         <span className="rounded-full bg-navy-950/85 border border-navy-700 px-3 py-1 font-mono text-[11px] text-muted">Follow · RAM 3500 Dump</span>
       </div>
-      <div className="absolute bottom-3 left-3 pointer-events-none rounded-lg bg-navy-950/85 border border-navy-700 px-3 py-1.5">
+      <div className="absolute bottom-3 left-3 pointer-events-none rounded-lg bg-navy-950/85 border border-navy-700 px-3 py-1.5 hidden sm:block">
         <p className="font-mono text-[10.5px] text-faint">Riverfront Tower <span className="text-amber">· zone</span> · 4 assets on site</p>
       </div>
       <Link

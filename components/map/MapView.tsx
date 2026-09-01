@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { cartoTiles } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent, Place } from '@/lib/types'
@@ -1448,7 +1449,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     sources: {
       'carto-dark': {
         type: 'raster' as const,
-        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'],
+        tiles: [cartoTiles('dark_all')],
         tileSize: 256,
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
       },
@@ -1666,7 +1667,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // Streets (labeled, no imagery) — CARTO Voyager
       m.addSource('streets-base', {
         type: 'raster',
-        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+        tiles: [cartoTiles('voyager')],
         tileSize: 256,
         maxzoom: 20,
         attribution: '© OpenStreetMap contributors © CARTO',
@@ -1691,13 +1692,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // labels. B/W reuses the Positron source with a grayscale+contrast paint.
       m.addSource('silver-base', {
         type: 'raster',
-        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png'],
+        tiles: [cartoTiles('light_all')],
         tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
       })
       m.addLayer({ id: 'silver-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addSource('plain-base', {
         type: 'raster',
-        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}@2x.png'],
+        tiles: [cartoTiles('light_nolabels')],
         tileSize: 256, maxzoom: 20, attribution: '© OpenStreetMap contributors © CARTO',
       })
       m.addLayer({ id: 'plain-base', type: 'raster', source: 'plain-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
@@ -1748,7 +1749,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // imagery, and the photo already shows the roads themselves.
       m.addSource('labels-overlay', {
         type: 'raster',
-        tiles: ['https://a.basemaps.cartocdn.com/rastertiles/dark_only_labels/{z}/{x}/{y}@2x.png'],
+        tiles: [cartoTiles('dark_only_labels')],
         tileSize: 256,
         maxzoom: 20,
         attribution: '© OpenStreetMap contributors © CARTO',
@@ -2884,11 +2885,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       const z = Math.min(18, Math.max(3, Math.floor(m.getZoom())))
       const base = baseRef.current
       const tpl = base === 'satellite' || base === 'hybrid' ? SAT_TILES
-        : base === 'streets' || base === 'aubergine' ? 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+        : base === 'streets' || base === 'aubergine' ? cartoTiles('voyager')
         : base === 'terrain' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
-        : base === 'silver' || base === 'bw' ? 'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}@2x.png'
-        : base === 'plain' ? 'https://a.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}@2x.png'
-        : 'https://a.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}@2x.png'
+        : base === 'silver' || base === 'bw' ? cartoTiles('light_all')
+        : base === 'plain' ? cartoTiles('light_nolabels')
+        : cartoTiles('dark_all')
       let n = 0
       // Sample the next few playhead positions and warm a 3×3 tile block
       // around each — bounded so a fast scrub doesn't stampede the CDN.

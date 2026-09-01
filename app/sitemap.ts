@@ -18,7 +18,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page('/live', 0.7),
     page('/reserve', 0.6),
     page('/contact', 0.5, 'monthly'),
-    page('/help', 0.5, 'monthly'),
     page('/sms', 0.3, 'yearly'),
     page('/privacy', 0.3, 'yearly'),
     page('/terms', 0.3, 'yearly'),

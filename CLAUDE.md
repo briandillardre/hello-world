@@ -180,7 +180,8 @@ true engine hours, fuel consumption, fault codes, accurate utilization billing.
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-NEXT_PUBLIC_MAPTILER_KEY=       # optional, falls back to CARTO free tiles
+NEXT_PUBLIC_MAPTILER_KEY=       # optional (unused by the current basemaps)
+NEXT_PUBLIC_CARTO_KEY=          # REQUIRED for clean basemaps since Sep 2026 — CARTO stamps unkeyed tiles "API KEY REQUIRED"; free 5M tiles/mo at carto.com/basemaps/apikey (email + domain, no account)
 FLESPI_WEBHOOK_TOKEN=           # from flespi stream config (ingest fails closed without it)
 INGEST_API_KEY=                 # x-api-key for /api/ingest/obd2 + location (random secret; NOT the service-role key)
 QBO_CLIENT_ID=                  # from developer.intuit.com

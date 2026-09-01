@@ -154,7 +154,7 @@ export function MaintenanceLists({ statuses, services, qboLive, assetNames, canV
               </div>
             ))}
           </div>
-          {canViewCosts && (
+          {canViewCosts && qboLive && (
             <p className="text-xs text-faint text-center">
               Service costs sync to QuickBooks as expenses → see Accounting.
             </p>

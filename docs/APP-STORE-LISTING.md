@@ -43,9 +43,9 @@ gps,fleet,tracker,construction,equipment,tools,geofence,telematics,theft,obd2,jo
 > even your small tools (Bluetooth tags that ride along with whatever truck is
 > carrying them).
 >
-> **Stop losing iron to theft.** Get a push the second a machine leaves a job
+> **Stop losing iron to theft.** Get a push within minutes of a machine leaving a job
 > site after hours — "Your excavator just left at 2 AM." Draw a geofence around
-> any yard or site and know the moment something crosses it.
+> any yard or site and know within minutes when something crosses it.
 >
 > **Built for the field:**
 > • Live map of your whole fleet — trucks, equipment, trailers, tools

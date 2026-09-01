@@ -55,6 +55,18 @@ export function LocationPrimer() {
     }
   }, [])
 
+  // Tell the map tour to wait: both used to fire on a new install's first
+  // screen, the tour backdrop dimming this sheet and covering its buttons.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (phase) {
+      document.documentElement.dataset.htPrimer = '1'
+    } else if (document.documentElement.dataset.htPrimer) {
+      delete document.documentElement.dataset.htPrimer
+      window.dispatchEvent(new Event('ht:primer-done'))
+    }
+  }, [phase])
+
   const snooze = () => {
     try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS)) } catch { /* fine */ }
     setPhase(null)

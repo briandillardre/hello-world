@@ -44,7 +44,7 @@ const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, Bluetooth-tagged tools, and crews — live, with full replay of any day.' },
   { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves off-hours or leaves the site — then replay the whole route as evidence.' },
   { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per job site — plus crew clock-in and zone-verified daily logs.' },
-  { icon: Banknote, title: 'Books that keep themselves', body: 'Job-cost sync into QuickBooks (connecting soon), live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes.' },
+  { icon: Banknote, title: 'Books that keep themselves', body: 'Job-cost sync into QuickBooks (connecting soon), live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes (coming — turns on with your card alerts).' },
   { icon: Wrench, title: 'A shop that stays ahead', body: 'Service intervals from real engine hours auto-open work orders — assign, track parts & labor, done.' },
   { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
 ]
@@ -103,7 +103,7 @@ export default function HomePage() {
           </div>
           <p className="font-mono text-[13px] text-faint mt-3.5">
             Founding 25 — first 25 companies: free 30-day pilot · hardware ships in
-            batches, a refundable deposit holds yours · founder pricing locked · cancel anytime
+            batches, a refundable deposit holds yours · founder pricing locked 12 months · cancel anytime
           </p>
         </section>
 
