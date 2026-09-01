@@ -112,3 +112,42 @@ Native builds need Android Studio (any OS) and Xcode (Mac) — or a CI service.
 - Same week: icons, signed builds, TestFlight + Play internal track
 - Store review: Apple 1–3 days, Google similar for new apps
 - **Live in roughly 2–3 weeks**, gated almost entirely by account approvals
+
+## Shipping a new Android build (the icon lesson, Aug 31 2026)
+
+Brian uninstalled and reinstalled from Play and got the OLD icon back. That
+is correct behaviour and worth understanding, because it will happen again:
+
+**The Capacitor shell loads hammertrack.ai remotely, so a web deploy changes
+the app's CONTENT instantly — but never its icon, name, splash or
+permissions.** Those are native resources compiled into the bundle. Anything
+under `android/` reaches a phone only through a new Play release. Reinstalling
+just re-downloads the build that is already published.
+
+The store carries versionCode 1 (published 21 Aug). The new launcher icons
+landed in the repo on 30 Aug, which is AFTER that upload — so no published
+build contains them.
+
+**Order of operations:**
+
+1. **Bump `versionCode`** in `android/app/build.gradle` — Play rejects an
+   upload whose versionCode already exists. It has been `1` since the first
+   build; each release needs the next integer. (`versionName` is the human
+   string and does not have to change, but keeping them in step helps.)
+2. **Check the four signing secrets exist** in GitHub → Settings → Secrets →
+   Actions: `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`,
+   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. The workflow guards on the
+   first and fails fast with a pointer if it is missing. Values are in the
+   password manager — never in the repo.
+3. **Run the `android-release` workflow** (Actions → android-release → Run
+   workflow). Manual dispatch only, deliberately: releases are not automatic.
+4. **Download the signed AAB artifact** from that run.
+5. **Play Console → Production → Create new release**, upload the AAB, add
+   release notes, roll out.
+6. **Separately, the STORE LISTING icon** (`store-assets/play-icon-512.png`)
+   is a console upload under Store presence → Main store listing → App icon.
+   It needs no build, and it is a different image from the launcher icon —
+   updating one does not update the other.
+
+Both icons have to be done, through both doors, or the app looks new in the
+store and old on the home screen.
