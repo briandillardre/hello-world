@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 // all real constraints. No fabricated stock-outs, ever.
 const TERMS = [
   '$6/machine + $3/tool tag per month',
-  'Full Operate feature set included (crews, logs, maintenance, QuickBooks) — no platform fee',
+  'Full Operate feature set included (crews, logs, maintenance — QuickBooks sync coming) — no platform fee',
   'Price locked for 12 months',
   'Hardware at cost — no markup, no setup fee',
   'Month-to-month, cancel anytime',
@@ -68,8 +68,8 @@ export default function ReservePage() {
             </ul>
             <p className="mt-4 flex items-start gap-2 text-[12px] text-faint leading-snug">
               <ShieldAlert className="h-4 w-4 flex-none mt-0.5 text-alert" />
-              The hook that pays for itself: your phone gets a text the moment a
-              machine moves after hours. Verified in production on our own fleet.
+              The hook that pays for itself: your phone gets an alert within minutes
+              of a machine moving after hours. Verified in production on our own fleet.
             </p>
             <p className="mt-3 text-[12px] text-faint">
               Want to poke it first? <Link href="/demo" className="text-teal underline underline-offset-2">Live demo</Link> ·{' '}

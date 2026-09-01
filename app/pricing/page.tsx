@@ -12,7 +12,7 @@ const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
   description:
-    'Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price, with AI alerts and QuickBooks built in.',
+    'Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price, with theft alerts and job costing built in.',
   // Next replaces the root layout's openGraph wholesale (no deep merge) —
   // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
@@ -60,7 +60,7 @@ const TIERS = [
       'Everything in Track',
       'Time clock, daily logs & QR equipment checks',
       'Maintenance schedules + service history',
-      'QuickBooks sync — invoices, expenses, receipts',
+      'QuickBooks sync (coming) — invoices, expenses, receipts',
       'Unlimited users — never per-seat',
     ],
   },
@@ -88,7 +88,7 @@ const TIERS = [
 const FAQ = [
   {
     q: 'What do the trackers cost?',
-    a: 'Trackers ship at our cost, no markup — what we pay our supplier is what you pay, and we’ll quote your exact kit before you commit. Free pilots include loaner trackers.',
+    a: 'Trackers ship at our cost, no markup — what we pay our supplier is what you pay, and we’ll quote your exact kit before you commit. Free pilots include 5 loaner trackers; the refundable deposit holds your Founding-25 spot.',
   },
   {
     q: 'Is there a contract?',
@@ -96,7 +96,7 @@ const FAQ = [
   },
   {
     q: 'What counts as an asset?',
-    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, a crew member clocking in by phone, or a Bluetooth-tagged tool kit. You only pay for what you track.',
+    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, or a Bluetooth-tagged tool kit. You only pay for what you track. Crew logins are free — unlimited users.',
   },
   {
     q: 'Who installs the hardware?',
@@ -111,8 +111,6 @@ const FAQ = [
 const VS_TENNA = [
   ['$0 setup fees', 'Tenna: $500+ setup'],
   ['Tool tags a flat $3/mo', 'Tenna: quote-only'],
-  ['AI alerts included', 'Tenna: —'],
-  ['QuickBooks built in', 'Tenna: claimed, but shallow'],
   ['Self-serve in minutes', 'Tenna: sales-led onboarding'],
   ['$8/machine · $3/tag', 'Tenna: $15–25/asset + setup'],
 ]
@@ -130,7 +128,7 @@ export default function PricingPage() {
           </h1>
           <p className="text-muted mt-4 max-w-xl mx-auto text-lg">
             Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price,
-            with AI alerts and QuickBooks built in.
+            with theft alerts and job costing built in.
           </p>
         </div>
 
@@ -268,9 +266,9 @@ export default function PricingPage() {
                 <tr className="bg-navy-950/60">
                   <td className="text-faint">Price per asset</td>
                   <td className="text-ink font-semibold">$8/machine · $3/tool tag</td>
-                  <td className="text-muted">$15–25/mo</td>
-                  <td className="text-muted">$20–40/mo</td>
-                  <td className="text-muted">$20–35/mo</td>
+                  <td className="text-muted">~$15–30/asset, quote-only</td>
+                  <td className="text-muted">$27–60/vehicle</td>
+                  <td className="text-muted">~$23–45/vehicle</td>
                 </tr>
                 <tr>
                   <td className="text-faint">Setup fee</td>
@@ -282,9 +280,9 @@ export default function PricingPage() {
                 <tr className="bg-navy-950/60">
                   <td className="text-faint">Contract</td>
                   <td className="text-ink font-semibold">month-to-month</td>
-                  <td className="text-muted">annual</td>
-                  <td className="text-muted">multi-year, typically 3</td>
-                  <td className="text-muted">multi-year</td>
+                  <td className="text-muted">varies by quote</td>
+                  <td className="text-muted">3-yr contracts</td>
+                  <td className="text-muted">36-mo auto-renew</td>
                 </tr>
                 <tr>
                   <td className="text-faint">Bluetooth tool tags</td>
@@ -295,8 +293,8 @@ export default function PricingPage() {
                 </tr>
                 <tr className="bg-navy-950/60">
                   <td className="text-faint">QuickBooks job costing</td>
-                  <td className="text-teal font-semibold">✓ included</td>
-                  <td className="text-muted">claimed, shallow</td>
+                  <td className="text-amber font-semibold">coming</td>
+                  <td className="text-muted">add-on</td>
                   <td className="text-muted">via integrations</td>
                   <td className="text-muted">via integrations</td>
                 </tr>

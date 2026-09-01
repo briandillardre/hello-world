@@ -5,9 +5,10 @@ import Link from 'next/link'
 
 /**
  * Price-anchoring calculator: your fleet size → our bill vs the incumbent's,
- * using PUBLISHED numbers for machines (Track tier $8/machine + $3/tag, $0
- * setup; Tenna's public $15–25/asset + $500 setup, computed at the $20
- * midpoint). Tenna DOES sell BLE tool tags (TennaBLE — docs/COMPETITORS.md)
+ * using our published numbers for machines (Track tier $8/machine + $3/tag, $0
+ * setup) vs Tenna's commonly quoted ~$15–30/asset + $500 setup — Tenna publishes
+ * no pricing — computed at a conservative $20. Tenna DOES sell BLE tool tags
+ * (TennaBLE — docs/COMPETITORS.md)
  * but publishes no tag rate, so their tag side is MODELED at a modest $6/mo
  * and labeled as modeled in the footnote. Never price their tags as full
  * $20 assets — that overstates the gap.
@@ -54,7 +55,7 @@ export function RoiCalculator() {
               className="w-full accent-amber" aria-label="Number of tool tags" />
           </label>
           <p className="font-mono text-[11px] text-faint mt-4 leading-relaxed">
-            Tenna math: their published $15–25/asset/mo (we use $20) + $500 setup. Tenna
+            Tenna math: the commonly quoted $15–30/asset/mo (we use $20) + $500 setup. Tenna
             doesn&apos;t publish a tool-tag rate, so we model their tags at a modest $6/mo.
             Ours: Track tier list price, $0 setup. Always confirm your own quote.
           </p>

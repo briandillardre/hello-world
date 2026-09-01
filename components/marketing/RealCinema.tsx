@@ -232,7 +232,7 @@ export function RealCinema() {
         <span className="rounded-full bg-navy-950/85 border border-navy-700 px-3 py-1 font-mono text-[11px] text-teal flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-teal animate-blink" /> LIVE
         </span>
-        <span className="rounded-full bg-navy-950/85 border border-navy-700 px-3 py-1 font-mono text-[11px] text-muted">Follow · F-350 Truck #1</span>
+        <span className="rounded-full bg-navy-950/85 border border-navy-700 px-3 py-1 font-mono text-[11px] text-muted">Follow · RAM 3500 Dump</span>
       </div>
       <div className="absolute bottom-3 left-3 pointer-events-none rounded-lg bg-navy-950/85 border border-navy-700 px-3 py-1.5">
         <p className="font-mono text-[10.5px] text-faint">Riverfront Tower <span className="text-amber">· zone</span> · 4 assets on site</p>

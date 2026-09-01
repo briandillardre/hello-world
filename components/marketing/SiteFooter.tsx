@@ -10,7 +10,7 @@ export function SiteFooter() {
           <div>
             <Logo size={26} />
             <p className="text-[13px] text-faint mt-3 max-w-[34ch]">
-              Every truck, machine, crew, and tool on one live map — with AI watching for the
+              Every truck, machine, crew, and tool on one live map — watching for the
               moment something moves when it shouldn&apos;t.
             </p>
             <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-faint mt-4">

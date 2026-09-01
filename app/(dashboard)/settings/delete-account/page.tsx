@@ -30,7 +30,7 @@ export default async function DeleteAccountPage() {
             <p className="font-semibold text-red-300">This permanently deletes your company&apos;s account.</p>
             <ul className="mt-2 space-y-1 list-disc pl-4 text-red-300/90">
               <li>All assets, trackers and their full location history</li>
-              <li>Zones, geofences, alerts and alert history</li>
+              <li>Zones, alerts and alert history</li>
               <li>Daily logs, time clock records, receipts and work orders</li>
               <li>Access for every team member — not just you</li>
             </ul>

@@ -104,13 +104,13 @@ export default function PrivacyPage() {
             <h2>Background location</h2>
             <p className="mt-2">
               When — and only when — you turn on live crew tracking (&ldquo;Go Live&rdquo;), the app
-              collects that device&apos;s location <strong className="text-ink">in the background,
-              including while the app is closed or not in use</strong>, so your fleet map stays live
-              for your team during the working session. Background tracking runs only while Go Live
-              is on and stops the moment you turn it off or the session ends. This location is used
-              solely to display your fleet on your company&apos;s map and to trigger the alerts you
-              configure — it is never used for advertising and never sold or shared with third
-              parties.
+              collects that device&apos;s location <strong className="text-ink">while the app is open
+              and in use</strong>, so your fleet map stays live for your team during the working
+              session. Background collection is not enabled in the current Android app — location
+              sharing pauses when the app is closed. Tracking runs only while Go Live is on and
+              stops the moment you turn it off or the session ends. This location is used solely to
+              display your fleet on your company&apos;s map and to trigger the alerts you configure —
+              it is never used for advertising and never sold or shared with third parties.
             </p>
           </section>
 

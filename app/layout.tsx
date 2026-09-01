@@ -5,6 +5,7 @@ import { BRAND_NAME, BRAND_URL } from '@/lib/brand'
 import { ErrorReporter } from '@/components/system/ErrorReporter'
 import { NativePush } from '@/components/system/NativePush'
 import { FeedbackHost } from '@/components/ui/feedback'
+import { Analytics } from '@vercel/analytics/next'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const archivo = Archivo({
@@ -22,9 +23,13 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND_URL),
-  title: `${BRAND_NAME} — AI asset tracking for contractors & field fleets`,
+  // Per-page canonical (resolves against metadataBase) — until Sep 1 2026 no
+  // public page declared one, and Vercel serves the same HTML on the
+  // *.vercel.app hostname, so search engines saw duplicates.
+  alternates: { canonical: './' },
+  title: `${BRAND_NAME} — Asset tracking for contractors & field fleets`,
   description:
-    'Every truck, machine, crew, and Bluetooth-tagged tool on one live map. AI texts you the second something moves when it shouldn\'t. About half the price of Tenna.',
+    'Every truck, machine, crew, and Bluetooth-tagged tool on one live map. Your phone knows within minutes when something moves that shouldn\'t. About half the price of Tenna.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: BRAND_NAME },
   icons: {
@@ -34,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: `${BRAND_NAME} — your whole fleet on one live map`,
     description:
-      'AI-watched GPS tracking for trucks, equipment, crews, and tools. After-hours theft texts, live job cost, QuickBooks built in.',
+      'Always-on GPS tracking for trucks, equipment, crews, and tools. After-hours theft alerts, live job cost, one price.',
     url: BRAND_URL,
     siteName: BRAND_NAME,
     images: [{ url: '/brand/og-card.png', width: 1200, height: 630, alt: BRAND_NAME }],
@@ -43,7 +48,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: `${BRAND_NAME} — your whole fleet on one live map`,
-    description: 'AI-watched GPS tracking for trucks, equipment, crews, and tools.',
+    description: 'Always-on GPS tracking for trucks, equipment, crews, and tools.',
     images: ['/brand/og-card.png'],
   },
 }
@@ -76,7 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           every surface — /command and /live render MapView outside the
           dashboard layout, and a feedback call nobody hears is a dead
           button (ship-check P0, Aug 12). */}
-      <body className="font-sans"><ErrorReporter /><NativePush /><FeedbackHost />{children}</body>
+      <body className="font-sans"><ErrorReporter /><NativePush /><FeedbackHost />{children}<Analytics /></body>
     </html>
   )
 }

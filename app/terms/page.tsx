@@ -31,7 +31,8 @@ export default function TermsPage() {
           <section>
             <h2>Subscriptions &amp; cancellation</h2>
             <p className="mt-2">
-              Plans are billed per asset, per month, month-to-month. There are no long-term
+              Plans are billed per tracked machine and tag, per month, plus the platform fee on
+              Operate and Run — month-to-month. There are no long-term
               contracts and no setup fees. You can cancel anytime from your account; service runs
               through the end of the paid period. Pilot/trial periods are free and require no
               credit card.
