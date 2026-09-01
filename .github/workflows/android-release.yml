@@ -83,4 +83,4 @@ jobs:
 
       - name: Note the manual step when Play upload was skipped
         if: ${{ env.HAS_PLAY_SA != 'true' }}
-        run: echo "::notice::Signed AAB built but NOT uploaded — add PLAY_SERVICE_ACCOUNT_JSON to make releases hands-off, or upload the artifact in Play Console → Production → Create release.
+        run: echo "::notice::Signed AAB built but NOT uploaded — add PLAY_SERVICE_ACCOUNT_JSON to make releases hands-off, or upload the artifact in Play Console → Production → Create release."
