@@ -89,6 +89,7 @@ re-audits the splash claims in the same commit.
 - `marketing/lead-funnel-infographic.html` — GTM funnel infographic
 - `marketing/ad-variants.md` — Google Search, dealer, cold email ad copy
 - `docs/BUSINESS-PLAN.md` — full operating plan: pricing, phases, hires, cash curve, exit scenarios (update at phase gates)
+- `tools/foreclosures/` — Brian's SIDE TOOL (not HammerTrack product): SC Master-in-Equity foreclosure crawler (Greenville/Pickens/Spartanburg/Oconee + coastal stubs) — sale lists → Notice of Sale → Order/Form 4 judgment $ → property card → report. Runs on Brian's PC (court index/qPublic block cloud IPs). `tools/foreclosures/README.md`
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
 - `supabase/migrations/077_trail_daily.sql` + `078_trail_perf.sql` — pre-rolled daily map trails (the 500-device scale fix, Aug 25): see Features Built

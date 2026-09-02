@@ -1,0 +1,17 @@
+{
+  "name": "hammertrack-foreclosures",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SC Master-in-Equity foreclosure sale crawler: sale lists → notices → judgment amounts → property cards → report",
+  "bin": { "foreclosures": "./src/cli.mjs" },
+  "scripts": {
+    "setup": "npx playwright install chromium",
+    "start": "node src/cli.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.62.0"
+  }
+}
