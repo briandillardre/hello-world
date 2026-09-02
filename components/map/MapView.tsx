@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless } from '@/lib/map-layers'
+import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent, Place } from '@/lib/types'
@@ -1452,6 +1452,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         type: 'raster' as const,
         tiles: [cartoTiles('dark_all')],
         tileSize: 256,
+        maxzoom: cartoMaxZoom('dark_all'),
         attribution: cartoAttribution(),
       },
     },
@@ -1670,7 +1671,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         type: 'raster',
         tiles: [cartoTiles('voyager')],
         tileSize: 256,
-        maxzoom: 20,
+        maxzoom: cartoMaxZoom('voyager'),
         attribution: cartoAttribution(),
       })
       m.addLayer({ id: 'streets-base', type: 'raster', source: 'streets-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
@@ -1694,13 +1695,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       m.addSource('silver-base', {
         type: 'raster',
         tiles: [cartoTiles('light_all')],
-        tileSize: 256, maxzoom: 20, attribution: cartoAttribution(),
+        tileSize: 256, maxzoom: cartoMaxZoom('light_all'), attribution: cartoAttribution(),
       })
       m.addLayer({ id: 'silver-base', type: 'raster', source: 'silver-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addSource('plain-base', {
         type: 'raster',
         tiles: [cartoTiles('light_nolabels')],
-        tileSize: 256, maxzoom: 20, attribution: cartoAttribution(),
+        tileSize: 256, maxzoom: cartoMaxZoom('light_nolabels'), attribution: cartoAttribution(),
       })
       m.addLayer({ id: 'plain-base', type: 'raster', source: 'plain-base', layout: { visibility: 'none' }, paint: { 'raster-fade-duration': 0 } })
       m.addLayer({
@@ -1752,7 +1753,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         type: 'raster',
         tiles: [cartoTiles('dark_only_labels')],
         tileSize: 256,
-        maxzoom: 20,
+        maxzoom: cartoMaxZoom('dark_only_labels'),
         attribution: cartoAttribution(),
       })
       m.addLayer({ id: 'labels-overlay', type: 'raster', source: 'labels-overlay', layout: { visibility: 'none' } })

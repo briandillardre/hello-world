@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { cartoTiles } from '@/lib/map-layers'
+import { cartoTiles, cartoMaxZoom } from '@/lib/map-layers'
 import { useRouter } from 'next/navigation'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -130,7 +130,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
         version: 8,
         sources: {
           sat: { type: 'raster', tiles: [SAT], tileSize: 256, maxzoom: 19 },
-          labels: { type: 'raster', tiles: [cartoTiles('dark_only_labels')], tileSize: 256, maxzoom: 19 },
+          labels: { type: 'raster', tiles: [cartoTiles('dark_only_labels')], tileSize: 256, maxzoom: cartoMaxZoom('dark_only_labels') },
         },
         layers: [
           { id: 'sat', type: 'raster', source: 'sat' },

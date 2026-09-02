@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { cartoTiles, cartoAttribution } from '@/lib/map-layers'
+import { cartoTiles, cartoAttribution, cartoMaxZoom } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Play, Pause } from 'lucide-react'
@@ -67,6 +67,7 @@ export function SharedReplayInner({ name, points, fromMs, toMs, startT }: Shared
             type: 'raster',
             tiles: [cartoTiles('dark_all')],
             tileSize: 256,
+            maxzoom: cartoMaxZoom('dark_all'),
             attribution: cartoAttribution(),
           },
         },

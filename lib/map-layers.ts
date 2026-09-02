@@ -113,6 +113,17 @@ export function cartoTiles(style: CartoStyle): string {
   if (basemapKeyless) return ESRI_FALLBACK[style]
   return `https://a.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}@2x.png${cartoQ}`
 }
+/**
+ * Source maxzoom per style. CARTO renders to z20. Esri's gray canvases and
+ * reference layers have real data to z16 and return a "Map data not yet
+ * available" placeholder past it (verified Sep 2: identical 2.5 KB tiles at
+ * z17/z18), so the source is capped there and MapLibre overzooms — blurrier
+ * at yard zoom, but a map, not a placeholder. World Street Map is real to z18.
+ */
+export function cartoMaxZoom(style: CartoStyle): number {
+  if (!basemapKeyless) return 20
+  return style === 'voyager' ? 18 : 16
+}
 /** One concrete tile (picker thumbnails). */
 export function cartoTileAt(style: CartoStyle, z: number, x: number, y: number): string {
   return cartoTiles(style).replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
