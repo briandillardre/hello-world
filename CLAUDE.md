@@ -18,7 +18,7 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 ## Tech Stack
 - Next.js 14 (App Router, TypeScript)
 - Supabase — Postgres + PostGIS, Auth, Realtime (demo mode when env vars absent)
-- MapLibre GL JS — open-source map, CARTO free tiles
+- MapLibre GL JS — open-source map; basemaps via `cartoTiles()` in lib/map-layers.ts: Esri keyless canvas rasters by default (Sep 2 2026, after CARTO began stamping unkeyed tiles), CARTO retina tiles when NEXT_PUBLIC_CARTO_KEY is set
 - Tailwind CSS + shadcn/ui
 - Vercel deployment (moved from Netlify Jul 2026; netlify.toml remains for the old site)
 
@@ -181,7 +181,7 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_MAPTILER_KEY=       # optional (unused by the current basemaps)
-NEXT_PUBLIC_CARTO_KEY=          # REQUIRED for clean basemaps since Sep 2026 — CARTO stamps unkeyed tiles "API KEY REQUIRED"; free 5M tiles/mo at carto.com/basemaps/apikey (email + domain, no account)
+NEXT_PUBLIC_CARTO_KEY=          # optional since Sep 2: without it the map runs on Esri's keyless canvas basemaps (labels via reference overlay); with it CARTO's retina tiles (free 5M tiles/mo at carto.com/basemaps/apikey — email + domain, no account). CARTO stamps UNKEYED CARTO tiles "API KEY REQUIRED", so never point at CARTO without the key
 FLESPI_WEBHOOK_TOKEN=           # from flespi stream config (ingest fails closed without it)
 INGEST_API_KEY=                 # x-api-key for /api/ingest/obd2 + location (random secret; NOT the service-role key)
 QBO_CLIENT_ID=                  # from developer.intuit.com

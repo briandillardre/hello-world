@@ -78,23 +78,72 @@ export const BASEMAPS: { id: BasemapId; label: string }[] = [
 ]
 
 /**
- * CARTO raster basemaps now require an API key (Sep 2026: unkeyed tiles come
- * back stamped "API KEY REQUIRED"). Free tier is 5M tile requests a month —
- * request the key at carto.com/basemaps/apikey (email + domain, no account),
- * set NEXT_PUBLIC_CARTO_KEY in Vercel, redeploy. Every CARTO tile URL in the
- * app is built here so the key rides along everywhere. Attribution
- * (© OpenStreetMap © CARTO) stays on the map — that is the deal.
+ * Basemap tiles. CARTO's raster basemaps require an API key since Sep 2026
+ * (unkeyed tiles come back stamped "API KEY REQUIRED" — Brian's Command
+ * Center screenshot, Sep 2). Two modes:
+ *
+ *  - KEYED (NEXT_PUBLIC_CARTO_KEY set): CARTO retina tiles, 5M requests a
+ *    month free — request at carto.com/basemaps/apikey (email + domain, one
+ *    minute, no account), paste into Vercel, redeploy. Board #99.
+ *  - KEYLESS (today): Esri's public canvas basemaps — Dark/Light Gray Base,
+ *    World Street Map, and the matching Reference layers for labels. No key,
+ *    LODs to 23, verified serving Sep 2. Their base tiles carry no text, so
+ *    the map shows the labels overlay on top for dark/silver/bw (see
+ *    fallbackLabelTiles); CARTO's *_all styles have labels baked in.
+ *
+ * Every basemap tile URL in the app is built here so the mode flips in one
+ * place. Attribution follows the provider (cartoAttribution).
  */
 export type CartoStyle = 'dark_all' | 'voyager' | 'light_all' | 'light_nolabels' | 'dark_only_labels'
 const CARTO_KEY = process.env.NEXT_PUBLIC_CARTO_KEY ?? ''
 const cartoQ = CARTO_KEY ? `?key=${encodeURIComponent(CARTO_KEY)}` : ''
-/** MapLibre tile template for a CARTO raster style. */
+/** True while no CARTO key is configured — the app is on the Esri fallback. */
+export const basemapKeyless = !CARTO_KEY
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services'
+const ESRI_FALLBACK: Record<CartoStyle, string> = {
+  dark_all: `${ESRI}/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  voyager: `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+  light_all: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  light_nolabels: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+  // white place/road labels made for imagery — the hybrid overlay
+  dark_only_labels: `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
+}
+/** MapLibre tile template for a basemap style (CARTO when keyed, Esri otherwise). */
 export function cartoTiles(style: CartoStyle): string {
+  if (basemapKeyless) return ESRI_FALLBACK[style]
   return `https://a.basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}@2x.png${cartoQ}`
 }
 /** One concrete tile (picker thumbnails). */
 export function cartoTileAt(style: CartoStyle, z: number, x: number, y: number): string {
-  return `https://a.basemaps.cartocdn.com/rastertiles/${style}/${z}/${x}/${y}@2x.png${cartoQ}`
+  return cartoTiles(style).replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
+}
+/** Provider attribution for the basemap source — CARTO's terms and Esri's both require it on the map. */
+export function cartoAttribution(): string {
+  return basemapKeyless
+    ? 'Powered by <a href="https://www.esri.com/">Esri</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>'
+}
+/**
+ * Keyless mode only: the label tiles to lay over a given basemap, since the
+ * Esri base tiles carry no text. Dark-halo reference labels over the dark
+ * canvases, gray labels over the light ones, imagery labels over photos.
+ * Returns null when the base has its own labels (streets) or wants none (plain, charts).
+ */
+export function fallbackLabelTiles(base: BasemapId): string | null {
+  switch (base) {
+    case 'dark':
+    case 'aubergine':
+    case 'night':
+      return `${ESRI}/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`
+    case 'silver':
+    case 'bw':
+      return `${ESRI}/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`
+    case 'satellite':
+    case 'hybrid':
+      return ESRI_FALLBACK.dark_only_labels
+    default:
+      return null
+  }
 }
 
 // One representative tile per source for the picker thumbnails (z8 tile over

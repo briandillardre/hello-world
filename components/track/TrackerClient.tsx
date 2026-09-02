@@ -1,7 +1,7 @@
 'use client'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { cartoTiles } from '@/lib/map-layers'
+import { cartoTiles, cartoAttribution } from '@/lib/map-layers'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Play, Square, Gauge, Crosshair, Clock, Route, AlertTriangle, Navigation, RotateCcw, Radio } from 'lucide-react'
@@ -21,7 +21,7 @@ const DARK_STYLE: any = {
       type: 'raster',
       tiles: [cartoTiles('dark_all')],
       tileSize: 256,
-      attribution: '© OpenStreetMap © CARTO',
+      attribution: cartoAttribution(),
     },
   },
   layers: [{ id: 'carto-base', type: 'raster', source: 'carto-dark' }],
