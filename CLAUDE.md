@@ -45,6 +45,13 @@ SHOWROOM COMPANY (Aug 23): a real production company driven by
 all production paths); Brian logs in and reshapes zones, trucks re-route on
 real roads via OSRM. Seed from /model (founder-gated). `docs/SHOWROOM.md`.
 
+## Communication rule (Brian, Sep 2 2026)
+"I am busy and a human — keep the responses short and sweet." Every message
+to Brian: lead with whether he needs to do anything (yes/no), then short
+numbered lists or bullets, one line each. No long paragraphs, no narration of
+work in progress, no restating what shipped. Detail lives on /board and in
+PR descriptions — link, don't paste.
+
 ## Pricing sync rule (Brian, Aug 5; /demo added Aug 17)
 Any change to tiers, founding-25 terms, or the pilot offer updates ALL of:
 /pricing, the splash ladder + hero microcopy, **/demo's Founding-25 card**,
