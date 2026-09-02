@@ -18,13 +18,17 @@ import { isNativeApp, nativePlatform } from '@/lib/native'
  *
  * Flow: first open on a phone → branded sheet → "Allow location" fires the
  * real OS dialog → granted collapses to a beat of confirmation; denied flips
- * to honest per-platform instructions for turning it on in Settings. "Not
- * now" snoozes for a week rather than nagging every open. Once the browser
- * reports granted we never render again.
+ * to honest per-platform instructions for turning it on in Settings.
+ *
+ * ONE TIME per device (Brian, Sep 1: "allow location for employees should
+ * only be a one time thing"). The sheet marks itself shown the moment it
+ * appears and never auto-opens again, whatever the crew member chose — the
+ * OS asks again at the point of use (Go Live, directions) if they change
+ * their mind, and Settings has the per-platform path. The old weekly snooze
+ * nagged; this doesn't.
  */
 
-const SNOOZE_KEY = 'ht_locprimer_snooze'
-const SNOOZE_MS = 7 * 24 * 3_600_000
+const DONE_KEY = 'ht_locprimer_done'
 
 type Phase = 'ask' | 'granted' | 'denied'
 
@@ -37,21 +41,26 @@ export function LocationPrimer() {
     const isPhone = isNativeApp() || (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches)
     if (!isPhone || !('geolocation' in navigator)) return
     try {
-      const until = Number(localStorage.getItem(SNOOZE_KEY) ?? 0)
-      if (until > Date.now()) return
-    } catch { /* private mode — ask anyway */ }
+      if (localStorage.getItem(DONE_KEY)) return // already had its one showing
+    } catch { /* private mode — falls through; the OS remembers the grant anyway */ }
 
+    // Mark shown the moment it appears: one showing per device, whatever
+    // happens next (kill the app mid-sheet and it still counts).
+    const show = (p: Phase) => {
+      try { localStorage.setItem(DONE_KEY, String(Date.now())) } catch { /* fine */ }
+      setPhase(p)
+    }
     // The Permissions API tells us where we stand without prompting. Where
-    // it's missing (older iOS Safari) we ask once and let the snooze carry.
+    // it's missing (older iOS Safari) we ask the one time.
     if (typeof navigator.permissions?.query === 'function') {
       navigator.permissions.query({ name: 'geolocation' })
         .then((st) => {
           if (st.state === 'granted') return // nothing to do, ever
-          setPhase(st.state === 'denied' ? 'denied' : 'ask')
+          show(st.state === 'denied' ? 'denied' : 'ask')
         })
-        .catch(() => setPhase('ask'))
+        .catch(() => show('ask'))
     } else {
-      setPhase('ask')
+      show('ask')
     }
   }, [])
 
@@ -67,10 +76,8 @@ export function LocationPrimer() {
     }
   }, [phase])
 
-  const snooze = () => {
-    try { localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS)) } catch { /* fine */ }
-    setPhase(null)
-  }
+  // Close for good — the sheet already recorded its one showing.
+  const dismiss = () => setPhase(null)
 
   const request = () => {
     // getCurrentPosition is what actually summons the OS dialog. A quick
@@ -119,7 +126,7 @@ export function LocationPrimer() {
               <button onClick={request} className="flex-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors">
                 Try again
               </button>
-              <button onClick={snooze} className="rounded-lg border border-navy-700 bg-navy-950 text-muted text-sm px-4 hover:text-ink transition-colors">
+              <button onClick={dismiss} className="rounded-lg border border-navy-700 bg-navy-950 text-muted text-sm px-4 hover:text-ink transition-colors">
                 Later
               </button>
             </div>
@@ -139,7 +146,7 @@ export function LocationPrimer() {
               <button onClick={request} className="flex-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors">
                 Allow location
               </button>
-              <button onClick={snooze} className="rounded-lg border border-navy-700 bg-navy-950 text-muted text-sm px-4 hover:text-ink transition-colors">
+              <button onClick={dismiss} className="rounded-lg border border-navy-700 bg-navy-950 text-muted text-sm px-4 hover:text-ink transition-colors">
                 Not now
               </button>
             </div>
