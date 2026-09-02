@@ -1,0 +1,501 @@
+{
+  "county": "greenville",
+  "saleDate": "09/08/2026",
+  "source": "Greenville County Master-in-Equity sale list for 09/08/2026 (transcribed from the PDF Brian supplied Sep 2 2026)",
+  "rows": [
+    {
+      "county": "greenville",
+      "saleNo": 1,
+      "caseNo": "2016-CP-23-06737",
+      "address": "128 Wild Dogwood Way Greenville, SC 29605",
+      "attorney": "Taylor A. Peace",
+      "lawFirm": "Harrell, Martin & Peace, PA",
+      "plaintiff": "American Capital Group, LLC",
+      "defendant": "Louise A. Schiminger",
+      "status": "withdrawn",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 2,
+      "caseNo": "2024-CP-23-03628",
+      "address": "9-A Stadium Drive Greenville, SC 29609",
+      "attorney": "Kevin T. Brown",
+      "lawFirm": "Brock and Scott, PLLC",
+      "plaintiff": "HSBC Bank USA, N.A., as Trustee for ACE Securities Corp. Home Equity Loan Trust, Series 2007-HE2",
+      "defendant": "Heirs-at-law or devisees of Edgar B. Walker, deceased, et al",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 3,
+      "caseNo": "2024-CP-23-07423",
+      "address": "304 Weddington Lane Simpsonville, SC 29681",
+      "attorney": "John W. Farrell",
+      "lawFirm": "McMichael Taylor Gray, LLC",
+      "plaintiff": "New Silver Lending, LLC",
+      "defendant": "Key-Line Capital Investment Group, LLC",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 4,
+      "caseNo": "2025-CP-23-03722",
+      "address": "608 Rhett Street Greenville, SC 29601",
+      "attorney": "John Farrell",
+      "lawFirm": "McMichael Taylor Gray, LLC",
+      "plaintiff": "Kiavi Funding, Inc.",
+      "defendant": "VSWC LLC",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 5,
+      "caseNo": "2025-CP-23-05048",
+      "address": "4 Point Hope Court Greenville, SC 29605",
+      "attorney": "Benjamin Grimsley",
+      "lawFirm": "Smith Robinson Law",
+      "plaintiff": "South Carolina State Housing Finance and Development Authority",
+      "defendant": "Sharon Diane Culpepper-Booker",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 6,
+      "caseNo": "2025-CP-23-06065",
+      "address": "110 Water Reach Lane Simpsonville, SC 29681",
+      "attorney": "Heidi B. Carey",
+      "lawFirm": "Riley Pope & Laney LLC",
+      "plaintiff": "SELENE FINANCE LP",
+      "defendant": "John Clement Shaugnessy",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 7,
+      "caseNo": "2025-CP-23-06198",
+      "address": "603 Stallings Rd Taylors, SC 29687",
+      "attorney": "Kevin T. Brown",
+      "lawFirm": "Brock & Scott, PLLC",
+      "plaintiff": "Planet Home Lending, LLC",
+      "defendant": "Crystal Lynn Patterson",
+      "status": "withdrawn",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 8,
+      "caseNo": "2025-CP-23-06584",
+      "address": "39B W Golden Strip Drive Mauldin, SC 29662",
+      "attorney": "Benjamin Grimsley",
+      "lawFirm": "Smith Robinson Law",
+      "plaintiff": "South Carolina State Housing Finance and Development Authority",
+      "defendant": "Dominique Smith",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 9,
+      "caseNo": "2025-CP-23-06604",
+      "address": "15 Fennec Drive Fountain Inn, SC 29644",
+      "attorney": "Benjamin Grimsley",
+      "lawFirm": "Smith Robinson Law",
+      "plaintiff": "South Carolina State Housing Finance and Development Authority",
+      "defendant": "Brandon Andre Roane",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 10,
+      "caseNo": "2025-CP-23-06612",
+      "address": "104 Pine Needle Road Piedmont, SC 29673",
+      "attorney": "Benjamin Grimsley",
+      "lawFirm": "Smith Robinson Law",
+      "plaintiff": "South Carolina State Housing Finance and Development Authority",
+      "defendant": "Ashley Rhodes",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 11,
+      "caseNo": "2025-CP-23-07189",
+      "address": "402 Sienna Drive Greenville, SC 29609",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "U.S. Bank Trust National Association, as trustee for Legacy Mortgage Asset Trust 2021-GS4",
+      "defendant": "Terry Tolbert",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 12,
+      "caseNo": "2025-CP-23-07612",
+      "address": "3 Black Oak Court Simpsonville, SC 29680",
+      "attorney": "Benjamin Grimsley",
+      "lawFirm": "Smith Robinson Law",
+      "plaintiff": "South Carolina State Housing Finance and Development Authority",
+      "defendant": "Maria Harley",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 13,
+      "caseNo": "2025-CP-23-07667",
+      "address": "406 Sandusky Lane Simpsonville, SC 29680",
+      "attorney": "Luke A. Burke",
+      "lawFirm": "Burke Law LLC",
+      "plaintiff": "River Shoals Homeowners Association Inc",
+      "defendant": "Nancy Abad",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 14,
+      "caseNo": "2025-CP-23-08344",
+      "address": "1904 Lake Cunningham Road Greer, SC 29651",
+      "attorney": "Reginald P. Corley",
+      "lawFirm": "McCalla Raymer Leibert Pierce, LLP",
+      "plaintiff": "New American Funding LLC f/k/a Broker Solutions, Inc.",
+      "defendant": "Michael Greene",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 15,
+      "caseNo": "2025-CP-23-08409",
+      "address": "116 Ridgewater Court Fountain Inn, SC 29644",
+      "attorney": "Heidi B. Carey",
+      "lawFirm": "Riley Pope & Laney LLC",
+      "plaintiff": "US Bank Trust National Association, as owner trustee for VRMTG Asset Trust",
+      "defendant": "Kathleen DeFrancesco",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      },
+      "notes": "Def. demanded in the order, then WAIVED after approval (both columns ticked) – treat as waived, confirm at sale"
+    },
+    {
+      "county": "greenville",
+      "saleNo": 16,
+      "caseNo": "2026-CP-23-00155",
+      "address": "1406 Winding Way Taylors, SC 29687",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Rocket Mortgage, LLC f/k/a Quicken Loans, LLC",
+      "defendant": "Philip W. Dixon",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 17,
+      "caseNo": "2026-CP-23-00195",
+      "address": "19 and 21 Whiller Drive Greenville, SC 29608",
+      "attorney": "Austin Blackwell",
+      "lawFirm": "Bell Carrington Price & Gregg, LLC",
+      "plaintiff": "Moneyline Ventures, LLC",
+      "defendant": "A.S.K. Enterprises & Funding, LLC",
+      "status": "withdrawn",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 18,
+      "caseNo": "2026-CP-23-00512",
+      "address": "104 Oak Forest Drive Greer, SC 29650",
+      "attorney": "Austin Blackwell",
+      "lawFirm": "Bell Carrington Price & Gregg, LLC",
+      "plaintiff": "Carrington Mortgage Services, LLC",
+      "defendant": "Chad Thompson",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 19,
+      "caseNo": "2026-CP-23-00555",
+      "address": "67 Wallace Street Greenville, SC 29605",
+      "attorney": "Austin Blackwell",
+      "lawFirm": "Bell Carrington Price & Gregg, LLC",
+      "plaintiff": "Greenville County Redevelopment Authority",
+      "defendant": "Sylvia G. Hammett",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 20,
+      "caseNo": "2026-CP-23-00730",
+      "address": "100 N. Markley St. Greenville, SC 29601",
+      "attorney": "Howard R. Kinard",
+      "lawFirm": "Johnson Smith Hibbard & Wildman Law Firm, L.L.P.",
+      "plaintiff": "The Fidelity Bank",
+      "defendant": "Greenville HKW, LLC",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 21,
+      "caseNo": "2026-CP-23-01255",
+      "address": "23 Chinaberry Lane Simpsonville, SC 29680",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Truist Bank",
+      "defendant": "Doris B. Pressley",
+      "status": "withdrawn",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 22,
+      "caseNo": "2026-CP-23-01348",
+      "address": "302 West Road Travelers Rest, SC 29690",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Rocket Mortgage, LLC f/k/a Quicken Loans, LLC",
+      "defendant": "Wanda Brown",
+      "status": "withdrawn",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 23,
+      "caseNo": "2026-CP-23-01483",
+      "address": "304 Glenlea Ln Greenville, SC 29617",
+      "attorney": "Kevin T. Brown",
+      "lawFirm": "Brock & Scott, PLLC",
+      "plaintiff": "Finance of America Reverse LLC",
+      "defendant": "Robert Luther Ellis, Jr as Personal Representative for the Estate of Beverly Staton",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 24,
+      "caseNo": "2026-CP-23-02327",
+      "address": "71 Dorsey Avenue Greenville, SC 29611",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Wilmington Savings Fund Society, FSB, as Owner Trustee for the FLIC Residential Mortgage Loan Trust 1",
+      "defendant": "VSWC LLC",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 25,
+      "caseNo": "2026-CP-23-02343",
+      "address": "37 Ross Street Greenville, SC 29611",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Wilmington Savings Fund Society, FSB, as Trustee of NMLT 2021-INV1 Trust",
+      "defendant": "VSWC LLC",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 26,
+      "caseNo": "2026-CP-23-02408",
+      "address": "11 Charing Cross Road Taylors, SC 29687",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "Wilmington Savings Fund Society, FSB, as trustee for Ibis Holdings A Trust",
+      "defendant": "GRM Properties",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 27,
+      "caseNo": "2026-CP-23-02884",
+      "address": "2501 Poinsett Highway Greenville, SC 29609",
+      "attorney": "Weyman C. Carter",
+      "lawFirm": "Cassidy Coates Price, P.A.",
+      "plaintiff": "ALFIE Investors LLC",
+      "defendant": "2501 Poinsette LLC",
+      "status": "scheduled",
+      "deficiency": "demanded",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 28,
+      "caseNo": "2026-CP-23-03000",
+      "address": "202 Port Road Greenville, SC 29617",
+      "attorney": "John",
+      "lawFirm": "Kay",
+      "plaintiff": "UMB Bank, National Association, as owner trustee for Verus Securitization Trust 2024-6",
+      "defendant": "Green Ant LLC",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    },
+    {
+      "county": "greenville",
+      "saleNo": 29,
+      "caseNo": "2026-CP-23-03232",
+      "address": "608 Kingsmoor Drive Simpsonville, SC 29681",
+      "attorney": "Reginald P. Corley",
+      "lawFirm": "McCalla Raymer Leibert Pierce, LLP",
+      "plaintiff": "Mortgage Solutions of Colorado, LLC d/b/a Mortgage Solutions Financial",
+      "defendant": "Josh Massengill",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "tms": "",
+      "saleDate": "09/08/2026",
+      "sources": {
+        "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)"
+      }
+    }
+  ]
+}
