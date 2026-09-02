@@ -373,8 +373,28 @@ input[type='range'].slider-heat::-moz-range-thumb {
   .map-live .maplibregl-ctrl-top-right {
     transition: right 0.2s ease;
   }
-  .map-live:has(.map-sheet-desktop) .maplibregl-ctrl-top-right {
+  .map-live:has(.map-sheet-desktop) .maplibregl-ctrl-top-right,
+  .kiosk-map:has(.map-sheet-desktop) .maplibregl-ctrl-top-right {
     right: 288px;
+  }
+}
+
+/* The same 288px desktop panel ran over the TIMELINE's right end (the mode
+   chips and the scrubber's tail) and half-hid the Command Center radar
+   (Brian, Sep 2: "timeline needs to adapt to having these windows open").
+   While any selection sheet is in the DOM, the timeline gives up the panel's
+   width and its minimized pill re-centers in what is left; the radar slides
+   with it. :root:has() rather than .map-live:has() because the radar lives
+   outside the map root. md+ only, same reason as above. */
+@media (min-width: 768px) {
+  :root:has(.map-sheet-desktop) .ht-timeline {
+    right: calc(1rem + 288px);
+  }
+  :root:has(.map-sheet-desktop) .ht-timeline-pill {
+    left: calc(50% - 144px);
+  }
+  :root:has(.map-sheet-desktop) .ht-hud {
+    right: calc(1.5rem + 288px);
   }
 }
 

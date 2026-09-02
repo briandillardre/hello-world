@@ -490,7 +490,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
 
       {/* tactical instrument — bottom-right, above the ticker; open ⇄ pill ⇄ gone */}
       {panels.hud !== 'hidden' && (
-        <div className="absolute bottom-[calc(112px+env(safe-area-inset-bottom))] right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
+        <div className="ht-hud absolute bottom-[calc(112px+env(safe-area-inset-bottom))] right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
           {panels.hud === 'open' && (
             <TacticalHud
               assets={assets}
