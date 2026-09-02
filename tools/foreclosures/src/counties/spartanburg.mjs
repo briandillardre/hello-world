@@ -18,7 +18,8 @@ export async function spartanWeeklyNotices(saleDate, { maxPages = 12 } = {}) {
   const want = saleDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) // "September 8, 2026"
   const seen = new Set(), rows = []
   for (let p = 1; p <= maxPages; p++) {
-    const html = await getText(`${COUNTIES.spartanburg.notices}?page=${p}`)
+    let html
+    try { html = await getText(`${COUNTIES.spartanburg.notices}?page=${p}`) } catch (e) { if (/→ 404/.test(e.message)) break; throw e }   // past the last page
     const links = [...html.matchAll(/href="(\/legal-notices\/[a-z0-9-]+)"/g)].map(m => m[1]).filter(h => !/master-and-equity|all-other|probate|^\/legal-notices\/?$/.test(h))
     const fresh = links.filter(l => !seen.has(l)); if (!fresh.length) break
     for (const l of fresh) {
@@ -29,6 +30,7 @@ export async function spartanWeeklyNotices(saleDate, { maxPages = 12 } = {}) {
       if (!caseNo) continue
       const n = parseNotice(text)
       const forThisSale = n.saleDate && n.saleDate.replace(/\s+/g, ' ').toLowerCase().includes(want.toLowerCase())
+      if (!n.saleDate) log(`  spartanburg: no sale date parsed in ${l} – skipped (send it to me)`)
       if (!forThisSale) continue
       const titleAddr = (text.match(/Master In Equity\s+(\d[^\n]+?)\s+Case (?:Number|#)/i) || [])[1] || ''
       rows.push({ county: 'spartanburg', caseNo: caseNo.dashed, address: titleAddr || n.address,

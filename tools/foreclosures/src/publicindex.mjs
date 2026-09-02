@@ -10,6 +10,7 @@ import { goto, acceptDisclaimer, dump, download } from './browser.mjs'
 
 const DOC_PATTERNS = {
   order:      /(?:judgment|judgement|decree|order)[^|\n]{0,60}(?:foreclos|sale)|foreclos[^|\n]{0,40}(?:judgment|order|decree)|form\s*4|judgment (?:in a civil case|filed|entered)/i,
+  notOrder:   /reschedul|continu|amend|confirm|withdraw|cancel|postpon|vacat|supplemental|report of sale|deficiency/i,
   notice:     /notice of (?:master'?s? )?sale|notice of foreclosure sale|master'?s? sale/i,
   deficiency: /deficien/i,
   report:     /report of sale|master'?s? report|order confirming|bid/i,
@@ -69,7 +70,7 @@ export async function readDocket(page) {
 export function classifyDocket(docket) {
   const pick = (re) => docket.filter(d => re.test(d.description))
   return {
-    orders: pick(DOC_PATTERNS.order), notices: pick(DOC_PATTERNS.notice), deficiency: pick(DOC_PATTERNS.deficiency), reports: pick(DOC_PATTERNS.report),
+    orders: pick(DOC_PATTERNS.order).filter(d => !DOC_PATTERNS.notOrder.test(d.description)).sort((a, b) => (/foreclos.{0,30}sale|judgment/i.test(b.description) ? 1 : 0) - (/foreclos.{0,30}sale|judgment/i.test(a.description) ? 1 : 0)), notices: pick(DOC_PATTERNS.notice), deficiency: pick(DOC_PATTERNS.deficiency), reports: pick(DOC_PATTERNS.report),
     hasImages: docket.some(d => d.href), judgmentDate: pick(DOC_PATTERNS.order).map(d => d.date).filter(Boolean).pop() || '',
   }
 }
@@ -80,7 +81,7 @@ export async function harvestCase(page, cfg, caseNo, { dumpDir, headed, maxDocs 
   const docket = await readDocket(page)
   const c = classifyDocket(docket)
   const wanted = []
-  for (const d of [...c.orders].reverse()) if (d.href) { wanted.push({ kind: 'order', ...d }); break }
+  for (const d of c.orders) if (d.href) { wanted.push({ kind: 'order', ...d }); break }   // best-ranked judgment/order first (rescheduling orders excluded)
   for (const d of [...c.notices].reverse()) if (d.href) { wanted.push({ kind: 'notice', ...d }); break }
   for (const d of c.deficiency) if (d.href && !wanted.some(w => w.href === d.href)) wanted.push({ kind: 'deficiency', ...d })
   const docs = []

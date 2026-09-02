@@ -31,7 +31,7 @@ export async function qpublicCard(page, cfg, { tms, address }, { dumpDir } = {})
     const link = page.locator('table a[href*="KeyValue="], a[href*="PageTypeID=4"], a[href*="PageType=Report"]').first()
     if (await link.count()) { await link.click().catch(() => {}); await page.waitForLoadState('networkidle').catch(() => {}); await page.waitForTimeout(1200) }
     const text = htmlToText(await page.content())
-    if (/Owner|Parcel (?:Number|ID)|Acres|Legal Description/i.test(text) && !/no results|0 results|did not match/i.test(text.slice(0, 5000))) {
+    if (/Legal Description|Year Built|Deed Book|Sale Price|Total (?:Market|Appraised) Value/i.test(text) && !/no results|0 results|did not match|no records/i.test(text.slice(0, 5000))) {
       if (dumpDir) await dump(page, dumpDir, `qpublic-${(tms || address).replace(/[^a-z0-9]+/gi, '-')}`)
       return { ...scrapeCard(text), source: page.url(), matchedBy: t.kind }
     }

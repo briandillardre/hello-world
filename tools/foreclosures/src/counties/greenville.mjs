@@ -39,9 +39,9 @@ export async function readAdvert(page, url, { dumpDir } = {}) {
   const row = {
     county: 'greenville', caseNo: caseNo?.dashed || '', address: field('(?:Property )?Address') || n.address,
     plaintiff: field('Plaintiff') || n.plaintiff, defendant: field('Defendant') || n.defendant,
-    attorney: field('Attorney'), lawFirm: field('Law Firm'), saleNo: Number(field('Sale ?#|Sale No\\.?') || 0) || null,
+    attorney: field('Attorney'), lawFirm: field('Law Firm'), saleNo: Number((field('(?:Sale ?#|Sale No\\.?)').match(/\d+/) || [0])[0]) || null,
     saleDate: field('Sale Date') || n.saleDate, tms: field('TMS') || n.tms,
-    deficiency: /def(?:iciency)?\.? demanded|deficiency: ?demanded|Yes/i.test(field('Deficiency')) ? 'demanded' : /waived/i.test(field('Deficiency')) ? 'waived' : n.deficiency,
+    deficiency: /demanded|^\s*yes\b/i.test(field('Deficiency')) ? 'demanded' : /waived|^\s*no\b/i.test(field('Deficiency')) ? 'waived' : n.deficiency,
     status: /withdrawn|cancel/i.test(field('Status') + ' ' + field('Comments')) ? 'withdrawn' : 'scheduled',
     notice: n, sources: { advert: url, orderPdf, noticePdf },
   }
@@ -82,7 +82,12 @@ function hiddenFields(html) {
   return f
 }
 export async function greenvillePropertyCard(address) {
-  const raw = String(address).replace(/\./g, '').replace(/,.*$/, '').replace(/^(\d+[A-Za-z]?)\s*(?:and|&)\s*\d+[A-Za-z]?\s+/i, '$1 ').replace(/\b(Greenville|Simpsonville|Greer|Taylors|Mauldin|Travelers Rest|Fountain Inn|Piedmont|Marietta|Pelzer|Easley)\b.*$/i, '').trim()
+  const CITY = '(?:Greenville|Simpsonville|Greer|Taylors|Mauldin|Travelers Rest|Fountain Inn|Piedmont|Marietta|Pelzer|Easley)'
+  const SUFFIX = '(?:Rd|Road|Dr|Drive|St|Street|Ln|Lane|Ct|Court|Ave|Avenue|Way|Hwy|Highway|Blvd|Cir|Circle|Pl|Place|Trl|Trail|Pkwy|Ter|Terrace|Loop|Run|Path)'
+  let raw = String(address).replace(/\./g, '').replace(/^(\d+[A-Za-z]?)\s*(?:and|&)\s*\d+[A-Za-z]?\s+/i, '$1 ')
+  raw = raw.replace(/,.*$/, '')                                                        // drop ", SC 29601"
+  raw = raw.replace(new RegExp('\\s+' + CITY + '(?:\\s+(?:SC|South Carolina)\\b.*)?$', 'i'), '')  // drop a TRAILING city only – "2100 Easley Bridge Rd" keeps its city-named street
+  raw = raw.trim()
   const first = await getText(RP + 'Default.aspx')
   const f = hiddenFields(first)
   const year = (first.match(/ddl_TaxYears[\s\S]*?<option selected="selected" value="(\d{4})"/) || first.match(/ddl_TaxYears[\s\S]*?<option[^>]*value="(\d{4})"/) || [])[1]

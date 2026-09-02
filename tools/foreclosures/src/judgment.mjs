@@ -13,12 +13,14 @@ const MONEY1 = new RegExp(MONEY.source)  // non-global copy for .match() (a /g r
 export function regexJudgment(text) {
   const t = String(text).replace(/\s+/g, ' ')
   // amount that FOLLOWS the label (never look backwards – "costs of $250" must not pick up the total two lines up)
-  const near = (re, span = 260) => { const m = t.match(re); if (!m) return null; const after = t.slice(m.index + m[0].length, m.index + m[0].length + span); const a = after.match(MONEY1); if (!a) return null; return { amount: parseMoney(a[1]), quote: t.slice(Math.max(0, m.index - 20), m.index + m[0].length + (a.index || 0) + a[0].length + 60).trim() } }
+  const near = (re, span = 260) => { const m = t.match(re); if (!m) return null; let after = t.slice(m.index + m[0].length, m.index + m[0].length + span); const stop = after.search(/[.;]\s/); if (stop > 0) after = after.slice(0, stop + 1); const a = after.match(MONEY1); if (!a) return null; return { amount: parseMoney(a[1]), quote: t.slice(Math.max(0, m.index - 20), m.index + m[0].length + (a.index || 0) + a[0].length + 60).trim() } }
   const total = near(/(?:total (?:amount|sum|indebtedness|debt)(?: due| owed| owing)?|amount due (?:and owing|under the note)|judgment (?:against|in favor)[^$]{0,120}in the (?:total )?(?:amount|sum) of|is entitled to (?:a )?judgment[^$]{0,120}(?:amount|sum) of|indebted(?:ness)? to (?:the )?plaintiff[^$]{0,120}(?:amount|sum) of|balance due[^$]{0,80})/i)
-  const asOf = (t.match(/(?:as of|through|to)\s+((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})/i) || [])[1] || ''
-  const perDiem = near(/per diem(?: interest)?(?: of| in the amount of| at the rate of| equal to)?/i, 40) || (() => { const m = t.match(/\$\s?([\d,]+\.\d{2}) per (?:day|diem)/i); return m ? { amount: parseMoney(m[1]), quote: m[0] } : null })()
+  const DATE = '((?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},?\\s+\\d{4})'
+  // the as-of date must sit in the same sentence as the total; a bare document-wide "as of" is the only fallback
+  const asOf = ((total?.quote || '').match(new RegExp('(?:as of|through)\\s+' + DATE, 'i')) || t.match(new RegExp('as of\\s+' + DATE, 'i')) || [])[1] || ''
+  const perDiem = (() => { const m = t.match(/\$\s?([\d,]+\.\d{2})\s+per (?:day|diem)/i); return m ? { amount: parseMoney(m[1]), quote: m[0] } : null })() || near(/per diem(?: interest)?(?: of| in the amount of| at the rate of| equal to| is)/i, 30)
   const rate = (t.match(/(?:interest (?:at|thereon at) the (?:contract |note )?rate of|rate of interest of)\s*([\d.]+\s*%|[\d.]+ percent)/i) || [])[1] || ''
-  const fees = near(/attorney'?s'? fees?(?: and costs)?(?: in the (?:amount|sum) of| of)?/i, 60)
+  const fees = near(/attorney(?:'s|s'|s)? fees?(?: and costs)?(?: in the (?:amount|sum) of| of)?/i, 60)
   const costs = near(/(?:court )?costs(?: and disbursements)?(?: in the (?:amount|sum) of| of)(?! collection)/i, 40)
   const principal = near(/(?:unpaid )?principal(?: balance)?(?: in the (?:amount|sum) of| of| due)/i, 40)
   const escrow = near(/(?:escrow(?: advances?)?|advances? for taxes|taxes and insurance)(?: in the (?:amount|sum) of| of)?/i, 40)
@@ -53,7 +55,8 @@ export async function aiJudgment({ buf, text, caseNo, label }) {
   const client = new Anthropic()
   const model = process.env.FORECLOSURES_AI_MODEL || 'claude-opus-5'
   const content = []
-  if (buf && buf.length < 30 * 1024 * 1024) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } })
+  const isPdf = buf && buf.slice(0, 5).toString() === '%PDF-'
+  if (isPdf && buf.length < 20 * 1024 * 1024) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') } })
   else if (text) content.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: text.slice(0, 200000) } })
   else return null
   content.push({ type: 'text', text: `This is a South Carolina foreclosure filing (${label || 'court document'}) for case ${caseNo}. Extract the judgment/debt figures and deficiency status for a prospective bidder at the Master-in-Equity sale. Use only what the document states; null when absent. Amounts in dollars as numbers.` })
@@ -77,7 +80,8 @@ export async function extractJudgment(doc, { caseNo, useAi = true } = {}) {
   const rx = text ? regexJudgment(text) : null
   let ai = null
   if (useAi) { try { ai = await aiJudgment({ buf: doc.buf, text, caseNo, label: doc.label || doc.description }) } catch (e) { log('  AI extraction failed:', e.message) } }
-  const best = ai && (ai.totalDebt != null || !rx?.totalDebt) ? { ...rx, ...ai } : rx
-  if (!best) return { extractedBy: 'none', needsOcr: !text, note: text ? '' : 'document has no text layer and no AI key was available – open the PDF and read the amount by hand' }
+  const merged = ai ? Object.fromEntries([...new Set([...Object.keys(rx || {}), ...Object.keys(ai)])].map(k => [k, ai[k] != null && ai[k] !== 'unknown' && ai[k] !== '' ? ai[k] : rx?.[k]])) : null
+  const best = merged && (merged.totalDebt != null || !rx?.totalDebt) ? merged : rx
+  if (!best) return { extractedBy: 'none', needsOcr: !text, note: text ? '' : (process.env.ANTHROPIC_API_KEY ? 'document is not a text PDF (scan/TIFF) – open it and read the amount by hand' : 'document has no text layer and no AI key was set – open the PDF and read the amount by hand') }
   return { ...best, textChars: text.length, source: doc.url, sourceLabel: doc.label || doc.description || '' , needsOcr: !text && !ai }
 }

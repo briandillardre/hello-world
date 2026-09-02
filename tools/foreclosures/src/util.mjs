@@ -12,7 +12,7 @@ export const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
 /** Plain fetch with a browser UA. Works for the county sites that don't sit behind a bot wall. */
 export async function get(url, opts = {}) {
-  const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml,application/pdf,*/*;q=0.8', ...(opts.headers || {}) }, redirect: 'follow', ...opts })
+  const r = await fetch(url, { redirect: 'follow', ...opts, headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml,application/pdf,*/*;q=0.8', ...(opts.headers || {}) } })
   if (!r.ok) throw new Error(`GET ${url} → ${r.status}`)
   return r
 }

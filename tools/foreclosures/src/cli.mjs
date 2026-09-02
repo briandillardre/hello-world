@@ -22,7 +22,8 @@ import { writeReport, writeup } from './report.mjs'
 import { pdfText } from './pdf.mjs'
 
 const args = process.argv.slice(2)
-const cmd = args.find(a => !a.startsWith('--')) || 'run'
+const VALUE_FLAGS = new Set(['--county', '--date', '--only', '--seed'])
+const cmd = (() => { for (let i = 0; i < args.length; i++) { if (VALUE_FLAGS.has(args[i])) { i++; continue } if (!args[i].startsWith('--')) return args[i] } return 'run' })()
 const flag = (n) => args.includes('--' + n)
 const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d }
 
@@ -71,7 +72,7 @@ async function enrich(c, r) {
         const h = await harvestCase(await getPage(), cfg, r.caseNo, { dumpDir, headed })
         r.index = { url: h.url, via: h.via, ...h.summary }
         for (const d of h.docs) {
-          const file = saveDoc(c, r, d); r.docs.push({ kind: d.kind, date: d.date, description: d.description, url: d.url, file })
+          const file = saveDoc(c, r, d); if (!r.docs.some(x => x.url === d.url)) r.docs.push({ kind: d.kind, date: d.date, description: d.description, url: d.url, file })
           if (d.kind === 'order' && !doc) doc = { ...d, label: d.description }
           if (d.kind === 'notice' && !r.notice?.deficiency) { const t = (await pdfText(d.buf)).text; if (t) r.notice = { ...(r.notice || {}), ...parseNotice(t), source: d.url } }
           if (d.kind === 'deficiency') r.deficiencyDoc = { date: d.date, description: d.description, url: d.url }
@@ -103,10 +104,19 @@ async function main() {
     for (const c of counties) {
       let state = readJson(stateFile(c), null)
       const seed = opt('seed') && readJson(opt('seed'), null)
+      if (opt('seed') && !seed) log(`${c}: --seed ${opt('seed')} could not be read – crawling instead`)
+      if (seed && seed.county === c && state && !force) log(`${c}: state file exists, --seed ignored (add --force to replace it)`)
       if (seed && seed.county === c && (!state || force)) { state = { ...seed, seeded: true, listedAt: new Date().toISOString() }; writeJson(stateFile(c), state); log(`${c}: seeded ${state.rows.length} rows from ${opt('seed')}`) }
       else if (!state || force || cmd === 'list') {
-        try { const { rows, source } = await list(c); state = { county: c, saleDate: fmtDate(saleDate), source, rows, listedAt: new Date().toISOString() }; writeJson(stateFile(c), state) }
-        catch (e) { log(`${c}: list failed – ${e.message}`); if (!state) continue }
+        try {
+          const { rows, source } = await list(c)
+          if (state && !force) {
+            // `list` on top of enriched state: refresh roster facts, keep every judgment/property/doc already gathered
+            for (const fresh of rows) { const old = state.rows.find(r => r.caseNo && r.caseNo === fresh.caseNo); if (old) Object.assign(old, { saleNo: fresh.saleNo ?? old.saleNo, status: fresh.status, notes: fresh.notes ?? old.notes, deficiency: old.deficiency && old.deficiency !== 'unknown' ? old.deficiency : fresh.deficiency }); else state.rows.push(fresh) }
+            state.relistedAt = new Date().toISOString()
+          } else state = { county: c, saleDate: fmtDate(saleDate), source, rows, listedAt: new Date().toISOString() }
+          writeJson(stateFile(c), state)
+        } catch (e) { log(`${c}: list failed – ${e.message}`); if (!state) continue }
       }
       log(`${c}: ${state.rows.length} cases (${state.rows.filter(r => r.status === 'scheduled').length} scheduled)`)
       byCounty[c] = state

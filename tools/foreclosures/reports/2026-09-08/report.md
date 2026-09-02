@@ -246,7 +246,7 @@ _first Monday 11:00 AM, Pickens County Courthouse_
 - **Owed:** _not extracted_ · **Deficiency:** UNKNOWN
 - 115 BLUE SKY DR., SUNSET, SC 29685. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency status not found — check the notice.
 
-## Spartanburg County (9 on the list)
+## Spartanburg County (31 on the list)
 
 _first Monday 11:00 AM, 180 Magnolia St 4th floor (Tuesday when Monday is a holiday)_
 
@@ -257,6 +257,90 @@ _first Monday 11:00 AM, 180 Magnolia St 4th floor (Tuesday when Monday is a holi
 - 142 Birkdale Drive Spartanburg, SC 29306. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30. Interest on bid 3.5% until compliance; 5% deposit day of sale.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/142-birkdale-drive-spartanburg-sc-29306)
 
+### 2026-CP-42-01692 — 1172 Maryland Avenue Spartanburg, SC 29307
+
+- **Wilmington Savings Fund Society, FSB, not in its individual capacity but solely as Owner Trustee for the FLIC Residential Mortgage Loan Trust 1** v. VSWC, LLC; Willie Coleman; Daniel Dsouza · TMS 7-09-13-070.01
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 1172 Maryland Avenue Spartanburg, SC 29307. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 7% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/1172-maryland-avenue-spartanburg-sc-29307)
+
+### 2026-CP-42-01301 — 1269 Kilead Court Boiling Springs, SC 29316
+
+- **MidFirst Bank** v. Kaitlyn Weathers; Austin Weathers; B5 RE Investments LLC; Standing Rock Homeowners Association · TMS 2-51-00-018.08
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 1269 Kilead Court Boiling Springs, SC 29316. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 7.125% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/1269-kilead-court-boiling-springs-sc-29316)
+
+### 2025-CP-42-05920 — 62 Woodwind Drive Spartanburg, SC 29302
+
+- **Lakeview Loan Servicing, LLC** v. Laky Yang; Thomas W. Hoelscher; Wendy B. Hoelscher · TMS 7-21-13-021.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 62 Woodwind Drive Spartanburg, SC 29302. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 4.99% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/62-woodwind-drive-spartanburg-sc-29302)
+
+### 2025-CP-42-04034 — 109 Nevada Street, Spartanburg, SC 29306
+
+- **U.S. Bank Trust Company, National Association, as Trustee, as successor-in-interest to U.S. Bank National Association, not in its individual capacity but solely as indenture trustee, for the holders of the CIM Trust 2021-R5, Mortgage-Backed Notes, Series 2021-R5** v. Any heirs-at-law or devisees of Bobby J. Davis a/k/a Bobby Joe Davis, Sr., deceased, their heirs, Personal Representatives, Administrators, Successors and Assigns, and all other persons or entities entitled to claim through them; all unknown persons or entities with any right, title, estate, interest in or lien upon the real estate described in the complaint herein; also any persons who may be in the military service of the United States of America, being a class designated as Richard Roe; and any unknown minors, incompetent or imprisoned person, or persons under a disability being a class designated as John Doe; Donna Davis; Michelle Darlene Davis; Shawn N. Cooper; Bobby Joe Davis, Jr.; Charles L. Davis; Michael Burch · TMS 7-16-07-130.10
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 109 Nevada Street, Spartanburg, SC 29306. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/109-nevada-street-spartanburg-sc-29306)
+
+### 2025-CP-42-05179 — 353 Honor Road, Duncan, SC 29334
+
+- **Wells Fargo Bank, N.A.** v. Any heirs-at-law or devisees of Brian P. Gilchrest, deceased, their heirs, Personal Representatives, Administrators, Successors and Assigns, and all other persons or entities entitled to claim through them; all unknown persons or entities with any right, title, estate, interest in or lien upon the real estate described in the complaint herein; also any persons who may be in the military service of the United States of America, being a class designated as Richard Roe; and any unknown minors, incompetent or imprisoned person, or persons under a disability being a class designated as John Doe; Robin Baker Gilchrest; Brian Henry Gilchrest; Elaine Marie Gilchrest; Z.L.G.(minor); The United States of America, acting by and through its Agency, The Secretary of Housing and Urban Development · TMS 5-19-00-356.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 353 Honor Road, Duncan, SC 29334. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. USA right of redemption applies (federal lien).
+- [notice](https://www.spartanweeklyonline.com/legal-notices/353-honor-road-duncan-sc-29334)
+
+### 2025-CP-42-05042 — 155 Nesbitt Road, Wellford, SC 29385
+
+- **Fifth Third Bank N.A.** v. Pamela Y. Pettigrew a/k/a Pamela Y. Lynch; The United States of America, acting by and through its Agency, The Secretary of Housing and Urban Development · TMS 5-16-13-044.00
+- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
+- 155 Nesbitt Road, Wellford, SC 29385. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30. USA right of redemption applies (federal lien).
+- [notice](https://www.spartanweeklyonline.com/legal-notices/155-nesbitt-road-wellford-sc-29385)
+
+### 2025-CP-42-05438 — 591 Stagecoach Road, Pauline, SC 29374
+
+- **Wells Fargo Bank, N.A.** v. David W. Teaster; The United States of America, acting by and through its Agency, The Secretary of Housing and Urban Development · TMS 6-62-00-035.03
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 591 Stagecoach Road, Pauline, SC 29374. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. USA right of redemption applies (federal lien).
+- [notice](https://www.spartanweeklyonline.com/legal-notices/591-stagecoach-road-pauline-sc-29374)
+
+### 2026-CP-42-01627 — 102 Sparrow Ct, Boiling Springs, SC 29316
+
+- **Wells Fargo Bank, National Association as Trustee for Structured Asset Securities Corporation, Mortgage Pass-Through Certificates, Series 2006-OPT1** v. Choeun Chan a/k/a Cindy Chan; Nem Chan; Financial Trust, Inc.; 1st Franklin Financial Corporation · TMS 2-44-00-067.01
+- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
+- 102 Sparrow Ct, Boiling Springs, SC 29316. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/102-sparrow-ct-boiling-springs-sc-29316)
+
+### 2025-CP-42-04289 — 251 Longmont Drive, Boiling Springs, SC 29316
+
+- **Lakeview Loan Servicing, LLC** v. Racquel Nicole Lynch a/k/a Racquel Lynch; The United States of America, acting by and through its Agency, The Secretary of Housing and Urban Development; Republic Finance, LLC; Rolands Crossing Homeowners Association, Inc. · TMS 2-37-00-051.75
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 251 Longmont Drive, Boiling Springs, SC 29316. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. USA right of redemption applies (federal lien).
+- [notice](https://www.spartanweeklyonline.com/legal-notices/251-longmont-drive-boiling-springs-sc-29316)
+
+### 2026-CP-42-00897 — 111 Goodlett St, Pacolet, SC 29372
+
+- **PennyMac Loan Services, LLC** v. Jacob Shore · TMS 3-30-01-054.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 111 Goodlett St, Pacolet, SC 29372. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/111-goodlett-st-pacolet-sc-29372)
+
+### 2026-CP-42-01739 — 1032 Longstone Way, Spartanburg, SC 29306
+
+- **Village Capital & Investment LLC** v. Franklin S. Porter; Sylvia E. Porter; Hawthorn Grove Homeowners' Association, Inc.; Mortgage Electronic Registration Systems, Inc., as mortgagee, as nominee for Guaranteed Rate, Inc. · TMS 7-21-00-058.09
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 1032 Longstone Way, Spartanburg, SC 29306. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/1032-longstone-way-spartanburg-sc-29306)
+
+### 2026-CP-42-01891 — 4456 Duparc Way, Spartanburg, SC 29307
+
+- **Freedom Mortgage Corporation** v. Kaden Darrin Morrell; Amanda Maria Morrell; Berkeley Homeowners' Association, Inc. · TMS 7-05-00-201.19
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 4456 Duparc Way, Spartanburg, SC 29307. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/4456-duparc-way-spartanburg-sc-29307)
+
 ### 2026-CP-42-00714 — 686 California Avenue, Spartanburg, SC 29303
 
 - **Katline Realty Corp., LLC** v. Malibu Real Estate Investments, LLC · TMS 6-13-08-155.00
@@ -264,51 +348,121 @@ _first Monday 11:00 AM, 180 Magnolia St 4th floor (Tuesday when Monday is a holi
 - 686 California Avenue, Spartanburg, SC 29303. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY LANGUAGE CONFLICTS in the notice (says both waived and open 30 days) — ask plaintiff's counsel: W: No personal or deficiency judgment being demanded, the bidding will not remain open after the date of sale, but compliance with the bid must be made immediately. | D: DEFICIENCY JUDGMENT IS PRESERVED AND THE BID WILL REMAIN OPEN FOR THIRTY DAYS. Interest on bid 0% until compliance; 5% deposit day of sale.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/686-california-avenue-spartanburg-sc-29303)
 
+### 2026-CP-42-01014 — 143 Woodhaven Drive, Spartanburg, SC 29307
+
+- **Pinnacle Bank d/b/a Synovus Bank** v. Lasundra Danielle Williams; and Service Finance Company, LLC · TMS 7-10-02-040.00
+- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
+- 143 Woodhaven Drive, Spartanburg, SC 29307. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/143-woodhaven-drive-spartanburg-sc-29307)
+
 ### 2025-CP-42-02677 — 324 Courson Court Boiling Springs, South Carolina 29316
 
-- **South Carolina State Housing Finance and Development Authority** v. Natalie McKelvin et al · TMS 2-45-06-014.00
+- **the case of South Carolina State Housing Finance and Development Authority** v. Natalie McKelvin et al · TMS 2-45-06-014.00
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 324 Courson Court Boiling Springs, South Carolina 29316. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/324-courson-court-boiling-springs-south-carolina-29316)
 
 ### 2025-CP-42-03885 — 179 Briarcliff Road, Spartanburg, SC 29301
 
-- **Planet Home Lending, LLC** v. Jakira Bogan a/k/a Jakira A. Bogan; Correy T. Bogan; Derrick B. Bogan a/k/a Derrick Bernard Bogan; et.al. · TMS 7-15-08-100.00
+- **the case of: Planet Home Lending, LLC** v. Jakira Bogan a/k/a Jakira A. Bogan; Correy T. Bogan; Derrick B. Bogan a/k/a Derrick Bernard Bogan; et.al. · TMS 7-15-08-100.00
 - **Owed:** _not extracted_ · **Deficiency:** DEMANDED
 - 179 Briarcliff Road, Spartanburg, SC 29301. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/179-briarcliff-road-spartanburg-sc-29301-1257)
 
 ### 2025-CP-42-05868 — 111 Whitener Avenue, Spartanburg, SC 29306
 
-- **U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for Legacy Mortgage Asset Trust 2024-INV1** v. HGMCV1 LLC · TMS 7-16-12-031.00
+- **the case of: U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for Legacy Mortgage Asset Trust 2024-INV1** v. HGMCV1 LLC · TMS 7-16-12-031.00
 - **Owed:** _not extracted_ · **Deficiency:** DEMANDED
 - 111 Whitener Avenue, Spartanburg, SC 29306. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/111-whitener-avenue-spartanburg-sc-29306)
 
 ### 2025-CP-42-00105 — 116 Carolyn Drive, Spartanburg, SC 29306
 
-- **U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for GS Mortgage-Backed Securities Trust 2022-RPL2** v. Theresa Jackson Miller a/k/a Theresa Miller, as Heir or Devisee of the Estate of James Roosevelt Jackson a/k/a James R. Jackson a/k/a James Jackson, Deceased; Doris Davis, as Heir or Devisee of the Estate of James Roosevelt Jackson a/k/a James R. Jackson a/k/a James Jackson, Deceased; et.al. · TMS 7-16-12-026.00
+- **the case of: U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for GS Mortgage-Backed Securities Trust 2022-RPL2** v. Theresa Jackson Miller a/k/a Theresa Miller, as Heir or Devisee of the Estate of James Roosevelt Jackson a/k/a James R. Jackson a/k/a James Jackson, Deceased; Doris Davis, as Heir or Devisee of the Estate of James Roosevelt Jackson a/k/a James R. Jackson a/k/a James Jackson, Deceased; et.al. · TMS 7-16-12-026.00
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 116 Carolyn Drive, Spartanburg, SC 29306. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/116-carolyn-drive-spartanburg-sc-29306)
 
 ### 2026-CP-42-00672 — 112 Mt Lebanon Road, Pauline, SC 29374
 
-- **JPMorgan Chase Bank, National Association** v. Linda Lawter; and Susan Lawter · TMS 6-63-00-005.07
+- **the case of: JPMorgan Chase Bank, National Association** v. Linda Lawter; and Susan Lawter · TMS 6-63-00-005.07
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 112 Mt Lebanon Road, Pauline, SC 29374. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/112-mt-lebanon-road-pauline-sc-29374)
 
 ### 2026-CP-42-01993 — 229 Cherokee Circle, Spartanburg, SC 29307
 
-- **U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for Legacy Mortgage Asset Trust 2021-GS2** v. Helen Louise Long a/k/a Helen L. Long; Johnny Thomas Long; Michael Alan Long a/k/a Michael Long, and if he be deceased, et.al. · TMS 2-46-00-003.00
+- **the case of: U.S. Bank Trust National Association, not in its individual capacity but solely as owner trustee for Legacy Mortgage Asset Trust 2021-GS2** v. Helen Louise Long a/k/a Helen L. Long; Johnny Thomas Long; Michael Alan Long a/k/a Michael Long, and if he be deceased, et.al. · TMS 2-46-00-003.00
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 229 Cherokee Circle, Spartanburg, SC 29307. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/229-cherokee-circle-spartanburg-sc-29307)
 
 ### 2018-CP-42-02911 — 225 Rexford Drive, Moore, SC 29369
 
-- **FirstBank** v. Terri Rookard; et.al. · TMS 5-32-00-528.00
+- **the case of: FirstBank** v. Terri Rookard; et.al. · TMS 5-32-00-528.00
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 225 Rexford Drive, Moore, SC 29369. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/225-rexford-drive-moore-sc-29369)
+
+### 2025-CP-42-06354 — 135 Knollwood Drive, Spartanburg, SC 29301
+
+- **the case of: NewRez LLC d/b/a Shellpoint Mortgage Servicing** v. Ta'Jio D. Reeves · TMS 6-21-13-099.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 135 Knollwood Drive, Spartanburg, SC 29301. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/135-knollwood-drive-spartanburg-sc-29301)
+
+### 2026-CP-42-01840 — 481 Hammett Store Road, Lyman, SC  29365
+
+- **the case of: Vanderbilt Mortgage and Finance, Inc.** v. Reginald Leon Fouse and Samantha Marie Whitten · TMS 5-10-00-004.21
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 481 Hammett Store Road, Lyman, SC  29365. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/481-hammett-store-road-lyman-sc-29365)
+
+### 2025-CP-42-03868 — 157 Carver Street, Wellford, SC 29385
+
+- **the case of: Federal Home Loan Mortgage Corporation as Trustee for Freddie Mac Seasoned Credit Risk Transfer Trust, Series 2018-2** v. John E. Moore, Jr.; et al.
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 157 Carver Street, Wellford, SC 29385. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/157-carver-street-wellford-sc-29385)
+
+### 2025-CP-42-05133 — 472 Sloan Street, Spartanburg, SC 29303
+
+- **the case of: Lakeview Loan Servicing, LLC** v. Eric Cortright; et al.
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 472 Sloan Street, Spartanburg, SC 29303. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/472-sloan-street-spartanburg-sc-29303)
+
+### 2025-CP-42-04467 — 729 Grace Valley Road, Inman, SC 29349
+
+- **the case of: Carrington Mortgage Services, LLC** v. Sabrina Sharpe, individually and as Personal Representative of the Estate of Simon Sharpe a/k/a Simon Scott Sharpe; et al.
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 729 Grace Valley Road, Inman, SC 29349. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/729-grace-valley-road-inman-sc-29349)
+
+### 2025-CP-42-06017 — 135 Summit Ridge Drive, Boiling Springs, SC 29316
+
+- **the case of: Carrington Mortgage Services, LLC** v. Jennifer Mondonedo; et al.
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 135 Summit Ridge Drive, Boiling Springs, SC 29316. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/135-summit-ridge-drive-boiling-springs-sc-29316)
+
+### 2026-CP-42-00346 — 2130 East Blackstock Road Roebuck, SC 29376
+
+- **Rocket Mortgage, LLC f/k/a Quicken Loans, LLC** v. Carrie Doggett; Jason Doggett; The United States of America, by and through its Agency, the Department of Housing and Urban Development · TMS 6-29-15-004.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 2130 East Blackstock Road Roebuck, SC 29376. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 4.99% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/2130-east-blackstock-road-roebuck-sc-29376-1277)
+
+### 2025-CP-42-05234 — 427 Bollweevil Way Wellford, SC 29385
+
+- **Rocket Mortgage, LLC f/k/a Quicken Loans, LLC** v. Kimberly Phengduang; Leng Keovongxay; Soy Keovongxay; Hinson Hill Homeowner's Association, Inc. aka Hinson Hills Homeowner's Association, Inc.; Wells Fargo Bank, N.A. · TMS 5-08-00-024.00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 427 Bollweevil Way Wellford, SC 29385. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 3.25% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/427-bollweevil-way-wellford-sc-29385)
+
+### 2025-CP-42-04618 — 7207 Heirloom Lane Inman, SC 29349
+
+- **Freedom Mortgage Corporation** v. Ashlynn E Kratz; Aaron W Kratz; Regency Walk Homeowners Association · TMS 2-36-00-084.35
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 7207 Heirloom Lane Inman, SC 29349. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 5.75% until compliance; 5% deposit day of sale.
+- [notice](https://www.spartanweeklyonline.com/legal-notices/7207-heirloom-lane-inman-sc-29349)
