@@ -242,6 +242,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       drawerSwiped.current = false
       return
     }
+    if (e.pointerType !== 'touch') return // mouse drags (sliders, text) never count as a swipe
     drawerSwipe.current = { x: e.clientX, y: e.clientY }
     drawerSwiped.current = false
   }
@@ -544,8 +545,12 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     // Full-height LEFT DRAWER (Brian, Aug 22: "open from the left similar to
     // what Google Maps does") — backdrop tap closes; the map stays visible
     // to the right of it.
-    <div style={{ zIndex: z }} className={`absolute inset-0 ${tuckCls(hidden)}`}>
-      <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default" />
+    // md+: no scrim and the wrapper lets clicks through — the drawer is a
+    // side panel you work NEXT TO on a PC (Brian, Sep 2: "when I click to move
+    // around on the map it should not automatically minimize"). Phones keep
+    // the tap-outside-to-close backdrop.
+    <div style={{ zIndex: z }} className={`absolute inset-0 md:pointer-events-none ${tuckCls(hidden)}`}>
+      <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default md:hidden" />
       {/* ~half the phone (Brian, Aug 22: "try half screen width") — the map
           stays alive beside the drawer; 320px cap keeps desktop sane. */}
       <div
@@ -560,7 +565,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         // gesture only ever worked with a mouse (Brian, Aug 24: "swipe to
         // close is currently not working"). pan-y keeps vertical scroll
         // native and hands horizontal drags to the pointer handlers.
-        className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in touch-pan-y"
+        className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in touch-pan-y md:pointer-events-auto"
       >
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
@@ -724,7 +729,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
           Sticky so what's-on stays in sight while the list scrolls. Registry
           overlays ONLY: basemap, Show-on-map and 3D never appear here. */}
       {activeRows.length > 0 && (
-        <div className="sticky top-[37px] z-10 flex flex-nowrap items-center gap-1 px-2 py-1.5 bg-navy-950/95 backdrop-blur border-b border-navy-800 overflow-x-auto no-scrollbar">
+        <div className="sticky top-[37px] z-10 flex flex-nowrap items-center gap-1 px-2 py-1.5 bg-navy-950/95 backdrop-blur border-b border-navy-800 overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
           {/* The WHOLE chip is the dismiss button (ship-check P2) — a bare
               14px × was a precision tap for gloved thumbs, with near-misses
               landing on the neighbor chip. Single-line scroll keeps a stack
@@ -865,7 +870,10 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
       <GroupHeader gid="basemap" open={openGroups.has('basemap')} count={groupCount('basemap')} hasErr={false} onToggle={() => toggleGroup('basemap')} />
       {openGroups.has('basemap') && (<>
       {/* One swipe row of real tile thumbnails. */}
-      <div className="flex gap-1.5 px-2 pt-1 pb-2 overflow-x-auto no-scrollbar">
+      {/* Phones swipe the strip; on a mouse (md+) it wraps into rows instead —
+          horizontal-only scrolling is invisible and unreachable with a wheel
+          (Brian, Sep 2 PC screenshot). */}
+      <div className="flex gap-1.5 px-2 pt-1 pb-2 overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
         {(stripAll ? BASEMAPS : BASEMAPS.slice(0, 6)).map((b) => (
           <button
             key={b.id}

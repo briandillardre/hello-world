@@ -176,6 +176,8 @@ export const BASEMAP_TILE: Record<BasemapId, string> = {
 }
 /** CSS filter approximating the map paint treatment, for picker thumbs only. */
 export const BASEMAP_THUMB_FILTER: Partial<Record<BasemapId, string>> = {
+  // keyless Esri dark canvas is mid-gray; the map paints it near-black (MapView), so match the thumb
+  ...(basemapKeyless ? { dark: 'brightness(0.45) contrast(1.15)' } : {}),
   bw: 'grayscale(1) contrast(1.25)',
   aubergine: 'hue-rotate(230deg) saturate(0.6) brightness(0.55)',
 }
