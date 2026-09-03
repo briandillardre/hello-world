@@ -397,3 +397,28 @@ export function nextAction(stages: Stage[]): string {
   const stuck = stages.find((s) => s.state !== 'done')
   return stuck ? stuck.note : 'Fully online. Nothing left to do.'
 }
+
+/**
+ * How a tracker id should read at a glance on the map sheet.
+ *
+ * Brian, Sep 3: "I want to be able to see the last four ... when I click an
+ * asset." The last four digits are how the hardware is actually identified in
+ * the field — the KORE/FOTA/flespi consoles all list devices by IMEI, and the
+ * unit in your hand has it printed on the label. Showing the whole 15 digits
+ * in a sheet header is unreadable; the last four is what you compare against.
+ *
+ * Not every tracker is an IMEI, though — phone shares are `phone-<uuid>` and
+ * BLE tags carry short hex ids — so the label names what it is rather than
+ * blindly slicing four characters off a UUID.
+ */
+export function shortTracker(
+  trackerId: string | null | undefined,
+): { kind: 'imei' | 'phone' | 'tag'; label: string; short: string; full: string } | null {
+  const full = (trackerId ?? '').trim()
+  if (!full) return null
+  if (/^phone-/i.test(full)) return { kind: 'phone', label: 'Phone', short: 'this phone', full }
+  if (/^\d{15}$/.test(full)) return { kind: 'imei', label: 'IMEI', short: `····${full.slice(-4)}`, full }
+  // Short enough to read whole (bt-042, obd-001, a beacon Minor) — show it all.
+  if (full.length <= 10) return { kind: 'tag', label: 'Tag', short: full, full }
+  return { kind: 'tag', label: 'Tag', short: `····${full.slice(-4)}`, full }
+}

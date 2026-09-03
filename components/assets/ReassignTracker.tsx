@@ -36,6 +36,10 @@ export function ReassignTracker({ asset, trackerlessAssets }: { asset: Asset; tr
   const [otherName, setOtherName] = useState('')
   const [otherType, setOtherType] = useState<AssetType>('vehicle')
   const [existingId, setExistingId] = useState<string>('')
+  // The box that went IN when this one came out. Optional — plenty of swaps
+  // are one-way (device pulled for repair) — but a two-way swap is the common
+  // case and used to need a second trip through the edit form.
+  const [replacement, setReplacement] = useState('')
 
   const otherLabel = mode === 'existing'
     ? (trackerlessAssets.find((a) => a.id === existingId)?.name ?? 'the other vehicle')
@@ -45,8 +49,10 @@ export function ReassignTracker({ asset, trackerlessAssets }: { asset: Asset; tr
     return Number.isNaN(t) ? 'the swap' : new Date(t).toLocaleString()
   }, [swapAt])
 
+  const rep = replacement.trim()
   const summary = role === 'old'
-    ? `"${asset.name}" keeps all history before ${swapText}. The tracker and everything after moves to ${otherLabel}.`
+    ? `"${asset.name}" keeps all history before ${swapText}. The tracker and everything after moves to ${otherLabel}.` +
+      (rep ? ` "${asset.name}" then reports on tracker ${rep}.` : '')
     : `"${asset.name}" keeps the tracker and all history after ${swapText}. Everything before moves to ${otherLabel}.`
 
   const canSubmit = !saving && !!Date.parse(swapAt) &&
@@ -63,6 +69,7 @@ export function ReassignTracker({ asset, trackerlessAssets }: { asset: Asset; tr
         swapAtIso: new Date(swapAt).toISOString(),
         currentRole: role,
         other,
+        newTrackerForCurrent: role === 'old' && rep ? rep : undefined,
       })
       if (!res.ok) { setError(res.error ?? 'Could not reassign.'); return }
       setOpen(false)
@@ -159,6 +166,25 @@ export function ReassignTracker({ asset, trackerlessAssets }: { asset: Asset; tr
                   </Select>
                 )}
               </div>
+
+              {role === 'old' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="replacement-tracker">
+                    New tracker in this vehicle <span className="text-faint font-normal">— optional</span>
+                  </Label>
+                  <Input
+                    id="replacement-tracker"
+                    inputMode="text"
+                    placeholder="IMEI or tag ID of the box that went IN"
+                    value={replacement}
+                    onChange={(e) => setReplacement(e.target.value)}
+                  />
+                  <p className="text-[12px] text-faint leading-snug">
+                    Leave blank if nothing replaced it. Fill it in and &ldquo;{asset.name}&rdquo; starts
+                    reporting on the new device the moment it checks in — no second trip through Edit.
+                  </p>
+                </div>
+              )}
 
               <div className="rounded-lg border border-amber/40 bg-amber/5 p-3">
                 <p className="text-[12px] text-amber font-semibold mb-0.5">This will:</p>
