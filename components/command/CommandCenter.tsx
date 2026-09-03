@@ -107,6 +107,15 @@ const TRIGGER_LABEL: Record<string, string> = {
 function KioskNav({ company, alerts }: { company: string; alerts: AlertEvent[] }) {
   const [collapsed, setCollapsed] = useState(true)
   useEffect(() => { setCollapsed(localStorage.getItem('ht-cc-nav') !== '0') }, [])
+  // The expanded kiosk sidebar overlays the wall — publish its width so the
+  // layers drawer, the instrument rail and the timeline slide right of it
+  // instead of underneath (Brian, Sep 3: "if both are open then push them so
+  // I can see everything"). w-56 = 14rem.
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--ht-nav-w', collapsed ? '0px' : '14rem')
+    return () => { root.style.setProperty('--ht-nav-w', '0px') }
+  }, [collapsed])
   const toggle = () =>
     setCollapsed((c) => {
       const next = !c
@@ -451,18 +460,22 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         // screen and its empty lower half was swallowing clicks meant for the
         // map's zoom/locate buttons underneath ("none of those are working",
         // Jul 21). Only the rail itself accepts input.
-        <div className="absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
+        <div className="ht-cc-rail absolute left-4 top-[114px] bottom-14 z-40 hidden xl:flex items-start pointer-events-none">
           <div className="pointer-events-auto max-h-full">
             <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} noticed={noticed} />
           </div>
         </div>
       ) : (
+        // Collapsed rail = the same edge-tab language as LAYERS below it
+        // (Brian, Sep 3: "make it look like layers when collapsed"). Slides
+        // right of the open sidebar / drawer via .ht-cc-rail-tab.
         <button
           onClick={() => setMany(LEFT_KEYS, 'open')}
-          aria-label="Show instrument rail"
-          className="absolute left-0 top-[120px] z-[46] hidden xl:grid place-items-center w-6 h-14 rounded-r-lg bg-navy-950/75 backdrop-blur border border-l-0 border-teal/20 text-teal/70 hover:text-teal transition-colors"
+          aria-label="Show instrument panels"
+          className="ht-cc-rail-tab absolute left-0 top-[120px] z-[46] hidden xl:flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3 w-3" />
+          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Panels</span>
         </button>
       )}
 

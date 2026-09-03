@@ -218,9 +218,23 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
   // The thumb cluster's Layers FAB opens the drawer from outside.
   useEffect(() => {
     const onOpen = () => setOpen(true)
+    const onToggle = () => setOpen((o) => !o)
     window.addEventListener('ht:open-layers', onOpen)
-    return () => window.removeEventListener('ht:open-layers', onOpen)
+    window.addEventListener('ht:toggle-layers', onToggle)
+    return () => { window.removeEventListener('ht:open-layers', onOpen); window.removeEventListener('ht:toggle-layers', onToggle) }
   }, [])
+  // Publish the drawer's footprint so the rest of the screen can step aside
+  // on a PC (Brian, Sep 3: "left layers bar when opened should push out the
+  // fleet activity, site presence, fleet status"): --ht-layers-w is read by
+  // the Command Center rail, the timeline and the LAYERS tab (globals.css).
+  // Phones keep 0 — the drawer overlays there by design.
+  useEffect(() => {
+    const root = document.documentElement
+    const desktop = window.matchMedia('(min-width: 768px)').matches
+    root.style.setProperty('--ht-layers-w', open && desktop ? 'min(320px, 55vw)' : '0px')
+    try { window.dispatchEvent(new CustomEvent('ht:layers-state', { detail: { open } })) } catch { /* SSR */ }
+    return () => { root.style.setProperty('--ht-layers-w', '0px') }
+  }, [open])
   // Swipe the drawer toward the LEFT EDGE anywhere on it to close (Brian,
   // Aug 23) — a mostly-horizontal leftward drag ≥48px dismisses; vertical
   // scrolling and taps are untouched, and the tail-end click is swallowed so
@@ -549,7 +563,7 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     // side panel you work NEXT TO on a PC (Brian, Sep 2: "when I click to move
     // around on the map it should not automatically minimize"). Phones keep
     // the tap-outside-to-close backdrop.
-    <div style={{ zIndex: z }} className={`absolute inset-0 md:pointer-events-none ${tuckCls(hidden)}`}>
+    <div style={{ zIndex: z }} className={`ht-layers-wrap absolute inset-0 md:pointer-events-none ${tuckCls(hidden)}`}>
       <button aria-label="Close layers" onClick={() => setOpen(false)} className="absolute inset-0 w-full h-full bg-black/35 cursor-default md:hidden" />
       {/* ~half the phone (Brian, Aug 22: "try half screen width") — the map
           stays alive beside the drawer; 320px cap keeps desktop sane. */}
