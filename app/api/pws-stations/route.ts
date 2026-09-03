@@ -24,6 +24,8 @@ export interface PwsStation {
   humidity: number | null
   rainInHr: number | null
   ageMin: number | null
+  /** Observation time, epoch ms (Ambient dateutc) — the popup's "as of". */
+  obsAt: number | null
 }
 
 const cache = new Map<string, { at: number; stations: PwsStation[] }>()
@@ -44,6 +46,7 @@ function demoStations(): PwsStation[] {
     humidity: 62 - i * 3,
     rainInHr: i === 2 ? 0.12 : 0,
     ageMin: 1 + i,
+    obsAt: Date.now() - (1 + i) * 60_000,
   }))
 }
 
@@ -94,6 +97,7 @@ export async function GET(req: NextRequest) {
           humidity: num('humidity'),
           rainInHr: num('hourlyrainin'),
           ageMin: at ? Math.max(0, Math.round((Date.now() - at) / 60_000)) : null,
+          obsAt: at,
         }]
       })
     }

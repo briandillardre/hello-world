@@ -96,16 +96,25 @@ export async function GET(req: NextRequest) {
         Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90))
     if (!zones.length) { results.push({ company: shortId(co.id), skipped: 'no zones' }); continue }
 
-    // Window: newest stored fix → now (capped).
+    // Window: newest stored fix → now (capped). Top-1 PER asset via the
+    // embedded newest-first pattern, then max in JS — the old
+    // `in(asset_id) order by timestamp desc limit 1` had no index that
+    // serves it and bitmap-scanned the showroom fleet's entire history
+    // (~75 MB of fat rows) every 5 minutes (Supabase Disk IO alert, Sep 3).
     const assetIds = assets.map((a) => a.id)
-    const { data: newest } = await svc
-      .from('asset_locations')
-      .select('timestamp')
-      .in('asset_id', assetIds)
-      .order('timestamp', { ascending: false })
-      .limit(1)
+    const { data: newestRows } = await svc
+      .from('assets')
+      .select('id, asset_locations(timestamp)')
+      .in('id', assetIds)
+      .order('timestamp', { ascending: false, referencedTable: 'asset_locations' })
+      .limit(1, { referencedTable: 'asset_locations' })
     const now = Date.now()
-    const lastMs = newest?.[0] ? Date.parse(newest[0].timestamp as string) : 0
+    let lastMs = 0
+    for (const row of (newestRows ?? []) as { asset_locations: { timestamp: string }[] | { timestamp: string } | null }[]) {
+      const fix = Array.isArray(row.asset_locations) ? row.asset_locations[0] : row.asset_locations
+      const ms = fix?.timestamp ? Date.parse(fix.timestamp) : NaN
+      if (Number.isFinite(ms) && ms > lastMs) lastMs = ms
+    }
     const fromMs = Math.max(Number.isFinite(lastMs) ? lastMs + 30_000 : 0, now - MAX_CATCHUP_MS)
     if (now - fromMs < 3 * 60_000) { results.push({ company: shortId(co.id), skipped: 'up to date' }); continue }
 

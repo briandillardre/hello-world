@@ -15,6 +15,8 @@
  *  - Each file runs in its own transaction; the first failure rolls back,
  *    exits 1, and (on Vercel) fails the build so broken schema never ships
  *    with code that expects it.
+ *  - Runners serialize on a session advisory lock: preview + production
+ *    builds of the same push never apply a file twice or race each other.
  *
  * SUPABASE_DB_URL: Supabase Dashboard → Project Settings → Database →
  * Connection string → "Session pooler" URI (port 5432), password filled in.
@@ -48,6 +50,17 @@ client.on('notice', (n) => console.log(`[migrate] NOTICE ${n.message}`))
 
 try {
   await client.connect()
+  // One runner at a time (Sep 3 burn): a branch push and a master merge a
+  // few minutes apart build concurrently, and BOTH builds run this against
+  // the same production database. The second runner used to replay the
+  // same pending file in parallel, then die on schema_migrations' primary
+  // key — failing that deploy for no reason. A session-level advisory lock
+  // makes the second wait, after which it sees the files as applied.
+  await client.query("SELECT pg_advisory_lock(hashtext('hammertrack_migrate'))")
+  // The postgres role arrives with a 2-minute statement_timeout (Sep 3: the
+  // 088 heal died on it three builds running). Migrations are deliberate,
+  // deploy-time work — give a single statement half an hour, not two minutes.
+  await client.query("SET statement_timeout = '30min'")
   await client.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       name       TEXT PRIMARY KEY,
