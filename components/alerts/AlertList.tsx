@@ -200,9 +200,9 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
             <button
               onClick={() => onAcknowledgeMany(ackVisibleIds)}
               className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors whitespace-nowrap"
-              title="Acknowledges everything on screen except theft and left-site — those need a per-row decision"
+              title="Marks everything on screen as handled — except theft and left-site, which you decide one at a time"
             >
-              ✓ Ack visible ({ackVisibleIds.length})
+              ✓ Mark all {ackVisibleIds.length} as handled
             </button>
           )}
         </div>
@@ -279,7 +279,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
             {acked.length > 0 && (
               <details className="rounded-xl border border-navy-800 bg-navy-950">
                 <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold text-faint flex items-center gap-2">
-                  <CheckCheck className="h-3.5 w-3.5" /> Acknowledged ({acked.length})
+                  <CheckCheck className="h-3.5 w-3.5" /> Handled ({acked.length})
                   <ChevronDown className="h-3 w-3 ml-auto" />
                 </summary>
                 <div className="divide-y divide-navy-800">
@@ -341,7 +341,7 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze }: {
             <button
               onClick={() => onAcknowledgeMany(g.unreadIds)}
               className="p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg"
-              title="Acknowledge everything on this asset"
+              title="Mark everything on this machine as handled"
             >
               <CheckCheck className="h-4 w-4" />
             </button>
@@ -377,7 +377,7 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze }: {
                 // field LTE froze every other tap (ship-check P1).
                 onClick={() => (onAcknowledgeMany ? onAcknowledgeMany(l.ids) : l.ids.forEach((id) => onAcknowledge(id)))}
                 className="flex-none p-1.5 text-faint hover:text-[#34d399] hover:bg-[#34d399]/15 rounded-lg transition-colors"
-                title={l.count > 1 ? `Acknowledge all ${l.count}` : 'Acknowledge'}
+                title={l.count > 1 ? `Mark all ${l.count} as handled` : 'Mark as handled'}
               >
                 <CheckCheck className="h-4 w-4" />
               </button>
