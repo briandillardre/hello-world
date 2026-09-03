@@ -5,6 +5,7 @@ import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPho
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { extractImei, luhnOk, resolveSheet, trackerKey, MAX_IMPORT_ROWS, type ImportRow, type ExistingIndex } from '@/lib/bulk-import'
+import { imeiLooksValid } from '@/lib/devices'
 import type { AssetType } from '@/lib/types'
 
 /** Document-folder link on an asset (Dropbox/Drive/etc.) — direct column update. */
@@ -447,6 +448,17 @@ export interface ReassignTrackerInput {
   currentRole: 'new' | 'old'
   /** The other vehicle: create a fresh record or reuse an existing (trackerless) one. */
   other: { mode: 'new'; name: string; type: AssetType } | { mode: 'existing'; assetId: string }
+  /**
+   * The tracker that took the departing one's place in THIS vehicle, if a
+   * different box went in. Only meaningful when `currentRole` is 'old'.
+   *
+   * Real swaps come in pairs (Brian, Sep 3: the OBD came out of the 2500HD and
+   * went in the F750, and a TAT141 went into the 2500HD). Without this the
+   * vehicle is left trackerless and the second half of the swap is a separate
+   * trip through the edit form — the step people forget, which leaves a live
+   * device reporting against no asset and its readings dropped on the floor.
+   */
+  newTrackerForCurrent?: string
 }
 
 /**
@@ -459,6 +471,11 @@ export interface ReassignTrackerInput {
  *  - currentRole 'new'  → the tracker STAYS here; `other` is the previous
  *    vehicle and receives all pings BEFORE the swap. (Fixes a record that was
  *    just renamed onto a new truck, conflating two vehicles' history.)
+ *
+ * `newTrackerForCurrent` closes the other half of a two-way swap: the box that
+ * went INTO this vehicle as the old one came out. Validated up front so a bad
+ * id fails before anything moves, and written only after the departing tracker
+ * has been cleared — the unique index keys on the tracker, not the asset.
  */
 export async function reassignTrackerAction(currentId: string, input: ReassignTrackerInput):
   Promise<{ ok: boolean; otherId?: string; moved?: number; error?: string }> {
@@ -476,6 +493,29 @@ export async function reassignTrackerAction(currentId: string, input: ReassignTr
   if (!current) return { ok: false, error: 'Asset not found.' }
   const trackerId = current.tracker_id
   if (!trackerId) return { ok: false, error: 'This asset has no tracker to reassign.' }
+
+  // The replacement box going into THIS vehicle, validated before anything is
+  // written — a bad id here must not leave the swap half-applied.
+  let replacement: string | null = null
+  if (input.currentRole === 'old' && input.newTrackerForCurrent?.trim()) {
+    replacement = input.newTrackerForCurrent.trim().slice(0, 64)
+    if (replacement === trackerId) {
+      return { ok: false, error: 'That is the same tracker you are moving off. Enter the ID of the box that went IN.' }
+    }
+    if (/^\d+$/.test(replacement)) {
+      const check = imeiLooksValid(replacement)
+      if (!check.ok) return { ok: false, error: `New tracker: ${check.reason}` }
+    }
+    // Migration 084 allows one ACTIVE owner per IMEI. Catching the collision
+    // here — rather than on the write — keeps the tracker move atomic from the
+    // user's point of view instead of succeeding halfway.
+    const { data: clash } = await db
+      .from('assets').select('id, name')
+      .eq('company_id', companyId).eq('tracker_id', replacement).eq('active', true).maybeSingle()
+    if (clash && clash.id !== currentId) {
+      return { ok: false, error: `Tracker ${replacement} is already on "${clash.name}". Reassign it from there first.` }
+    }
+  }
 
   // Resolve the "other" vehicle.
   let otherId: string
@@ -507,6 +547,20 @@ export async function reassignTrackerAction(currentId: string, input: ReassignTr
     // Tracker leaves current → other. Other keeps the tracker + pings >= swap.
     await db.from('assets').update({ tracker_id: null }).eq('id', currentId).eq('company_id', companyId)
     await db.from('assets').update({ tracker_id: trackerId }).eq('id', otherId).eq('company_id', companyId)
+    if (replacement) {
+      // Clearing first is what makes this safe: the unique index is on the
+      // tracker, not the asset, so the old id is already free by now.
+      const { error: repErr } = await db
+        .from('assets').update({ tracker_id: replacement })
+        .eq('id', currentId).eq('company_id', companyId)
+      if (repErr) {
+        // The move itself stands; say so, rather than implying nothing happened.
+        return {
+          ok: false, otherId,
+          error: `Tracker moved to the other vehicle, but ${replacement} could not be saved on "${current.name}". Set it from that asset's Edit screen.`,
+        }
+      }
+    }
     const { data: rows } = await db
       .from('asset_locations').update({ asset_id: otherId })
       .eq('asset_id', currentId).eq('company_id', companyId).gte('timestamp', iso).select('id')

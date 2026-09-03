@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin, Wrench, ChevronRight } from 'lucide-react'
+import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin, Wrench, ChevronRight, Copy } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { toolIsFresh, type AboardTool } from '@/lib/tools-resolve'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
@@ -10,6 +10,7 @@ import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
 import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
+import { shortTracker } from '@/lib/devices'
 import { LiveStatusBadge } from '@/components/assets/LiveStatus'
 import { Badge } from '@/components/ui/badge'
 import { MapSheet } from './MapSheet'
@@ -177,11 +178,51 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
     <MapSheet
       icon={<span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>}
       title={asset.name}
+      subtitle={<TrackerChip trackerId={asset.tracker_id} />}
       badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
       onClose={onClose}
     >
       <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} travelingWith={travelingWith} />
     </MapSheet>
+  )
+}
+
+/**
+ * The tracker's last four, right under the asset name.
+ *
+ * This is the field-identity of the box: the label on the device, the row in
+ * FOTA WEB, and the ident in flespi all key off the IMEI, so "····2222" is how
+ * you confirm the dot on the map is the unit in your hand. Tapping copies the
+ * full id — that's the other half of the job, pasting it into a vendor console.
+ *
+ * No tracker at all is worth saying out loud: it's the whole reason an asset
+ * sits at its last known spot and never moves again.
+ */
+function TrackerChip({ trackerId }: { trackerId: string | null }) {
+  const t = shortTracker(trackerId)
+  if (!t) return <span className="text-faint">No tracker assigned</span>
+  if (t.kind === 'phone') return <span>Phone share</span>
+
+  const copy = () => {
+    navigator.clipboard?.writeText(t.full)
+      .then(() => toast(`${t.label} ${t.full} copied`, { variant: 'success' }))
+      .catch(() => toast(`${t.label} ${t.full}`, { variant: 'error' }))
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      // The sheet header is a drag surface — claim the pointer first or the
+      // pull-to-dismiss handler swallows the tap (same fix as the X button).
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      title={`${t.label} ${t.full} — tap to copy`}
+      className="inline-flex items-center gap-1 rounded px-1 -mx-1 py-0.5 font-mono tracking-tight hover:bg-navy-800 hover:text-ink transition-colors"
+    >
+      {t.label} {t.short}
+      <Copy className="h-3 w-3 opacity-50" />
+    </button>
   )
 }
 
