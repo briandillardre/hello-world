@@ -14,6 +14,7 @@ Owner: Brian Dillard / Dillard Construction Group (Greenville, SC area).
 - **Dev branch convention:** `claude/...` branches, open PR → squash merge to master
 - **Ship-to-live rule (Brian, Aug 26):** once a session's work is validated (production build green + the reviewer agents have run), open the PR and squash-merge it to master YOURSELF — do not ask first. Live on hammertrack.ai is where Brian reviews. Never merge unvalidated work; the checks & balances rule still gates every merge.
 - **Pilot status:** T1-a live in Brian's Chevy 1500 since Jul 6 2026 (Greenville, SC area) — full pipeline verified: OBD → Hologram → flespi → webhook → Supabase → map
+- **Supabase Disk IO (Sep 3 2026 alert, FIXED by migration 087):** the hourly `rebuild_zone_usage` (074 window snap) re-read up to 60 days of raw pings per site/yard zone EVERY HOUR — a machine living on a site keeps one ever-growing session, so the snap always went all the way back. 087 makes the window DAY-ALIGNED (scan ≤ 3 days per zone): straddling sessions are cut at their last inside fix and re-joined to the rebuilt continuation; the seed row keeps active-seconds exact across the edge. Same rows a from-scratch build produces — proven by `scripts/ledger-test/run.sh` (local PG 16, stub PostGIS; run it after ANY change to the ledger SQL, this is invoice-grade money). 087 also fixed a real bug the snap hid: usage_daily lost every site visit that ended before the window start on its first day (a truck leaving at 4 PM vanished from that day's hours) — 088 re-banks 90 days once. Indexes added: `(company_id, timestamp)` (ledger scan, "earliest fix" lookup, RLS-filtered range reads) and a partial `(asset_id, timestamp DESC) WHERE speed > 2` (map's per-asset last-moving-fix). Trail rollups now rebuild only the days that received rows (`build_trail_recent`, by created_at). Compute stays Micro (Pro $25 incl.) — upgrade to Small only if the Disk IO graph stays high after 087.
 
 ## Tech Stack
 - Next.js 14 (App Router, TypeScript)
@@ -93,6 +94,7 @@ re-audits the splash claims in the same commit.
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
 - `supabase/migrations/077_trail_daily.sql` + `078_trail_perf.sql` — pre-rolled daily map trails (the 500-device scale fix, Aug 25): see Features Built
+- `supabase/migrations/087_ledger_io_diet.sql` — the CURRENT `rebuild_zone_usage` (day-aligned, bounded; supersedes 056/057/071/074) + `build_trail_recent`; `scripts/ledger-test/` is its equivalence harness
 - `lib/trails.ts` — track building, speed-class colors, per-horizon tick ladders (`tickMarks`), `mergeHistoryRows` dedupe
 - `lib/insights.ts` — the insights engine: daily metrics spine + trend detectors + anti-cry-wolf suppression (migration 079, nightly `/api/cron/insights` + lazy first-run in `/api/insights`)
 - `lib/memo.ts` — the monthly owner memo (Growth Platform "what lever next" advisor): computed facts → Opus-composed 3-paragraph read (migration 080, monthly `/api/cron/memo` + lazy `/api/memo`, card on /finance)
