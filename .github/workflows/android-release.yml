@@ -21,6 +21,12 @@ name: android-release
 
 on:
   workflow_dispatch:
+    inputs:
+      track:
+        description: 'Play track to upload to (needs PLAY_SERVICE_ACCOUNT_JSON)'
+        type: choice
+        default: production
+        options: [production, internal]
 
 jobs:
   build:
@@ -71,14 +77,14 @@ jobs:
             android/app/build/outputs/apk/release/app-release.apk
           retention-days: 90
 
-      - name: Upload to Play (production) — skips until the service-account secret exists
+      - name: Upload to Play — skips until the service-account secret exists
         if: ${{ env.HAS_PLAY_SA == 'true' }}
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.hammertrack.app
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
-          track: production
+          track: ${{ inputs.track || 'production' }}
           status: completed
 
       - name: Note the manual step when Play upload was skipped
