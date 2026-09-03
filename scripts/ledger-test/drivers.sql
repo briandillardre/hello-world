@@ -3,9 +3,10 @@ CREATE OR REPLACE FUNCTION run_all(p_mode TEXT, p_from TIMESTAMPTZ, p_to TIMESTA
 DECLARE z RECORD;
 BEGIN
   FOR z IN SELECT id FROM geofences WHERE COALESCE(kind,'site') IN ('site','yard') ORDER BY created_at LOOP
-    IF p_mode = 'old' THEN PERFORM rebuild_zone_usage_old(z.id, p_from, p_to);
-    ELSE PERFORM rebuild_zone_usage(z.id, p_from, p_to); END IF;
+    IF p_mode = 'old' THEN PERFORM rebuild_zone_usage_old(z.id, p_from, p_to); END IF;
   END LOOP;
+  -- 'new' goes through the real driver so the late-data widening (090) is exercised.
+  IF p_mode <> 'old' THEN PERFORM rebuild_all_usage(p_from, p_to); END IF;
 END $$;
 
 -- Simulate arrival: pings_all holds every ping with its arrival time; pairing_final holds final episode values.
@@ -23,7 +24,7 @@ END $$;
 CREATE OR REPLACE FUNCTION simulate(p_mode TEXT, p_start TIMESTAMPTZ, p_end TIMESTAMPTZ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE h TIMESTAMPTZ := p_start;
 BEGIN
-  TRUNCATE zone_sessions, usage_daily, asset_locations;
+  TRUNCATE zone_sessions, usage_daily, asset_locations, ledger_recent_state;
   -- pairing rows exist from the start but are "unseen" until started_at passes
   DELETE FROM pairing_log;
   INSERT INTO pairing_log (id, company_id, kind, member_asset_id, carrier_asset_id, started_at, last_seen, ended_at)
@@ -43,6 +44,18 @@ BEGIN
   INSERT INTO pairing_log SELECT * FROM pairing_final WHERE started_at <= p_end;
   UPDATE pairing_log SET last_seen = LEAST(last_seen, p_end);
   PERFORM run_all('old', p_end - INTERVAL '365 days', p_end);
+END $$;
+
+-- From-scratch with the NEW function: the oracle for semantics 074 never had
+-- (presence ending where a tool's own fixes begin).
+CREATE OR REPLACE FUNCTION truth_new(p_end TIMESTAMPTZ) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  TRUNCATE zone_sessions, usage_daily, asset_locations, ledger_recent_state;
+  PERFORM advance_to(p_end);
+  DELETE FROM pairing_log;
+  INSERT INTO pairing_log SELECT * FROM pairing_final WHERE started_at <= p_end;
+  UPDATE pairing_log SET last_seen = LEAST(last_seen, p_end);
+  PERFORM run_all('new', p_end - INTERVAL '365 days', p_end);
 END $$;
 
 CREATE OR REPLACE FUNCTION snapshot(p_name TEXT) RETURNS void LANGUAGE plpgsql AS $$

@@ -36,6 +36,12 @@ print(s[i:j].replace("build_trail_recent()","build_trail_recent_at(p_now TIMESTA
 PY
 q setup.sql; q "$TMP/old_fn.sql"; q "$TMP/trail_fn.sql"
 q "$REPO/supabase/migrations/087_ledger_io_diet.sql"
+q "$REPO/supabase/migrations/090_ledger_hardening.sql"
 q "$TMP/trail_recent_at.sql"; q drivers.sql; q scenario.sql
 for t in 10_ledger_equivalence.sql 20_ledger_replays.sql 30_trails_equivalence.sql; do echo "── $t"; q "$t" 2>&1 | grep -v "does not exist, skipping"; done
+# Hardening suite: late data, hybrid tool, duplicate injection, then a real two-session race.
+q scenario2.sql
+echo "── 40_ledger_hardening.sql"; q 40_ledger_hardening.sql 2>&1 | grep -v "does not exist, skipping"
+echo "── 50_race.sh"
+PSQL="$PSQL" ./50_race.sh "$DB"
 rm -rf "$TMP"
