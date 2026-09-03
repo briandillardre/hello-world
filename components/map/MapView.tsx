@@ -487,6 +487,14 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // sheet; Directions turns the map into preview-nav mode: route line +
   // steps + honest no-traffic ETA. Refs mirror state for init-time handlers.
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  // Mirrors the layers drawer (WeatherControl owns it) so the LAYERS tab can
+  // flip its chevron and read as the close handle while it is open.
+  const [layersOpen, setLayersOpen] = useState(false)
+  useEffect(() => {
+    const onState = (e: Event) => setLayersOpen(!!(e as CustomEvent<{ open?: boolean }>).detail?.open)
+    window.addEventListener('ht:layers-state', onState)
+    return () => window.removeEventListener('ht:layers-state', onState)
+  }, [])
   const [navDest, setNavDest] = useState<{ lat: number; lng: number; name: string } | null>(null)
   // A searched address drops a candidate pin offering Directions / Save.
   const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string; err?: string } | null>(null)
@@ -6575,15 +6583,17 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         onPointerUp={() => { leftTraySwipe.current = null }}
         onClick={() => {
           if (leftTraySwiped.current) { leftTraySwiped.current = false; return }
-          try { window.dispatchEvent(new CustomEvent('ht:open-layers')) } catch { /* SSR */ }
+          try { window.dispatchEvent(new CustomEvent('ht:toggle-layers')) } catch { /* SSR */ }
         }}
-        aria-label="Open map layers"
+        aria-label={layersOpen ? 'Close map layers' : 'Open map layers'}
         // Kiosk: the desktop CommandRail (z-40) spans past 44% — the handle
         // must ride above it or only a sliver stays clickable (ship-check).
-        className={`absolute left-0 top-[44%] ${kiosk ? 'z-[41]' : 'z-20'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
+        // .ht-layers-tab: on md+ the tab rides the drawer's right edge while it
+        // is open (globals.css), so the same handle opens and closes it.
+        className={`ht-layers-tab absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m9 18 6-6-6-6" />
+          {layersOpen ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
         {/* Same tray-tab language as TIMELINE at the bottom (Brian, Aug 22:
             "left, right and timeline… feel similar"): teal mono label. */}

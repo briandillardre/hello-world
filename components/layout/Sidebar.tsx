@@ -64,13 +64,16 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
   const pathname = usePathname()
   if (fullCollapse && collapsed) {
     return (
+      // Same edge-tab language as the map's LAYERS handle (Brian, Sep 3: the
+      // little circle read as nothing — "make it look like layers").
       <button
         onClick={onToggle}
-        title="Expand"
+        title="Menu"
         aria-label="Expand sidebar"
-        className="fixed left-2 top-[22px] z-[48] grid place-items-center w-7 h-7 rounded-full bg-navy-900 border border-navy-700 text-faint shadow-md hover:text-ink hover:border-teal/60 transition-colors"
+        className="fixed left-0 top-[64px] z-[48] flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
       >
-        <ChevronRight className="h-3.5 w-3.5" />
+        <ChevronRight className="h-3 w-3" />
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Menu</span>
       </button>
     )
   }

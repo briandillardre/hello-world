@@ -398,6 +398,38 @@ input[type='range'].slider-heat::-moz-range-thumb {
   }
 }
 
+/* LEFT-SIDE STACK on a PC (Brian, Sep 3): the kiosk sidebar (--ht-nav-w,
+   set by CommandCenter's KioskNav) and the layers drawer (--ht-layers-w, set
+   by WeatherControl) publish their widths; everything that used to sit
+   underneath steps right by that much. Phones leave both at 0. */
+@media (min-width: 768px) {
+  .map-live .ht-layers-tab,
+  .kiosk-map .ht-layers-tab {
+    left: calc(var(--ht-nav-w, 0px) + var(--ht-layers-w, 0px));
+    transition: left .25s ease;
+  }
+  .kiosk-map .ht-layers-wrap {
+    /* below the 56px wall header (its tab bar with the X was hidden under
+       it), above the 36px ticker, right of the expanded sidebar */
+    top: 56px;
+    bottom: 36px;
+    left: var(--ht-nav-w, 0px);
+  }
+  .kiosk-map .ht-timeline {
+    left: calc(1rem + var(--ht-nav-w, 0px) + var(--ht-layers-w, 0px));
+  }
+}
+@media (min-width: 1280px) {
+  div.ht-cc-rail {
+    left: calc(1rem + var(--ht-nav-w, 0px) + var(--ht-layers-w, 0px));
+    transition: left .25s ease;
+  }
+  button.ht-cc-rail-tab {
+    left: calc(var(--ht-nav-w, 0px) + var(--ht-layers-w, 0px));
+    transition: left .25s ease;
+  }
+}
+
 /* Radar context chip — slides out from the radar map control. */
 @keyframes radarChipIn {
   from { transform: translateX(14px); opacity: 0; }
