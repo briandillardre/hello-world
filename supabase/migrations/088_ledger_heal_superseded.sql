@@ -1,0 +1,16 @@
+-- 088: superseded before it ever applied.
+--
+-- The original 088 replayed 90 days of pings for every billing zone in ONE
+-- statement at deploy. The migration connection carries a 2-minute
+-- statement_timeout (Supabase default for the postgres role — learned from
+-- the Vercel build log, Sep 3 02:44 ET: "canceling statement due to
+-- statement timeout"), so it failed on three consecutive builds and, being
+-- the first pending file, blocked every deploy behind it. It was rolled
+-- back each time (never recorded), which is the one case where a pushed
+-- migration file may change: a file that FAILED is not frozen — it must be
+-- fixed in place or the pipeline stays red.
+--
+-- The heal now lives in 091 in a shape that cannot time out: on_site hours
+-- come straight from zone_sessions (cheap, exact), and active seconds are
+-- recomputed one day at a time by the hourly cron (ledger_heal_step).
+SELECT 1;

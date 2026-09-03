@@ -38,6 +38,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'rebuild failed' }, { status: 500 })
   }
 
+  // ── Ledger heal (091): active_secs for the history the pre-087 rebuild
+  // decayed, six days per run from today backwards until the cursor passes
+  // the oldest ping (~15 runs). 0 once done; pre-091 DB → error, ignored.
+  const heal = await svc.rpc('ledger_heal_step', { p_days: 6 })
+  const healedDays = heal.error ? null : heal.data
+
   // ── Daily trail rollups (077/078/087) — the long-range map's data shape.
   // 087's build_trail_recent rebuilds ONLY the days that received rows since
   // the last run (by created_at) — late tracker uploads (a TAT141 parked out
@@ -63,5 +69,5 @@ export async function GET(req: NextRequest) {
       console.error('build_trail_daily skipped:', tdErr.message)
     }
   }
-  return NextResponse.json({ ok: true, trails })
+  return NextResponse.json({ ok: true, healedDays, trails })
 }

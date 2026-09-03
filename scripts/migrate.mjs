@@ -57,6 +57,10 @@ try {
   // key — failing that deploy for no reason. A session-level advisory lock
   // makes the second wait, after which it sees the files as applied.
   await client.query("SELECT pg_advisory_lock(hashtext('hammertrack_migrate'))")
+  // The postgres role arrives with a 2-minute statement_timeout (Sep 3: the
+  // 088 heal died on it three builds running). Migrations are deliberate,
+  // deploy-time work — give a single statement half an hour, not two minutes.
+  await client.query("SET statement_timeout = '30min'")
   await client.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       name       TEXT PRIMARY KEY,

@@ -458,6 +458,18 @@ interface MapViewProps {
   onSaveMapViews?: (s: MapViewsState) => void
 }
 
+/** "as of 2:41 AM · Sep 3" in the viewer's clock for a feed timestamp (ISO or
+ *  epoch ms); '' when there is none — a still frame or an observation with no
+ *  time on it reads as live and isn't (Brian, Sep 3). */
+function popupAsOf(v: unknown): string {
+  const ms = typeof v === 'number' ? v : typeof v === 'string' && v ? Date.parse(v) : NaN
+  if (!Number.isFinite(ms) || ms <= 0) return ''
+  const d = new Date(ms)
+  const sameDay = d.toDateString() === new Date().toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return sameDay ? `as of ${time}` : `as of ${time} · ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+}
+
 export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
@@ -3855,7 +3867,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         const wind = p.windMph !== -999 ? `wind ${Math.round(p.windMph)}${p.gustMph !== -999 ? `–${Math.round(p.gustMph)}` : ''} mph` : ''
         const hum = p.humidity !== -999 ? ` · ${Math.round(p.humidity)}%` : ''
         const rain = p.rainInHr > 0 ? `<div style="color:#7dd3fc">rain ${p.rainInHr}"/hr</div>` : ''
-        const age = p.ageMin !== -999 ? `updated ${p.ageMin}m ago` : ''
+        // Absolute time first (Brian, Sep 3: "needs a date/time when clicked
+        // on"), relative age after it — "as of 2:41 AM (12m ago)".
+        const asOf = popupAsOf(p.obsAt)
+        const age = asOf
+          ? `${asOf}${p.ageMin !== -999 ? ` (${p.ageMin}m ago)` : ''}`
+          : p.ageMin !== -999 ? `updated ${p.ageMin}m ago` : ''
         // Dark popup theme has zero padding — HTML brings its own (gauge lesson).
         new maplibregl.Popup({ closeButton: false, maxWidth: '240px' })
           .setLngLat(e.lngLat)
@@ -3883,7 +3900,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       const bbox = [b.getWest() - padW, b.getSouth() - padH, b.getEast() + padW, b.getNorth() + padH].map((v) => v.toFixed(3)).join(',')
       fetch(`/api/pws-stations?bbox=${bbox}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((j: { stations?: { id: string; name: string; lat: number; lng: number; tempF: number | null; feelsF: number | null; windMph: number | null; gustMph: number | null; humidity: number | null; rainInHr: number | null; ageMin: number | null }[] } | null) => {
+        .then((j: { stations?: { id: string; name: string; lat: number; lng: number; tempF: number | null; feelsF: number | null; windMph: number | null; gustMph: number | null; humidity: number | null; rainInHr: number | null; ageMin: number | null; obsAt?: number | null }[] } | null) => {
           if (cancelled || !j?.stations) return
           for (const s of j.stations) {
             cache.set(s.id ?? `${s.lat},${s.lng}`, {
@@ -3896,6 +3913,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
                 windMph: s.windMph ?? -999, gustMph: s.gustMph ?? -999,
                 humidity: s.humidity ?? -999, rainInHr: s.rainInHr ?? 0,
                 ageMin: s.ageMin ?? -999,
+                obsAt: s.obsAt ?? 0,
               },
             })
           }
@@ -4453,9 +4471,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (!p) return
         const img = p.thumb ? `<img src="${p.thumb}" alt="" style="width:100%;border-radius:8px;margin-top:6px" />` : ''
         const link = p.page ? `<a href="${p.page}" target="_blank" rel="noopener" style="color:#2dd4bf;font-size:11px">open live view →</a>` : ''
+        // "As of" — a still frame with no time on it reads as live and isn't
+        // (Brian, Sep 3: "needs a date/time when clicked on").
+        const asOf = popupAsOf(p.updated)
+        const stamp = asOf ? `<div style="font-size:11px;color:#9fb3c8;margin-top:4px">Image ${asOf}</div>` : ''
         new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
           .setLngLat(e.lngLat)
-          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#a78bfa;white-space:normal;overflow-wrap:break-word">${p.title}</div>${img}${link}</div>`)
+          .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7"><div style="font-weight:700;color:#a78bfa;white-space:normal;overflow-wrap:break-word">${p.title}</div>${img}${stamp}${link}</div>`)
           .addTo(m)
       })
       m.on('mouseenter', 'webcam-dots', () => { m.getCanvas().style.cursor = 'pointer' })
@@ -4480,12 +4502,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           }
           return r.ok ? r.json() : null
         })
-        .then((j: { cams?: { id: string; title: string; lat: number; lng: number; thumb: string | null; page: string | null }[] } | null) => {
+        .then((j: { cams?: { id: string; title: string; lat: number; lng: number; thumb: string | null; page: string | null; updated?: string | null }[] } | null) => {
           if (cancelled || !j?.cams) return
           const features = j.cams.map((c) => ({
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: [c.lng, c.lat] },
-            properties: { title: c.title, thumb: c.thumb ?? '', page: c.page ?? '' },
+            properties: { title: c.title, thumb: c.thumb ?? '', page: c.page ?? '', updated: c.updated ?? '' },
           }))
           ;(m.getSource('webcams') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'webcams', at: Date.now() } }))

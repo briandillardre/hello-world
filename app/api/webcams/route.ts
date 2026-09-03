@@ -19,6 +19,8 @@ export interface WebcamPoint {
   lng: number
   thumb: string | null
   page: string | null
+  /** When the camera last pushed a frame (Windy lastUpdatedOn) — the popup's "as of". */
+  updated: string | null
 }
 
 const cache = new Map<string, { at: number; cams: WebcamPoint[] }>()
@@ -37,8 +39,8 @@ export async function GET(req: NextRequest) {
     // Demo: a couple of placeholder cams so the layer demos without a key.
     return NextResponse.json({
       cams: [
-        { id: 'demo-1', title: 'I-24 @ Downtown', lat: 36.155, lng: -86.77, thumb: null, page: null },
-        { id: 'demo-2', title: 'Riverfront crane cam', lat: 36.17, lng: -86.79, thumb: null, page: null },
+        { id: 'demo-1', title: 'I-24 @ Downtown', lat: 36.155, lng: -86.77, thumb: null, page: null, updated: null },
+        { id: 'demo-2', title: 'Riverfront crane cam', lat: 36.17, lng: -86.79, thumb: null, page: null, updated: null },
       ] satisfies WebcamPoint[],
     })
   }
@@ -60,7 +62,7 @@ export async function GET(req: NextRequest) {
       { headers: { 'x-windy-api-key': key }, signal: AbortSignal.timeout(8000) }
     )
     if (r.ok) {
-      const j = await r.json() as { webcams?: Array<{ webcamId?: number; title?: string; location?: { latitude?: number; longitude?: number }; images?: { current?: { preview?: string; thumbnail?: string } }; urls?: { detail?: string } }> }
+      const j = await r.json() as { webcams?: Array<{ webcamId?: number; title?: string; lastUpdatedOn?: string; location?: { latitude?: number; longitude?: number }; images?: { current?: { preview?: string; thumbnail?: string } }; urls?: { detail?: string } }> }
       cams = (j.webcams ?? []).flatMap((c) => {
         const lat = c.location?.latitude
         const lng = c.location?.longitude
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
           lat, lng,
           thumb: c.images?.current?.preview ?? c.images?.current?.thumbnail ?? null,
           page: c.urls?.detail ?? null,
+          updated: typeof c.lastUpdatedOn === 'string' && Number.isFinite(Date.parse(c.lastUpdatedOn)) ? c.lastUpdatedOn : null,
         }]
       })
     }
