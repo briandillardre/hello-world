@@ -304,7 +304,7 @@ The infographic is a rendered view of the roadmap — never let them drift.
 "Always release new version. You do not need permission from me any more."
 When native-affecting changes merge (android/, ios/, capacitor.config.ts,
 mobile-shell/), bump versionCode/versionName in android/app/build.gradle and
-dispatch the `android-release` workflow on master — do not ask first. The
+dispatch the `android-release` workflow on master — do not ask first. **PLAY_SERVICE_ACCOUNT_JSON is set (Brian, Sep 2) and the hands-off upload is PROVEN** (run 5, versionCode 6 → internal track, Sep 3): dispatch with `track: production` for a real release, `track: internal` for crew test builds. Play rejects a reused versionCode, so bump before every dispatch. The
 workflow builds the signed AAB; with the optional PLAY_SERVICE_ACCOUNT_JSON
 secret it uploads straight to the Play production track, otherwise the AAB
 artifact + a Play Console upload note is the deliverable. iOS releases stay

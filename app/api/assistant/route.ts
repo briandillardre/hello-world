@@ -69,7 +69,13 @@ async function loadHistory(limit: number, sinceIso?: string | null): Promise<{ u
       .limit(limit)
     if (sinceIso && !Number.isNaN(Date.parse(sinceIso))) q = q.gte('created_at', sinceIso)
     const { data } = await q
-    const rows = (data ?? []).reverse()
+    // Chronological, with the question before its answer. Both rows of a turn
+    // used to be inserted in one statement and shared a created_at, so the
+    // tie ordered arbitrarily and the widget showed answers ABOVE questions
+    // (Brian, Sep 2). saveTurn now stamps them 1 ms apart; this sort also
+    // repairs the pairs already stored.
+    const rows = (data ?? []).slice().sort((x, y) =>
+      (Date.parse(x.created_at) - Date.parse(y.created_at)) || (x.role === y.role ? 0 : x.role === 'user' ? -1 : 1))
       .filter((r): r is { role: 'user' | 'assistant'; content: string; created_at: string } =>
         (r.role === 'user' || r.role === 'assistant') && typeof r.content === 'string')
       .map((r) => ({ role: r.role, content: r.content, at: r.created_at }))
@@ -111,9 +117,11 @@ async function saveTurn(userId: string | null, companyId: string | null, questio
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
+    // Distinct timestamps so the pair always reads question → answer.
+    const t = Date.now()
     await supabase.from('ai_messages').insert([
-      { user_id: userId, company_id: companyId, role: 'user', content: question },
-      { user_id: userId, company_id: companyId, role: 'assistant', content: answer },
+      { user_id: userId, company_id: companyId, role: 'user', content: question, created_at: new Date(t).toISOString() },
+      { user_id: userId, company_id: companyId, role: 'assistant', content: answer, created_at: new Date(t + 1).toISOString() },
     ])
   } catch { /* table absent or RLS denied — stateless is fine */ }
 }

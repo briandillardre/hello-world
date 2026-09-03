@@ -1456,7 +1456,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         attribution: cartoAttribution(),
       },
     },
-    layers: [{ id: 'carto-base', type: 'raster' as const, source: 'carto-dark' }],
+    // Keyless mode: Esri's Dark Gray canvas is a mid gray; CARTO's dark_all was
+    // near black and Brian asked where the black map went (Sep 2). Compress the
+    // brightness range so the base reads black while the label overlay (its
+    // own layer) keeps full brightness.
+    layers: [{ id: 'carto-base', type: 'raster' as const, source: 'carto-dark', ...(basemapKeyless ? { paint: { 'raster-brightness-max': 0.45, 'raster-contrast': 0.15 } } : {}) }],
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
