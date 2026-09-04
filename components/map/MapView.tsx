@@ -4358,9 +4358,14 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         const c = m.getCenter()
         const r = await fetch(`/api/planes?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&r=250`)
         if (!r.ok) throw new Error(`feed ${r.status}`)
-        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null }[] } = await r.json()
+        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null; seenPos?: number | null }[]; ageMs?: number } = await r.json()
         if (cancelled) return
         const nowMs = Date.now()
+        // A fix is as old as the feed says (seen_pos) plus however long our
+        // proxy had it cached — NOT "just now". Dating it at arrival put the
+        // dead-reckoned truth several seconds behind the rendered plane on
+        // every poll, and the ease dragged the plane backward to meet it.
+        const snapshotAge = typeof j.ageMs === 'number' && j.ageMs > 0 ? Math.min(j.ageMs, 30_000) : 0
         planesRef.current = (j.planes ?? []).map((p) => {
           const info = typeInfo(p.type)
           // Bank angle from turn rate: ADS-B carries no roll, but successive
@@ -4389,7 +4394,8 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             hex: p.hex, flight: p.flight, reg: p.reg, typeCode: p.type,
             typeLabel: info.label, shape: info.cls, spanM: info.spanM,
             lon: shown?.lon ?? p.lon, lat: shown?.lat ?? p.lat,
-            fixLon: p.lon, fixLat: p.lat, fixAt: nowMs,
+            fixLon: p.lon, fixLat: p.lat,
+            fixAt: nowMs - snapshotAge - (typeof p.seenPos === 'number' ? Math.min(p.seenPos, 30) * 1000 : 0),
             altFt: p.altFt,
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
             track: p.track, bankRad,
