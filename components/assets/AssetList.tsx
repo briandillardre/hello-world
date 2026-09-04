@@ -143,10 +143,10 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-navy-800 space-y-3 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
+      <div className="p-3 sm:p-4 border-b border-navy-800 space-y-2.5 sm:space-y-3 bg-navy-950/95 backdrop-blur sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-ink">Assets</h1>
-          <span className="text-sm text-faint">{assets.length} total</span>
+          <h1 className="text-lg sm:text-xl font-bold text-ink">Assets</h1>
+          <span className="text-xs sm:text-sm text-faint">{assets.length} total</span>
           {/* Labels hide below sm — four items in this row clipped the Add
               button off-screen at 360px widths (header can't scroll). The
               two bulk doors: a box in your hand → Scan · a list in a
@@ -189,7 +189,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
-              className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              className={`flex-shrink-0 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium transition-colors ${
                 typeFilter === t
                   ? 'bg-amber text-[#1a1100]'
                   : 'bg-navy-800 text-muted hover:bg-navy-700'
@@ -255,80 +255,89 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
 function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; zoneName?: string }) {
   const status = rowStatus(asset)
   const battery = asset.location?.battery
+  const fixIso = asset.location?.timestamp
+  const fixMs = fixIso ? Date.parse(fixIso) : NaN
+  // Past a day, "22d ago" stops being useful — a dead tracker's row says
+  // exactly when it last spoke (Brian: absolute last-seen on the list).
+  const stale = Number.isFinite(fixMs) && Date.now() - fixMs > 24 * 3_600_000
+  const fixLabel = !fixIso ? null
+    : stale ? new Date(fixMs).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : formatRelativeTime(fixIso)
   return (
-    <Link href={`/assets/${asset.id}`} className="flex items-center gap-3 p-4 hover:bg-navy-800 transition-colors">
+    <Link href={`/assets/${asset.id}`} className="flex items-center gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 hover:bg-navy-800 transition-colors">
       {asset.photo_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={asset.photo_url} alt={asset.name} className="w-10 h-10 rounded-lg object-cover bg-navy-800 flex-shrink-0" />
       ) : (
-        <div className="text-2xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
+        <div className="text-xl w-10 h-10 flex items-center justify-center bg-navy-800 rounded-lg flex-shrink-0">
           {TYPE_EMOJI[asset.type]}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        {/* Title row: name + type badge only. The aboard/carrier chips used to
-            sit here as flex-shrink-0 siblings and squeezed the name down to a
-            few characters — they live on the meta line now. */}
-        <div className="flex items-center gap-2">
-          <p className="font-medium text-ink min-w-0 flex-1 line-clamp-2 leading-snug">{asset.name}</p>
-          <Badge variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
+        {/* Phone density (Brian, Sep 3: "shrink font — it needs to show more
+            info and be more readable"): 13px name over two full lines, the
+            type badge only from sm up (the meta line carries it on phones),
+            and status + battery stacked in ONE right-hand column so the name
+            keeps the width. A 360px phone used to fit "2003 Chevrolet…". */}
+        <div className="flex items-start gap-2">
+          <p className="font-semibold text-ink text-[13px] sm:text-sm min-w-0 flex-1 line-clamp-2 leading-tight">{asset.name}</p>
+          <Badge className="hidden sm:inline-flex" variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>
         </div>
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-faint min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">
+          <span className="sm:hidden uppercase tracking-wide text-[10px] font-semibold text-muted">{asset.type}</span>
           {(toolCount ?? 0) > 0 && (
-            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[11px] font-semibold px-2 py-0.5">
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[10px] font-semibold px-1.5 py-px">
               🔧 {toolCount} aboard
             </span>
           )}
           {carrier && (toolIsFresh(carrier.lastSeen) ? (
-            <span className="inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[11px] font-semibold px-2 py-0.5 max-w-[160px] truncate">
+            <span className="inline-flex items-center rounded-full bg-[#60a5fa]/15 border border-[#60a5fa]/35 text-[#93c5fd] text-[10px] font-semibold px-1.5 py-px max-w-full truncate">
               with {carrier.name}
             </span>
           ) : (
             // No Bluetooth ping in 25+ min — it was LEFT somewhere. Say so
             // instead of claiming it's still riding the truck.
-            <span className="inline-flex items-center rounded-full bg-navy-800/70 border border-navy-700 text-faint text-[11px] font-medium px-2 py-0.5 max-w-[180px] truncate">
+            <span className="inline-flex items-center rounded-full bg-navy-800/70 border border-navy-700 text-faint text-[10px] font-medium px-1.5 py-px max-w-full truncate">
               last seen with {carrier.name}
             </span>
           ))}
           {(asset.maintOverdue ?? 0) > 0 && (
-            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber/15 border border-amber/35 text-amber text-[11px] font-semibold px-2 py-0.5">
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber/15 border border-amber/35 text-amber text-[10px] font-semibold px-1.5 py-px">
               🛠 {asset.maintOverdue} overdue
             </span>
           )}
-          {/* Place beats IMEI: "at Creekside" when inside a zone, otherwise
-              the relative last-seen. Tracker ID stays searchable + on the
-              detail page — it just doesn't lead the row anymore. */}
-          {zoneName ? (
-            <span className="truncate">at {zoneName}</span>
-          ) : (
-            asset.location?.timestamp && (
-              <span className="flex items-center gap-0.5 flex-shrink-0" suppressHydrationWarning>
-                <Clock className="h-3 w-3" />
-                {formatRelativeTime(asset.location.timestamp)}
-              </span>
-            )
+          {/* Place AND time — the row used to show one or the other. Tracker
+              ID stays searchable + on the detail page. */}
+          {zoneName && <span className="min-w-0 max-w-full truncate">at {zoneName}</span>}
+          {fixLabel && (
+            <span className="flex items-center gap-0.5 flex-shrink-0" suppressHydrationWarning>
+              <Clock className="h-3 w-3" />
+              {fixLabel}
+            </span>
           )}
         </div>
       </div>
-      {battery !== null && battery !== undefined && (
-        <div className={`flex items-center gap-1 text-xs flex-shrink-0 ${
-          battery < 15 ? 'text-alert' : battery < 30 ? 'text-amber' : 'text-muted'
-        }`}>
-          <Battery className="h-3 w-3" />
-          {battery}%
-        </div>
-      )}
-      {/* Real status from deriveLiveStatus — the old 30-min green/gray dot
-          called every parked tracker's normal hourly nap "offline". */}
-      <span
-        className="text-[11px] font-semibold flex-shrink-0"
-        style={{ color: status.color }}
-        suppressHydrationWarning
-      >
-        {status.label}
-      </span>
+      <div className="flex flex-col items-end gap-0.5 flex-shrink-0 text-right">
+        {/* Real status from deriveLiveStatus — the old 30-min green/gray dot
+            called every parked tracker's normal hourly nap "offline". */}
+        <span
+          className="text-[11px] font-semibold whitespace-nowrap"
+          style={{ color: status.color }}
+          suppressHydrationWarning
+        >
+          {status.label}
+        </span>
+        {battery !== null && battery !== undefined && (
+          <span className={`flex items-center gap-0.5 text-[11px] ${
+            battery < 15 ? 'text-alert' : battery < 30 ? 'text-amber' : 'text-muted'
+          }`}>
+            <Battery className="h-3 w-3" />
+            {battery}%
+          </span>
+        )}
+      </div>
       <ChevronRight className="h-4 w-4 text-faint flex-shrink-0" />
     </Link>
   )
