@@ -7,13 +7,16 @@
 // Output: out/<sale date>/<county>.json (resumable state), report.csv, report.md, docs/ (downloaded orders/notices).
 import fs from 'node:fs'
 import path from 'node:path'
-import { COUNTIES, UPSTATE, nextSaleDate, fmtDate } from './config.mjs'
+import { COUNTIES, ALL, nextSaleDate, saleDateFor, fmtDate } from './config.mjs'
 import { OUT, ensureDir, log, readJson, writeJson, slug } from './util.mjs'
-import { browser, closeBrowser } from './browser.mjs'
+import { browser, closeBrowser, goto, acceptDisclaimer, download } from './browser.mjs'
 import { listPickens } from './counties/pickens.mjs'
 import { listSpartanburg } from './counties/spartanburg.mjs'
 import { listGreenville, greenvilleOrderPdf, greenvillePropertyCard } from './counties/greenville.mjs'
 import { listFromSccourtsRoster } from './counties/sccourts-roster.mjs'
+import { listHorry } from './counties/horry.mjs'
+import { listCharleston } from './counties/charleston.mjs'
+import { listGeorgetown } from './counties/georgetown.mjs'
 import { harvestCase } from './publicindex.mjs'
 import { extractJudgment } from './judgment.mjs'
 import { parseNotice } from './notice.mjs'
@@ -27,7 +30,7 @@ const cmd = (() => { for (let i = 0; i < args.length; i++) { if (VALUE_FLAGS.has
 const flag = (n) => args.includes('--' + n)
 const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : d }
 
-const counties = (opt('county', UPSTATE.join(',')) || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+const counties = (opt('county', 'all') || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).flatMap(c => c === 'all' ? ALL : c === 'upstate' ? ALL.slice(0, 4) : c === 'coastal' ? ALL.slice(4) : [c])
 const saleDate = opt('date') ? new Date(opt('date')) : nextSaleDate()
 const headed = flag('headed'), useAi = !flag('no-ai'), force = flag('force'), only = opt('only')
 const dir = ensureDir(path.join(OUT, `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}-${String(saleDate.getDate()).padStart(2, '0')}`))
@@ -44,11 +47,16 @@ async function getPage() { if (!page) { const ctx = await browser({ headed }); p
 
 async function list(c) {
   const cfg = COUNTIES[c]
-  if (cfg.untested) log(`${c}: coastal stub – roster path untested, expect to iterate`)
-  if (c === 'pickens') return listPickens(saleDate)
-  if (c === 'spartanburg') return listSpartanburg(saleDate, { page: cmd === 'run' || flag('browser') ? await getPage() : null, dumpDir })
-  if (c === 'greenville') return listGreenville(saleDate, { page: await getPage(), dumpDir })
-  if (cfg.roster === 'sccourts') return listFromSccourtsRoster(c, cfg, saleDate, { page: await getPage(), dumpDir })
+  if (cfg.untested) log(`${c}: roster path not yet exercised on a real run – use --dump if it comes back empty`)
+  const sd = saleDateFor(cfg, saleDate)
+  if (sd.getTime() !== saleDate.getTime()) log(`${c}: sells ${fmtDate(sd)} (${cfg.saleDay})`)
+  if (c === 'pickens') return listPickens(sd)
+  if (c === 'horry') return listHorry(sd)
+  if (c === 'charleston') return listCharleston(sd)
+  if (c === 'georgetown') return listGeorgetown(sd)
+  if (c === 'spartanburg') return listSpartanburg(sd, { page: cmd === 'run' || flag('browser') ? await getPage() : null, dumpDir })
+  if (c === 'greenville') return listGreenville(sd, { page: await getPage(), dumpDir })
+  if (cfg.roster === 'sccourts') return listFromSccourtsRoster(c, cfg, sd, { page: await getPage(), dumpDir })
   throw new Error(`no list adapter for ${c}`)
 }
 
@@ -62,12 +70,20 @@ async function enrich(c, r) {
   const cfg = COUNTIES[c]
   r.docs = r.docs || []
   // 1. judgment document
-  if (!flag('skip-index') && (force || !r.judgment || r.judgment.totalDebt == null)) {
+  const listJudgment = r.judgment?.extractedBy === 'county-list'
+  if (!flag('skip-index') && (force || flag('index') || !r.judgment || r.judgment.totalDebt == null || listJudgment)) {
     let doc = null
     try {
       if (c === 'greenville' && r.sources?.orderPdf) { const g = await greenvilleOrderPdf(await getPage(), r); if (g) { doc = { ...g, kind: 'order', type: 'application/pdf' } } }
-    } catch (e) { log(`  ${r.caseNo}: journal order download failed – ${e.message}`) }
-    if (!doc || flag('index')) {
+      else if (r.sources?.orderPdf && /PIImageDisplay/i.test(r.sources.orderPdf)) {
+        // Horry links straight to the Public Index image – needs the index session, so warm it up first
+        const pg = await getPage(); await goto(pg, cfg.index); await acceptDisclaimer(pg)
+        const { buf, type } = await download(pg, r.sources.orderPdf); doc = { buf, type, url: r.sources.orderPdf, kind: 'order', label: 'Judgment (linked from the county sale list)' }
+        if (r.sources.noticePdf) { try { const n = await download(pg, r.sources.noticePdf); const t = (await pdfText(n.buf)).text; if (t) r.notice = { ...(r.notice || {}), ...parseNotice(t), source: r.sources.noticePdf } } catch (e) { log(`  ${r.caseNo}: notice download – ${e.message}`) } }
+      }
+    } catch (e) { log(`  ${r.caseNo}: linked order download failed – ${e.message}`) }
+    if (listJudgment && !doc && !flag('index')) { /* keep the county-list figure; the index is opt-in for these counties */ }
+    else if (!doc || flag('index')) {
       try {
         const h = await harvestCase(await getPage(), cfg, r.caseNo, { dumpDir, headed })
         r.index = { url: h.url, via: h.via, ...h.summary }
@@ -82,7 +98,8 @@ async function enrich(c, r) {
     }
     if (doc) {
       if (!r.docs.some(d => d.url === doc.url)) r.docs.push({ kind: 'order', url: doc.url, description: doc.label, file: saveDoc(c, r, { ...doc, kind: 'order' }) })
-      r.judgment = await extractJudgment(doc, { caseNo: r.caseNo, useAi })
+      const j = await extractJudgment(doc, { caseNo: r.caseNo, useAi })
+      r.judgment = listJudgment && (j.totalDebt == null) ? { ...r.judgment, docChecked: true, docNote: j.note || '' } : { ...j, listTotal: r.judgment?.totalDebt }
       log(`  ${r.caseNo}: owed ${r.judgment?.totalDebt ?? '?'} (${r.judgment?.extractedBy}) deficiency ${r.judgment?.deficiency}`)
     }
   }

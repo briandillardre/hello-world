@@ -7,11 +7,9 @@ bid-interest terms) and the **county property card** (owner, acreage, year
 built, sq ft, FMV, last sale), and writes a one-paragraph write-up per
 property plus a CSV.
 
-Counties wired today: **Greenville, Pickens, Spartanburg, Oconee**. Coastal
-counties (Horry, Georgetown, Charleston, Berkeley, Dorchester, Beaufort,
-Colleton) are stubbed in `src/config.mjs` – their sale rosters come from the
-same statewide court-roster app, so `list` should work; they are marked
-`untested` until one real run.
+Counties: **Greenville, Pickens, Spartanburg, Oconee** (Upstate) and
+**Horry, Charleston, Georgetown, Beaufort, Berkeley, Dorchester, Colleton**
+(coastal). `--county upstate`, `--county coastal`, or a list; default is all.
 
 ## Run it on your PC (not the cloud)
 
@@ -60,6 +58,15 @@ Default counties = the four Upstate ones. `--county horry` etc. for coastal.
 | Pickens | county roster PDF (co.pickens.sc.us → revize) | Public Index docket image | Public Index docket image | qPublic (AppID 927) |
 | Spartanburg | county DocumentCenter folder 114 + Spartan Weekly notices | Spartan Weekly (full text, no browser) | Public Index docket image | qPublic |
 | Oconee | statewide court rosters (Master's Sales) | Public Index | Public Index | qPublic (AppID 1030) |
+| Horry | county Principal Sales page (HTML table, **prints the judgment amount + deficiency Yes/No**, links the judgment + notice images) | linked Public Index image | linked Public Index image (index opt-in with `--index`) | county Land Records link only |
+| Charleston | Master's running auction list (HTML, **prints the judgment amount**) | Public Index (jcmsweb) | list figure; `--index` to pull the order | — |
+| Georgetown | county DocumentCenter monthly PDF/XLS (deficiency Yes/No, cancellations) | Public Index | Public Index | — |
+| Beaufort · Berkeley · Dorchester · Colleton | statewide court rosters (browser) | Public Index | Public Index | Colleton qPublic; others — |
+
+Sale days differ on the coast: Charleston sells the **first Tuesday** (register
+by noon the Monday before), Berkeley the **first Wednesday**, Georgetown at
+**noon**. `saleDateFor()` in `src/config.mjs` handles that; Dorchester and
+Colleton schedules are unverified (assumed first Monday 11:00).
 
 ## Reading the numbers
 
@@ -81,10 +88,13 @@ Default counties = the four Upstate ones. `--county horry` etc. for coastal.
 
 ## When something breaks
 
-Run again with `--dump` and send me `out/<date>/dump/*.html`. The three
-browser-driven sources (Public Index, qPublic, Journal MIE) were written from
-their documented page structure but could not be exercised from the cloud
-sandbox, so expect one round of selector fixes on the first real run.
+Run again with `--dump` and send me `out/<date>/dump/*.html`. The
+browser-driven sources (Public Index, qPublic, Journal MIE, the statewide
+roster app for Beaufort/Berkeley/Dorchester/Colleton) were written from their
+documented page structure but could not be exercised from the cloud sandbox,
+so expect one round of selector fixes on the first real run. Verified live
+without a browser: Pickens, Spartanburg (notices), Greenville property cards,
+Horry, Charleston, Georgetown.
 
 ## Adding a county
 
