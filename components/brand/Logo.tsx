@@ -2,8 +2,11 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
-// Intrinsic aspect of /brand/hammertrack-mark.png (56×96 — downscaled from
-// the 201×344 original, kept as hammertrack-mark-full.png for print/large use).
+// Intrinsic aspect of /brand/hammertrack-mark.png (168×288 — a 3× render of
+// the 56×96 box so retina phones stay crisp, downscaled from the 201×344
+// original kept as hammertrack-mark-full.png for print/large use). Sep 4:
+// the old 56×96 file was a THREE-arc variant; the app icon, splash, PWA icon
+// and email avatar all carry two arcs, so the header now matches them.
 const MARK_RATIO = 56 / 96
 
 /**
