@@ -74,6 +74,13 @@ const M_PER_DEG_LAT = 111_320
 /** Never extrapolate further than this past a fix: a stalled feed should let
  *  aircraft coast to a stop, not fly them into the next state. */
 const MAX_DR_MS = 30_000
+/** Seconds over which a rendered aircraft closes an along-track gap to the
+ *  dead-reckoned truth by adjusting speed — under the ~6 s poll cadence, so
+ *  each correction is absorbed before the next fix lands. */
+const CONVERGE_S = 4
+/** Beyond this, a new fix is a different reality (re-acquired hex, bad
+ *  position): snap instead of gliding. */
+const SNAP_M = 5_000
 
 /**
  * Advance one aircraft from its last fix along its own track at its own
@@ -88,21 +95,54 @@ const MAX_DR_MS = 30_000
  * @param dtSec frame time, for a frame-rate-independent ease.
  */
 export function advancePlane(pl: Plane3D, nowMs: number, dtSec: number): void {
+  const mps = pl.mph != null && pl.mph > 0 ? pl.mph * 0.44704 : 0
+  const moving = mps > 0 && pl.track != null
+  const th = moving ? ((pl.track as number) * Math.PI) / 180 : 0
+  // cos(lat) guards the poles; a plane at 85° would otherwise sprint east.
+  const cosLat = Math.max(0.05, Math.cos((pl.lat * Math.PI) / 180))
+
+  // The truth: the last fix, dead-reckoned by its REAL age (feed latency
+  // included — the planes route passes seen_pos + cache age through).
   let tLon = pl.fixLon
   let tLat = pl.fixLat
-  const age = Math.min(nowMs - pl.fixAt, MAX_DR_MS)
-  if (age > 0 && pl.mph != null && pl.mph > 0 && pl.track != null) {
-    const metres = pl.mph * 0.44704 * (age / 1000)
-    const th = (pl.track * Math.PI) / 180
+  const age = Math.min(Math.max(0, nowMs - pl.fixAt), MAX_DR_MS)
+  if (moving && age > 0) {
+    const metres = mps * (age / 1000)
     tLat += (metres * Math.cos(th)) / M_PER_DEG_LAT
-    // cos(lat) guards the poles; a plane at 85° would otherwise sprint east.
-    tLon += (metres * Math.sin(th)) / (M_PER_DEG_LAT * Math.max(0.05, Math.cos((tLat * Math.PI) / 180)))
+    tLon += (metres * Math.sin(th)) / (M_PER_DEG_LAT * cosLat)
   }
-  // ~250 ms time constant, computed from real frame time so a 30 fps phone
-  // and a 120 fps tablet settle at the same rate.
-  const k = 1 - Math.exp(-dtSec / 0.25)
-  pl.lon += (tLon - pl.lon) * k
-  pl.lat += (tLat - pl.lat) * k
+
+  const dN = (tLat - pl.lat) * M_PER_DEG_LAT
+  const dE = (tLon - pl.lon) * M_PER_DEG_LAT * cosLat
+  // A fix this far off is a re-acquired or glitched aircraft, not a
+  // correction — snap rather than glide across the county.
+  if (!(dtSec > 0) || Math.hypot(dE, dN) > SNAP_M) {
+    pl.lon = tLon
+    pl.lat = tLat
+    return
+  }
+  // Frame-rate-independent ease for the cross-track (sideways) error.
+  const k = 1 - Math.exp(-dtSec / 0.6)
+  if (!moving) {
+    pl.lon += (tLon - pl.lon) * k
+    pl.lat += (tLat - pl.lat) * k
+    return
+  }
+
+  // Split the error along / across the track. Along-track error is closed
+  // by flying a little slower (we are ahead) or faster (we are behind) —
+  // never by moving backward, which is what an ease toward a fix that
+  // landed behind the rendered plane used to do (Brian, Sep 4: "forward
+  // fairly smoothly then slightly backward"). de/dt = -e / CONVERGE_S.
+  const uE = Math.sin(th)
+  const uN = Math.cos(th)
+  const along = dE * uE + dN * uN
+  const xE = dE - along * uE
+  const xN = dN - along * uN
+  const v = Math.min(mps * 1.5, Math.max(0, mps + along / CONVERGE_S))
+  const step = v * dtSec
+  pl.lat += (step * uN + xN * k) / M_PER_DEG_LAT
+  pl.lon += (step * uE + xE * k) / (M_PER_DEG_LAT * cosLat)
 }
 
 export interface CelestialBody {

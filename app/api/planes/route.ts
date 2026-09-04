@@ -23,6 +23,12 @@ interface Plane {
   altFt: number
   gsKt: number | null
   track: number | null
+  /** Seconds since this aircraft's position was last updated at the feed
+   *  (adsb.lol seen_pos). The client dates the fix by it instead of by the
+   *  moment the JSON arrived — otherwise every poll "moves" the plane back
+   *  to where it was several seconds ago (Brian, Sep 4: forward, then
+   *  slightly backward). */
+  seenPos: number | null
 }
 
 interface AdsbAc {
@@ -36,6 +42,7 @@ interface AdsbAc {
   alt_geom?: number
   gs?: number
   track?: number
+  seen_pos?: number
 }
 
 const cache = new Map<string, { at: number; planes: Plane[] }>()
@@ -51,8 +58,10 @@ export async function GET(req: NextRequest) {
   }
   const key = `${lat.toFixed(1)},${lon.toFixed(1)},${Math.round(r)}`
   const hit = cache.get(key)
+  // ageMs = how old this snapshot already is on OUR side (cache hits), so the
+  // client can date fixes correctly without trusting its clock against ours.
   if (hit && Date.now() - hit.at < TTL_MS) {
-    return NextResponse.json({ planes: hit.planes })
+    return NextResponse.json({ planes: hit.planes, ageMs: Date.now() - hit.at })
   }
   try {
     const url = `https://api.adsb.lol/v2/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${Math.round(r)}`
@@ -79,15 +88,16 @@ export async function GET(req: NextRequest) {
         altFt: Math.round(alt),
         gsKt: typeof a.gs === 'number' ? Math.round(a.gs) : null,
         track: typeof a.track === 'number' ? Math.round(a.track) : null,
+        seenPos: typeof a.seen_pos === 'number' && a.seen_pos >= 0 ? Math.min(60, a.seen_pos) : null,
       })
       if (planes.length >= 1200) break
     }
     // Keep the per-center cache from growing unbounded across a long session.
     if (cache.size > 200) cache.clear()
     cache.set(key, { at: Date.now(), planes })
-    return NextResponse.json({ planes })
+    return NextResponse.json({ planes, ageMs: 0 })
   } catch (e) {
-    if (hit) return NextResponse.json({ planes: hit.planes })
+    if (hit) return NextResponse.json({ planes: hit.planes, ageMs: Date.now() - hit.at })
     return NextResponse.json({ error: e instanceof Error ? e.message : 'ADS-B feed unreachable' }, { status: 503 })
   }
 }
