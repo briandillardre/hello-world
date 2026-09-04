@@ -466,3 +466,333 @@ _first Monday 11:00 AM, 180 Magnolia St 4th floor (Tuesday when Monday is a holi
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
 - 7207 Heirloom Lane Inman, SC 29349. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. Interest on bid 5.75% until compliance; 5% deposit day of sale.
 - [notice](https://www.spartanweeklyonline.com/legal-notices/7207-heirloom-lane-inman-sc-29349)
+
+## Horry County (40 on the list)
+
+_first Monday 11:00 AM (following Tuesday when a holiday), 1301 2nd Ave 3rd floor, Conway – new bidders register 7 days ahead; first-time winners bring a $2,500 certified check_
+
+### 2026-CP-26-02004 — 1207 S Ocean Blvd, Unit 50801, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1811302158
+- **Owed:** $77,686.29 · **Deficiency:** DEMANDED
+- 1207 S Ocean Blvd, Unit 50801, Myrtle Beach, SC 29577. Judgment $77,686.29. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-02004 — 1207 S Ocean Blvd, Unit 50901, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1811302171
+- **Owed:** $77,686.29 · **Deficiency:** DEMANDED
+- 1207 S Ocean Blvd, Unit 50901, Myrtle Beach, SC 29577. Judgment $77,686.29. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-02004 — 1207 S Ocean Blvd, Unit 50902, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1811302172
+- **Owed:** $77,686.29 · **Deficiency:** DEMANDED
+- 1207 S Ocean Blvd, Unit 50902, Myrtle Beach, SC 29577. Judgment $77,686.29. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-02004 — 1207 S Ocean Blvd, Unit 51002, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1811302185
+- **Owed:** $77,871.12 · **Deficiency:** DEMANDED
+- 1207 S Ocean Blvd, Unit 51002, Myrtle Beach, SC 29577. Judgment $77,871.12. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00352 — 4405 Hwy 378, Conway, SC 29527
+
+- **?** v. ? · TMS 1350002025
+- **Owed:** $321,970.72 · **Deficiency:** WAIVED
+- 4405 Hwy 378, Conway, SC 29527. Judgment $321,970.72. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-03011 — 181 Dry Valley Loop, Myrtle Beach, SC 29588
+
+- **?** v. ? · TMS 1791604022
+- **Owed:** $81,480.18 · **Deficiency:** DEMANDED
+- 181 Dry Valley Loop, Myrtle Beach, SC 29588. Judgment $81,480.18. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00505 — 3004 Sawyer Street, Conway, SC 29527
+
+- **?** v. ? · TMS 1361206049
+- **Owed:** $110,851.62 · **Deficiency:** DEMANDED
+- 3004 Sawyer Street, Conway, SC 29527. Judgment $110,851.62. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-08343 — 4149 Hibiscus Dr., Apt. 204, Little River, SC 29566
+
+- **?** v. ? · TMS 1312802206
+- **Owed:** $69,762.07 · **Deficiency:** DEMANDED
+- 4149 Hibiscus Dr., Apt. 204, Little River, SC 29566. Judgment $69,762.07. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01100 — 1501 S Ocean Blvd., Unit 234, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1870106170
+- **Owed:** $68,321.86 · **Deficiency:** DEMANDED
+- 1501 S Ocean Blvd., Unit 234, Myrtle Beach, SC 29577. Judgment $68,321.86. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00092 — 1009 World Tour Blvd., Unit 101A, Myrtle Beach, SC 29579
+
+- **?** v. ? · TMS 1723701365
+- **Owed:** $195,340.71 · **Deficiency:** DEMANDED
+- 1009 World Tour Blvd., Unit 101A, Myrtle Beach, SC 29579. Judgment $195,340.71. DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01639 — 1501 S Ocean Blvd, Unit 1003, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1870106637
+- **Owed:** $102,682.37 · **Deficiency:** WAIVED
+- 1501 S Ocean Blvd, Unit 1003, Myrtle Beach, SC 29577. Judgment $102,682.37. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00435 — 4230 Pinehurst Circle, Unit K7, Little River, SC 29566
+
+- **?** v. ? · TMS 1182101101
+- **Owed:** $11,784.11 · **Deficiency:** WAIVED
+- 4230 Pinehurst Circle, Unit K7, Little River, SC 29566. Judgment $11,784.11. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01969 — 4834 Carnation Circle, Unit 105, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1730401688
+- **Owed:** $10,395.12 · **Deficiency:** WAIVED
+- 4834 Carnation Circle, Unit 105, Myrtle Beach, SC 29577. Judgment $10,395.12. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01479 — 1117 Pineridge Street, Conway, SC 29527
+
+- **?** v. ? · TMS 1492201037
+- **Owed:** $233,312.60 · **Deficiency:** WAIVED
+- 1117 Pineridge Street, Conway, SC 29527. Judgment $233,312.60. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-08432 — 1789 Dixie Court, Loris, SC 29569
+
+- **?** v. ? · TMS 0870006056
+- **Owed:** $145,713.25 · **Deficiency:** WAIVED
+- 1789 Dixie Court, Loris, SC 29569. Judgment $145,713.25. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00324 — 510 Fairwood Lakes Dr., Unit 21A, Myrtle Beach, SC 29588
+
+- **?** v. ? · TMS 1902001117
+- **Owed:** $161,754.34 · **Deficiency:** WAIVED
+- 510 Fairwood Lakes Dr., Unit 21A, Myrtle Beach, SC 29588. Judgment $161,754.34. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01303 — 1643 Harbor Dr., North Myrtle Beach, SC 29582
+
+- **?** v. ? · TMS 1310604021
+- **Owed:** $324,245.60 · **Deficiency:** WAIVED
+- 1643 Harbor Dr., North Myrtle Beach, SC 29582. Judgment $324,245.60. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01167 — 1855 Highway 129, Galivants Ferry, SC 29544
+
+- **?** v. ? · TMS 0530001331
+- **Owed:** $29,002.01 · **Deficiency:** WAIVED
+- 1855 Highway 129, Galivants Ferry, SC 29544. Judgment $29,002.01. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-08854 — 730 Charter Drive, Unit F3, Longs, SC 29568
+
+- **?** v. ? · TMS 1170002400
+- **Owed:** $110,265.46 · **Deficiency:** WAIVED
+- 730 Charter Drive, Unit F3, Longs, SC 29568. Judgment $110,265.46. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-09288 — 8329 Tartan Lane, Myrtle Beach, SC 29588
+
+- **?** v. ? · TMS 1842601085
+- **Owed:** $329,208.26 · **Deficiency:** WAIVED
+- 8329 Tartan Lane, Myrtle Beach, SC 29588. Judgment $329,208.26. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00055 — 2305 Copper Creek Loop, Longs, SC 29568
+
+- **?** v. ?
+- **Owed:** $404,484.57 · **Deficiency:** WAIVED
+- 2305 Copper Creek Loop, Longs, SC 29568. Judgment $404,484.57. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00133 — 1108 Pochard Drive, Conway, SC 29526
+
+- **?** v. ? · TMS 1514701074
+- **Owed:** $487,011.42 · **Deficiency:** WAIVED
+- 1108 Pochard Drive, Conway, SC 29526. Judgment $487,011.42. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00053 — 665 Tupelo Lane, Unit 17 H, Longs, SC 29568
+
+- **?** v. ? · TMS 1021801113
+- **Owed:** $204,994.75 · **Deficiency:** WAIVED
+- 665 Tupelo Lane, Unit 17 H, Longs, SC 29568. Judgment $204,994.75. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01835 — 951 Plantation Drive A6, Little River, SC 29566
+
+- **?** v. ?
+- **Owed:** $273,122.18 · **Deficiency:** WAIVED
+- 951 Plantation Drive A6, Little River, SC 29566. Judgment $273,122.18. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2021-CP-26-00144 — 3470 Hwy 917, Loris, SC 29569
+
+- **?** v. ? · TMS 0370001160
+- **Owed:** $134,479.81 · **Deficiency:** WAIVED
+- 3470 Hwy 917, Loris, SC 29569. Judgment $134,479.81. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2021-CP-26-00252 — 507 Sims Drive, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1792211004
+- **Owed:** $98,943.33 · **Deficiency:** WAIVED
+- 507 Sims Drive, Myrtle Beach, SC 29577. Judgment $98,943.33. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2023-CP-26-04562 — 308 Jasmine Drive, Conway, SC 29526
+
+- **?** v. ? · TMS 1361701029
+- **Owed:** $232,129.23 · **Deficiency:** WAIVED
+- 308 Jasmine Drive, Conway, SC 29526. Judgment $232,129.23. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2023-CP-26-06121 — 615 Ford Circle, Conway, SC 29526
+
+- **?** v. ? · TMS 1501711033
+- **Owed:** $92,861.30 · **Deficiency:** WAIVED
+- 615 Ford Circle, Conway, SC 29526. Judgment $92,861.30. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2022-CP-26-05682 — 4155 Heather Lakes Drive, Little River, SC 29566
+
+- **?** v. ? · TMS 1183101012
+- **Owed:** $455,702.77 · **Deficiency:** WAIVED
+- 4155 Heather Lakes Drive, Little River, SC 29566. Judgment $455,702.77. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-06064 — 3526 Saint James Avenue, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1732402077
+- **Owed:** $303,355.55 · **Deficiency:** WAIVED
+- 3526 Saint James Avenue, Myrtle Beach, SC 29577. Judgment $303,355.55. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-07873 — 1207 S Ocean Blvd, Unit 50613, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1811302144
+- **Owed:** $19,877.49 · **Deficiency:** WAIVED
+- 1207 S Ocean Blvd, Unit 50613, Myrtle Beach, SC 29577. Judgment $19,877.49. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-02340 — 2001 S Ocean Blvd, Unit 203, Myrtle Beach, SC 29577
+
+- **?** v. ? · TMS 1870108055
+- **Owed:** $146,491.00 · **Deficiency:** WAIVED
+- 2001 S Ocean Blvd, Unit 203, Myrtle Beach, SC 29577. Judgment $146,491.00. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01570 — 709 Highway 90, Conway, SC 29526
+
+- **?** v. ? · TMS 1380002005
+- **Owed:** $284,997.41 · **Deficiency:** WAIVED
+- 709 Highway 90, Conway, SC 29526. Judgment $284,997.41. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2012-CP-26-04357 — 966 Willowbend Drive, Myrtle Beach, SC 29579
+
+- **?** v. ? · TMS 1642201183
+- **Owed:** $589,862.15 · **Deficiency:** WAIVED
+- 966 Willowbend Drive, Myrtle Beach, SC 29579. Judgment $589,862.15. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2022-CP-26-05695 — 4395 Bayberry Drive, Little River, SC 29566
+
+- **?** v. ? · TMS 1302701056
+- **Owed:** $93,632.20 · **Deficiency:** WAIVED
+- 4395 Bayberry Drive, Little River, SC 29566. Judgment $93,632.20. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-01007 — 232 Waterfall Circle, Little River, SC 29566
+
+- **?** v. ? · TMS 1303301099
+- **Owed:** $88,145.75 · **Deficiency:** WAIVED
+- 232 Waterfall Circle, Little River, SC 29566. Judgment $88,145.75. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-02197 — 3271 Lyndon Drive, Little River, SC 29566
+
+- **?** v. ? · TMS 1301801078
+- **Owed:** $207,547.10 · **Deficiency:** WAIVED
+- 3271 Lyndon Drive, Little River, SC 29566. Judgment $207,547.10. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2025-CP-26-08959 — 4242 Bonaire Lane, Little River, SC 29566
+
+- **?** v. ?
+- **Owed:** $196,622.79 · **Deficiency:** WAIVED
+- 4242 Bonaire Lane, Little River, SC 29566. Judgment $196,622.79. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-02042 — 1316 Tidway Circle, Conway, SC 29527
+
+- **?** v. ? · TMS 1481901046
+- **Owed:** $92,734.27 · **Deficiency:** WAIVED
+- 1316 Tidway Circle, Conway, SC 29527. Judgment $92,734.27. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+### 2026-CP-26-00192 — 1505 Dunn Shortcut Road, Conway, SC 29527
+
+- **?** v. ? · TMS 1210003058
+- **Owed:** $238,913.77 · **Deficiency:** WAIVED
+- 1505 Dunn Shortcut Road, Conway, SC 29527. Judgment $238,913.77. Deficiency waived — sale is final on the day.
+- [order](https://www.horrycountysc.gov/departments/master-in-equity/principal-sales/)
+
+## Georgetown County (7 on the list)
+
+_first Monday at NOON, MIE courtroom 2nd floor, 401 Cleland St, Georgetown (holiday → next day or next Monday)_
+
+### ~~2026-CP-22-00295 — 1105 Merriman Rd., Georgetown, SC~~
+
+- **U. S. Bank Trust Comp.** v. Brownstone Prop. · TMS 05-0003-012-00-00
+- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
+- 1105 Merriman Rd., Georgetown, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30. STATUS: CANCELLED.
+
+### 2025-CP-22-01076 — 83 Polan Lane Georgetown, SC
+
+- **Howard and Howard** v. Est. Bobbie Cuttino · TMS 03-0439-025-01-00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 83 Polan Lane Georgetown, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+
+### 2026-CP-22-00122 — 1832 Middleton St., Georgetown, SC
+
+- **SouthState Bank** v. Roland Floyd · TMS 02-0107-141-00-00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 1832 Middleton St., Georgetown, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+
+### ~~2025-CP-22-01043 — 147 Rubin Av., Georgetown, SC~~
+
+- **Nationstar Mortgage** v. David J. Smith · TMS 02-0203-039-00-00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 147 Rubin Av., Georgetown, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day. STATUS: CANCELLED.
+
+### 2025-CP-22-00093 — 73 Magill Lane, Georgetown, SC
+
+- **REV Federal Cred. Union** v. Ralph Hoffman · TMS 01-0120-047-00-00
+- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
+- 73 Magill Lane, Georgetown, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). DEFICIENCY DEMANDED — bidding stays open 30 days; the bank can be outbid on day 30.
+
+### 2025-CP-22-00127 — 5457 Huntington Marsh Rd., Murrells Inlet, SC
+
+- **Selene Finance** v. John H. Oakes · TMS 04-0101-005-00-00
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 5457 Huntington Marsh Rd., Murrells Inlet, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
+
+### 2025-CP-22-00906 — 23 Orchard Ave., Murrells Inlet, SC
+
+- **Citibank, N.A.** v. Kim Brackett · TMS 41-0118-008-01-24
+- **Owed:** _not extracted_ · **Deficiency:** WAIVED
+- 23 Orchard Ave., Murrells Inlet, SC. Judgment amount not extracted yet (court index not crawled yet — run on your PC). Deficiency waived — sale is final on the day.
