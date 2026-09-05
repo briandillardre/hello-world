@@ -170,19 +170,192 @@ interface AssetPanelProps {
   travelingWith?: { id: string; name: string; type: AssetType }[]
 }
 
+/**
+ * First tap. What a foreman needs before dragging anything (Brian, Sep 4:
+ * "think best in class … what we have now is not great"):
+ *
+ *   status line   — Moving / Stationary · engine off · since when · updated
+ *   where         — city, and the named place when parked somewhere real
+ *   three numbers — speed · miles today · battery (or last seen)
+ *   four actions  — Directions · Trips · Isolate · Details
+ *
+ * Plus the one-liners that only matter when true: overdue service / open
+ * WOs, tools on board, riding in a convoy, a tool's carrying truck. Nothing
+ * here scrolls; it is a card, not a page. The page is one drag up.
+ */
+function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, onToggleIsolate, onDirections, expand }: {
+  asset: AssetWithLocation
+  loc: AssetWithLocation['location']
+  d: Derived
+  gateway?: { name: string; lastSeen: string }
+  aboard?: AboardTool[]
+  travelingWith?: { id: string; name: string; type: AssetType }[]
+  isolated: boolean
+  onToggleIsolate?: () => void
+  onDirections?: (dest: { lat: number; lng: number; name: string }) => void
+  expand: () => void
+}) {
+  const { place, poi, stats, liveStatus, idleTodayMin, showStatus } = d
+  const today = stats?.ranges.find((r) => r.key === 'today')
+  const overdue = asset.maintOverdue ?? 0
+  const openWo = asset.openWorkOrders ?? 0
+  const toolsAboard = aboard?.length ?? 0
+  const isTool = asset.type === 'tool'
+
+  const facts: { label: string; value: string; cls?: string }[] = []
+  if (!isTool && loc?.speed != null) facts.push({ label: 'Speed', value: `${loc.speed} mph`, cls: loc.speed > 2 ? 'text-amber' : undefined })
+  if (today?.miles) facts.push({ label: 'Today', value: `${today.miles.toLocaleString()} mi` })
+  if (loc?.battery != null) facts.push({ label: 'Battery', value: `${loc.battery}%`, cls: BATTERY_COLOR(loc.battery) })
+  if (facts.length < 3 && loc?.timestamp) facts.push({ label: 'Last seen', value: formatRelativeTime(loc.timestamp) })
+
+  const act = 'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg border py-1.5 text-[11px] font-semibold leading-none transition-colors active:scale-95'
+  const quiet = 'border-navy-700 bg-navy-800 text-ink hover:bg-navy-700'
+
+  return (
+    <div className="space-y-2">
+      {showStatus && (
+        <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
+      )}
+
+      {/* A tool's truth is who is carrying it. */}
+      {isTool && gateway && (
+        <p className="text-[12.5px] leading-snug">
+          {toolIsFresh(gateway.lastSeen)
+            ? <><Wifi className="inline h-3.5 w-3.5 text-[#60a5fa] mr-1 -mt-0.5" /><span className="text-[#93c5fd]">With </span><span className="font-semibold text-[#93c5fd]">{gateway.name}</span><span className="text-faint"> · {formatRelativeTime(gateway.lastSeen)}</span></>
+            : <><MapPin className="inline h-3.5 w-3.5 text-amber mr-1 -mt-0.5" /><span className="text-amber font-semibold">Left here</span><span className="text-faint"> · last with {gateway.name} {formatRelativeTime(gateway.lastSeen)}</span></>}
+        </p>
+      )}
+
+      {(place || poi) && (
+        <p className="flex items-center gap-1.5 text-[13px] leading-tight min-w-0">
+          <MapPin className="h-3.5 w-3.5 text-teal flex-none" />
+          <span className="truncate">
+            {place && <span className="text-ink font-semibold">{place}</span>}
+            {poi && <span className="text-teal"> · {poi}</span>}
+          </span>
+        </p>
+      )}
+
+      {/* Only-when-true lines — each one is a reason to tap Details. */}
+      {(overdue > 0 || openWo > 0 || toolsAboard > 0 || (travelingWith?.length ?? 0) > 0) && (
+        <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+          {overdue > 0 && (
+            <Link href={`/assets/${asset.id}#maintenance`} className="inline-flex items-center gap-1 rounded-md border border-alert/40 bg-alert/10 text-alert px-1.5 py-0.5">
+              <Wrench className="h-3 w-3" /> {overdue} service overdue
+            </Link>
+          )}
+          {openWo > 0 && (
+            <Link href={`/assets/${asset.id}#maintenance`} className="inline-flex items-center gap-1 rounded-md border border-amber/40 bg-amber/10 text-amber px-1.5 py-0.5">
+              <Wrench className="h-3 w-3" /> {openWo} open WO{openWo === 1 ? '' : 's'}
+            </Link>
+          )}
+          {toolsAboard > 0 && (
+            <button onClick={expand} className="inline-flex items-center gap-1 rounded-md border border-[#a78bfa]/40 bg-[#a78bfa]/10 text-[#c4b5fd] px-1.5 py-0.5">
+              🔧 {toolsAboard} tool{toolsAboard === 1 ? '' : 's'} on board
+            </button>
+          )}
+          {(travelingWith?.length ?? 0) > 0 && (
+            <button onClick={expand} className="inline-flex items-center gap-1 rounded-md border border-teal/40 bg-teal/10 text-teal px-1.5 py-0.5">
+              ⛓ with {travelingWith![0].name}{travelingWith!.length > 1 ? ` +${travelingWith!.length - 1}` : ''}
+            </button>
+          )}
+        </div>
+      )}
+
+      {facts.length > 0 && (
+        <div className="bg-navy-800 rounded-lg px-1 py-1.5 flex divide-x divide-navy-700">
+          {facts.map((f) => (
+            <div key={f.label} className="flex-1 min-w-0 px-2 leading-tight text-center">
+              <p className="text-[10px] uppercase tracking-wide text-faint truncate">{f.label}</p>
+              <p className={'text-[14px] font-bold truncate ' + (f.cls ?? 'text-ink')}>{f.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-1.5">
+        {onDirections && loc && (
+          <button onClick={() => onDirections({ lat: loc.lat, lng: loc.lng, name: asset.name })} className={`${act} border-amber/50 bg-amber/10 text-amber hover:bg-amber/20`}>
+            <span className="text-base leading-none">🧭</span> Directions
+          </button>
+        )}
+        <button onClick={expand} className={`${act} ${quiet}`}>
+          <Clock className="h-4 w-4" /> Trips
+        </button>
+        {onToggleIsolate && (
+          <button onClick={onToggleIsolate} className={`${act} ` + (isolated ? 'border-amber/40 bg-amber/15 text-amber' : quiet)}>
+            <Crosshair className="h-4 w-4" /> {isolated ? 'Isolated' : 'Isolate'}
+          </button>
+        )}
+        <Link href={`/assets/${asset.id}`} className={`${act} ${quiet}`}>
+          <ArrowRight className="h-4 w-4" /> Details
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/** Everything the sheet derives from the asset ONCE, shared by the first-tap
+ *  card and the full body — one geocode, one stats fetch, one status. */
+interface Derived {
+  place: string | null
+  poi: string | null
+  stats: StatsPayload | null
+  liveStatus: ReturnType<typeof deriveLiveStatus>
+  idleTodayMin: number | null
+  showStatus: boolean
+}
+
 export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, onToggleIsolate, onStops, onFocusStop, onClose, onDirections, travelingWith }: AssetPanelProps) {
   const loc = asset.location
   const meta = asset.metadata ?? {}
 
+  const place = usePlaceName(loc?.lat, loc?.lng)
+  const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
+  // Range mileage table — vehicles/equipment from their own pings; tools get
+  // the same numbers server-stitched from whichever truck carried them.
+  const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool')
+
+  // Current status — moving / idling / parked / no-signal — from the latest
+  // fix, engine voltage, and last-moved time. Same deriver as the asset page.
+  // Tools included for a consistent feel: riding a moving truck reads
+  // "Moving", a dropped tag reads "No signal" (the amber left-here card
+  // right below says where and with whom).
+  const showStatus = asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool'
+  const enginePower = asset.type === 'vehicle' ? vehiclePower(loc?.raw) : { engineOn: null as boolean | null }
+  const liveStatus = deriveLiveStatus({
+    speedMph: loc?.speed ?? null,
+    lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
+    engineOn: enginePower.engineOn,
+    lastMovedMs: stats?.lastMovedIso ? Date.parse(stats.lastMovedIso) : null,
+  })
+  const idleTodayMin = stats?.ranges.find((r) => r.key === 'today')?.idleMin ?? null
+  const derived: Derived = { place, poi, stats, liveStatus, idleTodayMin, showStatus }
+
   return (
     <MapSheet
-      icon={<span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>}
+      // The machine's own photo as the header icon when it has one — you
+      // recognise your truck faster than a generic glyph.
+      icon={asset.photo_url
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={asset.photo_url} alt="" className="w-9 h-9 rounded-lg object-cover border border-navy-700 flex-none" />
+        : <span className="text-2xl">{TYPE_EMOJI[asset.type]}</span>}
       title={asset.name}
-      subtitle={<TrackerChip trackerId={asset.tracker_id} />}
-      badge={<Badge variant="secondary">{TYPE_LABELS[asset.type]}</Badge>}
+      // Type badge shares the tracker line — a third header row was pure
+      // blank space on a phone (Brian, Sep 4: "too much blank space").
+      subtitle={
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="py-0 text-[11px]">{TYPE_LABELS[asset.type]}</Badge>
+          <TrackerChip trackerId={asset.tracker_id} />
+        </div>
+      }
       onClose={onClose}
+      peek={({ expand }) => (
+        <AssetPeek asset={asset} loc={loc} d={derived} gateway={gateway} aboard={aboard} travelingWith={travelingWith}
+          isolated={isolated} onToggleIsolate={onToggleIsolate} onDirections={onDirections} expand={expand} />
+      )}
     >
-      <AssetDetails asset={asset} loc={loc} meta={meta} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} travelingWith={travelingWith} />
+      <AssetDetails asset={asset} loc={loc} meta={meta} d={derived} gateway={gateway} aboard={aboard} onPick={onPick} isolated={isolated} onToggleIsolate={onToggleIsolate} onStops={onStops} onFocusStop={onFocusStop} onDirections={onDirections} travelingWith={travelingWith} />
     </MapSheet>
   )
 }
@@ -249,10 +422,12 @@ function AssetDetails({
   onFocusStop,
   onDirections,
   travelingWith,
+  d,
 }: {
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
   meta: Record<string, unknown>
+  d: Derived
   gateway?: { name: string; lastSeen: string }
   aboard?: AboardTool[]
   onPick?: (assetId: string) => void
@@ -263,26 +438,7 @@ function AssetDetails({
   onDirections?: (dest: { lat: number; lng: number; name: string }) => void
   travelingWith?: { id: string; name: string; type: AssetType }[]
 }) {
-  const place = usePlaceName(loc?.lat, loc?.lng)
-  const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
-  // Range mileage table — vehicles/equipment from their own pings; tools get
-  // the same numbers server-stitched from whichever truck carried them.
-  const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool')
-
-  // Current status — moving / idling / parked / no-signal — from the latest
-  // fix, engine voltage, and last-moved time. Same deriver as the asset page.
-  // Tools included for a consistent feel: riding a moving truck reads
-  // "Moving", a dropped tag reads "No signal" (the amber left-here card
-  // right below says where and with whom).
-  const showStatus = asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool'
-  const enginePower = asset.type === 'vehicle' ? vehiclePower(loc?.raw) : { engineOn: null as boolean | null }
-  const liveStatus = deriveLiveStatus({
-    speedMph: loc?.speed ?? null,
-    lastFixMs: loc?.timestamp ? Date.parse(loc.timestamp) : null,
-    engineOn: enginePower.engineOn,
-    lastMovedMs: stats?.lastMovedIso ? Date.parse(stats.lastMovedIso) : null,
-  })
-  const idleTodayMin = stats?.ranges.find((r) => r.key === 'today')?.idleMin ?? null
+  const { place, poi, stats, liveStatus, idleTodayMin, showStatus } = d
 
   // Compact isolate toggle — sits beside the photo (or the location block) so
   // it's the first thing in reach, not buried in the stat grid.
@@ -299,7 +455,7 @@ function AssetDetails({
   ) : null
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {asset.photo_url && (
         // Compact thumbnail with the key facts BESIDE it — the full-width
         // photo ate half the phone sheet and pushed every number off-screen.
@@ -400,40 +556,37 @@ function AssetDetails({
       {/* Where it IS, up top — city/state, plus the named place when parked
           somewhere recognizable. (The coordinates stay in the footer.) With a
           photo this already rendered beside the thumbnail above. */}
-      {!asset.photo_url && (place || poi) && (
-        <div className="bg-navy-800 rounded-lg px-3 py-2 flex items-start gap-2">
-          <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
-          <div className="min-w-0 text-[13px] leading-snug">
-            {place && <span className="text-ink font-semibold">{place}</span>}
-            {poi && <span className="block text-teal text-[12px] truncate">at {poi}</span>}
-          </div>
+      {/* Where it is + Isolate on ONE row. These used to stack as two
+          full-width blocks with a half-empty 2×2 tile grid under them —
+          most of the first screen was padding (Brian, Sep 4). */}
+      {!asset.photo_url && ((place || poi) || isolateBtn) && (
+        <div className="flex items-center gap-2">
+          {(place || poi) && (
+            <div className="flex-1 min-w-0 bg-navy-800 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5 text-teal flex-none" />
+              <div className="min-w-0 text-[13px] leading-tight truncate">
+                {place && <span className="text-ink font-semibold">{place}</span>}
+                {poi && <span className="text-teal text-[12px]"> · {poi}</span>}
+              </div>
+            </div>
+          )}
+          {isolateBtn && <div className="flex-none">{isolateBtn}</div>}
         </div>
       )}
-      {/* Isolate lives up top; when there's no photo to sit beside, show it here. */}
-      {!asset.photo_url && isolateBtn}
-      <div className="grid grid-cols-2 gap-3">
-        {loc?.battery !== null && loc?.battery !== undefined && (
-          <StatTile
-            icon={<Battery className={`h-4 w-4 ${BATTERY_COLOR(loc.battery)}`} />}
-            label="Battery"
-            value={`${loc.battery}%`}
-          />
-        )}
-        {loc?.speed !== null && loc?.speed !== undefined && (
-          <StatTile
-            icon={<Zap className="h-4 w-4 text-amber" />}
-            label="Speed"
-            value={`${loc.speed} mph`}
-          />
-        )}
-        {loc?.timestamp && (
-          <StatTile
-            icon={<Clock className="h-4 w-4 text-faint" />}
-            label="Last Seen"
-            value={formatRelativeTime(loc.timestamp)}
-          />
-        )}
-      </div>
+      {/* One strip, three facts. */}
+      {loc && (loc.battery != null || loc.speed != null || loc.timestamp) && (
+        <div className="bg-navy-800 rounded-lg px-1 py-1.5 flex divide-x divide-navy-700">
+          {loc.battery != null && (
+            <StatTile icon={<Battery className={`h-3.5 w-3.5 ${BATTERY_COLOR(loc.battery)}`} />} label="Battery" value={`${loc.battery}%`} />
+          )}
+          {loc.speed != null && (
+            <StatTile icon={<Zap className="h-3.5 w-3.5 text-amber" />} label="Speed" value={`${loc.speed} mph`} />
+          )}
+          {loc.timestamp && (
+            <StatTile icon={<Clock className="h-3.5 w-3.5 text-faint" />} label="Last seen" value={formatRelativeTime(loc.timestamp)} />
+          )}
+        </div>
+      )}
 
       {/* Order: speed/last-seen → stops → activity → engine/specs. Tools get
           the same stop log — theirs is stitched from the carrying truck's
@@ -782,11 +935,11 @@ function EngineWidget({ asset }: { asset: AssetWithLocation }) {
 
 function StatTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-navy-800 rounded-lg p-3 flex items-start gap-2">
-      {icon}
-      <div>
-        <p className="text-xs text-faint">{label}</p>
-        <p className="text-sm font-semibold text-ink">{value}</p>
+    <div className="flex-1 min-w-0 px-2 flex items-center gap-1.5">
+      <span className="flex-none">{icon}</span>
+      <div className="min-w-0 leading-tight">
+        <p className="text-[10px] uppercase tracking-wide text-faint truncate">{label}</p>
+        <p className="text-[13px] font-semibold text-ink truncate">{value}</p>
       </div>
     </div>
   )

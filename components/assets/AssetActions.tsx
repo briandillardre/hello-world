@@ -52,9 +52,9 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
 
   const handleDelete = async () => {
     const ok = await confirmSheet({
-      title: `Delete "${asset.name}"?`,
-      message: 'This removes its location history, maintenance records, and alerts. This cannot be undone.',
-      confirmLabel: 'Delete', destructive: true,
+      title: `Delete "${asset.name}" for good?`,
+      message: `This permanently erases the asset AND everything tied to it: every GPS ping and trail, trip log, maintenance and service history, work orders, and alerts${asset.tracker_id ? `. Tracker ${asset.tracker_id} is released — a device still installed keeps reporting into nothing` : ''}. There is no undo. If the machine was sold or the tracker moved, use Edit or Reassign tracker instead and keep the history.`,
+      confirmLabel: 'Delete permanently', destructive: true,
     })
     if (!ok) return
     try {
@@ -81,7 +81,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
         title="Delete asset"
         className="inline-flex items-center gap-1.5 rounded-lg border border-alert/40 text-alert text-sm font-semibold px-3 py-2 hover:bg-alert/10 transition-colors"
       >
-        <Trash2 className="h-4 w-4" />
+        <Trash2 className="h-4 w-4" /> Delete
       </button>
 
       {editing && (

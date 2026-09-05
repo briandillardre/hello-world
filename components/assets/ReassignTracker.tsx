@@ -87,9 +87,13 @@ export function ReassignTracker({ asset, trackerlessAssets }: { asset: Asset; tr
       <button
         onClick={() => setOpen(true)}
         title="Reassign tracker to another vehicle"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 text-ink text-sm font-semibold px-3 py-2 hover:bg-navy-800 transition-colors"
+        // Label always on. Inside the phone ⋮ menu this button was a bare ⇄
+        // glyph next to a bare trash can (Brian, Sep 4: "need description on
+        // change and delete") — nobody should have to guess which arrow moves
+        // a live tracker.
+        className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 text-ink text-sm font-semibold px-3 py-2 hover:bg-navy-800 transition-colors whitespace-nowrap"
       >
-        <ArrowLeftRight className="h-4 w-4" /> <span className="hidden sm:inline">Reassign tracker</span>
+        <ArrowLeftRight className="h-4 w-4" /> Reassign tracker
       </button>
 
       {open && (
