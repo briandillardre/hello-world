@@ -38,7 +38,7 @@ interface AssetListProps {
 }
 
 type AssetSort = 'name' | 'seen' | 'type'
-type AssetFilter = AssetType | 'all' | 'attention'
+type AssetFilter = AssetType | 'all' | 'attention' | 'untracked'
 
 /** Coarse age for list rows — "45m", "2h", "3d". */
 const coarseAge = (ms: number) => {
@@ -132,11 +132,14 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
   const pillCount = (t: AssetFilter) =>
     t === 'all' ? searched.length
       : t === 'attention' ? searched.filter(needsAttention).length
-        : searched.filter(a => a.type === t).length
+        : t === 'untracked' ? searched.filter(a => !a.tracker_id).length
+          : searched.filter(a => a.type === t).length
   const filtered = searched
     .filter(a =>
       typeFilter === 'all' ||
-      (typeFilter === 'attention' ? needsAttention(a) : a.type === typeFilter))
+      (typeFilter === 'attention' ? needsAttention(a)
+        : typeFilter === 'untracked' ? !a.tracker_id
+          : a.type === typeFilter))
     .sort((a, b) =>
       sort === 'seen' ? seenMs(b) - seenMs(a)
         : sort === 'type' ? a.type.localeCompare(b.type) || a.name.localeCompare(b.name)
@@ -186,7 +189,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          {(['all', 'vehicle', 'equipment', 'personnel', 'tool', 'attention'] as const).map(t => (
+          {(['all', 'vehicle', 'equipment', 'personnel', 'tool', 'attention', 'untracked'] as const).map(t => (
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
@@ -198,7 +201,8 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
             >
               {t === 'all' ? 'All'
                 : t === 'attention' ? '⚠ Needs attention'
-                  : TYPE_EMOJI[t] + ' ' + PILL_LABEL[t]}
+                  : t === 'untracked' ? '📵 No tracker'
+                    : TYPE_EMOJI[t] + ' ' + PILL_LABEL[t]}
               {' '}{pillCount(t)}
             </button>
           ))}
@@ -269,8 +273,17 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
   const fixLabel = !fixIso ? null
     : stale ? new Date(fixMs).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
       : formatRelativeTime(fixIso)
+  // No tracker ID = nothing can ever put this asset on the map. Make the row
+  // obviously different (Brian, Sep 4) instead of a quiet "No data".
+  const untracked = !asset.tracker_id
   return (
-    <Link href={`/assets/${asset.id}`} className="flex items-center gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 hover:bg-navy-800 transition-colors">
+    <Link
+      href={`/assets/${asset.id}`}
+      className={
+        'flex items-center gap-2.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 transition-colors ' +
+        (untracked ? 'bg-amber/[0.07] border-l-[3px] border-l-amber hover:bg-amber/[0.12]' : 'hover:bg-navy-800')
+      }
+    >
       {asset.photo_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={asset.photo_url} alt={asset.name} className="w-10 h-10 rounded-lg object-cover bg-navy-800 flex-shrink-0" />
@@ -293,6 +306,11 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">
           <span className="sm:hidden uppercase tracking-wide text-[10px] font-semibold text-muted">{asset.type}</span>
+          {untracked && (
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber/15 border border-amber/50 text-amber text-[10px] font-semibold px-1.5 py-px">
+              📵 No tracker
+            </span>
+          )}
           {(toolCount ?? 0) > 0 && (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[10px] font-semibold px-1.5 py-px">
               🔧 {toolCount} aboard

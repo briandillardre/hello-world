@@ -24,7 +24,7 @@ type Draw = (ctx: CanvasRenderingContext2D) => void
 
 export interface AssetIconDef {
   label: string
-  group: 'Trucks & road' | 'Dirt & lifting' | 'Ag & grounds' | 'Support' | 'People & tools'
+  group: 'Basic' | 'Trucks & road' | 'Dirt & lifting' | 'Ag & grounds' | 'Trailers & site' | 'People & tools'
   draw: Draw
 }
 
@@ -283,7 +283,7 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
 
   /* ── Support ───────────────────────────────────────────────────── */
   trailer: {
-    label: 'Trailer', group: 'Support',
+    label: 'Utility trailer', group: 'Trailers & site',
     draw: (ctx) => {
       box(ctx, 4, 30, 42, 9, 2)
       poly(ctx, [[46, 32], [62, 38], [62, 43], [46, 40]])         // tongue
@@ -292,7 +292,7 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
     },
   },
   generator: {
-    label: 'Generator', group: 'Support',
+    label: 'Generator', group: 'Trailers & site',
     draw: (ctx) => {
       box(ctx, 6, 18, 42, 28, 4)
       box(ctx, 22, 8, 12, 12, 2)                                  // lift eye
@@ -323,6 +323,116 @@ export const ASSET_ICONS: Record<string, AssetIconDef> = {
       ctx.restore()
     },
   },
+
+  /* ── Sep 4 additions (Brian: "basic dot, mowers, leaf blowers, trailers
+     etc."). Same rules: ≥8px features, side view facing right, ground ≈52. */
+  dot: {
+    label: 'Plain dot', group: 'Basic',
+    draw: () => { /* just the colored dot — no silhouette */ },
+  },
+  blower: {
+    label: 'Leaf blower', group: 'People & tools',
+    draw: (ctx) => {
+      box(ctx, 8, 12, 9, 30, 3)                                   // backpack frame
+      box(ctx, 16, 16, 22, 26, 6)                                 // engine housing
+      box(ctx, 22, 6, 12, 10, 3)                                  // top handle
+      poly(ctx, [[38, 26], [60, 33], [60, 45], [38, 37]])         // tube, flaring right
+    },
+  },
+  chainsaw: {
+    label: 'Chainsaw', group: 'People & tools',
+    draw: (ctx) => {
+      box(ctx, 6, 24, 26, 18, 5)                                  // powerhead
+      box(ctx, 10, 14, 16, 10, 3)                                 // top handle
+      box(ctx, 30, 28, 30, 9, 4)                                  // bar
+    },
+  },
+  'plate-compactor': {
+    label: 'Plate compactor', group: 'People & tools',
+    draw: (ctx) => {
+      box(ctx, 8, 44, 40, 9, 2)                                   // plate
+      box(ctx, 16, 22, 22, 22, 5)                                 // engine
+      poly(ctx, [[36, 28], [56, 8], [62, 14], [42, 34]])          // handle
+    },
+  },
+  'concrete-saw': {
+    label: 'Concrete saw', group: 'People & tools',
+    draw: (ctx) => {
+      box(ctx, 8, 24, 30, 18, 5)                                  // body
+      poly(ctx, [[10, 24], [4, 8], [12, 6], [18, 24]])            // handle
+      wheel(ctx, 46, 40, 12)                                      // blade
+      cut(ctx, () => wheel(ctx, 46, 40, 4))                       // arbor
+      wheel(ctx, 16, 48, 6)                                       // rear wheel
+    },
+  },
+  toolbox: {
+    label: 'Toolbox', group: 'People & tools',
+    draw: (ctx) => {
+      box(ctx, 8, 24, 48, 24, 5)
+      box(ctx, 24, 16, 16, 10, 4)                                 // handle
+    },
+  },
+  bucket: {
+    label: 'Bucket / attachment', group: 'People & tools',
+    draw: (ctx) => {
+      poly(ctx, [[8, 18], [40, 18], [50, 30], [42, 50], [8, 50]])
+      cut(ctx, () => poly(ctx, [[16, 26], [36, 26], [40, 32], [36, 42], [16, 42]]))
+    },
+  },
+  'light-tower': {
+    label: 'Light tower', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 6, 40, 40, 9, 2)                                   // trailer bed
+      box(ctx, 26, 8, 8, 34, 2)                                   // mast
+      box(ctx, 14, 2, 32, 11, 3)                                  // light bar
+      wheel(ctx, 16, 51, 6); wheel(ctx, 36, 51, 6)
+    },
+  },
+  pump: {
+    label: 'Pump', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 12, 22, 30, 22, 5)                                 // body
+      box(ctx, 4, 28, 10, 10, 2)                                  // inlet
+      box(ctx, 40, 12, 10, 16, 2)                                 // outlet riser
+      wheel(ctx, 18, 50, 6); wheel(ctx, 40, 50, 6)
+    },
+  },
+  'message-board': {
+    label: 'Message board', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 8, 6, 44, 26, 3)                                   // panel
+      cut(ctx, () => poly(ctx, [[18, 19], [36, 10], [36, 28]]))   // arrow
+      box(ctx, 26, 32, 8, 10, 2)                                  // mast
+      box(ctx, 8, 42, 42, 8, 2)                                   // trailer
+      wheel(ctx, 18, 52, 6); wheel(ctx, 40, 52, 6)
+    },
+  },
+  'equipment-trailer': {
+    label: 'Equipment trailer', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 4, 32, 44, 8, 2)                                   // deck
+      box(ctx, 6, 18, 8, 14, 2); box(ctx, 16, 18, 8, 14, 2)       // stowed ramps
+      poly(ctx, [[48, 33], [62, 40], [62, 46], [48, 40]])         // tongue
+      wheel(ctx, 24, 46, 6.5); wheel(ctx, 38, 46, 6.5)            // tandem
+    },
+  },
+  'dump-trailer': {
+    label: 'Dump trailer', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 6, 14, 40, 8, 3)                                   // rim
+      poly(ctx, [[6, 20], [44, 20], [46, 40], [8, 40]])           // tub
+      poly(ctx, [[46, 34], [62, 40], [62, 46], [46, 41]])         // tongue
+      wheel(ctx, 20, 47, 6.5); wheel(ctx, 34, 47, 6.5)
+    },
+  },
+  'enclosed-trailer': {
+    label: 'Enclosed trailer', group: 'Trailers & site',
+    draw: (ctx) => {
+      box(ctx, 4, 12, 44, 30, 5)                                  // box body
+      poly(ctx, [[48, 34], [62, 40], [62, 46], [48, 41]])         // tongue
+      wheel(ctx, 18, 48, 6.5); wheel(ctx, 34, 48, 6.5)
+    },
+  },
 }
 
 /** The four type defaults — exactly the glyphs every fleet rendered before
@@ -336,7 +446,7 @@ export const TYPE_DEFAULT_ICON: Record<AssetType, string> = {
 
 /** Picker section order (object key order isn't guaranteed meaningful). */
 export const ICON_GROUPS: AssetIconDef['group'][] =
-  ['Trucks & road', 'Dirt & lifting', 'Ag & grounds', 'Support', 'People & tools']
+  ['Basic', 'Trucks & road', 'Dirt & lifting', 'Ag & grounds', 'Trailers & site', 'People & tools']
 
 /** Own-property test that runs on every phone. `Object.hasOwn` is ES2022 —
  *  Samsung Internet and older Android System WebViews (Chromium < 93) throw
@@ -355,22 +465,29 @@ export function resolveAssetIcon(type: AssetType, metadata?: Record<string, unkn
   return TYPE_DEFAULT_ICON[type] ?? 'pickup'
 }
 
-/** Picker/preview rendering: the glyph as it appears on the map — a colored
- *  puck with the dark silhouette inside. Client-only (canvas). */
-export function iconPreviewDataUrl(key: string, puck = '#ff9e16', glyph = '#04121d', size = 44): string {
+/** Picker/preview rendering — the dot EXACTLY as the live map draws it: a
+ *  colored puck with the map's 2px dark ring and the dark silhouette at the
+ *  map's proportion (icon-size 0.19 × 64 ≈ 12px inside a radius-10 dot →
+ *  61% of the diameter). Rendered at the display size × the real device
+ *  pixel ratio (up to 3×) so phones get crisp edges, not a downscaled blur.
+ *  Client-only (canvas). */
+export function iconPreviewDataUrl(key: string, puck = '#ff9e16', glyph = '#04121d', size = 44, ring = '#04121d'): string {
   if (typeof document === 'undefined') return ''
   const def = hasOwn(ASSET_ICONS, key) ? ASSET_ICONS[key] : undefined
   if (!def) return ''
   const c = document.createElement('canvas')
-  const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)
-  c.width = size * dpr; c.height = size * dpr
+  const dpr = Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)
+  c.width = Math.round(size * dpr); c.height = Math.round(size * dpr)
   const ctx = c.getContext('2d')
   if (!ctx) return ''
   ctx.scale(dpr, dpr)
-  ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2)
+  // Map dot: radius 10, stroke 2 → the ring is a fifth of the radius.
+  const r = size / 2 - 0.5
+  const stroke = Math.max(1.5, r * 0.2)
+  ctx.beginPath(); ctx.arc(size / 2, size / 2, r - stroke / 2, 0, Math.PI * 2)
   ctx.fillStyle = puck; ctx.fill()
-  // Glyph at ~62% of the puck, centered — matches the map's dot proportions.
-  const g = size * 0.62
+  ctx.lineWidth = stroke; ctx.strokeStyle = ring; ctx.stroke()
+  const g = (2 * r) * 0.61
   ctx.save()
   ctx.translate((size - g) / 2, (size - g) / 2)
   ctx.scale(g / 64, g / 64)
