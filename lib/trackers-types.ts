@@ -54,6 +54,11 @@ export interface MoveRow {
   moved_buffered: number
   replacement_tracker_id: string | null
   note: string | null
+  /** Attach only: pings on from_asset in [pulled_since ?? swap_at, pulled_until)
+   *  came along — the stretch the box had already spent on the new machine
+   *  before it was taken off the old record (097). Null = nothing pulled. */
+  pulled_since?: string | null
+  pulled_until?: string | null
   created_at: string
   undone_at: string | null
   /** Undo window still open (30 days, not already undone). */

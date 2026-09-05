@@ -144,6 +144,7 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
       id: m.id, kind: m.kind, tracker_id: m.tracker_id, swap_at: m.swap_at,
       moved_locations: m.moved_locations, moved_buffered: m.moved_buffered,
       replacement_tracker_id: m.replacement_tracker_id, note: m.note,
+      pulled_since: m.pulled_since ?? null, pulled_until: m.pulled_until ?? null,
       created_at: m.created_at, undone_at: m.undone_at,
       from_asset: f ? { id: f.id, name: f.name } : null,
       to_asset: t ? { id: t.id, name: t.name } : null,
@@ -157,14 +158,14 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
 /** What the asset page's Tracker sheet needs to offer choices: the drawer,
  *  and the trackers on OTHER assets (a take), plus trackerless assets. */
 export async function getTrackerChoices(companyId: string, assetId: string): Promise<{
-  drawer: { imei: string; model: DeviceModel | null; label: string | null; lastSeen: string | null; unassignedSince: string | null }[]
+  drawer: { imei: string; model: DeviceModel | null; label: string | null; lastSeen: string | null; unassignedSince: string | null; cameOff: string | null }[]
   onOthers: { imei: string; assetId: string; assetName: string }[]
   trackerless: { id: string; name: string; type: AssetType }[]
 }> {
   const o = await getTrackersOverview(companyId)
   if (isMock) {
     return {
-      drawer: o.unassigned.map((u) => ({ imei: u.imei, model: u.model, label: u.label, lastSeen: u.lastSeen?.timestamp ?? null, unassignedSince: u.unassignedSince })),
+      drawer: o.unassigned.map((u) => ({ imei: u.imei, model: u.model, label: u.label, lastSeen: u.lastSeen?.timestamp ?? null, unassignedSince: u.unassignedSince, cameOff: null })),
       onOthers: o.installed.filter((i) => i.asset && i.asset.id !== assetId).map((i) => ({ imei: i.imei, assetId: i.asset!.id, assetName: i.asset!.name })),
       trackerless: [],
     }
@@ -173,8 +174,30 @@ export async function getTrackerChoices(companyId: string, assetId: string): Pro
   const db = createClient()
   const { data } = await db.from('assets').select('id, name, type')
     .eq('company_id', companyId).eq('active', true).is('deleted_at', null).is('tracker_id', null).neq('id', assetId).order('name')
+  // Which machine each drawer box was last taken off (its latest standing
+  // change is a detach) — the sheet says so, because putting it on another
+  // machine "as of" an earlier time brings that stretch of pings along.
+  const cameOff = new Map<string, string>()
+  if (o.unassigned.length) {
+    const { data: mv } = await db.from('tracker_moves').select('tracker_id, kind, from_asset_id')
+      .eq('company_id', companyId).in('tracker_id', o.unassigned.map((u) => u.imei)).is('undone_at', null)
+      .order('created_at', { ascending: false }).limit(200)
+    // Newest standing change per box; only a detach names a previous holder.
+    const fromId = new Map<string, string>()
+    for (const m of (mv ?? []) as { tracker_id: string; kind: string; from_asset_id: string | null }[]) {
+      if (fromId.has(m.tracker_id)) continue
+      fromId.set(m.tracker_id, m.kind === 'detach' && m.from_asset_id && m.from_asset_id !== assetId ? m.from_asset_id : '')
+    }
+    const ids = Array.from(new Set(Array.from(fromId.values()).filter(Boolean)))
+    if (ids.length) {
+      // Trackerless (or soft-deleted) now, so not in `installed` — one lookup.
+      const { data: rows } = await db.from('assets').select('id, name').in('id', ids)
+      const names = new Map(((rows ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name]))
+      fromId.forEach((id, imei) => { const n = id && names.get(id); if (n) cameOff.set(imei, n) })
+    }
+  }
   return {
-    drawer: o.unassigned.map((u) => ({ imei: u.imei, model: u.model, label: u.label, lastSeen: u.lastSeen?.timestamp ?? null, unassignedSince: u.unassignedSince })),
+    drawer: o.unassigned.map((u) => ({ imei: u.imei, model: u.model, label: u.label, lastSeen: u.lastSeen?.timestamp ?? null, unassignedSince: u.unassignedSince, cameOff: cameOff.get(u.imei) ?? null })),
     onOthers: o.installed.filter((i) => i.asset && i.asset.id !== assetId).map((i) => ({ imei: i.imei, assetId: i.asset!.id, assetName: i.asset!.name })),
     trackerless: ((data ?? []) as { id: string; name: string; type: AssetType }[]),
   }
@@ -292,19 +315,56 @@ async function refillBuffer(db: Db, companyId: string, imei: string, assetId: st
   return total
 }
 
-async function movePings(db: Db, companyId: string, fromAsset: string, toAsset: string, sinceIso: string, direction: 'gte' | 'lt'): Promise<number> {
+async function movePings(db: Db, companyId: string, fromAsset: string, toAsset: string, sinceIso: string, direction: 'gte' | 'lt', untilIso?: string | null): Promise<number> {
   // created_at = now: trail_daily (087) and the zone ledger's late-data
   // widening (090) rebuild the days whose rows ARRIVED since the last run.
   // Re-parenting without re-stamping left the 7d/30d trails on the old asset
   // forever (ship-check P1, Sep 4).
-  const q = db.from('asset_locations').update({ asset_id: toAsset, created_at: new Date().toISOString() }).eq('asset_id', fromAsset).eq('company_id', companyId)
-  const { data } = await (direction === 'gte' ? q.gte('timestamp', sinceIso) : q.lt('timestamp', sinceIso)).select('id')
+  let q = db.from('asset_locations').update({ asset_id: toAsset, created_at: new Date().toISOString() }).eq('asset_id', fromAsset).eq('company_id', companyId)
+  q = direction === 'gte' ? q.gte('timestamp', sinceIso) : q.lt('timestamp', sinceIso)
+  // Exclusive upper bound — a pull from a previous holder stops where that
+  // holder stopped wearing the box (see previousHolder).
+  if (untilIso) q = q.lt('timestamp', untilIso)
+  const { data, error } = await q.select('id')
+  if (error) console.error('movePings failed:', error.message)
   return data?.length ?? 0
+}
+
+/**
+ * The asset that wore `imei` until it was taken off into the drawer — the
+ * latest still-standing change to this tracker, when that change is a detach.
+ * `until` is the real moment the box came off (the detach's created_at): every
+ * ping on that asset before it, from the attach's "as of" onward, is this
+ * tracker's and follows it to the new machine. Two-step reassignments (take
+ * off → put on, both back-dated) used to leave that whole stretch on the old
+ * record (Brian, Sep 4: the placeholder "tat141 - 6" kept the day the TAT141
+ * had already spent in the Silverado).
+ */
+async function previousHolder(db: Db, companyId: string, imei: string, excludeAssetId: string):
+  Promise<{ id: string; name: string; until: string; wornSince: string | null } | null> {
+  const { data: last } = await db.from('tracker_moves').select('kind, from_asset_id, created_at')
+    .eq('company_id', companyId).eq('tracker_id', imei).is('undone_at', null)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (!last || last.kind !== 'detach' || !last.from_asset_id || last.from_asset_id === excludeAssetId) return null
+  const a = await loadAsset(db, companyId, last.from_asset_id)
+  if (!a) return null
+  // Lower bound: when this box went ON that machine (its standing attach/move
+  // there). Rows before that belong to whatever it wore earlier, however far
+  // back the user's "as of" reaches. Unknown (put on via Edit/Scan/Bulk) =
+  // the user's time rules, as it does for a take from an active holder.
+  const { data: on } = await db.from('tracker_moves').select('swap_at')
+    .eq('company_id', companyId).eq('tracker_id', imei).eq('to_asset_id', a.id).is('undone_at', null)
+    .in('kind', ['attach', 'move']).lt('created_at', last.created_at)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  // The detach moment bounds the pull above: nothing newer than the pull-off
+  // can move, so a box the machine wears NOW keeps its rows.
+  return { id: a.id, name: a.name, until: last.created_at, wornSince: on?.swap_at ?? null }
 }
 
 async function recordMove(db: Db, companyId: string, actorId: string | null, row: {
   kind: MoveRow['kind']; tracker_id: string; from_asset_id: string | null; to_asset_id: string | null
   swap_at: string; moved_locations?: number; moved_buffered?: number; replacement_tracker_id?: string | null; note?: string | null
+  pulled_since?: string | null; pulled_until?: string | null
 }) {
   await db.from('tracker_moves').insert({ company_id: companyId, actor_id: actorId, moved_locations: 0, moved_buffered: 0, ...row })
 }
@@ -359,15 +419,24 @@ async function putOn(db: Db, companyId: string, actorId: string | null, asset: {
     return { ok: false, error: error.code === '23505' ? `Tracker …${imei.slice(-4)} is registered to another account. Check the IMEI.` : 'Could not save the tracker.' }
   }
   if (holder) moved = await movePings(db, companyId, holder.id, asset.id, sinceIso, 'gte')
+  // From the drawer: the box's pings from `sinceIso` up to the moment it was
+  // pulled still sit on the machine it came off. They are this tracker's —
+  // bring them along, bounded by the pull-off so nothing newer can move.
+  const prev = holder ? null : await previousHolder(db, companyId, imei, asset.id)
+  const pullFrom = prev && prev.wornSince && Date.parse(prev.wornSince) > Date.parse(sinceIso) ? prev.wornSince : sinceIso
+  const pulled = prev && Date.parse(prev.until) > Date.parse(pullFrom)
+    ? await movePings(db, companyId, prev.id, asset.id, pullFrom, 'gte', prev.until) : 0
+  moved += pulled
   const buffered = await drainBuffer(db, companyId, imei, asset.id, sinceIso)
   await ensureRegistered(db, companyId, imei)
   await db.from('device_onboarding').update({ unassigned_since: null, updated_at: new Date().toISOString() })
     .eq('company_id', companyId).eq('imei', imei)
   await recordMove(db, companyId, actorId, {
-    kind: holder ? 'move' : 'attach', tracker_id: imei, from_asset_id: holder?.id ?? null, to_asset_id: asset.id,
+    kind: holder ? 'move' : 'attach', tracker_id: imei, from_asset_id: holder?.id ?? (pulled > 0 ? prev!.id : null), to_asset_id: asset.id,
     swap_at: sinceIso, moved_locations: moved, moved_buffered: buffered, note: group,
+    pulled_since: pulled > 0 ? pullFrom : null, pulled_until: pulled > 0 ? prev!.until : null,
   })
-  return { ok: true, moved, buffered, takenFrom: holder?.name ?? null }
+  return { ok: true, moved, buffered, takenFrom: holder?.name ?? (pulled > 0 ? prev!.name : null) }
 }
 
 export async function changeTracker(companyId: string, actorId: string | null, assetId: string, change: TrackerChange): Promise<ChangeResult> {
@@ -470,6 +539,10 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
           const { error } = await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
           if (error) return { ok: false, error: 'Could not release the tracker.' }
         }
+        // Pings pulled from the machine the box was taken off go back there
+        // (same bounded window); drawer pings (tagged _buffered) go back to
+        // the drawer below — the two windows never overlap.
+        if (from && m.pulled_until) await movePings(db, companyId, to.id, from.id, m.pulled_since ?? m.swap_at, 'gte', m.pulled_until)
         await refillBuffer(db, companyId, m.tracker_id, to.id, m.swap_at)
         await db.from('device_onboarding').update({ unassigned_since: m.swap_at }).eq('company_id', companyId).eq('imei', m.tracker_id)
         break

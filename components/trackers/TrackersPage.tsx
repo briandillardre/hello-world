@@ -59,6 +59,11 @@ export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdi
   }
 
   return (
+    // Own scroll container: the dashboard shell's <main> is overflow-hidden
+    // and every page brings its own (zones/maintenance use the same wrapper).
+    // Without it the list below the fold was unreachable on phones (Brian,
+    // Sep 5: "can't scroll down on trackers page on mobile app").
+    <div className="h-full overflow-auto pb-[54px] md:pb-20">
     <div className="p-4 md:p-6 max-w-3xl space-y-6">
       <div>
         <h1 className="font-display text-xl font-bold text-ink flex items-center gap-2"><Radio className="h-5 w-5 text-amber" /> Trackers</h1>
@@ -208,6 +213,7 @@ export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdi
         Bluetooth tool tags live on <Link href="/tags" className="text-teal underline">Tag scanner</Link>; SIM and config steps for a new box on <Link href="/assets/onboard" className="text-teal underline">Hardware setup</Link>.
       </p>
     </div>
+    </div>
   )
 }
 
@@ -217,7 +223,7 @@ function describe(m: MoveRow): string {
   const from = m.from_asset?.name ?? 'a deleted machine'
   const to = m.to_asset?.name ?? 'a deleted machine'
   switch (m.kind) {
-    case 'attach': return `${t} put on "${to}" as of ${at}.`
+    case 'attach': return `${t} put on "${to}" as of ${at}.${m.from_asset && m.pulled_until ? ` Its pings from then until it was pulled came over from "${from}".` : ''}`
     case 'detach': return `${t} taken off "${from}" as of ${at}, into the drawer.`
     case 'move': return `${t} moved from "${from}" to "${to}" as of ${at}.`
     case 'split_history': return `"${from}" kept ${t}; its history before ${at} split off to "${to}".`
