@@ -30,7 +30,7 @@ const MOCK_DEVICES: DeviceWithLive[] = [
     id: 'dev-1', imei: '863452084048569', model: 'FMM00A', label: 'Chevy 1500', iccid: '89883070000084226461',
     steps: { battery: '2026-08-26T01:00:00Z', sim_in: '2026-08-26T01:05:00Z', paired: '2026-08-26T01:05:00Z', sim_active: '2026-08-26T01:45:00Z', config_queued: '2026-08-26T02:45:00Z', installed: '2026-08-26T03:00:00Z' },
     notes: null, created_at: '2026-08-26T01:00:00Z',
-    live: { registered: true, everReported: true, ageMin: 4, hasFix: true, beacons: 2, assetId: 'a1', assetName: 'Chevy 1500 - Brian' },
+    live: { registered: true, everReported: true, ageMin: 4, hasFix: true, beacons: 2, assetId: 'a1', assetName: 'Chevy 1500' },
   },
   {
     id: 'dev-2', imei: '869267077050677', model: 'TAT141', label: 'Takeuchi TB235', iccid: '89883070000084226537',
