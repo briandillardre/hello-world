@@ -26,7 +26,7 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
-import { twilightBands } from '@/lib/terminator'
+import { twilightBands, sunAt } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
@@ -985,6 +985,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
 
   const tracksEff = dayData?.tracks ?? tracks
   const realWindowEff = dayData?.window ?? null
+  // Daylight shading follows the replay clock only where a day still reads
+  // as a day: Today · Yesterday · 7d · 30d (Brian, Sep 4). YTD / All would
+  // strobe through hundreds of nights in one sweep — the ☀ chip greys out
+  // and the shade hides until a shorter range is picked.
+  const daylightBlocked = range === 'ytd' || range === 'all' || (!!realWindowEff && realWindowEff.to - realWindowEff.from > 31.5 * 86_400_000)
   const realCostEff = dayData?.cost ?? null
   const realZoneCostsEff = dayData?.zones ?? null
   realZoneCostsRef.current = realZoneCostsEff
@@ -1545,7 +1550,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
 
     // Scale bar (Google Maps staple) — feet/miles, bottom-left, out of the
     // way of the timeline. Doubles as a sanity check on drone-overlay sizing.
-    map.current.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'imperial' }), 'bottom-left')
+    // Phones: 56px max — the default 90 ran into the collapsed TIMELINE pill
+    // at some zooms (Brian, Sep 4); the bar itself is restyled in globals.css.
+    const phoneScale = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+    map.current.addControl(new maplibregl.ScaleControl({ maxWidth: phoneScale ? 56 : 90, unit: 'imperial' }), 'bottom-left')
 
     // "Show your location" follows the convention every Google Maps user
     // already knows: the moment you locate, the map goes north-up, no tilt.
@@ -3980,10 +3988,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     // Throttled: scrub drags fire at 60fps; the sky repaints ≤ ~3×/s and the
     // regular tick trues it up within 2s of the drag ending.
     const noww = Date.now()
+    // Day/night throttles itself (≤ ~8×/s with a trailing call) so the last
+    // scrub position always lands; the sky stays at ≤ 3×/s.
+    dayNightKickRef.current?.()
     if (noww - skyKickWall.current < 300) return
     skyKickWall.current = noww
     skyKickRef.current?.()
-    dayNightKickRef.current?.()
     swarmWorkerRef.current?.postMessage({ simOffset: simTimeRef.current != null ? simTimeRef.current - Date.now() : null })
   }, [displayT, range])
 
@@ -4981,15 +4991,19 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // creeps west. The NASA "City lights" raster remains the separate
   // whole-planet nighttime look for the dark basemap.
   const cityCatRef = useRef<{ lat: number; lon: number; pop: number }[] | null>(null)
+  // ☀ readout for the timeline chip — the sun at the map's center at the
+  // clock's moment ("Sun 41° SW", "Civil dusk"). Updated ≤ 1×/s.
+  const [sunReadout, setSunReadout] = useState<{ elevation: number; azimuth: number } | null>(null)
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    const on = !!overlaysOn.daynight
+    const on = !!overlaysOn.daynight && !daylightBlocked
     for (const lid of ['daynight-shade', 'citylight-glow', 'citylight-core']) {
       if (m.getLayer(lid)) m.setLayoutProperty(lid, 'visibility', on ? 'visible' : 'none')
     }
-    if (!on) return
+    if (!on) { setSunReadout(null); return }
     let cancelled = false
+    let lastReadout = 0
 
     const cityFeatures = (): GeoJSON.Feature[] => {
       const cat = cityCatRef.current
@@ -5026,6 +5040,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       const at = simTimeRef.current != null ? new Date(simTimeRef.current) : new Date()
       ;(m.getSource('daynight') as maplibregl.GeoJSONSource | undefined)?.setData(twilightBands(at) as GeoJSON.GeoJSON)
       ;(m.getSource('citylights') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: cityFeatures() })
+      if (Date.now() - lastReadout > 900) {
+        lastReadout = Date.now()
+        const c = m.getCenter()
+        setSunReadout(sunAt(c.lat, c.lng, at))
+      }
     }
 
     if (!m.getSource('daynight')) {
@@ -5035,7 +5054,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // Stacked translucent bands accumulate: day → dusk → deep night.
       m.addLayer({
         id: 'daynight-shade', type: 'fill', source: 'daynight',
-        paint: { 'fill-color': '#020817', 'fill-opacity': ['get', 'op'], 'fill-antialias': false },
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'], 'fill-antialias': false },
       }, beforeId)
       m.addLayer({
         id: 'citylight-glow', type: 'circle', source: 'citylights',
@@ -5069,10 +5088,20 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         .catch(() => { /* shading still works without the lights */ })
     }
 
-    dayNightKickRef.current = refresh
+    // Scrub drags kick at 60fps: repaint ≤ ~8×/s with a trailing call so the
+    // final position always lands (the 60s tick used to be the only true-up,
+    // so a paused replay could sit under the wrong night for a minute).
+    let kickTimer: ReturnType<typeof setTimeout> | null = null
+    let lastKick = 0
+    const kick = () => {
+      const wait = 120 - (Date.now() - lastKick)
+      if (wait <= 0) { lastKick = Date.now(); refresh(); return }
+      if (!kickTimer) kickTimer = setTimeout(() => { kickTimer = null; lastKick = Date.now(); refresh() }, wait)
+    }
+    dayNightKickRef.current = kick
     const id = setInterval(refresh, 60_000)
-    return () => { cancelled = true; clearInterval(id); dayNightKickRef.current = null }
-  }, [mapReady, overlaysOn.daynight])
+    return () => { cancelled = true; clearInterval(id); if (kickTimer) clearTimeout(kickTimer); dayNightKickRef.current = null }
+  }, [mapReady, overlaysOn.daynight, daylightBlocked])
 
   // ── Wind flow: animated particles advected through model wind ─────────────
   // Live view only — the scrubber rule says nothing animates on its own while
@@ -6814,6 +6843,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           loading={historyLoadingKey !== null}
           tz={tz}
           kiosk={kiosk}
+          daylight={!!overlaysOn.daynight}
+          onDaylight={() => setOverlaysOn((prev) => ({ ...prev, daynight: !prev.daynight }))}
+          daylightBlocked={daylightBlocked}
+          sun={sunReadout}
           trailMode={trailMode}
           onTrailMode={setTrailMode}
           markerStyle={markerStyle}

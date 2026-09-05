@@ -246,7 +246,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'satswarm', label: '↳ 11k satellites', group: 'sky', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
   // Ex-"Night effects" sub-group (killed Aug 16) — now an ordinary row; its
   // gating still flows through rowState like every other row.
-  { id: 'daynight', label: 'Day / night (real)', group: 'sky', status: 'live', hint: 'your basemap in daylight, dusk fading to dark, real cities glowing on the night side — the line creeps west live' },
+  { id: 'daynight', label: 'Daylight & night (real sun)', group: 'sky', status: 'live', hint: 'the sun’s light as it is right now — or at the replay moment on Today · Yesterday · 7d · 30d (the ☀ chip in the timeline is this same switch) · golden hour, dusk fading to night, real cities glowing after dark' },
   // ('nightlights' promoted to the 'night' BASEMAP Aug 11 — saved views that
   // still carry the overlay key are silently ignored.)
 ]
