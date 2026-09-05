@@ -201,6 +201,7 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
   const openWo = asset.openWorkOrders ?? 0
   const toolsAboard = aboard?.length ?? 0
   const isTool = asset.type === 'tool'
+  const crew = typeof asset.metadata?.crew === 'string' && asset.metadata.crew ? (asset.metadata.crew as string) : null
 
   const facts: { label: string; value: string; cls?: string }[] = []
   if (!isTool && loc?.speed != null) facts.push({ label: 'Speed', value: `${loc.speed} mph`, cls: loc.speed > 2 ? 'text-amber' : undefined })
@@ -237,8 +238,11 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
       )}
 
       {/* Only-when-true lines — each one is a reason to tap Details. */}
-      {(overdue > 0 || openWo > 0 || toolsAboard > 0 || (travelingWith?.length ?? 0) > 0) && (
+      {(overdue > 0 || openWo > 0 || toolsAboard > 0 || (travelingWith?.length ?? 0) > 0 || crew) && (
         <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+          {crew && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-teal/40 bg-teal/10 text-teal px-1.5 py-0.5">👷 {crew}</span>
+          )}
           {overdue > 0 && (
             <Link href={`/assets/${asset.id}#maintenance`} className="inline-flex items-center gap-1 rounded-md border border-alert/40 bg-alert/10 text-alert px-1.5 py-0.5">
               <Wrench className="h-3 w-3" /> {overdue} service overdue

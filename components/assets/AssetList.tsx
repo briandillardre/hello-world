@@ -123,6 +123,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
     return a.name.toLowerCase().includes(q) ||
       (a.tracker_id?.toLowerCase().includes(q) ?? false) ||
       (a.category?.toLowerCase().includes(q) ?? false) ||
+      (crewOf(a)?.toLowerCase().includes(q) ?? false) ||
       (a.serial?.toLowerCase().includes(q) ?? false) ||
       (typeof vin === 'string' && vin.toLowerCase().includes(q))
   }
@@ -246,11 +247,16 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
           onSubmit={handleAdd}
           saving={saving}
           error={error}
+          crewOptions={Array.from(new Set(assets.map((a) => crewOf(a)).filter(Boolean) as string[])).sort()}
         />
       )}
     </div>
   )
 }
+
+/** metadata.crew, or null. */
+const crewOf = (a: { metadata?: Record<string, unknown> | null }): string | null =>
+  typeof a.metadata?.crew === 'string' && a.metadata.crew ? (a.metadata.crew as string) : null
 
 function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; zoneName?: string }) {
   const status = rowStatus(asset)
@@ -311,6 +317,7 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
           {/* Place AND time — the row used to show one or the other. Tracker
               ID stays searchable + on the detail page. */}
           {zoneName && <span className="min-w-0 max-w-full truncate">at {zoneName}</span>}
+          {crewOf(asset) && <span className="min-w-0 max-w-full truncate text-teal">👷 {crewOf(asset)}</span>}
           {fixLabel && (
             <span className="flex items-center gap-0.5 flex-shrink-0" suppressHydrationWarning>
               <Clock className="h-3 w-3" />

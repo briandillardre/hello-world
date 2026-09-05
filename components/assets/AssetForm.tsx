@@ -90,6 +90,8 @@ export function parseCost(v: string): number | null {
 }
 
 interface AssetFormProps {
+  /** Crews already in use across the fleet — the dropdown; "New crew…" adds one. */
+  crewOptions?: string[]
   onClose: () => void
   onSubmit: (data: AssetFormData, photos?: NewPhoto[]) => void
   saving?: boolean
@@ -212,7 +214,7 @@ function IconPicker({ value, type, puck, onChange }: {
   )
 }
 
-export function AssetForm({ onClose, onSubmit, saving = false, error = null, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos }: AssetFormProps) {
+export function AssetForm({ onClose, onSubmit, saving = false, error = null, initial, initialPhotos = [], onDeleteExistingPhoto, onReorderPhotos, crewOptions = [] }: AssetFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [type, setType] = useState<AssetType>(initial?.type ?? 'vehicle')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -225,6 +227,13 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
   // Specs (year/make/model/engine…) — hand-entered on edit or filled by the
   // free NHTSA VIN decoder. Rendered as Details rows on the asset page.
   const [specs, setSpecs] = useState<Record<string, unknown>>(initial?.metadata ?? {})
+  // Crew / team the machine runs with (Brian, Sep 4). Stored as
+  // metadata.crew — same no-schema pattern as icon and color. Pick one the
+  // fleet already uses, or type a new one; blank = none.
+  const initialCrew = typeof initial?.metadata?.crew === 'string' ? (initial.metadata.crew as string) : ''
+  const [crew, setCrew] = useState(initialCrew)
+  const [newCrew, setNewCrew] = useState(!!initialCrew && !crewOptions.includes(initialCrew))
+  const crewChoices = Array.from(new Set([...crewOptions, ...(initialCrew ? [initialCrew] : [])])).sort((a, b) => a.localeCompare(b))
   const [decoding, setDecoding] = useState(false)
   const [decodeMsg, setDecodeMsg] = useState<string | null>(null)
 
@@ -460,7 +469,8 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
       // when the asset has none. Keep legacy hero so edits don't wipe it.
       photo_url: initial?.photo_url ?? '',
       folder_url: folderUrl.trim(),
-      tracker_id: trackerId.trim(), metadata: specs,
+      tracker_id: trackerId.trim(),
+      metadata: crew.trim() ? { ...specs, crew: crew.trim().slice(0, 60) } : Object.fromEntries(Object.entries(specs).filter(([k]) => k !== 'crew')),
       hourly_rate: parseCost(costs.hourly_rate ?? ''),
       mileage_rate: parseCost(costs.mileage_rate ?? ''),
       daily_cost: parseCost(costs.daily_cost ?? ''),
@@ -552,12 +562,42 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
               <Label htmlFor="asset-category">Category</Label>
               <Input
                 id="asset-category"
-                placeholder="e.g. Dozers, Pickups, Crew A"
+                placeholder="e.g. Dozers, Pickups"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
                 list="asset-category-suggestions"
               />
             </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="asset-crew">Crew / team</Label>
+                {newCrew && crewChoices.length > 0 && (
+                  <button type="button" onClick={() => { setNewCrew(false); setCrew('') }} className="text-[11px] font-semibold text-teal underline decoration-dotted">Pick existing</button>
+                )}
+              </div>
+              {newCrew || crewChoices.length === 0 ? (
+                <Input
+                  id="asset-crew"
+                  placeholder="e.g. Grading crew, Crew 2"
+                  value={crew}
+                  onChange={e => setCrew(e.target.value)}
+                  autoFocus={newCrew && crewChoices.length > 0}
+                />
+              ) : (
+                <Select value={crew || '__none'} onValueChange={(v) => { if (v === '__new') { setNewCrew(true); setCrew('') } else setCrew(v === '__none' ? '' : v) }}>
+                  <SelectTrigger id="asset-crew"><SelectValue placeholder="No crew" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">No crew</SelectItem>
+                    {crewChoices.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    <SelectItem value="__new">＋ New crew…</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-[11px] text-faint">Who this machine runs with. Shows on the list and the map.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="asset-serial">Serial / VIN</Label>
               <Input

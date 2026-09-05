@@ -73,6 +73,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   // What the Tracker sheet can offer: the drawer, boxes on other machines,
   // machines without one. Cheap (two small queries) and only for editors.
   const trackerChoices = canEdit ? await getTrackerChoices(companyId, asset.id) : null
+  // Every crew the fleet uses — the dropdown in Edit.
+  const crews = Array.from(new Set(assets.map((a) => (typeof a.metadata?.crew === 'string' ? (a.metadata.crew as string) : '')).filter(Boolean))).sort()
+  const crew = typeof asset.metadata?.crew === 'string' ? (asset.metadata.crew as string) : null
 
   // Pull the legacy single hero into the gallery so an orphaned old photo is
   // visible + deletable — but only when a hero exists AND the gallery hasn't
@@ -118,6 +121,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
             <div className="flex flex-wrap items-center gap-1 mt-0.5 overflow-hidden">
               <Badge variant="secondary" className="whitespace-nowrap">{TYPE_LABEL[asset.type]}</Badge>
               {asset.category && <Badge variant="outline" className="max-w-full truncate">{asset.category}</Badge>}
+              {crew && <Badge variant="outline" className="max-w-full truncate border-teal/40 text-teal">👷 {crew}</Badge>}
             </div>
           </div>
           <div className="flex-none flex items-center gap-1.5">
@@ -126,7 +130,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                 {/* sm+: the full Reassign / Edit / Delete cluster inline */}
                 <div className="hidden sm:flex items-center gap-1.5">
                   {trackerChoices && asset.type !== 'personnel' && <TrackerSheet asset={asset} choices={trackerChoices} />}
-                  <AssetActions asset={asset} photos={assetPhotos} />
+                  <AssetActions asset={asset} photos={assetPhotos} crews={crews} />
                 </div>
                 {/* phones: one ⋮ overflow menu — three buttons were fighting
                     the asset name for the same row of pixels */}
@@ -139,7 +143,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                   </summary>
                   <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[150px] rounded-xl border border-navy-700 bg-navy-900 p-2 shadow-xl flex flex-col items-stretch gap-1.5">
                     {trackerChoices && asset.type !== 'personnel' && <TrackerSheet asset={asset} choices={trackerChoices} />}
-                    <AssetActions asset={asset} photos={assetPhotos} />
+                    <AssetActions asset={asset} photos={assetPhotos} crews={crews} />
                   </div>
                 </details>
               </>

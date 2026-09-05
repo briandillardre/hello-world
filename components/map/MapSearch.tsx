@@ -288,7 +288,9 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
     return (
       <>
         <button aria-label="Close search" onClick={() => setOpen(false)} className="absolute inset-0 z-40 w-full h-full bg-black/30 cursor-default" />
-        <div className="absolute left-1/2 -translate-x-1/2 top-3 z-50 w-[min(340px,92vw)]">{body}</div>
+        {/* Phones: below the floating top bar (which now sits under the
+            status bar, edge-to-edge) — not on top of the clock. */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-[var(--ht-map-top,12px)] md:top-3 z-50 w-[min(340px,92vw)]">{body}</div>
       </>
     )
   }

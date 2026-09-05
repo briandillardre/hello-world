@@ -12,7 +12,7 @@ import { busy as trackBusy } from '@/lib/busy'
 
 /** Edit + Delete controls on the asset detail page. Edit reuses the full
  *  AssetForm (all attributes, cost structure, labeled photo gallery). */
-export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: AssetPhoto[] }) {
+export function AssetActions({ asset, photos = [], crews = [] }: { asset: Asset; photos?: AssetPhoto[]; crews?: string[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -107,6 +107,7 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
             purchase_value: asset.purchase_value,
           }}
           initialPhotos={photos}
+          crewOptions={crews}
           onDeleteExistingPhoto={handleDeletePhoto}
           onReorderPhotos={handleReorderPhotos}
         />
