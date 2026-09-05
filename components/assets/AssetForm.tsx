@@ -218,6 +218,10 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
   const [category, setCategory] = useState(initial?.category ?? '')
   const [serial, setSerial] = useState(initial?.serial ?? '')
   const [trackerId, setTrackerId] = useState(initial?.tracker_id ?? '')
+  // Editing a record that already wears a tracker: the field starts locked
+  // so a move is not done by accident — the Reassign flow is the right door.
+  const editingTracker = !!initial?.tracker_id
+  const [trackerLocked, setTrackerLocked] = useState(editingTracker)
   // Specs (year/make/model/engine…) — hand-entered on edit or filled by the
   // free NHTSA VIN decoder. Rendered as Details rows on the asset page.
   const [specs, setSpecs] = useState<Record<string, unknown>>(initial?.metadata ?? {})
@@ -505,16 +509,42 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
           {/* Tracker ID up top — it's the field that makes the asset REAL on
               the map, not an afterthought below the photos. */}
           <div className="space-y-2">
-            <Label htmlFor="tracker-id">Tracker ID</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tracker-id">Tracker ID</Label>
+              {editingTracker && trackerLocked && (
+                <button type="button" onClick={() => setTrackerLocked(false)} className="text-[11px] font-semibold text-teal underline decoration-dotted">
+                  Fix a typo
+                </button>
+              )}
+            </div>
             <Input
               id="tracker-id"
               placeholder="e.g. obd-001, bt-042, gps-007"
               value={trackerId}
               onChange={e => setTrackerId(e.target.value)}
+              disabled={editingTracker && trackerLocked}
             />
-            <p className="text-xs text-faint">
-              The ID number printed on the tracker in this machine. Reports with this ID become this asset&apos;s dots on the map.
-            </p>
+            {editingTracker ? (
+              // Editing a machine that already has a box: this field is the
+              // wrong tool for a move (Brian, Sep 4: "note not to reassign
+              // trackers using this function"). Say exactly what it does.
+              <div className="rounded-lg border border-amber/40 bg-amber/5 p-2.5 text-[12px] leading-snug space-y-1">
+                <p className="text-amber font-semibold">Not for moving a tracker.</p>
+                <p className="text-muted">
+                  Changing the ID here only changes which reports land on this record <span className="text-ink">from now on</span>.
+                  Nothing in the past moves, no history is split, and the old box is not released to the drawer.
+                </p>
+                <p className="text-muted">
+                  Tracker went into a different machine, or a different box went into this one? Use{' '}
+                  <span className="text-ink font-semibold">Reassign tracker</span> on the machine&apos;s page — it cuts the history at the right
+                  moment and can be undone for 30 days. Use this field only to correct a mistyped ID.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-faint">
+                The ID number printed on the tracker in this machine. Reports with this ID become this asset&apos;s dots on the map.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

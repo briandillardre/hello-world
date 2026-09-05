@@ -62,6 +62,9 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   themeColor: '#002946',
+  // Lets env(safe-area-inset-*) report real values under an overlaid status
+  // bar (the native shell) and iOS notches.
+  viewportFit: 'cover',
 }
 
 // Vercel Web Analytics loads /_vercel/insights/script.js, which 404s (a console

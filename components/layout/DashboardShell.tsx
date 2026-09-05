@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
@@ -51,10 +52,14 @@ export function DashboardShell({
     })
 
   const askAi = !features || features.includes('ask_ai')
+  // The map runs edge-to-edge under the (overlaid) status bar; every other
+  // page pads for it so its header is not under the clock.
+  const pathname = usePathname()
+  const edge = pathname?.startsWith('/map')
   return (
     <>
       <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} askAi={askAi} />
-      <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200 flex flex-col'}>
+      <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200 flex flex-col' + (edge ? '' : ' ht-page-inset')}>
         {viewingAs && <ViewAsBanner name={viewingAs.name} roleLabel={viewingAs.roleLabel} />}
         <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       </main>

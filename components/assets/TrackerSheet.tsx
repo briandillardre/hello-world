@@ -51,7 +51,7 @@ const short = (imei: string) => `…${imei.slice(-4)}`
  * /trackers. Replaces ReassignTracker, whose "moved OFF / kept it" framing
  * needed a diagram (Brian, Sep 4: "make this transition easier").
  */
-export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset; choices: TrackerChoices; compact?: boolean }) {
+export function TrackerSheet({ asset, choices }: { asset: Asset; choices: TrackerChoices }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -229,7 +229,7 @@ export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset
         title={has ? `Tracker …${asset.tracker_id!.slice(-4)} — swap, move, or take it out` : 'Put a tracker on this machine'}
         className={'inline-flex items-center gap-1.5 rounded-lg border text-sm font-semibold px-3 py-2 transition-colors whitespace-nowrap ' + (has ? 'border-navy-700 text-ink hover:bg-navy-800' : 'border-amber/50 bg-amber/10 text-amber hover:bg-amber/20')}
       >
-        <Radio className="h-4 w-4" /> {has ? (compact ? 'Tracker' : `Tracker ${short(asset.tracker_id!)}`) : 'Add tracker'}
+        <Radio className="h-4 w-4" /> {has ? 'Reassign tracker' : 'Add tracker'}
       </button>
 
       {open && (
