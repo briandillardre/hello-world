@@ -126,7 +126,12 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
   }
 
   return (
-    <div className={`rounded-xl border bg-navy-900 ${allDone ? 'border-teal/40' : 'border-navy-800'}`}>
+    <div className={`rounded-xl border ${
+      // No asset carries this IMEI → nothing it reports can land anywhere.
+      // Obvious tint + tag (Brian, Sep 4), not a line buried in the card.
+      !device.live.registered ? 'bg-amber/[0.07] border-amber/50 border-l-[3px] border-l-amber'
+        : allDone ? 'bg-navy-900 border-teal/40' : 'bg-navy-900 border-navy-800'
+    }`}>
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full text-left p-4 space-y-2.5"
@@ -143,6 +148,9 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
               </span>
               {allDone && (
                 <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-teal">live</span>
+              )}
+              {!device.live.registered && (
+                <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-amber border border-amber/50 rounded px-1.5 py-0.5">unassigned</span>
               )}
             </div>
             <p className="text-[11.5px] font-mono text-faint mt-0.5">{device.imei}</p>

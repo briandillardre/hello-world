@@ -147,6 +147,15 @@ const MAKE_SUGGESTIONS = [
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
 ]
 
+/** What each type MEANS to the system — the four change how an asset is
+ *  tracked and billed, so they stay four. Everything else is Category. */
+export const TYPE_PURPOSE: Record<AssetType, string> = {
+  vehicle: 'Drives itself, OBD plug-in tracker: trips, speed, driver grades, $/mile. What it is (dump, day cab, pickup) goes in Category + map icon.',
+  equipment: 'A machine with its own GPS tracker or OEM telematics: engine hours, idle, site presence billing. Roller, dozer, trailer = Category + map icon.',
+  personnel: 'A person with the phone app: clock in/out and location. No machine costs.',
+  tool: 'A Bluetooth tag with no GPS of its own: its location comes from whichever truck or machine is carrying it; site presence hours only.',
+}
+
 // Map-dot colors by type — mirrors the map's ASSET_COLORS so the picker
 // previews exactly what the dot will look like on the live map.
 const TYPE_PUCK_COLORS: Record<AssetType, string> = {
@@ -163,15 +172,31 @@ function IconPicker({ value, type, puck, onChange }: {
   // rate, and each puck change re-encodes 28 canvases — defer so the grid
   // repaints once per settled color, not per pointer move (ship-check).
   const settledPuck = useDeferredValue(puck)
+  // Tiles render at their DISPLAY size (40px) × device pixel ratio — the old
+  // 44px canvas shown at 30px blurred on phones and read as "rough"
+  // (Brian, Sep 4). Same renderer the map's proportions come from.
   const previews = useMemo(() => {
     if (!mounted) return {} as Record<string, string>
-    return Object.fromEntries(Object.keys(ASSET_ICONS).map((k) => [k, iconPreviewDataUrl(k, settledPuck)]))
+    return Object.fromEntries(Object.keys(ASSET_ICONS).map((k) => [k, iconPreviewDataUrl(k, settledPuck, '#04121d', 40)]))
   }, [mounted, settledPuck])
   const autoKey = TYPE_DEFAULT_ICON[type]
+  const currentKey = value && ASSET_ICONS[value] ? value : autoKey
+  // The hero preview: this exact dot, this exact color, as the live map draws it.
+  const hero = mounted ? iconPreviewDataUrl(currentKey, settledPuck, '#04121d', 64) : ''
   return (
     <div className="space-y-1.5">
       <Label>Map icon</Label>
       <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-2.5 space-y-2">
+        <div className="flex items-center gap-3">
+          {hero
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={hero} alt="" width={64} height={64} draggable={false} className="shrink-0" />
+            : <span className="inline-block w-16 h-16 rounded-full bg-navy-800 shrink-0" />}
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-semibold text-ink leading-tight">{ASSET_ICONS[currentKey]?.label ?? 'Default'}{!value ? ' (auto)' : ''}</p>
+            <p className="text-[10.5px] text-faint leading-tight mt-0.5">Exactly how this dot draws on the live map, in the color chosen above.</p>
+          </div>
+        </div>
         <button
           type="button"
           onClick={() => onChange('')}
@@ -198,14 +223,14 @@ function IconPicker({ value, type, puck, onChange }: {
                     key={k} type="button" title={d.label} aria-label={d.label}
                     onClick={() => onChange(value === k ? '' : k)}
                     className={
-                      'grid place-items-center w-10 h-10 rounded-lg border transition-colors ' +
+                      'grid place-items-center w-12 h-12 rounded-lg border transition-colors ' +
                       (value === k ? 'border-amber bg-amber/10' : 'border-navy-700 hover:border-navy-500')
                     }
                   >
                     {mounted && previews[k]
                       // eslint-disable-next-line @next/next/no-img-element
-                      ? <img src={previews[k]} alt={d.label} width={30} height={30} draggable={false} />
-                      : <span className="inline-block w-[30px] h-[30px] rounded-full bg-navy-800" />}
+                      ? <img src={previews[k]} alt={d.label} width={40} height={40} draggable={false} />
+                      : <span className="inline-block w-10 h-10 rounded-full bg-navy-800" />}
                   </button>
                 ))}
               </div>
@@ -518,6 +543,11 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
                 <SelectItem value="tool">🔧 Small Tool</SelectItem>
               </SelectContent>
             </Select>
+            {/* Type = HOW it's tracked and billed, not what it is (Brian, Sep 4:
+                "what is the purpose of vehicle / equipment / personnel / small
+                tool?"). What it IS — trailer, roller, mower — is Category + the
+                map icon below. */}
+            <p className="text-[10.5px] text-faint leading-snug">{TYPE_PURPOSE[type]}</p>
           </div>
 
           {/* Tracker ID up top — it's the field that makes the asset REAL on
