@@ -145,6 +145,15 @@ export async function GET(req: NextRequest) {
         await notifySystem('map feeds failing', `Red on /diag: ${red.join(', ')} — open /diag for details.`)
       }
     } catch { out.diag = 'unreachable' }
+
+    // 4 — the 30-day safety net (092): soft-deleted assets, buffered drawer
+    // pings and old tracker moves past their window. One bounded call.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const { data, error } = await createServiceClient().rpc('purge_retention', { keep_days: 30 })
+      if (error) throw new Error(error.message)
+      out.purged = Array.isArray(data) ? data[0] : data
+    } catch (err) { out.purge = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

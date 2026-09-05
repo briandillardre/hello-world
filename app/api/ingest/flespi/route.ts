@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
 
   let persisted = 0
+  let buffered = 0
   // company_id -> latest reading per updated asset, for alert evaluation below
   const updated = new Map<string, Map<string, NormalizedReading>>()
   // asset_id -> the fix on record BEFORE this batch, for edge-triggered zone
@@ -93,7 +94,38 @@ export async function POST(request: NextRequest) {
       .eq('tracker_id', r.tracker_id)
       .eq('active', true)
       .single()
-    if (!asset) continue
+    if (!asset) {
+      // Nobody is wearing this box. Buffer the fix (092) for ONE company so
+      // putting the tracker on an asset later can pull the history in.
+      // Which company: the one whose asset most recently carried this IMEI
+      // (drawer, soft-deleted, deactivated-to-resell — all inactive rows);
+      // failing that, the registry, but only when exactly one company lists
+      // it. Never fan out: a tenant that lists someone else's IMEI must not
+      // receive their fixes (sec-check P1, Sep 4). 093 also makes a 15-digit
+      // IMEI unique across registries. Unregistered IMEIs are dropped.
+      let bufferFor: string | null = null
+      const { data: prior } = await supabase
+        .from('assets').select('company_id')
+        .eq('tracker_id', r.tracker_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (prior?.company_id) bufferFor = prior.company_id
+      else {
+        const { data: owners } = await supabase
+          .from('device_onboarding').select('company_id').eq('imei', r.tracker_id).limit(2)
+        if (owners?.length === 1) bufferFor = owners[0].company_id
+        else if ((owners?.length ?? 0) > 1) console.warn(`flespi: ${r.tracker_id} listed by ${owners!.length} registries and no asset — dropped`)
+      }
+      if (bufferFor) {
+        const { error: bufErr } = await supabase.from('unassigned_locations').insert({
+          company_id: bufferFor, imei: r.tracker_id,
+          lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery,
+          timestamp: r.timestamp, raw: { source: 'flespi', ...r.params },
+          ignition: vehiclePower({ source: 'flespi', ...r.params }).engineOn,
+        })
+        if (bufErr && bufErr.code !== '42P01') console.error(`flespi: buffer insert failed for ${r.tracker_id}: ${bufErr.message}`)
+        else if (!bufErr) buffered++
+      }
+      continue
+    }
 
     if (!prevFix.has(asset.id)) {
       const { data: prev } = await supabase
@@ -421,5 +453,5 @@ export async function POST(request: NextRequest) {
     console.error('alert evaluation failed', err)
   }
 
-  return NextResponse.json({ ok: true, persisted, alerts: alertsFired })
+  return NextResponse.json({ ok: true, persisted, buffered, alerts: alertsFired })
 }

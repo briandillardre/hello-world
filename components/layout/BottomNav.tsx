@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -27,11 +27,13 @@ const allItems = [
   { href: '/track', label: 'Share location', short: 'Live', icon: Radio },
   { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
   { href: '/team', label: 'Team', icon: Users },
+  { href: '/activity', label: 'Team activity', short: 'Activity', icon: Activity },
   { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/accounting', label: 'Accounting', short: 'Books', icon: Calculator },
   { href: '/receipts', label: 'Receipts', icon: Receipt },
   { href: '/finance', label: 'Financials', short: 'Finance', icon: Scale },
+  { href: '/trackers', label: 'Trackers', icon: Satellite },
   { href: '/assets/onboard', label: 'Hardware setup', short: 'Hardware', icon: Cpu },
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', short: 'Start', icon: Rocket },
@@ -63,8 +65,11 @@ const canonOrder = (role?: string | null): string[] => {
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
   { title: 'Field',  hrefs: ['/clock', '/logs', '/assets', '/zones', '/measurements', '/tags', '/maintenance', '/track'] },
-  { title: 'Office', hrefs: ['/reports', '/accounting', '/receipts', '/finance', '/team'] },
-  { title: 'Setup',  hrefs: ['/settings', '/welcome', '/help'] },
+  { title: 'Office', hrefs: ['/reports', '/accounting', '/receipts', '/finance', '/team', '/activity'] },
+  // Mirrors the desktop sidebar's Setup group exactly — a page missing here
+  // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely
+  // (Team activity).
+  { title: 'Setup',  hrefs: ['/trackers', '/assets/onboard', '/settings', '/welcome', '/help'] },
 ]
 
 // Drop unknown hrefs, splice newly-shipped pages in at their canonical slot
