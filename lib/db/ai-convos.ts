@@ -26,7 +26,7 @@ export async function getMemberConversations(memberId: string, limit = 200): Pro
   if (isMock) {
     return {
       ok: true,
-      member: { id: memberId, name: 'Sarah Chen', role: 'foreman' },
+      member: { id: memberId, name: 'Foreman (demo)', role: 'foreman' },
       messages: [
         { id: '1', role: 'user', content: 'Where is the mini-ex?', created_at: new Date(Date.now() - 3_600_000).toISOString() },
         { id: '2', role: 'assistant', content: 'Takeuchi TB235 is at Creekside Phase 2, parked since 2:10 PM.', created_at: new Date(Date.now() - 3_599_000).toISOString() },

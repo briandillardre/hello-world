@@ -80,7 +80,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     },
   },
   {
-    id: 'asset-3', company_id: 'mock-company-1', name: 'John Martinez',
+    id: 'asset-3', company_id: 'mock-company-1', name: 'Crew lead (phone)',
     type: 'personnel', tracker_id: 'bt-003', active: true, hourly_rate: 52,
     metadata: { role: 'Foreman', phone: '615-555-0103' },
     created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -124,7 +124,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     },
   },
   {
-    id: 'asset-7', company_id: 'mock-company-1', name: 'Sarah Chen',
+    id: 'asset-7', company_id: 'mock-company-1', name: 'Operator (phone)',
     type: 'personnel', tracker_id: 'bt-007', active: true, hourly_rate: 48,
     metadata: { role: 'Site Engineer', phone: '615-555-0107' },
     created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
