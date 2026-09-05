@@ -30,7 +30,7 @@ export function BusyBar() {
 
   if (jobs.length === 0) return null
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-[120]">
+    <div className="pointer-events-none fixed inset-x-0 top-[var(--ht-safe-top,0px)] z-[120]">
       <div className="h-[3px] overflow-hidden bg-navy-800/80">
         <div className="h-full w-1/3 animate-tl-sweep bg-gradient-to-r from-transparent via-amber to-amber" />
       </div>

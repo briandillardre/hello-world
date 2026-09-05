@@ -580,11 +580,13 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
         // close is currently not working"). pan-y keeps vertical scroll
         // native and hands horizontal drags to the pointer handlers.
         className="absolute left-0 top-0 bottom-0 w-[min(320px,55vw)] bg-navy-950/95 backdrop-blur border-r border-navy-700 shadow-panel overflow-y-auto no-scrollbar ht-drawer-in touch-pan-y md:pointer-events-auto"
+        // The tray runs under the overlaid status bar on phones; its content starts below it.
+        style={{ paddingTop: 'var(--ht-map-inset, 0px)' }}
       >
 
       {/* Reference-style tabs (Jul 31 redesign): the everyday toggles vs your
           saved looks. Sticky so the tab bar survives the scroll. */}
-      <div className="sticky top-0 z-20 flex bg-navy-950/95 backdrop-blur border-b border-navy-800 rounded-t-xl">
+      <div className="sticky top-[var(--ht-map-inset,0px)] z-20 flex bg-navy-950/95 backdrop-blur border-b border-navy-800 rounded-t-xl">
         <button
           onClick={() => setTab('layers')}
           className={'flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-display font-bold border-b-2 -mb-px transition-colors ' +
