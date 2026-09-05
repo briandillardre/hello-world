@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { requireFeature } from '@/lib/permissions-server'
 import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { safeTz } from '@/lib/dates'
@@ -44,6 +45,8 @@ export default async function CommandPage() {
       if ((e as { digest?: string })?.digest?.startsWith('NEXT_REDIRECT')) throw e
     }
   }
+  // After the auth gate: a logged-out visitor must see /login, not a 404.
+  await requireFeature('command')
 
   // SNAPPY CONTRACT (Brian, Aug 22): this page awaits only the small, fast
   // queries — the shell and basemap paint immediately. The heavy cargo

@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
@@ -33,6 +34,7 @@ async function client() {
 }
 
 export async function addTaskAction(zoneId: string, input: { title: string; assigneeId?: string; dueDate?: string; high?: boolean }): Promise<Result & { task?: ProjectTask }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const title = input.title.trim().slice(0, 300)
   if (!title) return { ok: false, error: 'Write the task first.' }
@@ -55,6 +57,7 @@ export async function addTaskAction(zoneId: string, input: { title: string; assi
 /** Edit a punch item in place — reassign, retitle, redate, reprioritize
  *  ("need to be able to click and edit these", Aug 6). */
 export async function updateTaskAction(zoneId: string, taskId: string, input: { title: string; assigneeId?: string; dueDate?: string; high?: boolean }): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const title = input.title.trim().slice(0, 300)
   if (!title) return { ok: false, error: 'The task needs a name.' }
@@ -73,6 +76,7 @@ export async function updateTaskAction(zoneId: string, taskId: string, input: { 
 }
 
 export async function updateMilestoneAction(zoneId: string, milestoneId: string, input: { name: string; targetDate?: string }): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const name = input.name.trim().slice(0, 200)
   if (!name) return { ok: false, error: 'The milestone needs a name.' }
@@ -86,6 +90,7 @@ export async function updateMilestoneAction(zoneId: string, milestoneId: string,
 }
 
 export async function toggleTaskAction(zoneId: string, taskId: string, done: boolean): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_tasks')
@@ -97,6 +102,7 @@ export async function toggleTaskAction(zoneId: string, taskId: string, done: boo
 }
 
 export async function deleteTaskAction(zoneId: string, taskId: string): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_tasks').delete().eq('id', taskId).eq('company_id', companyId)
@@ -106,6 +112,7 @@ export async function deleteTaskAction(zoneId: string, taskId: string): Promise<
 }
 
 export async function addMilestoneAction(zoneId: string, input: { name: string; targetDate?: string }): Promise<Result & { milestone?: ProjectMilestone }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const name = input.name.trim().slice(0, 200)
   if (!name) return { ok: false, error: 'Name the milestone first.' }
@@ -122,6 +129,7 @@ export async function addMilestoneAction(zoneId: string, input: { name: string; 
 }
 
 export async function toggleMilestoneAction(zoneId: string, milestoneId: string, done: boolean): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_milestones')
@@ -133,6 +141,7 @@ export async function toggleMilestoneAction(zoneId: string, milestoneId: string,
 }
 
 export async function deleteMilestoneAction(zoneId: string, milestoneId: string): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('project_milestones').delete().eq('id', milestoneId).eq('company_id', companyId)
@@ -142,6 +151,7 @@ export async function deleteMilestoneAction(zoneId: string, milestoneId: string)
 }
 
 export async function saveBudgetAction(zoneId: string, budget: number | null): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (budget != null && (!Number.isFinite(budget) || budget < 0 || budget > 1e9)) {
     return { ok: false, error: 'Enter a valid amount.' }

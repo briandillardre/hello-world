@@ -4,7 +4,7 @@ import { ArrowLeft, Hexagon, MapPin, CornerDownRight } from 'lucide-react'
 import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { zoneAssetUsage, usageFromLedger, ledgerRowCost, type ZoneAssetUsage } from '@/lib/costs'
 import { ZoneActivityChart, type ChartRow } from '@/components/zones/ZoneActivityChart'
@@ -43,6 +43,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 }
 
 export default async function GeofenceDetailPage({ params }: { params: { id: string } }) {
+  await requireFeature('zones')
   const companyId = await getCurrentCompanyId()
   const [fence, allFences, assets, perms, zoneEvents] = await Promise.all([
     getGeofence(params.id),

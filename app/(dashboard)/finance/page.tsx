@@ -1,5 +1,5 @@
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { FinancePanel } from '@/components/finance/FinancePanel'
 import { OwnerMemoCard } from '@/components/finance/OwnerMemoCard'
 import type { FinanceProfile } from '@/lib/valuation'
@@ -17,6 +17,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * trio as a real-estate appraisal). Growth Platform layer 1 (docs/GROWTH-PLATFORM.md).
  */
 export default async function FinancePage() {
+  await requireFeature('finance')
   const perms = await getMyPermissions()
   if (!perms.canViewCosts) {
     return (

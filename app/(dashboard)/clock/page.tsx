@@ -1,4 +1,5 @@
 import { getMyClockState, getLogFormRaw } from '@/lib/db/fieldops'
+import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { ClockCard } from '@/components/field/ClockCard'
@@ -16,6 +17,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * daily log. Deliberately sparse — this is a gloves-on phone screen.
  */
 export default async function ClockPage() {
+  await requireFeature('clock')
   const [{ openEntry, available, personName }, companyId] = await Promise.all([
     getMyClockState(),
     getCurrentCompanyId(),

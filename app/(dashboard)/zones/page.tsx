@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react'
+import { requireFeature } from '@/lib/permissions-server'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { GeofencesManager } from '@/components/zones/GeofencesManager'
@@ -14,6 +15,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function GeofencesPage() {
+  await requireFeature('zones')
   const companyId = await getCurrentCompanyId()
   const [geofences, rawAssets, toolAssociations] = await Promise.all([
     getGeofences(companyId),

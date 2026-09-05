@@ -5,7 +5,7 @@ import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
 import { MapTopBar } from '@/components/map/MapTopBar'
@@ -26,6 +26,7 @@ const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
   process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
 
 export default async function MapPage({ searchParams }: { searchParams?: { m?: string } }) {
+  await requireFeature('map')
   // ── Real mode: SHELL FIRST. The app icon opens straight into the map —
   // this render awaits only the top-bar basics (company + weather prefs),
   // so the document streams in well under a second and the map engine +

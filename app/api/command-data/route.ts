@@ -36,6 +36,7 @@ export async function GET() {
   }
 
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
+  if (!perms.features.includes('command')) return NextResponse.json({ error: 'not enabled for your role' }, { status: 403 })
   const earliestMs = await getEarliestLocationTime(companyId)
   const fullSince = new Date(earliestMs ?? Date.now() - 30 * 86_400_000).toISOString()
 

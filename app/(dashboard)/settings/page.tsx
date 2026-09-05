@@ -14,7 +14,7 @@ import { isQboConfigured } from '@/lib/qbo'
 import { BillingCard } from '@/components/settings/BillingCard'
 import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 
 export const metadata = { title: 'HammerTrack — Settings' }
 
@@ -22,6 +22,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function SettingsPage({ searchParams }: { searchParams?: { billing?: string } }) {
+  await requireFeature('settings')
   const [co, perms] = await Promise.all([getCompanySettings(), getMyPermissions()])
   // Checkout lands back here. The webhook is what actually records the
   // subscription (may lag the redirect by a few seconds) — so this banner

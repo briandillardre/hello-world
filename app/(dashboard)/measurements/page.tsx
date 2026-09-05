@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMeasurements } from '@/lib/db/measurements'
 import { MeasurementsManager } from '@/components/measure/MeasurementsManager'
@@ -9,6 +10,7 @@ export const metadata: Metadata = { title: 'HammerTrack — Measurements' }
  *  (coordinates + elevation), lines (lengths), and areas (SF/acres + tonnage).
  *  Each row jumps back onto the map exactly where it was drawn. */
 export default async function MeasurementsPage() {
+  await requireFeature('measurements')
   const companyId = await getCurrentCompanyId()
   const measurements = await getMeasurements(companyId)
   return (

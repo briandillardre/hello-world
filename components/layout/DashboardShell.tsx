@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 import { signOutAction } from '@/lib/actions/auth'
+import { ViewAsBanner } from './ViewAsBanner'
 
 /**
  * Client shell for the dashboard: owns the collapsible-sidebar state so the
@@ -20,6 +21,8 @@ export function DashboardShell({
   logoBg = null,
   navOrder = null,
   role = null,
+  features = null,
+  viewingAs = null,
   children,
 }: {
   alertCount: number
@@ -30,6 +33,10 @@ export function DashboardShell({
   logoBg?: string | null
   navOrder?: string[] | null
   role?: string | null
+  /** The caller's view levels (094) — filters both navs. null = everything. */
+  features?: string[] | null
+  /** Set while an admin previews the app as a teammate (read-only). */
+  viewingAs?: { name: string; roleLabel: string } | null
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -43,14 +50,16 @@ export function DashboardShell({
       return next
     })
 
+  const askAi = !features || features.includes('ask_ai')
   return (
     <>
-      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} />
-      <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200'}>
-        {children}
+      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} askAi={askAi} />
+      <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200 flex flex-col'}>
+        {viewingAs && <ViewAsBanner name={viewingAs.name} roleLabel={viewingAs.roleLabel} />}
+        <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       </main>
-      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} onSignOut={signOutAction} />
-      <AssistantWidget />
+      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} features={features} askAi={askAi} onSignOut={signOutAction} />
+      {askAi && <AssistantWidget />}
     </>
   )
 }

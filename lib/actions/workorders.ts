@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
@@ -37,6 +38,7 @@ export async function createWorkOrderAction(input: {
   priority?: WorkOrder['priority']; assigneeId?: string; dueDate?: string
   source?: WorkOrder['source']; sourceRef?: string; reading?: number
 }): Promise<Result & { wo?: WorkOrder }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const title = input.title.trim().slice(0, 200)
   if (!title || !input.assetId) return { ok: false, error: 'Pick the machine and name the job.' }
@@ -64,6 +66,7 @@ export async function updateWorkOrderAction(id: string, patch: {
   status?: WorkOrder['status']; priority?: WorkOrder['priority']
   assigneeId?: string | null; dueDate?: string | null
 }): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const row: Record<string, unknown> = {}
@@ -91,6 +94,7 @@ export async function completeWorkOrderAction(id: string, input: {
   partsCost?: number; laborHours?: number; laborRate?: number
   vendor?: string; notes?: string; reading?: number
 }): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { data: wo } = await supabase.from('work_orders')
@@ -136,6 +140,7 @@ export async function completeWorkOrderAction(id: string, input: {
 }
 
 export async function cancelWorkOrderAction(id: string): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { supabase, companyId } = await client()
   const { error } = await supabase.from('work_orders')

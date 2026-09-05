@@ -106,6 +106,7 @@ export const TASKS: BoardTask[] = [
   { id: 58, title: 'App shell opens /map + sign-in polish', owner: 'build', state: 'done' },
   { id: 57, title: 'Map selection & state language — dim the rest, gray the dead, ring the tools', owner: 'build', state: 'done' },
   { id: 56, title: 'Bulk add, spreadsheet style (/assets/import)', owner: 'build', state: 'done' },
+  { id: 101, title: 'Roles v2: Master Admin, view-levels table, View-as, Associate, AI firewall + ladder-only convo visibility (migration 094)', owner: 'build', state: 'done' },
   { id: 100, title: 'Trackers: Unassigned drawer, 5-case Tracker sheet, 30-day undo + Recently deleted (/trackers, migration 092)', owner: 'build', state: 'done' },
   { id: 55, title: 'Scan-to-map onboarding (/assets/scan)', owner: 'build', state: 'done' },
   { id: 54, title: 'Per-asset map icons', owner: 'build', state: 'done' },
@@ -323,7 +324,7 @@ export const TRUTH_WATCH: string[] = [
 export const DOC_INDEX: { group: string; files: string[] }[] = [
   { group: 'Money', files: ['PRICING-TIERS.md', 'UNIT-ECONOMICS.md', 'COST-SCALE-2026-07.md', 'OPERATING-MODEL.md', 'BUSINESS-PLAN.md', 'QBO-GO-LIVE.md'] },
   { group: 'Strategy', files: ['PATH-TO-1B.md', 'GROWTH-PLATFORM.md', 'AI-RESILIENCE.md', 'COMPETITORS.md', 'FOUNDING-25.md'] },
-  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TRACKERS.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md', 'SHOWROOM.md'] },
+  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TRACKERS.md', 'ROLES.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md', 'SHOWROOM.md'] },
 ]
 
 /** Where each class of iron belongs — the allocation that stops someone

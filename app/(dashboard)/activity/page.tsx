@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { requireFeature } from '@/lib/permissions-server'
 import { Activity, Bot, Users } from 'lucide-react'
 import { safeTz } from '@/lib/dates'
 
@@ -19,6 +20,7 @@ interface Row { user_id: string; role: 'user' | 'assistant'; content: string; cr
  * client AFTER verifying the viewer's admin role server-side.
  */
 export default async function ActivityPage() {
+  await requireFeature('activity')
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -42,7 +44,7 @@ export default async function ActivityPage() {
   // OWNER only (Brian, Aug 22: "admin should get everything EXCEPT the
   // ability to see what everyone in the org has used the app for") — the
   // company founder is the one seat that may watch the team's app usage.
-  const amOwner = !!user && me?.company_id === user.id
+  const amOwner = (await requireFeature('activity')).isMaster
   if (!amOwner) {
     return (
       <Shell>

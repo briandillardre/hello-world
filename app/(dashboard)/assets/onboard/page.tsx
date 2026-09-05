@@ -1,4 +1,5 @@
 import { DeviceOnboard } from '@/components/assets/DeviceOnboard'
+import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getDevices, rollup } from '@/lib/db/devices'
 
@@ -10,6 +11,7 @@ export const metadata = { title: 'HammerTrack — Hardware setup' }
 export const dynamic = 'force-dynamic'
 
 export default async function DeviceOnboardPage() {
+  await requireFeature('hardware')
   const companyId = await getCurrentCompanyId()
   const devices = await getDevices(companyId)
   return <DeviceOnboard devices={devices} counts={rollup(devices)} />

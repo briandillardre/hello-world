@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { DeleteAccountFlow } from '@/components/settings/DeleteAccountFlow'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 
 export const metadata = { title: 'HammerTrack — Delete account' }
 
@@ -12,6 +12,7 @@ export const metadata = { title: 'HammerTrack — Delete account' }
  * Admin-only, matching the server action's role check (sec-check, Aug 22).
  */
 export default async function DeleteAccountPage() {
+  await requireFeature('settings')
   const perms = await getMyPermissions()
   const isAdmin = perms.role === 'admin'
   return (

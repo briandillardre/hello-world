@@ -1,4 +1,5 @@
 'use server'
+import { requireEditOrThrow } from '@/lib/permissions-server'
 
 import { revalidatePath } from 'next/cache'
 import { createPlace, updatePlace, removePlace } from '@/lib/db/places'
@@ -29,6 +30,7 @@ function clean(input: { name: string; kind: string; lat: number; lng: number; ad
 
 export async function createPlaceAction(input: { name: string; kind: string; lat: number; lng: number; address?: string | null; notes?: string | null }):
   Promise<{ ok: boolean; place?: Place; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — saving places works once signed in to your company.' }
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can view places but not add them.' }
@@ -46,6 +48,7 @@ export async function createPlaceAction(input: { name: string; kind: string; lat
 
 export async function updatePlaceAction(id: string, patch: { name?: string; kind?: string; notes?: string | null; address?: string | null }):
   Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — editing places works once signed in.' }
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can view places but not edit them.' }
@@ -66,6 +69,7 @@ export async function updatePlaceAction(id: string, patch: { name?: string; kind
 }
 
 export async function removePlaceAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode.' }
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can view places but not remove them.' }

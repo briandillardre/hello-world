@@ -6,7 +6,7 @@ import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/l
 import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType, AssetWithLocation } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -59,6 +59,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 }
 
 export default async function AssetDetailPage({ params }: { params: { id: string } }) {
+  await requireFeature('assets')
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
   const canEdit = perms.canEdit
   const [rawAssets, toolAssociations, firstPhotos] = await Promise.all([

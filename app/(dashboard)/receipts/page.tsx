@@ -3,7 +3,7 @@ import { getGeofences } from '@/lib/db/zones'
 import { getExpenses, type Expense } from '@/lib/db/expenses'
 import { suggestMatchesAction } from '@/lib/actions/expenses'
 import { getInstantChaseSetup } from '@/lib/actions/cards'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { ReceiptsInbox } from '@/components/receipts/ReceiptsInbox'
 import { MissingReceipts } from '@/components/receipts/MissingReceipts'
 import { InstantChase } from '@/components/receipts/InstantChase'
@@ -52,6 +52,7 @@ function demoOpenExpenses(): Expense[] {
 
 /** Receipts inbox: field photos in, approved QuickBooks expenses out. */
 export default async function ReceiptsPage() {
+  await requireFeature('receipts')
   const companyId = await getCurrentCompanyId()
   let pending: ReceiptRow[] = []
   let done: ReceiptRow[] = []

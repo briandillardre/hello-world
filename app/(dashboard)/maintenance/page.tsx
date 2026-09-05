@@ -3,7 +3,7 @@ import { getAssets } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getConnectionStatus } from '@/lib/qbo'
 import { getWorkOrders, ensureScheduleWorkOrders } from '@/lib/db/workorders'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { Badge } from '@/components/ui/badge'
 import { MaintenanceLists, AddScheduleButton } from '@/components/maintenance/MaintenanceLists'
 import { WorkOrders } from '@/components/maintenance/WorkOrders'
@@ -11,6 +11,7 @@ import { WorkOrders } from '@/components/maintenance/WorkOrders'
 export const metadata = { title: 'HammerTrack — Maintenance' }
 
 export default async function MaintenancePage() {
+  await requireFeature('maintenance')
   const companyId = await getCurrentCompanyId()
   const [schedules, assets, readings, services, qbo, perms] = await Promise.all([
     getMaintenanceSchedules(companyId),

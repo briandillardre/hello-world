@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import type { MaintenanceIntervalType } from '@/lib/types'
@@ -25,6 +26,7 @@ export async function createScheduleAction(input: {
   /** Reading at last service (engine hours or miles); ignored for day intervals. */
   lastServiceValue?: number
 }): Promise<Result> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const description = input.description.trim().slice(0, 200)
   const intervalValue = Number(input.intervalValue)
