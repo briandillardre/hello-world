@@ -12,7 +12,8 @@ import type { AssetType, AssetWithLocation } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
-import { ReassignTracker } from '@/components/assets/ReassignTracker'
+import { TrackerSheet } from '@/components/assets/TrackerSheet'
+import { getTrackerChoices } from '@/lib/db/trackers'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 import { TripLog } from '@/components/assets/TripLog'
 import { getGeofences } from '@/lib/db/zones'
@@ -68,6 +69,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const asset = assets.find((a) => a.id === params.id)
   if (!asset) notFound()
+  // What the Tracker sheet can offer: the drawer, boxes on other machines,
+  // machines without one. Cheap (two small queries) and only for editors.
+  const trackerChoices = canEdit ? await getTrackerChoices(companyId, asset.id) : null
 
   // Pull the legacy single hero into the gallery so an orphaned old photo is
   // visible + deletable — but only when a hero exists AND the gallery hasn't
@@ -120,12 +124,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
               <>
                 {/* sm+: the full Reassign / Edit / Delete cluster inline */}
                 <div className="hidden sm:flex items-center gap-1.5">
-                  {asset.tracker_id && (
-                    <ReassignTracker
-                      asset={asset}
-                      trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
-                    />
-                  )}
+                  {trackerChoices && asset.type !== 'personnel' && <TrackerSheet asset={asset} choices={trackerChoices} />}
                   <AssetActions asset={asset} photos={assetPhotos} />
                 </div>
                 {/* phones: one ⋮ overflow menu — three buttons were fighting
@@ -138,12 +137,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                     <MoreVertical className="h-4 w-4" />
                   </summary>
                   <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[150px] rounded-xl border border-navy-700 bg-navy-900 p-2 shadow-xl flex flex-col items-stretch gap-1.5">
-                    {asset.tracker_id && (
-                      <ReassignTracker
-                        asset={asset}
-                        trackerlessAssets={assets.filter((a) => a.id !== asset.id && !a.tracker_id).map((a) => ({ id: a.id, name: a.name }))}
-                      />
-                    )}
+                    {trackerChoices && asset.type !== 'personnel' && <TrackerSheet asset={asset} choices={trackerChoices} />}
                     <AssetActions asset={asset} photos={assetPhotos} />
                   </div>
                 </details>

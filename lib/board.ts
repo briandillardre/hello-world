@@ -76,7 +76,7 @@ export const TASKS: BoardTask[] = [
   { id: 98, title: 'Move PostGIS to the extensions schema', why: 'spatial_ref_sys is owned by the extension, so 086 could not enable RLS on it and the Supabase linter will keep one critical row. ALTER EXTENSION postgis SET SCHEMA extensions (check PostgREST search_path first) clears it for good.', owner: 'build', state: 'open' },
   { id: 88, title: 'Absolute last-seen date + time on the assets list', why: 'Brian, Aug 28: tools (and really every asset) should show what day and time they were last seen — not just “3d ago”.', owner: 'build', state: 'open' },
   { id: 89, title: 'Ping-dots layer on the timeline', why: 'An option to draw every true GPS fix as a dot, so a trail can be read against the raw pings. Honest about rollups past 30 days.', owner: 'build', state: 'open' },
-  { id: 90, title: 'Shared requireEdit() gate on every asset write action', why: 'deleteAssetAction runs on the service client with no role check; one shared gate for all asset writes.', owner: 'build', state: 'open' },
+  { id: 90, title: 'Shared requireEdit() gate on every asset write action', why: 'Tracker + delete actions now gate on canEdit (lib/actions/trackers.ts, 4 Sep); the remaining asset write actions (create/update/photos/import) still run on role-free service clients — one shared gate for all of them.', owner: 'build', state: 'open' },
   { id: 76, title: 'Convoys into the AI context', why: 'Convoys are on the map but not in what the assistant reads — “who was riding with the RAM at 2 PM” should answer from the same motion-agreement math.', owner: 'build', state: 'open' },
   { id: 80, title: 'Fault codes → work orders', why: 'A stored fault code on a machine should open or annotate a work order the way overdue schedules already do.', owner: 'build', state: 'open' },
   { id: 38, title: 'Scope flespi ingest ident lookup per company', why: 'Mitigated 28 Aug: ingest lookups filter active=true and 082/084 guarantee one active owner per 15-digit IMEI; bulk import refuses cross-tenant collisions. Still open for non-IMEI tracker ids — needs a production duplicate check, then the schema fix on the other write paths.', owner: 'build', state: 'open' },
@@ -106,6 +106,7 @@ export const TASKS: BoardTask[] = [
   { id: 58, title: 'App shell opens /map + sign-in polish', owner: 'build', state: 'done' },
   { id: 57, title: 'Map selection & state language — dim the rest, gray the dead, ring the tools', owner: 'build', state: 'done' },
   { id: 56, title: 'Bulk add, spreadsheet style (/assets/import)', owner: 'build', state: 'done' },
+  { id: 100, title: 'Trackers: Unassigned drawer, 5-case Tracker sheet, 30-day undo + Recently deleted (/trackers, migration 092)', owner: 'build', state: 'done' },
   { id: 55, title: 'Scan-to-map onboarding (/assets/scan)', owner: 'build', state: 'done' },
   { id: 54, title: 'Per-asset map icons', owner: 'build', state: 'done' },
   { id: 53, title: 'Monthly owner memo + Ask AI in the chrome', owner: 'build', state: 'done' },
@@ -322,7 +323,7 @@ export const TRUTH_WATCH: string[] = [
 export const DOC_INDEX: { group: string; files: string[] }[] = [
   { group: 'Money', files: ['PRICING-TIERS.md', 'UNIT-ECONOMICS.md', 'COST-SCALE-2026-07.md', 'OPERATING-MODEL.md', 'BUSINESS-PLAN.md', 'QBO-GO-LIVE.md'] },
   { group: 'Strategy', files: ['PATH-TO-1B.md', 'GROWTH-PLATFORM.md', 'AI-RESILIENCE.md', 'COMPETITORS.md', 'FOUNDING-25.md'] },
-  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md', 'SHOWROOM.md'] },
+  { group: 'Hardware & ops', files: ['DEVICE-ONBOARDING.md', 'TRACKERS.md', 'TELTONIKA-DEVICES.md', 'FLEET-TELEMATICS.md', 'PROVISIONING.md', 'APP-STORE-PLAYBOOK.md', 'SHOWROOM.md'] },
 ]
 
 /** Where each class of iron belongs — the allocation that stops someone

@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
 
   let persisted = 0
+  let buffered = 0
   // company_id -> latest reading per updated asset, for alert evaluation below
   const updated = new Map<string, Map<string, NormalizedReading>>()
   // asset_id -> the fix on record BEFORE this batch, for edge-triggered zone
@@ -93,7 +94,26 @@ export async function POST(request: NextRequest) {
       .eq('tracker_id', r.tracker_id)
       .eq('active', true)
       .single()
-    if (!asset) continue
+    if (!asset) {
+      // Nobody is wearing this box — but if a company's registry knows the
+      // IMEI, it is a tracker in their drawer (or one installed and not yet
+      // assigned). Buffer the fix (092) so putting it on an asset later can
+      // pull the history in; a 30-day purge bounds the table. Unregistered
+      // IMEIs are still dropped: we have no company to file them under.
+      const { data: owners } = await supabase
+        .from('device_onboarding').select('company_id').eq('imei', r.tracker_id).limit(3)
+      for (const o of owners ?? []) {
+        const { error: bufErr } = await supabase.from('unassigned_locations').insert({
+          company_id: o.company_id, imei: r.tracker_id,
+          lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery,
+          timestamp: r.timestamp, raw: { source: 'flespi', ...r.params },
+          ignition: vehiclePower({ source: 'flespi', ...r.params }).engineOn,
+        })
+        if (bufErr && bufErr.code !== '42P01') console.error(`flespi: buffer insert failed for ${r.tracker_id}: ${bufErr.message}`)
+        else if (!bufErr) buffered++
+      }
+      continue
+    }
 
     if (!prevFix.has(asset.id)) {
       const { data: prev } = await supabase
@@ -421,5 +441,5 @@ export async function POST(request: NextRequest) {
     console.error('alert evaluation failed', err)
   }
 
-  return NextResponse.json({ ok: true, persisted, alerts: alertsFired })
+  return NextResponse.json({ ok: true, persisted, buffered, alerts: alertsFired })
 }

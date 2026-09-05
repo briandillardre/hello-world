@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -34,6 +34,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/activity', label: 'Team activity', icon: Activity },
   ]},
   { title: 'Setup', items: [
+    { href: '/trackers', label: 'Trackers', icon: Satellite },
     { href: '/assets/onboard', label: 'Hardware setup', icon: Cpu },
     { href: '/settings', label: 'Settings', icon: Settings },
     { href: '/welcome', label: 'Getting started', icon: Rocket },

@@ -115,6 +115,69 @@ export const GUIDES: HelpGuide[] = [
     ],
   },
   {
+    slug: 'trackers',
+    title: 'Swapping & moving trackers',
+    tagline: 'Boxes move between machines. Here is how to tell the app, and how to undo it.',
+    icon: Satellite,
+    sections: [
+      {
+        heading: 'The drawer',
+        body: (
+          <>
+            <P>
+              Every tracker you own is either <B>on a machine</B> or in the <B>Unassigned drawer</B>.
+              See both on <B>Trackers</B> (More → Trackers). A box lands in the drawer when you take
+              it out of a machine, delete a machine, or log a new box on Hardware setup before it
+              has a home.
+            </P>
+            <P>
+              A tracker in the drawer that is already installed keeps reporting — the app holds those
+              pings for 30 days and puts them on the machine the moment you assign it. Install now,
+              name it later, lose nothing.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Telling the app what happened',
+        body: (
+          <>
+            <P>Open the machine under <B>Assets</B> and tap <B>Tracker</B>. Pick the case that matches:</P>
+            <L
+              items={[
+                <><B>Put a tracker on</B> — the machine has none. Pick from the drawer, take one off another machine, or type a new IMEI.</>,
+                <><B>Swap</B> — a different box went in as this one came out. Say where the old one went: the drawer, or another machine.</>,
+                <><B>Take it out</B> — into the drawer. The machine keeps all its history.</>,
+                <><B>Move it</B> — to another machine, no replacement. This record keeps everything up to the move; the other machine gets the tracker and everything after.</>,
+                <><B>Renamed onto a new machine</B> — you reused a record for a different truck. The old truck&apos;s history splits off to its own record.</>,
+              ]}
+            />
+            <P>
+              The <B>date and time</B> matters: history is cut at that moment, so each machine keeps only
+              its own past. Get it close. The sheet spells out exactly what will happen before you confirm.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Undo, and the 30 days',
+        body: (
+          <>
+            <P>
+              Every tracker change shows on <B>Trackers → Recent changes</B> with an <B>Undo</B> for 30
+              days — pings go back where they were and the tracker returns to its previous machine.
+            </P>
+            <P>
+              <B>Deleting a machine</B> is also a 30-day thing. It leaves the map and the lists, its
+              tracker goes to the drawer, and <B>Trackers → Recently deleted</B> brings it back whole
+              until the window closes. After 30 days it is gone for good.
+            </P>
+          </>
+        ),
+      },
+    ],
+  },
+  {
     slug: 'clock-and-logs',
     title: 'Clock in & daily logs',
     tagline: "The crew's day in one card — and the log that gets them off the clock.",

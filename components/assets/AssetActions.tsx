@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Asset, AssetPhoto } from '@/lib/types'
-import { updateAssetAction, deleteAssetAction, deleteAssetPhotoAction, reorderAssetPhotosAction } from '@/lib/actions/assets'
+import { updateAssetAction, deleteAssetPhotoAction, reorderAssetPhotosAction } from '@/lib/actions/assets'
+import { softDeleteAssetAction } from '@/lib/actions/trackers'
 import { AssetForm, type AssetFormData, type NewPhoto, photosToFormData } from './AssetForm'
 import { toast, confirmSheet } from '@/components/ui/feedback'
 import { busy as trackBusy } from '@/lib/busy'
@@ -52,14 +53,15 @@ export function AssetActions({ asset, photos = [] }: { asset: Asset; photos?: As
 
   const handleDelete = async () => {
     const ok = await confirmSheet({
-      title: `Delete "${asset.name}" for good?`,
-      message: `This permanently erases the asset AND everything tied to it: every GPS ping and trail, trip log, maintenance and service history, work orders, and alerts${asset.tracker_id ? `. Tracker ${asset.tracker_id} is released — a device still installed keeps reporting into nothing` : ''}. There is no undo. If the machine was sold or the tracker moved, use Edit or Reassign tracker instead and keep the history.`,
-      confirmLabel: 'Delete permanently', destructive: true,
+      title: `Delete "${asset.name}"?`,
+      message: `It leaves the map and every list, along with its GPS history, trips, service records, work orders and alerts.${asset.tracker_id ? ` Tracker …${asset.tracker_id.slice(-4)} goes to the Unassigned drawer, ready for the next machine.` : ''} You have 30 days to bring it all back from Trackers → Recently deleted; after that it is gone for good. If the tracker just moved to another machine, use Tracker → Swap or Move instead and keep the history where it belongs.`,
+      confirmLabel: 'Delete (30-day undo)', destructive: true,
     })
     if (!ok) return
     try {
-      await deleteAssetAction(asset.id)
-      toast(`"${asset.name}" deleted`, { variant: 'success' })
+      const res = await softDeleteAssetAction(asset.id)
+      if (!res.ok) { toast(res.error ?? 'Could not delete the asset.', { variant: 'error' }); return }
+      toast(`"${asset.name}" deleted — restore within 30 days from Trackers`, { variant: 'success' })
       router.push('/assets')
       router.refresh()
     } catch (err) {

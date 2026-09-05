@@ -43,6 +43,9 @@ export async function getAssets(companyId: string): Promise<Asset[]> {
     .from('assets')
     .select('*')
     .eq('company_id', companyId)
+    // 092: a deleted asset is inactive + deleted_at for 30 days. Every live
+    // reader filters active=true already; the list readers filter here.
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
   return data ?? []
 }
