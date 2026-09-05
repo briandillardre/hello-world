@@ -471,12 +471,37 @@ input[type='range'].slider-heat::-moz-range-thumb {
    inputs on touch screens remove the trigger at the source; fine-pointer
    (desktop) keeps the compact sizes. Checkboxes/radios excluded — their
    font-size never triggers zoom and sizing them shifts layouts. */
-@media (pointer: coarse) {
-  input:not([type='checkbox']):not([type='radio']),
-  select,
-  textarea {
-    font-size: max(16px, 1rem) !important;
+/* iOS only: Android never auto-zooms on focus, and the 16px floor made the
+   weather card's "Change location" box read huge next to 12px chrome
+   (Brian, Sep 4). -webkit-touch-callout exists on iOS/iPadOS Safari alone. */
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) {
+    input:not([type='checkbox']):not([type='radio']),
+    select,
+    textarea {
+      font-size: max(16px, 1rem) !important;
+    }
   }
+}
+
+/* Scale bar — the stock white box read as a sticker on the satellite base and
+   stood 22px tall (Brian, Sep 4: "too large, takes up too much room"). Slim
+   dark glass, 9px mono, half the height. */
+.maplibregl-ctrl-scale {
+  background: rgba(4, 18, 29, 0.62) !important;
+  color: #cfe6f2 !important;
+  border: 1px solid rgba(207, 230, 242, 0.45) !important;
+  border-top: none !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 9px !important;
+  line-height: 12px !important;
+  height: 13px !important;
+  padding: 0 4px !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl-scale {
+  margin: 0 0 8px 8px !important;
 }
 
 /* Edge-to-edge (Sep 4): the native shell overlays the status bar, so the OS

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProtrudingClose } from '@/components/ui/window-chrome'
 import { SpeedControl } from '@/components/ui/speed-control'
-import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane, Gauge } from 'lucide-react'
+import { Play, Pause, Ban, Route, Flame, CalendarClock, SlidersHorizontal, HardHat, Video, X, Orbit, Map as MapIcon, Navigation, Navigation2, Circle, AreaChart, Link2, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, History, Box, Hexagon, Search, RotateCw, Plane, Gauge, Sun } from 'lucide-react'
 import { activityGradient, activityColor, deltas, bucketSpanLabel, areaPath, ACTIVITY_BUCKETS } from '@/lib/activity'
 
 export type FollowMode = 'orbit' | 'overhead' | 'chase'
@@ -18,6 +18,7 @@ import {
 } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { money } from '@/lib/projects'
+import { rangeWindow, safeTz } from '@/lib/dates'
 
 export interface FollowAsset { id: string; name: string; type: AssetType; color: string }
 
@@ -56,6 +57,24 @@ const MODES: { key: TrailMode; label: string; short: string; icon: typeof Ban }[
   // with height. Named accordingly ("3D" read like a camera mode, Jul 21).
   { key: '3d', label: '3D heat', short: '3D', icon: Box },
 ]
+
+/** Phone tool chip: equal-width, labeled, one row. */
+const toolCls = (on: boolean, tone: 'teal' | 'amber') =>
+  'flex-1 min-w-0 flex items-center justify-center gap-1 h-8 rounded-lg border text-[11px] font-semibold transition-colors ' +
+  (on ? (tone === 'amber' ? 'bg-amber/20 text-amber border-amber/40' : 'bg-teal/20 text-teal border-teal/40') : 'bg-navy-900 text-faint border-navy-800')
+
+/** ☀ chip label while Daylight is on: where the sun is at the map's center. */
+function sunLabel(s: { elevation: number; azimuth: number } | null | undefined): string {
+  if (!s) return 'Daylight'
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+  const dir = dirs[Math.round(s.azimuth / 45) % 8]
+  if (s.elevation >= 0) return `Sun ${Math.round(s.elevation)}° ${dir}`
+  const morning = s.azimuth < 180
+  if (s.elevation >= -6) return morning ? 'Civil dawn' : 'Civil dusk'
+  if (s.elevation >= -12) return morning ? 'Nautical dawn' : 'Nautical dusk'
+  if (s.elevation >= -18) return morning ? 'Astro dawn' : 'Astro dusk'
+  return 'Night'
+}
 
 interface TimelinePlaybackProps {
   range: TimeRange
@@ -128,6 +147,14 @@ interface TimelinePlaybackProps {
    *  this bar (live: current fix + miles today; replay: values at the scrub
    *  position) so it never floats over the map. */
   hud?: { name: string; mph: number | null; clock: string; milesIn: number } | null
+  /** ☀ Daylight — the map's day/night shading follows this clock (live now,
+   *  the replay moment when scrubbing). Blocked on windows over a month
+   *  (YTD / All would strobe through hundreds of nights in one sweep). */
+  daylight?: boolean
+  onDaylight?: () => void
+  daylightBlocked?: boolean
+  /** Sun at the map's center for the chip label (elevation °, azimuth °). */
+  sun?: { elevation: number; azimuth: number } | null
   /** Command Center wall display: starts minimized as a pill above the
    *  ticker; expandable/collapsible so the map stays the star. */
   kiosk?: boolean
@@ -140,6 +167,7 @@ export function TimelinePlayback({
   followId, onFollow, followMode, onFollowMode, followAssets, followZones = [],
   spinning = false, onSpin, flying = false, onFlyover, flySpeed = 1, onFlySpeed,
   alertMarks = [], tz, kiosk = false, hud = null,
+  daylight = false, onDaylight, daylightBlocked = false, sun = null,
 }: TimelinePlaybackProps) {
   const live = range === 'live'
   const custom = range === 'custom'
@@ -299,13 +327,6 @@ export function TimelinePlayback({
   // — recomputing per frame stuttered the thumb on mid-range phones.
   const rwFrom = realWindow?.from
   const rwTo = realWindow?.to
-  const ticks = useMemo<{ f: number; label: string }[]>(
-    () => custom
-      ? tickMarks(customFrom, customTo, tz)
-      : rwFrom != null && rwTo != null ? tickMarks(rwFrom, rwTo, tz)
-      : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) })),
-    [custom, customFrom, customTo, rwFrom, rwTo, range, tz]
-  )
   const speeds = speedsForWindow(windowSeconds)
 
   // ticking "updated Ns ago" while live (cycles to feel real-time)
@@ -316,6 +337,38 @@ export function TimelinePlayback({
     return () => clearInterval(id)
   }, [live])
   const ago = tick === 0 ? 'updated just now' : `updated ${tick}s ago`
+
+  // ── One "Today" ──────────────────────────────────────────────────────────
+  // Brian, Sep 4: "I don't really see a difference between Live and Today —
+  // one Today as the default, keep the blinking light to show it's live."
+  // The map still runs a 'live' range underneath (every live-only layer —
+  // radar loop, wind, aircraft, the 20s refresh — keys off it), but the UI
+  // shows it as Today parked at the LIVE EDGE: teal blinking dot, playhead
+  // at "now" on today's window. Drag the playhead back and you are replaying
+  // today; land it on now again (or tap Today) and you are live.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `tick` re-derives "now" each second while live
+  const todayWin = useMemo(() => rangeWindow(safeTz(tz), 'today', {}), [tz, tick])
+  const liveT = Math.max(0, Math.min(1, (Date.now() - todayWin.from) / Math.max(1, todayWin.to - todayWin.from)))
+  const uiRange: TimeRange = live ? 'today' : range
+  const shownT = live ? liveT : t
+  const UI_RANGES = RANGES.filter((r) => r.key !== 'live')
+  const seek = useCallback((v: number) => { if (live) onRange('today'); onSeek(v) }, [live, onRange, onSeek])
+  const playPress = useCallback(() => { if (live) onRange('today'); onPlayPause() }, [live, onRange, onPlayPause])
+  const pickRange = useCallback((key: TimeRange) => onRange(key === 'today' ? 'live' : key), [onRange])
+  useEffect(() => {
+    // Parked on (or past) now while paused = live again. Also catches
+    // Yesterday → Today, which lands at t=1 beyond the live edge.
+    if (range === 'today' && !playing && t >= liveT - 0.003) onRange('live')
+  }, [range, playing, t, liveT, onRange])
+
+  const ticks = useMemo<{ f: number; label: string }[]>(
+    () => custom
+      ? tickMarks(customFrom, customTo, tz)
+      : rwFrom != null && rwTo != null ? tickMarks(rwFrom, rwTo, tz)
+      : live ? tickMarks(todayWin.from, todayWin.to, tz)
+      : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) })),
+    [custom, customFrom, customTo, rwFrom, rwTo, range, tz, live, todayWin]
+  )
 
   // ── Fleet activity: heat-mapped slider track + pull-up chart ──────────────
   const activityMax = useMemo(() => Math.max(0, ...activity), [activity])
@@ -378,7 +431,7 @@ export function TimelinePlayback({
   // beside the date readout (phones).
   const dayStepper = (() => {
     let base: number | null = null
-    if (range === 'today') base = Date.now()
+    if (range === 'today' || live) base = Date.now()
     else if (range === 'yesterday') base = Date.now() - 86_400_000
     else if (custom && toDateInput(customFrom) === toDateInput(customTo)) base = customFrom + 12 * 3_600_000
     if (base == null) return null
@@ -424,7 +477,7 @@ export function TimelinePlayback({
       <button
         ref={attachMeasure}
         onClick={() => setStage('full')}
-        className={'ht-timeline-pill absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-[calc(104px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
+        className={'ht-timeline-pill absolute left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-navy-700 shadow-panel px-4 py-2 font-mono text-[11px] tracking-[0.12em] text-teal hover:text-ink transition-colors ' + (kiosk ? 'bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}
       >
         <History className="h-3.5 w-3.5" /> TIMELINE
         {!live && <span className="text-amber">{RANGES.find((r) => r.key === range)?.label ?? 'Replay'}</span>}
@@ -443,7 +496,7 @@ export function TimelinePlayback({
     // Hug the bottom edge — the page already pads for the mobile tab bar, so
     // the old 80px offset left a dead strip of map under the controls. Kiosk
     // rides above the event ticker.
-    <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'ht-timeline absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-[calc(104px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
+    <div ref={(el) => { rootRef.current = el; attachMeasure(el) }} data-tour="timeline" className={'ht-timeline absolute left-3 right-3 md:left-4 md:right-4 ' + (kiosk ? 'bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-12 z-[45]' : 'bottom-2 md:bottom-4 z-10')}>
       {/* Camera popover — sibling of the bar for the same overflow-hidden
           reason as the follow menu below (rendering INSIDE the bar clipped
           it invisible; ship-check P0, Aug 22). */}
@@ -727,8 +780,108 @@ export function TimelinePlayback({
           phones the pills get their own full-width scrollable row — sharing
           one row squeezed them into a useless 10px sliver next to all the
           flex-none controls. */}
+      {/* ── PHONE: everything on one screen, nothing scrolls sideways (Brian,
+          Sep 4: "clean up this timeline to where everything is on one page
+          with no left right scrolling"). Four short rows — ranges · views ·
+          tools · cost. Desktop keeps its wrap row below. ── */}
       {stage === 'full' && (
-      <div className={'flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-3 pr-11 pt-1 ' + (live ? 'pb-2' : 'pb-1.5 border-b border-navy-800')}>
+      <div className="sm:hidden px-3 pt-1 pb-1.5 space-y-1.5 border-b border-navy-800">
+        <div className="grid grid-cols-8 gap-0.5">
+          {UI_RANGES.map((r) => (
+            <button
+              key={r.key}
+              data-active-pill={uiRange === r.key ? '' : undefined}
+              onClick={() => pickRange(r.key)}
+              className={
+                'relative min-w-0 px-0 py-1.5 rounded-lg text-[11px] font-display font-bold leading-none transition-colors truncate ' +
+                (uiRange === r.key ? (live ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber') : 'text-faint hover:text-ink')
+              }
+            >
+              {/* live badge in the corner — inline it squeezed "Today" to "Tod…" */}
+              {r.key === 'today' && live && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-teal animate-blink" />}
+              {RANGE_SHORT[r.key] ?? r.label}
+            </button>
+          ))}
+          <button
+            onClick={() => { onRange('custom'); setShowCustom((v) => !v) }}
+            title="Custom range"
+            aria-label="Custom range"
+            className={'grid place-items-center py-1.5 rounded-lg transition-colors ' + (custom ? 'bg-amber/20 text-amber' : 'text-faint hover:text-ink')}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex-1 grid grid-cols-4 gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+            {MODES.map(({ key, label, short, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => onTrailMode(key)}
+                title={label}
+                className={'flex items-center justify-center gap-1 px-1 py-1 rounded-md text-[10.5px] font-semibold transition-colors ' + (trailMode === key ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink')}
+              >
+                <Icon className="h-3.5 w-3.5" />{short}
+              </button>
+            ))}
+          </div>
+          {onMarkerStyle && trailMode === 'off' && (
+            <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+              <button onClick={() => onMarkerStyle('dot')} title="Colored dots" aria-label="Colored dots" className={'grid place-items-center w-8 h-7 rounded-md transition-colors ' + (markerStyle === 'dot' ? 'bg-teal/20 text-teal' : 'text-faint')}><Circle className="h-3.5 w-3.5 fill-current" /></button>
+              <button onClick={() => onMarkerStyle('arrow')} title="Direction arrows" aria-label="Direction arrows" className={'grid place-items-center w-8 h-7 rounded-md transition-colors ' + (markerStyle === 'arrow' ? 'bg-teal/20 text-teal' : 'text-faint')}><Navigation2 className="h-3.5 w-3.5 fill-current" /></button>
+            </div>
+          )}
+          {onHeat3dUnits && trailMode === '3d' && (
+            <div className="flex-none flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800">
+              <button onClick={() => onHeat3dUnits('hours')} className={'px-2 py-1 rounded-md text-[10.5px] font-semibold ' + (heat3dUnits === 'hours' ? 'bg-teal/20 text-teal' : 'text-faint')}>Hrs</button>
+              {showCost && <button onClick={() => onHeat3dUnits('dollars')} className={'px-2 py-1 rounded-md text-[10.5px] font-semibold ' + (heat3dUnits === 'dollars' ? 'bg-amber/20 text-amber' : 'text-faint')}>$</button>}
+            </div>
+          )}
+          {onSpeedTrails && trailMode === 'trails' && (
+            <button onClick={onSpeedTrails} title="Color trails by speed" className={'flex-none flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10.5px] font-semibold border transition-colors ' + (speedTrails ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800')}>
+              <Gauge className="h-3.5 w-3.5" /> Speed
+            </button>
+          )}
+        </div>
+        {/* Tools — every one labeled (an unlabeled glyph row is where
+            "where do I find Trails" came from, Aug 22). */}
+        <div className="flex items-stretch gap-1.5">
+          {!live && (
+            <button onClick={() => setShowChart((v) => !v)} className={toolCls(showChart, 'teal')}>
+              <AreaChart className="h-3.5 w-3.5" /> Chart
+            </button>
+          )}
+          {!live && (
+            <button onClick={shareReplay} className={toolCls(shared, 'teal')}>
+              {shared ? <Check className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />} {shared ? 'Copied' : 'Share'}
+            </button>
+          )}
+          {(onSpin || onFlyover || followAssets.length > 0 || followZones.length > 0) && (
+            <button onClick={() => { setShowCam((v) => !v); setShowFollow(false) }} className={toolCls(!!(followed || flying || spinning), followed || flying ? 'amber' : 'teal')}>
+              <Video className="h-3.5 w-3.5" /> {followed ? 'Following' : flying ? 'Flying' : spinning ? '360°' : 'Camera'}
+            </button>
+          )}
+          {onDaylight && (
+            <button
+              onClick={onDaylight}
+              disabled={daylightBlocked}
+              title={daylightBlocked ? 'Daylight follows the clock on ranges up to 30 days' : 'Shade the map by the sun — real time on Today, the replay moment when you scrub'}
+              className={toolCls(daylight && !daylightBlocked, 'amber') + ' disabled:opacity-40'}
+            >
+              <Sun className="h-3.5 w-3.5 flex-none" /> <span className="truncate">{daylight && !daylightBlocked ? sunLabel(sun) : 'Daylight'}</span>
+            </button>
+          )}
+        </div>
+        {showCost && (
+          <div className="flex items-center gap-1 font-mono text-[11px] text-amber whitespace-nowrap min-w-0" title={`Project cost · ${costLabel}`}>
+            <HardHat className="h-3.5 w-3.5 flex-none" />
+            {money(costTotal)}
+            <span className="text-faint truncate">· cost {costLabel}</span>
+          </div>
+        )}
+      </div>
+      )}
+      {stage === 'full' && (
+      <div className="hidden sm:flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-3 pr-11 pt-1 pb-1.5 border-b border-navy-800">
         {/* Reserve real width for the range pills — without a floor, the pile
             of flex-none controls crushes this strip to a sliver ("Toda…") on
             mid-width screens; controls wrap to a second line instead. */}
@@ -744,19 +897,19 @@ export function TimelinePlayback({
           {/* Short labels on phones (Brian, Aug 25: "one line, use
               abbreviations, whatever it takes") — every range plus Custom
               fits a 400px row without wrapping. */}
-          {RANGES.map((r) => (
+          {UI_RANGES.map((r) => (
             <button
               key={r.key}
-              data-active-pill={range === r.key ? '' : undefined}
-              onClick={() => onRange(r.key)}
+              data-active-pill={uiRange === r.key ? '' : undefined}
+              onClick={() => pickRange(r.key)}
               className={
                 'flex-none px-2.5 py-1 rounded-full text-[11.5px] sm:text-[12px] font-display font-bold transition-colors ' +
-                (range === r.key
-                  ? r.key === 'live' ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
+                (uiRange === r.key
+                  ? live ? 'bg-teal/20 text-teal' : 'bg-amber/20 text-amber'
                   : 'text-faint hover:text-ink hover:bg-navy-900')
               }
             >
-              {r.key === 'live' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
+              {r.key === 'today' && live && <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal mr-1.5 align-middle animate-blink" />}
               <span className="sm:hidden">{RANGE_SHORT[r.key] ?? r.label}</span>
               <span className="hidden sm:inline">{r.label}</span>
             </button>
@@ -778,8 +931,7 @@ export function TimelinePlayback({
           {live && (
             <span className="hidden sm:flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap flex-none pl-2 min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
-              <span className="text-teal">{ago}</span>
-              <span className="text-faint truncate">· {trailMode === 'off' ? 'pick a range to replay, or turn on Trails' : 'showing all of today'}</span>
+              <span className="text-teal">live · {ago}</span>
             </span>
           )}
         </div>
@@ -970,6 +1122,22 @@ export function TimelinePlayback({
             </span>
           </button>
         )}
+        {/* ☀ Daylight — the day/night shading on this clock (Brian, Sep 4:
+            "show the Sun's light moving across wherever we are viewing"). */}
+        {onDaylight && (
+          <button
+            onClick={onDaylight}
+            disabled={daylightBlocked}
+            title={daylightBlocked ? 'Daylight follows the clock on ranges up to 30 days' : 'Shade the map by the sun — real time on Today, the replay moment when you scrub; cities glow after dark'}
+            className={
+              'flex-none flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-colors disabled:opacity-40 ' +
+              (daylight && !daylightBlocked ? 'bg-amber/20 text-amber border-amber/40' : 'bg-navy-900 text-faint border-navy-800 hover:text-ink')
+            }
+          >
+            <Sun className="h-3.5 w-3.5" />
+            <span className="max-w-[110px] truncate">{daylight && !daylightBlocked ? sunLabel(sun) : 'Daylight'}</span>
+          </button>
+        )}
         </div>
       </div>
       )}
@@ -987,29 +1155,23 @@ export function TimelinePlayback({
         </div>
       )}
 
-      {live ? (
-        /* Phones show this always; desktop shows it inline in the pill row —
-           except in the timeline-only stage, where it's all there is. */
-        <div className={(stage === 'bar' ? 'flex' : 'sm:hidden flex') + ' items-center gap-2 px-4 pb-2 pt-1 min-w-0 flex-nowrap overflow-hidden'}>
-          <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
-          <span className="font-mono text-[12px] text-teal whitespace-nowrap flex-none">Live · {ago}</span>
-          <span className="font-mono text-[12px] text-faint truncate whitespace-nowrap min-w-0">
-            · {trailMode === 'off' ? 'replay or turn on Trails' : 'showing all of today'}
-          </span>
-        </div>
-      ) : (
-        <>
-        {/* date/time readout — tight against the slider row. Phones park the
-            day stepper here (free space beside the date) so the range row
-            above stays one line. */}
-        <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-1.5">
-          <CalendarClock className="h-3.5 w-3.5 text-amber flex-none" />
-          <span className="font-display font-bold text-amber text-[13px] tabular-nums">
-            {custom ? customScrubLabel(customFrom, customTo, t, tz)
+      {/* Date/time readout + scrubber — the same rows live and in replay. At
+          the live edge the readout is teal behind the blinking dot and the
+          playhead sits at "now" on today's window; any drag starts the replay
+          (one Today, Brian Sep 4). Phones park the day stepper here. */}
+      <>
+        <div className="px-4 pt-1.5 -mb-0.5 flex items-center gap-1.5 min-w-0">
+          {live
+            ? <span className="w-2 h-2 rounded-full bg-teal shadow-glow-teal animate-blink flex-none" />
+            : <CalendarClock className="h-3.5 w-3.5 text-amber flex-none" />}
+          <span className={'font-display font-bold text-[13px] tabular-nums truncate min-w-0 ' + (live ? 'text-teal' : 'text-amber')}>
+            {live ? `Live · ${customScrubLabel(todayWin.from, todayWin.to, liveT, tz)}`
+              : custom ? customScrubLabel(customFrom, customTo, t, tz)
               : realWindow ? customScrubLabel(realWindow.from, realWindow.to, t, tz)
               : scrubLabel(range, t)}
           </span>
-          {dayStepper && <span className="ml-auto sm:hidden">{dayStepper}</span>}
+          {live && <span className="hidden sm:inline font-mono text-[10px] text-faint whitespace-nowrap flex-none">{ago}</span>}
+          {dayStepper && <span className="ml-auto sm:hidden flex-none">{dayStepper}</span>}
         </div>
         {/* md:pr clears the desktop Ask FAB (fixed bottom-6 right-6, ~90px
             wide) that floats over the bar's right corner — it was covering
@@ -1017,7 +1179,7 @@ export function TimelinePlayback({
             both /map and /command. Phones hide the FAB, so no pad there. */}
         <div className="flex items-center gap-3 px-4 pt-1 pb-2 md:pr-[112px]">
           <button
-            onClick={onPlayPause}
+            onClick={playPress}
             className="flex-none grid place-items-center w-9 h-9 rounded-full bg-amber text-[#1a1100] shadow-glow-amber hover:bg-amber-600 transition-colors"
             aria-label={playing ? 'Pause' : 'Play'}
           >
@@ -1051,7 +1213,7 @@ export function TimelinePlayback({
                 <button
                   key={i}
                   title={mk.label}
-                  onClick={() => onSeek(Math.min(1, Math.max(0, mk.t)))}
+                  onClick={() => seek(Math.min(1, Math.max(0, mk.t)))}
                   className="group absolute -top-[35px] z-10 flex h-10 w-10 -translate-x-1/2 items-end justify-center pb-1"
                   style={{ left: `${(mk.t * 100).toFixed(2)}%` }}
                   aria-label={`Jump to alert: ${mk.label}`}
@@ -1060,8 +1222,8 @@ export function TimelinePlayback({
                 </button>
               ))}
               <input
-                type="range" min={0} max={1000} value={Math.round(t * 1000)}
-                onChange={(e) => onSeek(Number(e.target.value) / 1000)}
+                type="range" min={0} max={1000} value={Math.round(shownT * 1000)}
+                onChange={(e) => seek(Number(e.target.value) / 1000)}
                 className="slider-heat relative w-full h-[17px] cursor-pointer"
                 aria-label="Timeline position"
               />
@@ -1082,8 +1244,7 @@ export function TimelinePlayback({
 
           <SpeedControl speeds={speeds} value={speed} onChange={onSpeed} />
         </div>
-        </>
-      )}
+      </>
       </div>
       </div>
     </div>

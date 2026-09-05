@@ -251,6 +251,10 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   // only earliest/pairing/cost. One quiet retry, then an honest error chip.
   const [dyn, setDyn] = useState<CommandData | null>(null)
   const [dynErr, setDynErr] = useState(false)
+  // Phones / tablets (< xl): the desktop rails live in a bottom sheet behind
+  // a PANELS edge tab (Brian, Sep 4: bring the wall's features to mobile so
+  // Command Center is more than the map with a radar dial).
+  const [phonePanels, setPhonePanels] = useState(false)
 
   // "Worth a look" findings for the wall — the insight engine's top rows,
   // light 10-min poll. Money/role stripping is server-side; the panel hides
@@ -435,8 +439,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {/* corner brackets */}
       <div className="absolute top-[calc(12px+var(--ht-safe-top,0px))] left-3 w-8 h-8 border-t-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute top-[calc(12px+var(--ht-safe-top,0px))] right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
-      <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
-      <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
       {/* Desktop/TV: the slide-over sidebar. Phones navigate with the same
           bottom bar as /map instead (Brian, Aug 22) — the overlay sidebar
@@ -501,9 +505,45 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         </button>
       )}
 
+      {/* Phones / tablets: the wall's instrument rails behind a PANELS edge
+          tab (same tray-tab language as LAYERS above it), opening a bottom
+          sheet — fleet activity, site presence, Worth a look, fleet status,
+          the event log and the fleet board, exactly what the TV shows. */}
+      <button
+        onClick={() => setPhonePanels(true)}
+        aria-label="Show instrument panels"
+        className="xl:hidden absolute left-0 top-[58%] z-[46] flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+      >
+        <ChevronRight className="h-3 w-3" />
+        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Panels</span>
+      </button>
+      {phonePanels && (
+        <div className="xl:hidden fixed inset-0 z-[60]" onClick={() => setPhonePanels(false)}>
+          <div className="absolute inset-0 bg-black/45" />
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute left-0 right-0 bottom-[calc(56px+env(safe-area-inset-bottom))] max-h-[70dvh] rounded-t-2xl bg-navy-950 border border-navy-700 shadow-panel flex flex-col overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-navy-800 flex-none">
+              <LayoutGrid className="h-4 w-4 text-teal" />
+              <p className="font-display font-bold text-[13px] text-ink flex-1">Instruments</p>
+              <button onClick={() => setPhonePanels(false)} className="grid place-items-center w-8 h-8 rounded-lg bg-navy-900 border border-navy-700 text-faint hover:text-ink" aria-label="Close panels">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {/* The rails are built for a 208/224px column — stretch them to the
+                sheet's width, two-up where the phone is wide enough. */}
+            <div className="overflow-y-auto no-scrollbar p-3 grid grid-cols-1 min-[560px]:grid-cols-2 gap-3 [&>div]:!w-full [&>div]:!h-auto [&>div]:!max-h-none [&>div]:!overflow-visible">
+              <CommandRail assets={assets} geofences={geofences} tracks={liveTracks} panels={panels} onPanel={onPanel} noticed={noticed} />
+              <EventRail assets={assets} alerts={liveAlerts} geofences={geofences} historyRows={liveRows} panels={panels} onPanel={onPanel} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* tactical instrument — bottom-right, above the ticker; open ⇄ pill ⇄ gone */}
       {panels.hud !== 'hidden' && (
-        <div className="ht-hud absolute bottom-[calc(112px+env(safe-area-inset-bottom))] right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
+        <div className="ht-hud absolute bottom-[calc(108px+env(safe-area-inset-bottom))] right-4 md:bottom-16 md:right-6 z-40 flex flex-col items-end gap-1.5">
           {panels.hud === 'open' && (
             <TacticalHud
               assets={assets}
@@ -554,7 +594,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           <span className="hidden xl:block"><TopBarWeather /></span>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
-            className="inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
+            className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
           >
             <Sparkles className="h-4 w-4" /> Ask AI
           </button>
@@ -582,10 +622,34 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         </div>
       </div>
 
-      {/* live event ticker — the wall display's heartbeat (Screen menu turns it off) */}
+      {/* Phones: the wall's stats bar as six mini cells under the header —
+          the same numbers the TV chips carry (Brian, Sep 4: bring desktop
+          features to mobile so Command Center earns its place there). */}
+      {panels.chips !== 'hidden' && (
+        <div className="sm:hidden absolute left-0 right-0 z-[45] top-[calc(56px+var(--ht-safe-top,0px))] grid grid-cols-6 bg-navy-950/85 backdrop-blur border-b border-navy-800/80">
+          {([
+            ['Assets', `${liveKpis.assetsOnline}/${liveKpis.assetsTotal}`, 'text-ink'],
+            ['Moving', `${liveKpis.equipmentRunning}`, 'text-amber'],
+            ['Crew', `${liveKpis.crewOnSite}`, 'text-teal'],
+            ['Sites', `${liveKpis.sites}`, 'text-ink'],
+            ['Alerts', `${liveKpis.activeAlerts}`, liveKpis.activeAlerts > 0 ? 'text-alert' : 'text-ink'],
+            ['$ today', liveKpis.costToday, 'text-amber'],
+          ] as [string, string, string][]).map(([label, value, color]) => (
+            <div key={label} className="py-1 text-center border-r border-navy-800/60 last:border-r-0 min-w-0">
+              <div className={'font-display font-black text-[13px] leading-none tabular-nums truncate px-0.5 ' + color}>{value}</div>
+              <div className="font-mono text-[8.5px] uppercase tracking-[0.08em] text-faint leading-none mt-0.5 truncate">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* live event ticker — the wall display's heartbeat (Screen menu turns it
+          off). Desktop: along the bottom. Phones: a slim strip under the
+          header — along the bottom it covered the radar's controls and the
+          timeline pill (Brian, Sep 4: "the ticker is covering things up"). */}
       {showTicker && (
-        <div className="absolute bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 z-40 h-9 bg-navy-950/85 backdrop-blur border-t border-navy-800 overflow-hidden pointer-events-none">
-          <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[12px]">
+        <div className={'absolute left-0 right-0 z-40 h-7 md:h-9 bg-navy-950/85 backdrop-blur overflow-hidden pointer-events-none border-b md:border-b-0 md:border-t border-navy-800 md:top-auto md:bottom-0 ' + (panels.chips !== 'hidden' ? 'top-[calc(92px+var(--ht-safe-top,0px))]' : 'top-[calc(56px+var(--ht-safe-top,0px))]')}>
+          <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[11px] md:text-[12px]">
             {[...ticker, ...ticker].map((item, i) => (
               // suppressHydrationWarning: items carry relative times ("53m ago")
               // that drift between server render and client hydration.

@@ -30,7 +30,7 @@ export function nightRegion(altDeg: number, now = new Date()): GeoJSON.Feature<G
   const A = Math.sin(dec * rad)
   const sinA = Math.sin(altDeg * rad)
   const coords: [number, number][] = []
-  for (let lng = -180; lng <= 180; lng += 2) {
+  for (let lng = -180; lng <= 180; lng += 1) {
     const B = Math.cos(dec * rad) * Math.cos((lng - subLng) * rad)
     const R = Math.hypot(A, B)
     let lat: number
@@ -51,25 +51,53 @@ export function nightRegion(altDeg: number, now = new Date()): GeoJSON.Feature<G
 }
 
 /**
- * Graduated dusk→night shading: stacked twilight bands (sun below 0/−6/−12/
- * −18°). Rendered together in one translucent fill layer they accumulate,
- * so the map fades smoothly from daylight through dusk into full night.
+ * Graduated dusk→night shading. Each band is "the sun sits below alt°";
+ * drawn together in ONE translucent fill layer they accumulate, so the map
+ * fades from daylight through a warm horizon glow (golden hour) and civil /
+ * nautical / astronomical twilight into full night — a real gradient, not
+ * four hard steps. Sep 5 (Brian: "show the Sun's light moving across
+ * wherever we are viewing" on the timeline): at job-site zoom a step edge
+ * marching across the site read as a glitch, so the ladder is ten rungs.
+ * Full night lands around 0.55 navy — trails and dots stay readable.
  */
+export const TWILIGHT_BANDS: { alt: number; op: number; color: string }[] = [
+  { alt: 6, op: 0.05, color: '#ff9e16' },   // golden hour — sun within 6° of the horizon
+  { alt: 2, op: 0.05, color: '#ff7a3d' },
+  { alt: 0, op: 0.08, color: '#1a1030' },   // sunset
+  { alt: -2, op: 0.08, color: '#0b1430' },
+  { alt: -4, op: 0.08, color: '#06102a' },
+  { alt: -6, op: 0.08, color: '#040d22' },  // civil dusk ends
+  { alt: -9, op: 0.08, color: '#030a1c' },
+  { alt: -12, op: 0.07, color: '#020817' }, // nautical dusk ends
+  { alt: -15, op: 0.06, color: '#020817' },
+  { alt: -18, op: 0.06, color: '#020817' }, // astronomical — full night
+]
+
 export function twilightBands(now = new Date()): GeoJSON.FeatureCollection {
-  const bands = [
-    { alt: 0, op: 0.16 },
-    { alt: -6, op: 0.2 },
-    { alt: -12, op: 0.22 },
-    { alt: -18, op: 0.24 },
-  ]
   return {
     type: 'FeatureCollection',
-    features: bands.map((b) => {
+    features: TWILIGHT_BANDS.map((b) => {
       const f = nightRegion(b.alt, now)
-      f.properties = { op: b.op }
+      f.properties = { op: b.op, color: b.color }
       return f
     }),
   }
+}
+
+/** Sun elevation above the horizon and azimuth (deg clockwise from north)
+ *  at a point — the timeline's ☀ readout ("Sun 41° SW", "Civil dusk"). */
+export function sunAt(lat: number, lng: number, now = new Date()): { elevation: number; azimuth: number } {
+  const rad = Math.PI / 180
+  const { dec, subLng } = solarBasis(now)
+  const H = (lng - subLng) * rad
+  const phi = lat * rad
+  const delta = dec * rad
+  const sinAlt = Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta) * Math.cos(H)
+  const elevation = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / rad
+  // Clockwise from north: due south at solar noon for an observer north of
+  // the sun, swinging west through the afternoon.
+  const az = Math.atan2(-Math.sin(H), Math.tan(delta) * Math.cos(phi) - Math.sin(phi) * Math.cos(H)) / rad
+  return { elevation, azimuth: (az + 360) % 360 }
 }
 
 export function nightPolygon(now = new Date()): GeoJSON.Feature<GeoJSON.Polygon> {
