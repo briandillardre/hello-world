@@ -15,6 +15,7 @@ export function MapSheet({
   title,
   subtitle,
   badge,
+  peek,
   onClose,
   children,
 }: {
@@ -22,6 +23,13 @@ export function MapSheet({
   title: string
   subtitle?: ReactNode
   badge?: ReactNode
+  /**
+   * The first-tap card (phones, title-only stop). What a foreman needs at a
+   * glance without dragging anything: status, where, the three numbers, the
+   * four actions. Gets `expand` so a "Trips" button can open the full body.
+   * Desktop never needs it — the sidebar shows the whole panel at once.
+   */
+  peek?: (ctx: { expand: () => void }) => ReactNode
   onClose: () => void
   children: ReactNode
 }) {
@@ -131,6 +139,12 @@ export function MapSheet({
             </div>
             {header(true)}
           </div>
+          {/* First-tap card: lives OUTSIDE the drag surface so its buttons
+              get real taps, and only at level 0 — the body carries all of it
+              (and more) once the sheet is pulled up. */}
+          {peek && level === 0 && (
+            <div className="shrink-0 px-5 pt-2 pb-4">{peek({ expand: () => setLevel(1) })}</div>
+          )}
           {/* Body stays MOUNTED at title-only (hidden) so its state — fetched
               stops, opened cards — survives collapsing and re-expanding. */}
           <div className={`overflow-y-auto px-5 pb-6 mt-3 flex-1 overscroll-contain ${level === 0 ? 'hidden' : ''}`}>{children}</div>
