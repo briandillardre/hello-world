@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { requireFeature } from '@/lib/permissions-server'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { Activity, AlertTriangle, Clock, Gauge, Moon, DollarSign } from 'lucide-react'
@@ -83,6 +84,7 @@ const GRADE_CLS: Record<string, string> = {
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
+  await requireFeature('reports')
   const companyId = await getCurrentCompanyId()
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const keys = REPORT_RANGES.map((r) => r.key)

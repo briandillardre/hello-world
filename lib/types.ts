@@ -14,7 +14,7 @@ export interface AlertRuleParams {
   /** Escalate an info/warning trigger to critical — rides the SMS path. */
   critical?: boolean
 }
-export type UserRole = 'admin' | 'viewer'
+export type UserRole = 'admin' | 'manager' | 'foreman' | 'associate'
 export type MaintenanceIntervalType = 'engine_hours' | 'mileage' | 'days'
 
 export interface Company {

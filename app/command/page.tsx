@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { requireFeature } from '@/lib/permissions-server'
 import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { safeTz } from '@/lib/dates'
@@ -29,6 +30,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function CommandPage() {
+  await requireFeature('command')
   // Auth gate — same contract as app/(dashboard)/layout.tsx (no Edge
   // middleware in this app; gating lives in the server components). In real
   // mode a logged-out visitor gets /login instead of an empty shell whose

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
 
 // ONE ordered list of every phone destination. The first 4 fill the bottom
@@ -52,7 +53,7 @@ const ROLE_BARS: Record<string, string[]> = {
   admin:   ['/map', '/command', '/alerts', '/clock', '/assets'],
   manager: ['/map', '/assets', '/alerts', '/clock', '/reports'],
   foreman: ['/map', '/clock', '/alerts', '/logs', '/track'],
-  viewer:  ['/map', '/assets', '/alerts', '/zones', '/reports'],
+  associate: ['/map', '/clock', '/alerts', '/logs', '/maintenance'],
 }
 const canonOrder = (role?: string | null): string[] => {
   const bar = ROLE_BARS[role ?? ''] ?? ROLE_BARS.admin
@@ -85,7 +86,7 @@ function sanitizeOrder(saved: unknown, canon: string[]): string[] | null {
   return next
 }
 
-export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, onSignOut }: {
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, features = null, onSignOut }: {
   alertCount?: number
   latestAlertAt?: string | null
   companyName?: string
@@ -94,6 +95,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   navOrder?: string[] | null
   /** Signed-in role — picks the DEFAULT bar when nothing is saved. */
   role?: string | null
+  /** The caller's view levels (094). null = everything. */
+  features?: string[] | null
   onSignOut?: () => void
 }) {
   const pathname = usePathname()
@@ -104,6 +107,9 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   // With nothing saved anywhere, the ROLE picks the bar.
   const canon = canonOrder(role)
   const [order, setOrder] = useState<string[]>(() => sanitizeOrder(navOrder, canon) ?? canon)
+  // View levels: pages outside them are not in the bar, the drawer, or the
+  // edit grid. The saved order keeps them (a role change brings them back).
+  const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
   const [editing, setEditing] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
 
@@ -142,7 +148,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   // FIVE list items ride the bar — 3 · AskAI · 2 + More, so AskAI sits dead
   // center of the 7 cells (Brian, Aug 22: "update this to five and center
   // the ask AI").
-  const ordered = order.map((h) => byHref[h]).filter(Boolean)
+  const ordered = order.filter(allowed).map((h) => byHref[h]).filter(Boolean)
   const barItems = ordered.slice(0, BAR_COUNT)
   const moreActive = ordered.slice(BAR_COUNT).some((i) => pathname.startsWith(i.href))
 
@@ -379,7 +385,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 the More button — a theft alert must never be invisible. */}
             <span className="relative">
               <MoreHorizontal className="h-5 w-5" />
-              {order.indexOf('/alerts') >= BAR_COUNT && alertBadge('/alerts')}
+              {ordered.findIndex((i) => i.href === '/alerts') >= BAR_COUNT && alertBadge('/alerts')}
             </span>
             <span>More</span>
           </button>

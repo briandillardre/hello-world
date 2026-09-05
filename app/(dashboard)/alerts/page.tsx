@@ -2,14 +2,15 @@ import { AlertsView } from '@/components/alerts/AlertsView'
 import { getAlertEvents, getAlertRules } from '@/lib/db/alerts'
 import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
-import { getCurrentCompanyId, getMyRole } from '@/lib/db/company'
+import { getCurrentCompanyId } from '@/lib/db/company'
+import { requireFeature } from '@/lib/permissions-server'
 
 export const metadata = { title: 'HammerTrack — Alerts' }
 
 export default async function AlertsPage() {
   const companyId = await getCurrentCompanyId()
-  const role = await getMyRole()
-  const canEdit = role !== 'viewer'
+  const perms = await requireFeature('alerts')
+  const canEdit = perms.canEdit
   const [alerts, rules, geofences, assets] = await Promise.all([
     getAlertEvents(companyId),
     getAlertRules(companyId),

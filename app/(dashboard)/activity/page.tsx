@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { requireFeature } from '@/lib/permissions-server'
 import { Activity, Bot, Users } from 'lucide-react'
 import { safeTz } from '@/lib/dates'
 
@@ -19,6 +20,7 @@ interface Row { user_id: string; role: 'user' | 'assistant'; content: string; cr
  * client AFTER verifying the viewer's admin role server-side.
  */
 export default async function ActivityPage() {
+  await requireFeature('activity')
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const fmt = (iso: string) =>
     new Date(iso).toLocaleString('en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })

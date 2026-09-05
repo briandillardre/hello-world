@@ -161,6 +161,8 @@ export async function POST(request: NextRequest) {
     getToolAssociations(companyId),
     getMyPermissions(),
   ])
+  // The view-levels table can switch Ask AI off for a role (094).
+  if (!perms.features.includes('ask_ai')) return NextResponse.json({ error: 'Ask AI is not enabled for your role.' }, { status: 403 })
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = safeTz(request.cookies.get('ht_tz')?.value)
 
@@ -240,7 +242,7 @@ export async function POST(request: NextRequest) {
       .trim()
 
     if (text) {
-      await saveTurn(userId, userCompanyId, question, text)
+      if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, text)
       return NextResponse.json({ answer: text, grounded: false })
     }
   } catch (err) {
@@ -250,7 +252,7 @@ export async function POST(request: NextRequest) {
   // Agent failed (bad key, outage, loop cap) → grounded fallback, never a 500.
   const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
   const grounded = answerQuestion(question, ctx)
-  await saveTurn(userId, userCompanyId, question, grounded.answer)
+  if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, grounded.answer)
   return NextResponse.json({ answer: grounded.answer, grounded: true })
 }
 

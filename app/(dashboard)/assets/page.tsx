@@ -1,4 +1,5 @@
 import { AssetList } from '@/components/assets/AssetList'
+import { requireFeature } from '@/lib/permissions-server'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -9,6 +10,7 @@ import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/li
 export const metadata = { title: 'HammerTrack — Assets' }
 
 export default async function AssetsPage() {
+  await requireFeature('assets')
   const companyId = await getCurrentCompanyId()
   const [rawAssets, toolAssociations, geofences, schedules, readings] = await Promise.all([
     getAssetsWithLocations(companyId),

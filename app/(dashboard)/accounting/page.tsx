@@ -3,13 +3,14 @@ import { getConnectionStatus, buildEquipmentUsageInvoice, isQboConfigured, isQbo
 import { getAssets } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import type { QboInvoicePreview } from '@/lib/types'
 import { Building2, Lock } from 'lucide-react'
 
 export const metadata = { title: 'HammerTrack — Accounting' }
 
 export default async function AccountingPage() {
+  await requireFeature('accounting')
   const companyId = await getCurrentCompanyId()
   const [status, assets, geofences, perms] = await Promise.all([
     getConnectionStatus(companyId),

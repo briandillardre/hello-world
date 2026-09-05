@@ -1,9 +1,11 @@
 import { getTeam } from '@/lib/db/team'
+import { requireFeature } from '@/lib/permissions-server'
 import { TeamManager } from '@/components/team/TeamManager'
 
 export const metadata = { title: 'HammerTrack — Team' }
 
 export default async function TeamPage() {
+  await requireFeature('team')
   const team = await getTeam()
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">

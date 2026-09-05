@@ -15,6 +15,7 @@ import { getAlertEvents } from '@/lib/db/alerts'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
 import { getCurrentCompany } from '@/lib/db/company'
 import { AlertBadgeBridge } from '@/components/layout/AlertBadgeBridge'
+import { ROLE_LABEL } from '@/lib/permissions'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -51,7 +52,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Suspense fallback={null}>
         <AlertBadgeFeed companyId={company.id} />
       </Suspense>
-      <DashboardShell alertCount={0} latestAlertAt={null} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role}>
+      <DashboardShell alertCount={0} latestAlertAt={null} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role} features={perms.features} viewingAs={perms.viewingAs ? { name: perms.viewingAs.name, roleLabel: ROLE_LABEL[perms.viewingAs.role] } : null}>
         {children}
       </DashboardShell>
     </div>

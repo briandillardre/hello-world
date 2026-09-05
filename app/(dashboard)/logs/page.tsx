@@ -4,7 +4,7 @@ import { QrCode } from 'lucide-react'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { getRecentFieldDays, getQboPushedEntryIds } from '@/lib/db/fieldops'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { getConnectionStatus } from '@/lib/qbo'
 import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
 import { pairOperators, type PairSegment } from '@/lib/pairing'
@@ -21,6 +21,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /** The office's morning read: daily logs by day → project, plus the hours table. */
 export default async function LogsPage() {
+  await requireFeature('logs')
   const companyId = await getCurrentCompanyId()
   const [{ entries, logs, available }, geofences, assets] = await Promise.all([
     getRecentFieldDays(companyId, 7),

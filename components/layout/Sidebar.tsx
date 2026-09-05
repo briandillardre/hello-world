@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
 
@@ -58,9 +59,15 @@ interface SidebarProps {
    *  collapsing removes it entirely — nothing left but the expand arrow in
    *  the same spot as the map view's toggle (owner ask, Jul 21). */
   fullCollapse?: boolean
+  /** The caller's view levels (094). null = show everything (demo / pre-094). */
+  features?: string[] | null
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null }: SidebarProps) {
+  // Pages outside the caller's view levels don't exist for them — not
+  // greyed, not there. (The page itself 404s too; this keeps the two honest.)
+  const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
+  const sections = navSections.map((sec) => ({ ...sec, items: sec.items.filter((i) => allowed(i.href)) })).filter((sec) => sec.items.length)
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
   if (fullCollapse && collapsed) {
@@ -142,7 +149,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
       )}
 
       <nav className="flex-1 p-1.5 overflow-y-auto">
-        {navSections.map((section, si) => (
+        {sections.map((section, si) => (
         <div key={si} className={si > 0 ? 'mt-1' : ''}>
         {section.title && !collapsed && (
           <p className="px-3 pt-1 pb-0.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint/70">{section.title}</p>
