@@ -255,6 +255,16 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
   // a PANELS edge tab (Brian, Sep 4: bring the wall's features to mobile so
   // Command Center is more than the map with a radar dial).
   const [phonePanels, setPhonePanels] = useState(false)
+  // The desktop rails mount only at xl — as CSS-hidden elements they still
+  // ran EventRail's stops polling on every phone (ship-check, Sep 5).
+  const [xl, setXl] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)')
+    const sync = () => setXl(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
 
   // "Worth a look" findings for the wall — the insight engine's top rows,
   // light 10-min poll. Money/role stripping is server-side; the panel hides
@@ -400,10 +410,13 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
 
   return (
     <div
-      className="fixed inset-0 bg-navy-950 text-ink overflow-hidden"
-      // Phones stack the KPI strip (33px) and the ticker (28px) under the
-      // header; the kiosk map's zoom cluster reads this to start below them.
-      style={{ '--ht-cc-strip': `${(panels.chips !== 'hidden' ? 33 : 0) + (showTicker ? 28 : 0)}px` } as React.CSSProperties}
+      className="ht-cc fixed inset-0 bg-navy-950 text-ink overflow-hidden"
+      // Phones stack the KPI strip (33px, < sm) and the ticker (28px, < md)
+      // under the header; globals.css turns these into --ht-cc-strip per
+      // breakpoint so the kiosk map's zoom cluster and the loading chip
+      // start below them — and desktop stays exactly where it was.
+      data-cc-chips={panels.chips !== 'hidden' ? '1' : '0'}
+      data-cc-ticker={showTicker ? '1' : '0'}
     >
       {/* live map — zoom buttons hide via CSS when that window is off */}
       <div className={'absolute inset-0' + (panels.zoom === 'hidden' ? ' ht-hide-zoom' : '')}>
@@ -433,7 +446,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {/* Deferred-cargo status — same language as the map's layer chips.
           Disappears the moment /api/command-data lands. */}
       {deferLoad && !dyn && (
-        <div className="absolute top-[calc(64px+var(--ht-safe-top,0px))] left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
+        <div className="absolute top-[calc(64px+var(--ht-safe-top,0px)+var(--ht-cc-strip,0px))] left-1/2 -translate-x-1/2 z-[46] flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
           <span className={`h-2 w-2 rounded-full ${dynErr ? 'bg-alert' : 'bg-teal animate-blink'}`} />
           <span className={`font-mono text-[10.5px] uppercase tracking-[0.12em] ${dynErr ? 'text-alert' : 'text-teal'}`}>
             {dynErr ? 'History unavailable — retrying…' : 'Loading trails & history…'}
@@ -464,7 +477,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       />
 
       {/* left instrument rail — below the layers pill; slim edge tab when hidden */}
-      {leftVisible ? (
+      {xl && (leftVisible ? (
         // pointer-events-none on the WRAPPER: it spans to the bottom of the
         // screen and its empty lower half was swallowing clicks meant for the
         // map's zoom/locate buttons underneath ("none of those are working",
@@ -486,13 +499,13 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           <ChevronRight className="h-3 w-3" />
           <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Panels</span>
         </button>
-      )}
+      ))}
 
       {/* right instrument rail — event log + fleet board, above the HUD dial.
           Bottom edge clears the radar dial at ANY viewport width (dial is
           clamp(150px,26vw,320px) tall + pill + margins). Overflow scrolls
           inside the rail instead of over the dial. */}
-      {rightVisible ? (
+      {xl && (rightVisible ? (
         // Same pointer-events split as the left rail — empty wrapper area
         // must never block the map.
         <div className="absolute right-[58px] top-[68px] bottom-[calc(clamp(150px,26vw,320px)+136px)] z-40 hidden xl:flex justify-end overflow-hidden pointer-events-none">
@@ -508,7 +521,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-      )}
+      ))}
 
       {/* Phones / tablets: the wall's instrument rails behind a PANELS edge
           tab (same tray-tab language as LAYERS above it), opening a bottom
@@ -653,7 +666,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           header — along the bottom it covered the radar's controls and the
           timeline pill (Brian, Sep 4: "the ticker is covering things up"). */}
       {showTicker && (
-        <div className={'absolute left-0 right-0 z-40 h-7 md:h-9 bg-navy-950/85 backdrop-blur overflow-hidden pointer-events-none border-b md:border-b-0 md:border-t border-navy-800 md:top-auto md:bottom-0 ' + (panels.chips !== 'hidden' ? 'top-[calc(92px+var(--ht-safe-top,0px))]' : 'top-[calc(56px+var(--ht-safe-top,0px))]')}>
+        <div className={'absolute left-0 right-0 z-40 h-7 md:h-9 bg-navy-950/85 backdrop-blur overflow-hidden pointer-events-none border-b md:border-b-0 md:border-t border-navy-800 md:top-auto md:bottom-0 top-[calc(56px+var(--ht-safe-top,0px)+var(--ht-cc-kpi,0px))]'}>
           <div className="ticker-track flex items-center h-full gap-10 whitespace-nowrap font-mono text-[11px] md:text-[12px]">
             {[...ticker, ...ticker].map((item, i) => (
               // suppressHydrationWarning: items carry relative times ("53m ago")

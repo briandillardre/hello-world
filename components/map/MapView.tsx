@@ -2958,8 +2958,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       }
     }
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts, iconByIdRef.current))
-    if (mode === 'trails') {
+    // Heat mode draws the route as its green thread off the SAME trails
+    // source, so it refreshes there too (scrub, selection dim, filters).
+    if (mode === 'trails' || mode === 'heatmap') {
       ;(m.getSource('trails') as maplibregl.GeoJSONSource | undefined)?.setData(trailsGeoJSON(trs, filterRef.current, t, sel, speedTrailsRef.current ? windowSecRef.current : null))
+    }
+    if (mode === 'trails') {
+      // trails only — the points source is not needed
     } else if (mode === '3d') {
       // ONE build for both halves of the terrain — the selected asset's
       // share of each cell tagged dim:0, everyone else's dim:1 — so bright
@@ -3013,28 +3018,9 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     return () => clearInterval(id)
   }, [mapReady, pbPlaying, followId])
 
-  // Heartbeat for moving assets: the pulse ring breathes outward and fades on
-  // a 1.5s cycle. Two paint-property writes per frame — GPU noise.
-  useEffect(() => {
-    if (!mapReady) return
-    const m = map.current
-    if (!m) return
-    let raf = 0
-    const tick = () => {
-      // Every paint write forces a full repaint — free on the flat map, but
-      // with 3D terrain each one re-renders the whole terrain pipeline, and
-      // this 60fps heartbeat alone pinned a desktop GPU ("terrain not
-      // usable", Jul 22). Steady dots while terrain is on.
-      if (!terrain3dRef.current && m.getLayer('asset-pulse')) {
-        const ph = (performance.now() % 1500) / 1500
-        m.setPaintProperty('asset-pulse', 'circle-radius', 15 + ph * 20)
-        m.setPaintProperty('asset-pulse', 'circle-opacity', 0.45 * (1 - ph))
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [mapReady])
+  // (The moving-asset pulse heartbeat lives further down — ONE loop, gated
+  // on live/playing, terrain and the layer's visibility; ship-check found
+  // two loops fighting over the same paint properties, Sep 5.)
 
   // Radar-dial blips (TacticalHud) tap through to the map: fly to the asset
   // and open its panel, same as tapping its marker.
@@ -5529,7 +5515,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     const m = map.current
     if (!mapReady || !m) return
     const still = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const animate = (range === 'live' || pbPlaying) && !still
+    // Every paint write is a full repaint — free on the flat map, but with
+    // 3D terrain it re-renders the whole terrain pipeline (the Jul 22
+    // "terrain not usable" GPU pin). Steady ring while terrain is on.
+    const animate = (range === 'live' || pbPlaying) && !still && !terrain3d
     const setRing = (radius: number, opacity: number) => {
       if (!m.getLayer('asset-pulse')) return
       m.setPaintProperty('asset-pulse', 'circle-radius', radius)
@@ -5542,12 +5531,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       raf = requestAnimationFrame(frame)
       if (now - last < 50) return // ~20 fps is plenty for a breath
       last = now
+      // Trails / heat modes hide the live dots — no repaints for a ring
+      // nobody can see.
+      if (!m.getLayer('asset-pulse') || m.getLayoutProperty('asset-pulse', 'visibility') === 'none') return
       const ph = (now % 1400) / 1400
       setRing(11 + ph * 14, 0.6 * (1 - ph))
     }
     raf = requestAnimationFrame(frame)
     return () => { cancelAnimationFrame(raf); setRing(16, 0.4) }
-  }, [mapReady, range, pbPlaying])
+  }, [mapReady, range, pbPlaying, terrain3d])
 
   // Chip position: measured off the radar button so it hugs the rail.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
@@ -5993,6 +5985,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     show('clouds-layer', cloudsOn)
     show('stormtops-layer', stormTopsOn)
     show('precip-layer', precipOn)
+    // Age badges ride the LIVE fix — during a replay they would float at
+    // today's coordinates over yesterday's heads (ship-check, Sep 5).
+    show('asset-age', true)
+    show('tool-age', true)
     show('nws-fill', !!overlaysOn.nwswarn)
     show('nws-line', !!overlaysOn.nwswarn)
     show('spc-watch-line', !!overlaysOn.nwswarn)
