@@ -109,6 +109,11 @@ AS $$
 DECLARE
   a INT; b INT; m INT;
 BEGIN
+  -- The window is a promise to the user; nothing may shorten it.
+  IF keep_days < 30 THEN
+    RAISE EXCEPTION 'purge_retention: keep_days must be >= 30 (got %)', keep_days;
+  END IF;
+
   -- Soft-deleted assets past the window: the FK cascade takes locations,
   -- tool associations, maintenance and alert events with them (001).
   DELETE FROM assets
@@ -128,3 +133,9 @@ BEGIN
   RETURN QUERY SELECT a, b, m;
 END;
 $$;
+
+-- Service role only. Functions are EXECUTE-able by PUBLIC by default, and
+-- PostgREST exposes public-schema functions as rpc — an authenticated member
+-- must not be able to run the purge on demand (RLS would scope it to their
+-- own tenant, but early purge of Recently deleted is still a foot-gun).
+REVOKE EXECUTE ON FUNCTION purge_retention(INT) FROM PUBLIC, anon, authenticated;

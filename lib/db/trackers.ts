@@ -413,8 +413,14 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
   }
   // Only the LATEST change to a tracker can be undone cleanly.
   for (const m of batch) {
-    const { data: later } = await db.from('tracker_moves').select('id').eq('company_id', companyId).eq('tracker_id', m.tracker_id)
-      .is('undone_at', null).gt('created_at', m.created_at).neq('note', m.note ?? '').limit(1)
+    // Any later, still-standing change to this tracker outside this group
+    // blocks the undo. NB: a plain `neq('note', x)` silently drops NULL-note
+    // rows (SQL: NULL <> x is NULL), which is every non-swap move — so the
+    // group exclusion has to be spelled as "null OR different".
+    let q = db.from('tracker_moves').select('id').eq('company_id', companyId).eq('tracker_id', m.tracker_id)
+      .is('undone_at', null).gt('created_at', m.created_at)
+    if (typeof m.note === 'string' && m.note.startsWith('group:')) q = q.or(`note.is.null,note.neq.${m.note}`)
+    const { data: later } = await q.limit(1)
     if (later?.length) return { ok: false, error: `Tracker …${m.tracker_id.slice(-4)} was changed again after this. Undo the newer change first.` }
   }
 
