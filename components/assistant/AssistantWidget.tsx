@@ -212,7 +212,10 @@ export function AssistantWidget() {
     <>
       {/* Chat panel */}
       {open && (
-        <div className="fixed z-[60] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+        // z-[75]: above the map's asset/zone sheets (z-70/71) — the panel you
+        // just opened must not render UNDER the sheet you tapped earlier — and
+        // below toasts (135) and confirm sheets (140).
+        <div className="fixed z-[75] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-navy-800">
             <span className="flex items-center gap-2 font-display font-bold text-ink">
               <span className="grid place-items-center w-6 h-6 rounded-md bg-amber/20"><Sparkles className="h-3.5 w-3.5 text-amber" /></span>
@@ -358,7 +361,11 @@ export function AssistantWidget() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') ask(input) }}
               placeholder={listening ? 'Listening…' : 'Ask about your fleet…'}
-              className="flex-1 bg-navy-900 border border-navy-700 rounded-full px-4 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50"
+              // min-w-0: a flex-1 <input> refuses to shrink below its intrinsic
+              // width (size=20 × the 16px touch font), so on a phone the row
+              // overflowed and the Send button was clipped off the right edge
+              // behind overflow-hidden (Brian, Sep 3: "this ai button is hidden").
+              className="flex-1 min-w-0 bg-navy-900 border border-navy-700 rounded-full px-4 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-amber/50"
             />
             {voiceOk && (
               <button
