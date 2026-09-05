@@ -1,8 +1,48 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import { Building2, Users, Radio, LogOut } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
 import { TopBarWeather } from './TopBarWeather'
 import { TopBarSearch } from './TopBarSearch'
+import { signOutAction } from '@/lib/actions/auth'
+
+/** Zoom to the whole fleet — the same action as the ⤢ map button. */
+const fitFleet = () => document.querySelector<HTMLButtonElement>('.ht-fitall')?.click()
+
+/** The company mark is the account door (Brian, Sep 4: "the company icon
+ *  needs to do something"): one tap opens Company settings, Team, Trackers
+ *  and Sign out — the avatar-slot menu every big app trains thumbs on. */
+function CompanyMenu({ companyName, children }: { companyName: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent | TouchEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc) }
+  }, [open])
+  const item = 'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold text-ink hover:bg-navy-800 transition-colors'
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button type="button" onClick={() => setOpen((v) => !v)} title={companyName} aria-label={`${companyName} — account menu`} aria-expanded={open} className="flex items-center rounded-md hover:bg-navy-800/60 transition-colors">
+        {children}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-[60] w-[230px] rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-1.5 pointer-events-auto">
+          <p className="px-3 pt-1.5 pb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-faint truncate">{companyName}</p>
+          <Link href="/settings" className={item} onClick={() => setOpen(false)}><Building2 className="h-4 w-4 text-teal" /> Company settings</Link>
+          <Link href="/team" className={item} onClick={() => setOpen(false)}><Users className="h-4 w-4 text-teal" /> Team</Link>
+          <Link href="/trackers" className={item} onClick={() => setOpen(false)}><Radio className="h-4 w-4 text-teal" /> Trackers</Link>
+          <div className="my-1 border-t border-navy-800" />
+          <button type="button" onClick={() => signOutAction()} className={item + ' w-full text-left text-faint hover:text-alert'}><LogOut className="h-4 w-4" /> Sign out</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /** Slim banner above the Live Map: brand + company on the left, current
  *  conditions on the right (weather moved up out of the layers menu — owner
@@ -32,8 +72,14 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
       <div className="pointer-events-auto mx-2 mt-2 md:m-0 flex items-center gap-2.5 md:gap-3 h-10 md:h-auto px-3 md:px-0 rounded-2xl md:rounded-none bg-navy-950/85 md:bg-transparent backdrop-blur md:backdrop-blur-0 border md:border-0 border-navy-800/80 shadow-lg md:shadow-none md:flex-1">
       {/* Mobile: full branding (no sidebar there). Desktop: company name only —
           no page title (owner ask, Jul 21), but not an empty strip either. */}
-      <span className="md:hidden flex items-center"><Logo size={20} href="/map" /></span>
-      <span className="hidden md:inline font-mono text-[11px] uppercase tracking-[0.12em] leading-none text-faint truncate">{companyName}</span>
+      {/* Brand mark on the map = "show me my whole fleet" (Brian, Sep 4: the
+          logo has to do something) — the same zoom-to-all as the ⤢ button. */}
+      <button type="button" onClick={fitFleet} title="Zoom to your whole fleet" aria-label="Zoom to all assets" className="md:hidden flex items-center"><Logo size={20} href={null} /></button>
+      <span className="hidden md:flex items-center">
+        <CompanyMenu companyName={companyName}>
+          <span className="font-mono text-[11px] uppercase tracking-[0.12em] leading-none text-faint hover:text-ink truncate px-1 py-1">{companyName}</span>
+        </CompanyMenu>
+      </span>
       {/* Desktop: a real search field center-bar (8c-a). Phones get the icon
           in the right cluster below. */}
       <span className="hidden md:flex flex-1 justify-center px-4"><TopBarSearch /></span>
@@ -42,20 +88,22 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
         <span className="flex items-center flex-none">
           <TopBarWeather place={weatherPlace} coords={weatherCoords} canSetDefault={canSetWeatherDefault} />
         </span>
-        {logoUrl ? (
-          <>
-            <span className="md:hidden h-4 w-px bg-navy-700 flex-none" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logoUrl}
-              alt={companyName}
-              className="md:hidden h-5 w-auto max-w-[72px] rounded object-contain flex-none"
-              style={logoBg ? { backgroundColor: logoBg } : undefined}
-            />
-          </>
-        ) : (
-          <span className="md:hidden font-mono text-[10px] uppercase tracking-[0.1em] leading-none text-faint truncate max-w-[110px]">{companyName}</span>
-        )}
+        <span className="md:hidden flex items-center gap-2.5">
+          <span className="h-4 w-px bg-navy-700 flex-none" />
+          <CompanyMenu companyName={companyName}>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt={companyName}
+                className="h-5 w-auto max-w-[72px] rounded object-contain flex-none"
+                style={logoBg ? { backgroundColor: logoBg } : undefined}
+              />
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em] leading-none text-faint truncate max-w-[110px]">{companyName}</span>
+            )}
+          </CompanyMenu>
+        </span>
       </span>
       </div>
     </div>

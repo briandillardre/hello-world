@@ -111,6 +111,12 @@ const ASSET_COLORS: Record<AssetType, string> = {
 // unit. Those dots go gray (color is for living hardware) — Brian, Aug 28.
 const DEAD_MS = 48 * 3_600_000
 const DEAD_GRAY = '#46586a'
+// Live-dot color: the asset's own color, fading toward DEAD_GRAY as the last
+// fix ages from 12h to 48h (gray past that). Overnight parking (8–14h) barely
+// moves; a day-old truck is visibly washed out; two days = gray (Brian, Sep 4:
+// "know how stale the data is… older than a day or two turn gray").
+const AGED_COLOR = ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY,
+  ['interpolate', ['linear'], ['coalesce', ['get', 'ageH'], 0], 12, ['to-color', ['get', 'color']], 48, ['to-color', DEAD_GRAY]]] as unknown as maplibregl.ExpressionSpecification
 
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
@@ -158,9 +164,11 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
     // get a trail head, and hiding live dots in Trails mode made them vanish.
     features: assets
       .filter((a) => a.type !== 'tool' && filter.has(a.type) && a.location)
-      .map((a) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [a.location!.lng, a.location!.lat] },
+      .map((a) => {
+        const age = Date.now() - new Date(a.location!.timestamp).getTime()
+        return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [a.location!.lng, a.location!.lat] },
         properties: {
           id: a.id, name: a.name, type: a.type,
           // Selected = white ring + size-up, same as replay heads/tool dots.
@@ -188,13 +196,18 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           // data ≈ powered up), off (stale — asleep/parked), dead (silent past
           // DEAD_MS — the hardware itself is dark, drawn gray).
           state: (() => {
-            const age = Date.now() - new Date(a.location!.timestamp).getTime()
             if (age > DEAD_MS) return 'dead'
             if (age < 15 * 60_000 && (a.location!.speed ?? 0) > 2) return 'moving'
             return age < 15 * 60_000 ? 'idle' : 'off'
           })(),
+          // Staleness at a glance: hours since the fix drive the color fade
+          // (AGED_COLOR), and an age badge ("3h", "2d") rides the dot once
+          // the fix is an hour old. Fresh data wears no badge — calm default.
+          ageH: age / 3_600_000,
+          ageLabel: age < 3_600_000 ? '' : age < 86_400_000 ? `${Math.floor(age / 3_600_000)}h` : `${Math.floor(age / 86_400_000)}d`,
         },
-      })),
+      }
+      }),
   }
 }
 
@@ -1914,7 +1927,21 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         },
       })
 
-      // Heatmap of movement density (alternative to trails)
+      // Heat mode's travel thread (Brian, Sep 5: "very narrow… only green
+      // showing the points of the travel, and when it sits in a spot it goes
+      // green → yellow → orange → red"): the route itself as a thin green
+      // line — the radar ramp's calm end — so a drive-by never blooms; the
+      // blobs below are reserved for time actually spent on a spot.
+      m.addLayer({
+        id: 'trails-heat-path', type: 'line', source: 'trails',
+        layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#34d058',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1, 12, 1.6, 16, 2.6],
+          'line-opacity': ['case', ['==', ['get', 'sel'], 1], 0.85, ['==', ['get', 'dim'], 1], 0.1, 0.55],
+        },
+      })
+      // Heatmap of time-on-the-spot (alternative to trails)
       m.addSource('trail-points', { type: 'geojson', data: pointsGeoJSON(tracksRef.current, filterRef.current, 0) })
       m.addLayer({
         id: 'trails-heat', type: 'heatmap', source: 'trail-points',
@@ -1929,23 +1956,28 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             ['get', 'w']],
           // Zoom-adaptive: gentle at county zooms (aggregation does the
           // talking), sharper as you close in on a site.
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 12, 1.4, 16, 3],
-          // Radius grows with the point's dwell weight (Brian, Aug 24):
-          // drive-by pings get a small kernel — a thin, barely-there trace
-          // along the road — while long stops bloom into wide hot blobs.
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 8, 0.9, 12, 1.5, 16, 3],
+          // Tight kernels (Brian, Sep 5: "a very narrow radius"): a drive-by
+          // ping is a pinprick, a long stop grows only a little — the COLOR
+          // carries the story, not the blob size, like a weather radar.
           'heatmap-radius': ['interpolate', ['linear'], ['zoom'],
-            8, ['+', 5, ['*', 8, ['get', 'w']]],
-            11, ['+', 8, ['*', 14, ['get', 'w']]],
-            16, ['+', 14, ['*', 30, ['get', 'w']]],
+            8, ['+', 3, ['*', 4, ['get', 'w']]],
+            11, ['+', 5, ['*', 7, ['get', 'w']]],
+            16, ['+', 9, ['*', 14, ['get', 'w']]],
           ],
-          'heatmap-opacity': 0.85,
+          'heatmap-opacity': 0.9,
+          // The radar ramp everyone already reads: green (passed through /
+          // brief stop) → yellow → orange → red → pink (sat there all day, or
+          // several machines on the same spot). Density = dwell × assets.
           'heatmap-color': [
             'interpolate', ['linear'], ['heatmap-density'],
             0, 'rgba(0,0,0,0)',
-            0.2, 'rgba(7,58,90,0.6)',
-            0.4, '#2dd4bf',
-            0.7, '#ff9e16',
-            1, '#fb5d5d',
+            0.08, 'rgba(52,208,88,0.55)',
+            0.25, '#34d058',
+            0.45, '#ffe94a',
+            0.65, '#ff9e16',
+            0.85, '#ff3b3b',
+            1, '#ff5ad9',
           ],
         },
       })
@@ -2223,7 +2255,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         paint: {
           // Dead hardware loses its color — gray puck says "this DEVICE is
           // dark", which color would otherwise hide.
-          'circle-color': ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY, ['get', 'color']],
+          'circle-color': AGED_COLOR,
           // Slimmed to read like the replay trail-head dots — the emoji badge
           // is gone from the default look ("drop the icon on the live map in
           // favor of the colored dot", owner, Jul 31). Selected = same white
@@ -2316,7 +2348,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           visibility: 'none',
         },
         paint: {
-          'icon-color': ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY, ['get', 'color']],
+          'icon-color': AGED_COLOR,
           'icon-halo-color': '#04121d', 'icon-halo-width': 1.2,
           'icon-opacity': ['match', ['get', 'state'], 'off', 0.85, 'dead', 0.55, 1],
         },
@@ -2374,6 +2406,27 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         paint: {
           'text-color': '#ffd166',
           'text-halo-color': '#0b2536', 'text-halo-width': 2, 'text-halo-blur': 0.4,
+        },
+      })
+      // Age badge — how old the dot's data is, once it is an hour old ("3h",
+      // "2d"), tucked below-right so it never fights the name. Amber while
+      // the device may just be asleep, gray once it is dead (Brian, Sep 4).
+      m.addLayer({
+        id: 'asset-age', type: 'symbol', source: 'assets',
+        filter: ['all', ['!', ['has', 'point_count']], ['!=', ['coalesce', ['get', 'ageLabel'], ''], '']],
+        minzoom: 8,
+        layout: {
+          'text-field': ['get', 'ageLabel'],
+          'text-size': 9,
+          'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top-left',
+          'text-offset': [1.05, 0.85],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': ['case', ['==', ['get', 'state'], 'dead'], '#b9c6d2', '#ffd9a1'],
+          'text-halo-color': '#04121d', 'text-halo-width': 1.5,
         },
       })
       // Tools — their OWN unclustered source so a Bluetooth tag is visible in
@@ -2828,6 +2881,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     set('trails-line', trailMode === 'trails')
     set('trails-sparse', trailMode === 'trails')
     set('trails-heat', trailMode === 'heatmap')
+    set('trails-heat-path', trailMode === 'heatmap')
     set('heat3d-layer', trailMode === '3d')
     set('heat3d-dim-layer', trailMode === '3d')
     HEAD_LAYERS.forEach((l) => set(l, trailMode !== 'off'))
@@ -5393,42 +5447,52 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       document.removeEventListener('pointercancel', up)
     }
   }, [mapReady])
-  // Two-finger HOLD = quick measure (see measureSeed above). Detached while
-  // the tool is already open so a slow pinch mid-measure can't reset it.
+  // Two-finger HOLD = quick length; THREE OR MORE fingers held = an area
+  // (Brian, Sep 4) — the corners are the fingertips, ordered around their
+  // centroid so the outline never crosses itself. Detached while the tool is
+  // already open so a slow pinch mid-measure can't reset it.
   useEffect(() => {
     if (!mapReady || kiosk || measureOn) return
     const el = mapContainer.current
     if (!el) return
     let timer: number | null = null
-    let start: { x0: number; y0: number; x1: number; y1: number } | null = null
+    let start: { pts: { x: number; y: number }[] } | null = null
     const cancel = () => {
       if (timer != null) { window.clearTimeout(timer); timer = null }
       start = null
     }
     const onTouches = (e: TouchEvent) => {
-      if (e.touches.length !== 2) { cancel(); return }
+      if (e.touches.length < 2) { cancel(); return }
+      // A finger added or lifted re-arms the hold with the new set.
       cancel()
-      const [a, b] = [e.touches[0], e.touches[1]]
-      start = { x0: a.clientX, y0: a.clientY, x1: b.clientX, y1: b.clientY }
+      start = { pts: Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY })) }
       timer = window.setTimeout(() => {
         const m = map.current
         const s = start
         cancel()
         if (!m || !s) return
         const r = el.getBoundingClientRect()
-        const p0 = m.unproject([s.x0 - r.left, s.y0 - r.top])
-        const p1 = m.unproject([s.x1 - r.left, s.y1 - r.top])
+        const geo = s.pts.map((p) => { const ll = m.unproject([p.x - r.left, p.y - r.top]); return [ll.lng, ll.lat] as [number, number] })
         setEditingMeasure(null)
-        setMeasureSeed({ id: '', name: '', kind: 'line', personal: true, coords: [[p0.lng, p0.lat], [p1.lng, p1.lat]] })
+        if (geo.length >= 3) {
+          const cx = geo.reduce((acc, q) => acc + q[0], 0) / geo.length
+          const cy = geo.reduce((acc, q) => acc + q[1], 0) / geo.length
+          geo.sort((q1, q2) => Math.atan2(q1[1] - cy, q1[0] - cx) - Math.atan2(q2[1] - cy, q2[0] - cx))
+          setMeasureSeed({ id: '', name: '', kind: 'area', personal: true, coords: geo })
+        } else {
+          setMeasureSeed({ id: '', name: '', kind: 'line', personal: true, coords: geo })
+        }
         setMeasureOn(true)
       }, 550)
     }
     const onMove = (e: TouchEvent) => {
       if (!start || e.touches.length < 2) return
-      const [a, b] = [e.touches[0], e.touches[1]]
+      const pts = Array.from(e.touches)
+      if (pts.length !== start.pts.length) { cancel(); return }
       // Any real movement = a pinch/rotate, not a hold.
-      if (Math.hypot(a.clientX - start.x0, a.clientY - start.y0) > 14 ||
-          Math.hypot(b.clientX - start.x1, b.clientY - start.y1) > 14) cancel()
+      for (let i = 0; i < pts.length; i++) {
+        if (Math.hypot(pts[i].clientX - start.pts[i].x, pts[i].clientY - start.pts[i].y) > 14) { cancel(); return }
+      }
     }
     el.addEventListener('touchstart', onTouches, { passive: true })
     el.addEventListener('touchend', onTouches, { passive: true })
@@ -5442,6 +5506,35 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       el.removeEventListener('touchmove', onMove)
     }
   }, [mapReady, kiosk, measureOn])
+
+  // Moving assets BLINK (Brian, Sep 4: "actively moving assets in Today view
+  // should be obviously blinking"): the pulse ring under moving / alerting
+  // dots breathes out and fades, one beat per ~1.4 s — only while the map is
+  // live or a replay is playing. A paused replay holds still (scrubber rule);
+  // prefers-reduced-motion keeps the ring static.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const still = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const animate = (range === 'live' || pbPlaying) && !still
+    const setRing = (radius: number, opacity: number) => {
+      if (!m.getLayer('asset-pulse')) return
+      m.setPaintProperty('asset-pulse', 'circle-radius', radius)
+      m.setPaintProperty('asset-pulse', 'circle-opacity', opacity)
+    }
+    if (!animate) { setRing(16, 0.4); return }
+    let raf = 0
+    let last = 0
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame)
+      if (now - last < 50) return // ~20 fps is plenty for a breath
+      last = now
+      const ph = (now % 1400) / 1400
+      setRing(11 + ph * 14, 0.6 * (1 - ph))
+    }
+    raf = requestAnimationFrame(frame)
+    return () => { cancelAnimationFrame(raf); setRing(16, 0.4) }
+  }, [mapReady, range, pbPlaying])
 
   // Chip position: measured off the radar button so it hugs the rail.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
@@ -6743,10 +6836,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             <div className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
               {/* Both heat modes are dwell-weighted: color = time spent on
                   the spot, so a drive-by can't outrank a workday. */}
-              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">Activity · time on the spot</p>
-              <div className="h-2.5 rounded-sm" style={{ background: 'linear-gradient(90deg,#14506f,#2dd4bf,#ff9e16,#ff5d5d)' }} />
+              <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">Time on the spot · radar scale</p>
+              <div className="h-2.5 rounded-sm" style={{ background: trailMode === 'heatmap' ? 'linear-gradient(90deg,#34d058,#ffe94a,#ff9e16,#ff3b3b,#ff5ad9)' : 'linear-gradient(90deg,#14506f,#2dd4bf,#ff9e16,#ff5d5d)' }} />
               <div className="flex justify-between font-mono text-[8.5px] text-faint mt-0.5">
-                <span>drove by</span>
+                <span>passed</span>
                 <span>worked</span>
                 <span>all day</span>
               </div>

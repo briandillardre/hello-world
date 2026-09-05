@@ -80,9 +80,17 @@ select optgroup {
   background-color: #ff9e16 !important;
 }
 /* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden
-   (the bar itself sits below the OS status-bar inset on phones). */
+   (the bar itself sits below the OS status-bar inset on phones). Phones also
+   stack the KPI strip + ticker under the bar (--ht-cc-strip, set on the kiosk
+   root) and lift the bottom-corner controls above the bottom nav. */
 .kiosk-map .maplibregl-ctrl-top-right {
-  margin-top: calc(60px + var(--ht-safe-top, 0px));
+  margin-top: calc(60px + var(--ht-safe-top, 0px) + var(--ht-cc-strip, 0px));
+}
+@media (max-width: 767px) {
+  .kiosk-map .maplibregl-ctrl-bottom-left,
+  .kiosk-map .maplibregl-ctrl-bottom-right {
+    margin-bottom: calc(62px + var(--ht-safe-bottom, 0px)) !important;
+  }
 }
 /* Kiosk: zoom/locate/fit controls mount bottom-left — clear the ticker below
    and the slim nav arrow at the left edge. */
