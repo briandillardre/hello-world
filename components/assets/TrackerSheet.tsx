@@ -18,7 +18,9 @@ import { toast } from '@/components/ui/feedback'
 import { formatRelativeTime } from '@/lib/utils'
 
 export interface TrackerChoices {
-  drawer: { imei: string; model: DeviceModel | null; label: string | null; lastSeen: string | null; unassignedSince: string | null }[]
+  /** cameOff: the machine it was last taken off (its pings after the time you
+   *  pick come along when it goes on here). */
+  drawer: { imei: string; model: DeviceModel | null; label: string | null; lastSeen: string | null; unassignedSince: string | null; cameOff: string | null }[]
   onOthers: { imei: string; assetId: string; assetName: string }[]
   trackerless: { id: string; name: string; type: AssetType }[]
 }
@@ -83,7 +85,7 @@ export function TrackerSheet({ asset, choices }: { asset: Asset; choices: Tracke
 
   // Sensible default for "since when": a drawer tracker's pull date.
   const sinceHint = pickedDrawer?.unassignedSince
-    ? `In the drawer since ${new Date(pickedDrawer.unassignedSince).toLocaleString()} — use that if it went straight in.`
+    ? `In the drawer since ${new Date(pickedDrawer.unassignedSince).toLocaleString()} — use that if it went straight in.${pickedDrawer.cameOff ? ` It came off "${pickedDrawer.cameOff}"; that machine's pings after the time you pick move here.` : ''}`
     : pickedOther ? `Everything "${pickedOther.assetName}" recorded after this time moves here.` : null
 
   const dest = (): Destination | null => {
@@ -105,7 +107,7 @@ export function TrackerSheet({ asset, choices }: { asset: Asset; choices: Tracke
     const cur = asset.tracker_id ? short(asset.tracker_id) : ''
     switch (kase) {
       case 'attach':
-        return incoming ? `Tracker ${short(incoming)} goes on "${asset.name}" as of ${whenText}.${pickedOther ? ` It comes OFF "${pickedOther.assetName}", and that machine's pings after ${whenText} move here.` : ''}${pickedDrawer?.lastSeen ? ' Anything it reported while in the drawer since then lands here too.' : ''}` : null
+        return incoming ? `Tracker ${short(incoming)} goes on "${asset.name}" as of ${whenText}.${pickedOther ? ` It comes OFF "${pickedOther.assetName}", and that machine's pings after ${whenText} move here.` : pickedDrawer?.cameOff ? ` It came off "${pickedDrawer.cameOff}"; that machine's pings after ${whenText} (up to when it was pulled) move here.` : ''}${pickedDrawer?.lastSeen ? ' Anything it reported while in the drawer since then lands here too.' : ''}` : null
       case 'swap':
         return incoming ? `As of ${whenText}: tracker ${cur} comes off "${asset.name}" and goes to ${destText}; tracker ${short(incoming)} goes on.${destMode !== 'drawer' ? ` "${asset.name}"'s pings after ${whenText} move with the old tracker.` : ''}` : null
       case 'detach':
@@ -166,7 +168,7 @@ export function TrackerSheet({ asset, choices }: { asset: Asset; choices: Tracke
           {choices.drawer.length > 0 && <p className="px-2 pt-1.5 pb-0.5 font-mono text-[10px] uppercase tracking-wide text-faint">Unassigned drawer</p>}
           {choices.drawer.map((t) => (
             <SelectItem key={t.imei} value={t.imei}>
-              {t.model ? MODELS[t.model].name : 'Tracker'} {short(t.imei)}{t.label ? ` · ${t.label}` : ''}{t.lastSeen ? ` · seen ${formatRelativeTime(t.lastSeen)}` : ''}
+              {t.model ? MODELS[t.model].name : 'Tracker'} {short(t.imei)}{t.label ? ` · ${t.label}` : ''}{t.cameOff ? ` · was on ${t.cameOff}` : ''}{t.lastSeen ? ` · seen ${formatRelativeTime(t.lastSeen)}` : ''}
             </SelectItem>
           ))}
           {choices.onOthers.length > 0 && <p className="px-2 pt-1.5 pb-0.5 font-mono text-[10px] uppercase tracking-wide text-faint">On another machine (take it)</p>}
