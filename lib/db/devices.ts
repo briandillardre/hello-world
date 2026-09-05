@@ -147,6 +147,8 @@ export async function upsertDevice(
   // Never surface a raw Postgres string — it leaks schema and reads as noise
   // to the person holding the device (sec-check, Aug 25).
   if (error) {
+    // 093: a 15-digit IMEI can sit in ONE company's registry platform-wide.
+    if (error.code === '23505') return { ok: false, error: 'That IMEI is registered to another account. Check the digits on the label.' }
     console.error('device upsert failed:', error.message)
     return { ok: false, error: 'Could not save that device. Check the IMEI and try again.' }
   }
@@ -171,6 +173,7 @@ export async function upsertDevices(
     .upsert(inputs.map((i) => upsertRow(companyId, i)), { onConflict: 'company_id,imei' })
 
   if (error) {
+    if (error.code === '23505') return { ok: false, error: 'One of those IMEIs is registered to another account. Add the rest one at a time to find it.' }
     console.error('device bulk upsert failed:', error.message)
     return { ok: false, error: 'Could not save those devices. Check the IMEIs and try again.' }
   }

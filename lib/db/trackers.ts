@@ -186,10 +186,15 @@ export async function getTrackerChoices(companyId: string, assetId: string): Pro
 
 type Db = Awaited<ReturnType<typeof import('../supabase-server').createServiceClient>>
 
+const RESERVED_TRACKER_PREFIXES = ['sim-', 'phone-']
+
 function trackerLooksValid(id: string): string | null {
   const clean = id.trim()
   if (!clean) return 'Enter the tracker ID.'
   if (clean.length > 64) return 'That ID is too long.'
+  // phone-<uid> is a person's own phone share (lib/actions/tracker.ts); an
+  // editor must not be able to point a vehicle at a coworker's phone.
+  if (RESERVED_TRACKER_PREFIXES.some((p) => clean.toLowerCase().startsWith(p))) return 'That ID is reserved — enter the IMEI from the device label.'
   if (/^\d+$/.test(clean)) {
     const c = imeiLooksValid(clean)
     if (!c.ok) return c.reason ?? 'That IMEI does not look right.'
@@ -219,7 +224,7 @@ async function resolveDestination(db: Db, companyId: string, dest: Exclude<Desti
     if (mustBeTrackerless && a.tracker_id) return { error: `"${a.name}" already has a tracker (…${a.tracker_id.slice(-4)}). Take that one off first, or pick a different vehicle.` }
     return { id: a.id }
   }
-  const name = dest.name.trim()
+  const name = dest.name.trim().slice(0, 120)
   if (!name) return { error: 'Name the other vehicle.' }
   const { data, error } = await db.from('assets')
     .insert({ company_id: companyId, name, type: dest.type, active: true, metadata: { source: 'tracker-swap' }, tracker_id: null })
@@ -343,6 +348,9 @@ export async function changeTracker(companyId: string, actorId: string | null, a
   const sinceMs = Date.parse(change.sinceIso)
   if (Number.isNaN(sinceMs)) return { ok: false, error: 'Pick the date and time it happened.' }
   if (sinceMs > Date.now() + 5 * 60_000) return { ok: false, error: 'That time is in the future.' }
+  // One bounded UPDATE on the service connection; a multi-year cut is a
+  // timeout, not a feature. 400 days covers any real swap.
+  if (sinceMs < Date.now() - 400 * 86_400_000) return { ok: false, error: 'That is more than a year ago. Pick a date within the last 400 days.' }
   const sinceIso = new Date(sinceMs).toISOString()
 
   const { createServiceClient } = await import('../supabase-server')

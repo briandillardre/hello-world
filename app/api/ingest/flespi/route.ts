@@ -95,16 +95,28 @@ export async function POST(request: NextRequest) {
       .eq('active', true)
       .single()
     if (!asset) {
-      // Nobody is wearing this box — but if a company's registry knows the
-      // IMEI, it is a tracker in their drawer (or one installed and not yet
-      // assigned). Buffer the fix (092) so putting it on an asset later can
-      // pull the history in; a 30-day purge bounds the table. Unregistered
-      // IMEIs are still dropped: we have no company to file them under.
-      const { data: owners } = await supabase
-        .from('device_onboarding').select('company_id').eq('imei', r.tracker_id).limit(3)
-      for (const o of owners ?? []) {
+      // Nobody is wearing this box. Buffer the fix (092) for ONE company so
+      // putting the tracker on an asset later can pull the history in.
+      // Which company: the one whose asset most recently carried this IMEI
+      // (drawer, soft-deleted, deactivated-to-resell — all inactive rows);
+      // failing that, the registry, but only when exactly one company lists
+      // it. Never fan out: a tenant that lists someone else's IMEI must not
+      // receive their fixes (sec-check P1, Sep 4). 093 also makes a 15-digit
+      // IMEI unique across registries. Unregistered IMEIs are dropped.
+      let bufferFor: string | null = null
+      const { data: prior } = await supabase
+        .from('assets').select('company_id')
+        .eq('tracker_id', r.tracker_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (prior?.company_id) bufferFor = prior.company_id
+      else {
+        const { data: owners } = await supabase
+          .from('device_onboarding').select('company_id').eq('imei', r.tracker_id).limit(2)
+        if (owners?.length === 1) bufferFor = owners[0].company_id
+        else if ((owners?.length ?? 0) > 1) console.warn(`flespi: ${r.tracker_id} listed by ${owners!.length} registries and no asset — dropped`)
+      }
+      if (bufferFor) {
         const { error: bufErr } = await supabase.from('unassigned_locations').insert({
-          company_id: o.company_id, imei: r.tracker_id,
+          company_id: bufferFor, imei: r.tracker_id,
           lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery,
           timestamp: r.timestamp, raw: { source: 'flespi', ...r.params },
           ignition: vehiclePower({ source: 'flespi', ...r.params }).engineOn,
