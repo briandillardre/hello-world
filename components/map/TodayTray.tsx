@@ -165,7 +165,7 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
   if (!open || rows.length === 0) return null
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 top-2 z-30 w-[min(400px,94vw)] rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+    <div className="absolute left-1/2 -translate-x-1/2 top-[var(--ht-map-top,8px)] md:top-2 z-30 w-[min(400px,94vw)] rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-navy-800">
         <Sun className="h-4 w-4 text-amber flex-none" />
         <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-amber">

@@ -21,8 +21,15 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
   // every big app trains thumbs on — with the tappable weather just inside
   // it. Every child pins to the flex centerline (the marks and wordmark
   // carry different baselines and drifted).
+  // Phones: the map runs edge-to-edge under the status bar, Google-Maps
+  // style, and this bar FLOATS over it as a translucent pill — out of the
+  // flex flow, offset by the OS safe-area inset (the native shell overlays
+  // the status bar; browsers report 0). Desktop keeps the in-flow bar
+  // (Brian, Sep 4: "go full screen with the mobile app like Google Maps").
   return (
-    <div className="flex items-center gap-2.5 md:gap-3 h-8 md:h-11 px-3 md:px-4 bg-navy-950 border-b border-navy-800 flex-none">
+    <div className="ht-map-topbar absolute md:static inset-x-0 top-0 z-[45] md:z-auto pointer-events-none md:pointer-events-auto md:flex md:items-center md:gap-3 md:h-11 md:px-4 md:bg-navy-950 md:border-b md:border-navy-800 md:flex-none"
+      style={{ paddingTop: 'var(--ht-map-inset, 0px)' }}>
+      <div className="pointer-events-auto mx-2 mt-2 md:m-0 flex items-center gap-2.5 md:gap-3 h-10 md:h-auto px-3 md:px-0 rounded-2xl md:rounded-none bg-navy-950/85 md:bg-transparent backdrop-blur md:backdrop-blur-0 border md:border-0 border-navy-800/80 shadow-lg md:shadow-none md:flex-1">
       {/* Mobile: full branding (no sidebar there). Desktop: company name only —
           no page title (owner ask, Jul 21), but not an empty strip either. */}
       <span className="md:hidden flex items-center"><Logo size={20} href="/map" /></span>
@@ -50,6 +57,7 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
           <span className="md:hidden font-mono text-[10px] uppercase tracking-[0.1em] leading-none text-faint truncate max-w-[110px]">{companyName}</span>
         )}
       </span>
+      </div>
     </div>
   )
 }

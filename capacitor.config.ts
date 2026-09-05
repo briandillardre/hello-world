@@ -32,6 +32,12 @@ const config: CapacitorConfig = {
   // dropped without shipping another native build.
   appendUserAgent: 'HammerTrackApp/1',
   backgroundColor: '#0a1420',
+  plugins: {
+    // Edge-to-edge (Brian, Sep 4: "full screen like Google Maps at the top"):
+    // the web view runs UNDER a transparent status bar; the web side pads
+    // with env(safe-area-inset-top) (map bar floats, other pages inset).
+    StatusBar: { overlaysWebView: true, style: 'DARK', backgroundColor: '#00000000' },
+  },
   ios: {
     contentInset: 'automatic',
   },

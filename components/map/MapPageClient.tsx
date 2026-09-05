@@ -322,7 +322,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
       {!isMock && <TodayTray assets={effAssets} alerts={effAlerts} canViewCosts={effCanViewCosts} />}
       {/* Boot pill: only on a true first visit (no cached snapshot yet). */}
       {bootstrap && !boot && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-navy-950/90 border border-navy-700 px-3.5 py-1.5">
+        <div className="absolute top-[calc(var(--ht-map-top,8px)+48px)] md:top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-navy-950/90 border border-navy-700 px-3.5 py-1.5">
           <span className="w-2 h-2 rounded-full bg-amber animate-pulse" />
           <span className="font-mono text-[11.5px] text-muted">Loading your fleet…</span>
         </div>
@@ -336,7 +336,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
  *  a path instead of a blank screen. */
 function GetSetUp({ hasZones }: { hasZones: boolean }) {
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 top-16 md:top-20 z-30 w-[92%] max-w-sm rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel p-5">
+    <div className="absolute left-1/2 -translate-x-1/2 top-[calc(var(--ht-map-top,8px)+56px)] md:top-20 z-30 w-[92%] max-w-sm rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel p-5">
       <p className="font-display font-bold text-ink text-[16px]">Let&apos;s get your fleet on the map</p>
       <ol className="mt-3 space-y-2.5 text-[13.5px]">
         <li className="flex items-start gap-2.5">

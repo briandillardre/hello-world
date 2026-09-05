@@ -17,7 +17,7 @@ export const metadata = { title: 'HammerTrack — Live map' }
 
 // Map surface: page zoom off so pinch gestures belong to the map engine
 // (the root layout allows pinch-zoom everywhere else).
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false }
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, maximumScale: 1, userScalable: false, viewportFit: 'cover' }
 
 // Demo mode renders mock data, so this is statically prerendered (deploys
 // atomically + cleanly, like the homepage). When Supabase is wired, switch this
@@ -44,7 +44,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     const measurements = await getMeasurements(company.id)
     const tz = safeTz(cookies().get('ht_tz')?.value)
     return (
-      <div className="h-full flex flex-col pb-[54px] md:pb-0">
+      <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
         <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
         <div className="flex-1 relative min-h-0">
           <MapPageClient
@@ -124,7 +124,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // …and the reverse: what each truck/machine is carrying (badge + list).
   const aboard = toolsAboard(rawAssets, toolAssociations)
   return (
-    <div className="h-full flex flex-col pb-[54px] md:pb-0">
+    <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
       <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient

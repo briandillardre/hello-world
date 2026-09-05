@@ -477,3 +477,12 @@ input[type='range'].slider-heat::-moz-range-thumb {
     font-size: max(16px, 1rem) !important;
   }
 }
+
+/* Edge-to-edge (Sep 4): the native shell overlays the status bar, so the OS
+   inset is real there and 0 in a browser. The map page runs under it and its
+   floating bar offsets itself; every other page pads its top instead. */
+:root { --ht-safe-top: env(safe-area-inset-top, 0px); }
+@media (max-width: 767px) {
+  .ht-map-edge { --ht-map-inset: var(--ht-safe-top); --ht-map-top: calc(var(--ht-safe-top) + 60px); }
+  .ht-page-inset { padding-top: var(--ht-safe-top); }
+}
