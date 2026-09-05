@@ -1,5 +1,5 @@
 import type { AssetType } from './types'
-import { ASSET_ICONS, TYPE_DEFAULT_ICON } from './asset-icons'
+import { ASSET_ICONS, TYPE_DEFAULT_ICON, hasOwn } from './asset-icons'
 
 /**
  * Bulk asset load — the spreadsheet door (Brian, Aug 28: "need a bulk load
@@ -367,13 +367,13 @@ export function parseType(raw: string | undefined): AssetType | null {
   if (!n) return null
   // hasOwn, not a bare lookup: 'constructor' is an inherited member and
   // returned a function, which then serialized out of the insert payload.
-  if (Object.hasOwn(TYPE_WORDS, n)) return TYPE_WORDS[n]
+  if (hasOwn(TYPE_WORDS, n)) return TYPE_WORDS[n]
   const byName = inferFromName(String(raw)).type
   if (byName) return byName
   // Last pass: any single type word inside the phrase — "Heavy Equipment",
   // "Small Tools", "Field Personnel".
   for (const word of String(raw).toLowerCase().split(/[^a-z]+/)) {
-    if (word && Object.hasOwn(TYPE_WORDS, word)) return TYPE_WORDS[word]
+    if (word && hasOwn(TYPE_WORDS, word)) return TYPE_WORDS[word]
   }
   return null
 }
@@ -458,7 +458,7 @@ export function resolveRow(
   const iconRaw = val('icon')
   if (iconRaw) {
     const k = norm(iconRaw).replace(/\s+/g, '-')
-    const direct = Object.hasOwn(ASSET_ICONS, iconRaw) ? iconRaw
+    const direct = hasOwn(ASSET_ICONS, iconRaw) ? iconRaw
       : Object.keys(ASSET_ICONS).find((key) => norm(key) === k) ?? null
     if (direct) icon = direct
     else issues.push({ col: 'icon', level: 'warn', text: `No icon called "${iconRaw}" — using the ${type ?? 'type'} default` })
