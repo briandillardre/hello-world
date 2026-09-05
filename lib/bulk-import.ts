@@ -18,7 +18,7 @@ import { ASSET_ICONS, TYPE_DEFAULT_ICON } from './asset-icons'
 export type ColKey =
   | 'name' | 'type' | 'icon' | 'tracker' | 'category' | 'serial'
   | 'year' | 'make' | 'model' | 'license'
-  | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'
+  | 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value' | 'purchase_date'
 
 export interface ColDef {
   key: ColKey
@@ -67,7 +67,46 @@ export const IMPORT_COLUMNS: ColDef[] = [
     aliases: ['purchaseprice', 'purchase', 'cost', 'paid', 'acquisitioncost', 'purchasecost'] },
   { key: 'purchase_value', label: 'Replacement $', hint: 'what it costs today', kind: 'number', money: true, width: 132,
     aliases: ['purchasevalue', 'replacement', 'replacementcost', 'value', 'currentvalue', 'insuredvalue', 'replacementvalue'] },
+  { key: 'purchase_date', label: 'Purchased', hint: 'date bought', kind: 'text', width: 118,
+    aliases: ['purchasedate', 'datepurchased', 'purchased', 'bought', 'datebought', 'acquired', 'acquisitiondate', 'dateacquired', 'inservicedate', 'inservice'] },
 ]
+
+/**
+ * Purchase date → YYYY-MM-DD. Accepts what fleets actually paste: ISO, US
+ * M/D/YYYY (2-digit years pivot at 50), "Mar 2019" / "March 14, 2019", a bare
+ * year (→ Jan 1), and Excel serial numbers (a date cell copied as 43539).
+ * `null` = blank, `undefined` = unreadable.
+ */
+export function parsePurchaseDate(raw: string): string | null | undefined {
+  const t = raw.trim()
+  if (!t) return null
+  const thisYear = new Date().getFullYear()
+  const ok = (y: number, m: number, d: number) => {
+    if (y < 1950 || y > thisYear + 1 || m < 1 || m > 12 || d < 1 || d > 31) return undefined
+    const dt = new Date(Date.UTC(y, m - 1, d))
+    if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return undefined
+    return dt.toISOString().slice(0, 10)
+  }
+  let m: RegExpMatchArray | null
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$/))) return ok(+m[1], +m[2], +m[3])
+  if ((m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))) {
+    const y = m[3].length === 2 ? (+m[3] < 50 ? 2000 + +m[3] : 1900 + +m[3]) : +m[3]
+    return ok(y, +m[1], +m[2])
+  }
+  if ((m = t.match(/^(\d{4})$/))) return ok(+m[1], 1, 1)
+  if ((m = t.match(/^(\d{5})$/))) {
+    // Excel serial (days since 1899-12-30): 18264 = 1950-01-01, 47000 ≈ 2028.
+    const n = +m[1]
+    if (n < 18264 || n > 47000) return undefined
+    return new Date(Date.UTC(1899, 11, 30) + n * 86_400_000).toISOString().slice(0, 10)
+  }
+  if ((m = t.match(/^([A-Za-z]{3,9})\.?\s+(?:(\d{1,2}),?\s+)?(\d{4})$/))) {
+    const mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[1].slice(0, 3).toLowerCase())
+    if (mon < 0) return undefined
+    return ok(+m[3], mon + 1, m[2] ? +m[2] : 1)
+  }
+  return undefined
+}
 
 export const COLUMN_KEYS: ColKey[] = IMPORT_COLUMNS.map((c) => c.key)
 export type ImportRow = Partial<Record<ColKey, string>>
@@ -477,6 +516,12 @@ export function resolveRow(
     if (v) metadata[k] = v.slice(0, 80)
   }
   if (icon) metadata.icon = icon
+  {
+    const raw = val('purchase_date')
+    const iso = parsePurchaseDate(raw)
+    if (iso === undefined) issues.push({ col: 'purchase_date', level: 'error', text: `"${raw.slice(0, 24)}" isn't a date — try 3/14/2019 or 2019-03-14` })
+    else if (iso) metadata.purchase_date = iso
+  }
 
   // ── money
   const money: Record<string, number | null> = {}
@@ -538,11 +583,13 @@ export function templateCsv(includeMoney = true): string {
       name: '2019 Ram 3500 Dump', type: 'vehicle', icon: 'dump-truck', tracker: '', category: 'Trucks',
       serial: '', year: '2019', make: 'Ram', model: '3500', license: 'SC-1234',
       hourly_rate: '38', mileage_rate: '0.68', daily_cost: '45', purchase_price: '62000', purchase_value: '48000',
+      purchase_date: '3/14/2019',
     },
     {
       name: 'Takeuchi TB235 Mini-Ex', type: 'equipment', icon: 'excavator', tracker: '', category: 'Dirt',
       serial: '', year: '2021', make: 'Takeuchi', model: 'TB235', license: '',
       hourly_rate: '52', mileage_rate: '', daily_cost: '60', purchase_price: '58000', purchase_value: '52000',
+      purchase_date: '2021-06-02',
     },
   ]
   const lines = [cols.map((c) => esc(c.label)).join(',')]

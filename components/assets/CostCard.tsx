@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { DollarSign, Pencil } from 'lucide-react'
+import { CalendarDays, DollarSign, Pencil } from 'lucide-react'
 import type { Asset } from '@/lib/types'
 import { updateAssetAction } from '@/lib/actions/assets'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,17 @@ import { COST_FIELDS, parseCost } from './AssetForm'
 
 const fmt = (v: number | null | undefined) =>
   v == null ? '—' : '$' + v.toLocaleString(undefined, { maximumFractionDigits: 2 })
+
+/** metadata.purchase_date is a plain YYYY-MM-DD; format it as a local day (no
+ *  UTC shift) plus the machine's age, e.g. "Mar 14, 2019 · 7.5 yrs". */
+function fmtBought(iso: unknown): string {
+  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—'
+  const d = new Date(`${iso}T00:00:00`)
+  if (!Number.isFinite(d.getTime())) return '—'
+  const yrs = (Date.now() - d.getTime()) / (365.25 * 86_400_000)
+  const age = yrs >= 1 ? ` · ${yrs.toFixed(yrs < 10 ? 1 : 0)} yrs` : yrs >= 0 ? ' · new' : ''
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + age
+}
 
 /** Cost structure display + inline edit on the asset detail page. */
 export function CostCard({ asset }: { asset: Asset }) {
@@ -23,6 +34,8 @@ export function CostCard({ asset }: { asset: Asset }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, asset[f.key] != null ? String(asset[f.key]) : '']))
   )
+  const storedDate = typeof asset.metadata?.purchase_date === 'string' ? asset.metadata.purchase_date : ''
+  const [purchaseDate, setPurchaseDate] = useState(storedDate)
 
   const save = async () => {
     setSaving(true)
@@ -34,6 +47,11 @@ export function CostCard({ asset }: { asset: Asset }) {
         daily_cost: parseCost(values.daily_cost ?? ''),
         purchase_price: parseCost(values.purchase_price ?? ''),
         purchase_value: parseCost(values.purchase_value ?? ''),
+        // The date rides in metadata beside year/make/model; an emptied
+        // field removes the key rather than storing ''.
+        ...(purchaseDate !== storedDate
+          ? { metadata: (() => { const m = { ...(asset.metadata ?? {}) }; if (purchaseDate) m.purchase_date = purchaseDate; else delete m.purchase_date; return m })() }
+          : {}),
       })
       if (!result.ok) {
         setError(result.error ?? 'Could not save. Please try again.')
@@ -83,6 +101,17 @@ export function CostCard({ asset }: { asset: Asset }) {
                   <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
                 </div>
               ))}
+              <div className="space-y-1">
+                <Label htmlFor="cc-purchase_date" className="text-xs">Purchase date</Label>
+                <Input
+                  id="cc-purchase_date"
+                  type="date"
+                  max={new Date().toISOString().slice(0, 10)}
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                />
+                <p className="text-[10px] text-faint leading-tight">when you bought it</p>
+              </div>
             </div>
             {error && <p className="text-xs text-alert">{error}</p>}
             <div className="flex gap-2">
@@ -105,6 +134,13 @@ export function CostCard({ asset }: { asset: Asset }) {
                 <p className="font-display font-bold text-ink text-[15px] mt-0.5">{fmt(asset[f.key])}</p>
               </div>
             ))}
+            <div>
+              <div className="flex items-center gap-1 text-faint">
+                <CalendarDays className="h-3 w-3" />
+                <span className="text-[11px]">Bought</span>
+              </div>
+              <p className="font-display font-bold text-ink text-[15px] mt-0.5" suppressHydrationWarning>{fmtBought(asset.metadata?.purchase_date)}</p>
+            </div>
             {fields.every((f) => asset[f.key] == null) && (
               <p className="col-span-full text-xs text-faint">
                 No rates set — the map&apos;s cost tracker stays at $0 for this asset until you add them.
