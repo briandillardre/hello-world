@@ -18,6 +18,14 @@ async function requireEdit(): Promise<string | null> {
   return perms.canEdit ? null : 'Your role can view trackers but not change them.'
 }
 
+/** Undo / restore are /trackers actions: edit rights AND that view level
+ *  (sec-check, Sep 5 — a role hidden from the page could still call them). */
+async function requireTrackersEdit(): Promise<string | null> {
+  const perms = await getMyPermissions()
+  if (!perms.canEdit) return 'Your role can view trackers but not change them.'
+  return perms.features.includes('trackers') ? null : 'Your role does not have the Trackers page.'
+}
+
 function refresh(...assetIds: (string | null | undefined)[]) {
   revalidatePath('/assets')
   revalidatePath('/trackers')
@@ -35,7 +43,7 @@ export async function changeTrackerAction(assetId: string, change: TrackerChange
 }
 
 export async function undoTrackerMoveAction(moveId: string): Promise<{ ok: boolean; error?: string; undone?: number }> {
-  const denied = await requireEdit(); if (denied) return { ok: false, error: denied }
+  const denied = await requireTrackersEdit(); if (denied) return { ok: false, error: denied }
   const companyId = await getCurrentCompanyId()
   const res = await undoMove(companyId, moveId)
   refresh()
@@ -43,7 +51,7 @@ export async function undoTrackerMoveAction(moveId: string): Promise<{ ok: boole
 }
 
 export async function restoreAssetAction(assetId: string): Promise<{ ok: boolean; error?: string; trackerReleased?: boolean }> {
-  const denied = await requireEdit(); if (denied) return { ok: false, error: denied }
+  const denied = await requireTrackersEdit(); if (denied) return { ok: false, error: denied }
   const companyId = await getCurrentCompanyId()
   const res = await restoreAsset(companyId, assetId)
   refresh(assetId)

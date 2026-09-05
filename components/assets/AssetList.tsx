@@ -95,46 +95,51 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
   // knew; anything new is asked here in one batch per load and fills in as
   // it arrives. Keys already asked this load are not asked again (a cell the
   // geocoder could not answer stays blank until the next visit).
+  // Keyed by CELL, not asset: two machines on one lot share the answer, and a
+  // refresh that moves a truck asks only for its new cell.
   const [places, setPlaces] = useState<Record<string, string>>({})
   const asked = useRef(new Set<string>())
+  const cellOf = (a: AssetWithLocation) => (a.location ? placeKey(a.location.lat, a.location.lng) : null)
   const pendingKeys = Array.from(new Set(assets
-    .filter((a) => a.location && !zoneNames?.[a.id] && !placeNames?.[a.id] && !(a.id in places))
-    .map((a) => placeKey(a.location!.lat, a.location!.lng)))).filter((k) => !asked.current.has(k))
+    .filter((a) => a.location && !zoneNames?.[a.id] && !placeNames?.[a.id])
+    .map((a) => cellOf(a)!))).filter((k) => !(k in places) && !asked.current.has(k))
   const pendingSig = pendingKeys.join(';')
   useEffect(() => {
     if (!pendingSig) return
     const keys = pendingSig.split(';')
-    for (const k of keys) asked.current.add(k)
     let cancelled = false
     const run = async () => {
       const found: Record<string, string | null> = {}
+      let answered = false
       for (let i = 0; i < keys.length; i += 100) {
         try {
           const r = await fetch(`/api/reverse-geocode?pts=${keys.slice(i, i + 100).join(';')}`)
           if (!r.ok) continue
           const j = (await r.json()) as { places?: Record<string, string | null> }
           Object.assign(found, j.places ?? {})
+          answered = true
         } catch { /* offline — the row keeps its time stamp */ }
       }
+      // A batch cancelled by a re-render (router.refresh mid-flight) is not
+      // "asked": the re-run asks again. Only a finished batch settles keys —
+      // found ones into `places`, the rest into `asked` until the next visit.
       if (cancelled) return
+      if (answered) for (const k of keys) asked.current.add(k)
       setPlaces((prev) => {
         const next = { ...prev }
-        for (const a of assets) {
-          if (!a.location || next[a.id] !== undefined) continue
-          const k = placeKey(a.location.lat, a.location.lng)
-          if (k in found) next[a.id] = found[k] ?? ''
-        }
+        for (const k of keys) if (k in found) next[k] = found[k] ?? ''
         return next
       })
     }
     run()
     return () => { cancelled = true }
-  }, [pendingSig, assets])
+  }, [pendingSig])
   /** "at <zone>" first, then the geocoded label; null while unknown. */
   const whereOf = (a: AssetWithLocation): string | null => {
     const zone = zoneNames?.[a.id]
     if (zone) return `at ${zone}`
-    return placeNames?.[a.id] || places[a.id] || null
+    const k = cellOf(a)
+    return placeNames?.[a.id] || (k ? places[k] : null) || null
   }
 
   const handleAdd = async (data: AssetFormData, photos?: NewPhoto[]) => {

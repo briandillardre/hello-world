@@ -21,6 +21,10 @@ const UA = 'HammerTrack (hello@hammertrack.ai)'
 const TIMEOUT_MS = 5000
 const CONCURRENCY = 4
 const MEM_CAP = 5000
+/** Wall-clock budget for one resolve: a hung provider (5 s per call) must
+ *  not run a 25-cell batch past the route's 30 s function limit and lose the
+ *  answers already in hand (ship-check P2). Cells left over are asked next load. */
+const BUDGET_MS = 15_000
 
 /** null = looked up, nothing known (an honest empty). */
 const mem = new Map<string, PlaceParts | null>()
@@ -65,12 +69,20 @@ export async function lookupCachedPlaces(keys: string[]): Promise<Record<string,
   return out
 }
 
-async function getJson(url: string): Promise<unknown | null> {
+/** `ok` = the provider answered (even with nothing); false = down/timeout. */
+async function getJson(url: string): Promise<{ ok: boolean; json: unknown }> {
   try {
     const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(TIMEOUT_MS) })
-    if (!r.ok) return null
-    return await r.json()
-  } catch { return null }
+    if (!r.ok) return { ok: false, json: null }
+    return { ok: true, json: await r.json() }
+  } catch { return { ok: false, json: null } }
+}
+
+/** Provider strings are stored and shown as-is (React-escaped) — bound them. */
+const clip = (v: unknown): string | null => {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  return s ? s.slice(0, 120) : null
 }
 
 type PhotonProps = {
@@ -84,21 +96,21 @@ function parsePhoton(j: unknown): PlaceParts | null {
   if (!p) return null
   // A road has its name in `name` (no `street`); a building/POI carries the
   // street it sits on. Either way, "near <that>" is the honest phrasing.
-  const streetName = p.street || (p.osm_key === 'highway' && p.name) || null
-  const street = streetName ? [p.housenumber, streetName].filter(Boolean).join(' ') : null
-  const city = p.city || p.town || p.village || p.locality || null
-  const county = p.county ? `${p.county} County` : null
-  return { street, city: city ?? county, state: abbrState(p.state, p.countrycode) }
+  const streetName = clip(p.street) || (p.osm_key === 'highway' ? clip(p.name) : null)
+  const street = streetName ? [clip(p.housenumber), streetName].filter(Boolean).join(' ') : null
+  const city = clip(p.city) || clip(p.town) || clip(p.village) || clip(p.locality)
+  const county = clip(p.county) ? `${clip(p.county)} County` : null
+  return { street, city: city ?? county, state: clip(abbrState(clip(p.state), clip(p.countrycode))) }
 }
 
 type BdcJson = { city?: string; locality?: string; principalSubdivision?: string; principalSubdivisionCode?: string; countryCode?: string }
 function parseBdc(j: unknown): PlaceParts | null {
   const b = j as BdcJson | null
   if (!b) return null
-  const city = b.city || b.locality || null
+  const city = clip(b.city) || clip(b.locality)
   const code = typeof b.principalSubdivisionCode === 'string' && b.principalSubdivisionCode.includes('-')
-    ? b.principalSubdivisionCode.split('-').pop() ?? null : null
-  const state = code ?? abbrState(b.principalSubdivision, b.countryCode)
+    ? clip(b.principalSubdivisionCode.split('-').pop()) : null
+  const state = code ?? clip(abbrState(clip(b.principalSubdivision), clip(b.countryCode)))
   if (!city && !state) return null
   return { street: null, city, state }
 }
@@ -106,16 +118,19 @@ function parseBdc(j: unknown): PlaceParts | null {
 /** One cell: Photon first; BigDataCloud fills a missing city (or stands in
  *  when Photon is down). `ok` = at least one provider answered. */
 async function geocode(lat: number, lng: number): Promise<{ parts: PlaceParts | null; ok: boolean; source: string }> {
-  const photon = parsePhoton(await getJson(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`))
-  const photonOk = photon !== null
+  const ph = await getJson(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&limit=1`)
+  const photon = ph.ok ? parsePhoton(ph.json) : null
   if (photon && photon.city && !/ County$/.test(photon.city)) return { parts: photon, ok: true, source: 'photon' }
-  const bdc = parseBdc(await getJson(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`))
+  const bd = await getJson(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`)
+  const bdc = bd.ok ? parseBdc(bd.json) : null
   if (bdc) {
     // Keep Photon's street; take BDC's city (a real town beats "Pickens County").
     const merged: PlaceParts = { street: photon?.street ?? null, city: bdc.city ?? photon?.city ?? null, state: bdc.state ?? photon?.state ?? null }
-    return { parts: merged, ok: true, source: photonOk ? 'photon+bdc' : 'bdc' }
+    return { parts: merged, ok: true, source: ph.ok ? 'photon+bdc' : 'bdc' }
   }
-  return { parts: photon, ok: photonOk, source: photonOk ? 'photon' : 'none' }
+  // Both answered with nothing (open water, wilderness) = an honest empty,
+  // cached so the cell is never asked again; a provider outage is not.
+  return { parts: photon, ok: ph.ok || bd.ok, source: ph.ok ? 'photon' : bd.ok ? 'bdc' : 'none' }
 }
 
 /**
@@ -135,23 +150,24 @@ export async function resolvePlaces(points: { lat: number; lng: number }[], maxG
   if (!todo.length) return out
 
   const db = await serviceDb()
-  const rows: { key: string; street: string | null; city: string | null; state: string | null; source: string }[] = []
+  const started = Date.now()
   let i = 0
   const worker = async () => {
-    while (i < todo.length) {
+    while (i < todo.length && Date.now() - started < BUDGET_MS) {
       const [key, pt] = todo[i++]
       const r = await geocode(pt.lat, pt.lng)
       if (!r.ok) continue // provider trouble: leave unknown, retry next load
       const v = empty(r.parts) ? null : r.parts
       remember(key, v)
       out[key] = v
-      rows.push({ key, street: v?.street ?? null, city: v?.city ?? null, state: v?.state ?? null, source: r.source })
+      // Written per cell, so a batch cut short by the budget keeps what it learned.
+      if (db) {
+        const { error } = await db.from('geocode_cache')
+          .upsert({ key, street: v?.street ?? null, city: v?.city ?? null, state: v?.state ?? null, source: r.source }, { onConflict: 'key', ignoreDuplicates: true })
+        if (error && error.code !== '42P01') console.error('geocode_cache write failed:', error.message)
+      }
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker))
-  if (db && rows.length) {
-    const { error } = await db.from('geocode_cache').upsert(rows, { onConflict: 'key', ignoreDuplicates: true })
-    if (error && error.code !== '42P01') console.error('geocode_cache write failed:', error.message)
-  }
   return out
 }

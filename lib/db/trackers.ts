@@ -356,9 +356,18 @@ async function previousHolder(db: Db, companyId: string, imei: string, excludeAs
     .eq('company_id', companyId).eq('tracker_id', imei).eq('to_asset_id', a.id).is('undone_at', null)
     .in('kind', ['attach', 'move']).lt('created_at', last.created_at)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
-  // The detach moment bounds the pull above: nothing newer than the pull-off
-  // can move, so a box the machine wears NOW keeps its rows.
-  return { id: a.id, name: a.name, until: last.created_at, wornSince: on?.swap_at ?? null }
+  // Upper bound: the detach moment — nothing newer than the pull-off can move.
+  // Tighter still when ANOTHER box went onto that machine (a swap puts the
+  // replacement on right after the detach, back-dated to the same "as of"):
+  // rows after that box's as-of are ambiguous without a device id on the
+  // row, so they stay put (ship-check P1, Sep 5: a two-truck rotation swept
+  // the replacement's rows along).
+  const { data: other } = await db.from('tracker_moves').select('swap_at')
+    .eq('company_id', companyId).eq('to_asset_id', a.id).neq('tracker_id', imei).is('undone_at', null)
+    .in('kind', ['attach', 'move']).gt('created_at', last.created_at)
+    .order('swap_at', { ascending: true }).limit(1).maybeSingle()
+  const until = other?.swap_at && Date.parse(other.swap_at) < Date.parse(last.created_at) ? other.swap_at : last.created_at
+  return { id: a.id, name: a.name, until, wornSince: on?.swap_at ?? null }
 }
 
 async function recordMove(db: Db, companyId: string, actorId: string | null, row: {
@@ -499,6 +508,9 @@ export async function changeTracker(companyId: string, actorId: string | null, a
   }
 }
 
+/** 097's one-off repair rows: `note` starts with "repair ". Pull-only. */
+const isRepair = (m: { note: string | null }) => typeof m.note === 'string' && m.note.startsWith('repair ')
+
 /** Reverse one move (and its swap partner, if any), row for row. */
 export async function undoMove(companyId: string, moveId: string): Promise<{ ok: boolean; error?: string; undone?: number }> {
   if (isMock) return { ok: false, error: 'Demo mode — changes are not saved.' }
@@ -521,11 +533,14 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
     // blocks the undo. NB: a plain `neq('note', x)` silently drops NULL-note
     // rows (SQL: NULL <> x is NULL), which is every non-swap move — so the
     // group exclusion has to be spelled as "null OR different".
-    let q = db.from('tracker_moves').select('id').eq('company_id', companyId).eq('tracker_id', m.tracker_id)
+    let q = db.from('tracker_moves').select('id, note').eq('company_id', companyId).eq('tracker_id', m.tracker_id)
       .is('undone_at', null).gt('created_at', m.created_at)
     if (typeof m.note === 'string' && m.note.startsWith('group:')) q = q.or(`note.is.null,note.neq.${m.note}`)
-    const { data: later } = await q.limit(1)
-    if (later?.length) return { ok: false, error: `Tracker …${m.tracker_id.slice(-4)} was changed again after this. Undo the newer change first.` }
+    const { data: later } = await q.limit(10)
+    // Repair rows only moved pings; they neither depend on nor block the
+    // real change beneath them (filtered here, not in SQL: a NOT LIKE would
+    // drop every NULL-note row, the trap noted above).
+    if ((later ?? []).some((r) => !isRepair(r as { note: string | null }))) return { ok: false, error: `Tracker …${m.tracker_id.slice(-4)} was changed again after this. Undo the newer change first.` }
   }
 
   let undone = 0
@@ -535,15 +550,22 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
     switch (m.kind as MoveRow['kind']) {
       case 'attach': {
         if (!to) break
+        // A repair row (097's one-off) only ever moved a window of pings —
+        // reversing it must not touch the tracker or the drawer buffer.
+        if (isRepair(m)) {
+          if (from && m.pulled_until) await movePings(db, companyId, to.id, from.id, m.pulled_since ?? m.swap_at, 'gte', m.pulled_until)
+          break
+        }
         if (to.tracker_id === m.tracker_id) {
           const { error } = await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
           if (error) return { ok: false, error: 'Could not release the tracker.' }
         }
-        // Pings pulled from the machine the box was taken off go back there
-        // (same bounded window); drawer pings (tagged _buffered) go back to
-        // the drawer below — the two windows never overlap.
-        if (from && m.pulled_until) await movePings(db, companyId, to.id, from.id, m.pulled_since ?? m.swap_at, 'gte', m.pulled_until)
+        // Drawer pings (tagged _buffered) go back to the drawer FIRST — a box
+        // that uploads an offline backlog after the pull-off lands rows with
+        // device timestamps inside the pulled window (ship-check P2) — then
+        // the pulled window goes back to the machine the box was taken off.
         await refillBuffer(db, companyId, m.tracker_id, to.id, m.swap_at)
+        if (from && m.pulled_until) await movePings(db, companyId, to.id, from.id, m.pulled_since ?? m.swap_at, 'gte', m.pulled_until)
         await db.from('device_onboarding').update({ unassigned_since: m.swap_at }).eq('company_id', companyId).eq('imei', m.tracker_id)
         break
       }
