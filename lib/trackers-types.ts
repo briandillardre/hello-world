@@ -8,6 +8,9 @@ import type { DeviceModel } from './devices'
 
 export const RETENTION_DAYS = 30
 
+/** Ids that are not boxes: a person's phone share, a SIM placeholder. */
+export const RESERVED_TRACKER_PREFIXES = ['sim-', 'phone-']
+
 export interface TrackerLastSeen {
   timestamp: string
   lat: number | null

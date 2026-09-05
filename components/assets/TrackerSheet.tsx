@@ -8,7 +8,7 @@ import type { Asset, AssetType } from '@/lib/types'
 import type { DeviceModel } from '@/lib/devices'
 import { MODELS } from '@/lib/devices'
 import { changeTrackerAction } from '@/lib/actions/trackers'
-import type { TrackerChange, Destination } from '@/lib/trackers-types'
+import { RESERVED_TRACKER_PREFIXES, type TrackerChange, type Destination } from '@/lib/trackers-types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,6 +57,8 @@ export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const has = !!asset.tracker_id
+  // A phone share is a person, not a box — nothing here applies to it.
+  const reserved = !!asset.tracker_id && RESERVED_TRACKER_PREFIXES.some((p) => asset.tracker_id!.toLowerCase().startsWith(p))
 
   const [kase, setKase] = useState<Case | null>(null)
   const [when, setWhen] = useState(nowLocal())
@@ -103,7 +105,7 @@ export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset
     const cur = asset.tracker_id ? short(asset.tracker_id) : ''
     switch (kase) {
       case 'attach':
-        return incoming ? `Tracker ${short(incoming)} goes on "${asset.name}" as of ${whenText}.${pickedOther ? ` It comes OFF "${pickedOther.assetName}", and that machine's pings after ${whenText} move here.` : ''}${pickedDrawer?.lastSeen ? ' Pings it sent from the drawer since then land here too.' : ''}` : null
+        return incoming ? `Tracker ${short(incoming)} goes on "${asset.name}" as of ${whenText}.${pickedOther ? ` It comes OFF "${pickedOther.assetName}", and that machine's pings after ${whenText} move here.` : ''}${pickedDrawer?.lastSeen ? ' Anything it reported while in the drawer since then lands here too.' : ''}` : null
       case 'swap':
         return incoming ? `As of ${whenText}: tracker ${cur} comes off "${asset.name}" and goes to ${destText}; tracker ${short(incoming)} goes on.${destMode !== 'drawer' ? ` "${asset.name}"'s pings after ${whenText} move with the old tracker.` : ''}` : null
       case 'detach':
@@ -218,6 +220,8 @@ export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset
 
   const cases = (Object.keys(CASES) as Case[]).filter((c) => CASES[c].needsTracker === has)
 
+  if (reserved) return null
+
   return (
     <>
       <button
@@ -260,7 +264,7 @@ export function TrackerSheet({ asset, choices, compact = false }: { asset: Asset
               </div>
             ) : (
               <div className="space-y-4 pt-1 text-sm">
-                <button type="button" onClick={() => reset(null)} className="text-[12px] text-teal">← All options</button>
+                <button type="button" onClick={() => reset(null)} className="min-h-11 -my-2 px-1 text-[12px] font-semibold text-teal">← All options</button>
                 <div>
                   <p className="font-semibold text-ink">{CASES[kase].title}</p>
                   <p className="text-[12px] text-faint leading-snug">{CASES[kase].blurb}</p>

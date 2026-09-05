@@ -68,7 +68,7 @@ async function gatherMemoFacts(db: SupabaseClient, companyId: string, companyNam
       .gte('day', since30.toISOString().slice(0, 10)).limit(40)),
     g<{ type: string; hourly_rate: number | null; mileage_rate: number | null; daily_cost: number | null; purchase_price: number | null }[]>(
       db.from('assets').select('type, hourly_rate, mileage_rate, daily_cost, purchase_price')
-        .eq('company_id', companyId).limit(1000)),
+        .eq('company_id', companyId).is('deleted_at', null).limit(1000)),
     g<{ amount: number }[]>(db.from('expenses')
       .select('amount').eq('company_id', companyId).eq('status', 'needs_receipt').limit(500)),
     // Overdue is DERIVED (computeStatus), not a column. Without live meter

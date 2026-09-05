@@ -17,7 +17,7 @@
 import type { AssetType } from '../types'
 import { imeiLooksValid, modelFromImei, type DeviceModel } from '../devices'
 import {
-  RETENTION_DAYS,
+  RETENTION_DAYS, RESERVED_TRACKER_PREFIXES,
   type TrackerLastSeen, type TrackerRow, type DeletedAssetRow, type MoveRow, type TrackersOverview,
   type Destination, type TrackerChange, type ChangeResult,
 } from '../trackers-types'
@@ -57,11 +57,11 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
   const db = createClient()
 
   type Reg = { imei: string; model: DeviceModel; label: string | null; unassigned_since: string | null }
-  type Ast = { id: string; name: string; type: AssetType; tracker_id: string | null; active: boolean; deleted_at: string | null }
+  type Ast = { id: string; name: string; type: AssetType; tracker_id: string | null; active: boolean; deleted_at: string | null; metadata?: Record<string, unknown> | null }
 
   const [regQ, astQ, movesQ] = await Promise.all([
     db.from('device_onboarding').select('imei, model, label, unassigned_since').eq('company_id', companyId),
-    db.from('assets').select('id, name, type, tracker_id, active, deleted_at').eq('company_id', companyId),
+    db.from('assets').select('id, name, type, tracker_id, active, deleted_at, metadata').eq('company_id', companyId),
     db.from('tracker_moves').select('*').eq('company_id', companyId).order('created_at', { ascending: false }).limit(25),
   ])
   const registry = (regQ.data ?? []) as Reg[]
@@ -133,7 +133,7 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
   const deletedAssets: DeletedAssetRow[] = assets
     .filter((a) => a.deleted_at)
     .sort((a, b) => b.deleted_at!.localeCompare(a.deleted_at!))
-    .map((a) => ({ id: a.id, name: a.name, type: a.type, tracker_id: a.tracker_id, deleted_at: a.deleted_at!, purge_at: purgeAt(a.deleted_at!) }))
+    .map((a) => ({ id: a.id, name: a.name, type: a.type, tracker_id: (typeof a.metadata?.deleted_tracker_id === 'string' ? a.metadata.deleted_tracker_id : null) ?? a.tracker_id, deleted_at: a.deleted_at!, purge_at: purgeAt(a.deleted_at!) }))
 
   const cutoff = Date.now() - RETENTION_DAYS * 86_400_000
   type RawMove = Omit<MoveRow, 'from_asset' | 'to_asset' | 'undoable'> & { from_asset_id: string | null; to_asset_id: string | null }
@@ -186,7 +186,6 @@ export async function getTrackerChoices(companyId: string, assetId: string): Pro
 
 type Db = Awaited<ReturnType<typeof import('../supabase-server').createServiceClient>>
 
-const RESERVED_TRACKER_PREFIXES = ['sim-', 'phone-']
 
 function trackerLooksValid(id: string): string | null {
   const clean = id.trim()
@@ -233,44 +232,72 @@ async function resolveDestination(db: Db, companyId: string, dest: Exclude<Desti
   return { id: data.id }
 }
 
-/** Pull buffered drawer pings for `imei` since `sinceIso` onto `assetId`. */
+/** Delete rows by id in URL-safe chunks; false on the first failure. */
+async function deleteByIds(db: Db, table: 'asset_locations' | 'unassigned_locations', ids: (string | number)[]): Promise<boolean> {
+  for (let i = 0; i < ids.length; i += 150) {
+    const { error } = await db.from(table).delete().in('id', ids.slice(i, i + 150))
+    if (error) { console.error(`${table} chunk delete failed:`, error.message); return false }
+  }
+  return true
+}
+
+/**
+ * Pull buffered drawer pings for `imei` since `sinceIso` onto `assetId`.
+ * Page by page: copy a page, delete exactly those ids, repeat — so a truck
+ * that ran for a week "in the drawer" lands whole, and a failed page stops
+ * before it can double up (ship-check P1, Sep 4).
+ */
 async function drainBuffer(db: Db, companyId: string, imei: string, assetId: string, sinceIso: string): Promise<number> {
-  const { data } = await db.from('unassigned_locations').select('*')
-    .eq('company_id', companyId).eq('imei', imei).gte('timestamp', sinceIso).order('timestamp').limit(5000)
-  const rows = (data ?? []) as Record<string, unknown>[]
-  if (!rows.length) return 0
-  const ins = rows.map((r) => ({
-    asset_id: assetId, company_id: companyId,
-    lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery,
-    accuracy: null, timestamp: r.timestamp, ignition: r.ignition,
-    // Marked so undo can find exactly these rows and push them back.
-    raw: { ...((r.raw as Record<string, unknown>) ?? {}), _buffered: 1 },
-  }))
-  const { error } = await db.from('asset_locations').insert(ins)
-  if (error) { console.error('drainBuffer insert failed:', error.message); return 0 }
-  await db.from('unassigned_locations').delete().in('id', rows.map((r) => r.id as number))
-  return rows.length
+  let total = 0
+  for (let page = 0; page < 200; page++) {
+    const { data } = await db.from('unassigned_locations').select('*')
+      .eq('company_id', companyId).eq('imei', imei).gte('timestamp', sinceIso).order('timestamp').limit(500)
+    const rows = (data ?? []) as Record<string, unknown>[]
+    if (!rows.length) break
+    const ins = rows.map((r) => ({
+      asset_id: assetId, company_id: companyId,
+      lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery,
+      accuracy: null, timestamp: r.timestamp, ignition: r.ignition,
+      // Marked so undo can find exactly these rows and push them back.
+      raw: { ...((r.raw as Record<string, unknown>) ?? {}), _buffered: 1 },
+    }))
+    const { error } = await db.from('asset_locations').insert(ins)
+    if (error) { console.error('drainBuffer insert failed:', error.message); break }
+    if (!(await deleteByIds(db, 'unassigned_locations', rows.map((r) => r.id as number)))) break
+    total += rows.length
+    if (rows.length < 500) break
+  }
+  return total
 }
 
 /** Undo of drainBuffer: rows that came from the buffer go back to it. */
 async function refillBuffer(db: Db, companyId: string, imei: string, assetId: string, sinceIso: string): Promise<number> {
-  const { data } = await db.from('asset_locations').select('*')
-    .eq('asset_id', assetId).eq('company_id', companyId).gte('timestamp', sinceIso).eq('raw->>_buffered', '1').limit(5000)
-  const rows = (data ?? []) as Record<string, unknown>[]
-  if (!rows.length) return 0
-  const back = rows.map((r) => {
-    const raw = { ...((r.raw as Record<string, unknown>) ?? {}) }
-    delete raw._buffered
-    return { company_id: companyId, imei, lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery, ignition: r.ignition, timestamp: r.timestamp, raw }
-  })
-  const { error } = await db.from('unassigned_locations').insert(back)
-  if (error) { console.error('refillBuffer insert failed:', error.message); return 0 }
-  await db.from('asset_locations').delete().in('id', rows.map((r) => r.id as string))
-  return rows.length
+  let total = 0
+  for (let page = 0; page < 200; page++) {
+    const { data } = await db.from('asset_locations').select('*')
+      .eq('asset_id', assetId).eq('company_id', companyId).gte('timestamp', sinceIso).eq('raw->>_buffered', '1').order('timestamp').limit(500)
+    const rows = (data ?? []) as Record<string, unknown>[]
+    if (!rows.length) break
+    const back = rows.map((r) => {
+      const raw = { ...((r.raw as Record<string, unknown>) ?? {}) }
+      delete raw._buffered
+      return { company_id: companyId, imei, lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, altitude: r.altitude, battery: r.battery, ignition: r.ignition, timestamp: r.timestamp, raw }
+    })
+    const { error } = await db.from('unassigned_locations').insert(back)
+    if (error) { console.error('refillBuffer insert failed:', error.message); break }
+    if (!(await deleteByIds(db, 'asset_locations', rows.map((r) => r.id as string)))) break
+    total += rows.length
+    if (rows.length < 500) break
+  }
+  return total
 }
 
 async function movePings(db: Db, companyId: string, fromAsset: string, toAsset: string, sinceIso: string, direction: 'gte' | 'lt'): Promise<number> {
-  const q = db.from('asset_locations').update({ asset_id: toAsset }).eq('asset_id', fromAsset).eq('company_id', companyId)
+  // created_at = now: trail_daily (087) and the zone ledger's late-data
+  // widening (090) rebuild the days whose rows ARRIVED since the last run.
+  // Re-parenting without re-stamping left the 7d/30d trails on the old asset
+  // forever (ship-check P1, Sep 4).
+  const q = db.from('asset_locations').update({ asset_id: toAsset, created_at: new Date().toISOString() }).eq('asset_id', fromAsset).eq('company_id', companyId)
   const { data } = await (direction === 'gte' ? q.gte('timestamp', sinceIso) : q.lt('timestamp', sinceIso)).select('id')
   return data?.length ?? 0
 }
@@ -285,9 +312,9 @@ async function recordMove(db: Db, companyId: string, actorId: string | null, row
 /**
  * Take `imei` OFF `asset` (which must wear it). Where the pings from
  * `sinceIso` onward go depends on the destination:
- *   drawer  — they STAY on the asset (nobody else can claim them yet; if the
- *             tracker later lands on another asset from a time inside this
- *             window, that attach takes them then).
+ *   drawer  — they STAY on the asset. A later attach elsewhere takes pings
+ *             only from an ACTIVE holder, so they remain here; Undo + Move
+ *             is the recovery if the pull was back-dated by mistake.
  *   asset   — they move to the destination asset, which also takes the tracker.
  */
 async function takeOff(db: Db, companyId: string, actorId: string | null, asset: { id: string; name: string }, imei: string, sinceIso: string, dest: Destination, group: string | null):
@@ -439,7 +466,10 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
     switch (m.kind as MoveRow['kind']) {
       case 'attach': {
         if (!to) break
-        if (to.tracker_id === m.tracker_id) await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
+        if (to.tracker_id === m.tracker_id) {
+          const { error } = await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
+          if (error) return { ok: false, error: 'Could not release the tracker.' }
+        }
         await refillBuffer(db, companyId, m.tracker_id, to.id, m.swap_at)
         await db.from('device_onboarding').update({ unassigned_since: m.swap_at }).eq('company_id', companyId).eq('imei', m.tracker_id)
         break
@@ -447,19 +477,33 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
       case 'detach': {
         if (!from) break
         if (from.tracker_id && from.tracker_id !== m.tracker_id) return { ok: false, error: `"${from.name}" now wears a different tracker. Take it off first.` }
+        // The tracker write goes FIRST and is checked: Edit / Scan / Bulk add
+        // also write tracker_id without logging a move, so the ordering guard
+        // above cannot see them — the unique index can. Nothing else moves
+        // until the box is back on the asset.
+        const { error } = await db.from('assets').update({ tracker_id: m.tracker_id }).eq('id', from.id).eq('company_id', companyId)
+        if (error) return { ok: false, error: `Tracker …${m.tracker_id.slice(-4)} is on another machine now (added outside this log). Take it off there first.` }
         // Whatever reported from the drawer since the pull was really this asset.
         await drainBuffer(db, companyId, m.tracker_id, from.id, m.swap_at)
-        await db.from('assets').update({ tracker_id: m.tracker_id }).eq('id', from.id).eq('company_id', companyId)
         await db.from('device_onboarding').update({ unassigned_since: null }).eq('company_id', companyId).eq('imei', m.tracker_id)
         break
       }
       case 'move': {
         if (!to) break
         if (from && from.tracker_id && from.tracker_id !== m.tracker_id) return { ok: false, error: `"${from.name}" now wears a different tracker. Take it off first.` }
+        if (to.tracker_id === m.tracker_id) {
+          const { error } = await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
+          if (error) return { ok: false, error: 'Could not release the tracker.' }
+        }
+        if (from) {
+          const { error } = await db.from('assets').update({ tracker_id: m.tracker_id }).eq('id', from.id).eq('company_id', companyId)
+          if (error) {
+            if (to.tracker_id === m.tracker_id) await db.from('assets').update({ tracker_id: m.tracker_id }).eq('id', to.id).eq('company_id', companyId)
+            return { ok: false, error: `Tracker …${m.tracker_id.slice(-4)} is on another machine now (added outside this log). Take it off there first.` }
+          }
+        }
         await refillBuffer(db, companyId, m.tracker_id, to.id, m.swap_at)
         if (from) await movePings(db, companyId, to.id, from.id, m.swap_at, 'gte')
-        if (to.tracker_id === m.tracker_id) await db.from('assets').update({ tracker_id: null }).eq('id', to.id).eq('company_id', companyId)
-        if (from) await db.from('assets').update({ tracker_id: m.tracker_id }).eq('id', from.id).eq('company_id', companyId)
         break
       }
       case 'split_history': {
@@ -484,13 +528,22 @@ export async function softDeleteAsset(companyId: string, assetId: string): Promi
   const db = createServiceClient()
   const a = await loadAsset(db, companyId, assetId)
   if (!a) return { ok: false, error: 'Asset not found.' }
-  // The tracker is released by going inactive (084 keys on active rows) and
-  // parked in the drawer, so it can be put on the next machine right away.
-  if (a.tracker_id && !a.tracker_id.startsWith('phone-')) {
+  // The tracker comes OFF the row and is remembered in metadata: 001's
+  // UNIQUE (company_id, tracker_id) is not partial on active (095 fixes that
+  // too), so leaving it on a deleted row blocked putting the box on the next
+  // machine — the exact flow the delete dialog promises (ship-check P0).
+  // Parked in the drawer meanwhile.
+  const { data: full } = await db.from('assets').select('metadata').eq('id', assetId).maybeSingle()
+  const meta = { ...(((full?.metadata as Record<string, unknown>) ?? {})) }
+  const now = new Date().toISOString()
+  if (a.tracker_id && !RESERVED_TRACKER_PREFIXES.some((p) => a.tracker_id!.toLowerCase().startsWith(p))) {
+    meta.deleted_tracker_id = a.tracker_id
     await ensureRegistered(db, companyId, a.tracker_id)
-    await db.from('device_onboarding').update({ unassigned_since: new Date().toISOString() }).eq('company_id', companyId).eq('imei', a.tracker_id)
+    await db.from('device_onboarding').update({ unassigned_since: now }).eq('company_id', companyId).eq('imei', a.tracker_id)
+  } else if (a.tracker_id) {
+    meta.deleted_tracker_id = a.tracker_id
   }
-  const { error } = await db.from('assets').update({ active: false, deleted_at: new Date().toISOString() }).eq('id', assetId).eq('company_id', companyId)
+  const { error } = await db.from('assets').update({ active: false, deleted_at: now, tracker_id: null, metadata: meta }).eq('id', assetId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Could not delete the asset.' }
   return { ok: true }
 }
@@ -501,15 +554,24 @@ export async function restoreAsset(companyId: string, assetId: string): Promise<
   const db = createServiceClient()
   const a = await loadAsset(db, companyId, assetId)
   if (!a || !a.deleted_at) return { ok: false, error: 'Nothing to restore.' }
+  const { data: full } = await db.from('assets').select('metadata').eq('id', assetId).maybeSingle()
+  const meta = { ...(((full?.metadata as Record<string, unknown>) ?? {})) }
+  // The tracker it wore (stashed by softDeleteAsset; legacy rows still carry it).
+  let tracker = (typeof meta.deleted_tracker_id === 'string' ? meta.deleted_tracker_id : null) ?? a.tracker_id
+  delete meta.deleted_tracker_id
   // If its tracker was put on something else meanwhile, come back without it.
   let trackerReleased = false
-  let tracker = a.tracker_id
   if (tracker) {
     const { data: holder } = await db.from('assets').select('id').eq('company_id', companyId).eq('tracker_id', tracker).eq('active', true).neq('id', assetId).maybeSingle()
     if (holder) { tracker = null; trackerReleased = true }
   }
-  const { error } = await db.from('assets').update({ active: true, deleted_at: null, tracker_id: tracker }).eq('id', assetId).eq('company_id', companyId)
+  const { error } = await db.from('assets').update({ active: true, deleted_at: null, tracker_id: tracker, metadata: meta }).eq('id', assetId).eq('company_id', companyId)
   if (error) return { ok: false, error: error.code === '23505' ? 'Its tracker is now on another asset — restore without it from the Trackers page.' : 'Could not restore.' }
-  if (tracker) await db.from('device_onboarding').update({ unassigned_since: null }).eq('company_id', companyId).eq('imei', tracker)
+  if (tracker) {
+    // Everything the box reported while the asset was "deleted" was buffered
+    // for this company; it was this machine all along (ship-check P1).
+    await drainBuffer(db, companyId, tracker, assetId, a.deleted_at)
+    await db.from('device_onboarding').update({ unassigned_since: null }).eq('company_id', companyId).eq('imei', tracker)
+  }
   return { ok: true, trackerReleased }
 }

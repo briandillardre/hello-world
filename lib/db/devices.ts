@@ -73,6 +73,7 @@ export async function getDevices(companyId: string): Promise<DeviceWithLive[]> {
       location:asset_locations(lat, lng, timestamp, raw)
     `)
     .eq('company_id', companyId)
+    .eq('active', true)
     .in('tracker_id', imeis)
     .order('timestamp', { ascending: false, referencedTable: 'asset_locations' })
     .limit(1, { referencedTable: 'asset_locations' })

@@ -39,7 +39,7 @@ export default async function FinancePage() {
     const [{ data: co, error }, { count }, { data: assets }] = await Promise.all([
       supabase.from('companies').select('finance_profile').eq('id', companyId).single(),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('company_id', companyId),
-      supabase.from('assets').select('purchase_price').eq('company_id', companyId),
+      supabase.from('assets').select('purchase_price').eq('company_id', companyId).is('deleted_at', null),
     ])
     if (error) available = false
     profile = ((co?.finance_profile as FinanceProfile | null) ?? {})
