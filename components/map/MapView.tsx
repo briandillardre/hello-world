@@ -111,6 +111,13 @@ const ASSET_COLORS: Record<AssetType, string> = {
 // unit. Those dots go gray (color is for living hardware) — Brian, Aug 28.
 const DEAD_MS = 48 * 3_600_000
 const DEAD_GRAY = '#46586a'
+/** False once map.remove() ran — MapLibre drops `style`, so any later
+ *  getLayer/getSource/setPaintProperty throws "Cannot read properties of
+ *  undefined (reading 'getLayer')". Effect cleanups run AFTER the map's own
+ *  teardown on unmount, so anything that touches the map from a timer, a
+ *  frame, or a cleanup checks this first (Brian's asset page, Sep 5). */
+const mapAlive = (m: maplibregl.Map | null | undefined): m is maplibregl.Map =>
+  !!m && !(m as unknown as { _removed?: boolean })._removed && !!(m as unknown as { style?: unknown }).style
 // Live-dot color: the asset's own color, fading toward DEAD_GRAY as the last
 // fix ages from 12h to 48h (gray past that). Overnight parking (8–14h) barely
 // moves; a day-old truck is visibly washed out; two days = gray (Brian, Sep 4:
@@ -5089,7 +5096,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     }
 
     const refresh = () => {
-      if (cancelled) return
+      if (cancelled || !mapAlive(m)) return
       const at = simTimeRef.current != null ? new Date(simTimeRef.current) : new Date()
       ;(m.getSource('daynight') as maplibregl.GeoJSONSource | undefined)?.setData(twilightBands(at) as GeoJSON.GeoJSON)
       ;(m.getSource('citylights') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: cityFeatures() })
@@ -5520,7 +5527,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     // "terrain not usable" GPU pin). Steady ring while terrain is on.
     const animate = (range === 'live' || pbPlaying) && !still && !terrain3d
     const setRing = (radius: number, opacity: number) => {
-      if (!m.getLayer('asset-pulse')) return
+      if (!mapAlive(m) || !m.getLayer('asset-pulse')) return
       m.setPaintProperty('asset-pulse', 'circle-radius', radius)
       m.setPaintProperty('asset-pulse', 'circle-opacity', opacity)
     }
@@ -5533,7 +5540,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       last = now
       // Trails / heat modes hide the live dots — no repaints for a ring
       // nobody can see.
-      if (!m.getLayer('asset-pulse') || m.getLayoutProperty('asset-pulse', 'visibility') === 'none') return
+      if (!mapAlive(m) || !m.getLayer('asset-pulse') || m.getLayoutProperty('asset-pulse', 'visibility') === 'none') return
       const ph = (now % 1400) / 1400
       setRing(11 + ph * 14, 0.6 * (1 - ph))
     }
