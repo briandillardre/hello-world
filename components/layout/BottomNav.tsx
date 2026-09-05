@@ -86,7 +86,7 @@ function sanitizeOrder(saved: unknown, canon: string[]): string[] | null {
   return next
 }
 
-export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, features = null, onSignOut }: {
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, features = null, askAi = true, onSignOut }: {
   alertCount?: number
   latestAlertAt?: string | null
   companyName?: string
@@ -97,6 +97,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   role?: string | null
   /** The caller's view levels (094). null = everything. */
   features?: string[] | null
+  /** Ask AI view level — false turns the center seat into a plain spacer. */
+  askAi?: boolean
   onSignOut?: () => void
 }) {
   const pathname = usePathname()
@@ -344,6 +346,10 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               </Link>
             )
           })}
+          {!askAi ? (
+            // Ask AI switched off for this role: keep the 3·seat·2 layout, drop the button.
+            <span aria-hidden className="flex-1 min-h-[56px]" />
+          ) : (
           <button
             data-tour="askai"
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
@@ -355,6 +361,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             </span>
             <span className="-mt-0.5 text-amber">Ask AI</span>
           </button>
+          )}
           {barItems.slice(3).map(({ href, label, short, icon: Icon }) => {
             const active = pathname.startsWith(href)
             return (

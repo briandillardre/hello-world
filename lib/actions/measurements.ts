@@ -1,4 +1,5 @@
 'use server'
+import { requireEditOrThrow } from '@/lib/permissions-server'
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -16,6 +17,7 @@ export interface SaveMeasurementInput {
 }
 
 export async function saveMeasurementAction(input: SaveMeasurementInput): Promise<{ ok: boolean; id?: string; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Not available in demo.' }
   try {
     const companyId = await getCurrentCompanyId()
@@ -51,6 +53,7 @@ export async function updateMeasurementAction(
   id: string,
   patch: { name?: string; geometry?: GeoJSON.Point | GeoJSON.LineString | GeoJSON.Polygon; props?: MeasureProps }
 ): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Not available in demo.' }
   if (!id) return { ok: false, error: 'Missing id.' }
   // Bound the payload like the create path: a geometry is at most a few
@@ -82,6 +85,7 @@ export async function updateMeasurementAction(
 }
 
 export async function deleteMeasurementAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Not available in demo.' }
   try {
     const { createClient } = await import('@/lib/supabase-server')

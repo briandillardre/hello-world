@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getGeofence, createGeofence, updateGeofence, deleteGeofence, logZoneEvent } from '@/lib/db/zones'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -56,6 +57,7 @@ export async function createGeofenceAction(
   name: string, geometry: GeoJSON.Polygon, color: string,
   kind: 'site' | 'boundary' | 'yard' | 'vendor' = 'site', opts?: ZoneFormOpts
 ) {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
   const id = await createGeofence(companyId, {
     name, geometry, color, kind, parent_id: opts?.parentId ?? null,
@@ -105,6 +107,7 @@ export async function saveGeofenceAction(
   kind?: 'site' | 'boundary' | 'yard' | 'vendor',
   opts?: ZoneFormOpts & { clear_dates?: boolean }
 ) {
+  await requireEditOrThrow()
   const g = await getGeofence(id)
   if (!g) return
   const geomChanged = !!geometry && JSON.stringify(geometry) !== JSON.stringify(g.geometry)
@@ -152,6 +155,7 @@ export async function saveGeofenceAction(
 }
 
 export async function deleteGeofenceAction(id: string) {
+  await requireEditOrThrow()
   await deleteGeofence(id)
   revalidatePath('/zones')
   revalidatePath('/map')
@@ -160,6 +164,7 @@ export async function deleteGeofenceAction(id: string) {
 /** Owner notes on a zone — free text the panel shows and the AI reads.
  *  Direct column update (RLS-scoped); RPC untouched. */
 export async function saveZoneNotesAction(id: string, notes: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
@@ -190,6 +195,7 @@ export async function saveZoneNotesAction(id: string, notes: string): Promise<{ 
  * QBO failures never block the flip — books catch up on the next try.
  */
 export async function setZoneCompletedAction(id: string, completed: boolean): Promise<{ ok: boolean; error?: string; qbo?: string }> {
+  await requireEditOrThrow()
   try {
     const { createClient } = await import('@/lib/supabase-server')
     const { toCompletedName, toActiveName } = await import('@/lib/job-code')
@@ -246,6 +252,7 @@ export async function setZoneCompletedAction(id: string, completed: boolean): Pr
 
 /** Document-folder link on a zone (Dropbox/Drive/etc.) — just a URL. */
 export async function saveZoneFolderAction(id: string, folderUrl: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   try {
     const url = folderUrl.trim()
     if (url && !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a full link starting with https://' }

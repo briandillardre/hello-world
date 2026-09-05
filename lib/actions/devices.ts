@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { upsertDevice, upsertDevices, setDeviceStep, deleteDevice } from '@/lib/db/devices'
@@ -15,6 +16,7 @@ export interface AddDeviceInput {
 }
 
 export async function addDeviceAction(input: AddDeviceInput): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (!MODELS[input.model]) return { ok: false, error: 'Pick a device model.' }
 
   // A BLE beacon has no IMEI — its identity is a hex tag id. Holding it to the
@@ -53,6 +55,7 @@ export async function addDeviceAction(input: AddDeviceInput): Promise<{ ok: bool
 }
 
 export async function setDeviceStepAction(imei: string, stepKey: string, done: boolean) {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
   const res = await setDeviceStep(companyId, imei, stepKey, done)
   revalidatePath('/assets/onboard')
@@ -60,6 +63,7 @@ export async function setDeviceStepAction(imei: string, stepKey: string, done: b
 }
 
 export async function deleteDeviceAction(imei: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
   const res = await deleteDevice(companyId, imei)
   revalidatePath('/assets/onboard')
@@ -82,6 +86,7 @@ export async function addDevicesBulkAction(
   text: string,
   fallbackModel: DeviceModel,
 ): Promise<{ ok: boolean; added: number; skipped: { value: string; reason: string }[]; error?: string }> {
+  await requireEditOrThrow()
   // Only IMEI-SHAPED runs. Splitting on every non-digit turned a real
   // spreadsheet paste into noise: ICCIDs, dates and the "00" out of FMM00A all
   // became "entries", blowing the cap on a 40-row shipment and burying the
@@ -128,6 +133,7 @@ export async function registerDeviceAssetAction(
   name: string,
   type: 'vehicle' | 'equipment' | 'tool',
 ): Promise<{ ok: boolean; assetId?: string; error?: string }> {
+  await requireEditOrThrow()
   const clean = imei.replace(/\D/g, '')
   if (!imeiLooksValid(clean).ok) return { ok: false, error: 'That IMEI does not look right.' }
   const label = name.trim()

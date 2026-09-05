@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import {
@@ -52,7 +53,7 @@ async function readPolicy(db: Db, companyId: string): Promise<RolePolicy | null>
  * ability switched off — a read-only preview, never a way to act as them.
  * Every gate in the app funnels through here, so the preview is complete.
  */
-export async function getMyPermissions(): Promise<Permissions> {
+export const getMyPermissions = cache(async function getMyPermissions(): Promise<Permissions> {
   if (isMock) return MASTER
   try {
     const { createClient } = await import('./supabase-server')
@@ -74,20 +75,24 @@ export async function getMyPermissions(): Promise<Permissions> {
     const targetIsMaster = target.id === companyId
     if (!outranks(real, { role: normalizeRole(target.role, 'associate'), isMaster: targetIsMaster })) return real
     const preview = resolvePermissions(target, targetIsMaster, policy)
+    // Intersect with the REAL permissions: a preview can never show an
+    // Admin something the Master switched off for Admins (sec-check P1).
+    const seeable = new Set(real.features)
     return {
       ...preview,
-      features: preview.features.filter((k) => k !== 'edit' && k !== 'billing' && k !== 'manage_team'),
+      features: preview.features.filter((k) => seeable.has(k) && k !== 'edit' && k !== 'billing' && k !== 'manage_team'),
+      canViewCosts: preview.canViewCosts && real.canViewCosts,
       canEdit: false, canManageBilling: false, canManageTeam: false,
       viewingAs: { id: target.id, name: target.name || 'Teammate', role: preview.role },
     }
   } catch {
     return ASSOCIATE
   }
-}
+})
 
 /** The caller's REAL permissions, ignoring any view-as preview. For the
  *  actions that manage the preview itself and the team. */
-export async function getRealPermissions(): Promise<Permissions & { userId: string | null; companyId: string | null }> {
+export const getRealPermissions = cache(async function getRealPermissions(): Promise<Permissions & { userId: string | null; companyId: string | null }> {
   if (isMock) return { ...MASTER, userId: null, companyId: null }
   try {
     const { createClient } = await import('./supabase-server')
@@ -102,6 +107,19 @@ export async function getRealPermissions(): Promise<Permissions & { userId: stri
   } catch {
     return { ...ASSOCIATE, userId: null, companyId: null }
   }
+})
+
+/**
+ * Write gate for server actions: the `edit` ability, from the SAME resolver
+ * the UI uses — so a role with edit off, or an admin inside a view-as
+ * preview, cannot reach a mutation by invoking the action directly
+ * (sec-check, Sep 4). Throws; the client sees a failed action, which is the
+ * honest outcome for a button that should not have been reachable.
+ */
+export async function requireEditOrThrow(): Promise<Permissions> {
+  const perms = await getMyPermissions()
+  if (!perms.canEdit) throw new Error(perms.viewingAs ? 'Read-only preview — exit View as to make changes.' : 'Your role can view this but not change it.')
+  return perms
 }
 
 /** Page gate: 404 (never a hint that the page exists) when the caller's view

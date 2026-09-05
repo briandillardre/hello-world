@@ -1,4 +1,5 @@
 'use server'
+import { requireEditOrThrow } from '@/lib/permissions-server'
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -17,6 +18,7 @@ export async function decidePairAction(
   machineAssetId: string,
   status: 'confirmed' | 'rejected'
 ): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   try {
     const companyId = await getCurrentCompanyId()

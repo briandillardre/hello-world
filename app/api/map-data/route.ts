@@ -114,6 +114,8 @@ export async function GET() {
         getPlacedSiteOverlays(companyId),
         getAssetHealth(companyId),
       ])
+    // The view-levels table can switch the map off for a role (094).
+    if (!perms.features.includes('map')) return NextResponse.json({ error: 'not enabled for your role' }, { status: 403 })
     const now = Date.now()
     const assets = resolveToolLocations(rawAssets, toolAssociations).map((a) => {
       const lastMove = health.lastMoveMs.get(a.id)

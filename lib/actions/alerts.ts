@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { acknowledgeAlert, acknowledgeAlerts, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
@@ -46,6 +47,7 @@ export async function createAlertRuleAction(input: {
   idle_minutes: number | null
   params?: AlertRuleParams | null
 }): Promise<AlertRule | null> {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
   // null = demo mode or insert failure — the form uses this to avoid closing
   // as if the rule saved.
@@ -55,6 +57,7 @@ export async function createAlertRuleAction(input: {
 }
 
 export async function toggleAlertRuleAction(id: string, active: boolean) {
+  await requireEditOrThrow()
   await updateAlertRule(id, { active })
   revalidatePath('/alerts')
 }
@@ -66,18 +69,21 @@ export async function updateAlertRuleAction(id: string, patch: {
   asset_id?: string | null
   active?: boolean
 }) {
+  await requireEditOrThrow()
   await updateAlertRule(id, patch)
   revalidatePath('/alerts')
 }
 
 /** The matrix's bulk lever: one trigger across many zones, on or off. */
 export async function bulkZoneRulesAction(zoneIds: string[], trigger: AlertTrigger, enable: boolean) {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
   await bulkSetZoneRules(companyId, zoneIds, trigger, enable)
   revalidatePath('/alerts')
 }
 
 export async function deleteAlertRuleAction(id: string) {
+  await requireEditOrThrow()
   await deleteAlertRule(id)
   revalidatePath('/alerts')
 }

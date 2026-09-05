@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { requireFeature } from '@/lib/permissions-server'
 import { TrackerClient } from '@/components/track/TrackerClient'
 
 export const metadata: Metadata = {
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
   description: 'Share a live GPS trail from your phone on the jobsite.',
 }
 
-export default function TrackPage() {
+export default async function TrackPage() {
+  await requireFeature('track')
   return <TrackerClient />
 }

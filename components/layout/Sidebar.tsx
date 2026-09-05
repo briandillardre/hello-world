@@ -61,9 +61,11 @@ interface SidebarProps {
   fullCollapse?: boolean
   /** The caller's view levels (094). null = show everything (demo / pre-094). */
   features?: string[] | null
+  /** Ask AI view level — false hides every launcher (the widget is unmounted too). */
+  askAi?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null, askAi = true }: SidebarProps) {
   // Pages outside the caller's view levels don't exist for them — not
   // greyed, not there. (The page itself 404s too; this keeps the two honest.)
   const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
@@ -98,6 +100,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         {collapsed ? (
           <div className="flex flex-col items-center gap-2.5">
             <Logo wordmark={false} size={26} href="/map" />
+            {askAi && (
             <button
               data-tour="askai"
               onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
@@ -107,6 +110,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             >
               <Sparkles className="h-4 w-4" />
             </button>
+            )}
           </div>
         ) : (
           <div className="min-w-0 w-full">
@@ -124,6 +128,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
             {/* Ask AI lives up here in the chrome now — the desktop floater
                 kept covering page content (Brian, Aug 28). */}
+            {askAi && (
             <button
               data-tour="askai"
               onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
@@ -132,6 +137,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             >
               <Sparkles className="h-4 w-4" /> Ask AI
             </button>
+            )}
           </div>
         )}
       </div>

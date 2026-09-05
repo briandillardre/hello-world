@@ -31,6 +31,15 @@ Team → a member → **View app as …** (Master + Admins, only for people they
 * **Conversations go down the ladder only.** `ai_messages` RLS stays per-user. `lib/db/ai-convos.ts` reads with the service role and enforces rank: `/team/<id>/ai` shows a member's chats to anyone who outranks them; equals see nothing of each other; the Master sees everyone's.
 * **Ask AI is a view level** (`ask_ai`): off for a role = launcher hidden and `/api/assistant` answers 403.
 
+## Hardening from the review pass (migration 096)
+
+* `invites` is **read-only for members** (it was `FOR ALL` with no `WITH CHECK` since 010 — any member could insert an admin invite and accept it). Every write path runs on the service role.
+* `companies.role_policy` joined the 072 deny-list trigger: a client `PATCH` cannot rewrite the view-levels table; only the rank-checked team action can.
+* **No laddering**: nobody can switch ON a view level or per-person switch they do not hold themselves (the Master holds everything).
+* **View-as intersects with your real permissions**: an Admin the Master restricted cannot see more by previewing a Manager.
+* `requireEditOrThrow()` sits at the top of every mutating server action for zones, assets, alerts rules, maintenance, work orders, imagery, projects, measurements, places, devices and tag pairing — the `edit` view level and the read-only preview are enforced at the action, not just hidden in the UI.
+* `getMyPermissions` / `getRealPermissions` are `React.cache`d: one resolution per request however many pages and gates ask.
+
 ## Where the old "viewer" went
 
 `normalizeRole()` maps a stored `'viewer'` to `associate`; 094 rewrites the rows and the CHECK constraints (profiles + invites). No code compares role strings for edit rights any more — `perms.canEdit` / `perms.features` do.

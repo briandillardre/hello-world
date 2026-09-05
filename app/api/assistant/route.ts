@@ -129,6 +129,10 @@ async function saveTurn(userId: string | null, companyId: string | null, questio
 /** GET — the widget's thread on open (?since= honors New chat), or keyword
  *  search across the full history with ?q=. */
 export async function GET(request: NextRequest) {
+  const perms = await getMyPermissions()
+  if (!perms.features.includes('ask_ai')) return NextResponse.json({ error: 'Ask AI is not enabled for your role.' }, { status: 403 })
+  // A view-as preview shows an empty thread: the history is the admin's own.
+  if (perms.viewingAs) return NextResponse.json({ messages: [], results: [] })
   const q = request.nextUrl.searchParams.get('q')?.trim()
   if (q) {
     const results = await searchHistory(q)

@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 
@@ -44,6 +45,7 @@ const IMAGERY_EXT: Record<string, string> = {
 export async function createImageryUploadAction(zoneId: string, contentType: string, size: number): Promise<{
   ok: boolean; path?: string; token?: string; error?: string
 }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
   if (!contentType.startsWith('image/')) return { ok: false, error: 'That file isn’t an image.' }
@@ -75,6 +77,7 @@ export async function finalizeZoneImageryAction(input: {
   /** 055: 'plan' records a Scaled Plans sheet instead of a timeline photo. */
   kind?: 'photo' | 'plan'; planCategory?: string
 }): Promise<{ ok: boolean; image?: ZoneImage; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const { zoneId, path, takenOn } = input
   const caption = String(input.caption ?? '').trim().slice(0, 200)
@@ -142,6 +145,7 @@ export async function finalizeZoneImageryAction(input: {
  * visibility is the timeline's job.
  */
 export async function setActivePlanAction(zoneId: string, imageId: string | null): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!/^[0-9a-f-]{36}$/i.test(zoneId)) return { ok: false, error: 'Bad zone' }
   if (imageId !== null && !/^[0-9a-f-]{36}$/i.test(imageId)) return { ok: false, error: 'Bad plan' }
@@ -173,6 +177,7 @@ export async function saveOverlayBoundsAction(
   imageId: string,
   bounds: [[number, number], [number, number], [number, number], [number, number]] | null
 ): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   if (!/^[0-9a-f-]{36}$/i.test(imageId)) return { ok: false, error: 'Bad image' }
   if (bounds !== null) {
@@ -195,6 +200,7 @@ export async function saveOverlayBoundsAction(
 }
 
 export async function deleteZoneImageryAction(zoneId: string, imageId: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode' }
   const companyId = await getCurrentCompanyId()
   const { createClient } = await import('@/lib/supabase-server')

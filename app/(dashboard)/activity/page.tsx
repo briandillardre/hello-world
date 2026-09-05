@@ -44,7 +44,7 @@ export default async function ActivityPage() {
   // OWNER only (Brian, Aug 22: "admin should get everything EXCEPT the
   // ability to see what everyone in the org has used the app for") — the
   // company founder is the one seat that may watch the team's app usage.
-  const amOwner = !!user && me?.company_id === user.id
+  const amOwner = (await requireFeature('activity')).isMaster
   if (!amOwner) {
     return (
       <Shell>

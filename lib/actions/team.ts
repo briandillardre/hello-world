@@ -237,8 +237,16 @@ export async function updateMemberOverridesAction(
   const t = await target(c, memberId)
   if (!t || !t.manageable || t.role === 'admin') return false
   const patch: Record<string, boolean | null> = {}
+  const holds: Record<'can_view_costs' | 'can_manage_billing' | 'can_manage_team', boolean> = {
+    can_view_costs: c.me.isMaster || c.me.canViewCosts,
+    can_manage_billing: c.me.isMaster || c.me.canManageBilling,
+    can_manage_team: c.me.isMaster || c.me.canManageTeam,
+  }
   for (const k of ['can_view_costs', 'can_manage_billing', 'can_manage_team'] as const) {
-    if (k in overrides) patch[k] = overrides[k] ?? null
+    if (!(k in overrides)) continue
+    // Same no-laddering rule as the view-levels table.
+    if (overrides[k] === true && !holds[k]) return false
+    patch[k] = overrides[k] ?? null
   }
   if (Object.keys(patch).length === 0) return true
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -263,6 +271,12 @@ export async function updateRolePolicyAction(role: Role, key: FeatureKey, value:
   if (!c) return { ok: false, error: 'Not signed in.' }
   if (!ROLES.includes(role) || !FEATURE_KEYS.includes(key)) return { ok: false, error: 'Unknown setting.' }
   if (!rolesEditableBy(c.me).includes(role)) return { ok: false, error: 'You can only set view levels for roles below your own.' }
+  // No laddering: nobody may switch ON a feature they do not hold themselves
+  // (a manage-team Manager with the books off must not give Foremen the
+  // books and invite a second login as one). The Master holds everything.
+  if (value === true && !c.me.isMaster && !c.me.features.includes(key)) {
+    return { ok: false, error: 'You can only grant things you can see yourself.' }
+  }
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()
   const { data: co, error: readErr } = await svc.from('companies').select('role_policy').eq('id', c.companyId).maybeSingle()

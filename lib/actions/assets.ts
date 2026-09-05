@@ -1,5 +1,6 @@
 'use server'
 
+import { requireEditOrThrow } from '@/lib/permissions-server'
 import { revalidatePath } from 'next/cache'
 import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPhotos, setAssetPhotoOrder } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -9,6 +10,7 @@ import type { AssetType } from '@/lib/types'
 
 /** Document-folder link on an asset (Dropbox/Drive/etc.) — direct column update. */
 export async function saveAssetFolderAction(id: string, folderUrl: string): Promise<{ ok: boolean; error?: string }> {
+  await requireEditOrThrow()
   try {
     const url = folderUrl.trim()
     if (url && !/^https?:\/\//i.test(url)) return { ok: false, error: 'Enter a full link starting with https://' }
@@ -122,6 +124,7 @@ function friendlyAssetError(err: { code?: string; message: string }): string {
 
 export async function createAssetAction(input: CreateAssetInput, photoForm?: FormData):
   Promise<{ ok: boolean; asset?: import('@/lib/types').Asset | null; error?: string }> {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
 
   // Captured/chosen photos win over a pasted URL. The first uploaded photo
@@ -161,6 +164,7 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
  *  Renaming/rates/icon come later on the edit form. */
 export async function quickAddTrackerAction(raw: string, kind: 'vehicle' | 'equipment'):
   Promise<{ ok: boolean; asset?: { id: string; name: string } | null; existing?: { id: string; name: string }; error?: string }> {
+  await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — scanning works once connected to your real account.' }
   // EXACTLY 15 digits, bounded — an unbounded \d{15} matched the first 15
   // digits of longer runs, and the SuperSIM's 19-digit ICCID barcode sits in
@@ -370,6 +374,7 @@ export async function bulkCreateAssetsAction(rows: ImportRow[]):
 /** Remove one gallery photo, then set the hero/thumbnail to whatever is now
  *  first (or null when the gallery is empty). */
 export async function deleteAssetPhotoAction(assetId: string, photoId: string) {
+  await requireEditOrThrow()
   if (isMock) return
   const companyId = await getCurrentCompanyId()
   await deleteAssetPhoto(companyId, photoId)
@@ -382,6 +387,7 @@ export async function deleteAssetPhotoAction(assetId: string, photoId: string) {
 
 /** Persist a drag-reordered gallery; the first photo becomes the thumbnail. */
 export async function reorderAssetPhotosAction(assetId: string, orderedIds: string[]) {
+  await requireEditOrThrow()
   if (isMock) return
   const companyId = await getCurrentCompanyId()
   await setAssetPhotoOrder(companyId, assetId, orderedIds)
@@ -397,6 +403,7 @@ export async function updateAssetAction(
   input: Partial<CreateAssetInput> & { active?: boolean },
   photoForm?: FormData
 ): Promise<{ ok: boolean; asset?: import('@/lib/types').Asset | null; error?: string }> {
+  await requireEditOrThrow()
   const companyId = await getCurrentCompanyId()
 
   // New photos append to the gallery. Hero is NOT taken from the form (the

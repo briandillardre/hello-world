@@ -30,7 +30,6 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function CommandPage() {
-  await requireFeature('command')
   // Auth gate — same contract as app/(dashboard)/layout.tsx (no Edge
   // middleware in this app; gating lives in the server components). In real
   // mode a logged-out visitor gets /login instead of an empty shell whose
@@ -46,6 +45,8 @@ export default async function CommandPage() {
       if ((e as { digest?: string })?.digest?.startsWith('NEXT_REDIRECT')) throw e
     }
   }
+  // After the auth gate: a logged-out visitor must see /login, not a 404.
+  await requireFeature('command')
 
   // SNAPPY CONTRACT (Brian, Aug 22): this page awaits only the small, fast
   // queries — the shell and basemap paint immediately. The heavy cargo

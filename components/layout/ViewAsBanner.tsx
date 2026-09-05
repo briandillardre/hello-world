@@ -20,7 +20,7 @@ export function ViewAsBanner({ name, roleLabel }: { name: string; roleLabel: str
       <button
         onClick={() => start(async () => { await exitViewAsAction(); router.push('/team'); router.refresh() })}
         disabled={pending}
-        className="ml-auto inline-flex items-center gap-1 rounded-md bg-[#1a1100]/15 hover:bg-[#1a1100]/25 px-2 py-1 min-h-8 disabled:opacity-60"
+        className="ml-auto inline-flex items-center gap-1 rounded-md bg-[#1a1100]/15 hover:bg-[#1a1100]/25 px-3 min-h-11 disabled:opacity-60"
       >
         <X className="h-3.5 w-3.5" /> Exit
       </button>

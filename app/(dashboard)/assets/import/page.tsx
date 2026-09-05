@@ -1,7 +1,7 @@
 import { BulkImport } from '@/components/assets/BulkImport'
 import { getAssets } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 
 export const metadata = { title: 'HammerTrack — Bulk add assets' }
 
@@ -12,6 +12,7 @@ const isDemo = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  *  The existing fleet rides along so duplicates are caught in the grid rather
  *  than by a Postgres error halfway through the batch. */
 export default async function BulkImportPage() {
+  await requireFeature('assets')
   const companyId = await getCurrentCompanyId()
   const [assets, perms] = await Promise.all([getAssets(companyId), getMyPermissions()])
 

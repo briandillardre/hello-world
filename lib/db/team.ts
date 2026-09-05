@@ -3,7 +3,7 @@ import {
   ROLES, RANK, normalizeRole, outranks, rankOf, rolesEditableBy,
   type Role, type RolePolicy, type Permissions,
 } from '../permissions'
-import { getRealPermissions } from '../permissions-server'
+import { getRealPermissions, getMyPermissions } from '../permissions-server'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -62,6 +62,8 @@ export async function getTeam(): Promise<TeamData> {
   try {
     const me = await getRealPermissions()
     if (!me.userId || !me.companyId) return empty
+    // Inside a view-as preview the roster is read-only, whoever you really are.
+    const previewing = !!(await getMyPermissions()).viewingAs
     const { createClient } = await import('../supabase-server')
     const supabase = createClient()
     const companyId = me.companyId
@@ -82,7 +84,7 @@ export async function getTeam(): Promise<TeamData> {
       supabase.from('companies').select('role_policy').eq('id', companyId).maybeSingle(),
     ])
 
-    const isAdmin = me.isMaster || me.role === 'admin' || me.canManageTeam
+    const isAdmin = !previewing && (me.isMaster || me.role === 'admin' || me.canManageTeam)
     const members: TeamMember[] = ((profiles ?? []) as {
       id: string; name: string | null; email: string | null; role: string | null
       can_view_costs?: boolean | null; can_manage_billing?: boolean | null; can_manage_team?: boolean | null
@@ -106,8 +108,8 @@ export async function getTeam(): Promise<TeamData> {
       members,
       invites: ((invites ?? []) as TeamInvite[]).map((i) => ({ ...i, role: normalizeRole(i.role, 'associate') })),
       myRole: me.role, isAdmin, isMaster: me.isMaster,
-      assignableRoles: assignableRolesFor(me),
-      editableRoles: rolesEditableBy(me),
+      assignableRoles: previewing ? [] : assignableRolesFor(me),
+      editableRoles: previewing ? [] : rolesEditableBy(me),
       policy: ((co?.role_policy as RolePolicy | null) ?? {}),
     }
   } catch {
