@@ -362,10 +362,13 @@ export function TimelinePlayback({
   }, [range, playing, t, liveT, onRange])
 
   const ticks = useMemo<{ f: number; label: string }[]>(
+    // Live rides TODAY's window (the playhead does too) — the map's own live
+    // window starts up to 4h before midnight and put the ticks on a
+    // different clock than the readout between 12 and 4 AM (ship-check).
     () => custom
       ? tickMarks(customFrom, customTo, tz)
-      : rwFrom != null && rwTo != null ? tickMarks(rwFrom, rwTo, tz)
       : live ? tickMarks(todayWin.from, todayWin.to, tz)
+      : rwFrom != null && rwTo != null ? tickMarks(rwFrom, rwTo, tz)
       : [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, label: rangeLabel(range, f) })),
     [custom, customFrom, customTo, rwFrom, rwTo, range, tz, live, todayWin]
   )
@@ -786,7 +789,7 @@ export function TimelinePlayback({
           tools · cost. Desktop keeps its wrap row below. ── */}
       {stage === 'full' && (
       <div className="sm:hidden px-3 pt-1 pb-1.5 space-y-1.5 border-b border-navy-800">
-        <div className="grid grid-cols-8 gap-0.5">
+        <div className="grid grid-cols-7 gap-0.5">
           {UI_RANGES.map((r) => (
             <button
               key={r.key}

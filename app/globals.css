@@ -80,9 +80,13 @@ select optgroup {
   background-color: #ff9e16 !important;
 }
 /* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden
-   (the bar itself sits below the OS status-bar inset on phones). Phones also
-   stack the KPI strip + ticker under the bar (--ht-cc-strip, set on the kiosk
-   root) and lift the bottom-corner controls above the bottom nav. */
+   (the bar itself sits below the OS status-bar inset on phones). Below sm the
+   KPI strip (33px) and below md the ticker (28px) stack under the bar; the
+   kiosk root flags which are on (data-cc-chips / data-cc-ticker) and these
+   rules turn that into --ht-cc-strip per breakpoint — 0 on the TV wall. */
+.ht-cc { --ht-cc-kpi: 0px; --ht-cc-ticker: 0px; --ht-cc-strip: calc(var(--ht-cc-kpi) + var(--ht-cc-ticker)); }
+@media (max-width: 639px) { .ht-cc[data-cc-chips="1"] { --ht-cc-kpi: 33px; } }
+@media (max-width: 767px) { .ht-cc[data-cc-ticker="1"] { --ht-cc-ticker: 28px; } }
 .kiosk-map .maplibregl-ctrl-top-right {
   margin-top: calc(60px + var(--ht-safe-top, 0px) + var(--ht-cc-strip, 0px));
 }
