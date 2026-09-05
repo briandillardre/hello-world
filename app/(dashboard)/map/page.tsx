@@ -26,7 +26,7 @@ const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
   process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
 
 export default async function MapPage({ searchParams }: { searchParams?: { m?: string } }) {
-  await requireFeature('map')
+  const mapPerms = await requireFeature('map')
   // ── Real mode: SHELL FIRST. The app icon opens straight into the map —
   // this render awaits only the top-bar basics (company + weather prefs),
   // so the document streams in well under a second and the map engine +
@@ -45,7 +45,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     const tz = safeTz(cookies().get('ht_tz')?.value)
     return (
       <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
-        <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
+        <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} />
         <div className="flex-1 relative min-h-0">
           <MapPageClient
             bootstrap
@@ -125,7 +125,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const aboard = toolsAboard(rawAssets, toolAssociations)
   return (
     <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
-      <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} />
+      <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient
           assets={assets}

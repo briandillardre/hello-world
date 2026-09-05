@@ -228,6 +228,9 @@ function toolsGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, selId
           color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS.tool,
           icon: resolveAssetIcon('tool', a.metadata),
           state: Date.now() - new Date(a.location!.timestamp).getTime() < 25 * 60_000 ? 'live' : 'dropped',
+          // Same staleness badge as the machines ("3h", "23d") — a tag's last
+          // sighting is the whole story of where it was left.
+          ageLabel: (() => { const age = Date.now() - new Date(a.location!.timestamp).getTime(); return age < 3_600_000 ? '' : age < 86_400_000 ? `${Math.floor(age / 3_600_000)}h` : `${Math.floor(age / 86_400_000)}d` })(),
         },
       })),
   }
@@ -2475,6 +2478,16 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           'icon-color': '#04121d',
           'icon-opacity': ['match', ['get', 'state'], 'dropped', 0.75, 1],
         },
+      })
+      m.addLayer({
+        id: 'tool-age', type: 'symbol', source: 'tools-live',
+        filter: ['!=', ['coalesce', ['get', 'ageLabel'], ''], ''],
+        minzoom: 8,
+        layout: {
+          'text-field': ['get', 'ageLabel'], 'text-size': 9, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top-left', 'text-offset': [0.95, 0.8], 'text-allow-overlap': true, 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': ['case', ['==', ['get', 'state'], 'dropped'], '#b9c6d2', '#ffd9a1'], 'text-halo-color': '#04121d', 'text-halo-width': 1.5 },
       })
       m.addLayer({
         id: 'tool-dots-name', type: 'symbol', source: 'tools-live',
