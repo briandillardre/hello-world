@@ -31,8 +31,8 @@ export async function getTeam(): Promise<TeamData> {
     return {
       members: [
         { id: 'you', name: 'You (demo)', email: 'you@demo', role: 'admin', isYou: true },
-        { id: 'm2', name: 'Sarah Chen', email: 'sarah@demo', role: 'foreman', isYou: false },
-        { id: 'm3', name: 'John Martinez', email: 'john@demo', role: 'viewer', isYou: false },
+        { id: 'm2', name: 'Foreman (demo)', email: 'foreman@demo', role: 'foreman', isYou: false },
+        { id: 'm3', name: 'Crew member (demo)', email: 'crew@demo', role: 'viewer', isYou: false },
       ],
       invites: [],
       myRole: 'admin',

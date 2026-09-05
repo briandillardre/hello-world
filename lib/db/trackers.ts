@@ -30,7 +30,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 const MOCK_OVERVIEW: TrackersOverview = {
   installed: [
-    { imei: '863452084048569', model: 'FMM00A', label: 'Chevy 1500', registered: true, asset: { id: 'a1', name: 'Chevy 1500 - Brian', type: 'vehicle' }, lastSeen: { timestamp: new Date(Date.now() - 4 * 60_000).toISOString(), lat: 34.85, lng: -82.4, speed: 0, battery: null }, unassignedSince: null, buffered: 0 },
+    { imei: '863452084048569', model: 'FMM00A', label: 'Chevy 1500', registered: true, asset: { id: 'a1', name: 'Chevy 1500', type: 'vehicle' }, lastSeen: { timestamp: new Date(Date.now() - 4 * 60_000).toISOString(), lat: 34.85, lng: -82.4, speed: 0, battery: null }, unassignedSince: null, buffered: 0 },
     { imei: '869267077050677', model: 'TAT141', label: 'Takeuchi TB235', registered: true, asset: { id: 'a2', name: 'Takeuchi TB235', type: 'equipment' }, lastSeen: { timestamp: new Date(Date.now() - 50 * 60_000).toISOString(), lat: 34.7, lng: -82.6, speed: 0, battery: 100 }, unassignedSince: null, buffered: 0 },
   ],
   unassigned: [

@@ -479,7 +479,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
             <Label htmlFor="asset-name">Asset name *</Label>
             <Input
               id="asset-name"
-              placeholder="e.g. Bryson's Ram 3500, CAT Excavator"
+              placeholder="e.g. Ram 3500 Dump, CAT 320 Excavator"
               value={name}
               onChange={e => setName(e.target.value)}
               autoFocus
