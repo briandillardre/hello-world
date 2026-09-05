@@ -6459,7 +6459,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       {/* Flyover briefing card — shows while the tour dwells at a site zone:
           the morning-briefing numbers, delivered from the cockpit (Aug 12). */}
       {flying && flyCard && (
-        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 ht-toast-in rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel px-4 py-2.5 text-center pointer-events-none max-w-[86vw]">
+        <div className="absolute top-[calc(var(--ht-map-top,8px)+48px)] md:top-14 left-1/2 -translate-x-1/2 z-20 ht-toast-in rounded-xl bg-navy-950/90 backdrop-blur border border-navy-700 shadow-panel px-4 py-2.5 text-center pointer-events-none max-w-[86vw]">
           <p className="font-display font-bold text-[14px] text-ink truncate">{flyCard.name}</p>
           {flyCard.burn && <p className="font-mono text-[11.5px] text-amber tabular-nums">{flyCard.burn}</p>}
           {flyCard.pour && <p className="font-mono text-[10.5px] text-faint">{flyCard.pour}</p>}

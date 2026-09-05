@@ -128,7 +128,7 @@ export function GeofenceDrawer({
           address search folded behind a chip on the hint row. Phones get
           the full-bleed strip; md+ floats the same card centered. */}
       {isDrawing && (
-        <div className="absolute top-0 inset-x-0 z-30 md:top-2 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[440px]">
+        <div className="absolute top-[var(--ht-map-top,0px)] inset-x-0 z-30 md:top-2 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-[440px]">
           <div className="bg-navy-950/95 backdrop-blur md:border md:border-navy-700 md:rounded-xl md:shadow-panel md:overflow-hidden">
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-amber/30">
               <button onClick={onCancelDraw} className="p-1.5 text-faint hover:text-ink flex-none" aria-label="Cancel zone drawing"><X className="h-4 w-4" /></button>

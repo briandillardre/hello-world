@@ -114,7 +114,7 @@ export function MapSheet({
           box shoved its title under the browser chrome ("can't read the
           top", Aug 6). */}
       <div
-        className={'absolute left-0 right-0 z-[71] md:hidden ' + (expanded ? 'top-0' : '')}
+        className={'absolute left-0 right-0 z-[71] md:hidden ' + (expanded ? 'top-[var(--ht-safe-top,0px)]' : '')}
         style={{ bottom: expanded ? '0px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
       >
         <div

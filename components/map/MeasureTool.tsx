@@ -386,7 +386,8 @@ export function MeasureTool({
   return (
     <>
       {/* ── PHONE: slim top strip — the map stays fully visible ── */}
-      <div className="md:hidden absolute top-0 inset-x-0 z-30">
+      {/* top = below the floating brand bar + status-bar inset on phones */}
+      <div className="md:hidden absolute top-[var(--ht-map-top,0px)] inset-x-0 z-30">
         <div className="flex items-center gap-1 px-1.5 py-1 bg-navy-950/95 backdrop-blur border-b border-amber/30">
           <button onClick={onClose} className="p-1.5 text-faint hover:text-ink flex-none" aria-label="Close measure"><X className="h-4 w-4" /></button>
           <Ruler className="h-3.5 w-3.5 text-amber flex-none" />
