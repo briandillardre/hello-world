@@ -196,7 +196,7 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
       {open && (
         // Phone: full-width sheet under the header (the 240px flyout collided
         // with the weather pill). Desktop: classic anchored dropdown.
-        <div className="fixed inset-x-3 top-[62px] max-h-[72vh] overflow-y-auto rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2 z-50 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-[240px] md:max-h-none md:overflow-visible">
+        <div className="fixed inset-x-3 top-[calc(62px+var(--ht-safe-top,0px))] max-h-[72vh] overflow-y-auto rounded-xl bg-navy-950 border border-navy-700 shadow-panel p-2 z-50 md:absolute md:inset-x-auto md:right-0 md:top-full md:mt-2 md:w-[240px] md:max-h-none md:overflow-visible">
           <p className="px-2 pt-1 pb-1.5 font-display font-bold text-[12px] text-ink">Screen setup</p>
           {ROWS.map(({ k, label }) => {
             const on = panels[k] !== 'hidden'
@@ -424,7 +424,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       {/* Deferred-cargo status — same language as the map's layer chips.
           Disappears the moment /api/command-data lands. */}
       {deferLoad && !dyn && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
+        <div className="absolute top-[calc(64px+var(--ht-safe-top,0px))] left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full bg-navy-950/85 backdrop-blur border border-teal/25 px-3.5 py-1.5 pointer-events-none">
           <span className={`h-2 w-2 rounded-full ${dynErr ? 'bg-alert' : 'bg-teal animate-blink'}`} />
           <span className={`font-mono text-[10.5px] uppercase tracking-[0.12em] ${dynErr ? 'text-alert' : 'text-teal'}`}>
             {dynErr ? 'History unavailable — retrying…' : 'Loading trails & history…'}
@@ -433,8 +433,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       )}
 
       {/* corner brackets */}
-      <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
-      <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute top-[calc(12px+var(--ht-safe-top,0px))] left-3 w-8 h-8 border-t-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
+      <div className="absolute top-[calc(12px+var(--ht-safe-top,0px))] right-3 w-8 h-8 border-t-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 border-teal/50 z-30 pointer-events-none" />
       <div className="absolute bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 border-teal/50 z-30 pointer-events-none" />
 
@@ -524,8 +524,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       )}
 
       {/* top HUD bar */}
-      {/* z-[46]: above the kiosk layers pill (z 45) so the Screens sheet wins */}
-      <div className="absolute top-0 left-0 right-0 z-[46] h-[56px] flex items-center justify-between px-3 md:px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
+      {/* z-[46]: above the kiosk layers pill (z 45) so the Screens sheet wins.
+          top = the OS status-bar inset: this screen is fixed inset-0, so the
+          shell's page padding cannot reach it (Brian, Sep 4: "command center
+          is all screwed up" — the bar sat under the phone's clock). */}
+      <div className="absolute top-[var(--ht-safe-top,0px)] left-0 right-0 z-[46] h-[56px] flex items-center justify-between px-3 md:px-5 bg-navy-950/85 backdrop-blur border-b border-navy-800">
         <div className="flex items-center gap-3 pointer-events-none min-w-0">
           {/* phone: mark only — the wordmark fought the Ask button for space */}
           <span className="md:hidden"><Logo size={26} href={null} wordmark={false} /></span>

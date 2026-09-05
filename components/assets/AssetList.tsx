@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2 } from 'lucide-react'
+import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2, MapPin } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { deriveLiveStatus } from '@/lib/live-status'
+import { placeKey } from '@/lib/place-label'
 import { createAssetAction } from '@/lib/actions/assets'
 import { busy as trackBusy } from '@/lib/busy'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
@@ -32,8 +33,12 @@ interface AssetListProps {
   /** Tool id → current/last carrier ("with Chevy 1500" chip on tools; stale
    *  sightings render as "last seen with", never a live custody claim). */
   carriers?: Record<string, { name: string; lastSeen: string }>
-  /** Asset id → name of the zone it's sitting in ("at Creekside" meta line). */
+  /** Asset id → name of the zone it's sitting in ("at Creekside"). */
   zoneNames?: Record<string, string>
+  /** Asset id → place label for rows outside every zone, from what the
+   *  geocode cache already knew at render ("near 304 N Church St, Greenville"
+   *  / "in Greenville, SC"). Rows missing here are asked for client-side. */
+  placeNames?: Record<string, string>
   onAdd?: (data: AssetFormData) => void
 }
 
@@ -76,7 +81,7 @@ const needsAttention = (a: AssetWithLocation) =>
   rowStatus(a).key === 'offline' ||
   (a.location?.battery != null && a.location.battery < 15)
 
-export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: AssetListProps) {
+export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames, onAdd }: AssetListProps) {
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<AssetSort>('name')
@@ -84,6 +89,58 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // "Where is it" for rows outside every zone (Brian, Sep 4: zone → close
+  // address → city, state). The server hands over what the cache already
+  // knew; anything new is asked here in one batch per load and fills in as
+  // it arrives. Keys already asked this load are not asked again (a cell the
+  // geocoder could not answer stays blank until the next visit).
+  // Keyed by CELL, not asset: two machines on one lot share the answer, and a
+  // refresh that moves a truck asks only for its new cell.
+  const [places, setPlaces] = useState<Record<string, string>>({})
+  const asked = useRef(new Set<string>())
+  const cellOf = (a: AssetWithLocation) => (a.location ? placeKey(a.location.lat, a.location.lng) : null)
+  const pendingKeys = Array.from(new Set(assets
+    .filter((a) => a.location && !zoneNames?.[a.id] && !placeNames?.[a.id])
+    .map((a) => cellOf(a)!))).filter((k) => !(k in places) && !asked.current.has(k))
+  const pendingSig = pendingKeys.join(';')
+  useEffect(() => {
+    if (!pendingSig) return
+    const keys = pendingSig.split(';')
+    let cancelled = false
+    const run = async () => {
+      const found: Record<string, string | null> = {}
+      let answered = false
+      for (let i = 0; i < keys.length; i += 100) {
+        try {
+          const r = await fetch(`/api/reverse-geocode?pts=${keys.slice(i, i + 100).join(';')}`)
+          if (!r.ok) continue
+          const j = (await r.json()) as { places?: Record<string, string | null> }
+          Object.assign(found, j.places ?? {})
+          answered = true
+        } catch { /* offline — the row keeps its time stamp */ }
+      }
+      // A batch cancelled by a re-render (router.refresh mid-flight) is not
+      // "asked": the re-run asks again. Only a finished batch settles keys —
+      // found ones into `places`, the rest into `asked` until the next visit.
+      if (cancelled) return
+      if (answered) for (const k of keys) asked.current.add(k)
+      setPlaces((prev) => {
+        const next = { ...prev }
+        for (const k of keys) if (k in found) next[k] = found[k] ?? ''
+        return next
+      })
+    }
+    run()
+    return () => { cancelled = true }
+  }, [pendingSig])
+  /** "at <zone>" first, then the geocoded label; null while unknown. */
+  const whereOf = (a: AssetWithLocation): string | null => {
+    const zone = zoneNames?.[a.id]
+    if (zone) return `at ${zone}`
+    const k = cellOf(a)
+    return placeNames?.[a.id] || (k ? places[k] : null) || null
+  }
 
   const handleAdd = async (data: AssetFormData, photos?: NewPhoto[]) => {
     // Allow a parent to override persistence (e.g. tests / custom flows).
@@ -121,6 +178,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
   const matchesQuery = (a: AssetWithLocation) => {
     const vin = a.metadata?.vin
     return a.name.toLowerCase().includes(q) ||
+      (whereOf(a)?.toLowerCase().includes(q) ?? false) ||
       (a.tracker_id?.toLowerCase().includes(q) ?? false) ||
       (a.category?.toLowerCase().includes(q) ?? false) ||
       (crewOf(a)?.toLowerCase().includes(q) ?? false) ||
@@ -180,7 +238,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
         )}
 
         <div className="flex items-center gap-2 flex-wrap">
-          <SearchInput value={query} onChange={setQuery} placeholder="Search name, tracker, serial, VIN…" />
+          <SearchInput value={query} onChange={setQuery} placeholder="Search name, place, tracker, serial, VIN…" />
           <SortPills<AssetSort>
             options={[['name', 'A → Z'], ['seen', 'Last seen'], ['type', 'Type']]}
             value={sort}
@@ -239,7 +297,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
               asset={asset}
               toolCount={toolCounts?.[asset.id]}
               carrier={carriers?.[asset.id]}
-              zoneName={zoneNames?.[asset.id]}
+              where={whereOf(asset)}
             />
           ))
         )}
@@ -262,7 +320,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, onAdd }: As
 const crewOf = (a: { metadata?: Record<string, unknown> | null }): string | null =>
   typeof a.metadata?.crew === 'string' && a.metadata.crew ? (a.metadata.crew as string) : null
 
-function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; zoneName?: string }) {
+function AssetRow({ asset, toolCount, carrier, where }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; where: string | null }) {
   const status = rowStatus(asset)
   const battery = asset.location?.battery
   const fixIso = asset.location?.timestamp
@@ -304,6 +362,16 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
             {asset.type}
           </Badge>
         </div>
+        {/* Where it is, on its own line (Brian, Sep 4: "easily and quickly
+            see where each asset is"): the zone it sits in, else the nearest
+            address, else the city and state. Nothing while unknown — a fix
+            with no words yet is not a claim. */}
+        {where && (
+          <p className="flex items-center gap-1 mt-0.5 text-[12px] leading-snug text-ink/90 min-w-0">
+            <MapPin className="h-3 w-3 text-teal flex-shrink-0" />
+            <span className="truncate">{where}</span>
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">
           <span className="sm:hidden uppercase tracking-wide text-[10px] font-semibold text-muted">{asset.type}</span>
           {untracked && (
@@ -332,9 +400,8 @@ function AssetRow({ asset, toolCount, carrier, zoneName }: { asset: AssetWithLoc
               🛠 {asset.maintOverdue} overdue
             </span>
           )}
-          {/* Place AND time — the row used to show one or the other. Tracker
-              ID stays searchable + on the detail page. */}
-          {zoneName && <span className="min-w-0 max-w-full truncate">at {zoneName}</span>}
+          {/* Time of the last fix (place is the line above). Tracker ID stays
+              searchable + on the detail page. */}
           {crewOf(asset) && <span className="min-w-0 max-w-full truncate text-teal">👷 {crewOf(asset)}</span>}
           {fixLabel && (
             <span className="flex items-center gap-0.5 flex-shrink-0" suppressHydrationWarning>

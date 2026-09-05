@@ -79,9 +79,10 @@ select optgroup {
 .maplibregl-ctrl-group button.ht-measure-btn.on {
   background-color: #ff9e16 !important;
 }
-/* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden */
+/* Command Center kiosk: clear the top HUD bar so zoom/locate aren't hidden
+   (the bar itself sits below the OS status-bar inset on phones). */
 .kiosk-map .maplibregl-ctrl-top-right {
-  margin-top: 60px;
+  margin-top: calc(60px + var(--ht-safe-top, 0px));
 }
 /* Kiosk: zoom/locate/fit controls mount bottom-left — clear the ticker below
    and the slim nav arrow at the left edge. */
@@ -479,10 +480,22 @@ input[type='range'].slider-heat::-moz-range-thumb {
 }
 
 /* Edge-to-edge (Sep 4): the native shell overlays the status bar, so the OS
-   inset is real there and 0 in a browser. The map page runs under it and its
+   insets are real there and 0 in a browser. The map page runs under it and its
    floating bar offsets itself; every other page pads its top instead. */
-:root { --ht-safe-top: env(safe-area-inset-top, 0px); }
+:root {
+  --ht-safe-top: env(safe-area-inset-top, 0px);
+  --ht-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
 @media (max-width: 767px) {
   .ht-map-edge { --ht-map-inset: var(--ht-safe-top); --ht-map-top: calc(var(--ht-safe-top) + 60px); }
   .ht-page-inset { padding-top: var(--ht-safe-top); }
+  /* The bottom nav grows by the OS bottom inset (.safe-area-pb); every page
+     reserves the nav's base height itself, the shell adds the inset here so
+     bottom-anchored things (the map's TIMELINE) stay above it (Brian, Sep 4:
+     "timeline missing" once the app went edge-to-edge). */
+  .ht-nav-inset { padding-bottom: var(--ht-safe-bottom); }
+  /* The floating top bar now covers the map's top strip — the zoom cluster
+     starts below it plus the inset (Brian, Sep 4: "map tools hidden at the
+     top"; the + button sat under the bar). */
+  .ht-map-edge .map-live .maplibregl-ctrl-top-right { margin-top: calc(52px + var(--ht-safe-top)); }
 }

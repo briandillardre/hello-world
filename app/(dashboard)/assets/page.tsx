@@ -6,6 +6,8 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
+import { lookupCachedPlaces } from '@/lib/reverse-geocode'
+import { placeKey, formatPlace } from '@/lib/place-label'
 
 export const metadata = { title: 'HammerTrack — Assets' }
 
@@ -39,6 +41,18 @@ export default async function AssetsPage() {
     }
   }
 
+  // Off-zone rows: what the geocode cache already knows, so the list renders
+  // with its place names instead of popping them in. New spots fill in
+  // client-side through /api/reverse-geocode (one table read here, no
+  // network on the render path).
+  const offZone = located.filter((a) => a.location && !zoneNames[a.id])
+  const cached = await lookupCachedPlaces(offZone.map((a) => placeKey(a.location!.lat, a.location!.lng)))
+  const placeNames: Record<string, string> = {}
+  for (const a of offZone) {
+    const label = formatPlace(cached[placeKey(a.location!.lat, a.location!.lng)])
+    if (label) placeNames[a.id] = label
+  }
+
   // Overdue service per asset (same computeStatus the detail page runs) —
   // drives the 🛠 chip and the "Needs attention" filter.
   const overdue: Record<string, number> = {}
@@ -62,7 +76,7 @@ export default async function AssetsPage() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
-      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} />
+      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} placeNames={placeNames} />
     </div>
   )
 }
