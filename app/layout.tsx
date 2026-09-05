@@ -77,6 +77,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${archivo.variable} ${mono.variable}`}>
       <head>
+        {/* Runs before any bundle: older Android System WebViews and Samsung
+            Internet (Chromium < 93) lack ES2022 Object.hasOwn — one call in a
+            library took /map down on Brian's phone (Sep 4). App code no longer
+            uses it; this keeps any dependency that does from crashing. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "if(typeof Object.hasOwn!=='function'){Object.defineProperty(Object,'hasOwn',{value:function(o,k){return Object.prototype.hasOwnProperty.call(Object(o),k)},writable:true,configurable:true})}" +
+              "if(typeof Array.prototype.at!=='function'){Object.defineProperty(Array.prototype,'at',{value:function(n){n=Math.trunc(n)||0;if(n<0)n+=this.length;return n<0||n>=this.length?undefined:this[n]},writable:true,configurable:true})}",
+          }}
+        />
         {/* One-time cleanup: kill any stale service worker / cache left on a
             device by an earlier PWA build, which can keep serving an old app
             shell even after new deploys. Harmless when there's nothing to clear. */}

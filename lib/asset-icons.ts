@@ -338,13 +338,20 @@ export const TYPE_DEFAULT_ICON: Record<AssetType, string> = {
 export const ICON_GROUPS: AssetIconDef['group'][] =
   ['Trucks & road', 'Dirt & lifting', 'Ag & grounds', 'Support', 'People & tools']
 
+/** Own-property test that runs on every phone. `Object.hasOwn` is ES2022 —
+ *  Samsung Internet and older Android System WebViews (Chromium < 93) throw
+ *  "Object.hasOwn is not a function", which took /map down on Brian's phone
+ *  three times on Sep 4. Never call Object.hasOwn in browser code. */
+export const hasOwn = (obj: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key)
+
 /** metadata.icon → validated registry key, else the type default. */
 export function resolveAssetIcon(type: AssetType, metadata?: Record<string, unknown> | null): string {
   const k = metadata?.icon
-  // hasOwn, not truthiness: 'constructor'/'__proto__' are inherited object
-  // members and would pass a plain lookup, then request an unregistered
-  // glyph image (ship-check).
-  if (typeof k === 'string' && Object.hasOwn(ASSET_ICONS, k)) return k
+  // Own-property test, not truthiness: 'constructor'/'__proto__' are
+  // inherited object members and would pass a plain lookup, then request an
+  // unregistered glyph image (ship-check).
+  if (typeof k === 'string' && hasOwn(ASSET_ICONS, k)) return k
   return TYPE_DEFAULT_ICON[type] ?? 'pickup'
 }
 
@@ -352,7 +359,7 @@ export function resolveAssetIcon(type: AssetType, metadata?: Record<string, unkn
  *  puck with the dark silhouette inside. Client-only (canvas). */
 export function iconPreviewDataUrl(key: string, puck = '#ff9e16', glyph = '#04121d', size = 44): string {
   if (typeof document === 'undefined') return ''
-  const def = Object.hasOwn(ASSET_ICONS, key) ? ASSET_ICONS[key] : undefined
+  const def = hasOwn(ASSET_ICONS, key) ? ASSET_ICONS[key] : undefined
   if (!def) return ''
   const c = document.createElement('canvas')
   const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1)
