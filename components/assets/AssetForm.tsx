@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import type { AssetType, AssetPhoto } from '@/lib/types'
 import { ASSET_ICONS, ICON_GROUPS, TYPE_DEFAULT_ICON, iconPreviewDataUrl } from '@/lib/asset-icons'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,10 @@ export function photosToFormData(photos: NewPhoto[]): FormData | undefined {
 }
 
 /** Which cost fields make sense per asset type, with owner-friendly labels. */
+/** Metadata keys that are bookkeeping, not "specs" — they render in their
+ *  own places (color/icon pickers, the cost section), never as spec chips. */
+export const HIDDEN_SPEC_KEYS = new Set(['notes', 'color', 'icon', 'cost_basis', 'purchase_date'])
+
 export const COST_FIELDS: Record<AssetType, { key: 'hourly_rate' | 'mileage_rate' | 'daily_cost' | 'purchase_price' | 'purchase_value'; label: string; hint: string }[]> = {
   vehicle: [
     { key: 'hourly_rate', label: 'Operating $/hr', hint: 'fuel + wear while running' },
@@ -550,7 +554,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
             </div>
           </div>
 
-          {Object.keys(specs).filter((k) => k !== 'notes' && k !== 'color' && k !== 'icon' && k !== 'cost_basis').length > 0 && (
+          {Object.keys(specs).filter((k) => !HIDDEN_SPEC_KEYS.has(k)).length > 0 && (
             <div className="rounded-lg border border-navy-800 bg-navy-950/50 p-3">
               <div className="flex items-center justify-between mb-1.5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Specs</p>
@@ -572,7 +576,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
                 >clear</button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {Object.entries(specs).filter(([k]) => k !== 'notes' && k !== 'color' && k !== 'icon' && k !== 'cost_basis').map(([k, v]) => (
+                {Object.entries(specs).filter(([k]) => !HIDDEN_SPEC_KEYS.has(k)).map(([k, v]) => (
                   <span key={k} className="px-2 py-0.5 rounded-md bg-navy-800 text-[11px] text-muted">
                     <span className="text-faint">{k.replace(/_/g, ' ')}:</span> <span className="text-ink">{String(v)}</span>
                   </span>
@@ -904,20 +908,39 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {COST_FIELDS[type].map((f) => (
-                  <div key={f.key} className="space-y-1">
-                    <Label htmlFor={`cost-${f.key}`} className="text-xs">{f.label}</Label>
-                    <Input
-                      id={`cost-${f.key}`}
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={costs[f.key] ?? ''}
-                      onChange={(e) => setCosts((c) => ({ ...c, [f.key]: e.target.value }))}
-                    />
-                    <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
-                  </div>
+                  <Fragment key={f.key}>
+                    <div className="space-y-1">
+                      <Label htmlFor={`cost-${f.key}`} className="text-xs">{f.label}</Label>
+                      <Input
+                        id={`cost-${f.key}`}
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={costs[f.key] ?? ''}
+                        onChange={(e) => setCosts((c) => ({ ...c, [f.key]: e.target.value }))}
+                      />
+                      <p className="text-[10px] text-faint leading-tight">{f.hint}</p>
+                    </div>
+                    {/* Purchase DATE rides beside the price (Brian, Sep 4: "need
+                        purchase price AND purchase date") — the cost basis is a
+                        number and a day. Lives in metadata like year/make/model;
+                        no schema change. */}
+                    {f.key === 'purchase_price' && (
+                      <div className="space-y-1">
+                        <Label htmlFor="cost-purchase_date" className="text-xs">Purchase date</Label>
+                        <Input
+                          id="cost-purchase_date"
+                          type="date"
+                          max={new Date().toISOString().slice(0, 10)}
+                          value={typeof specs.purchase_date === 'string' ? specs.purchase_date : ''}
+                          onChange={(e) => setSpecField('purchase_date', e.target.value)}
+                        />
+                        <p className="text-[10px] text-faint leading-tight">when you bought it</p>
+                      </div>
+                    )}
+                  </Fragment>
                 ))}
               </div>
             </div>
