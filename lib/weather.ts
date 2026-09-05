@@ -118,11 +118,14 @@ export interface Conditions {
   precip: number
   code: number
   isThunder: boolean
+  /** Open-Meteo's sunrise/sunset verdict at the queried point — picks the
+   *  sun-or-moon face of every glyph (Brian, Sep 4). */
+  isDay: boolean
 }
 
 export async function fetchConditions(lat: number, lng: number): Promise<Conditions | null> {
   try {
-    const u = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,wind_speed_10m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph`
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,precipitation,wind_speed_10m,weather_code,is_day&temperature_unit=fahrenheit&wind_speed_unit=mph`
     const r = await fetch(u, { cache: 'no-store' })
     if (!r.ok) return null
     const j = await r.json()
@@ -134,13 +137,18 @@ export async function fetchConditions(lat: number, lng: number): Promise<Conditi
       precip: c.precipitation ?? 0,
       code,
       isThunder: [95, 96, 99].includes(code),
+      isDay: c.is_day == null ? true : Number(c.is_day) === 1,
     }
   } catch {
     return null
   }
 }
 
-export function weatherEmoji(code: number): string {
+/** Emoji fallback for text-only surfaces (emails, SMS). The top bar uses
+ *  components/map/WeatherIcon for true day/night faces. */
+export function weatherEmoji(code: number, isDay = true): string {
+  if (!isDay && code === 0) return '🌙'
+  if (!isDay && [1, 2].includes(code)) return '☁️'
   if ([95, 96, 99].includes(code)) return '⛈️'
   if ([71, 73, 75, 77, 85, 86].includes(code)) return '🌨️'
   if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return '🌧️'

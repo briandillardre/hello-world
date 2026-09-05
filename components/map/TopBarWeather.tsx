@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Home, MapPin, Search, Star, Check, Wind } from 'lucide-react'
-import { fetchConditions, weatherEmoji, type Conditions } from '@/lib/weather'
+import { fetchConditions, type Conditions } from '@/lib/weather'
+import { WeatherIcon, weatherWords } from './WeatherIcon'
 import { fetchPws, type PwsConditions } from '@/lib/pws'
 import { setWeatherDefaultAction } from '@/lib/actions/company'
 
@@ -130,8 +131,8 @@ export function TopBarWeather({
         aria-label="Weather — location & details"
         className="flex items-center gap-2 min-w-0 rounded-lg px-1.5 py-0.5 -my-0.5 hover:bg-navy-900 transition-colors"
       >
-        <span className="font-display font-bold text-[13px] md:text-[14px] text-ink whitespace-nowrap">
-          {weatherEmoji(cond.code)} {cond.tempF}°
+        <span className="flex items-center gap-1 font-display font-bold text-[13px] md:text-[14px] text-ink whitespace-nowrap" title={weatherWords(cond.code, cond.isDay, cond.windMph)}>
+          <WeatherIcon code={cond.code} isDay={cond.isDay} windMph={cond.windMph} className="h-4 w-4 md:h-[18px] md:w-[18px]" /> {cond.tempF}°
         </span>
         <span className="hidden sm:flex items-center gap-1 font-mono text-[10px] text-muted whitespace-nowrap">
           <Wind className="h-3 w-3" />{cond.windMph}
@@ -150,7 +151,10 @@ export function TopBarWeather({
           {/* current conditions, spelled out */}
           <div className="px-3 py-2.5 border-b border-navy-800">
             <div className="flex items-baseline gap-2">
-              <span className="font-display font-bold text-[22px] text-ink">{weatherEmoji(cond.code)} {cond.tempF}°</span>
+              <span className="flex items-center gap-1.5 font-display font-bold text-[22px] text-ink">
+                <WeatherIcon code={cond.code} isDay={cond.isDay} windMph={cond.windMph} className="h-6 w-6" /> {cond.tempF}°
+                <span className="font-sans font-medium text-[12px] text-muted">{weatherWords(cond.code, cond.isDay, cond.windMph)}</span>
+              </span>
               <span className="ml-auto font-mono text-[11px] text-muted flex items-center gap-1">
                 <Wind className="h-3 w-3" />{cond.windMph} mph
               </span>
