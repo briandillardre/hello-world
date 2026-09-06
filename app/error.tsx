@@ -19,6 +19,10 @@ import { useEffect } from 'react'
 export default function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const text = `${error?.name ?? ''} ${error?.message ?? ''}`
   const stale = /ChunkLoadError|Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed|Failed to load chunk|css chunk/i.test(text)
+  // A navigation whose data fetch died mid-flight (5G hiccup): Android's
+  // WebView words it "network error", Chrome "Failed to fetch", Safari
+  // "Load failed". Nothing is broken — say so and offer the retry.
+  const offline = !stale && /network error|Failed to fetch|Load failed|NetworkError/i.test(text)
 
   useEffect(() => {
     try {
@@ -45,13 +49,15 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6 bg-navy-950 text-ink">
       <div className="w-full max-w-sm rounded-2xl border border-navy-700 bg-navy-900 p-5 space-y-3">
-        <p className="font-display font-bold text-[15px]">{stale ? 'Updating to the newest version…' : 'This screen hit a snag'}</p>
+        <p className="font-display font-bold text-[15px]">{stale ? 'Updating to the newest version…' : offline ? 'Lost the connection for a moment' : 'This screen hit a snag'}</p>
         <p className="text-[13px] text-muted leading-snug">
           {stale
             ? 'The app was open across an update. Reloading with the new version.'
-            : 'The rest of the app is fine. Reload this screen — if it keeps happening, screenshot this and send it.'}
+            : offline
+              ? 'The page could not be fetched over the network. Try again once you have signal.'
+              : 'The rest of the app is fine. Reload this screen — if it keeps happening, screenshot this and send it.'}
         </p>
-        {!stale && (
+        {!stale && !offline && (
           <p className="font-mono text-[11px] text-faint break-words rounded-lg bg-navy-950 p-2">
             {String(error?.message ?? error)}{error?.digest ? ` · ${error.digest}` : ''}
           </p>
