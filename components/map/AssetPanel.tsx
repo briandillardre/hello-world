@@ -54,7 +54,11 @@ function usePoiName(lat?: number, lng?: number, stopped?: boolean): string | nul
         if (cancelled) return
         const p = j?.features?.[0]?.properties
         const boring = ['house', 'residential', 'yes', 'detached', 'apartments']
-        const label = p?.name && !boring.includes(p?.osm_value)
+        // A road is not a place: Photon's nearest hit for a parked truck is
+        // often the street itself ("MLK Boulevard · secondary") and the
+        // where-line already carries the address. Same for admin areas.
+        const notAPlace = ['highway', 'place', 'boundary', 'railway', 'waterway'].includes(String(p?.osm_key ?? ''))
+        const label = p?.name && !boring.includes(p?.osm_value) && !notAPlace
           ? `${p.name}${p.osm_value && !['company', 'office'].includes(p.osm_value) ? ` · ${String(p.osm_value).replace(/_/g, ' ')}` : ''}`
           : ''
         poiCache.set(key, label)
@@ -203,19 +207,28 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
   const isTool = asset.type === 'tool'
   const crew = typeof asset.metadata?.crew === 'string' && asset.metadata.crew ? (asset.metadata.crew as string) : null
 
-  const facts: { label: string; value: string; cls?: string }[] = []
-  if (!isTool && loc?.speed != null) facts.push({ label: 'Speed', value: `${loc.speed} mph`, cls: loc.speed > 2 ? 'text-amber' : undefined })
-  if (today?.miles) facts.push({ label: 'Today', value: `${today.miles.toLocaleString()} mi` })
-  if (loc?.battery != null) facts.push({ label: 'Battery', value: `${loc.battery}%`, cls: BATTERY_COLOR(loc.battery) })
-  if (facts.length < 3 && loc?.timestamp) facts.push({ label: 'Last seen', value: formatRelativeTime(loc.timestamp) })
+  // Numbers ride the where-line as a short mono tail — the three-cell strip
+  // and the two-line status badge made the first tap cover half the phone
+  // (Brian, Sep 5: "much smaller vertically initially"). Full detail is one
+  // drag up.
+  const fixAge = loc?.timestamp ? formatRelativeTime(loc.timestamp) : null
+  const bits: string[] = []
+  if (!isTool && loc?.speed != null && loc.speed > 2) bits.push(`${Math.round(loc.speed)} mph`)
+  if (today?.miles) bits.push(`${today.miles.toLocaleString()} mi today`)
+  if (loc?.battery != null) bits.push(`${loc.battery}%`)
 
   const act = 'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 rounded-lg border py-1.5 text-[11px] font-semibold leading-none transition-colors active:scale-95'
   const quiet = 'border-navy-700 bg-navy-800 text-ink hover:bg-navy-700'
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {showStatus && (
-        <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
+        <p className="flex items-center gap-1.5 text-[13px] leading-tight min-w-0">
+          <span className="w-2 h-2 rounded-full flex-none" style={{ background: liveStatus.color }} />
+          <span className="font-semibold text-ink truncate">{liveStatus.label}</span>
+          {idleTodayMin != null && idleTodayMin > 0 && <span className="text-amber flex-none">· idled {idleTodayMin}m</span>}
+          {fixAge && <span className="text-faint truncate">· {fixAge}</span>}
+        </p>
       )}
 
       {/* A tool's truth is who is carrying it. */}
@@ -227,13 +240,14 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
         </p>
       )}
 
-      {(place || poi) && (
-        <p className="flex items-center gap-1.5 text-[13px] leading-tight min-w-0">
-          <MapPin className="h-3.5 w-3.5 text-teal flex-none" />
-          <span className="truncate">
-            {place && <span className="text-ink font-semibold">{place}</span>}
+      {(place || poi || bits.length > 0) && (
+        <p className="flex items-center gap-1.5 text-[12.5px] leading-tight min-w-0">
+          {(place || poi) && <MapPin className="h-3.5 w-3.5 text-teal flex-none" />}
+          <span className="truncate min-w-0">
+            {place && <span className="text-ink">{place}</span>}
             {poi && <span className="text-teal"> · {poi}</span>}
           </span>
+          {bits.length > 0 && <span className="ml-auto flex-none font-mono text-[11px] text-muted whitespace-nowrap">{bits.join(' · ')}</span>}
         </p>
       )}
 
@@ -263,17 +277,6 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
               ⛓ with {travelingWith![0].name}{travelingWith!.length > 1 ? ` +${travelingWith!.length - 1}` : ''}
             </button>
           )}
-        </div>
-      )}
-
-      {facts.length > 0 && (
-        <div className="bg-navy-800 rounded-lg px-1 py-1.5 flex divide-x divide-navy-700">
-          {facts.map((f) => (
-            <div key={f.label} className="flex-1 min-w-0 px-2 leading-tight text-center">
-              <p className="text-[10px] uppercase tracking-wide text-faint truncate">{f.label}</p>
-              <p className={'text-[14px] font-bold truncate ' + (f.cls ?? 'text-ink')}>{f.value}</p>
-            </div>
-          ))}
         </div>
       )}
 

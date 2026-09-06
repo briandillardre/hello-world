@@ -79,7 +79,9 @@ export function MapSheet({
           {icon}
           <h2 className="text-base font-bold text-ink truncate">{title}</h2>
         </div>
-        {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
+        {/* Title-only stop with a first-tap card: the subtitle (type · tracker)
+            waits one drag up — the peek must be short (Brian, Sep 5). */}
+        {subtitle && !(showMobileClose && peek && level === 0) && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
         {badge && <div className="mt-1.5">{badge}</div>}
       </div>
       {/* The X sits inside the touch-none drag header — claim the pointer
@@ -143,7 +145,7 @@ export function MapSheet({
               get real taps, and only at level 0 — the body carries all of it
               (and more) once the sheet is pulled up. */}
           {peek && level === 0 && (
-            <div className="shrink-0 px-5 pt-2 pb-4">{peek({ expand: () => setLevel(1) })}</div>
+            <div className="shrink-0 px-4 pt-1 pb-3">{peek({ expand: () => setLevel(1) })}</div>
           )}
           {/* Body stays MOUNTED at title-only (hidden) so its state — fetched
               stops, opened cards — survives collapsing and re-expanding. */}
