@@ -210,10 +210,11 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
   // Numbers ride the where-line as a short mono tail — the three-cell strip
   // and the two-line status badge made the first tap cover half the phone
   // (Brian, Sep 5: "much smaller vertically initially"). Full detail is one
-  // drag up.
+  // drag up. Speed is NOT repeated here: the status line already reads
+  // "Moving 42 mph" (deriveLiveStatus), and on a 320 px phone the tail must
+  // leave the place its room.
   const fixAge = loc?.timestamp ? formatRelativeTime(loc.timestamp) : null
   const bits: string[] = []
-  if (!isTool && loc?.speed != null && loc.speed > 2) bits.push(`${Math.round(loc.speed)} mph`)
   if (today?.miles) bits.push(`${today.miles.toLocaleString()} mi today`)
   if (loc?.battery != null) bits.push(`${loc.battery}%`)
 
@@ -247,7 +248,7 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
             {place && <span className="text-ink">{place}</span>}
             {poi && <span className="text-teal"> · {poi}</span>}
           </span>
-          {bits.length > 0 && <span className="ml-auto flex-none font-mono text-[11px] text-muted whitespace-nowrap">{bits.join(' · ')}</span>}
+          {bits.length > 0 && <span className="ml-auto shrink min-w-0 max-w-[45%] truncate font-mono text-[11px] text-muted">{bits.join(' · ')}</span>}
         </p>
       )}
 
