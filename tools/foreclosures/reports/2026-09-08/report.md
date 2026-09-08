@@ -220,20 +220,23 @@ _first Monday 11:00 AM, Pickens County Courthouse_
 ### #2 · 2024-CP-39-00316 — 103 WINDAMERE CT., EASLEY, SC 29640
 
 - **US BANK TRUST NA** v. HEATHER HOWELL, PR, ET AL · TMS 5110-20-82-3366
-- **Owed:** _not extracted_ · **Deficiency:** UNKNOWN
-- 103 WINDAMERE CT., EASLEY, SC 29640. Judgment $ not pulled yet (needs the PC run). Deficiency not stated — check the notice.
+- **Owed:** $66,266.33 as of July 9, 2026 → ~$66,662.83 sale day · **Deficiency:** WAIVED
+- 103 WINDAMERE CT., EASLEY, SC 29640. Judgment $66,266.33 as of July 9, 2026 + $6.50/day ≈ $66,662.83 on sale day (5.875%). Deficiency waived — final on the day. Interest on bid 5.875% until compliance; 5% deposit day of sale. Lot 53, Burdine Springs Sec. 2 (City of Easley). Estate case: both borrowers deceased, PR Heather Howell in default. First lien; sold subject to taxes/assessments only. Interest on bid 5.875% to compliance.
+- [order](https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2024CP3900316&CaseType=V)
 
 ### #3 · 2018-CP-39-00369 — 649 N. NORRIS DR., LIBERTY, SC 29657
 
 - **NATIONSTAR MORTGAGE LLC DBA MR. COOPER** v. JENNIFER RENEE KEPHART, ET AL · TMS 4077-15-62-1769
-- **Owed:** _not extracted_ · **Deficiency:** UNKNOWN
-- 649 N. NORRIS DR., LIBERTY, SC 29657. Judgment $ not pulled yet (needs the PC run). Deficiency not stated — check the notice.
+- **Owed:** $223,932.51 · **Deficiency:** UNKNOWN
+- 649 N. NORRIS DR., LIBERTY, SC 29657. Judgment $223,932.51. Deficiency not stated — check the notice.
+- [order](https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2018CP3900369&CaseType=V)
 
 ### #4 · 2026-CP-39-00125 — 365 GIBSON RD., EASLEY, SC 29640
 
 - **LAKEVIEW LOAN SERVICING LLC** v. NICOLE MARIA JACOBS, ET AL · TMS 5111-01-47-3602
-- **Owed:** _not extracted_ · **Deficiency:** UNKNOWN
-- 365 GIBSON RD., EASLEY, SC 29640. Judgment $ not pulled yet (needs the PC run). Deficiency not stated — check the notice.
+- **Owed:** $623,367.66 · **Deficiency:** UNKNOWN
+- 365 GIBSON RD., EASLEY, SC 29640. Judgment $623,367.66. Deficiency not stated — check the notice.
+- [order](https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2026CP3900125&CaseType=V)
 
 ### ~~#5 · 2026-CP-39-00009 — 105 SPIRIT MOUNTAIN LN., EASLEY, SC 29642~~
 
