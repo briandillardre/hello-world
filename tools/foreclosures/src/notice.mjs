@@ -42,7 +42,7 @@ export function parseNotice(text) {
   const pick = (re, src = flat) => (src.match(re) || [])[1]?.trim() || ''
   const caption = pick(/(?:in the case of|judgment granted in|decree (?:heretofore )?(?:granted|issued) in):?\s+(.+?),?\s+(?:I,?\s+)?(?:the (?:undersigned|Master)|as Master)/i)
   let plaintiff = '', defendant = ''
-  if (caption) { const m = caption.replace(/,\s*Plaintiff,?/i, '').replace(/,?\s*Defendants?,?\s*(?:under Case No\.?.*)?$/i, '').match(/^(.+?)\s+(?:vs?\.?|v\.|versus|against)\s+(.+)$/i); if (m) { plaintiff = m[1].trim(); defendant = m[2].trim() } }
+  if (caption) { const m = caption.replace(/^(?:the )?case of:?\s*/i, '').replace(/,\s*Plaintiff,?/i, '').replace(/,?\s*Defendants?,?\s*(?:under Case No\.?.*)?$/i, '').match(/^(.+?)\s+(?:vs?\.?|v\.|versus|against)\s+(.+)$/i); if (m) { plaintiff = m[1].trim(); defendant = m[2].trim() } }
   let address = pick(/Property Address\s*:?\s*(\d[^\n]*?\b(?:SC|South Carolina)\b\s*\d{5})/i)
   if (!address) address = pick(new RegExp(ADDR.source + '\\s*(?:TMS|Tax Map|TM ?#)', 'i'))
   if (!address) address = [...flat.matchAll(new RegExp(ADDR.source, 'g'))].map(m => m[1]).find(a => !BAD_ADDR.test(a)) || ''

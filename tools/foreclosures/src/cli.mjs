@@ -127,6 +127,7 @@ async function main() {
       else if (!state || force || cmd === 'list') {
         try {
           const { rows, source } = await list(c)
+          if (!rows.length && state?.rows?.length) { log(`${c}: crawl returned 0 rows – keeping the ${state.rows.length} rows already on file`); byCounty[c] = state; continue }
           if (state && !force) {
             // `list` on top of enriched state: refresh roster facts, keep every judgment/property/doc already gathered
             for (const fresh of rows) { const old = state.rows.find(r => r.caseNo && r.caseNo === fresh.caseNo); if (old) Object.assign(old, { saleNo: fresh.saleNo ?? old.saleNo, status: fresh.status, notes: fresh.notes ?? old.notes, deficiency: old.deficiency && old.deficiency !== 'unknown' ? old.deficiency : fresh.deficiency }); else state.rows.push(fresh) }
@@ -155,6 +156,7 @@ async function main() {
     for (const c of counties) { const s = byCounty[c] || readJson(stateFile(c)); if (s) byCounty[c] = s }
     const rowsBy = Object.fromEntries(Object.entries(byCounty).map(([c, s]) => [c, s.rows]))
     const out = writeReport(dir, saleDate, rowsBy)
+    for (const [c, s] of Object.entries(byCounty)) writeJson(stateFile(c), s)   // write-ups are recomputed by the report – persist them
     log('report →', out.md); log('csv    →', out.csv)
   }
   if (cmd === 'list') for (const [c, s] of Object.entries(byCounty)) for (const r of s.rows) console.log([c, r.saleNo ?? '', r.caseNo, r.status, r.deficiency, r.address, r.tms || '', r.plaintiff].join(' | '))
