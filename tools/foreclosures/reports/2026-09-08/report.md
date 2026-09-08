@@ -14,36 +14,36 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #2 · 2024-CP-23-03628 — 9-A Stadium Drive Greenville, SC 29609
 
 - **HSBC Bank USA, N.A., as Trustee for ACE Securities Corp. Home Equity Loan Trust, Series 2007-HE2** v. Heirs-at-law or devisees of Edgar B. Walker, deceased, et al
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 9-A Stadium Drive Greenville, SC 29609 — 1100 (Single Family) — 0.520 ac. Record owner Walker Lonietta Y. Last transfer 06/30/2006 for $98,000. County FMV $218,570.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2024-cp-23-03628/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=P008000100203&TaxYear=2026)
+- **Owed:** $94,593.00 · **Deficiency:** WAIVED
+- 9-A Stadium Drive Greenville, SC 29609 — 1100 (Single Family) — 0.520 ac. Record owner Walker Lonietta Y. Last transfer 06/30/2006 for $98,000. County FMV $218,570.00. Judgment $94,593.00. Debt is 43% of FMV — real equity, expect third-party bidding. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2303628&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2024-cp-23-03628/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=P008000100203&TaxYear=2026)
 
 ### #3 · 2024-CP-23-07423 — 304 Weddington Lane Simpsonville, SC 29681
 
 - **New Silver Lending, LLC** v. Key-Line Capital Investment Group, LLC
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 304 Weddington Lane Simpsonville, SC 29681 — 1180 (Residential Vacant) — 0.150 ac (Linden Park). Record owner Key-Line Capital Investment Gr. Last transfer 01/23/2024 for $5. County FMV $95,000.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2024-cp-23-07423/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0297020103200&TaxYear=2026)
+- **Owed:** $331,126.00 · **Deficiency:** DEMANDED
+- 304 Weddington Lane Simpsonville, SC 29681 — 1180 (Residential Vacant) — 0.150 ac (Linden Park). Record owner Key-Line Capital Investment Gr. Last transfer 01/23/2024 for $5. County FMV $95,000.00. Judgment $331,126.00. Debt exceeds FMV (349%) — plaintiff will likely take it back. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2307423&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2024-cp-23-07423/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0297020103200&TaxYear=2026)
 
 ### #4 · 2025-CP-23-03722 — 608 Rhett Street Greenville, SC 29601
 
 - **Kiavi Funding, Inc.** v. VSWC LLC
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 608 Rhett Street Greenville, SC 29601 — 1100 (Single Family) — 0.100 ac. Record owner Vswc Llc. Last transfer 11/13/2023 for $400,000. County FMV $392,670.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-03722/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0074000800300&TaxYear=2026)
+- **Owed:** $482,293.00 · **Deficiency:** DEMANDED
+- 608 Rhett Street Greenville, SC 29601 — 1100 (Single Family) — 0.100 ac. Record owner Vswc Llc. Last transfer 11/13/2023 for $400,000. County FMV $392,670.00. Judgment $482,293.00. Debt exceeds FMV (123%) — plaintiff will likely take it back. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2303722&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-03722/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0074000800300&TaxYear=2026)
 
 ### #5 · 2025-CP-23-05048 — 4 Point Hope Court Greenville, SC 29605
 
 - **South Carolina State Housing Finance and Development Authority** v. Sharon Diane Culpepper-Booker
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 4 Point Hope Court Greenville, SC 29605 — 1100 (Single Family) (Oak Knoll). Record owner Culpepper-Booker Sharon Diane. Last transfer 09/29/2020 for $179,000. County FMV $235,180.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-05048/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0583050100200&TaxYear=2026)
+- **Owed:** $179,057.00 · **Deficiency:** WAIVED
+- 4 Point Hope Court Greenville, SC 29605 — 1100 (Single Family) (Oak Knoll). Record owner Culpepper-Booker Sharon Diane. Last transfer 09/29/2020 for $179,000. County FMV $235,180.00. Judgment $179,057.00. Debt is 76% of FMV — thin margin. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2305048&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-05048/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0583050100200&TaxYear=2026)
 
-### #6 · 2025-CP-23-06065 — 110 Water Reach Lane Simpsonville, SC 29681
+### ~~#6 · 2025-CP-23-06065 — 110 Water Reach Lane Simpsonville, SC 29681~~
 
 - **SELENE FINANCE LP** v. John Clement Shaugnessy
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 110 Water Reach Lane Simpsonville, SC 29681. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
+- 110 Water Reach Lane Simpsonville, SC 29681. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day. STATUS: WITHDRAWN.
 - [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06065/)
 
 ### ~~#7 · 2025-CP-23-06198 — 603 Stallings Rd Taylors, SC 29687~~
@@ -56,37 +56,37 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #8 · 2025-CP-23-06584 — 39B W Golden Strip Drive Mauldin, SC 29662
 
 - **South Carolina State Housing Finance and Development Authority** v. Dominique Smith
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 39B W Golden Strip Drive Mauldin, SC 29662 — 1100 (Single Family) — 0.340 ac. Record owner Ladson Alice D (card is for 39 W GOLDEN STRIP DR — unit letter not on file, verify). Last transfer 05/20/2014 for $132,500. County FMV $244,440.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06584/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=M006020103410&TaxYear=2026)
+- **Owed:** $68,468.05 · **Deficiency:** WAIVED
+- 39B W Golden Strip Drive Mauldin, SC 29662 — 1100 (Single Family) — 0.340 ac. Record owner Ladson Alice D (card is for 39 W GOLDEN STRIP DR — unit letter not on file, verify). Last transfer 05/20/2014 for $132,500. County FMV $244,440.00. Judgment $68,468.05. Debt is 28% of FMV — real equity, expect third-party bidding. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306584&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06584/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=M006020103410&TaxYear=2026)
 
 ### #9 · 2025-CP-23-06604 — 15 Fennec Drive Fountain Inn, SC 29644
 
 - **South Carolina State Housing Finance and Development Authority** v. Brandon Andre Roane
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 15 Fennec Drive Fountain Inn, SC 29644 — 1100 (Single Family) (Fox Tail Cottages). Record owner Roane Brandon Andre. Last transfer 05/11/2023 for $262,999. County FMV $289,220.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06604/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0562090100400&TaxYear=2026)
+- **Owed:** $279,737.00 · **Deficiency:** DEMANDED
+- 15 Fennec Drive Fountain Inn, SC 29644 — 1100 (Single Family) (Fox Tail Cottages). Record owner Roane Brandon Andre. Last transfer 05/11/2023 for $262,999. County FMV $289,220.00. Judgment $279,737.00. Debt is 97% of FMV — thin margin. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306604&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06604/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0562090100400&TaxYear=2026)
 
 ### #10 · 2025-CP-23-06612 — 104 Pine Needle Road Piedmont, SC 29673
 
 - **South Carolina State Housing Finance and Development Authority** v. Ashley Rhodes
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 104 Pine Needle Road Piedmont, SC 29673 — 1100 (Single Family) (Pine Shadows). Record owner Rhodes Ashley. Last transfer 01/17/2024 for $222,500. County FMV $212,830.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06612/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0602040113200&TaxYear=2026)
+- **Owed:** $254,440.00 · **Deficiency:** WAIVED
+- 104 Pine Needle Road Piedmont, SC 29673 — 1100 (Single Family) (Pine Shadows). Record owner Rhodes Ashley. Last transfer 01/17/2024 for $222,500. County FMV $212,830.00. Judgment $254,440.00. Debt exceeds FMV (120%) — plaintiff will likely take it back. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306612&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-06612/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0602040113200&TaxYear=2026)
 
 ### #11 · 2025-CP-23-07189 — 402 Sienna Drive Greenville, SC 29609
 
 - **U.S. Bank Trust National Association, as trustee for Legacy Mortgage Asset Trust 2021-GS4** v. Terry Tolbert
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 402 Sienna Drive Greenville, SC 29609. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-07189/)
+- **Owed:** $906,485.00 · **Deficiency:** WAIVED
+- 402 Sienna Drive Greenville, SC 29609. Judgment $906,485.00. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307189&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-07189/)
 
 ### #12 · 2025-CP-23-07612 — 3 Black Oak Court Simpsonville, SC 29680
 
 - **South Carolina State Housing Finance and Development Authority** v. Maria Harley
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 3 Black Oak Court Simpsonville, SC 29680 — 1100 (Single Family) (Standing Springs Estate). Record owner Harley Maria. Last transfer 11/15/2023 for $244,900. County FMV $278,430.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-07612/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0574190106700&TaxYear=2026)
+- **Owed:** $269,097.00 · **Deficiency:** WAIVED
+- 3 Black Oak Court Simpsonville, SC 29680 — 1100 (Single Family) (Standing Springs Estate). Record owner Harley Maria. Last transfer 11/15/2023 for $244,900. County FMV $278,430.00. Judgment $269,097.00. Debt is 97% of FMV — thin margin. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307612&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-07612/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0574190106700&TaxYear=2026)
 
 ### ~~#13 · 2025-CP-23-07667 — 406 Sandusky Lane Simpsonville, SC 29680~~
 
@@ -95,11 +95,11 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 - 406 Sandusky Lane Simpsonville, SC 29680. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day. STATUS: WITHDRAWN.
 - [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-07667/)
 
-### #14 · 2025-CP-23-08344 — 1904 Lake Cunningham Road Greer, SC 29651
+### ~~#14 · 2025-CP-23-08344 — 1904 Lake Cunningham Road Greer, SC 29651~~
 
 - **New American Funding LLC f/k/a Broker Solutions, Inc.** v. Michael Greene
 - **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 1904 Lake Cunningham Road Greer, SC 29651 — 1170 (MH w/ land) (Cunningham Downs). Record owner Morales-Greene Emilia. Last transfer 06/27/2025. County FMV $410,930.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
+- 1904 Lake Cunningham Road Greer, SC 29651 — 1170 (MH w/ land) (Cunningham Downs). Record owner Morales-Greene Emilia. Last transfer 06/27/2025. County FMV $410,930.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day. STATUS: WITHDRAWN.
 - [journal](https://mie.greenvillejournal.com/advert/2025-cp-23-08344/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0631080101509&TaxYear=2026)
 
 ### ~~#15 · 2025-CP-23-08409 — 116 Ridgewater Court Fountain Inn, SC 29644~~
@@ -112,9 +112,9 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #16 · 2026-CP-23-00155 — 1406 Winding Way Taylors, SC 29687
 
 - **Rocket Mortgage, LLC f/k/a Quicken Loans, LLC** v. Philip W. Dixon
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 1406 Winding Way Taylors, SC 29687 — 1100 (Single Family) (Peppertree). Record owner Dixon Sue Ann. Last transfer 12/01/2009 for $10. County FMV $254,770.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00155/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=T027010119200&TaxYear=2026)
+- **Owed:** $107,886.00 · **Deficiency:** DEMANDED
+- 1406 Winding Way Taylors, SC 29687 — 1100 (Single Family) (Peppertree). Record owner Dixon Sue Ann. Last transfer 12/01/2009 for $10. County FMV $254,770.00. Judgment $107,886.00. Debt is 42% of FMV — real equity, expect third-party bidding. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300155&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00155/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=T027010119200&TaxYear=2026)
 
 ### ~~#17 · 2026-CP-23-00195 — 19 and 21 Whiller Drive Greenville, SC 29608~~
 
@@ -126,9 +126,9 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #18 · 2026-CP-23-00512 — 104 Oak Forest Drive Greer, SC 29650
 
 - **Carrington Mortgage Services, LLC** v. Chad Thompson
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 104 Oak Forest Drive Greer, SC 29650 — 1100 (Single Family). Record owner Thompson Chad. Last transfer 04/11/2022 for $389,900. County FMV $522,800.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00512/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0535010201100&TaxYear=2026)
+- **Owed:** $408,231.00 · **Deficiency:** WAIVED
+- 104 Oak Forest Drive Greer, SC 29650 — 1100 (Single Family). Record owner Thompson Chad. Last transfer 04/11/2022 for $389,900. County FMV $522,800.00. Judgment $408,231.00. Debt is 78% of FMV — thin margin. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300512&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00512/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0535010201100&TaxYear=2026)
 
 ### ~~#19 · 2026-CP-23-00555 — 67 Wallace Street Greenville, SC 29605~~
 
@@ -140,9 +140,9 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #20 · 2026-CP-23-00730 — 100 N. Markley St. Greenville, SC 29601
 
 - **The Fidelity Bank** v. Greenville HKW, LLC
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 100 N. Markley St. Greenville, SC 29601 — 6800 (Commercial Vacant ) — 0.910 ac. Record owner Greenville Hkw Llc. Last transfer 12/16/2019. County FMV $2,973,000.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00730/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0074000100300&TaxYear=2026)
+- **Owed:** $4,572,030.10 · **Deficiency:** WAIVED
+- 100 N. Markley St. Greenville, SC 29601 — 6800 (Commercial Vacant ) — 0.910 ac. Record owner Greenville Hkw Llc. Last transfer 12/16/2019. County FMV $2,973,000.00. Judgment $4,572,030.10. Debt exceeds FMV (154%) — plaintiff will likely take it back. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300730&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-00730/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0074000100300&TaxYear=2026)
 
 ### ~~#21 · 2026-CP-23-01255 — 23 Chinaberry Lane Simpsonville, SC 29680~~
 
@@ -161,44 +161,44 @@ _first Monday 11:00 AM, Greenville County Courthouse (Tuesday when Monday is a h
 ### #23 · 2026-CP-23-01483 — 304 Glenlea Ln Greenville, SC 29617
 
 - **Finance of America Reverse LLC** v. Robert Luther Ellis, Jr as Personal Representative for the Estate of Beverly Staton
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 304 Glenlea Ln Greenville, SC 29617 — 1100 (Single Family) — 0.120 ac (The Village At Glenlea). Record owner Staton Beverly. Last transfer 11/15/2004 for $105,000. County FMV $224,920.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-01483/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=B008070106900&TaxYear=2026)
+- **Owed:** $153,841.10 · **Deficiency:** WAIVED
+- 304 Glenlea Ln Greenville, SC 29617 — 1100 (Single Family) — 0.120 ac (The Village At Glenlea). Record owner Staton Beverly. Last transfer 11/15/2004 for $105,000. County FMV $224,920.00. Judgment $153,841.10. Debt is 68% of FMV — real equity, expect third-party bidding. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2301483&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-01483/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=B008070106900&TaxYear=2026)
 
 ### #24 · 2026-CP-23-02327 — 71 Dorsey Avenue Greenville, SC 29611
 
 - **Wilmington Savings Fund Society, FSB, as Owner Trustee for the FLIC Residential Mortgage Loan Trust 1** v. VSWC LLC
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 71 Dorsey Avenue Greenville, SC 29611 — 1100 (Single Family) — 0.210 ac (Abney Mills). Record owner Vswc Llc. Last transfer 10/05/2021 for $100,000. County FMV $246,770.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02327/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0117001000800&TaxYear=2026)
+- **Owed:** $246,879.23 · **Deficiency:** WAIVED
+- 71 Dorsey Avenue Greenville, SC 29611 — 1100 (Single Family) — 0.210 ac (Abney Mills). Record owner Vswc Llc. Last transfer 10/05/2021 for $100,000. County FMV $246,770.00. Judgment $246,879.23. Debt exceeds FMV (100%) — plaintiff will likely take it back. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302327&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02327/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0117001000800&TaxYear=2026)
 
 ### #25 · 2026-CP-23-02343 — 37 Ross Street Greenville, SC 29611
 
 - **Wilmington Savings Fund Society, FSB, as Trustee of NMLT 2021-INV1 Trust** v. VSWC LLC
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 37 Ross Street Greenville, SC 29611 — 1100 (Single Family). Record owner Vswc Llc. Last transfer 05/21/2020 for $10. County FMV $183,180.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02343/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0118000600400&TaxYear=2026)
+- **Owed:** $159,379.20 · **Deficiency:** WAIVED
+- 37 Ross Street Greenville, SC 29611 — 1100 (Single Family). Record owner Vswc Llc. Last transfer 05/21/2020 for $10. County FMV $183,180.00. Judgment $159,379.20. Debt is 87% of FMV — thin margin. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302343&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02343/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0118000600400&TaxYear=2026)
 
 ### #26 · 2026-CP-23-02408 — 11 Charing Cross Road Taylors, SC 29687
 
 - **Wilmington Savings Fund Society, FSB, as trustee for Ibis Holdings A Trust** v. GRM Properties
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 11 Charing Cross Road Taylors, SC 29687 — 1100 (Single Family) (Brookwood Forest). Record owner Grm Properties Of South Caroli. Last transfer 08/12/2022 for $235,000. County FMV $267,670.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02408/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=T029010104900&TaxYear=2026)
+- **Owed:** $219,174.30 · **Deficiency:** DEMANDED
+- 11 Charing Cross Road Taylors, SC 29687 — 1100 (Single Family) (Brookwood Forest). Record owner Grm Properties Of South Caroli. Last transfer 08/12/2022 for $235,000. County FMV $267,670.00. Judgment $219,174.30. Debt is 82% of FMV — thin margin. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302408&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02408/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=T029010104900&TaxYear=2026)
 
 ### #27 · 2026-CP-23-02884 — 2501 Poinsett Highway Greenville, SC 29609
 
 - **ALFIE Investors LLC** v. 2501 Poinsette LLC
-- **Owed:** _not extracted_ · **Deficiency:** DEMANDED
-- 2501 Poinsett Highway Greenville, SC 29609 — 1100 (Single Family). Record owner 2501 Poinsette Llc. Last transfer 05/02/2022 for $130,000. County FMV $306,870.00. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED — open 30 days.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02884/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0439000501100&TaxYear=2026)
+- **Owed:** $301,030.64 · **Deficiency:** DEMANDED
+- 2501 Poinsett Highway Greenville, SC 29609 — 1100 (Single Family). Record owner 2501 Poinsette Llc. Last transfer 05/02/2022 for $130,000. County FMV $306,870.00. Judgment $301,030.64. Debt is 98% of FMV — thin margin. DEFICIENCY DEMANDED — open 30 days.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302884&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-02884/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0439000501100&TaxYear=2026)
 
 ### #28 · 2026-CP-23-03000 — 202 Port Road Greenville, SC 29617
 
 - **UMB Bank, National Association, as owner trustee for Verus Securitization Trust 2024-6** v. Green Ant LLC
-- **Owed:** _not extracted_ · **Deficiency:** WAIVED
-- 202 Port Road Greenville, SC 29617 — 1100 (Single Family) — 0.590 ac (River Valley). Record owner Green Ant Llc. Last transfer 05/16/2023 for $249,900. County FMV $249,890.00. Judgment $ not pulled yet (needs the PC run). Deficiency waived — final on the day.
-- [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-03000/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0509070101900&TaxYear=2026)
+- **Owed:** $221,056.42 · **Deficiency:** WAIVED
+- 202 Port Road Greenville, SC 29617 — 1100 (Single Family) — 0.590 ac (River Valley). Record owner Green Ant Llc. Last transfer 05/16/2023 for $249,900. County FMV $249,890.00. Judgment $221,056.42. Debt is 88% of FMV — thin margin. Deficiency waived — final on the day.
+- [order](https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2303000&CaseType=V) · [journal](https://mie.greenvillejournal.com/advert/2026-cp-23-03000/) · [property card](https://www.greenvillecounty.org/appsAS400/RealProperty/Details.aspx?MapNumber=0509070101900&TaxYear=2026)
 
 ### ~~#29 · 2026-CP-23-03232 — 608 Kingsmoor Drive Simpsonville, SC 29681~~
 
