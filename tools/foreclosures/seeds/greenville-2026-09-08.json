@@ -39,6 +39,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2303628&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2024-cp-23-03628/"
+      },
+      "judgment": {
+        "totalDebt": 94593.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2303628&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -58,6 +66,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2307423&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2024-cp-23-07423/"
+      },
+      "judgment": {
+        "totalDebt": 331126.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2024CP2307423&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -77,6 +93,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2303722&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-03722/"
+      },
+      "judgment": {
+        "totalDebt": 482293.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2303722&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -96,6 +120,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2305048&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-05048/"
+      },
+      "judgment": {
+        "totalDebt": 179057.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2305048&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -107,7 +139,7 @@
       "lawFirm": "Riley Pope & Laney LLC",
       "plaintiff": "SELENE FINANCE LP",
       "defendant": "John Clement Shaugnessy",
-      "status": "scheduled",
+      "status": "withdrawn",
       "deficiency": "waived",
       "tms": "",
       "saleDate": "09/08/2026",
@@ -153,6 +185,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306584&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-06584/"
+      },
+      "judgment": {
+        "totalDebt": 68468.05,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306584&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -172,6 +212,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306604&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-06604/"
+      },
+      "judgment": {
+        "totalDebt": 279737.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306604&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -191,6 +239,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306612&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-06612/"
+      },
+      "judgment": {
+        "totalDebt": 254440.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2306612&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -210,6 +266,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307189&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-07189/"
+      },
+      "judgment": {
+        "totalDebt": 906485.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307189&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -229,6 +293,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307612&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2025-cp-23-07612/"
+      },
+      "judgment": {
+        "totalDebt": 269097.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2025CP2307612&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -259,7 +331,7 @@
       "lawFirm": "McCalla Raymer Leibert Pierce, LLP",
       "plaintiff": "New American Funding LLC f/k/a Broker Solutions, Inc.",
       "defendant": "Michael Greene",
-      "status": "scheduled",
+      "status": "withdrawn",
       "deficiency": "waived",
       "tms": "",
       "saleDate": "09/08/2026",
@@ -306,6 +378,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300155&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-00155/"
+      },
+      "judgment": {
+        "totalDebt": 107886.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300155&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -344,6 +424,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300512&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-00512/"
+      },
+      "judgment": {
+        "totalDebt": 408231.0,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300512&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -383,7 +471,15 @@
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300730&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-00730/"
       },
-      "notes": "Def. demanded in the order, then WAIVED after approval (both columns ticked on the 9/8 list) \u2013 treat as waived, confirm at sale"
+      "notes": "Def. demanded in the order, then WAIVED after approval (both columns ticked on the 9/8 list) \u2013 treat as waived, confirm at sale",
+      "judgment": {
+        "totalDebt": 4572030.1,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2300730&CaseType=V",
+        "deficiency": "waived"
+      }
     },
     {
       "county": "greenville",
@@ -440,6 +536,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2301483&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-01483/"
+      },
+      "judgment": {
+        "totalDebt": 153841.1,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2301483&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -459,6 +563,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302327&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-02327/"
+      },
+      "judgment": {
+        "totalDebt": 246879.23,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302327&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -478,6 +590,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302343&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-02343/"
+      },
+      "judgment": {
+        "totalDebt": 159379.2,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302343&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
@@ -497,6 +617,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302408&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-02408/"
+      },
+      "judgment": {
+        "totalDebt": 219174.3,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302408&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -516,6 +644,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302884&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-02884/"
+      },
+      "judgment": {
+        "totalDebt": 301030.64,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2302884&CaseType=V",
+        "deficiency": "demanded"
       }
     },
     {
@@ -535,6 +671,14 @@
         "roster": "Greenville MIE sale list for 09/08/2026 (PDF Brian supplied, Sep 2 2026)",
         "docket": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2303000&CaseType=V",
         "advert": "https://mie.greenvillejournal.com/advert/2026-cp-23-03000/"
+      },
+      "judgment": {
+        "totalDebt": 221056.42,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://www2.greenvillecounty.org/scjd/PublicIndex/CaseDetails.aspx?County=23&CourtAgency=23002&Casenum=2026CP2303000&CaseType=V",
+        "deficiency": "waived"
       }
     },
     {
