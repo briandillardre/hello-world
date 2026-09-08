@@ -34,7 +34,9 @@ export function parseCharlestonList(html) {
 }
 
 export async function listCharleston(saleDate) {
-  const rows = parseCharlestonList(await getText(CHS_LIST))
+  const html = await getText(CHS_LIST)
+  if (/You are blocked from accessing this Web page/i.test(html)) throw new Error('charlestoncounty.org is blocking this IP (it blocks cloud ranges after a few hits) – run from a home/office connection')
+  const rows = parseCharlestonList(html)
   const want = `${saleDate.getMonth() + 1}/${saleDate.getDate()}/${saleDate.getFullYear()}`
   const mine = rows.filter(r => r.saleDate === want)
   log(`charleston: ${rows.length} rows on the running list, ${mine.length} dated ${want}` + (mine.length ? '' : ` (dates present: ${[...new Set(rows.map(r => r.saleDate))].join(', ')})`))

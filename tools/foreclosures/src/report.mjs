@@ -28,10 +28,10 @@ export function writeup(r, saleDate) {
   if (j.totalDebt != null) {
     bits.push(`Judgment ${money(j.totalDebt)}${j.asOfDate ? ' as of ' + j.asOfDate : ''}${j.perDiem ? ` + ${money(j.perDiem)}/day` : ''}${est && est !== j.totalDebt ? ` ≈ ${money(est)} on sale day` : ''}${j.interestRate ? ` (${j.interestRate})` : ''}.`)
     if (fmv) { const ratio = est / fmv; bits.push(ratio < 0.7 ? `Debt is ${(ratio * 100).toFixed(0)}% of FMV — real equity, expect third-party bidding.` : ratio < 1 ? `Debt is ${(ratio * 100).toFixed(0)}% of FMV — thin margin.` : `Debt exceeds FMV (${(ratio * 100).toFixed(0)}%) — plaintiff will likely take it back.`) }
-  } else bits.push('Judgment amount not extracted yet' + (j.needsOcr ? ' (scanned PDF; open it)' : r.index?.error ? ` (index: ${r.index.error})` : r.index ? ' (no order/judgment image on the docket)' : ' (court index not crawled yet — run on your PC)') + '.')
+  } else bits.push('Judgment $ not pulled yet' + (j.needsOcr ? ' (scanned PDF; open it)' : r.index?.error ? ` (index: ${r.index.error})` : r.index ? ' (no order image on the docket)' : ' (needs the PC run)') + '.')
   const def = r.deficiency || j.deficiency || n.deficiency || 'unknown'
   if (def === 'conflicting') bits.push(`DEFICIENCY LANGUAGE CONFLICTS in the notice (says both waived and open 30 days) — ask plaintiff's counsel: ${(n.deficiencyQuotes || []).join(' | ')}`)
-  else bits.push(def === 'demanded' ? `DEFICIENCY DEMANDED — bidding stays open 30 days${r.reopenDate || n.reopenDate ? ' (reopens ' + (r.reopenDate || n.reopenDate) + ')' : ''}; the bank can be outbid on day 30.` : def === 'waived' ? 'Deficiency waived — sale is final on the day.' : 'Deficiency status not found — check the notice.')
+  else bits.push(def === 'demanded' ? `DEFICIENCY DEMANDED — open 30 days${r.reopenDate || n.reopenDate ? ' (reopens ' + (r.reopenDate || n.reopenDate) + ')' : ''}.` : def === 'waived' ? 'Deficiency waived — final on the day.' : 'Deficiency not stated — check the notice.')
   if (n.seniorLien || j.seniorLiens) bits.push(`SOLD SUBJECT TO: ${n.seniorLien || j.seniorLiens}`)
   if (n.usaRedemption) bits.push('USA right of redemption applies (federal lien).')
   const dep = ({ five: '5', ten: '10' })[String(n.depositPct || '').toLowerCase()] || n.depositPct || '5'
