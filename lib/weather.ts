@@ -1,9 +1,9 @@
 /**
  * Weather layer data — all free + keyless so it runs client-side in production.
  *
- * - Radar tiles: RainViewer public API. Timestamped past + nowcast frames;
- *   the map shows the latest observation as a live overlay. (The "Satellite"
- *   basemap is Esri aerial imagery, not RainViewer.)
+ * - Radar tiles: IEM's archived MRMS reflectivity (see the radar section
+ *   below); the RainViewer helpers are the older single-frame path. (The
+ *   "Satellite" basemap is Esri aerial imagery, not RainViewer.)
  * - Current conditions + thunderstorm flag: Open-Meteo.
  */
 
@@ -53,45 +53,67 @@ export function frameLabel(time: number): string {
   return new Date(time * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
-// ── Animated radar (Iowa Environmental Mesonet NEXRAD composite) ──────────────
-// Free + keyless US composite reflectivity (N0Q), served as XYZ tiles keyed by
-// a UTC timestamp so we can loop the last hour. Zooms far deeper than the old
-// RainViewer overlay (which capped at z8 and only showed a single frame).
+// ── Animated radar (Iowa Environmental Mesonet · MRMS reflectivity) ──────────
+// Free + keyless US composite reflectivity, served as XYZ tiles keyed by a
+// UTC timestamp so we can loop the last hour and scrub any past minute.
+//
+// PRODUCT (Brian, Sep 6 — "what is going on with radar"): the raw NEXRAD N0Q
+// composite this layer used to draw is UNFILTERED. On a September night every
+// radar site sits inside a smooth green disk 60–80 miles across — migrating
+// birds and insects in clear-air mode, not rain — with wedge-shaped holes
+// where Appalachian ridges block the beam. NOAA's MRMS system runs a quality
+// control that strips non-weather echoes, and IEM archives its SeamlessHSR
+// product as `mrms::lcref-<ts>` on the SAME tile cache (CORS *, cached 5 min):
+// one raster every 2 minutes since 2015, the newest about 6 minutes behind
+// the clock. Same storms, no birds — verified side by side against N0Q and
+// the nowCOAST MRMS mosaic for the same minute before switching.
 export interface IemFrame { ts: string; label: string }
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
+/** MRMS rasters land on even minutes. */
+const MRMS_STEP_MS = 2 * 60_000
+/** How far behind the clock the newest archived raster reliably exists.
+ *  Probed Sep 8: the 4-minute-old slot 503'd, the 6-minute-old one served;
+ *  8 keeps the loop landing on a frame that is there. A frame that is still
+ *  missing simply never shows (the buffered loader skips it). */
+const MRMS_LAG_MS = 8 * 60_000
 
-/** Build the last `count` radar frames at `stepMin`-minute spacing, aligned to
- *  IEM's 5-minute cadence and backed off one step so the newest tile exists. */
-export function buildRadarFrames(count = 10, stepMin = 5): IemFrame[] {
-  const step = stepMin * 60_000
-  const latest = Math.floor(Date.now() / step) * step - step
+const fmtTs = (d: Date) => `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
+
+/** Newest archive slot that should exist right now (even minute, lagged). */
+export function newestRadarSlotMs(nowMs = Date.now()): number {
+  return Math.floor((nowMs - MRMS_LAG_MS) / MRMS_STEP_MS) * MRMS_STEP_MS
+}
+
+/** Build the last `count` radar frames at `stepMin`-minute spacing (a multiple
+ *  of 2 — the archive's cadence), ending on the newest slot that exists. */
+export function buildRadarFrames(count = 12, stepMin = 4): IemFrame[] {
+  const step = Math.max(1, Math.round(stepMin / 2)) * MRMS_STEP_MS
+  const latest = newestRadarSlotMs()
   const frames: IemFrame[] = []
   for (let i = count - 1; i >= 0; i--) {
     const d = new Date(latest - i * step)
-    const ts = `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
-    frames.push({ ts, label: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
+    frames.push({ ts: fmtTs(d), label: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
   }
   return frames
 }
 
-/** XYZ tile template for a given IEM composite timestamp (empty ts = live). */
+/** XYZ tile template for a given archive timestamp (empty ts = the live
+ *  SeamlessHSR composite, same product without a clock). */
 export function iemRadarUrl(ts?: string): string {
-  const layer = ts ? `ridge::USCOMP-N0Q-${ts}` : 'nexrad-n0q-900913'
+  const layer = ts ? `mrms::lcref-${ts}` : 'q2-hsr-900913'
   return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${layer}/{z}/{x}/{y}.png`
 }
 
-/** IEM archive timestamp (UTC, floored to the 5-min radar cadence) for any
+/** IEM archive timestamp (UTC, floored to the 2-min MRMS cadence) for any
  *  epoch ms — lets the radar layer time-travel with the playback scrubber.
- *  Clamped to the newest frame that can exist (one step back, same backoff as
- *  buildRadarFrames): replay windows end at a future midnight and the scrubber
- *  opens at the window end, so an unclamped ts asked IEM for tomorrow's radar
- *  — guaranteed 503s on every "Today" replay (logged-in review, Aug 26). */
+ *  Clamped to the newest frame that can exist (same lag as buildRadarFrames):
+ *  replay windows end at a future midnight and the scrubber opens at the
+ *  window end, so an unclamped ts asked IEM for tomorrow's radar — guaranteed
+ *  503s on every "Today" replay (logged-in review, Aug 26). */
 export function iemTsForMs(ms: number): string {
-  const step = 5 * 60_000
-  const newest = Math.floor(Date.now() / step) * step - step
-  const d = new Date(Math.min(Math.floor(ms / step) * step, newest))
-  return `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}`
+  const slot = Math.min(Math.floor(ms / MRMS_STEP_MS) * MRMS_STEP_MS, newestRadarSlotMs())
+  return fmtTs(new Date(slot))
 }
 
 // ── Rain totals (IEM MRMS precipitation accumulation) ────────────────────────
