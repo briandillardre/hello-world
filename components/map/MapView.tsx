@@ -116,6 +116,10 @@ const DEAD_GRAY = '#46586a'
  *  undefined (reading 'getLayer')". Effect cleanups run AFTER the map's own
  *  teardown on unmount, so anything that touches the map from a timer, a
  *  frame, or a cleanup checks this first (Brian's asset page, Sep 5). */
+/** Radar loop: dwell per frame once it has fully landed (×3 on the newest). */
+const RADAR_HOLD_MS = 700
+/** Radar loop: give a frame this long to arrive before skipping it. */
+const WX_LOAD_CAP_MS = 6000
 const mapAlive = (m: maplibregl.Map | null | undefined): m is maplibregl.Map =>
   !!m && !(m as unknown as { _removed?: boolean })._removed && !!(m as unknown as { style?: unknown }).style
 // Live-dot color: the asset's own color, fading toward DEAD_GRAY as the last
@@ -1472,15 +1476,31 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // uses the exact point, not a name re-geocode (which picked the wrong
   // "Greenville" — NC outranks SC by population).
   const wxCoordsRef = useRef<[number, number] | null>(null)
-  const wxAdded = useRef(false)
-  // Radar tiles that failed to load since the last frame swap. setTiles()
-  // runs SourceCache.reload(true), which force-marks even ERRORED (texture-
-  // less) tiles as "expired" — a state hasData() calls renderable — so the
-  // raster draw derefs tile.texture on undefined ("reading 'bind'" storm,
-  // 26 uncaught errors in 6s with the feed down). When any wx tile has
-  // errored we swap the source wholesale instead: fresh tiles start in
-  // "loading" (not renderable) and failed tiles simply stay invisible.
-  const wxTileErr = useRef(false)
+  // Radar is DOUBLE-BUFFERED (Brian, Sep 6: hard rectangular seams east of
+  // Columbia): two raster sources, 'wx-a' and 'wx-b'. The frame on screen
+  // lives in the FRONT buffer; the next frame loads into the BACK buffer at
+  // opacity 0 and the buffers swap only once every tile of the back frame
+  // has arrived — so a phone on LTE never shows half of one frame stitched
+  // to half of another. A single-source setTiles() re-tile kept the OLD
+  // textures wherever the new tile had not landed yet, which is exactly the
+  // patchwork he photographed.
+  //   err: tiles that failed since the buffer was last (re)built. setTiles()
+  //   runs SourceCache.reload(true), which force-marks even ERRORED (texture-
+  //   less) tiles as "expired" — a state hasData() calls renderable — so the
+  //   raster draw derefs tile.texture on undefined ("reading 'bind'" storm,
+  //   26 uncaught errors in 6s with the feed down). A buffer that errored is
+  //   torn down and rebuilt instead of re-tiled, and a frame whose tiles
+  //   errored is SKIPPED, never shown (a 503 = the archive has no raster
+  //   for that minute yet).
+  const wxBuf = useRef<{ front: 'a' | 'b'; added: { a: boolean; b: boolean }; err: { a: boolean; b: boolean }; shownUrl: string | null }>(
+    { front: 'a', added: { a: false, b: false }, err: { a: false, b: false }, shownUrl: null },
+  )
+  // The back-buffer load in flight; a newer request supersedes it (token).
+  const wxPending = useRef<{ token: number; url: string } | null>(null)
+  const wxToken = useRef(0)
+  const wxSkipStreak = useRef(0)
+  const overlayOpacityRef = useRef(overlayOpacity)
+  overlayOpacityRef.current = overlayOpacity
 
   // Animated radar (Iowa Environmental Mesonet). Frames rebuilt when radar turns
   // on; an interval steps through them so the loop plays and zooms deep.
@@ -2824,8 +2844,8 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // every "layer already added" ref must reset with it, or the first
       // toggle after remount takes the else-branch against a map that has no
       // such layer (task #13 secondary finding).
-      wxAdded.current = false
-      wxTileErr.current = false
+      wxBuf.current = { front: 'a', added: { a: false, b: false }, err: { a: false, b: false }, shownUrl: null }
+      wxPending.current = null
       cloudsAdded.current = false
       stormAdded.current = false
       precipAdded.current = false
@@ -3592,11 +3612,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     if (!mapReady || !m) return
     const onErr = (e: unknown) => {
       const sid = (e as { sourceId?: string }).sourceId
-      // Radar tile failures: flag the source so the next frame swap rebuilds
-      // it instead of setTiles-ing errored tiles into a crash (wxTileErr).
-      // This listener existing at all is also what keeps maplibre from
-      // console.error-ing every failed tile — keep it registered.
-      if (sid === 'wx') { wxTileErr.current = true; return }
+      // Radar tile failures: flag the buffer so its frame is skipped and the
+      // buffer is rebuilt before reuse instead of setTiles-ing errored tiles
+      // into a crash (see wxBuf). This listener existing at all is also what
+      // keeps maplibre from console.error-ing every failed tile — keep it.
+      if (sid === 'wx-a' || sid === 'wx-b') { wxBuf.current.err[sid === 'wx-a' ? 'a' : 'b'] = true; return }
       if (!sid || !sid.startsWith('ovl-')) return
       const key = sid.slice(4)
       if (tileErrReported.current.has(key)) return
@@ -3629,7 +3649,8 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     }
     // Radar lives outside MAP_OVERLAYS (its own frame loop) — same slider.
     const rv = overlayOpacity.radar
-    if (rv != null && m.getLayer('wx-layer')) m.setPaintProperty('wx-layer', 'raster-opacity', rv)
+    const wxFrontLayer = `wx-${wxBuf.current.front}-layer`
+    if (rv != null && wxBuf.current.shownUrl && m.getLayer(wxFrontLayer)) m.setPaintProperty(wxFrontLayer, 'raster-opacity', rv)
     // Rain totals — its own add-once raster, same slider treatment (Brian,
     // Aug 24: "rain totals needs opacity slider").
     const pcv = overlayOpacity.precip
@@ -5281,11 +5302,16 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     }
   }, [mapReady, parcelsOn])
 
-  // Build fresh radar frames whenever radar is switched on (keeps the loop live).
+  // Build fresh radar frames whenever radar is switched on, and again every
+  // 4 minutes while it stays on — a wall display keeps the map open for
+  // hours and the loop must keep landing on the newest MRMS frame, not the
+  // one from when the button was pressed.
   useEffect(() => {
     if (!radarOn) return
-    setRadarFrames(buildRadarFrames(10, 5))
+    setRadarFrames(buildRadarFrames(12, 4))
     setRadarIdx(0)
+    const id = window.setInterval(() => setRadarFrames(buildRadarFrames(12, 4)), 4 * 60_000)
+    return () => window.clearInterval(id)
   }, [radarOn])
 
   // Paint the right-rail radar button's on-state (the IControl lives outside
@@ -5577,31 +5603,54 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   }, [radarFrames.length])
 
 
-  // Animate the radar loop — advance the frame ~1.4/sec, holding the newest a
-  // beat longer so the loop "lands" on now. The loop runs ONLY on the Live
-  // range: any historical range means the radar obeys the scrubber (or holds
-  // the newest frame while that range's history is still loading) — a sky
-  // that animates under a stopped timeline reads as data. Manual pause wins
-  // everywhere.
+  // Animate the radar loop. The loop runs ONLY on the Live range: any
+  // historical range means the radar obeys the scrubber (or holds the newest
+  // frame while that range's history is still loading) — a sky that animates
+  // under a stopped timeline reads as data. Manual pause wins everywhere.
+  //
+  // Steps are driven by frames SETTLING, not by a wall clock: the next step
+  // is scheduled only after the frame on screen has fully landed (RADAR_HOLD
+  // later; three holds on the newest so the loop "lands" on now) or was
+  // skipped because the archive had no tiles for it. A clock that ticked
+  // every 700 ms regardless fell further behind the radio on every step and
+  // stitched frames together (Brian's Sep 6 screenshot).
+  const radarLoopOn = radarOn && radarFrames.length > 0 && !pbActive && !radarPaused
+  const radarLoopRef = useRef(radarLoopOn)
+  radarLoopRef.current = radarLoopOn
+  const radarFramesRef = useRef(radarFrames)
+  radarFramesRef.current = radarFrames
+  const radarIdxRef = useRef(radarIdx)
+  radarIdxRef.current = radarIdx
+  const radarStepTimer = useRef<number | null>(null)
+  const scheduleRadarStep = useCallback((delay: number) => {
+    if (radarStepTimer.current != null) window.clearTimeout(radarStepTimer.current)
+    radarStepTimer.current = window.setTimeout(() => {
+      radarStepTimer.current = null
+      if (!radarLoopRef.current) return
+      const n = radarFramesRef.current.length
+      if (n > 0) setRadarIdx((i) => (i + 1) % n)
+    }, delay)
+  }, [])
   useEffect(() => {
-    if (!radarOn || radarFrames.length === 0 || pbActive || radarPaused) {
+    if (!radarLoopOn) {
+      if (radarStepTimer.current != null) { window.clearTimeout(radarStepTimer.current); radarStepTimer.current = null }
       // Replays hold the newest frame (the MAIN scrubber drives radar there).
-      // A manual pause now HOLDS its frame instead of snapping to newest —
-      // the chip's scrubber knob shows exactly which frame is on screen, and
+      // A manual pause HOLDS its frame instead of snapping to newest — the
+      // chip's scrubber knob shows exactly which frame is on screen, and
       // snapping would erase a hand-scrubbed position (Aug 22).
       if (radarFrames.length && pbActive) setRadarIdx(radarFrames.length - 1)
       return
     }
-    const id = setInterval(() => {
-      setRadarIdx((i) => (i + 1) % (radarFrames.length + 2)) // +2 = pause on last
-    }, 700)
-    return () => clearInterval(id)
-  }, [radarOn, radarFrames, pbActive, radarPaused])
+    // (Re)start: a frame already settled steps from here; a load in flight
+    // schedules the step itself when it settles.
+    if (!wxPending.current) scheduleRadarStep(RADAR_HOLD_MS)
+    return () => { if (radarStepTimer.current != null) { window.clearTimeout(radarStepTimer.current); radarStepTimer.current = null } }
+  }, [radarLoopOn, radarFrames.length, pbActive, scheduleRadarStep])
 
-  // Replay mode: the radar frame FOLLOWS THE SCRUBBER — IEM's archive serves
-  // any past 5-min composite, so "it rained on the site at 2 PM Tuesday" is
-  // visible in the same replay as the trucks. Floored to the 5-min cadence so
-  // scrubbing doesn't spam tile requests.
+  // Replay mode: the radar frame FOLLOWS THE SCRUBBER — IEM's MRMS archive
+  // serves any past 2-min raster back to 2015, so "it rained on the site at
+  // 2 PM Tuesday" is visible in the same replay as the trucks. Floored to the
+  // 2-min cadence so scrubbing doesn't spam tile requests.
   const scrubRadarTs = radarOn && pbActive && realWindowEff
     ? iemTsForMs(realWindowEff.from + displayT * (realWindowEff.to - realWindowEff.from))
     : null
@@ -5610,48 +5659,131 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         .toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : currentFrame?.label ?? null
 
-  // Add / update / toggle the radar raster layer (IEM NEXRAD composite):
-  // live loop frames normally, archive frame at the scrub position in replay.
+  // Radar raster (IEM MRMS reflectivity): live loop frames normally, the
+  // archive frame at the scrub position in replay. Every frame goes through
+  // the A/B buffers — the back buffer loads at opacity 0 and becomes the
+  // front only once ALL of its tiles are in (see wxBuf). While one frame is
+  // loading, a newer request WAITS (latest wins) instead of restarting the
+  // load: a fast replay then shows a steady run of complete frames at the
+  // pace the radio allows, never a patchwork and never a stall.
+  const wxQueued = useRef<string | null>(null)
+  const startWxLoad = useRef<(url: string) => void>(() => {})
   useEffect(() => {
     const m = map.current
-    if (!mapReady || !m) return
+    if (!mapReady || !mapAlive(m)) return
+    const B = wxBuf.current
+    const layerOf = (b: 'a' | 'b') => `wx-${b}-layer`
 
+    startWxLoad.current = (url: string) => {
+      if (!mapAlive(m)) return
+      const back: 'a' | 'b' = B.front === 'a' ? 'b' : 'a'
+      const src = `wx-${back}`
+      const lyr = layerOf(back)
+      if (B.added[back] && B.err[back]) {
+        // Errored tiles: rebuild the buffer clean rather than re-tile it (wxBuf).
+        if (m.getLayer(lyr)) m.removeLayer(lyr)
+        if (m.getSource(src)) m.removeSource(src)
+        B.added[back] = false
+      }
+      if (!B.added[back]) {
+        // maxzoom 10: MRMS is a ~1 km product, so let MapLibre over-scale
+        // beyond z10 rather than request tiles that add no detail.
+        m.addSource(src, { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
+        const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+        // fade-duration 0 (task #13): with the default 300ms cross-fade,
+        // MapLibre's drawRaster touches parent-tile textures that don't exist
+        // yet on the FIRST re-tile and throws "reading 'bind'" — the /command
+        // first-timeline-switch crash. Site imagery already runs fade 0. The
+        // 120 ms opacity transition is the A/B swap's own cross-fade.
+        m.addLayer({ id: lyr, type: 'raster', source: src, paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 120, delay: 0 }, 'raster-fade-duration': 0 } }, beforeId)
+        B.added[back] = true
+      } else {
+        if (m.getLayer(lyr)) {
+          m.setPaintProperty(lyr, 'raster-opacity', 0)
+          m.setLayoutProperty(lyr, 'visibility', 'visible')
+        }
+        ;(m.getSource(src) as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+      }
+      B.err[back] = false // errors from here on belong to THIS frame
+      const token = ++wxToken.current
+      wxPending.current = { token, url }
+      const started = performance.now()
+
+      const settled = () => {
+        // A frame asked for while this one loaded goes next; otherwise the
+        // live loop schedules its step (a replay's scrubber drives itself).
+        const q = wxQueued.current
+        wxQueued.current = null
+        if (q && q !== B.shownUrl) { startWxLoad.current(q); return }
+        if (!radarLoopRef.current) return
+        if (!B.shownUrl) { scheduleRadarStep(wxSkipStreak.current >= radarFramesRef.current.length ? 5000 : 120); return }
+        const last = radarIdxRef.current >= radarFramesRef.current.length - 1
+        scheduleRadarStep(last ? RADAR_HOLD_MS * 3 : RADAR_HOLD_MS)
+      }
+      // Poll the back buffer until every tile is in (or errored, or the radio
+      // is too slow), then swap. Polling starts after the next render so a
+      // freshly added source has actually been asked for tiles — before that
+      // an empty source reads as "loaded".
+      const poll = () => {
+        if (!mapAlive(m) || wxPending.current?.token !== token) return
+        const errored = B.err[back]
+        const loaded = errored || !m.getSource(src) || m.isSourceLoaded(src)
+        if (!loaded && performance.now() - started < WX_LOAD_CAP_MS) { window.setTimeout(poll, 80); return }
+        wxPending.current = null
+        if (errored || !loaded) {
+          // Not showable (archive gap, radio dropped): the front stays as it
+          // is and the loop moves on; a whole cycle of skips backs off 5 s.
+          wxSkipStreak.current++
+          if (radarLoopRef.current && !wxQueued.current) {
+            scheduleRadarStep(wxSkipStreak.current >= radarFramesRef.current.length ? 5000 : 120)
+            return
+          }
+          settled()
+          return
+        }
+        // Swap: back becomes front. The old front stays mounted at opacity 0
+        // with its textures — it is the next back buffer.
+        const fl = layerOf(B.front)
+        if (m.getLayer(lyr)) m.setPaintProperty(lyr, 'raster-opacity', overlayOpacityRef.current.radar ?? 0.72)
+        if (fl !== lyr && m.getLayer(fl)) m.setPaintProperty(fl, 'raster-opacity', 0)
+        B.front = back
+        B.shownUrl = url
+        wxSkipStreak.current = 0
+        settled()
+      }
+      m.once('render', () => window.setTimeout(poll, 0))
+      m.triggerRepaint()
+    }
+    return () => { startWxLoad.current = () => {} }
+  }, [mapReady, scheduleRadarStep])
+
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !mapAlive(m)) return
+    const B = wxBuf.current
     const ts = scrubRadarTs ?? currentFrame?.ts
     if (!radarOn || !ts) {
-      if (wxAdded.current && m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'none')
+      for (const b of ['a', 'b'] as const) {
+        if (B.added[b] && m.getLayer(`wx-${b}-layer`)) m.setLayoutProperty(`wx-${b}-layer`, 'visibility', 'none')
+      }
+      B.shownUrl = null
+      wxPending.current = null
+      wxQueued.current = null
       return
     }
-
-    // maxzoom 10: NEXRAD composite is ~1km resolution, so let MapLibre over-scale
-    // beyond z10 rather than request tiles that don't add detail. Zooms far past
-    // the old RainViewer z8 cap without the "Zoom Level Not Supported" tiles.
     const url = iemRadarUrl(ts)
-    if (wxAdded.current && wxTileErr.current) {
-      // A tile errored since the last swap: setTiles would force the errored
-      // (texture-less) tiles into a renderable "expired" state and crash the
-      // raster draw (see wxTileErr above). Tear the source down instead —
-      // the re-add below rebuilds it clean.
-      wxTileErr.current = false
-      if (m.getLayer('wx-layer')) m.removeLayer('wx-layer')
-      if (m.getSource('wx')) m.removeSource('wx')
-      wxAdded.current = false
+    if (url === B.shownUrl) {
+      // Same frame (frame list rebuilt, visibility churn): keep the front up.
+      const fl = `wx-${B.front}-layer`
+      if (m.getLayer(fl) && m.getLayoutProperty(fl, 'visibility') === 'none') m.setLayoutProperty(fl, 'visibility', 'visible')
+      wxQueued.current = null
+      return
     }
-    if (!wxAdded.current) {
-      m.addSource('wx', { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 10 })
-      const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
-      // fade-duration 0 (task #13): with the default 300ms cross-fade,
-      // MapLibre's drawRaster touches parent-tile textures that don't exist
-      // yet on the FIRST re-tile and throws "reading 'bind'" — the /command
-      // first-timeline-switch crash. Site imagery already runs fade 0.
-      m.addLayer({ id: 'wx-layer', type: 'raster', source: 'wx', paint: { 'raster-opacity': overlayOpacity.radar ?? 0.72, 'raster-fade-duration': 0 } }, beforeId)
-      wxAdded.current = true
-    } else {
-      // Visibility first, THEN the re-tile — setTiles marks every in-view
-      // tile expired, and forcing visibility in the same tick as the reload
-      // rendered tiles whose textures were mid-swap (task #13).
-      if (m.getLayer('wx-layer')) m.setLayoutProperty('wx-layer', 'visibility', 'visible')
-      ;(m.getSource('wx') as maplibregl.RasterTileSource | undefined)?.setTiles([url])
+    if (wxPending.current) {
+      if (wxPending.current.url !== url) wxQueued.current = url // latest wins, after the load in flight
+      return
     }
+    startWxLoad.current(url)
   }, [mapReady, radarOn, currentFrame, scrubRadarTs])
 
   // ── Actual lightning strikes riding the radar (Brian, Aug 11) ────────────
