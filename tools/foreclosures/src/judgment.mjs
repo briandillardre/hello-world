@@ -12,21 +12,45 @@ const MONEY1 = new RegExp(MONEY.source)  // non-global copy for .match() (a /g r
 
 export function regexJudgment(text) {
   const t = String(text).replace(/\s+/g, ' ')
-  // amount that FOLLOWS the label (never look backwards – "costs of $250" must not pick up the total two lines up)
-  const near = (re, span = 260) => { const m = t.match(re); if (!m) return null; let after = t.slice(m.index + m[0].length, m.index + m[0].length + span); const stop = after.search(/[.;]\s/); if (stop > 0) after = after.slice(0, stop + 1); const a = after.match(MONEY1); if (!a) return null; return { amount: parseMoney(a[1]), quote: t.slice(Math.max(0, m.index - 20), m.index + m[0].length + (a.index || 0) + a[0].length + 60).trim() } }
-  const total = near(/(?:total (?:amount|sum|indebtedness|debt)(?: due| owed| owing)?|amount due (?:and owing|under the note)|judgment (?:against|in favor)[^$]{0,120}in the (?:total )?(?:amount|sum) of|is entitled to (?:a )?judgment[^$]{0,120}(?:amount|sum) of|indebted(?:ness)? to (?:the )?plaintiff[^$]{0,120}(?:amount|sum) of|balance due[^$]{0,80})/i)
-  const DATE = '((?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},?\\s+\\d{4})'
-  // the as-of date must sit in the same sentence as the total; a bare document-wide "as of" is the only fallback
-  const asOf = ((total?.quote || '').match(new RegExp('(?:as of|through)\\s+' + DATE, 'i')) || t.match(new RegExp('as of\\s+' + DATE, 'i')) || [])[1] || ''
-  const perDiem = (() => { const m = t.match(/\$\s?([\d,]+\.\d{2})\s+per (?:day|diem)/i); return m ? { amount: parseMoney(m[1]), quote: m[0] } : null })() || near(/per diem(?: interest)?(?: of| in the amount of| at the rate of| equal to| is)/i, 30)
-  const rate = (t.match(/(?:interest (?:at|thereon at) the (?:contract |note )?rate of|rate of interest of)\s*([\d.]+\s*%|[\d.]+ percent)/i) || [])[1] || ''
-  const fees = near(/attorney(?:'s|s'|s)? fees?(?: and costs)?(?: in the (?:amount|sum) of| of)?/i, 60)
-  const costs = near(/(?:court )?costs(?: and disbursements)?(?: in the (?:amount|sum) of| of)(?! collection)/i, 40)
-  const principal = near(/(?:unpaid )?principal(?: balance)?(?: in the (?:amount|sum) of| of| due)/i, 40)
-  const escrow = near(/(?:escrow(?: advances?)?|advances? for taxes|taxes and insurance)(?: in the (?:amount|sum) of| of)?/i, 40)
-  const form4 = near(/(?:FORM 4|JUDGMENT IN A CIVIL CASE)[\s\S]{0,600}?(?:amount|sum|judgment of)/i, 120)
+  // amount that FOLLOWS the label (never look backwards – "costs of $250" must not pick up the total two lines up);
+  // the window stops at a sentence boundary but always runs to the end of a number it started
+  const near = (re, span = 260) => {
+    const m = t.match(re); if (!m) return null
+    const start = m.index + m[0].length
+    let after = t.slice(start, start + span)
+    const stop = after.search(/[.;]\s/); if (stop > 0) after = after.slice(0, stop + 1)
+    const a = after.match(MONEY1); if (!a) return null
+    const tail = t.slice(start + a.index + a[0].length).match(/^[\d,]*(?:\.\d{2})?/)   // finish a number the span cut in half
+    const amount = parseMoney(a[1] + (tail ? tail[0] : ''))
+    return { amount, quote: t.slice(Math.max(0, m.index - 20), start + a.index + a[0].length + (tail ? tail[0].length : 0) + 60).trim() }
+  }
+  // most specific phrasing first – "Total debt … is $X" beats "amount due and owing … Principal $X"
+  const TOTAL_PATTERNS = [
+    /total (?:debt|indebtedness|amount)(?: secured by (?:the )?note and mortgage)?(?: due| owed| owing)?(?:,)? (?:is|of|in the (?:amount|sum) of)/i,
+    /(?:there is )?due (?:to|and owing to) (?:the )?plaintiff[^$]{0,120}?(?:the )?(?:sum|amount) of/i,
+    /judgment (?:against|in favor)[^$]{0,120}in the (?:total )?(?:amount|sum) of/i,
+    /is entitled to (?:a )?judgment[^$]{0,120}(?:amount|sum) of/i,
+    /indebted(?:ness)? to (?:the )?plaintiff[^$]{0,120}(?:amount|sum) of/i,
+    /total (?:amount|sum|indebtedness|debt)(?: due| owed| owing)?/i,
+    /balance due[^$]{0,80}/i,
+    /amount due (?:and owing|under the note)/i,
+  ]
+  let total = null
+  for (const re of TOTAL_PATTERNS) { total = near(re); if (total) break }
+  const DATE = '((?:January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{1,2},?\\s+\\d{4}|\\d{1,2}/\\d{1,2}/\\d{4})'
+  // the as-of date must sit with the total or the principal line; a bare document-wide "as of" is the only fallback
+  const asOf = ((total?.quote || '').match(new RegExp('(?:as of|through)(?: today.s date)?:?\\s+' + DATE, 'i'))
+    || t.match(new RegExp('principal[^$]{0,40}as of(?: today.s date)?:?\\s+' + DATE, 'i'))
+    || t.match(new RegExp('as of(?: today.s date)?:?\\s+' + DATE, 'i')) || [])[1] || ''
+  const perDiem = (() => { const m = t.match(/\$\s?([\d,]+\.\d{2})\s+per (?:day|diem)/i); return m ? { amount: parseMoney(m[1]), quote: m[0] } : null })()
+    || near(/per diem(?: interest)?(?: of| in the amount of| at the rate of| equal to| is|:)/i, 30)
+  const rate = (t.match(/(?:interest (?:at|thereon at) the (?:contract |note |initial )?rate of|rate of interest of|accruing at:?)\s*([\d.]+\s*%|[\d.]+ percent)/i) || [])[1] || ''
+  const fees = near(/attorney(?:'s|s'|s)? fees?(?: and costs)?(?: in the (?:amount|sum) of| of|:)?/i, 60)
+  const costs = near(/(?:court )?costs(?: and disbursements| of collection(?: prior to hearing)?)?(?: in the (?:amount|sum) of| of|:)(?! collection)/i, 40)
+  const principal = near(/(?:unpaid )?principal(?: balance)? due(?: as of[^$]{0,40})?:?/i, 60) || near(/(?:unpaid )?principal(?: balance)?(?: in the (?:amount|sum) of| of|:)/i, 60)
+  const escrow = near(/(?:escrow(?: advances?)?|advances? for taxes|taxes and insurance)(?: in the (?:amount|sum) of| of|:)?/i, 40)
   return {
-    totalDebt: total?.amount ?? form4?.amount ?? null, totalQuote: total?.quote || form4?.quote || '', asOfDate: asOf,
+    totalDebt: total?.amount ?? null, totalQuote: total?.quote || '', asOfDate: asOf,
     principal: principal?.amount ?? null, perDiem: perDiem?.amount ?? null, interestRate: rate, attorneyFees: fees?.amount ?? null, costs: costs?.amount ?? null, escrowAdvances: escrow?.amount ?? null,
     deficiency: detectDeficiency(t), extractedBy: 'regex',
     allAmounts: [...new Set([...t.matchAll(MONEY)].map(x => parseMoney(x[1])))].sort((a, b) => b - a).slice(0, 12),

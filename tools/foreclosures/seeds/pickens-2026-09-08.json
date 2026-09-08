@@ -1,0 +1,180 @@
+{
+  "county": "pickens",
+  "saleDate": "09/08/2026",
+  "source": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf",
+  "rows": [
+    {
+      "county": "pickens",
+      "saleNo": 1,
+      "caseNo": "2025-CP-39-01688",
+      "caption": "FINANCE OF AMERICA REVERSE, LLC V ESTATE OF PATRICIA TUCKER CAPPS, ET AL",
+      "plaintiff": "FINANCE OF AMERICA REVERSE, LLC",
+      "defendant": "ESTATE OF PATRICIA TUCKER CAPPS, ET AL",
+      "address": "443 MARY ANN ST., EASLEY, SC 29640",
+      "tms": "5110-18-40-1736",
+      "notes": "CANCELLED",
+      "status": "cancelled",
+      "deficiency": "unknown",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "writeup": "443 MARY ANN ST., EASLEY, SC 29640. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice. STATUS: CANCELLED."
+    },
+    {
+      "county": "pickens",
+      "saleNo": 2,
+      "caseNo": "2024-CP-39-00316",
+      "caption": "US BANK TRUST NA V HEATHER HOWELL, PR, ET AL",
+      "plaintiff": "US BANK TRUST NA",
+      "defendant": "HEATHER HOWELL, PR, ET AL",
+      "address": "103 WINDAMERE CT., EASLEY, SC 29640",
+      "tms": "5110-20-82-3366",
+      "notes": "",
+      "status": "scheduled",
+      "deficiency": "waived",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "docs": [],
+      "writeup": "103 WINDAMERE CT., EASLEY, SC 29640. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice.",
+      "judgment": {
+        "totalDebt": 66266.33,
+        "asOfDate": "July 9, 2026",
+        "perDiem": 6.5,
+        "interestRate": "5.875%",
+        "principal": 40408.88,
+        "attorneyFees": 4800,
+        "costs": 2322.83,
+        "deficiency": "waived",
+        "judgmentDate": "July 9, 2026",
+        "extractedBy": "regex (Order read from the PDF Brian pulled, Sep 8 2026)",
+        "source": "https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2024CP3900316&CaseType=V",
+        "sourceLabel": "Master in Equity's Order and Judgment of Foreclosure and Sale, filed Jul 9 2026",
+        "notes": "Lot 53, Burdine Springs Sec. 2 (City of Easley). Estate case: both borrowers deceased, PR Heather Howell in default. First lien; sold subject to taxes/assessments only. Interest on bid 5.875% to compliance."
+      },
+      "notice": {
+        "deficiency": "waived",
+        "legalDescription": "Lot 53, Section Two, Burdine Springs Subdivision, City of Easley (Plat Book 12 p. 77)",
+        "bidInterestRate": "5.875%"
+      }
+    },
+    {
+      "county": "pickens",
+      "saleNo": 3,
+      "caseNo": "2018-CP-39-00369",
+      "caption": "NATIONSTAR MORTGAGE LLC DBA MR. COOPER V JENNIFER RENEE KEPHART, ET AL",
+      "plaintiff": "NATIONSTAR MORTGAGE LLC DBA MR. COOPER",
+      "defendant": "JENNIFER RENEE KEPHART, ET AL",
+      "address": "649 N. NORRIS DR., LIBERTY, SC 29657",
+      "tms": "4077-15-62-1769",
+      "notes": "",
+      "status": "scheduled",
+      "deficiency": "unknown",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "docs": [],
+      "writeup": "649 N. NORRIS DR., LIBERTY, SC 29657. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice.",
+      "judgment": {
+        "totalDebt": 223932.51,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2018CP3900369&CaseType=V",
+        "deficiency": "unknown"
+      }
+    },
+    {
+      "county": "pickens",
+      "saleNo": 4,
+      "caseNo": "2026-CP-39-00125",
+      "caption": "LAKEVIEW LOAN SERVICING LLC V NICOLE MARIA JACOBS, ET AL",
+      "plaintiff": "LAKEVIEW LOAN SERVICING LLC",
+      "defendant": "NICOLE MARIA JACOBS, ET AL",
+      "address": "365 GIBSON RD., EASLEY, SC 29640",
+      "tms": "5111-01-47-3602",
+      "notes": "",
+      "status": "scheduled",
+      "deficiency": "unknown",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "docs": [],
+      "writeup": "365 GIBSON RD., EASLEY, SC 29640. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice.",
+      "judgment": {
+        "totalDebt": 623367.66,
+        "asOfDate": "",
+        "perDiem": null,
+        "extractedBy": "manual (Form 4 read by Brian, Sep 8 2026)",
+        "source": "https://publicindex.sccourts.org/pickens/publicindex/CaseDetails.aspx?County=39&CourtAgency=39002&Casenum=2026CP3900125&CaseType=V",
+        "deficiency": "unknown"
+      }
+    },
+    {
+      "county": "pickens",
+      "saleNo": 5,
+      "caseNo": "2026-CP-39-00009",
+      "caption": "UNITED COMMUNITY BANK V THE TOPAZ GROUP LLC DBA AMICI ITALIAN CAF\u00c9, ET AL",
+      "plaintiff": "UNITED COMMUNITY BANK",
+      "defendant": "THE TOPAZ GROUP LLC DBA AMICI ITALIAN CAF\u00c9, ET AL",
+      "address": "105 SPIRIT MOUNTAIN LN., EASLEY, SC 29642",
+      "tms": "5018-11-57-8000",
+      "notes": "DEFICIENCY DEMANDED CANCELLED",
+      "status": "cancelled",
+      "deficiency": "demanded",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "writeup": "105 SPIRIT MOUNTAIN LN., EASLEY, SC 29642. Judgment $ not pulled yet (needs the PC run). DEFICIENCY DEMANDED \u2014 open 30 days (reopens OCTOBER 8, 2026). STATUS: CANCELLED."
+    },
+    {
+      "county": "pickens",
+      "saleNo": 6,
+      "caseNo": "2025-CP-39-01333",
+      "caption": "LAKEVIEW LOAN SERVICING, LLC V RYAN L. GOLDEN, ET AL",
+      "plaintiff": "LAKEVIEW LOAN SERVICING, LLC",
+      "defendant": "RYAN L. GOLDEN, ET AL",
+      "address": "220 AMSTERDAM RD., LIBERTY, SC 29657",
+      "tms": "5008-10-46-2969",
+      "notes": "CANCELLED",
+      "status": "cancelled",
+      "deficiency": "unknown",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "writeup": "220 AMSTERDAM RD., LIBERTY, SC 29657. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice. STATUS: CANCELLED."
+    },
+    {
+      "county": "pickens",
+      "saleNo": 7,
+      "caseNo": "2024-CP-39-00803",
+      "caption": "LEGACY FACTORY DIRECT HOMES, LLC V TIMOTHY R. BUTLER, ET AL",
+      "plaintiff": "LEGACY FACTORY DIRECT HOMES, LLC",
+      "defendant": "TIMOTHY R. BUTLER, ET AL",
+      "address": "115 BLUE SKY DR., SUNSET, SC 29685",
+      "tms": "4164-00-68-4910",
+      "notes": "",
+      "status": "scheduled",
+      "deficiency": "unknown",
+      "sources": {
+        "roster": "https://cms5.revize.com/revize/pickenscountysc/SEPTEMBER%202026%209.4.26.pdf"
+      },
+      "saleDate": "SEPTEMBER 8, 2026",
+      "reopenDate": "OCTOBER 8, 2026",
+      "docs": [],
+      "writeup": "115 BLUE SKY DR., SUNSET, SC 29685. Judgment $ not pulled yet (needs the PC run). Deficiency not stated \u2014 check the notice."
+    }
+  ]
+}
