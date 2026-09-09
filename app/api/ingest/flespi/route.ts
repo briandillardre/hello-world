@@ -4,6 +4,7 @@ import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/
 import { evaluateAlerts, pointInPolygon } from '@/lib/alerts-engine'
 import { vehiclePower } from '@/lib/vehicle-power'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
+import { recordBeaconSightings } from '@/lib/ble-sightings'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
@@ -174,149 +175,11 @@ export async function POST(request: NextRequest) {
       updated.get(asset.company_id)!.set(asset.id, r)
     }
 
-    // Associate detected BLE beacons (tools) with this gateway asset.
-    // Convention: a tool asset's `tracker_id` is set to its BLE beacon ID/MAC
-    // (the same value the gateway reports in ble.beacons[].id). Register tools
-    // with their beacon UUID as the tracker_id for this lookup to match.
-    for (const beacon of r.beacons) {
-      // Identity tolerance. Trackers report tags two ways depending on
-      // config: hardware MAC ("DC:0D:04:BB:00:3A") or iBeacon identity
-      // ("FDA50693-…:2751:65C1" — and note major/minor arrive in HEX while
-      // every beacon app displays DECIMAL, e.g. 2751:65C1 = 10065:26049).
-      // Build candidate forms and match each case/separator-insensitively,
-      // so the owner can register a tool with whatever their scanner shows.
-      const strip = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
-      const candidates = [beacon.id]
-      // Teltonika EYE Beacons straight out of the box (Eddystone/factory
-      // mode) are reported by the gateway as a zero UUID with the tag's MAC
-      // as the last segment: "00000000-0000-0000-0000-7CD9F408B572". The MAC
-      // is printed on the tag, so a tool registered with just that 12-hex
-      // MAC must match — no EYE-app reconfiguration needed (Sep 9, five
-      // beacons zip-tied on in the field and heard within the hour).
-      const zeroMac = beacon.id.match(/^0{8}-0{4}-0{4}-0{4}-([0-9a-fA-F]{12})$/)
-      if (zeroMac) candidates.push(zeroMac[1])
-      const ib = beacon.id.match(/^(.*):([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})$/)
-      if (ib) {
-        candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)
-        // Owner shorthand: "UUID:minor" with the major left out — the fleet
-        // pucks share one UUID+major, so the minor is the unique bit and
-        // that's what people naturally type (TB235 puck, Aug 11). DECIMAL
-        // only — a raw-hex candidate collided across pucks (hex 16 = dec 22
-        // reads as another puck's "16" registration; ship-check, Aug 12).
-        candidates.push(`${ib[1]}:${parseInt(ib[3], 16)}`)
-      }
-
-      let toolId: string | null = null
-      // Escape LIKE metacharacters — beacon.id is device-supplied, and a
-      // crafted id of "%" would ilike-match an arbitrary asset (sec-check,
-      // Aug 11). Backslash is Postgres's default ESCAPE character.
-      const likeEsc = (s: string) => s.replace(/[\\%_]/g, '\\$&')
-      for (const cand of candidates) {
-        const { data: tool } = await supabase
-          .from('assets')
-          .select('id')
-          .eq('company_id', asset.company_id)
-          .ilike('tracker_id', likeEsc(cand))
-          .limit(1)
-          .maybeSingle()
-        if (tool) { toolId = tool.id; break }
-      }
-      if (!toolId) {
-        const bare = candidates.map(strip).filter((s) => s.length >= 8)
-        if (bare.length) {
-          const { data: tools } = await supabase
-            .from('assets')
-            .select('id, tracker_id')
-            .eq('company_id', asset.company_id)
-            .eq('type', 'tool')
-            .not('tracker_id', 'is', null)
-          const hit = (tools ?? []).find((t) => bare.includes(strip(String(t.tracker_id))))
-          toolId = hit?.id ?? null
-        }
-      }
-      if (!toolId) continue
-
-      // ── Strongest-signal arbitration ─────────────────────────────────────
-      // Two trucks parked side by side BOTH hear every tag (BLE carries
-      // 30-100+ ft), and "last reporter wins" put Tool A in the wrong truck
-      // overnight (Jul 14). The truck that hears a tag LOUDEST is holding it:
-      // in-cab reads ~-50 dBm, the truck next door ~-85. A challenger only
-      // takes the tool if it beats the current holder's signal by a clear
-      // margin (hysteresis stops yard-flapping), or the holder's sighting
-      // has gone stale (engine-off units check in ~hourly — 3h = well past
-      // two missed check-ins, the holder likely no longer sees it at all).
-      const seenMs = new Date(r.timestamp).getTime()
-      const { data: cur } = await supabase
-        .from('tool_associations')
-        .select('gateway_asset_id, rssi, last_seen')
-        .eq('tool_asset_id', toolId)
-        .maybeSingle()
-      if (cur && cur.gateway_asset_id !== asset.id) {
-        const holderFresh = seenMs - new Date(cur.last_seen).getTime() < 3 * 3_600_000
-        const HYSTERESIS_DB = 6
-        const outshouts = typeof beacon.rssi === 'number' && typeof cur.rssi === 'number' &&
-          beacon.rssi > cur.rssi + HYSTERESIS_DB
-        if (holderFresh && !outshouts) continue // current holder keeps it
-      }
-
-      // Newer columns (tag_battery 022; last_lat/lng + attached_since 033)
-      // degrade gracefully — retry with the legacy row so ingestion never
-      // breaks on a not-yet-migrated database.
-      const legacyRow: Record<string, unknown> = {
-        company_id: asset.company_id,
-        tool_asset_id: toolId,
-        gateway_asset_id: asset.id,
-        rssi: beacon.rssi,
-        last_seen: r.timestamp,
-      }
-      const assocRow: Record<string, unknown> = {
-        ...legacyRow,
-        // The gateway's fix at THIS sighting = the tag's true last-seen spot.
-        // A stale tag renders here, not wherever the carrier drove afterwards.
-        last_lat: r.lat,
-        last_lng: r.lng,
-        // New ride (or first sighting) starts the dwell clock; same holder
-        // keeps its original attach time (column omitted → value preserved).
-        ...(!cur || cur.gateway_asset_id !== asset.id ? { attached_since: r.timestamp } : {}),
-        ...(beacon.battery != null ? { tag_battery: beacon.battery } : {}),
-      }
-      const { error: assocErr } = await supabase.from('tool_associations').upsert(assocRow, { onConflict: 'tool_asset_id' })
-      if (assocErr) {
-        await supabase.from('tool_associations').upsert(legacyRow, { onConflict: 'tool_asset_id' })
-      }
-
-      // Pairing history (migration 021). tool_associations only holds the
-      // CURRENT ride; this log keeps episodes (started→ended) so "which truck
-      // had the laser level last Tuesday" is queryable. Open/extend/close as
-      // the beacon moves between gateways; best-effort — a missing table or
-      // write error must never break ingestion.
-      try {
-        const { data: open } = await supabase
-          .from('pairing_log')
-          .select('id, carrier_asset_id, last_seen')
-          .eq('member_asset_id', toolId)
-          .is('ended_at', null)
-          .order('started_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        // Unseen for 6h+ = that ride ended (engine-off units check in ~hourly,
-        // so a normal overnight gap stays one episode).
-        const GAP_MS = 6 * 3_600_000
-        const stale = open ? seenMs - new Date(open.last_seen).getTime() > GAP_MS : false
-        if (open && open.carrier_asset_id === asset.id && !stale) {
-          await supabase.from('pairing_log').update({ last_seen: r.timestamp }).eq('id', open.id)
-        } else {
-          if (open) await supabase.from('pairing_log').update({ ended_at: open.last_seen }).eq('id', open.id)
-          await supabase.from('pairing_log').insert({
-            company_id: asset.company_id,
-            kind: 'tool',
-            member_asset_id: toolId,
-            carrier_asset_id: asset.id,
-            started_at: r.timestamp,
-            last_seen: r.timestamp,
-          })
-        }
-      } catch { /* pairing log is additive; ingestion continues regardless */ }
+    // BLE tags this box heard → tool custody. The matcher, the strongest-
+    // signal arbitration and the pairing history live in lib/ble-sightings
+    // (shared with the phone gateway, /api/ingest/ble-phone).
+    if (r.beacons.length) {
+      try { await recordBeaconSightings(supabase, asset, { lat: r.lat, lng: r.lng, timestamp: r.timestamp }, r.beacons) } catch { /* custody is additive */ }
     }
   }
 

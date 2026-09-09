@@ -13,7 +13,7 @@ roadmap:
 | Feature | PWA? | Why native is required |
 |---|---|---|
 | Employee tracking in the background (app closed / screen off) | ❌ | iOS gives browsers no background location. Full stop. |
-| Crew phone as a BLE gateway (phone hears tool tags) | ❌ | iOS Safari has no Web Bluetooth; background scanning needs native |
+| Crew phone as a BLE gateway (phone hears tool tags) | ✅ (foreground, Sep 9 — background needs the native update) | iOS Safari has no Web Bluetooth; background scanning needs native |
 | Reliable push (theft alert wakes the phone at 2 AM) | ⚠️ | iOS PWA push exists (16.4+) but is best-effort; safety alerts deserve APNs |
 | Geofenced auto clock-in/out | ❌ | Needs background region monitoring |
 | Offline maps on remote sites | ⚠️ | Possible in PWA, much better native |
