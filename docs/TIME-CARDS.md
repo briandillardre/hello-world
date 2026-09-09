@@ -84,8 +84,11 @@ the `time_cards` MCP/Ask AI tool, so every surface agrees.
   via CapacitorHttp when the shell has it (WebView HTTP is throttled in the
   background); the queue and the watcher id persist in localStorage across
   page reloads (a reload orphans the native watcher otherwise).
-- **v1.4.1 = versionCode 10, dispatched to production.** 1.4.0 (versionCode
-  9) went to the internal track and is superseded.
+- **v1.4.1 = versionCode 10** — built and uploaded, but Play will not release
+  it until the one-time **Foreground service permissions** declaration (FGS
+  type location) is answered in the Play Console (board #119, wording in
+  docs/APP-STORE-PLAYBOOK.md). Re-dispatch `android-release` afterwards.
+  1.4.0 (versionCode 9) went nowhere and is superseded.
 - Already-installed apps (≤ 1.3.1) get everything else on the next web
   deploy: mandatory clock-in fix, foreground shift tracking, /timecards.
 

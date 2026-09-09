@@ -166,9 +166,33 @@ the modern bridge — plugin issue #89), and the fix batches leave through
 localStorage across page reloads, and the watcher id is persisted so a
 watcher orphaned by a reload is removed before a new one starts.
 
-Release: **1.4.1 = versionCode 10** dispatched to **production** by the
-android-release workflow (release rule). 1.4.0 (versionCode 9) went to the
-internal track only and is superseded.
+Release: **1.4.1 = versionCode 10** was dispatched to **production** by the
+android-release workflow (run #9, Sep 9 03:23 UTC). The AAB built and
+uploaded, but Play refused to commit the release:
+
+> *You must let us know whether your app uses any Foreground Service permissions.*
+
+That is the **Foreground service permissions declaration** (Android 14+ /
+targetSdk 34): the plugin's manifest declares `FOREGROUND_SERVICE_LOCATION`,
+and Play wants a one-time form per foreground-service type — much lighter
+than the background-location review, but a form Brian has to fill (board
+#119). Play Console → **App content** → *Foreground service permissions* (it
+also appears in the release error's link) → for type **Location**:
+
+- *Describe the user-facing feature that uses this foreground service:*
+  While an employee is clocked in on HammerTrack's time clock, the app
+  records the phone's location to the employee's time card (GPS-verified
+  hours for payroll) and shows the employee on their company's crew map.
+  The service starts at clock-in, runs only until clock-out, and shows a
+  persistent notification ("HammerTrack · on the clock") the whole time.
+- *Video:* a 30–60 s screen recording on the installed app: Time clock →
+  Clock in → the location disclosure sheet → Continue → the OS prompt
+  ("While using the app") → background the app → the persistent
+  notification → Clock out → the notification disappears.
+
+Then re-run `android-release` with `track: production` — nothing in the
+repo needs to change (the same versionCode 10 AAB is fine, Play never
+accepted it). 1.4.0 (versionCode 9) went nowhere and is superseded.
 
 ## Native roadmap after v1
 1. **Push notifications** — ✅ DONE for Android (FCM v1, Aug 9 — theft alerts
