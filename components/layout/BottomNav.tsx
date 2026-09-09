@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
@@ -27,6 +27,7 @@ const allItems = [
   { href: '/command', label: 'Command Center', short: 'Command', icon: MonitorPlay },
   { href: '/track', label: 'Share location', short: 'Live', icon: Radio },
   { href: '/logs', label: 'Daily logs', short: 'Logs', icon: ClipboardList },
+  { href: '/photos', label: 'Photos', icon: Camera },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/activity', label: 'Team activity', short: 'Activity', icon: Activity },
   { href: '/maintenance', label: 'Maintenance', short: 'Service', icon: Wrench },

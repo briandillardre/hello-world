@@ -50,7 +50,9 @@ export const LOG_FORM_DEFAULTS: LogFormItem[] = [
   { id: 'safety', std: 'safety', type: 'longtext', enabled: true, required: false, label: 'Safety issues', hint: 'Leave blank if none — anything written here pages the owner immediately.' },
   { id: 'trucks_fueled', std: 'trucks_fueled', type: 'yesno', enabled: true, required: true, label: 'Trucks fueled?' },
   { id: 'equipment_fueled', std: 'equipment_fueled', type: 'yesno', enabled: true, required: true, label: 'Equipment fueled?' },
-  { id: 'photos', std: 'photos', type: 'photos', enabled: true, required: false, label: 'Job photos' },
+  // Required by default (Brian, Sep 9: "daily reports … should require
+  // photos"). Companies that saved their own form keep their choice.
+  { id: 'photos', std: 'photos', type: 'photos', enabled: true, required: true, label: 'Job photos', hint: 'At least one — they land on the map where you stood.' },
   { id: 'receipts', std: 'receipts', type: 'photos', enabled: true, required: false, label: 'Receipts' },
   // Standard sections a GC can flip on — off by default so existing crews
   // see zero change until the admin opts in.

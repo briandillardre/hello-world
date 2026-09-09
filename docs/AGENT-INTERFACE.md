@@ -54,6 +54,7 @@ custom agents on the OpenAI/Anthropic SDKs) take the same URL + header pair.
 | `list_alerts` | "Any theft alerts this week?" · "Did anything move after hours?" (args: `days` 1–30, `limit` up to 200) |
 | `maintenance_status` | "Anything overdue for service?" · "What work orders are open?" |
 | `find_tool` | "Where's the demo saw?" — which truck it last rode with, when, and its recent carrier history (arg: `name`) |
+| `recent_photos` | Geotagged job photos, newest first — when, who, which site, caption, image URL, plus a per-site count (args: `zone`, `days`, `limit`). Camera shots from the map and daily-log photos (migration 101). |
 
 All numbers come from the same math the HammerTrack screens use — the
 exact-hours usage ledger for costs, the live telemetry stream for positions —
