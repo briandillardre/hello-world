@@ -21,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: { week?: st
   const [real, companyId] = await Promise.all([getRealPermissions(), getCurrentCompanyId()])
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const { monday, fromMs, toMs } = weekOf(searchParams.week, tz)
-  const scope = timecardScope(perms, real.userId)
+  const scope = timecardScope(perms, perms.viewingAs?.id ?? real.userId) // a view-as preview shows the TARGET's card
   let cards: Awaited<ReturnType<typeof getTimeCards>> = { cards: [], verified: false }
   if (!isMock) {
     const { createClient } = await import('@/lib/supabase-server')

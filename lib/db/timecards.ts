@@ -93,8 +93,7 @@ export async function getTimeCards(db: SupabaseClient, opts: {
     if (lat == null || lng == null) return null
     const zone = polys.find((z) => pointInPolygon([lng, lat], z.ring))
     if (zone) return `at ${zone.name}`
-    const place = formatPlace(cached[placeKey(lat, lng)])
-    return place ? `near ${place}` : null
+    return formatPlace(cached[placeKey(lat, lng)]) // already "near …" / "in …"
   }
 
   // Names for editors.

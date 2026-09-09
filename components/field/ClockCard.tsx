@@ -10,7 +10,7 @@ import { toast } from '@/components/ui/feedback'
 import { busy as trackBusy } from '@/lib/busy'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
 import type { LogFormItem } from '@/lib/log-form'
-import { CLOCK_EVENT, SHIFT_STATUS_EVENT, type ShiftStatus } from '@/components/field/ShiftTracker'
+import { CLOCK_EVENT, SHIFT_STATUS_EVENT, SHIFT_STATUS_QUERY, type ShiftStatus } from '@/components/field/ShiftTracker'
 
 /** Best-effort phone GPS — resolves null on denial/timeout, never blocks the
  *  crew from clocking. Every field event carries where it happened. */
@@ -98,8 +98,12 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   useEffect(() => {
     const h = (e: Event) => setShift((e as CustomEvent<ShiftStatus>).detail)
     window.addEventListener(SHIFT_STATUS_EVENT, h)
+    // The tracker only publishes on change — ask for the current state so a
+    // page opened mid-shift does not read "starts as soon as…" for minutes.
+    window.dispatchEvent(new Event(SHIFT_STATUS_QUERY))
     return () => window.removeEventListener(SHIFT_STATUS_EVENT, h)
   }, [])
+  const [waitingFix, setWaitingFix] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
   // Picked log photos, per form field — accumulated across picks (a camera-
   // forced input that replaces its FileList was silently eating photo 1 when
@@ -207,7 +211,16 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     // and mandatory tracking thru app while clocked in") — the shift's
     // GPS record starts with this fix. Denied or no fix = no clock-in, with
     // the way to fix it in words. Demo mode has nothing to record.
-    const pos = await getPos(10_000)
+    // First-time users read the OS permission dialog for a while — when the
+    // permission is still 'prompt', wait up to 45 s instead of 10 (ship-check).
+    let wait = 10_000
+    try {
+      const st = await navigator.permissions?.query?.({ name: 'geolocation' as PermissionName })
+      if (st?.state === 'prompt') wait = 45_000
+    } catch { /* no Permissions API — the short wait */ }
+    setWaitingFix(wait > 10_000)
+    const pos = await getPos(wait)
+    setWaitingFix(false)
     if (!pos && !demo) {
       setBusy(false)
       setError('Location is required to clock in. Allow location for HammerTrack (Settings → Location), then tap Clock in again.')
@@ -368,7 +381,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
             disabled={busy}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 disabled:opacity-50 hover:brightness-110 transition"
           >
-            <LogIn className="h-5 w-5" /> {busy ? 'Clocking in…' : 'Clock in'}
+            <LogIn className="h-5 w-5" /> {busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in'}
           </button>
         )}
       </div>

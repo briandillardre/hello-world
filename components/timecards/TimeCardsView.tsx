@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { isNativeApp } from '@/lib/native'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, MapPin, Pencil, Satellite, Upload } from 'lucide-react'
@@ -44,7 +45,12 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
 }) {
   const router = useRouter()
   const totals = useMemo(() => summarizeCards(cards), [cards])
-  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set(cards.length <= 3 ? cards.map((c) => c.userId) : cards.filter((c) => c.userId === myId).map((c) => c.userId)))
+  const defaultOpen = () => new Set(cards.length <= 3 ? cards.map((c) => c.userId) : cards.filter((c) => c.userId === myId).map((c) => c.userId))
+  const [openIds, setOpenIds] = useState<Set<string>>(defaultOpen)
+  // A new week is a new set of people — start it from the default expansion.
+  useEffect(() => { setOpenIds(defaultOpen()) }, [week]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [native, setNative] = useState(false)
+  useEffect(() => { setNative(isNativeApp()) }, [])
   const [editing, setEditing] = useState<TimeCardRow | null>(null)
   const [pushing, setPushing] = useState<string | null>(null)
   const toggle = (id: string) => setOpenIds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -74,13 +80,18 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
             <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><CalendarClock className="h-5 w-5 text-amber" /> Time cards</h1>
             <p className="text-[12.5px] text-faint">GPS-verified hours, week by week. Export for payroll or push a day to QuickBooks.</p>
           </div>
-          <a
-            href={`/api/timecards/export?week=${week}`}
-            className="flex-none inline-flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[12px] font-semibold text-ink hover:border-amber/50"
-            title="Download this week as a CSV (one row per entry)"
-          >
-            <Download className="h-3.5 w-3.5" /> CSV
-          </a>
+          {/* The shell has no download handler — the file is for a computer. */}
+          {native ? (
+            <span className="flex-none text-[11px] text-faint text-right max-w-[120px]">CSV export: open Time cards on a computer</span>
+          ) : (
+            <a
+              href={`/api/timecards/export?week=${week}`}
+              className="flex-none inline-flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[12px] font-semibold text-ink hover:border-amber/50"
+              title="Download this week as a CSV (one row per entry)"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV
+            </a>
+          )}
         </div>
 
         {/* Week nav */}

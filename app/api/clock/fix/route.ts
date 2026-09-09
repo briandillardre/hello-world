@@ -70,11 +70,39 @@ export async function POST(req: NextRequest) {
     if (prev && f.at && prev.at && Date.parse(f.at) - Date.parse(prev.at) < MIN_GAP_MS) continue
     spaced.push(f)
   }
+  // One round trip per batch, not four per fix (a 50-fix dead-zone batch used
+  // to be ~200 queries inside maxDuration): the phone asset is created (or
+  // reactivated) through pushPhoneLocation for the FIRST fix when it does not
+  // exist yet, the rest go in as one insert, the map revalidates once.
   let saved = 0
-  for (const f of spaced) {
-    const res = await pushPhoneLocation({ ...f, source: 'shift' })
-    if (res.reason === 'auth') return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
-    if (res.ok) saved++
+  let assetId = phone?.id ?? null
+  let rest = spaced
+  if (!assetId) {
+    const first = await pushPhoneLocation({ ...spaced[0], source: 'shift' })
+    if (first.reason === 'auth') return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
+    if (!first.ok || !first.assetId) return NextResponse.json({ ok: false, error: 'could not record the fix' }, { status: 500 })
+    assetId = first.assetId
+    saved = 1
+    rest = spaced.slice(1)
+  } else {
+    await svc.from('assets').update({ active: true }).eq('id', assetId).eq('active', false)
   }
+  if (rest.length) {
+    const nowMs = Date.now()
+    const rows = rest.map((f) => {
+      const t = f.at ? Date.parse(f.at) : nowMs
+      const atMs = Math.min(nowMs, Math.max(nowMs - 24 * 3_600_000, Number.isFinite(t) ? t : nowMs))
+      return {
+        asset_id: assetId, company_id: perms.companyId,
+        lat: f.lat, lng: f.lng, accuracy: f.accuracy, speed: f.speed, heading: f.heading,
+        timestamp: new Date(atMs).toISOString(),
+        raw: { source: 'phone', via: 'shift', lat: f.lat, lng: f.lng, accuracy: f.accuracy, speed: f.speed, heading: f.heading },
+      }
+    })
+    const { error } = await svc.from('asset_locations').insert(rows)
+    if (!error) saved += rows.length
+    else if (!saved) return NextResponse.json({ ok: false, error: 'could not record the fixes' }, { status: 500 })
+  }
+  if (saved) { const { revalidatePath } = await import('next/cache'); revalidatePath('/map') }
   return NextResponse.json({ ok: saved > 0, saved })
 }

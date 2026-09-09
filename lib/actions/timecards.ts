@@ -46,10 +46,18 @@ export async function adjustTimeEntryAction(input: {
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
   const { data: cur, error: readErr } = await db.from('time_entries')
-    .select('id, company_id, clock_in_at, clock_out_at, original_in_at, original_out_at')
+    .select('id, company_id, user_id, clock_in_at, clock_out_at, original_in_at, original_out_at')
     .eq('id', input.id).eq('company_id', perms.companyId).maybeSingle()
   if (readErr) return { ok: false, error: /column/i.test(readErr.message) ? 'Deploy the latest build first (migration 103).' : readErr.message }
   if (!cur) return { ok: false, error: 'Entry not found' }
+  // Reopening a closed entry restarts the phone's recording for it — refuse
+  // when the person already has another open shift (two open entries would
+  // both count hours; clock-out closes only the newest).
+  if (outMs == null && cur.clock_out_at) {
+    const { count } = await db.from('time_entries').select('id', { count: 'exact', head: true })
+      .eq('company_id', perms.companyId).eq('user_id', cur.user_id).is('clock_out_at', null)
+    if ((count ?? 0) > 0) return { ok: false, error: 'This person already has an open shift — close that one before reopening this entry.' }
+  }
 
   const patch: Record<string, unknown> = {
     clock_in_at: new Date(inMs).toISOString(),

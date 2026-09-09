@@ -43,6 +43,11 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
+    // Shift tracking (Sep 9): @capacitor-community/background-geolocation
+    // documents that location updates HALT after ~5 minutes in the
+    // background on the modern bridge — the legacy bridge keeps them coming
+    // (plugin README / issue #89). Native rebuild: v1.4.1, versionCode 10.
+    useLegacyBridge: true,
   },
 }
 
