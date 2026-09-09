@@ -154,6 +154,29 @@ export async function GET(req: NextRequest) {
       if (error) throw new Error(error.message)
       out.purged = Array.isArray(data) ? data[0] : data
     } catch (err) { out.purge = err instanceof Error ? err.message : 'failed' }
+
+    // 5 — photo objects nobody finalized (sec-check on 101): a signed upload
+    // that never became a field_photos row is removed after a day. Bounded:
+    // companies with photo activity this week, up to 1000 objects each.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const svc = createServiceClient()
+      const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
+      const { data: recent } = await svc.from('field_photos').select('company_id').gte('created_at', since).limit(5000)
+      const companies = Array.from(new Set((recent ?? []).map((r) => r.company_id as string))).slice(0, 50)
+      let swept = 0
+      for (const co of companies) {
+        const { data: objects } = await svc.storage.from('field-photos').list(`${co}/photos`, { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } })
+        const stale = (objects ?? []).filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - 86_400_000)
+        if (!stale.length) continue
+        const { data: known } = await svc.from('field_photos').select('url, thumb_url').eq('company_id', co)
+        const keep = new Set<string>()
+        for (const k of known ?? []) for (const u of [k.url, k.thumb_url]) if (typeof u === 'string') keep.add(u.slice(u.lastIndexOf('/') + 1))
+        const orphans = stale.filter((o) => !keep.has(o.name)).map((o) => `${co}/photos/${o.name}`)
+        if (orphans.length) { await svc.storage.from('field-photos').remove(orphans.slice(0, 200)); swept += Math.min(200, orphans.length) }
+      }
+      out.photoOrphansSwept = swept
+    } catch (err) { out.photoSweep = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

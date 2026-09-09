@@ -10,9 +10,13 @@ than rebuilding in React Native or going fully native (Swift/Kotlin).
 
 **Why this is the right call for HammerTrack:**
 - The phone's job is **view the live map + receive alerts**. The Bluetooth tool
-  tracking happens on the *truck/equipment* gateways (Teltonika), **not** the
-  phone — so we don't need deep native BLE on the handset. That removes the #1
-  reason teams go fully native.
+  tracking happens first on the *truck/equipment* gateways (Teltonika) — and,
+  since Sep 9 2026, on the phone too while the app is open ("This phone hears
+  tags" on the Tag scanner page → `/api/ingest/ble-phone`, the same matcher
+  and custody rules as a truck's box, `lib/ble-sightings.ts`). The
+  @capacitor-community/bluetooth-le plugin covers that without going fully
+  native; scanning with the app CLOSED is the native background update
+  (task #57).
 - One codebase. Every web feature (map, assets, alerts, maintenance, reports,
   QuickBooks) is instantly in the apps. No second product to maintain.
 - The only truly-native need is **push notifications** ("excavator left at

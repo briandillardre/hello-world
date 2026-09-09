@@ -324,6 +324,25 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
       if (rcptErr) console.error('Receipt indexing skipped:', rcptErr.message)
     }
 
+    // Job photos join the field-photo index (101) at the phone's fix, filed
+    // under the shift's site — that is what the map's Photos layer draws.
+    const jobPhotos = photos.filter((ph) => ph.kind === 'photo')
+    const saneFix = hasPos && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)
+    if (jobPhotos.length && saneFix && logRow?.id) {
+      try {
+        const { createServiceClient } = await import('@/lib/supabase-server')
+        const at = backAt ?? new Date().toISOString()
+        const { error: fpErr } = await createServiceClient().from('field_photos').upsert(
+          jobPhotos.map((ph) => ({
+            company_id: companyId, user_id: userId, source: 'daily_log', source_id: logRow!.id,
+            geofence_id: entryProject, url: ph.url, lat, lng, taken_at: at,
+          })),
+          { onConflict: 'url', ignoreDuplicates: true },
+        )
+        if (fpErr) console.error('Field photo indexing skipped:', fpErr.message)
+      } catch { /* pre-101 */ }
+    }
+
     const outAt = backAt ?? new Date().toISOString()
     const outPatch = hasPos
       ? { clock_out_at: outAt, out_lat: lat, out_lng: lng }

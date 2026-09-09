@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bluetooth, BluetoothSearching, Copy, Check, Smartphone, RefreshCw } from 'lucide-react'
 import { isNativeApp, nativePlatform } from '@/lib/native'
 import {
-  type ScannedTag, trackerIdFor, trackerIdHexFor, proximityLabel, signalFraction,
+  type ScannedTag, trackerIdFor, trackerIdHexFor, proximityLabel, signalFraction, parseIBeacon, APPLE_COMPANY_ID,
 } from '@/lib/ble'
+import { GatewayToggle } from './GatewayToggle'
 
 /** Shape of a BleClient scan result — declared locally so the web build has
  *  no dependency on the native plugin (it's dynamically imported, and only
@@ -15,26 +16,6 @@ interface ScanResultLike {
   localName?: string
   rssi?: number
   manufacturerData?: Record<string, DataView>
-}
-
-/**
- * Apple's company identifier. iBeacon frames ride inside manufacturer-specific
- * data under 0x004C, which is why we parse by company id rather than trusting
- * a plugin to hand us a typed beacon — every platform surfaces this slightly
- * differently, but the bytes are the bytes.
- */
-const APPLE_COMPANY_ID = '76' // 0x004C, keyed as decimal by @capacitor-community/bluetooth-le
-
-/** Pull UUID / major / minor out of an iBeacon manufacturer-data payload.
- *  Layout after the company id: 02 15 <16-byte UUID> <major:2> <minor:2> <tx:1> */
-function parseIBeacon(view: DataView): { uuid: string; major: number; minor: number } | null {
-  if (view.byteLength < 23) return null
-  if (view.getUint8(0) !== 0x02 || view.getUint8(1) !== 0x15) return null
-  const hex: string[] = []
-  for (let i = 2; i < 18; i++) hex.push(view.getUint8(i).toString(16).padStart(2, '0'))
-  const h = hex.join('')
-  const uuid = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`.toUpperCase()
-  return { uuid, major: view.getUint16(18), minor: view.getUint16(20) }
 }
 
 /**
@@ -156,6 +137,7 @@ export function TagScanner() {
 
   return (
     <div className="space-y-3">
+      <GatewayToggle />
       <div className="flex items-center gap-2">
         <button
           onClick={scanning ? stop : start}

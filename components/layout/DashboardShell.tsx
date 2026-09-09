@@ -8,6 +8,7 @@ import { AssistantWidget } from '@/components/assistant/AssistantWidget'
 import { signOutAction } from '@/lib/actions/auth'
 import { ViewAsBanner } from './ViewAsBanner'
 import { ReceiptNagBar } from '@/components/receipts/ReceiptNagBar'
+import { PhoneGateway } from '@/components/tools/PhoneGateway'
 
 /**
  * Client shell for the dashboard: owns the collapsible-sidebar state so the
@@ -69,6 +70,8 @@ export function DashboardShell({
       </main>
       <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} features={features} askAi={askAi} onSignOut={signOutAction} />
       {askAi && <AssistantWidget />}
+      {/* Native app only: the phone reports the BLE tags it hears (switch on the Tag scanner page). */}
+      <PhoneGateway />
     </>
   )
 }
