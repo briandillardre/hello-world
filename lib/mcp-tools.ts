@@ -17,7 +17,9 @@ import type { AssetType, Geofence } from './types'
 import { pointInPolygon } from './alerts-engine'
 import { computeStatus, type MaintenanceStatus } from './db/maintenance'
 import { usageFromLedger } from './costs'
-import { dayKey, fmtDateTime, DEFAULT_TZ } from './dates'
+import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ } from './dates'
+import { getTimeCards, weekOf } from './db/timecards'
+import { FLAG_LABEL, categoryLabel } from './timecards'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -120,6 +122,20 @@ export const MCP_TOOLS: McpToolDef[] = [
         zone: { type: 'string', description: 'Site/zone name (partial ok). Omit for every site.' },
         days: { type: 'number', description: 'Window in days, counting back from today (default 7, max 90).' },
         limit: { type: 'number', description: 'Max photos to return (default 40, max 200).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'time_cards',
+    description:
+      'Crew time cards (migration 103): per person, paid hours split regular / overtime (over 40 h in the window — pass `week` for a payroll read), hours by job site, whether they are clocked in right now, and how GPS-verified the hours are (the phone\'s fixes during each shift and the share that fell inside the clocked job site). Each day lists its entries: clock-in / clock-out times, where those happened, unpaid break, and plain flags (Still clocked in, No GPS, Mostly off-site, Long shift, Edited, No job site). Use for "who worked where this week", "how many hours did X put in", "is anyone still clocked in", "were the hours actually on site", payroll and overtime questions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        week: { type: 'string', description: 'Any date (YYYY-MM-DD) inside the Monday–Sunday pay week wanted; overrides days.' },
+        days: { type: 'number', description: 'Rolling window in days ending now (default 7, max 62).' },
+        person: { type: 'string', description: 'Only this person (partial name ok). Omit for the whole crew.' },
       },
       required: [],
     },
@@ -613,6 +629,55 @@ async function runRecentPhotos(companyId: string, args: { zone?: unknown; days?:
   return ok({ photos, countBySite: Object.fromEntries(perZone), days, timezone: DEFAULT_TZ })
 }
 
+async function runTimeCards(companyId: string, args: { week?: unknown; days?: unknown; person?: unknown }): Promise<McpToolResult> {
+  const tz = DEFAULT_TZ
+  const days = Math.min(62, Math.max(1, Math.round(Number(args.days) || 7)))
+  const win = isDayKey(args.week)
+    ? (() => { const w = weekOf(args.week, tz); return { fromMs: w.fromMs, toMs: w.toMs, label: `pay week of ${w.monday}` } })()
+    : { fromMs: Date.now() - days * 86_400_000, toMs: Date.now(), label: `last ${days} day(s)` }
+  const db = await service()
+  const { cards, verified } = await getTimeCards(db, { companyId, fromMs: win.fromMs, toMs: win.toMs, tz })
+  const person = typeof args.person === 'string' ? args.person.trim().toLowerCase() : ''
+  const picked = person ? cards.filter((c) => c.personName.toLowerCase().includes(person)) : cards
+  if (person && !picked.length && cards.length) return ok({ people: [], note: `No time card matches "${args.person}". People with hours: ${cards.map((c) => c.personName).join(', ')}.` })
+  const people = picked.map((c) => ({
+    person: c.personName,
+    hours: c.hours,
+    regular: c.regular,
+    overtime: c.overtime,
+    onTheClockNow: c.openNow,
+    gpsVerifiedPct: c.verifiedPct,
+    flags: Object.fromEntries(Object.entries(c.flags).filter(([, n]) => n > 0).map(([k, n]) => [FLAG_LABEL[k as keyof typeof FLAG_LABEL], n])),
+    bySite: c.sites.map((s) => ({ site: s.label, hours: s.hours })),
+    days: c.days.map((d) => ({
+      day: d.dayKey,
+      hours: d.hours,
+      entries: d.entries.map((e) => ({
+        in: fmtDateTime(Date.parse(e.inAt), tz),
+        out: e.outAt ? fmtDateTime(Date.parse(e.outAt), tz) : 'still clocked in',
+        paidHours: e.hours,
+        breakMinutes: e.breakMinutes || undefined,
+        category: categoryLabel(e.category),
+        site: e.category === 'project' ? e.zoneName : undefined,
+        clockedInAt: e.inPlace ?? undefined,
+        clockedOutAt: e.outPlace ?? undefined,
+        gpsFixes: e.gps?.fixes ?? undefined,
+        onSitePct: e.onSitePct ?? undefined,
+        flags: e.flags.length ? e.flags.map((f) => FLAG_LABEL[f]) : undefined,
+        edited: e.edited ? { by: e.edited.by, note: e.edited.note } : undefined,
+        plan: e.plan || undefined,
+      })),
+    })),
+  }))
+  return ok({
+    window: { label: win.label, from: fmtDateTime(win.fromMs, tz), to: fmtDateTime(win.toMs, tz), timezone: tz },
+    overtimeRule: 'hours over 40 in the window; a pay week when `week` is passed',
+    gpsVerification: verified ? 'each shift: the person\'s phone fixes between clock-in and clock-out, and the share inside the clocked job site' : 'not available yet (migration 103 pending)',
+    people,
+    ...(people.length ? {} : { note: 'No time entries in this window.' }),
+  })
+}
+
 export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
@@ -627,6 +692,7 @@ export async function runMcpTool(
       case 'find_tool': return runFindTool(companyId, args)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
+      case 'time_cards': return runTimeCards(companyId, args)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

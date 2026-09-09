@@ -13,7 +13,13 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>HammerTrack can save exported maps and reports to your photo library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Your location appears on your company's live map only while you turn on crew tracking (Go Live).</string>
+	<string>Your location appears on your company's live map while you share it (Go Live) and is recorded for your time card while you are clocked in.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>While you are clocked in, HammerTrack records where your shift goes — even with the app closed — to verify your time card and show you on the crew map. Recording stops when you clock out.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>HammerTrack scans for Bluetooth tool tags to show which truck or machine is carrying each tool.</string>
 	<key>CFBundleDevelopmentRegion</key>

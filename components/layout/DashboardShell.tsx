@@ -9,6 +9,7 @@ import { signOutAction } from '@/lib/actions/auth'
 import { ViewAsBanner } from './ViewAsBanner'
 import { ReceiptNagBar } from '@/components/receipts/ReceiptNagBar'
 import { PhoneGateway } from '@/components/tools/PhoneGateway'
+import { ShiftTracker } from '@/components/field/ShiftTracker'
 
 /**
  * Client shell for the dashboard: owns the collapsible-sidebar state so the
@@ -72,6 +73,8 @@ export function DashboardShell({
       {askAi && <AssistantWidget />}
       {/* Native app only: the phone reports the BLE tags it hears (switch on the Tag scanner page). */}
       <PhoneGateway />
+      {/* While the person is clocked in, the phone records where the shift goes (mandatory; native background when the app has the plugin). */}
+      <ShiftTracker />
     </>
   )
 }

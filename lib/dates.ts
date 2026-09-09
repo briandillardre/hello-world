@@ -4,7 +4,7 @@
  * The browser reports its zone via the ht_tz cookie (see TzCookie).
  */
 
-function tzOffsetMs(tz: string, at: number): number {
+export function tzOffsetMs(tz: string, at: number): number {
   const p = Object.fromEntries(
     new Intl.DateTimeFormat('en-US', {
       timeZone: tz, hour12: false,
@@ -113,3 +113,25 @@ export const fmtDateTime = (ms: number, tz: string) =>
 /** "2026-07-11" — calendar-day bucket key in tz (groups by LOCAL day, not UTC). */
 export const dayKey = (ms: number, tz: string) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms))
+
+/** Local midnight of a "YYYY-MM-DD" key in tz, epoch ms (DST-safe: one
+ *  refinement handles the offset-at-midnight vs offset-at-guess difference). */
+export function zonedMidnightMs(key: string, tz: string): number {
+  const [y, m, d] = key.split('-').map(Number)
+  const guess = Date.UTC(y, m - 1, d)
+  return guess - tzOffsetMs(tz, guess - tzOffsetMs(tz, guess))
+}
+
+/** Calendar arithmetic on a "YYYY-MM-DD" key (no timezone involved). */
+export function addDaysKey(key: string, n: number): string {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+/** True for a well-formed "YYYY-MM-DD" that is a real calendar date. */
+export function isDayKey(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  const [y, m, d] = v.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1, d))
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d
+}

@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/feedback'
 import { busy as trackBusy } from '@/lib/busy'
 import type { ClockCategory, TimeEntry } from '@/lib/field-types'
 import type { LogFormItem } from '@/lib/log-form'
+import { CLOCK_EVENT, SHIFT_STATUS_EVENT, type ShiftStatus } from '@/components/field/ShiftTracker'
 
 /** Best-effort phone GPS — resolves null on denial/timeout, never blocks the
  *  crew from clocking. Every field event carries where it happened. */
@@ -92,6 +93,13 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   // React #425/#422 (server hour is UTC, the phone's is not; the elapsed
   // minute could tick between render and hydrate) — found by the Sep 1 sweep.
   const [now, setNow] = useState<number | null>(null)
+  // What the shell's shift tracker is doing for this open shift (ShiftTracker).
+  const [shift, setShift] = useState<ShiftStatus | null>(null)
+  useEffect(() => {
+    const h = (e: Event) => setShift((e as CustomEvent<ShiftStatus>).detail)
+    window.addEventListener(SHIFT_STATUS_EVENT, h)
+    return () => window.removeEventListener(SHIFT_STATUS_EVENT, h)
+  }, [])
   const formRef = useRef<HTMLFormElement>(null)
   // Picked log photos, per form field — accumulated across picks (a camera-
   // forced input that replaces its FileList was silently eating photo 1 when
@@ -195,7 +203,16 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     if (busy) return
     setBusy(true)
     setError(null)
-    const pos = await getPos()
+    // Location is REQUIRED to clock in (Brian, Sep 9: "clock in also a must
+    // and mandatory tracking thru app while clocked in") — the shift's
+    // GPS record starts with this fix. Denied or no fix = no clock-in, with
+    // the way to fix it in words. Demo mode has nothing to record.
+    const pos = await getPos(10_000)
+    if (!pos && !demo) {
+      setBusy(false)
+      setError('Location is required to clock in. Allow location for HammerTrack (Settings → Location), then tap Clock in again.')
+      return
+    }
     const input = {
       category,
       projectGeofenceId: category === 'project' ? zoneId || null : null,
@@ -215,7 +232,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       const res = await clockInAction({ ...input, idempotencyKey: key })
       setBusy(false)
       if (!res.ok) setError(res.error ?? 'Clock-in failed') // server said no — show it
-      else router.refresh()
+      else { window.dispatchEvent(new Event(CLOCK_EVENT)); router.refresh() }
     } catch {
       saveOffline()
     }
@@ -265,6 +282,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       if (!res.ok) setError(res.error ?? 'Clock-out failed') // server said no — show it
       else {
         clearLogForm()
+        window.dispatchEvent(new Event(CLOCK_EVENT))
         router.refresh()
       }
     } catch {
@@ -380,6 +398,18 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       {openEntry.plan && (
         <p className="text-[13px] text-muted border-l-2 border-navy-700 pl-2.5">Today&apos;s plan: {openEntry.plan}</p>
       )}
+      {/* Mandatory shift tracking (Sep 9): what the phone is recording. */}
+      <p className={`text-[12px] flex items-center gap-1.5 ${shift?.denied ? 'text-amber' : 'text-faint'}`}>
+        <span aria-hidden>📍</span>
+        {shift?.denied
+          ? 'Location is off — your shift is not being recorded. Turn it on to keep your time card GPS-verified.'
+          : shift?.engine === 'native'
+            ? `Shift tracking on, even with the app closed${shift.fixes ? ` · ${shift.fixes} fixes this session` : ''}`
+            : shift?.engine === 'web'
+              ? `Shift tracking on while the app is open${shift.fixes ? ` · ${shift.fixes} fixes this session` : ''}`
+              : 'Shift tracking starts as soon as the app has your location.'}
+        <Link href="/timecards" className="ml-auto text-teal underline-offset-2 hover:underline whitespace-nowrap">Time card →</Link>
+      </p>
 
       {queued.out > 0 ? (
         <div className="rounded-xl border border-amber/40 bg-amber/10 p-4 space-y-1.5">

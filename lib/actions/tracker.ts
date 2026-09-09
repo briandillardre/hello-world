@@ -15,6 +15,12 @@ export interface PhoneFix {
   accuracy?: number | null
   heading?: number | null
   battery?: number | null
+  /** When the fix was taken (ISO) — a background batch replays honest times.
+   *  Clamped: nothing in the future, nothing older than 24 h. Default = now. */
+  at?: string | null
+  /** Who produced it: 'live' (Share location), 'shift' (the clock's tracker),
+   *  'gateway' (the BLE phone gateway). Lands in raw.source for the record. */
+  source?: 'live' | 'shift' | 'gateway' | null
 }
 
 /**
@@ -62,6 +68,16 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
     await svc.from('assets').update({ active: true }).eq('id', assetId)
   }
 
+  // The fix's own time when the client says so (a shift batch that waited
+  // out a dead zone), clamped to [now − 24 h, now]; otherwise now.
+  const nowMs = Date.now()
+  let atMs = nowMs
+  if (typeof fix.at === 'string') {
+    const t = Date.parse(fix.at)
+    if (Number.isFinite(t)) atMs = Math.min(nowMs, Math.max(nowMs - 24 * 3_600_000, t))
+  }
+  const { at: _at, source, ...rest } = fix
+  void _at
   const { error: locErr } = await svc.from('asset_locations').insert({
     asset_id: assetId,
     company_id: companyId,
@@ -71,8 +87,8 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
     battery: fix.battery ?? null,
     speed: fix.speed ?? null,
     heading: fix.heading ?? null,
-    timestamp: new Date().toISOString(),
-    raw: { source: 'phone', ...fix },
+    timestamp: new Date(atMs).toISOString(),
+    raw: { source: 'phone', ...rest, ...(source ? { via: source } : {}) },
   })
   if (locErr) return { ok: false, reason: 'location' }
 

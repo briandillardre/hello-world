@@ -443,6 +443,38 @@ export const GUIDES: HelpGuide[] = [
         ),
       },
       {
+        heading: 'Location is part of clocking in',
+        body: (
+          <>
+            <P>
+              Clocking in needs your location — if the phone can&apos;t get a fix, the button tells you how
+              to allow it. While you&apos;re clocked in the app records where the shift goes and files it
+              under your time card; on the HammerTrack app (1.4 and up) that keeps going with the screen off.
+              It stops the moment you clock out. Location off while clocked in = an amber bar until it&apos;s
+              back on or you clock out.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Time cards',
+        body: (
+          <>
+            <P>
+              <B>Time cards</B> (Field group) shows the week: paid hours split regular / overtime at 40,
+              hours by job site, each entry&apos;s clock-in and clock-out with <B>where</B> they happened, and
+              a <B>GPS-verified %</B> — how much of the clocked time the phone actually placed on that job
+              site. Flags say what to look at: <B>Still clocked in · No GPS · Mostly off-site · Long shift · Edited</B>.
+            </P>
+            <P>
+              Crew see their own card; Foreman and up see the crew&apos;s. The office exports the week as
+              <B> CSV</B> for payroll or pushes a day to <B>QuickBooks</B>; a manager can correct an entry
+              (forgot to clock out) — the recorded times stay on the row beside the correction.
+            </P>
+          </>
+        ),
+      },
+      {
         heading: 'Where the hours end up',
         body: (
           <L

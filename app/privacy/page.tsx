@@ -101,16 +101,26 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2>Location while Go Live is on</h2>
+            <h2>Location while Go Live is on, and while you are clocked in</h2>
             <p className="mt-2">
-              When — and only when — you turn on live crew tracking (&ldquo;Go Live&rdquo;), the app
-              collects that device&apos;s location <strong className="text-ink">while the app is open
-              and in use</strong>, so your fleet map stays live for your team during the working
-              session. Background collection is not enabled in the current Android app — location
-              sharing pauses when the app is closed. Tracking runs only while Go Live is on and
-              stops the moment you turn it off or the session ends. This location is used solely to
-              display your fleet on your company&apos;s map and to trigger the alerts you configure —
-              it is never used for advertising and never sold or shared with third parties.
+              <strong className="text-ink">Go Live:</strong> when — and only when — you turn on live crew
+              tracking, the app collects that device&apos;s location <strong className="text-ink">while the app is
+              open and in use</strong>, so your fleet map stays live for your team. It stops the moment you turn
+              it off or the session ends.
+            </p>
+            <p className="mt-2">
+              <strong className="text-ink">Clocked in:</strong> when you clock in on the time clock, the app
+              records this device&apos;s location <strong className="text-ink">until you clock out — including
+              when the app is closed or not in use</strong> on app versions that support it (Android 1.4 and
+              later; you are shown a notice and asked for permission before this starts). Your employer uses
+              this to record where your shift happened and to verify your time card. Nothing is recorded when
+              you are not clocked in. Turning location off while clocked in pauses recording and the app tells
+              you so.
+            </p>
+            <p className="mt-2">
+              Location is used solely to display your fleet and crew on your company&apos;s map, to build
+              your company&apos;s time cards and to trigger the alerts your company configures — it is never
+              used for advertising and never sold or shared with third parties.
             </p>
           </section>
 
