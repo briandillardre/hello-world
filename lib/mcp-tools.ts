@@ -110,6 +110,20 @@ export const MCP_TOOLS: McpToolDef[] = [
       'The insight engine\'s current findings for this company: budget overruns, cost running over the recent normal, idle machines burning ownership dollars, after-hours movement trends, missing receipts — each with the evidence numbers behind it. Findings are computed nightly from the usage ledger (never guessed). Use for "what should I look at", "how are we doing", "anything I should know", "any problems" questions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
+  {
+    name: 'recent_photos',
+    description:
+      'Geotagged job photos the crew took (camera shots from the map and daily-log photos), newest first: when, who, which site zone it fell in, the caption, and the image URL. Use it to see what a site looked like on a day, prove work happened, or count how much the crew is documenting per site.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        zone: { type: 'string', description: 'Site/zone name (partial ok). Omit for every site.' },
+        days: { type: 'number', description: 'Window in days, counting back from today (default 7, max 90).' },
+        limit: { type: 'number', description: 'Max photos to return (default 40, max 200).' },
+      },
+      required: [],
+    },
+  },
 ]
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
@@ -558,6 +572,47 @@ async function runWorthALook(companyId: string): Promise<McpToolResult> {
  * throws: executor failures (including the 10s budget) come back as
  * isError tool results the calling model can read and recover from.
  */
+/** Geotagged job photos (migration 101) — the crew's own evidence of the day. */
+async function runRecentPhotos(companyId: string, args: { zone?: unknown; days?: unknown; limit?: unknown }): Promise<McpToolResult> {
+  const days = Math.min(90, Math.max(1, Math.round(Number(args.days) || 7)))
+  const limit = Math.min(200, Math.max(1, Math.round(Number(args.limit) || 40)))
+  const db = await service()
+  const geofences = await getCompanyGeofences(companyId)
+  let zoneId: string | null = null
+  if (typeof args.zone === 'string' && args.zone.trim()) {
+    const z = matchByName(args.zone, geofences as unknown as { id: string; name: string }[])
+    if (!z) return ok({ photos: [], note: `No zone matches "${args.zone}".` })
+    zoneId = z.id
+  }
+  let q = db.from('field_photos')
+    .select('id, url, thumb_url, lat, lng, taken_at, caption, source, geofence_id, user_id')
+    .eq('company_id', companyId)
+    .gte('taken_at', new Date(Date.now() - days * 86_400_000).toISOString())
+    .order('taken_at', { ascending: false })
+    .limit(limit)
+  if (zoneId) q = q.eq('geofence_id', zoneId)
+  const [{ data: rows, error }, { data: people }] = await Promise.all([q, db.from('profiles').select('id, name').eq('company_id', companyId)])
+  if (error) return ok({ photos: [], note: 'Photos are not available yet.' })
+  const zoneName = new Map(geofences.map((g) => [g.id as string, g.name as string]))
+  const who = new Map((people ?? []).map((p) => [p.id as string, (p.name as string) || null]))
+  const perZone = new Map<string, number>()
+  const photos = (rows ?? []).map((r) => {
+    const zone = r.geofence_id ? zoneName.get(r.geofence_id as string) ?? null : null
+    perZone.set(zone ?? 'off-site', (perZone.get(zone ?? 'off-site') ?? 0) + 1)
+    return {
+      takenAt: fmtDateTime(Date.parse(r.taken_at as string), DEFAULT_TZ),
+      by: r.user_id ? who.get(r.user_id as string) ?? null : null,
+      zone: zone ?? 'off-site',
+      lat: Number(r.lat), lng: Number(r.lng),
+      caption: (r.caption as string | null) ?? null,
+      source: r.source,
+      url: r.url as string,
+      thumbUrl: (r.thumb_url as string | null) ?? null,
+    }
+  })
+  return ok({ photos, countBySite: Object.fromEntries(perZone), days, timezone: DEFAULT_TZ })
+}
+
 export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
@@ -571,6 +626,7 @@ export async function runMcpTool(
       case 'maintenance_status': return runMaintenanceStatus(companyId)
       case 'find_tool': return runFindTool(companyId, args)
       case 'whats_worth_a_look': return runWorthALook(companyId)
+      case 'recent_photos': return runRecentPhotos(companyId, args)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

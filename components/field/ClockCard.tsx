@@ -99,6 +99,12 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const [photoFiles, setPhotoFiles] = useState<Record<string, { file: File; url: string }[]>>({})
   const photoFilesRef = useRef(photoFiles)
   photoFilesRef.current = photoFiles
+  // Required photo fields with nothing picked yet — the clock-out button
+  // waits for them (Brian, Sep 9: "daily reports … should require photos").
+  const missingPhotos = form
+    .filter((it) => it.enabled && it.type === 'photos' && it.required)
+    .filter((it) => !(photoFiles[it.std === 'photos' ? 'photos' : it.std === 'receipts' ? 'receipts' : `f_${it.id}`]?.length))
+    .map((it) => it.label)
 
   // ── Offline queue awareness: coverage indicator + pending-sync counts ──
   // (starts true/zero so server + client render the same HTML on hydration)
@@ -548,13 +554,16 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           })}
 
           {error && <p className="text-[12.5px] text-alert">{error}</p>}
+          {missingPhotos.length > 0 && (
+            <p className="text-[12.5px] text-amber">📷 {missingPhotos.length === 1 ? `“${missingPhotos[0]}” needs at least one photo before you clock out.` : `${missingPhotos.map((l) => `“${l}”`).join(' and ')} need at least one photo before you clock out.`}</p>
+          )}
 
           <div className="flex gap-2">
             <button type="button" onClick={() => setLoggingOut(false)}
               className="flex-1 rounded-xl border border-navy-700 text-muted py-3.5 text-sm font-semibold hover:text-ink transition">
               Back
             </button>
-            <button type="submit" disabled={busy}
+            <button type="submit" disabled={busy || missingPhotos.length > 0}
               className="flex-[2] flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 disabled:opacity-50 hover:brightness-110 transition">
               <LogOut className="h-5 w-5" /> {busy ? 'Saving…' : 'Log it & clock out'}
             </button>

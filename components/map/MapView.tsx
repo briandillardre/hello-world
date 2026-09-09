@@ -52,6 +52,8 @@ import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
 import { WeatherControl, type BaseStyle } from './WeatherControl'
+import { PhotoCaptureSheet } from '@/components/photos/PhotoCaptureSheet'
+import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
 
 const SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
@@ -1188,6 +1190,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   const [radarOn, setRadarOn] = useState(lastState.radar ?? kiosk)
   // Manual freeze for the live radar loop (map stays put, sky stops moving).
   const [radarPaused, setRadarPaused] = useState(false)
+  // Job photos (mig 101): the 📷 rail button opens the capture sheet; tapping
+  // a picture on the Photos layer opens it full size.
+  const [photoSheet, setPhotoSheet] = useState(false)
+  const [photoLightbox, setPhotoLightbox] = useState<{ url: string; caption: string } | null>(null)
+  const openPhotoSheetRef = useRef<() => void>(() => {})
+  openPhotoSheetRef.current = () => setPhotoSheet(true)
   // The right-rail radar button (native map control) — appearance synced to
   // radarOn by an effect, since IControls are built once outside React.
   const radarBtnEl = useRef<HTMLButtonElement | null>(null)
@@ -1590,6 +1598,27 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       onRemove() { radarBtnEl.current = null },
     }
     map.current.addControl(radarControl, ctrlCorner)
+
+    // 📷 Job photo — the camera lives on the map because that is where the
+    // crew is looking (Brian, Sep 9). Not on the wall display.
+    if (!kiosk) {
+      const photoControl: maplibregl.IControl = {
+        onAdd() {
+          const div = document.createElement('div')
+          div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+          const b = document.createElement('button')
+          b.type = 'button'
+          b.title = 'Take a job photo'
+          b.setAttribute('aria-label', 'Take a job photo')
+          b.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>'
+          b.onclick = () => openPhotoSheetRef.current()
+          div.appendChild(b)
+          return div
+        },
+        onRemove() { /* nothing to tear down */ },
+      }
+      map.current.addControl(photoControl, ctrlCorner)
+    }
 
     // Scale bar (Google Maps staple) — feet/miles, bottom-left, out of the
     // way of the timeline. Doubles as a sanity check on drone-overlay sizing.
@@ -2794,7 +2823,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             if (ring) for (const c of ring) pts.push([c[0], c[1]])
           }
         }
-        if (pts.length > 0) {
+        // A deep link to a spot (/map?lat&lng, the /photos "On the map" link)
+        // owns the opening frame instead.
+        const urlSpot = typeof window !== 'undefined' && /[?&]lat=/.test(window.location.search) && /[?&]lng=/.test(window.location.search)
+        if (pts.length > 0 && !urlSpot) {
           const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
           m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
         }
@@ -4656,6 +4688,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             `<div style="font-weight:700;color:${color}">${title} · ${escHtml(p.person)}</div>` +
             `<div style="color:#9fb6cc">${escHtml(p.at)}${p.zone ? ` · ${escHtml(p.zone)}` : ''}</div>` +
             (p.text ? `<div style="margin-top:4px;color:#e8f0f7;white-space:normal;overflow-wrap:break-word">${escHtml(p.text)}</div>` : '') +
+            (p.photo ? `<a href="${escHtml(p.photo)}" target="_blank" rel="noreferrer"><img src="${escHtml(p.photo)}" alt="Job photo" style="display:block;margin-top:6px;max-height:120px;border-radius:8px;border:1px solid #223247"/></a>${Number(p.photos) > 1 ? `<div style="color:#9fb6cc;font-size:11px">+${Number(p.photos) - 1} more on the Photos layer</div>` : ''}` : '') +
             `<a href="/logs" style="color:#2dd4bf;font-size:11px">open daily logs →</a></div>`
           )
           .addTo(m)
@@ -4667,12 +4700,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     let cancelled = false
     fetch('/api/field-activity')
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { events?: { kind: string; lat: number; lng: number; person: string; at: string; zone: string | null; text: string }[] } | null) => {
+      .then((j: { events?: { kind: string; lat: number; lng: number; person: string; at: string; zone: string | null; text: string; photo?: string | null; photos?: number }[] } | null) => {
         if (cancelled || !j?.events) return
         const features = j.events.map((ev) => ({
           type: 'Feature' as const,
           geometry: { type: 'Point' as const, coordinates: [ev.lng, ev.lat] },
-          properties: { kind: ev.kind, tag: ev.kind === 'clockin' ? 'IN' : 'LOG', person: ev.person, at: ev.at, zone: ev.zone ?? '', text: ev.text },
+          properties: { kind: ev.kind, tag: ev.kind === 'clockin' ? 'IN' : 'LOG', person: ev.person, at: ev.at, zone: ev.zone ?? '', text: ev.text, photo: ev.photo ?? '', photos: ev.photos ?? 0 },
         }))
         ;(m.getSource('fieldops') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
         window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'fieldops', at: Date.now() } }))
@@ -4760,6 +4793,125 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     window.addEventListener('ht:receipt-captured', onCaptured)
     return () => { cancelled = true; if (timer) window.clearInterval(timer); window.removeEventListener('ht:receipt-captured', onCaptured) }
   }, [mapReady, overlaysOn.receipts, pbActive, realWindowEff])
+
+  // ── Photos (mig 101; Brian, Sep 9: "like Google Photos' map") ─────────────
+  // Zoomed out: a heat of where the crew shoots. Closer: orange count pucks
+  // (clusters). At a site: the pictures themselves — each thumbnail becomes a
+  // map image (rounded square, white border) once it has loaded, a plain pin
+  // until then. Tap a picture → full size. Live = last 30 days, replays
+  // follow the window; a fresh shot from the 📷 button appears at once.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.photos
+    const ids = ['photos-heat', 'photos-cluster', 'photos-cluster-count', 'photos-pin', 'photos-thumb']
+    if (m.getLayer('photos-pin')) {
+      for (const id of ids) if (m.getLayer(id)) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('photos', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, cluster: true, clusterRadius: 34, clusterMaxZoom: 16 })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      m.addLayer({
+        id: 'photos-heat', type: 'heatmap', source: 'photos', maxzoom: 14,
+        paint: {
+          'heatmap-weight': ['case', ['has', 'point_count'], ['min', 8, ['get', 'point_count']], 1],
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 12, 1.4],
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 6, 14, 10, 24, 13, 36],
+          'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(255,158,22,0)', 0.15, 'rgba(255,158,22,0.35)', 0.45, 'rgba(255,120,0,0.6)', 0.8, 'rgba(239,68,68,0.85)', 1, 'rgba(255,240,220,0.95)'],
+          'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0.9, 14, 0],
+        },
+      }, beforeId)
+      m.addLayer({
+        id: 'photos-cluster', type: 'circle', source: 'photos', filter: ['has', 'point_count'], minzoom: 10,
+        paint: { 'circle-color': '#ff9e16', 'circle-radius': ['step', ['get', 'point_count'], 15, 10, 19, 50, 24], 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' },
+      }, beforeId)
+      m.addLayer({
+        id: 'photos-cluster-count', type: 'symbol', source: 'photos', filter: ['has', 'point_count'], minzoom: 10,
+        layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 12, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true },
+        paint: { 'text-color': '#1a1100' },
+      }, beforeId)
+      m.addLayer({
+        id: 'photos-pin', type: 'circle', source: 'photos', filter: ['!', ['has', 'point_count']], minzoom: 10,
+        paint: { 'circle-radius': 6, 'circle-color': '#ff9e16', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+      }, beforeId)
+      m.addLayer({
+        id: 'photos-thumb', type: 'symbol', source: 'photos', filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'ready'], 1]], minzoom: 13,
+        layout: { 'icon-image': ['get', 'img'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 13, 0.55, 16, 1], 'icon-allow-overlap': true, 'icon-anchor': 'bottom', 'icon-offset': [0, -4] },
+      }, beforeId)
+      const openPhoto = (e: maplibregl.MapLayerMouseEvent) => {
+        const p = e.features?.[0]?.properties
+        if (!p?.url) return
+        setPhotoLightbox({ url: String(p.url), caption: [p.zone, p.by, p.at, p.caption].filter(Boolean).map(String).join(' · ') })
+      }
+      m.on('click', 'photos-thumb', openPhoto)
+      m.on('click', 'photos-pin', openPhoto)
+      m.on('click', 'photos-cluster', (e) => {
+        const f = m.queryRenderedFeatures(e.point, { layers: ['photos-cluster'] })[0]
+        const cid = f?.properties?.cluster_id
+        if (cid == null) return
+        ;(m.getSource('photos') as maplibregl.GeoJSONSource).getClusterExpansionZoom(cid).then((z) => {
+          m.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom: Math.min(19, (z ?? m.getZoom() + 2) + 0.5) })
+        }).catch(() => { /* cluster gone */ })
+      })
+      for (const id of ['photos-thumb', 'photos-pin', 'photos-cluster']) {
+        m.on('mouseenter', id, () => { m.getCanvas().style.cursor = 'pointer' })
+        m.on('mouseleave', id, () => { m.getCanvas().style.cursor = '' })
+      }
+    }
+    if (!on) return
+    let cancelled = false
+    type Pin = { id: string; lat: number; lng: number; thumb: string; url: string; at: string; zone: string | null; by: string | null; caption: string | null }
+    let current: Pin[] = []
+    const fmtAt = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    const setData = () => {
+      if (!mapAlive(m)) return
+      const features = current.map((p) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+        properties: { id: p.id, img: `photo-${p.id}`, ready: m.hasImage(`photo-${p.id}`) ? 1 : 0, url: p.url, at: fmtAt(p.at), zone: p.zone ?? '', by: p.by ?? '', caption: p.caption ?? '' },
+      }))
+      ;(m.getSource('photos') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+    }
+    // Thumbnails → map images (rounded square, white border), a few at a time.
+    const registerThumbs = async (pins: Pin[]) => {
+      const todo = pins.filter((p) => !m.hasImage(`photo-${p.id}`)).slice(0, 240)
+      let batch = 0
+      for (const p of todo) {
+        if (cancelled || !mapAlive(m)) return
+        try {
+          const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = p.thumb })
+          const S = 112, R = 14, B = 5
+          const c = document.createElement('canvas'); c.width = S; c.height = S
+          const ctx = c.getContext('2d'); if (!ctx) continue
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.roundRect(0, 0, S, S, R + 2); ctx.fill()
+          ctx.save(); ctx.beginPath(); ctx.roundRect(B, B, S - 2 * B, S - 2 * B, R); ctx.clip()
+          const side = Math.min(img.width, img.height)
+          ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, B, B, S - 2 * B, S - 2 * B)
+          ctx.restore()
+          if (!m.hasImage(`photo-${p.id}`)) m.addImage(`photo-${p.id}`, ctx.getImageData(0, 0, S, S), { pixelRatio: 2 })
+        } catch { /* thumb missing — the pin stands */ }
+        if (++batch % 12 === 0) setData()
+      }
+      setData()
+    }
+    const load = () => {
+      const win = pbActive && realWindowEff ? `?from=${Math.round(realWindowEff.from)}&to=${Math.round(realWindowEff.to)}` : ''
+      fetch(`/api/photos-map${win}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { photos?: Pin[] } | null) => {
+          if (cancelled || !j?.photos || !mapAlive(m)) return
+          current = j.photos
+          setData()
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'photos', at: Date.now() } }))
+          void registerThumbs(current)
+        })
+        .catch(() => { /* offline — layer stays as it was */ })
+    }
+    load()
+    const onAdded = () => load()
+    window.addEventListener('ht:photo-added', onAdded)
+    return () => { cancelled = true; window.removeEventListener('ht:photo-added', onAdded) }
+  }, [mapReady, overlaysOn.photos, pbActive, realWindowEff])
 
   // ══ Aug 12 wow-pack: "where is my money and my day" ══════════════════════
 
@@ -6605,6 +6757,22 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     }
   }, [followId, tracksEff, filter, geofences, handleFollow])
 
+  // /map?lat=&lng=&z=17&layer=photos — the /photos page's "On the map" link
+  // (and any other deep link to a spot). Applied once when the map is ready;
+  // the opening fleet-fit stands down when the URL names a place.
+  const spotAppliedRef = useRef(false)
+  useEffect(() => {
+    if (!mapReady || spotAppliedRef.current || typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search)
+    const plat = Number(q.get('lat')), plng = Number(q.get('lng'))
+    const hasSpot = q.has('lat') && q.has('lng') && Number.isFinite(plat) && Number.isFinite(plng) && Math.abs(plat) <= 90 && Math.abs(plng) <= 180
+    const layer = q.get('layer')
+    if (!hasSpot && !layer) return
+    spotAppliedRef.current = true
+    if (hasSpot) map.current?.jumpTo({ center: [plng, plat], zoom: Math.min(20, Math.max(3, Number(q.get('z')) || 17)) })
+    if (layer && /^[a-z0-9_-]{1,32}$/.test(layer)) setOverlaysOn((o) => ({ ...o, [layer]: true }))
+  }, [mapReady])
+
   // Restore a shared replay link (?range=yesterday&t=0.42&follow=<id>): apply
   // once when the map is ready, paused at the shared moment — the recipient
   // sees exactly what the sender saw, then presses play themselves.
@@ -7100,7 +7268,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'receipts', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'receipts', 'photos', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.
@@ -7156,6 +7324,11 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           }}
         />
       )}
+
+      {!kiosk && (
+        <PhotoCaptureSheet open={photoSheet} onClose={() => setPhotoSheet(false)} onSaved={() => setOverlaysOn((o) => (o.photos ? o : { ...o, photos: true }))} />
+      )}
+      {photoLightbox && <PhotoLightbox url={photoLightbox.url} caption={photoLightbox.caption} onClose={() => setPhotoLightbox(null)} />}
 
       {tracksEff.length > 0 && (
         <TimelinePlayback

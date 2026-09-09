@@ -24,7 +24,7 @@ export async function GET() {
         .select('id, person_name, category, clock_in_at, in_lat, in_lng, project_geofence_id, plan')
         .gte('clock_in_at', sinceIso).order('clock_in_at', { ascending: false }).limit(400),
       supabase.from('daily_logs')
-        .select('id, user_id, created_at, writeup, lat, lng, time_entry_id')
+        .select('id, user_id, created_at, writeup, lat, lng, time_entry_id, photos')
         .gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(300),
       supabase.from('geofences').select('id, name').limit(500),
     ])
@@ -34,7 +34,7 @@ export async function GET() {
     const zoneName = new Map((zonesQ.data ?? []).map((z) => [z.id as string, z.name as string]))
     const entryById = new Map((entriesQ.data ?? []).map((e) => [e.id as string, e]))
 
-    type Ev = { kind: 'clockin' | 'log'; lat: number; lng: number; person: string; at: string; zone: string | null; text: string }
+    type Ev = { kind: 'clockin' | 'log'; lat: number; lng: number; person: string; at: string; zone: string | null; text: string; photo?: string | null; photos?: number }
     const events: Ev[] = []
     for (const e of entriesQ.data ?? []) {
       if (typeof e.in_lat !== 'number' || typeof e.in_lng !== 'number') continue
@@ -49,12 +49,16 @@ export async function GET() {
     for (const l of logsQ.data ?? []) {
       if (typeof l.lat !== 'number' || typeof l.lng !== 'number') continue
       const entry = entryById.get(l.time_entry_id as string)
+      const shots = (Array.isArray(l.photos) ? l.photos : []) as { url?: string; kind?: string }[]
+      const jobShots = shots.filter((p) => p?.url && (p.kind ?? 'photo') === 'photo')
       events.push({
         kind: 'log', lat: l.lat, lng: l.lng,
         person: (entry?.person_name as string) || 'Crew',
         at: fmt.format(new Date(l.created_at as string)),
         zone: entry ? zoneName.get(entry.project_geofence_id as string) ?? null : null,
         text: String(l.writeup ?? '').slice(0, 140),
+        photo: jobShots[0]?.url ?? null,
+        photos: jobShots.length,
       })
     }
     return NextResponse.json({ events })
