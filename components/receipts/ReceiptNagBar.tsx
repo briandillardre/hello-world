@@ -42,14 +42,18 @@ export function ReceiptNagBar({ edge }: { edge: boolean }) {
     } catch { /* offline — keep what we had */ }
   }, [])
 
+  // Every minute while something is owed, every five otherwise — a poll on
+  // every dashboard page for every user is a Vercel call plus an auth round
+  // trip, and it almost always comes back empty (sec-check P3).
+  const owed = !!charges?.length
   useEffect(() => {
     void load()
-    const id = window.setInterval(load, 60_000)
+    const id = window.setInterval(load, owed ? 60_000 : 300_000)
     const vis = () => { if (document.visibilityState === 'visible') void load() }
     document.addEventListener('visibilitychange', vis)
     window.addEventListener('ht:receipt-captured', load)
     return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', vis); window.removeEventListener('ht:receipt-captured', load) }
-  }, [load])
+  }, [load, owed])
   useEffect(() => { try { setSnoozeUntil(Number(sessionStorage.getItem(SNOOZE_KEY) ?? 0)) } catch { /* private mode */ } }, [])
   // A fix for the photo pin — asked only once the sheet is open, never on
   // every page paint.

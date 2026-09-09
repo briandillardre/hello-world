@@ -53,7 +53,13 @@ export function NativePush() {
         // capture links, alert pins). Same-origin paths only — never a host.
         Push.addListener?.('pushNotificationActionPerformed', (ev: unknown) => {
           const url = (ev as { notification?: { data?: { url?: unknown } } })?.notification?.data?.url
-          if (typeof url === 'string' && /^\/[A-Za-z0-9/_\-?=&.%~]*$/.test(url)) window.location.assign(url)
+          if (typeof url !== 'string' || !/^\/(?![\/\\])[A-Za-z0-9/_\-?=&.%~]*$/.test(url)) return
+          // Belt and braces: resolve against our origin and refuse anything
+          // that resolved elsewhere (a "//host" form would).
+          try {
+            const u = new URL(url, window.location.origin)
+            if (u.origin === window.location.origin) window.location.assign(u.pathname + u.search)
+          } catch { /* not a path */ }
         })
         await Push.register?.()
       } catch { /* push is best-effort — never break the app */ }

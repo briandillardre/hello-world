@@ -56,6 +56,11 @@ function cleanMerchant(raw: string | undefined): string | null {
   if (!raw) return null
   const m = raw
     .replace(/[\r\n]+/g, ' ')
+    // A merchant name is never a link or a phone number — an outsider mailing
+    // the inbound address must not get "CALL 800-555-0199" texted to the crew
+    // from the company's own line (sec-check, Sep 9).
+    .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .replace(/[.,;:]+$/, '')
     .trim()

@@ -11,7 +11,12 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * until every one of them has a photo. RLS scopes the read to the caller's
  * company; the filter scopes it to the caller. The capture token comes back
  * because the bar snaps straight into /api/r/<token> — the same door the
- * magic link uses — and only the cardholder ever sees their own tokens.
+ * magic link uses. NOTE (sec-check, Sep 9): this route hands out only the
+ * caller's tokens, but the expenses RLS policy (030) is company-wide for
+ * reads AND writes, so a member with the anon key can still read every open
+ * charge or close one through PostgREST — the same as before this route
+ * existed. Narrowing that policy is tracked (task #59); nothing here may
+ * assume it is already narrow.
  */
 export async function GET() {
   if (isMock) return NextResponse.json({ charges: [], total: 0 })

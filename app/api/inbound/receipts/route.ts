@@ -78,6 +78,16 @@ export async function POST(req: NextRequest) {
     .select('id, name, alert_phone').eq('inbound_slug', slug).single()
   if (!company) return NextResponse.json({ ok: true, skipped: 'unknown slug' })
 
+  // The address is guessable and the sender is whoever the bank (or anyone)
+  // forwards as — cap what one company can receive per hour so a flood of
+  // fake "transactions" cannot turn the chase into a paging weapon
+  // (sec-check, Sep 9). Twenty real swipes an hour is a big day.
+  const { count: lastHour } = await db.from('expenses')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', company.id).eq('source', 'card_alert')
+    .gte('created_at', new Date(Date.now() - 3_600_000).toISOString())
+  if ((lastHour ?? 0) >= 20) return NextResponse.json({ ok: true, skipped: 'rate' })
+
   // Dedup: issuers often send the same alert to several recipients, and Resend
   // retries. Hash what identifies the swipe; message_id alone isn't enough
   // (forwards re-id), amount+last4+day alone is too strict (two coffees).
@@ -208,7 +218,9 @@ export async function POST(req: NextRequest) {
   let pushed = 0
   try {
     const { sendPushToUser } = await import('@/lib/push')
-    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` })
+    // Strict: the cardholder's own phones or nobody — the office text below
+    // is the "lands somewhere" fallback, not every crew member's lock screen.
+    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` }, { strict: true })
   } catch { /* best-effort */ }
   try {
     if (company.alert_phone) {

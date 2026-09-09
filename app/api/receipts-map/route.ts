@@ -15,7 +15,9 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  *           the photo carried no fix), with the picture in the popup
  * Dollar figures are a cost-level fact: no costs permission → an empty layer,
  * never a 403 the panel would show as "feed down". Capture tokens ride ONLY
- * on the caller's own open charges (the "Snap now" button in the popup).
+ * on the caller's own open charges (the "Snap now" button in the popup) —
+ * an API-layer rule; the underlying expenses policy is company-wide (see
+ * /api/receipts/mine, task #59).
  */
 export interface ReceiptPin {
   id: string

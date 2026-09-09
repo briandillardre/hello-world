@@ -32,6 +32,8 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 const GRACE_DAYS = 3
 const RECHASE_DAYS = 3
 const LADDER_DAYS = 14
+/** Merchant name the Receipts page's test button writes (lib/actions/cards.ts). */
+const TEST_MERCHANT = 'HammerTrack test swipe'
 const MIN = 60_000
 const HOUR = 3_600_000
 
@@ -96,8 +98,10 @@ function copyFor(rung: number, e: OpenCharge, link: string, tz: string, nowMs: n
 }
 
 export async function GET(req: NextRequest) {
+  // Fails CLOSED like /api/cron/usage: this run sends texts on the company's
+  // Twilio line, so no secret = no run.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ ok: true, skipped: 'demo mode' })
@@ -133,13 +137,17 @@ export async function GET(req: NextRequest) {
       for (const e of open) {
         const co = company.get(e.company_id)
         const tz = safeTz((co?.digest_prefs as { tz?: string } | null)?.tz ?? null)
-        const rung = dueRung(e, now, tz)
+        let rung = dueRung(e, now, tz)
         if (!rung || !e.capture_token) continue
+        // A "Send me a test swipe" row proves the loop; it never reaches the
+        // owner escalation or the two-week daily rungs.
+        if (e.merchant === TEST_MERCHANT && rung >= 5) rung = 0
+        if (!rung) { await db.from('expenses').update({ chased_at: new Date(now).toISOString() }).eq('id', e.id); continue }
         const link = `${BRAND_URL}/r/${e.capture_token}`
         const msg = copyFor(rung, e, link, tz, now)
         const holder = e.cardholder_user_id ? person.get(e.cardholder_user_id) : null
 
-        await sendPushToUser(e.company_id, e.cardholder_user_id, { title: msg.title, body: msg.body, url: `/r/${e.capture_token}` })
+        await sendPushToUser(e.company_id, e.cardholder_user_id, { title: msg.title, body: msg.body, url: `/r/${e.capture_token}` }, { strict: true })
         if (msg.sms && holder?.phone) {
           try { await sendAlertSms(String(holder.phone), `${co?.name ?? 'HammerTrack'}: ${msg.body}`); texted++ } catch { /* best-effort */ }
         }
@@ -151,7 +159,7 @@ export async function GET(req: NextRequest) {
           const body = `${who} hasn't snapped the ${money(e.amount)}${e.merchant ? ` ${e.merchant}` : ''} receipt from ${dayLabel(e.txn_date, tz)} — 24 hours and counting.`
           const bosses = (people ?? []).filter((p) => p.company_id === e.company_id && (p.id === e.company_id || p.role === 'admin') && p.id !== e.cardholder_user_id)
           for (const b of bosses) {
-            try { await sendPushToUser(e.company_id, b.id as string, { title: '🧾 Receipt overdue a day', body, url: '/receipts' }) } catch { /* best-effort */ }
+            try { await sendPushToUser(e.company_id, b.id as string, { title: '🧾 Receipt overdue a day', body, url: '/receipts' }, { strict: true }) } catch { /* best-effort */ }
           }
           if (co?.alert_phone) { try { await sendAlertSms(String(co.alert_phone), `${co.name}: ${body}`) } catch { /* best-effort */ } }
           patch.escalated_at = new Date(now).toISOString()

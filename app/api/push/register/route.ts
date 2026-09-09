@@ -5,8 +5,11 @@ export const dynamic = 'force-dynamic'
 /**
  * Register a native-push device token for the signed-in user's company. Called
  * by the Capacitor app when it gets its FCM/APNs token. Auth = the user's own
- * session (RLS scopes the write to their company). Upsert on token so a
- * re-register just refreshes last_seen.
+ * session; the WRITE goes through the service client with company + user
+ * taken from that session (migration 100 pins device_tokens rows to their
+ * owner, and a handed-down phone re-registering under a new employee must be
+ * allowed to take the row over). Upsert on token so a re-register just
+ * refreshes last_seen.
  */
 export async function POST(req: NextRequest) {
   const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -20,14 +23,14 @@ export async function POST(req: NextRequest) {
   const platform = ['ios', 'android', 'web'].includes(body.platform ?? '') ? body.platform : null
 
   try {
-    const { createClient } = await import('@/lib/supabase-server')
+    const { createClient, createServiceClient } = await import('@/lib/supabase-server')
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', user.id).maybeSingle()
     const companyId = profile?.company_id ?? user.id
 
-    const { error } = await supabase.from('device_tokens').upsert(
+    const { error } = await createServiceClient().from('device_tokens').upsert(
       { company_id: companyId, user_id: user.id, platform, token, last_seen: new Date().toISOString() },
       { onConflict: 'token' }
     )

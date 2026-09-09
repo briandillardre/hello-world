@@ -120,7 +120,7 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                       <div key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                         <span className="font-mono text-ink">…{c.last4}</span>
                         {c.label && <span className="text-faint text-xs truncate">{c.label}</span>}
-                        <span className="ml-auto text-muted text-xs text-right">{memberName(c.user_id)}{memberPhone(c.user_id) ? <span className="block text-faint font-mono text-[10.5px]">{memberPhone(c.user_id)}</span> : null}</span>
+                        <span className="ml-auto text-muted text-xs text-right">{memberName(c.user_id)}{canManage && memberPhone(c.user_id) ? <span className="block text-faint font-mono text-[10.5px]">{memberPhone(c.user_id)}</span> : null}</span>
                         {canManage && (
                           <button
                             type="button"

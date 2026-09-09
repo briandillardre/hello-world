@@ -5,6 +5,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, getRealPermissions } from '@/lib/permissions-server'
 import { BRAND_DOMAIN, BRAND_URL } from '@/lib/brand'
 import { notifyChannels } from '@/lib/notify'
+import { normalizeUsPhone } from '@/lib/phone'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -23,15 +24,6 @@ export interface InstantChaseSetup {
   members: { id: string; name: string; phone: string | null }[]
   /** The three legs of the chase and whether each can fire right now. */
   ready: { inbound: boolean; push: boolean; sms: boolean }
-}
-
-/** Normalize a typed US cell number to E.164; null when it is not a number. */
-function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '')
-  if (digits.length === 10) return `+1${digits}`
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
-  if (raw.trim().startsWith('+') && digits.length >= 8 && digits.length <= 15) return `+${digits}`
-  return null
 }
 
 /** Everything the Instant Chase setup card needs, in one round trip. */
@@ -77,8 +69,11 @@ export async function enableInstantChaseAction(): Promise<{ ok: boolean; address
   if (co.inbound_slug) return { ok: true, address: `receipts-${co.inbound_slug}@${BRAND_DOMAIN}` }
 
   const base = (co.name || 'company').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'company'
-  // Collide → add a short suffix rather than failing (two "Dillard"s exist).
-  for (const slug of [base, `${base}-${companyId.slice(0, 4)}`]) {
+  // A random tail so the address is not guessable from the company name
+  // (sec-check, Sep 9); addresses minted before this keep working. Collide →
+  // try a second tail rather than failing.
+  const { randomBytes } = await import('crypto')
+  for (const slug of [`${base}-${randomBytes(2).toString('hex')}`, `${base}-${randomBytes(3).toString('hex')}`]) {
     const { error } = await supabase.from('companies').update({ inbound_slug: slug }).eq('id', companyId)
     if (!error) {
       revalidatePath('/receipts')
@@ -98,7 +93,7 @@ export async function saveCardAction(card: { last4: string; label: string; userI
   }
   const last4 = card.last4.replace(/\D/g, '')
   if (last4.length !== 4) return { ok: false, error: 'Enter the card’s last 4 digits.' }
-  const phone = card.phone?.trim() ? normalizePhone(card.phone) : undefined
+  const phone = card.phone?.trim() ? normalizeUsPhone(card.phone) : undefined
   if (card.phone?.trim() && !phone) return { ok: false, error: 'That cell number does not look right — 10 digits, US.' }
   const companyId = await getCurrentCompanyId()
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
@@ -111,8 +106,9 @@ export async function saveCardAction(card: { last4: string; label: string; userI
   }, { onConflict: 'company_id,last4' })
   if (error) return { ok: false, error: 'Save failed — run migration 045 first.' }
   if (phone && card.userId) {
-    // Profiles are self-edit under RLS; a billing manager setting a teammate's
-    // cell goes through the service client, scoped to this company.
+    // Sessions cannot UPDATE profiles (068); the billing manager's write goes
+    // through the service client, scoped to this company, and only ever
+    // holds a normalized number.
     try {
       await createServiceClient().from('profiles').update({ phone }).eq('id', card.userId).eq('company_id', companyId)
     } catch { /* pre-099 — the push still works */ }
@@ -149,6 +145,11 @@ export async function sendTestChargeAction(): Promise<{ ok: boolean; link?: stri
   const { createServiceClient } = await import('@/lib/supabase-server')
   const { randomBytes } = await import('crypto')
   const db = createServiceClient()
+  // One open test at a time — each row is a real ladder (texts cost money).
+  const { data: openTest } = await db.from('expenses').select('id')
+    .eq('company_id', perms.companyId).eq('cardholder_user_id', perms.userId)
+    .eq('merchant', 'HammerTrack test swipe').eq('status', 'needs_receipt').limit(1).maybeSingle()
+  if (openTest) return { ok: false, error: 'Your last test swipe is still open — snap it (the amber bar) or mark it “No receipt” first.' }
   const token = randomBytes(18).toString('base64url')
   const { data: card } = await db.from('company_cards').select('last4')
     .eq('company_id', perms.companyId).eq('user_id', perms.userId).limit(1).maybeSingle()
