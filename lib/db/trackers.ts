@@ -107,10 +107,41 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
     }
   })
 
-  // Drawer: registry rows no active asset wears. Beacons are tool tags with
-  // their own page (/tags) and a different id format — not trackers here.
-  const drawer = registry.filter((r) => r.model !== 'EYE_BEACON' && !byTracker.has(r.imei))
+  // Drawer: registry rows no active asset wears — tool tags included (their
+  // id is the MAC on the tag; a tool asset carries it as tracker_id too).
+  const wornIds = new Set(Array.from(byTracker.keys()).map((t) => t.toUpperCase()))
+  const drawer = registry.filter((r) => !wornIds.has(r.imei.toUpperCase()) && !wornIds.has(`00000000-0000-0000-0000-${r.imei.toUpperCase()}`))
+  const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString()
+  // Tool tags in the drawer: a tag has no pings of its own — "alive" means a
+  // gateway heard it. ONE bounded read of the company's newest beacon-
+  // carrying fixes, then an in-memory lookup per tag (sec-check, Sep 9: a
+  // per-tag JSONB scan × N tags on every page view was an IO foot-gun).
+  // Factory-mode tags report as a zero UUID + MAC (see the ingest).
+  const heardByMac = new Map<string, { timestamp: string; name: string | null }>()
+  if (drawer.some((r) => r.model === 'EYE_BEACON')) {
+    const { data: rows } = await db.from('asset_locations')
+      .select('timestamp, raw, asset:assets(name)')
+      .eq('company_id', companyId).gte('timestamp', dayAgo)
+      .not('raw->ble->beacons', 'is', null)
+      .order('timestamp', { ascending: false }).limit(1000)
+    type Row = { timestamp: string; raw: { ble?: { beacons?: { id?: string }[] } } | null; asset: { name: string } | { name: string }[] | null }
+    for (const row of (rows ?? []) as Row[]) {
+      const name = (Array.isArray(row.asset) ? row.asset[0]?.name : row.asset?.name) ?? null
+      for (const b of row.raw?.ble?.beacons ?? []) {
+        const mac = String(b.id ?? '').replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(-12)
+        if (mac.length === 12 && !heardByMac.has(mac)) heardByMac.set(mac, { timestamp: row.timestamp, name })
+      }
+    }
+  }
   const unassigned: TrackerRow[] = await Promise.all(drawer.map(async (r) => {
+    if (r.model === 'EYE_BEACON') {
+      const h = heardByMac.get(r.imei.toUpperCase()) ?? null
+      return {
+        imei: r.imei, model: r.model, label: r.label, registered: true, asset: null,
+        lastSeen: h ? { timestamp: h.timestamp, lat: null, lng: null, speed: null, battery: null } : null,
+        unassignedSince: r.unassigned_since, buffered: 0, heardBy: h?.name ?? null,
+      }
+    }
     const [lastQ, countQ] = await Promise.all([
       db.from('unassigned_locations').select('lat, lng, speed, battery, timestamp')
         .eq('company_id', companyId).eq('imei', r.imei).order('timestamp', { ascending: false }).limit(1).maybeSingle(),
@@ -153,6 +184,15 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
   })
 
   return { installed, unassigned, deletedAssets, moves }
+}
+
+/** Machines with no tracker — the "put it on" choices. */
+export async function getTrackerlessAssets(companyId: string): Promise<{ id: string; name: string; type: AssetType }[]> {
+  if (isMock) return [{ id: 'a7', name: 'Tool trailer', type: 'tool' }, { id: 'a8', name: 'Skid steer', type: 'equipment' }]
+  const { createClient } = await import('../supabase-server')
+  const { data } = await createClient().from('assets').select('id, name, type')
+    .eq('company_id', companyId).eq('active', true).is('deleted_at', null).is('tracker_id', null).order('name')
+  return ((data ?? []) as { id: string; name: string; type: AssetType }[])
 }
 
 /** What the asset page's Tracker sheet needs to offer choices: the drawer,
@@ -227,8 +267,24 @@ function trackerLooksValid(id: string): string | null {
 /** Make sure the registry knows this IMEI (attach/detach both want a row to
  *  hang unassigned_since on). Never overwrites what is already there. */
 async function ensureRegistered(db: Db, companyId: string, imei: string) {
-  await db.from('device_onboarding')
+  const { error } = await db.from('device_onboarding')
     .upsert({ company_id: companyId, imei, model: modelFromImei(imei) ?? 'OTHER' }, { onConflict: 'company_id,imei', ignoreDuplicates: true })
+  // 23505 here is 093: another registry already lists this IMEI. Callers
+  // check ownedElsewhere() first, so this is a race or a bug — say so.
+  if (error) console.error(`trackers: ensureRegistered ${imei.slice(-4)} for ${companyId}: ${error.code} ${error.message}`)
+}
+
+/** True when a different company lists this 15-digit IMEI in its registry
+ *  or has ANY asset record (active, deleted, deactivated) wearing it. Tool
+ *  tags (MACs) are not checked: 093 leaves them per-company and the ingest
+ *  resolves a tag only inside the gateway's own company. */
+async function ownedElsewhere(db: Db, companyId: string, imei: string): Promise<boolean> {
+  if (!/^\d{15}$/.test(imei)) return false
+  const [reg, ast] = await Promise.all([
+    db.from('device_onboarding').select('company_id').eq('imei', imei).neq('company_id', companyId).limit(1).maybeSingle(),
+    db.from('assets').select('company_id').eq('tracker_id', imei).neq('company_id', companyId).limit(1).maybeSingle(),
+  ])
+  return !!(reg.data || ast.data)
 }
 
 async function loadAsset(db: Db, companyId: string, id: string) {
@@ -415,6 +471,12 @@ async function takeOff(db: Db, companyId: string, actorId: string | null, asset:
  */
 async function putOn(db: Db, companyId: string, actorId: string | null, asset: { id: string; name: string }, imei: string, sinceIso: string, group: string | null):
   Promise<{ ok: true; moved: number; buffered: number; takenFrom: string | null } | { ok: false; error: string }> {
+  // Another tenant's box (sec-check P1, Sep 9): 084 only blocks an IMEI an
+  // ACTIVE asset wears, so a tracker sitting in company B's drawer — or on
+  // B's soft-deleted / resold record — could be claimed here and B's pings
+  // would follow it. Refuse before any write; the same words the 23505 gets.
+  const foreign = await ownedElsewhere(db, companyId, imei)
+  if (foreign) return { ok: false, error: `Tracker …${imei.slice(-4)} is registered to another account. Check the IMEI.` }
   const { data: holder } = await db.from('assets').select('id, name')
     .eq('company_id', companyId).eq('tracker_id', imei).eq('active', true).is('deleted_at', null).neq('id', asset.id).maybeSingle()
   let moved = 0
