@@ -204,7 +204,7 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
       {
         key: 'mounted',
         label: 'Zip-tied where a truck will pass within ~30–50 m',
-        detail: 'A beacon has no GPS. It appears only while a gateway (an OBD truck unit or a TAT141 with beacon scanning) is in Bluetooth range. Trailers behind a tracked truck are ideal; a machine that lives alone on a site needs its own TAT141.',
+        detail: 'A beacon has no GPS. It appears only while a gateway (an OBD truck unit, a TAT141 with beacon scanning, or a crew phone with the app open and the Tag scanner’s “This phone hears tags” switch on) is in Bluetooth range. Trailers behind a tracked truck are ideal; a machine that lives alone on a site needs its own TAT141.',
         ifSkipped: 'The tool shows its LAST sighting and goes gray — not wrong, just not live.',
         gotcha: true,
       },

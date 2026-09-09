@@ -77,3 +77,19 @@ export function signalFraction(rssi: number | null): number {
   if (rssi == null) return 0
   return Math.max(0, Math.min(1, (rssi + 100) / 55))
 }
+
+/** Apple's company identifier — iBeacon frames ride inside manufacturer-
+ *  specific data under 0x004C (keyed as decimal by the BLE plugin). */
+export const APPLE_COMPANY_ID = '76'
+
+/** Pull UUID / major / minor out of an iBeacon manufacturer-data payload.
+ *  Layout after the company id: 02 15 <16-byte UUID> <major:2> <minor:2> <tx:1> */
+export function parseIBeacon(view: DataView): { uuid: string; major: number; minor: number } | null {
+  if (view.byteLength < 23) return null
+  if (view.getUint8(0) !== 0x02 || view.getUint8(1) !== 0x15) return null
+  const hex: string[] = []
+  for (let i = 2; i < 18; i++) hex.push(view.getUint8(i).toString(16).padStart(2, '0'))
+  const h = hex.join('')
+  const uuid = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`.toUpperCase()
+  return { uuid, major: view.getUint16(18), minor: view.getUint16(20) }
+}

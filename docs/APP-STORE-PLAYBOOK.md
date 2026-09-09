@@ -146,7 +146,7 @@ invite, and the 3 ASC_* secrets that arm the TestFlight lane.
    Background location is deliberately NOT requested on Android; iOS is a
    separate decision at submission time.
 3. **Camera** — receipt-chase capture flow
-4. **BLE scanning** — every crew phone becomes a roaming tool-tag gateway
+4. **BLE scanning** — every crew phone becomes a roaming tool-tag gateway — **shipped Sep 9 (foreground):** the Tag scanner switch turns the phone into a gateway while the app is open; the native background piece stays on this list.
 
 ## Timeline (actuals)
 - Jul 31: D-U-N-S requested · early Aug: landed.
