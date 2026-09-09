@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import Link from 'next/link'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -88,6 +89,7 @@ export default function DemoCinema() {
     if (!container.current || mapRef.current) return
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+    ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
     const m = new maplibregl.Map({
       container: container.current,
       style: {

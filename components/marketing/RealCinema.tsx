@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
@@ -98,6 +99,7 @@ export function RealCinema() {
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
       try {
+      ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
       map = new maplibregl.Map({
         container: el.current,
         style: {

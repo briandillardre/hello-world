@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import { cartoTiles, cartoMaxZoom } from '@/lib/map-layers'
 import { useRouter } from 'next/navigation'
 import maplibregl from 'maplibre-gl'
@@ -122,6 +123,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
       [Math.min(...lngs), Math.min(...lats)],
       [Math.max(...lngs), Math.max(...lats)],
     ]
+    ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
     const m = new maplibregl.Map({
       container: mapContainer.current,
       // Hybrid by default: imagery + street/place labels, so you can read

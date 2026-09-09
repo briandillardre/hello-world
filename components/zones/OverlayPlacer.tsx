@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { X } from 'lucide-react'
@@ -332,6 +333,7 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
       ? [ring.reduce((s, p) => s + p[0], 0) / ring.length, ring.reduce((s, p) => s + p[1], 0) / ring.length]
       : [-82.4, 34.85]
     const startCenter = init?.center ?? ringCenter
+    ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
     const m = new maplibregl.Map({
       container: mapEl.current,
       style: {

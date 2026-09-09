@@ -1,6 +1,7 @@
 'use client'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import { cartoTiles, cartoAttribution, cartoMaxZoom } from '@/lib/map-layers'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
@@ -102,6 +103,7 @@ export function TrackerClient() {
     ;(async () => {
       const maplibregl = (await import('maplibre-gl')).default
       if (cancelled || !mapDiv.current || map.current) return
+      ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
       const m = new maplibregl.Map({
         container: mapDiv.current,
         style: DARK_STYLE,

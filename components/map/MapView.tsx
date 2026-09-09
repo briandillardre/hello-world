@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -1569,6 +1570,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   useEffect(() => {
     if (!mapContainer.current || map.current) return
 
+    ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: mapStyle as maplibregl.StyleSpecification,

@@ -359,6 +359,7 @@ the map may animate on its own while the timeline is stopped (radar loops only
 on Live; manual pause wins everywhere).
 
 ## Notes
+- **Object.hasOwn on old Android (task #42 + Sep 8 relapse):** app/layout.tsx shims `Object.hasOwn`/`Array.prototype.at` inline for the PAGE; MapLibre's WEB WORKERS have their own global and its line-bucket code calls `Object.hasOwn` — `lib/maplibre-setup.ts` → `ensureMapLibreWorkerShims(maplibregl)` imports `public/polyfills/es2022.js` into every worker (`importScriptInWorkers`, absolute URL because the worker is a blob:). Call it before EVERY `new maplibregl.Map(` (7 sites today); never call Object.hasOwn in browser code (`hasOwn` helper in lib/asset-icons.ts).
 - All HMAC secrets use `hammertrack-*` prefix (previously trackflow-*)
 - flespi normalizer handles both Teltonika Codec 8/8E and Digital Matter field conventions
 - Tool tracking: tools have no GPS, inherit gateway (truck/equipment) location via tool_associations table

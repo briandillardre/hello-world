@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import { cartoTiles, cartoAttribution, cartoMaxZoom } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -58,6 +59,7 @@ export function SharedReplayInner({ name, points, fromMs, toMs, startT }: Shared
 
   useEffect(() => {
     if (!mapDiv.current || map.current) return
+    ensureMapLibreWorkerShims(maplibregl) // worker shims for older Android WebViews — before the first map
     const m = new maplibregl.Map({
       container: mapDiv.current,
       style: {
