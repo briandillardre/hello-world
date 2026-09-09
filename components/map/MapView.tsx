@@ -2256,6 +2256,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           setSelectedAsset(null)
           setSelectedZone(null)
           setSelectedDevice(null)
+          setStack(null)
         }
       })
       m.on('mouseenter', 'place-pins', () => { m.getCanvas().style.cursor = 'pointer' })
@@ -2772,13 +2773,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (!clusterId) return
         const source = m.getSource('assets') as maplibregl.GeoJSONSource
         const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number]
-        Promise.all([source.getClusterLeaves(clusterId, 200, 0), source.getClusterExpansionZoom(clusterId)])
+        // The sheet lists up to 500 members and says "showing N of total" past that.
+        const total = Number(features[0].properties?.point_count) || 0
+        Promise.all([source.getClusterLeaves(clusterId, Math.min(Math.max(total, 1), 500), 0), source.getClusterExpansionZoom(clusterId)])
           .then(([leaves, zoom]) => {
             const ids = new Set((leaves ?? []).map((f) => String(f.properties?.id)))
             const members = assetsRef.current.filter((a) => ids.has(a.id))
             if (!members.length) { m.easeTo({ center: coords, zoom: zoom ?? m.getZoom() + 2 }); return }
             setSelectedAsset(null); setSelectedZone(null); setSelectedDevice(null); setSelectedPlace(null)
-            setStack({ at: coords, expansionZoom: zoom ?? m.getZoom() + 2, members, toolCounts: toolCountsRef.current })
+            setStack({ at: coords, expansionZoom: zoom ?? m.getZoom() + 2, members, total: Math.max(total, members.length), toolCounts: toolCountsRef.current })
           })
           .catch(() => m.easeTo({ center: coords, zoom: m.getZoom() + 2 }))
       })
@@ -2791,6 +2794,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         setSelectedAsset(null)
         setSelectedZone(null)
         setSelectedPlace(null)
+        setStack(null)
         setSelectedDevice(device)
       })
 
@@ -2823,6 +2827,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         setSelectedAsset(null)
         setSelectedDevice(null)
         setSelectedPlace(null)
+        setStack(null)
         setSelectedZone(fence)
       }
       m.on('click', 'geofence-fill', selectZoneAt)
@@ -2857,6 +2862,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         if (asset) {
           setSelectedZone(null)
           setSelectedDevice(null)
+          setStack(null)
           setSelectedAsset(asset)
         }
       })

@@ -59,7 +59,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'list_assets',
     description:
-      'Every asset in the fleet: name, type (vehicle/equipment/personnel/tool), active flag, last known position (lat/lng + minutes since the last report), current speed and whether it is moving right now, and the name of the zone/site it is currently inside (if any) — plus `siteStacks`: per site, how many trucks / machines / people / tools are there right now, how many are moving, and their names. Use for "where is…", "what is at…", "what is on the Creekside site", "what is moving" questions.',
+      'Every asset in the fleet: name, type (vehicle/equipment/personnel/tool), active flag, last known position (lat/lng + minutes since the last report), current speed and whether it is moving right now, and the name of the zone/site it is currently inside (if any) — plus `siteStacks`: per site, how many trucks / machines / people are there right now, how many are moving, and their names (a property boundary is a perimeter, not a site). Use for "where is…", "what is at…", "what is on the Creekside site", "what is moving" questions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -260,9 +260,9 @@ async function runListAssets(companyId: string): Promise<McpToolResult> {
   const out = assets.map((a) => {
     const loc = a.location
     const ageMin = loc ? Math.max(0, Math.round((now - Date.parse(loc.timestamp)) / 60_000)) : null
-    const zone = loc
-      ? rings.find((r) => pointInPolygon([loc.lng, loc.lat], r.ring))?.name ?? null
-      : null
+    const ring = loc ? rings.find((r) => pointInPolygon([loc.lng, loc.lat], r.ring)) : undefined
+    const zone = ring?.name ?? null
+    const zoneKind = ring?.kind ?? null
     // Only claim movement off a FRESH fix (vehicles stream seconds apart while
     // driving; equipment reports ~5-min intervals) — same rule as the in-app AI.
     const moving = (loc?.speed ?? 0) > 2 && (ageMin ?? 99) < (a.type === 'vehicle' ? 3 : 12)
@@ -278,21 +278,28 @@ async function runListAssets(companyId: string): Promise<McpToolResult> {
       moving,
       batteryPct: loc?.battery ?? null,
       zone: zone ?? (loc ? 'off-site' : 'no signal'),
+      zoneKind,
     }
   })
   // Stacks (Sep 9 — Brian: "multiple items in one general area"): what is
   // piled on each site right now, by kind, so an assistant can answer "what
   // is at Creekside" without walking the list. Boundaries are perimeters,
   // not places, so they never stack.
-  const kindOf = (t: string) => t === 'vehicle' ? 'trucks' : t === 'equipment' ? 'machines' : t === 'personnel' ? 'people' : 'tools'
-  const stacks = new Map<string, { site: string; count: number; trucks: number; machines: number; people: number; tools: number; moving: number; names: string[] }>()
+  // (Tools ride a carrier and have no fix of their own here — they show up as
+  // the carrier's hauling count on the map, not as members of a stack.)
+  const kindOf = (t: string): 'trucks' | 'machines' | 'people' | null => t === 'vehicle' ? 'trucks' : t === 'equipment' ? 'machines' : t === 'personnel' ? 'people' : null
+  const stacks = new Map<string, { site: string; count: number; trucks: number; machines: number; people: number; moving: number; names: string[] }>()
   let offSite = 0
   for (const a of out) {
     if (a.lat == null) continue
-    if (a.zone === 'off-site') { offSite++; continue }
-    const st = stacks.get(a.zone) ?? { site: a.zone, count: 0, trucks: 0, machines: 0, people: 0, tools: 0, moving: 0, names: [] }
+    // A property boundary is a perimeter, not a place — inside it but on no
+    // site counts as off-site.
+    if (a.zone === 'off-site' || a.zoneKind === 'boundary') { offSite++; continue }
+    const kind = kindOf(a.type)
+    if (!kind) continue
+    const st = stacks.get(a.zone) ?? { site: a.zone, count: 0, trucks: 0, machines: 0, people: 0, moving: 0, names: [] }
     st.count++
-    st[kindOf(a.type)]++
+    st[kind]++
     if (a.moving) st.moving++
     if (st.names.length < 12) st.names.push(a.name)
     stacks.set(a.zone, st)

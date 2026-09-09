@@ -12,10 +12,11 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET() {
   try {
-    const { openEntry, available } = await getMyClockState()
-    if (!available || !openEntry) return NextResponse.json({ open: false, entry: null })
+    const { openEntry, available, userId } = await getMyClockState()
+    if (!available || !openEntry) return NextResponse.json({ open: false, entry: null, uid: userId })
     return NextResponse.json({
       open: true,
+      uid: userId,
       entry: {
         id: openEntry.id,
         since: openEntry.clock_in_at,

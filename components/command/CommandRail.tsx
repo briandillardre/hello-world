@@ -132,19 +132,21 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel, notice
         ) : (
           <div className="space-y-1.5">
             {sites.map((s) => (
-              <div key={s.id} className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-sm flex-none" style={{ background: s.color }} />
-                <span className="flex-1 min-w-0 truncate text-[11px] text-muted">{s.name}</span>
-                {/* The stack, by kind — only the kinds present, so a quiet site stays quiet. */}
-                {s.inside > 0 && (
-                  <span className="flex items-center gap-1 flex-none font-mono text-[9.5px] text-ink/85 tabular-nums" aria-label={KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => `${s.kinds[k.key]} ${k.title}`).join(', ')}>
-                    {KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => <span key={k.key} title={`${s.kinds[k.key]} ${k.title}`}>{k.glyph}{s.kinds[k.key]}</span>)}
+              <div key={s.id}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-sm flex-none" style={{ background: s.color }} />
+                  <span className="flex-1 min-w-0 truncate text-[11px] text-muted">{s.name}</span>
+                  <span className="relative w-8 h-1.5 rounded-full bg-navy-800 overflow-hidden flex-none">
+                    <span className="absolute inset-y-0 left-0 rounded-full bg-teal/70" style={{ width: `${(s.inside / siteMax) * 100}%` }} />
                   </span>
+                  <span className="font-mono text-[11px] text-ink tabular-nums w-4 text-right flex-none">{s.inside}</span>
+                </div>
+                {/* The stack, by kind, on its own line — only the kinds present, so a quiet site stays quiet. */}
+                {s.inside > 0 && (
+                  <div className="pl-4 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[9.5px] text-ink/85 tabular-nums" aria-label={KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => `${s.kinds[k.key]} ${k.title}`).join(', ')}>
+                    {KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => <span key={k.key} title={`${s.kinds[k.key]} ${k.title}`}>{k.glyph}{s.kinds[k.key]}</span>)}
+                  </div>
                 )}
-                <span className="relative w-8 h-1.5 rounded-full bg-navy-800 overflow-hidden flex-none">
-                  <span className="absolute inset-y-0 left-0 rounded-full bg-teal/70" style={{ width: `${(s.inside / siteMax) * 100}%` }} />
-                </span>
-                <span className="font-mono text-[11px] text-ink tabular-nums w-4 text-right flex-none">{s.inside}</span>
               </div>
             ))}
           </div>
