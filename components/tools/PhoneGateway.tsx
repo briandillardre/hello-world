@@ -46,15 +46,18 @@ export function PhoneGateway() {
     let stopScan: (() => Promise<void>) | null = null
     let scanning = false
     const heard = new Map<string, { id: string; rssi: number | null; at: number }>()
-    let fix: { lat: number; lng: number; acc: number | null; heading: number | null } | null = null
+    // The fix carries WHEN it was taken: a phone that loses location must not
+    // keep pinning tags to where it WAS (sec-check, Sep 9) — stale (> 2 min)
+    // or coarse (> 250 m) fixes skip the report, and a watch error drops it.
+    let fix: { lat: number; lng: number; acc: number | null; heading: number | null; at: number } | null = null
     const status: GatewayStatus = { on: true, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null }
     const publish = () => window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { ...status } }))
     publish()
 
     const watch = typeof navigator !== 'undefined' && 'geolocation' in navigator
       ? navigator.geolocation.watchPosition(
-          (p) => { fix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy ?? null, heading: Number.isFinite(p.coords.heading as number) ? (p.coords.heading as number) : null } },
-          () => { status.error = 'Location is off — the tags need a place to land.'; publish() },
+          (p) => { fix = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy ?? null, heading: Number.isFinite(p.coords.heading as number) ? (p.coords.heading as number) : null, at: Date.now() } },
+          () => { fix = null; status.error = 'Location is off — the tags need a place to land.'; publish() },
           { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
         )
       : null
@@ -65,6 +68,9 @@ export function PhoneGateway() {
         const { BleClient } = await import('@capacitor-community/bluetooth-le')
         await BleClient.initialize({ androidNeverForLocation: false })
         scanning = true
+        // Assigned BEFORE the scan starts: a switch-off during initialize /
+        // requestLEScan used to leave a scan running with nothing to stop it.
+        stopScan = async () => { scanning = false; try { await BleClient.stopLEScan() } catch { /* already stopped */ } }
         await BleClient.requestLEScan({ allowDuplicates: true }, (r: ScanResultLike) => {
           const mac = r.device?.deviceId ?? null
           const md = r.manufacturerData?.[APPLE_COMPANY_ID]
@@ -77,7 +83,7 @@ export function PhoneGateway() {
           if (!prev || (rssi != null && (prev.rssi == null || rssi > prev.rssi))) heard.set(id, { id, rssi, at: Date.now() })
           else prev.at = Date.now()
         })
-        stopScan = async () => { scanning = false; try { await BleClient.stopLEScan() } catch { /* already stopped */ } }
+        if (stopped) { await stopScan(); return }
         status.error = null; publish()
       } catch (e) {
         scanning = false
@@ -93,7 +99,7 @@ export function PhoneGateway() {
       const fresh = Array.from(heard.values()).filter((b) => now - b.at < 25_000)
       heard.clear()
       status.heard = fresh.length
-      if (!fresh.length || !fix) { publish(); return }
+      if (!fresh.length || !fix || now - fix.at > 120_000 || (fix.acc != null && fix.acc > 250)) { publish(); return }
       try {
         const res = await fetch('/api/ingest/ble-phone', {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -101,7 +107,12 @@ export function PhoneGateway() {
         })
         const j = await res.json().catch(() => ({})) as { ok?: boolean; matched?: number; holding?: number; error?: string }
         if (res.ok && j.ok) { status.matched = j.matched ?? 0; status.holding = j.holding ?? 0; status.reportedAt = now; status.error = null }
-        else status.error = j.error ?? 'Report failed'
+        else if (res.status === 403) {
+          // View levels changed under us (Tag scanner / Share location turned
+          // off for this role) — the switch goes off, not just the report.
+          status.error = 'Your view levels no longer include the Tag scanner — the switch was turned off.'
+          setPhoneGateway(false)
+        } else status.error = j.error ?? 'Report failed'
       } catch { status.error = 'No signal — will retry' }
       publish()
     }, 20_000)

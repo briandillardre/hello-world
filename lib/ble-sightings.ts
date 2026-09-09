@@ -21,11 +21,14 @@ export interface GatewayRef { id: string; company_id: string }
 export interface GatewayFix { lat: number; lng: number; timestamp: string }
 
 const strip = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
-const likeEsc = (s: string) => s.replace(/[\\%_]/g, '\\$&')
 const hex4 = (n: number) => n.toString(16).toUpperCase().padStart(4, '0')
 
+/** How a gateway writes iBeacon major/minor: Teltonika boxes report HEX, a
+ *  phone (parseIBeacon) reports DECIMAL. The caller knows which. */
+export type BeaconNumbering = 'hex' | 'dec'
+
 /** Every form a registered tracker_id might take for this reported id. */
-export function beaconCandidates(id: string): string[] {
+export function beaconCandidates(id: string, reportedAs: BeaconNumbering = 'hex'): string[] {
   const out = [id]
   // Teltonika EYE Beacons straight out of the box (Eddystone/factory mode)
   // are reported by a gateway as a zero UUID with the tag's MAC as the last
@@ -44,14 +47,15 @@ export function beaconCandidates(id: string): string[] {
     const [, uuid, a, b] = parts
     const isHex = (v: string) => /^[0-9a-fA-F]{1,4}$/.test(v)
     const isDec = (v: string) => /^\d{1,5}$/.test(v) && Number(v) <= 65535
-    // Reported as hex (Teltonika): add the decimal twin + the UUID:minor shorthand.
-    if (isHex(a) && isHex(b)) {
+    // ONE numbering per gateway kind — never both branches. Running hex AND
+    // decimal on an all-digit pair re-created the Aug 12 collision: hex 16
+    // (= dec 22) also produced a raw "16" shorthand that matched the puck
+    // registered as decimal 16 (sec-check, Sep 9). The shorthand is always
+    // the DECIMAL minor — what people type from their beacon app.
+    if (reportedAs === 'hex' && isHex(a) && isHex(b)) {
       out.push(`${uuid}:${parseInt(a, 16)}:${parseInt(b, 16)}`)
       out.push(`${uuid}:${parseInt(b, 16)}`)
-    }
-    // Reported as decimal (a phone, or an owner typing what their app shows):
-    // add the hex twin; the shorthand stays decimal.
-    if (isDec(a) && isDec(b)) {
+    } else if (reportedAs === 'dec' && isDec(a) && isDec(b)) {
       out.push(`${uuid}:${hex4(Number(a))}:${hex4(Number(b))}`)
       out.push(`${uuid}:${Number(b)}`)
     }
@@ -69,33 +73,40 @@ export async function recordBeaconSightings(
   gateway: GatewayRef,
   fix: GatewayFix,
   beacons: BeaconSighting[],
+  opts: { reportedAs?: BeaconNumbering } = {},
 ): Promise<{ matched: number; holding: number }> {
   let matched = 0
   let holding = 0
   const seenMs = Date.parse(fix.timestamp)
+  const reportedAs = opts.reportedAs ?? 'hex'
+
+  // The company's tools, ONCE per call. A phone hears every advertiser in
+  // range (watches, earbuds, cars — randomized MACs that churn every window),
+  // so matching each id against the database cost 1–5 round trips plus a
+  // full tool scan per unknown id, × 60 ids, × every 20 s, × every phone
+  // (sec-check P2, Sep 9). In memory it is the same test the old ilike/bare
+  // pair ran: exact case-insensitive first, then separator-insensitive.
+  // TOOLS only — the ilike phase used to match ANY asset, so a posted truck
+  // IMEI or a colleague's phone id could be filed as a tool riding with you.
+  const { data: toolRows } = await db
+    .from('assets').select('id, tracker_id')
+    .eq('company_id', gateway.company_id).eq('type', 'tool').eq('active', true).not('tracker_id', 'is', null)
+  const tools = (toolRows ?? []).map((t) => ({ id: t.id as string, exact: String(t.tracker_id).toLowerCase(), bare: strip(String(t.tracker_id)) }))
+  if (!tools.length) return { matched, holding }
+  const findTool = (candidates: string[]): string | null => {
+    for (const cand of candidates) {
+      const lc = cand.toLowerCase()
+      const hit = tools.find((t) => t.exact === lc)
+      if (hit) return hit.id
+    }
+    const bare = candidates.map(strip).filter((s) => s.length >= 8)
+    if (!bare.length) return null
+    return tools.find((t) => bare.includes(t.bare))?.id ?? null
+  }
+
   for (const beacon of beacons) {
     if (!beacon?.id) continue
-    const candidates = beaconCandidates(beacon.id)
-
-    let toolId: string | null = null
-    for (const cand of candidates) {
-      const { data: tool } = await db
-        .from('assets').select('id')
-        .eq('company_id', gateway.company_id)
-        .ilike('tracker_id', likeEsc(cand))
-        .limit(1).maybeSingle()
-      if (tool) { toolId = tool.id; break }
-    }
-    if (!toolId) {
-      const bare = candidates.map(strip).filter((s) => s.length >= 8)
-      if (bare.length) {
-        const { data: tools } = await db
-          .from('assets').select('id, tracker_id')
-          .eq('company_id', gateway.company_id).eq('type', 'tool').not('tracker_id', 'is', null)
-        const hit = (tools ?? []).find((t) => bare.includes(strip(String(t.tracker_id))))
-        toolId = hit?.id ?? null
-      }
-    }
+    const toolId = findTool(beaconCandidates(beacon.id, reportedAs))
     if (!toolId) continue
     matched++
 

@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     // signal arbitration and the pairing history live in lib/ble-sightings
     // (shared with the phone gateway, /api/ingest/ble-phone).
     if (r.beacons.length) {
-      try { await recordBeaconSightings(supabase, asset, { lat: r.lat, lng: r.lng, timestamp: r.timestamp }, r.beacons) } catch { /* custody is additive */ }
+      try { await recordBeaconSightings(supabase, asset, { lat: r.lat, lng: r.lng, timestamp: r.timestamp }, r.beacons, { reportedAs: 'hex' }) } catch { /* custody is additive */ }
     }
   }
 
