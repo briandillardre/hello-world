@@ -187,6 +187,14 @@ export async function POST(request: NextRequest) {
       // so the owner can register a tool with whatever their scanner shows.
       const strip = (s: string) => s.replace(/[^0-9a-z]/gi, '').toLowerCase()
       const candidates = [beacon.id]
+      // Teltonika EYE Beacons straight out of the box (Eddystone/factory
+      // mode) are reported by the gateway as a zero UUID with the tag's MAC
+      // as the last segment: "00000000-0000-0000-0000-7CD9F408B572". The MAC
+      // is printed on the tag, so a tool registered with just that 12-hex
+      // MAC must match — no EYE-app reconfiguration needed (Sep 9, five
+      // beacons zip-tied on in the field and heard within the hour).
+      const zeroMac = beacon.id.match(/^0{8}-0{4}-0{4}-0{4}-([0-9a-fA-F]{12})$/)
+      if (zeroMac) candidates.push(zeroMac[1])
       const ib = beacon.id.match(/^(.*):([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})$/)
       if (ib) {
         candidates.push(`${ib[1]}:${parseInt(ib[2], 16)}:${parseInt(ib[3], 16)}`)

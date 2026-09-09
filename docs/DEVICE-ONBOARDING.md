@@ -228,11 +228,15 @@ device checks in, so every never-connected unit sits Pending by design.
 Queue the config BEFORE first power-up — the device syncs FOTA on boot, and
 that is the fast path (otherwise you wait out the 720-minute timer).
 
-**BLE Eye Beacons default to Eddystone, not iBeacon.** Our tool convention
-is iBeacon `UUID:MAJOR:MINOR`, so each beacon must be switched to iBeacon in
-the Teltonika EYE app (default PIN `123456`, Advanced settings) before its
-tool asset will ever match. They may also ship in Hibernate mode — woken
-with a magnet.
+**Teltonika EYE Beacons need NO app and NO reconfiguring (corrected Sep 9).**
+In factory mode a gateway with Beacon Detection = All reports the tag as
+`00000000-0000-0000-0000-<MAC>` — the MAC printed on the tag. Register the
+tool with Tracker ID = that 12-character MAC (e.g. `7CD9F408B572`) and it
+matches on the next truck pass. The earlier "switch to iBeacon in the EYE
+app" step was unnecessary. They may ship in Hibernate — a magnet wakes them.
+**Placement rule:** a beacon only shows while a gateway is within ~30–50 m.
+Trailers behind tracked trucks are perfect; a machine that lives alone on a
+site needs its own TAT141.
 
 ---
 
