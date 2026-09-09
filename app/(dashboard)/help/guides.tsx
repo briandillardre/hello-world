@@ -58,9 +58,10 @@ export const GUIDES: HelpGuide[] = [
         body: (
           <>
             <P>
-              Add the asset in the app first: <B>Assets → Add Asset</B>. Name it, pick the type,
-              and enter the <B>Tracker ID</B> printed on the tracker&apos;s kit — the ID is what
-              ties the hardware to the right machine. Trackers come set up for our network, and
+              Add the trackers first: <B>Trackers → Add trackers</B> and scan the barcode on each
+              box. Then, per box, <B>Put on a machine</B> — pick a truck you already have or name a
+              new one. Step-by-step for each kind: <B>Truck unit</B>, <B>Battery GPS unit</B>,
+              <B>Tool tags</B> (the next three guides). Trackers come set up for our network, and
               your first install is done with you, in person or on the phone.
             </P>
             <P>
@@ -108,6 +109,228 @@ export const GUIDES: HelpGuide[] = [
               hour. An hour of silence from a parked truck is normal — not a dead tracker. If a unit
               hasn&apos;t reported for several hours <em>while being driven</em>, that&apos;s when to
               call us.
+            </P>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    slug: 'obd-truck-unit',
+    title: 'Truck unit (plugs into the OBD port)',
+    tagline: 'Add it as a tracker, plug it in, put it on the truck. About five minutes.',
+    icon: Satellite,
+    sections: [
+      {
+        heading: '1. Add the tracker',
+        body: (
+          <>
+            <P>
+              Open <B>Trackers</B> (More → Trackers, or tap your company name on the map) and tap
+              <B> Add trackers</B>. Point the camera at the barcode on the unit&apos;s label — the
+              15-digit <B>IMEI</B> — or type it. The tracker lands in the <B>Unassigned drawer</B>
+              with its model already known from the number.
+            </P>
+            <P>
+              Doing a batch? Scan them all now, one after another. Nothing else has to be decided yet.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: '2. Plug it in',
+        body: (
+          <L
+            items={[
+              <>Find the OBD port under the dash on the driver&apos;s side, usually just left of the steering column.</>,
+              <>Push the unit in until it seats. No tools, no wiring, nothing to pair.</>,
+              <>Start the truck. The light on the unit comes on; it is looking for the network.</>,
+            ]}
+          />
+        ),
+      },
+      {
+        heading: '3. Put it on the truck',
+        body: (
+          <>
+            <P>
+              Back on <B>Trackers</B>, the drawer row for that unit has a <B>Put on a machine</B>
+              button. Pick a truck you already added, or name a new one right there. Type and map
+              icon default to a truck; change them any time from the truck&apos;s page.
+            </P>
+            <P>
+              Every position the unit reported while it sat in the drawer comes along, so it does
+              not matter whether you plugged in first or assigned first.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'What to expect',
+        body: (
+          <>
+            <P>
+              <B>Ignition on = live.</B> A moving truck records every few seconds and streams to the map.
+              The first dot usually appears within a few minutes of the first drive.
+            </P>
+            <P>
+              <B>Engine off = asleep.</B> The unit checks in about once an hour to save the truck&apos;s
+              battery. An hour of quiet from a parked truck is normal. Nothing for several hours
+              <em> while being driven</em> is the moment to email support@hammertrack.ai — send the
+              last four digits of the IMEI.
+            </P>
+            <P>
+              <B>Swapped it into another truck?</B> Do not edit the Tracker ID on the truck&apos;s page.
+              Use <B>Reassign tracker</B> on the truck, or the drawer, so each truck keeps its own history.
+              See <B>Swapping &amp; moving trackers</B>.
+            </P>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    slug: 'battery-gps-unit',
+    title: 'Battery GPS unit (machines & trailers)',
+    tagline: 'Add it as a tracker, flip the switch, mount it high, put it on the machine.',
+    icon: Satellite,
+    sections: [
+      {
+        heading: '1. Add the tracker',
+        body: (
+          <P>
+            <B>Trackers → Add trackers</B>: scan the barcode on the unit&apos;s label (the 15-digit
+            <B> IMEI</B>) or type it. It lands in the <B>Unassigned drawer</B>.
+          </P>
+        ),
+      },
+      {
+        heading: '2. Turn it on — this is the step everyone misses',
+        body: (
+          <>
+            <L
+              items={[
+                <>Open the case. There is a small <B>ON / OFF switch</B> inside. Flip it to ON and close the case.</>,
+                <>Watch the light: solid for a moment while it self-tests, then a <B>blink every 5 seconds</B>. That blink means it is alive. No blink = still off.</>,
+                <>The battery ships connected, so the switch is the only thing between you and a working unit.</>,
+              ]}
+            />
+            <P>
+              A unit that never shows up on the map almost always has the switch still OFF. Check it
+              before anything else.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: '3. Mount it',
+        body: (
+          <L
+            items={[
+              <>Somewhere with a view of the sky: top of the cab, the dash, a battery-box lid, high on the frame or trailer tongue. Not under a steel plate.</>,
+              <>Out of the pressure-washer line and out of easy sight. A thief who can&apos;t find it can&apos;t rip it off.</>,
+              <>Screws, heavy zip ties, or the supplied adhesive. It is waterproof; rain and mud are fine.</>,
+            ]}
+          />
+        ),
+      },
+      {
+        heading: '4. Put it on the machine',
+        body: (
+          <P>
+            On <B>Trackers</B>, tap <B>Put on a machine</B> on the unit&apos;s drawer row. Pick a
+            machine you already added or name a new one. Anything it reported from the drawer comes
+            with it.
+          </P>
+        ),
+      },
+      {
+        heading: 'What to expect',
+        body: (
+          <>
+            <P>
+              The first position lands within about an hour outdoors. After that it reports on a
+              schedule: often while moving, rarely while parked, to make the battery last. It is
+              <em> not</em> second-by-second like a truck unit, and it does not need to be.
+            </P>
+            <P>
+              Machines that live outside and move every day drain the battery faster. Ask us about
+              the solar cap or wiring the unit to the machine&apos;s 12 V.
+            </P>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    slug: 'tool-tags',
+    title: 'Tool tags (small tools, attachments, trailers)',
+    tagline: 'Zip-tie it on, add the code on the tag, done. Your trucks do the rest.',
+    icon: Satellite,
+    sections: [
+      {
+        heading: 'How a tag works',
+        body: (
+          <>
+            <P>
+              A tag has no GPS and no SIM. It is a small Bluetooth beacon that your truck and machine
+              units <B>hear</B> when they are within about 100 feet. Whenever a tracked truck passes it,
+              the tag&apos;s location becomes that truck&apos;s location. That is why the truck units
+              go in first: no truck nearby, no report.
+            </P>
+            <P>
+              Perfect for: a trailer that follows a truck, an attachment that rides in the bed, a
+              generator or compressor that gets loaded and unloaded. Not for a machine that sits alone
+              on a site for weeks — give that one its own battery GPS unit.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: '1. Add the tag',
+        body: (
+          <P>
+            <B>Trackers → Add trackers</B> and type the <B>12-character code</B> printed on the tag
+            (letters and numbers, like <span className="font-mono">7CD9F408B572</span>). Colons or
+            spaces don&apos;t matter. It lands in the drawer as a tool tag. The camera scanner also
+            reads the barcode when the tag has one.
+          </P>
+        ),
+      },
+      {
+        heading: '2. Stick it on',
+        body: (
+          <L
+            items={[
+              <>Zip tie, screw, or the adhesive pad. Anywhere on the tool or trailer; there is no antenna to aim.</>,
+              <>Somewhere it won&apos;t get smashed, and not tucked inside a closed steel box if you can help it.</>,
+              <>Nothing to switch on, no app to pair, no PIN. It is already broadcasting.</>,
+            ]}
+          />
+        ),
+      },
+      {
+        heading: '3. Put it on the tool',
+        body: (
+          <P>
+            On <B>Trackers</B>, tap <B>Put on a machine</B> on the tag&apos;s row and name the tool
+            (&quot;Load Trail dump trailer&quot;, &quot;Plate compactor&quot;). It shows on the map the
+            next time one of your tracked trucks drives past it.
+          </P>
+        ),
+      },
+      {
+        heading: 'What to expect',
+        body: (
+          <>
+            <P>
+              The drawer row says <B>heard by</B> and which truck, as soon as any of your units picks the
+              tag up. If a tag stays silent, park a truck with a tracker next to it and give it a minute.
+            </P>
+            <P>
+              The battery lasts years. When a tag finally dies you will see it stop being heard
+              while the truck next to it keeps reporting; swap the tag and put the new code on the tool
+              with <B>Reassign tracker</B>.
             </P>
           </>
         ),

@@ -107,10 +107,28 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
     }
   })
 
-  // Drawer: registry rows no active asset wears. Beacons are tool tags with
-  // their own page (/tags) and a different id format — not trackers here.
-  const drawer = registry.filter((r) => r.model !== 'EYE_BEACON' && !byTracker.has(r.imei))
+  // Drawer: registry rows no active asset wears — tool tags included (their
+  // id is the MAC on the tag; a tool asset carries it as tracker_id too).
+  const wornIds = new Set(Array.from(byTracker.keys()).map((t) => t.toUpperCase()))
+  const drawer = registry.filter((r) => !wornIds.has(r.imei.toUpperCase()) && !wornIds.has(`00000000-0000-0000-0000-${r.imei.toUpperCase()}`))
+  const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString()
   const unassigned: TrackerRow[] = await Promise.all(drawer.map(async (r) => {
+    if (r.model === 'EYE_BEACON') {
+      // A tag has no pings of its own — "alive" means a gateway heard it.
+      // Factory-mode tags report as a zero UUID + MAC (see the ingest).
+      const { data: heard } = await db.from('asset_locations')
+        .select('timestamp, asset:assets(name)')
+        .eq('company_id', companyId).gte('timestamp', dayAgo)
+        .contains('raw', { 'ble.beacons': [{ id: `00000000-0000-0000-0000-${r.imei.toUpperCase()}` }] })
+        .order('timestamp', { ascending: false }).limit(1).maybeSingle()
+      const h = heard as { timestamp: string; asset: { name: string } | { name: string }[] | null } | null
+      const gw = h ? (Array.isArray(h.asset) ? h.asset[0]?.name : h.asset?.name) ?? null : null
+      return {
+        imei: r.imei, model: r.model, label: r.label, registered: true, asset: null,
+        lastSeen: h ? { timestamp: h.timestamp, lat: null, lng: null, speed: null, battery: null } : null,
+        unassignedSince: r.unassigned_since, buffered: 0, heardBy: gw,
+      }
+    }
     const [lastQ, countQ] = await Promise.all([
       db.from('unassigned_locations').select('lat, lng, speed, battery, timestamp')
         .eq('company_id', companyId).eq('imei', r.imei).order('timestamp', { ascending: false }).limit(1).maybeSingle(),
@@ -153,6 +171,15 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
   })
 
   return { installed, unassigned, deletedAssets, moves }
+}
+
+/** Machines with no tracker — the "put it on" choices. */
+export async function getTrackerlessAssets(companyId: string): Promise<{ id: string; name: string; type: AssetType }[]> {
+  if (isMock) return [{ id: 'a7', name: 'Tool trailer', type: 'tool' }, { id: 'a8', name: 'Skid steer', type: 'equipment' }]
+  const { createClient } = await import('../supabase-server')
+  const { data } = await createClient().from('assets').select('id, name, type')
+    .eq('company_id', companyId).eq('active', true).is('deleted_at', null).is('tracker_id', null).order('name')
+  return ((data ?? []) as { id: string; name: string; type: AssetType }[])
 }
 
 /** What the asset page's Tracker sheet needs to offer choices: the drawer,
