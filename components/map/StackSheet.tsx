@@ -18,6 +18,8 @@ export interface StackPick {
   at: [number, number]
   expansionZoom: number
   members: AssetWithLocation[]
+  /** The cluster's real count — the list stops at 500 members. */
+  total: number
   /** Tools riding each gateway right now (asset id → count). */
   toolCounts: Record<string, number>
 }
@@ -105,8 +107,8 @@ export function StackSheet({ stack, onPick, onZoom, onClose }: {
   return (
     <MapSheet
       icon={<Layers className="h-5 w-5 text-amber" />}
-      title={`${stack.members.length} stacked here`}
-      subtitle={<span className="text-muted">{summary}</span>}
+      title={`${stack.total} stacked here`}
+      subtitle={<span className="text-muted">{summary}{stack.total > stack.members.length ? ` · showing ${stack.members.length} of ${stack.total}` : ''}</span>}
       badge={moving > 0 ? (
         <span className="inline-flex items-center gap-1 rounded-full border border-teal/40 bg-teal/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-teal">
           <span className="h-1.5 w-1.5 rounded-full bg-teal animate-pulse" /> {moving} moving

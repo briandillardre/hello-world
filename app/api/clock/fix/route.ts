@@ -39,8 +39,11 @@ export async function POST(req: NextRequest) {
   const { data: phone } = await svc.from('assets').select('id')
     .eq('company_id', perms.companyId).eq('tracker_id', `phone-${perms.userId}`).limit(1).maybeSingle()
   if (phone) {
+    // Counted by the fixes' OWN time, not arrival: a phone coming out of a
+    // dead zone replays hours of older fixes in a burst and must not be
+    // refused for it; a live loop stamps everything "now" and is.
     const { count } = await svc.from('asset_locations').select('id', { count: 'exact', head: true })
-      .eq('asset_id', phone.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString())
+      .eq('asset_id', phone.id).gte('timestamp', new Date(Date.now() - 3_600_000).toISOString())
     if ((count ?? 0) >= HOURLY_CAP) return NextResponse.json({ ok: false, error: 'too many fixes this hour' }, { status: 429 })
   }
   let body: unknown

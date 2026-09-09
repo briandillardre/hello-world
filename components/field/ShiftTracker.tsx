@@ -74,11 +74,21 @@ function metersBetween(a: [number, number], b: [number, number]): number {
 }
 
 const validFix = (f: unknown): f is Fix => !!f && typeof f === 'object' && Number.isFinite((f as Fix).lat) && Number.isFinite((f as Fix).lng) && typeof (f as Fix).at === 'string'
-function loadQueue(): Fix[] {
-  try { const raw = localStorage.getItem(QUEUE_KEY); const arr: unknown = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr.filter(validFix).slice(-QUEUE_CAP) : [] } catch { return [] }
+/** The queue belongs to ONE person (a shared crew phone must not post user
+ *  A's leftovers as user B) and never replays anything older than a day
+ *  (the server would clamp Friday's fixes to Sunday morning). */
+function loadQueue(uid: string): Fix[] {
+  try {
+    const raw = localStorage.getItem(QUEUE_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : null
+    const wrap = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as { uid?: unknown; fixes?: unknown } : null
+    if (!wrap || wrap.uid !== uid || !Array.isArray(wrap.fixes)) return []
+    const cutoff = Date.now() - 24 * 3_600_000
+    return wrap.fixes.filter(validFix).filter((f) => Date.parse(f.at) >= cutoff).slice(-QUEUE_CAP)
+  } catch { return [] }
 }
-function saveQueue(q: Fix[]) {
-  try { if (q.length) localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-QUEUE_CAP))); else localStorage.removeItem(QUEUE_KEY) } catch { /* private mode */ }
+function saveQueue(uid: string, q: Fix[]) {
+  try { if (q.length) localStorage.setItem(QUEUE_KEY, JSON.stringify({ uid, fixes: q.slice(-QUEUE_CAP) })); else localStorage.removeItem(QUEUE_KEY) } catch { /* private mode */ }
 }
 /** A watcher from before a page reload is still running in the service —
  *  stop it before starting another, and whenever no shift is open. */
@@ -117,6 +127,8 @@ export function ShiftTracker() {
   const lastFixRef = useRef<number | null>(null)
   const lastOpenRef = useRef(false)
   const tickRef = useRef(0)
+  const uidRef = useRef<string | null>(null)
+  const [nagOffset, setNagOffset] = useState(0)
 
   useEffect(() => {
     try { setConsent(localStorage.getItem(DISCLOSURE_KEY) === '1') } catch { setConsent(true) }
@@ -130,8 +142,9 @@ export function ShiftTracker() {
     const load = async () => {
       try {
         const r = await fetch('/api/clock/state', { cache: 'no-store' })
-        const j = await r.json().catch(() => null) as { open?: boolean; entry?: { id: string; since: string } | null } | null
+        const j = await r.json().catch(() => null) as { open?: boolean; entry?: { id: string; since: string } | null; uid?: string | null } | null
         if (!alive || !j) return
+        if (typeof j.uid === 'string') uidRef.current = j.uid
         lastOpenRef.current = !!(j.open && j.entry)
         setOpen((cur) => {
           const next = j.open && j.entry ? { id: j.entry.id, since: j.entry.since } : null
@@ -191,25 +204,27 @@ export function ShiftTracker() {
     let webFallbackUsed = false
     let lastPushAt = 0
     let lastPos: [number, number] | null = null
-    const pending: Fix[] = loadQueue() // whatever a previous page life could not send
+    const uid = uidRef.current ?? ''
+    const pending: Fix[] = uid ? loadQueue(uid) : [] // whatever a previous page life could not send
     let flushing = false
+    let retryNotBefore = 0
 
     const flush = async () => {
-      if (flushing || !pending.length) return
+      if (flushing || !pending.length || Date.now() < retryNotBefore) return
       flushing = true
       const batch = pending.splice(0, 50)
       try {
         const status = await postFixes(batch)
         if (status === 401 || status === 403) { pending.length = 0 } // signed out / no view level — nothing to keep
         else if (status === 409) { pending.length = 0; lastOpenRef.current = false; setOpen(null) } // clocked out elsewhere — stop
-        else if (status === 429) { /* over the hourly cap — this batch is dropped */ }
+        else if (status === 429) { pending.unshift(...batch); retryNotBefore = Date.now() + 5 * 60_000 } // over the hourly cap — keep them, try later
         else if (status < 200 || status >= 300) { pending.unshift(...batch) }
         else { setFixes((n) => n + batch.length); lastFixRef.current = Date.now() }
       } catch {
         pending.unshift(...batch) // dead zone — try again with the next fix
       } finally {
         if (pending.length > QUEUE_CAP) pending.splice(0, pending.length - QUEUE_CAP)
-        saveQueue(pending)
+        if (uid) saveQueue(uid, pending)
         flushing = false
       }
     }
@@ -231,7 +246,7 @@ export function ShiftTracker() {
         heading: heading != null && Number.isFinite(heading) && heading >= 0 ? Math.round(heading) : null,
         at: new Date(Number.isFinite(atMs) ? atMs : now).toISOString(),
       })
-      saveQueue(pending)
+      if (uid) saveQueue(uid, pending)
       void flush()
     }
 
@@ -270,9 +285,12 @@ export function ShiftTracker() {
             }
             if (loc) onFix(loc.latitude, loc.longitude, loc.accuracy ?? null, loc.speed ?? null, loc.bearing ?? null, loc.time ?? Date.now())
           })
+          // Cleaned up while the OS dialog held addWatcher open: remove this
+          // watcher and leave the stored id alone — it may already belong to
+          // a newer recorder (ship-check).
+          if (stopped) { void plugin.removeWatcher({ id }).catch(() => {}); return }
           watcherId = id
           try { localStorage.setItem(WATCHER_KEY, id) } catch { /* private mode */ }
-          if (stopped) { void plugin.removeWatcher({ id }).catch(() => {}); try { localStorage.removeItem(WATCHER_KEY) } catch { /* private mode */ } watcherId = null }
           publish()
           void flush()
           return
@@ -294,6 +312,19 @@ export function ShiftTracker() {
       void flush()
     }
   }, [open?.id, consent, declined]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Both "until it is done" bars live under the top bar; when the receipt
+  // chase is showing, this one steps below it instead of covering it.
+  useEffect(() => {
+    if (!(denied || declined)) return
+    const tick = () => {
+      const el = document.querySelector('[data-receipt-nag]') as HTMLElement | null
+      setNagOffset(el ? Math.round(el.getBoundingClientRect().height) + 8 : 0)
+    }
+    tick()
+    const t = window.setInterval(tick, 2000)
+    return () => window.clearInterval(t)
+  }, [denied, declined])
 
   const accept = () => {
     try { localStorage.setItem(DISCLOSURE_KEY, '1') } catch { /* private mode */ }
@@ -336,7 +367,7 @@ export function ShiftTracker() {
         <div
           data-shift-denied
           className="fixed left-2 right-2 z-[39] md:left-auto md:right-4 md:w-[440px] rounded-xl border border-amber/50 bg-[#2a1d05]/95 backdrop-blur px-3 py-2 shadow-panel flex items-center gap-2"
-          style={{ top: 'calc(var(--ht-safe-top, 0px) + 62px)' }}
+          style={{ top: `calc(var(--ht-safe-top, 0px) + ${62 + nagOffset}px)` }}
         >
           <div className="flex-1 min-w-0">
             <p className="text-[12.5px] text-amber font-semibold leading-tight">📍 Location is required while you&apos;re clocked in.</p>
