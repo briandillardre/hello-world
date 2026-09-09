@@ -13,9 +13,9 @@
 >
 > **v1.2 carries the LOCATION permissions (Aug 30).**
 > `AndroidManifest.xml` now declares `ACCESS_COARSE_LOCATION` +
-> `ACCESS_FINE_LOCATION` (foreground only at the time. **Superseded Sep 9,
-> v1.4.0:** `ACCESS_BACKGROUND_LOCATION` is now requested for mandatory
-> shift tracking — see *Background location* below). Until
+> `ACCESS_FINE_LOCATION` (still the only location permissions: since Sep 9
+> the shift recorder runs as a location FOREGROUND service, which needs no
+> background-location permission — see *Background location* below). Until
 > v1.2 rolls out, the installed Android app CANNOT show the OS location
 > prompt — the WebView auto-denies. The web-side first-open primer
 > (`components/LocationPrimer.tsx`) is live everywhere already and doubles as
@@ -72,9 +72,9 @@ Apple sometimes rejects pure web wrappers. Mitigation plan, in order:
 1. Ship v1.0 with **push notifications** wired (theft alerts to the lock
    screen — genuinely native, and our killer feature).
 2. Add **camera** for receipt capture (native-only). Location was
-   **foreground only** through v1.3; v1.4.0 adds background location for
-   clocked-in shifts (see *Background location*), gated by Play's
-   declaration review.
+   **foreground only** through v1.3; v1.4.x records clocked-in shifts through
+   a location foreground service (see *Background location*) — no
+   background-location permission, no Play declaration.
 3. In App Review notes, lead with the native capabilities + demo login.
 If rejected anyway: appeal with the native feature list; worst case we bundle
 more UI into the shell. Android has no equivalent rule — Play will approve
@@ -138,52 +138,45 @@ invite, and the 3 ASC_* secrets that arm the TestFlight lane.
   crew tracking, linked to account), contact info (account), photos (receipts,
   user-initiated). No ads, no tracking-for-advertising.
 
-## Background location (v1.4.0, Sep 9 2026)
+## Background location — the shift recorder (v1.4.0 → 1.4.1, Sep 9 2026)
 
 Brian: "mandatory tracking thru app while clocked in … native background
-tracking is a must." The shell now carries
+tracking is a must." The shell carries
 `@capacitor-community/background-geolocation`: while a person is CLOCKED IN,
-`components/field/ShiftTracker.tsx` starts a location foreground service
+`components/field/ShiftTracker.tsx` starts a **location foreground service**
 (persistent notification "HammerTrack · on the clock") so the shift keeps
 recording with the screen off; clocking out stops it. Nothing runs when
-nobody is clocked in. Manifest: `ACCESS_BACKGROUND_LOCATION`,
-`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION`.
+nobody is clocked in.
 
-**Play gates this permission** — a build that declares it cannot roll to
-production until the declaration is approved. The android-release workflow
-was dispatched to the **internal** track for the crew test build;
-production is one dispatch (`track: production`) after approval.
+**Permission model (corrected by ship-check the same night):** a location-type
+foreground service started while the app is in use may keep receiving
+location in the background with plain **"While using the app"** permission.
+The plugin never requests `ACCESS_BACKGROUND_LOCATION`, and the manifest
+does NOT declare it (v1.4.0 briefly did — removed in 1.4.1) — so **Play's
+background-location declaration + video review does not apply.** The
+in-app disclosure sheet (before the OS prompt) stays: it is the honest thing
+to do and what Play's prominent-disclosure rule asks for when location is
+collected while the app is not on screen.
 
-Play Console → App content → **Location permissions** (Brian, task #119):
+**Two settings the plugin needs, both in 1.4.1:** `android.useLegacyBridge:
+true` in capacitor.config.ts (updates halt after ~5 min in the background on
+the modern bridge — plugin issue #89), and the fix batches leave through
+`CapacitorHttp` when the shell has it (Android throttles WebView HTTP after
+~5 min in the background — issue #14); the queue is persisted in
+localStorage across page reloads, and the watcher id is persisted so a
+watcher orphaned by a reload is removed before a new one starts.
 
-- *Does your app access location in the background?* **Yes.**
-- *Core functionality:* HammerTrack is a construction crew and fleet
-  tracking app. While an employee is clocked in on the time clock, the app
-  records the phone's location so the employer's time card shows where the
-  shift happened and the crew map shows the worker in the field. Recording
-  runs only between clock-in and clock-out; there is no tracking when nobody
-  is clocked in.
-- *Why background:* a worker's phone is in a pocket with the screen off
-  for most of a shift; without background access the time card has gaps and
-  the GPS verification the employer relies on for payroll is incomplete.
-- *Prominent disclosure:* shown in-app BEFORE the permission prompt, the
-  first time a person clocks in on the app — "HammerTrack collects this
-  phone's location while you are clocked in — including when the app is
-  closed or not in use — to record where your shift happens, verify your
-  time card and show you on the crew map. Tracking stops when you clock
-  out." with Continue / Not now. Also covered at hammertrack.ai/privacy.
-- *Video:* screen-record on the installed app: Time clock → Clock in →
-  the disclosure sheet → Continue → the OS prompt ("Allow all the time") →
-  background the app → the persistent notification → Clock out → the
-  notification disappears. 30–60 s.
+Release: **1.4.1 = versionCode 10** dispatched to **production** by the
+android-release workflow (release rule). 1.4.0 (versionCode 9) went to the
+internal track only and is superseded.
 
 ## Native roadmap after v1
 1. **Push notifications** — ✅ DONE for Android (FCM v1, Aug 9 — theft alerts
    to the lock screen). iOS push (APNs) waits on Apple enrollment.
 2. **Location** — foreground "while using the app" shipped in v1.2 (Android).
-   **Background location shipped in v1.4.0 (Sep 9)** for shift tracking —
-   see *Background location* below for the Play declaration that gates the
-   production rollout. iOS: `NSLocationAlwaysAndWhenInUseUsageDescription`
+   **The shift recorder shipped in v1.4.x (Sep 9)** — a location foreground
+   service, no background-location permission, no Play declaration (see
+   *Background location* above). iOS: `NSLocationAlwaysAndWhenInUseUsageDescription`
    + `UIBackgroundModes: location` are in Info.plist for the day Apple
    enrollment clears.
 3. **Camera** — receipt-chase capture flow

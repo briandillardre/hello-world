@@ -73,20 +73,43 @@ the `time_cards` MCP/Ask AI tool, so every surface agrees.
 
 ## Native release
 - `@capacitor-community/background-geolocation` in package.json (cap sync
-  registers it). Android: `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE`,
-  `FOREGROUND_SERVICE_LOCATION`. iOS: `NSLocationAlwaysAndWhenInUseUsageDescription`
+  registers it). It records through a location FOREGROUND service on plain
+  "While using the app" permission — the manifest declares NO
+  `ACCESS_BACKGROUND_LOCATION` (so no Play declaration review), only
+  `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_LOCATION` (the plugin's own
+  manifest has them too). iOS: `NSLocationAlwaysAndWhenInUseUsageDescription`
   + `UIBackgroundModes: location`.
-- **v1.4.0 = versionCode 9.** Dispatched to the **internal** track; Play
-  requires the Location-permissions declaration (+ video) before a build
-  with background location can roll to production — wording in
-  docs/APP-STORE-PLAYBOOK.md "Background location" (board #119, Brian).
+- `android.useLegacyBridge: true` in capacitor.config.ts — the plugin's
+  updates halt after ~5 min in the background without it. Fix batches leave
+  via CapacitorHttp when the shell has it (WebView HTTP is throttled in the
+  background); the queue and the watcher id persist in localStorage across
+  page reloads (a reload orphans the native watcher otherwise).
+- **v1.4.1 = versionCode 10, dispatched to production.** 1.4.0 (versionCode
+  9) went to the internal track and is superseded.
 - Already-installed apps (≤ 1.3.1) get everything else on the next web
   deploy: mandatory clock-in fix, foreground shift tracking, /timecards.
+
+## Hardening (sec-check on the ship, Sep 9)
+- `/api/clock/fix` needs the `clock` view level AND an open shift (409
+  otherwise — the tracker stops itself), caps a phone at 240 fixes/hour
+  (429) and drops fixes closer than 10 s.
+- Clock-in without a location is refused server-side too.
+- CSV cells starting with `= + - @` or a tab are apostrophe-prefixed (Excel
+  formula injection through a member's display name).
+- Ask AI's `time_cards` honours the `clock` view level and the page's scope
+  (crew see their own; Foreman+ the crew's); the Agent Interface (company
+  key = admin-grade) stays company-wide.
+- Manager corrections use the EFFECTIVE permissions (a view-as preview is
+  read-only) and freeze both original times on the first edit.
 
 ## Known gaps / next
 - Breaks are entered by a manager, not tracked by the crew (a Break button
   is the natural next step).
 - Overtime is weekly-only; a state with daily OT needs a company setting.
 - Clock-in reminders (push at the usual start time) — no schedule data yet.
-- RLS on `time_entries` is still company-wide FOR ALL (015) — task #60
-  should narrow writes to own rows + service role alongside daily_logs.
+- ~~RLS on `time_entries` was company-wide FOR ALL (015)~~ — **migration 104**
+  (sec-check P1 follow-up, same night): SELECT stays company-wide, INSERT and
+  UPDATE only your own rows, no client DELETE, and a BEFORE UPDATE guard
+  (`guard_time_entry_cols`) lets a session only CLOSE its own open entry —
+  every other column (hours, break, the edit trail) is server-side.
+  `daily_logs` gets the same treatment under task #60.

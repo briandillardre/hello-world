@@ -62,21 +62,27 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel, notice
   const activityMax = Math.max(1, ...activity)
   const wavePath = useMemo(() => areaPath(activity, activityMax, 200, 40, 3), [activity, activityMax])
 
-  // ── site presence ──
+  // ── site presence ── what is stacked on each site, by kind (Sep 9 stacks:
+  // Brian, "multiple items in one general area … cleanly show this (and on
+  // command center)"): trucks / machines / people / tools inside the polygon.
   const sites = useMemo(() => {
     const located = assets.filter((a) => a.location)
     return geofences
       .filter((g) => g.kind !== 'boundary')
       .map((g) => {
         const ring = (g.geometry?.coordinates?.[0] ?? []) as [number, number][]
-        const inside = ring.length >= 3
-          ? located.filter((a) => pointInPolygon([a.location!.lng, a.location!.lat], ring)).length
-          : 0
-        return { id: g.id, name: g.name, color: g.color, inside }
+        const here = ring.length >= 3 ? located.filter((a) => pointInPolygon([a.location!.lng, a.location!.lat], ring)) : []
+        const kinds = { vehicle: 0, equipment: 0, personnel: 0, tool: 0 } as Record<string, number>
+        for (const a of here) kinds[a.type] = (kinds[a.type] ?? 0) + 1
+        return { id: g.id, name: g.name, color: g.color, inside: here.length, kinds }
       })
       .sort((a, b) => b.inside - a.inside)
       .slice(0, 5)
   }, [assets, geofences])
+  const KIND_GLYPH: { key: string; glyph: string; title: string }[] = [
+    { key: 'vehicle', glyph: '🚚', title: 'trucks' }, { key: 'equipment', glyph: '🏗', title: 'machines' },
+    { key: 'personnel', glyph: '👷', title: 'people' }, { key: 'tool', glyph: '🔧', title: 'tools' },
+  ]
   const siteMax = Math.max(1, ...sites.map((s) => s.inside))
 
   // ── fleet status ──
@@ -129,7 +135,13 @@ export function CommandRail({ assets, geofences, tracks, panels, onPanel, notice
               <div key={s.id} className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-sm flex-none" style={{ background: s.color }} />
                 <span className="flex-1 min-w-0 truncate text-[11px] text-muted">{s.name}</span>
-                <span className="relative w-12 h-1.5 rounded-full bg-navy-800 overflow-hidden flex-none">
+                {/* The stack, by kind — only the kinds present, so a quiet site stays quiet. */}
+                {s.inside > 0 && (
+                  <span className="flex items-center gap-1 flex-none font-mono text-[9.5px] text-ink/85 tabular-nums" aria-label={KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => `${s.kinds[k.key]} ${k.title}`).join(', ')}>
+                    {KIND_GLYPH.filter((k) => s.kinds[k.key]).map((k) => <span key={k.key} title={`${s.kinds[k.key]} ${k.title}`}>{k.glyph}{s.kinds[k.key]}</span>)}
+                  </span>
+                )}
+                <span className="relative w-8 h-1.5 rounded-full bg-navy-800 overflow-hidden flex-none">
                   <span className="absolute inset-y-0 left-0 rounded-full bg-teal/70" style={{ width: `${(s.inside / siteMax) * 100}%` }} />
                 </span>
                 <span className="font-mono text-[11px] text-ink tabular-nums w-4 text-right flex-none">{s.inside}</span>

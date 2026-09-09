@@ -48,15 +48,16 @@
          the request and the scanner silently falls back to typing. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- Background location (v1.4.0, Sep 9 2026 — Brian: "mandatory tracking
+    <!-- Shift recording (v1.4.0/1.4.1, Sep 9 2026 — Brian: "mandatory tracking
          thru app while clocked in", "native background tracking is a must"):
          while a person is CLOCKED IN, @capacitor-community/background-geolocation
-         runs a location foreground service so the shift keeps recording with
-         the screen off. Requested only after the in-app disclosure sheet
-         (ShiftTracker) and only while a shift is open. Play requires the
-         background-location declaration + demo video for this permission —
-         docs/APP-STORE-PLAYBOOK.md "Background location". -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+         runs a location FOREGROUND service (persistent notification) so the
+         shift keeps recording with the screen off. That needs only "While
+         using the app" location — deliberately NO background-location
+         permission (the plugin never requests it, and declaring it would put
+         the release through Play's background-location review for nothing;
+         ship-check). The plugin's own manifest declares the foreground-service
+         permissions and POST_NOTIFICATIONS; repeated here so the intent is visible. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 </manifest>

@@ -49,7 +49,7 @@ custom agents on the OpenAI/Anthropic SDKs) take the same URL + header pair.
 
 | Tool | Answers questions like |
 |---|---|
-| `list_assets` | "Where's the excavator?" · "What's moving right now?" · "Is anything at the Riverside site?" |
+| `list_assets` | "Where's the excavator?" · "What's moving right now?" · "Is anything at the Riverside site?" Also `siteStacks` (Sep 9): per site the count by kind — trucks / machines / people / tools — how many are moving, and their names; `offSite` = located assets on no site. |
 | `get_zone_costs` | "What did Riverside cost this week?" · "How are we tracking against the budget?" (args: `zone` optional, `days` 1–90, default 7) |
 | `list_alerts` | "Any theft alerts this week?" · "Did anything move after hours?" (args: `days` 1–30, `limit` up to 200) |
 | `maintenance_status` | "Anything overdue for service?" · "What work orders are open?" |

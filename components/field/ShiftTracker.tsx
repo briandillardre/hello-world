@@ -15,25 +15,38 @@ import { isNativeApp, nativePlatform } from '@/lib/native'
  * Two engines, picked at runtime (the app loads the live site, so the same
  * code runs in a browser and in the shell):
  *  • Native shell with @capacitor-community/background-geolocation present:
- *    a foreground-service watcher keeps recording with the screen off or
- *    the app in the background. Play's prominent-disclosure rule: the first
- *    time, a sheet explains what is collected and why BEFORE the OS prompt.
+ *    a location FOREGROUND service (persistent notification) keeps recording
+ *    with the screen off or the app in the background — "While using the
+ *    app" permission is all it needs, no background-location permission.
+ *    Play's prominent-disclosure rule: the first time, a sheet explains what
+ *    is collected and why BEFORE the OS prompt.
  *  • Anywhere else (browser, PWA, an older app build): watchPosition while
  *    the page is open — honest about being foreground-only.
  * Denied location while clocked in = an amber bar that does not go away
  * until location is on or the person clocks out.
+ *
+ * Hard-won (ship-check, Sep 9): the native watcher survives a page reload
+ * (Capacitor forgets its callbacks, the service does not), so its id is kept
+ * in localStorage and any orphan is removed before a new one starts; the
+ * fix queue is persisted too (Android throttles WebView HTTP after ~5 min in
+ * the background — the batch goes out through CapacitorHttp when available).
  */
 export const CLOCK_EVENT = 'ht:clock'
 export const SHIFT_STATUS_EVENT = 'ht:shift-status'
+/** Anyone (the clock card on mount) may ask for the current status. */
+export const SHIFT_STATUS_QUERY = 'ht:shift-status?'
 export interface ShiftStatus { open: boolean; engine: 'native' | 'web' | 'off'; fixes: number; denied: boolean; lastFixAt: number | null }
 
 const DISCLOSURE_KEY = 'ht_shift_disclosure_done'
+const WATCHER_KEY = 'ht_shift_watcher'
+const QUEUE_KEY = 'ht_shift_queue'
 const POLL_MS = 60_000
 /** Push cadence: one fix per 30 s, or sooner after a real move (≥ 40 m, ≥ 10 s). */
 const MIN_PUSH_MS = 30_000
 const MOVE_PUSH_MS = 10_000
 const MIN_MOVE_M = 40
-const QUEUE_CAP = 200
+/** ~16 h of a screen-off shift at the 30 s cadence. */
+const QUEUE_CAP = 2000
 
 interface BgLocation { latitude: number; longitude: number; accuracy?: number; speed?: number | null; bearing?: number | null; time?: number | null }
 interface BgError { code?: string; message?: string }
@@ -42,10 +55,11 @@ interface BgPlugin {
   removeWatcher(opts: { id: string }): Promise<void>
   openSettings(): Promise<void>
 }
+interface NativeHttp { post(opts: { url: string; headers?: Record<string, string>; data?: unknown }): Promise<{ status: number }> }
+interface CapGlobal { isNativePlatform?: () => boolean; Plugins?: { BackgroundGeolocation?: BgPlugin; CapacitorHttp?: NativeHttp } }
+const cap = (): CapGlobal | undefined => (typeof window === 'undefined' ? undefined : (window as unknown as { Capacitor?: CapGlobal }).Capacitor)
 function bgPlugin(): BgPlugin | null {
-  if (typeof window === 'undefined') return null
-  const cap = (window as unknown as { Capacitor?: { Plugins?: { BackgroundGeolocation?: BgPlugin } } }).Capacitor
-  const p = cap?.Plugins?.BackgroundGeolocation
+  const p = cap()?.Plugins?.BackgroundGeolocation
   return p && typeof p.addWatcher === 'function' ? p : null
 }
 
@@ -59,8 +73,41 @@ function metersBetween(a: [number, number], b: [number, number]): number {
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
+const validFix = (f: unknown): f is Fix => !!f && typeof f === 'object' && Number.isFinite((f as Fix).lat) && Number.isFinite((f as Fix).lng) && typeof (f as Fix).at === 'string'
+function loadQueue(): Fix[] {
+  try { const raw = localStorage.getItem(QUEUE_KEY); const arr: unknown = raw ? JSON.parse(raw) : []; return Array.isArray(arr) ? arr.filter(validFix).slice(-QUEUE_CAP) : [] } catch { return [] }
+}
+function saveQueue(q: Fix[]) {
+  try { if (q.length) localStorage.setItem(QUEUE_KEY, JSON.stringify(q.slice(-QUEUE_CAP))); else localStorage.removeItem(QUEUE_KEY) } catch { /* private mode */ }
+}
+/** A watcher from before a page reload is still running in the service —
+ *  stop it before starting another, and whenever no shift is open. */
+async function killOrphanWatcher(plugin: BgPlugin) {
+  let id: string | null = null
+  try { id = localStorage.getItem(WATCHER_KEY) } catch { /* private mode */ }
+  if (!id) return
+  try { await plugin.removeWatcher({ id }) } catch { /* already gone */ }
+  try { localStorage.removeItem(WATCHER_KEY) } catch { /* private mode */ }
+}
+/** POST a batch; native HTTP first inside the shell (the WebView's fetch is
+ *  throttled after ~5 min in the background), the page's fetch otherwise. */
+async function postFixes(batch: Fix[]): Promise<number> {
+  const body = { fixes: batch }
+  const c = cap()
+  const http = c?.isNativePlatform?.() ? c.Plugins?.CapacitorHttp : undefined
+  if (http?.post) {
+    try {
+      const r = await http.post({ url: `${window.location.origin}/api/clock/fix`, headers: { 'content-type': 'application/json' }, data: body })
+      if (typeof r?.status === 'number' && r.status !== 401) return r.status // 401 = the native jar lacks the session cookie → use the WebView
+    } catch { /* fall through to fetch */ }
+  }
+  const r = await fetch('/api/clock/fix', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true })
+  return r.status
+}
+
 export function ShiftTracker() {
   const [open, setOpen] = useState<OpenShift | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [consent, setConsent] = useState<boolean | null>(null) // null until read
   const [askConsent, setAskConsent] = useState(false)
   const [declined, setDeclined] = useState(false)
@@ -68,13 +115,16 @@ export function ShiftTracker() {
   const [fixes, setFixes] = useState(0)
   const engineRef = useRef<'native' | 'web' | 'off'>('off')
   const lastFixRef = useRef<number | null>(null)
+  const lastOpenRef = useRef(false)
+  const tickRef = useRef(0)
 
   useEffect(() => {
     try { setConsent(localStorage.getItem(DISCLOSURE_KEY) === '1') } catch { setConsent(true) }
   }, [])
 
-  // Am I clocked in? On load, every minute, when the clock card says so, and
-  // whenever the app comes back to the foreground.
+  // Am I clocked in? On load, when the clock card says so, on foreground, and
+  // on a timer that stays cheap while idle: no poll with the tab hidden, only
+  // every fifth minute while nobody is clocked in.
   useEffect(() => {
     let alive = true
     const load = async () => {
@@ -82,14 +132,21 @@ export function ShiftTracker() {
         const r = await fetch('/api/clock/state', { cache: 'no-store' })
         const j = await r.json().catch(() => null) as { open?: boolean; entry?: { id: string; since: string } | null } | null
         if (!alive || !j) return
+        lastOpenRef.current = !!(j.open && j.entry)
         setOpen((cur) => {
           const next = j.open && j.entry ? { id: j.entry.id, since: j.entry.since } : null
           return cur?.id === next?.id ? cur : next
         })
+        setLoaded(true)
       } catch { /* offline — keep the last answer */ }
     }
     void load()
-    const t = window.setInterval(load, POLL_MS)
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return
+      tickRef.current++
+      if (!lastOpenRef.current && tickRef.current % 5 !== 0) return
+      void load()
+    }, POLL_MS)
     const onClock = () => { void load() }
     const onVis = () => { if (document.visibilityState === 'visible') void load() }
     window.addEventListener(CLOCK_EVENT, onClock)
@@ -97,11 +154,24 @@ export function ShiftTracker() {
     return () => { alive = false; window.clearInterval(t); window.removeEventListener(CLOCK_EVENT, onClock); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
-  const publish = useCallback((extra?: Partial<ShiftStatus>) => {
-    const detail: ShiftStatus = { open: !!open, engine: engineRef.current, fixes, denied, lastFixAt: lastFixRef.current, ...extra }
+  const publish = useCallback(() => {
+    const detail: ShiftStatus = { open: !!open, engine: engineRef.current, fixes, denied, lastFixAt: lastFixRef.current }
     window.dispatchEvent(new CustomEvent(SHIFT_STATUS_EVENT, { detail }))
   }, [open, fixes, denied])
   useEffect(() => { publish() }, [publish])
+  useEffect(() => {
+    const h = () => publish()
+    window.addEventListener(SHIFT_STATUS_QUERY, h)
+    return () => window.removeEventListener(SHIFT_STATUS_QUERY, h)
+  }, [publish])
+
+  // No shift open (as far as the server knows) → make sure no watcher from a
+  // previous page life is still recording.
+  useEffect(() => {
+    if (!loaded || open) return
+    const plugin = isNativeApp() ? bgPlugin() : null
+    if (plugin) void killOrphanWatcher(plugin)
+  }, [loaded, open])
 
   // The recorder. Keyed on the open shift + consent so a fresh clock-in (or
   // a granted disclosure) restarts it cleanly.
@@ -118,9 +188,10 @@ export function ShiftTracker() {
     let stopped = false
     let watcherId: string | null = null
     let webWatch: number | null = null
+    let webFallbackUsed = false
     let lastPushAt = 0
     let lastPos: [number, number] | null = null
-    const pending: Fix[] = []
+    const pending: Fix[] = loadQueue() // whatever a previous page life could not send
     let flushing = false
 
     const flush = async () => {
@@ -128,20 +199,23 @@ export function ShiftTracker() {
       flushing = true
       const batch = pending.splice(0, 50)
       try {
-        const r = await fetch('/api/clock/fix', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fixes: batch }), keepalive: true })
-        if (r.status === 401) { pending.length = 0 } // signed out — nothing to keep
-        else if (!r.ok) { pending.unshift(...batch) }
+        const status = await postFixes(batch)
+        if (status === 401 || status === 403) { pending.length = 0 } // signed out / no view level — nothing to keep
+        else if (status === 409) { pending.length = 0; lastOpenRef.current = false; setOpen(null) } // clocked out elsewhere — stop
+        else if (status === 429) { /* over the hourly cap — this batch is dropped */ }
+        else if (status < 200 || status >= 300) { pending.unshift(...batch) }
         else { setFixes((n) => n + batch.length); lastFixRef.current = Date.now() }
       } catch {
         pending.unshift(...batch) // dead zone — try again with the next fix
       } finally {
         if (pending.length > QUEUE_CAP) pending.splice(0, pending.length - QUEUE_CAP)
+        saveQueue(pending)
         flushing = false
       }
     }
 
     const onFix = (lat: number, lng: number, accuracy: number | null, speedMs: number | null, heading: number | null, atMs: number) => {
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+      if (stopped || !Number.isFinite(lat) || !Number.isFinite(lng)) return
       if (accuracy != null && accuracy > 1000) return
       const now = Date.now()
       const moved = lastPos ? metersBetween(lastPos, [lng, lat]) : Infinity
@@ -157,24 +231,29 @@ export function ShiftTracker() {
         heading: heading != null && Number.isFinite(heading) && heading >= 0 ? Math.round(heading) : null,
         at: new Date(Number.isFinite(atMs) ? atMs : now).toISOString(),
       })
+      saveQueue(pending)
       void flush()
     }
 
     const startWeb = () => {
+      if (stopped || webWatch != null) return
       if (typeof navigator === 'undefined' || !('geolocation' in navigator)) { engineRef.current = 'off'; setDenied(true); return }
       engineRef.current = 'web'
       webWatch = navigator.geolocation.watchPosition(
         (p) => onFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy ?? null, p.coords.speed ?? null, p.coords.heading ?? null, p.timestamp),
-        (e) => { if (e.code === 1) setDenied(true) },
+        (e) => { if (!stopped && e.code === 1) setDenied(true) },
         { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
       )
+      publish()
     }
 
     const start = async () => {
       if (plugin) {
+        await killOrphanWatcher(plugin)
+        if (stopped) return
         try {
           engineRef.current = 'native'
-          watcherId = await plugin.addWatcher({
+          const id = await plugin.addWatcher({
             backgroundTitle: 'HammerTrack · on the clock',
             backgroundMessage: 'Recording your shift location until you clock out.',
             requestPermissions: true,
@@ -182,23 +261,34 @@ export function ShiftTracker() {
             distanceFilter: 20,
           }, (loc, err) => {
             if (stopped) return
-            if (err) { if (err.code === 'NOT_AUTHORIZED') setDenied(true); return }
+            if (err) {
+              if (err.code === 'NOT_AUTHORIZED') { setDenied(true); return }
+              // "Service not running." and friends — the native watcher is
+              // not delivering; the page's own GPS takes over, once.
+              if (!webFallbackUsed) { webFallbackUsed = true; startWeb() }
+              return
+            }
             if (loc) onFix(loc.latitude, loc.longitude, loc.accuracy ?? null, loc.speed ?? null, loc.bearing ?? null, loc.time ?? Date.now())
           })
-          if (stopped && watcherId) { void plugin.removeWatcher({ id: watcherId }); watcherId = null }
+          watcherId = id
+          try { localStorage.setItem(WATCHER_KEY, id) } catch { /* private mode */ }
+          if (stopped) { void plugin.removeWatcher({ id }).catch(() => {}); try { localStorage.removeItem(WATCHER_KEY) } catch { /* private mode */ } watcherId = null }
+          publish()
+          void flush()
           return
         } catch {
           // Plugin present but unusable — fall back to the page's own GPS.
         }
       }
       startWeb()
+      void flush()
     }
     void start()
     setFixes(0)
 
     return () => {
       stopped = true
-      if (watcherId && plugin) void plugin.removeWatcher({ id: watcherId }).catch(() => {})
+      if (watcherId && plugin) { void plugin.removeWatcher({ id: watcherId }).catch(() => {}); try { localStorage.removeItem(WATCHER_KEY) } catch { /* private mode */ } }
       if (webWatch != null) navigator.geolocation.clearWatch(webWatch)
       engineRef.current = 'off'
       void flush()
@@ -217,8 +307,8 @@ export function ShiftTracker() {
 
   if (!open) return null
   const platform = nativePlatform()
-  const settingsPath = platform === 'ios' ? 'Settings → HammerTrack → Location → Always'
-    : platform === 'android' ? 'Settings → Apps → HammerTrack → Permissions → Location → Allow all the time'
+  const settingsPath = platform === 'ios' ? 'Settings → HammerTrack → Location → While Using the App'
+    : platform === 'android' ? 'Settings → Apps → HammerTrack → Permissions → Location → Allow only while using the app'
       : 'your browser’s site settings → Location → Allow'
 
   return (
@@ -229,9 +319,9 @@ export function ShiftTracker() {
             <p className="text-2xl mb-1">📍</p>
             <h2 id="shift-disclosure-title" className="font-display font-bold text-lg text-ink">Location while you&apos;re on the clock</h2>
             <p className="mt-2 text-[13.5px] text-muted leading-relaxed">
-              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card and show you on the crew map. Tracking stops when you clock out. It is never sold or used for ads.
+              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card and show you on the crew map. A notification shows the whole time a shift is recording, and it stops when you clock out. Never sold, never used for ads.
             </p>
-            <p className="mt-2 text-[12px] text-faint">Next, your phone will ask for location permission. Choose <span className="text-ink font-semibold">Allow all the time</span> so a shift keeps recording with the screen off.</p>
+            <p className="mt-2 text-[12px] text-faint">Next, your phone asks for location permission — choose <span className="text-ink font-semibold">While using the app</span>. That is all the shift recorder needs.</p>
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={decline} className="flex-1 rounded-xl border border-navy-700 py-3 text-sm font-semibold text-muted">Not now</button>
               <button type="button" onClick={accept} className="flex-1 rounded-xl bg-amber py-3 text-sm font-display font-bold text-[#1a1100]">Continue</button>
@@ -240,22 +330,24 @@ export function ShiftTracker() {
         </div>
       )}
 
+      {/* Under the top bar (like the receipt chase), never over the bottom of
+          a page — it used to sit on the clock-out button it pointed at. */}
       {(denied || declined) && !askConsent && (
         <div
           data-shift-denied
-          className="fixed left-2 right-2 z-[40] md:left-auto md:right-4 md:w-[420px] rounded-xl border border-amber/50 bg-[#2a1d05]/95 backdrop-blur px-3 py-2.5 shadow-panel"
-          style={{ bottom: 'calc(var(--ht-safe-bottom, 0px) + 62px)' }}
+          className="fixed left-2 right-2 z-[39] md:left-auto md:right-4 md:w-[440px] rounded-xl border border-amber/50 bg-[#2a1d05]/95 backdrop-blur px-3 py-2 shadow-panel flex items-center gap-2"
+          style={{ top: 'calc(var(--ht-safe-top, 0px) + 62px)' }}
         >
-          <p className="text-[13px] text-amber font-semibold">📍 Location is required while you&apos;re clocked in.</p>
-          <p className="mt-0.5 text-[12px] text-amber/80">Your shift is on the clock but this phone isn&apos;t recording where it goes. Turn location on ({settingsPath}) — or clock out.</p>
-          <div className="mt-2 flex gap-2">
-            {declined ? (
-              <button type="button" onClick={() => { setDeclined(false); setAskConsent(true) }} className="rounded-lg bg-amber px-3 py-1.5 text-[12px] font-display font-bold text-[#1a1100]">Turn on location</button>
-            ) : isNativeApp() && bgPlugin() ? (
-              <button type="button" onClick={openSettings} className="rounded-lg bg-amber px-3 py-1.5 text-[12px] font-display font-bold text-[#1a1100]">Open settings</button>
-            ) : null}
-            <Link href="/clock" className="rounded-lg border border-amber/40 px-3 py-1.5 text-[12px] font-semibold text-amber">Clock out</Link>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12.5px] text-amber font-semibold leading-tight">📍 Location is required while you&apos;re clocked in.</p>
+            <p className="text-[11px] text-amber/80 leading-tight truncate" title={settingsPath}>Turn it on ({settingsPath}) or clock out.</p>
           </div>
+          {declined ? (
+            <button type="button" onClick={() => { setDeclined(false); setAskConsent(true) }} className="flex-none rounded-lg bg-amber px-2.5 py-1.5 text-[11.5px] font-display font-bold text-[#1a1100]">Turn on</button>
+          ) : isNativeApp() && bgPlugin() ? (
+            <button type="button" onClick={openSettings} className="flex-none rounded-lg bg-amber px-2.5 py-1.5 text-[11.5px] font-display font-bold text-[#1a1100]">Settings</button>
+          ) : null}
+          <Link href="/clock" className="flex-none rounded-lg border border-amber/40 px-2.5 py-1.5 text-[11.5px] font-semibold text-amber">Clock out</Link>
         </div>
       )}
     </>

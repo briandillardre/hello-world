@@ -112,7 +112,8 @@ export default function PrivacyPage() {
               <strong className="text-ink">Clocked in:</strong> when you clock in on the time clock, the app
               records this device&apos;s location <strong className="text-ink">until you clock out — including
               when the app is closed or not in use</strong> on app versions that support it (Android 1.4 and
-              later; you are shown a notice and asked for permission before this starts). Your employer uses
+              later; you are shown a notice and asked for permission before this starts, and a notification
+              stays visible the whole time a shift is recording). Your employer uses
               this to record where your shift happened and to verify your time card. Nothing is recorded when
               you are not clocked in. Turning location off while clocked in pauses recording and the app tells
               you so.

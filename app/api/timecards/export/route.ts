@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (!real.userId) return new NextResponse('Sign in', { status: 401 })
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const { monday, fromMs, toMs } = weekOf(new URL(req.url).searchParams.get('week'), tz)
-  const scope = timecardScope(perms, real.userId)
+  const scope = timecardScope(perms, perms.viewingAs?.id ?? real.userId) // a view-as preview shows the TARGET's card
   const { createClient } = await import('@/lib/supabase-server')
   const { cards } = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds })
   const csv = timeCardsCsv(cards, tz)

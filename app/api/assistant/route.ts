@@ -8,6 +8,7 @@ import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { PROJECTS } from '@/lib/projects'
 import { answerQuestion, type AssistantContext } from '@/lib/assistant'
 import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai-tools'
+import { timecardScope } from '@/lib/db/timecards'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
 
@@ -196,11 +197,17 @@ export async function POST(request: NextRequest) {
 
   // ── With a key: real tool-use agent over live data ──
   const { userId, companyId: userCompanyId, rows: history } = await loadHistory(12, sinceTs)
-  const toolCtx: AiToolCtx = { companyId, tz, assets, geofences, alerts, canViewCosts: perms.canViewCosts }
+  const toolCtx: AiToolCtx = {
+    companyId, tz, assets, geofences, alerts, canViewCosts: perms.canViewCosts,
+    // Time cards through Ask AI follow the page's rule: crew see their own,
+    // Foreman+ the crew's, and the `clock` view level gates the tool at all.
+    features: perms.features,
+    timecardUserIds: timecardScope(perms, userId).userIds,
+  }
   // One brain, three doors (task #28): the in-app assistant serves the shared
   // MCP registry too — zone costs (cost-permission gated), maintenance, tool
   // finding — so it never knows less than a customer's own AI on the MCP door.
-  const tools = [...AI_TOOLS, ...sharedMcpToolDefs(perms.canViewCosts)] as Anthropic.Tool[]
+  const tools = [...AI_TOOLS, ...sharedMcpToolDefs(perms.canViewCosts, perms.features)] as Anthropic.Tool[]
 
   try {
     const client = new Anthropic({ apiKey })
