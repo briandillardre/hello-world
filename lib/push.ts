@@ -13,7 +13,12 @@
 
 import { createSign } from 'crypto'
 
-interface PushMsg { title: string; body: string }
+/** url: in-app PATH the tap opens (e.g. /r/<token>, /receipts). Relative only —
+ *  the app never navigates to another host off a notification. */
+interface PushMsg { title: string; body: string; url?: string }
+/** Data keys ride beside the notification so the app can act on the tap. */
+const pushData = (msg: PushMsg): Record<string, string> | undefined =>
+  msg.url && /^\/(?![\/\\])[A-Za-z0-9/_\-?=&.%~]*$/.test(msg.url) ? { url: msg.url } : undefined
 
 // ── FCM v1: service-account JWT → OAuth token (cached ~55 min) ─────────────
 interface SvcAccount { project_id: string; client_email: string; private_key: string }
@@ -74,6 +79,7 @@ async function fcmSendV1(sa: SvcAccount, tokens: string[], msg: PushMsg): Promis
             message: {
               token,
               notification: { title: msg.title, body: msg.body },
+              data: pushData(msg),
               android: { priority: 'HIGH', notification: { sound: 'default' } },
               apns: { payload: { aps: { sound: 'default' } } },
             },
@@ -102,6 +108,7 @@ async function fcmSendLegacy(serverKey: string, tokens: string[], msg: PushMsg):
         body: JSON.stringify({
           registration_ids: batch,
           notification: { title: msg.title, body: msg.body, sound: 'default' },
+          data: pushData(msg),
           priority: 'high',
         }),
         signal: AbortSignal.timeout(10_000),
@@ -132,7 +139,13 @@ async function fcmSend(tokens: string[], msg: PushMsg): Promise<number> {
 export async function sendPushToUser(
   companyId: string,
   userId: string | null,
-  msg: PushMsg
+  msg: PushMsg,
+  /** strict: THIS person or nobody — no company-wide fallback. Use it for
+   *  anything that names a person, a dollar figure or a capture link
+   *  (the receipt chase): a cardholder without a registered phone must not
+   *  put "$4,812 at Blanchard — snap it" on every Associate's lock screen
+   *  thirty times over two weeks (sec-check, Sep 9). */
+  opts: { strict?: boolean } = {},
 ): Promise<number> {
   if (!pushConfigured()) return 0
   try {
@@ -143,6 +156,7 @@ export async function sendPushToUser(
       const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId).eq('user_id', userId)
       tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)
     }
+    if (!tokens.length && opts.strict) return 0
     if (!tokens.length) {
       const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId)
       tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)

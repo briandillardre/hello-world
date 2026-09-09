@@ -104,7 +104,7 @@ export default async function ReceiptsPage() {
         </div>
       ) : (
         <>
-          <InstantChase address={chase.address} cards={chase.cards} members={chase.members} canManage={perms.canManageBilling} />
+          <InstantChase address={chase.address} cards={chase.cards} members={chase.members} canManage={perms.canManageBilling} ready={chase.ready} />
           <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} />
           <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
         </>

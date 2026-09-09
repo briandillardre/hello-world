@@ -1,11 +1,16 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * One-tap receipt capture: camera → optional job → done. Posts to
  * /api/r/[token]; the token scopes everything, no session involved.
+ *
+ * The photo carries WHERE it was taken (099): the phone's fix while the page
+ * is open, or the EXIF GPS of an uploaded picture. That pin joins the swipe
+ * pin on the Receipts map layer — the office sees the parts run end to end.
  */
+type Fix = { lat: number; lng: number; acc: number | null; src: 'gps' | 'exif' }
 export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJobId = null, vendorName = null }: {
   token: string
   merchant: string | null
@@ -22,6 +27,28 @@ export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJo
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fix, setFix] = useState<Fix | null>(null)
+
+  // Ask once, quietly. Denied or unavailable = the receipt still saves, just
+  // without a pin. An EXIF fix from an uploaded photo outranks the phone's.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
+    navigator.geolocation.getCurrentPosition(
+      (p) => setFix((f) => (f?.src === 'exif' ? f : { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy ?? null, src: 'gps' })),
+      () => { /* no pin */ },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
+    )
+  }, [])
+
+  async function readExifFix(f: File) {
+    try {
+      const exifr = (await import('exifr')).default
+      const g = await exifr.gps(f) as { latitude?: number; longitude?: number } | null | undefined
+      if (g && Number.isFinite(g.latitude) && Number.isFinite(g.longitude)) {
+        setFix({ lat: g.latitude as number, lng: g.longitude as number, acc: null, src: 'exif' })
+      }
+    } catch { /* no EXIF — the live fix stands */ }
+  }
 
   async function submit() {
     const file = fileRef.current?.files?.[0]
@@ -31,6 +58,10 @@ export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJo
       const form = new FormData()
       form.set('photo', file)
       if (zone) form.set('zone', zone)
+      if (fix) {
+        form.set('lat', String(fix.lat)); form.set('lng', String(fix.lng)); form.set('fix_src', fix.src)
+        if (fix.acc != null) form.set('acc', String(Math.round(fix.acc)))
+      }
       const res = await fetch(`/api/r/${token}`, { method: 'POST', body: form })
       const j = await res.json().catch(() => ({}))
       if (!res.ok || !j.ok) throw new Error(j.error || 'Upload failed — try again.')
@@ -76,6 +107,7 @@ export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJo
           const f = e.target.files?.[0]
           setPreview(f ? URL.createObjectURL(f) : null)
           setError(null)
+          if (f) void readExifFix(f)
         }}
       />
 
@@ -105,6 +137,8 @@ export function CaptureForm({ token, merchant, amount, last4, zones, suggestedJo
           </select>
         </label>
       )}
+
+      <p className="text-[11.5px] text-faint">{fix ? `📍 Location attached${fix.src === 'exif' ? ' (from the photo)' : ''}` : 'Allow location so the receipt lands on the map beside the charge.'}</p>
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 

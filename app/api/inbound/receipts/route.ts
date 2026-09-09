@@ -78,6 +78,16 @@ export async function POST(req: NextRequest) {
     .select('id, name, alert_phone').eq('inbound_slug', slug).single()
   if (!company) return NextResponse.json({ ok: true, skipped: 'unknown slug' })
 
+  // The address is guessable and the sender is whoever the bank (or anyone)
+  // forwards as — cap what one company can receive per hour so a flood of
+  // fake "transactions" cannot turn the chase into a paging weapon
+  // (sec-check, Sep 9). Twenty real swipes an hour is a big day.
+  const { count: lastHour } = await db.from('expenses')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', company.id).eq('source', 'card_alert')
+    .gte('created_at', new Date(Date.now() - 3_600_000).toISOString())
+  if ((lastHour ?? 0) >= 20) return NextResponse.json({ ok: true, skipped: 'rate' })
+
   // Dedup: issuers often send the same alert to several recipients, and Resend
   // retries. Hash what identifies the swipe; message_id alone isn't enough
   // (forwards re-id), amount+last4+day alone is too strict (two coffees).
@@ -102,6 +112,10 @@ export async function POST(req: NextRequest) {
   // vendor zones, or no matching truck all degrade to "no hint".
   let vendorZoneId: string | null = null
   let suggestedJobId: string | null = null
+  // Where the swipe happened — the Receipts map layer pins the charge here
+  // while the receipt is missing (099). The truck at the vendor counter is
+  // the best answer; the cardholder's own phone is the fallback.
+  let swipeFix: { lat: number; lng: number; assetId: string | null } | null = null
   try {
     const { pointInPolygon } = await import('@/lib/alerts-engine')
     const { data: zones } = await db.from('geofences_json')
@@ -121,7 +135,7 @@ export async function POST(req: NextRequest) {
         if (seen.has(r.asset_id)) continue
         seen.add(r.asset_id)
         const hit = vendors.find((v) => pointInPolygon([r.lng, r.lat], v.ring))
-        if (hit) { vendorZoneId = hit.id; vendorAsset = r.asset_id; break }
+        if (hit) { vendorZoneId = hit.id; vendorAsset = r.asset_id; swipeFix = { lat: r.lat, lng: r.lng, assetId: r.asset_id }; break }
       }
       if (vendorAsset) {
         // The job this run was FOR: that truck's last fix inside a site zone
@@ -171,6 +185,27 @@ export async function POST(req: NextRequest) {
       .update({ vendor_geofence_id: vendorZoneId, suggested_job_id: suggestedJobId })
       .eq('id', inserted.id)
   }
+  // No truck at a vendor: the cardholder's phone (its personnel asset,
+  // tracker `phone-<user id>`) within the last half hour.
+  if (!swipeFix && cardholderUserId) {
+    try {
+      const { data: phone } = await db.from('assets').select('id')
+        .eq('company_id', company.id).eq('tracker_id', `phone-${cardholderUserId}`).maybeSingle()
+      if (phone?.id) {
+        const { data: fix } = await db.from('asset_locations').select('lat, lng')
+          .eq('asset_id', phone.id).gte('timestamp', new Date(Date.now() - 30 * 60_000).toISOString())
+          .order('timestamp', { ascending: false }).limit(1).maybeSingle()
+        if (fix) swipeFix = { lat: fix.lat, lng: fix.lng, assetId: phone.id }
+      }
+    } catch { /* hint only */ }
+  }
+  if (inserted?.id && swipeFix) {
+    try {
+      await db.from('expenses')
+        .update({ swipe_lat: swipeFix.lat, swipe_lng: swipeFix.lng, swipe_asset_id: swipeFix.assetId })
+        .eq('id', inserted.id)
+    } catch { /* pre-099 schema */ }
+  }
 
   // The instant ping. Push to the cardholder (falls back to all company
   // devices), SMS to the company alert phone if Twilio is live. The link IS
@@ -183,7 +218,9 @@ export async function POST(req: NextRequest) {
   let pushed = 0
   try {
     const { sendPushToUser } = await import('@/lib/push')
-    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body })
+    // Strict: the cardholder's own phones or nobody — the office text below
+    // is the "lands somewhere" fallback, not every crew member's lock screen.
+    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` }, { strict: true })
   } catch { /* best-effort */ }
   try {
     if (company.alert_phone) {
