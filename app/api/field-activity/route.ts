@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase-server'
 import { safeTz } from '@/lib/dates'
+import { safeHttps } from '@/lib/safe-url'
+import { getMyPermissions } from '@/lib/permissions-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +17,8 @@ export async function GET() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ events: [] })
+    // Same view level as /logs and /photos — a role without daily logs gets an empty layer.
+    if (!(await getMyPermissions()).features.includes('logs')) return NextResponse.json({ events: [] })
     const tz = safeTz(cookies().get('ht_tz')?.value)
     const sinceIso = new Date(Date.now() - 7 * 86_400_000).toISOString()
     const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -50,14 +54,15 @@ export async function GET() {
       if (typeof l.lat !== 'number' || typeof l.lng !== 'number') continue
       const entry = entryById.get(l.time_entry_id as string)
       const shots = (Array.isArray(l.photos) ? l.photos : []) as { url?: string; kind?: string }[]
-      const jobShots = shots.filter((p) => p?.url && (p.kind ?? 'photo') === 'photo')
+      // Member-writable JSON → only https URLs on our storage host reach the popup's <img>/<a>.
+      const jobShots = shots.filter((p) => (p.kind ?? 'photo') === 'photo' && safeHttps(p?.url, { ourHostOnly: true }))
       events.push({
         kind: 'log', lat: l.lat, lng: l.lng,
         person: (entry?.person_name as string) || 'Crew',
         at: fmt.format(new Date(l.created_at as string)),
         zone: entry ? zoneName.get(entry.project_geofence_id as string) ?? null : null,
         text: String(l.writeup ?? '').slice(0, 140),
-        photo: jobShots[0]?.url ?? null,
+        photo: safeHttps(jobShots[0]?.url, { ourHostOnly: true }),
         photos: jobShots.length,
       })
     }

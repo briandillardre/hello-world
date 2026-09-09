@@ -327,7 +327,8 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     // Job photos join the field-photo index (101) at the phone's fix, filed
     // under the shift's site — that is what the map's Photos layer draws.
     const jobPhotos = photos.filter((ph) => ph.kind === 'photo')
-    if (jobPhotos.length && hasPos && logRow?.id) {
+    const saneFix = hasPos && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)
+    if (jobPhotos.length && saneFix && logRow?.id) {
       try {
         const { createServiceClient } = await import('@/lib/supabase-server')
         const at = backAt ?? new Date().toISOString()
