@@ -283,7 +283,6 @@ const TAC_HINTS: [string, DeviceModel][] = [
   ['86926707', 'TAT141'],
 ]
 /** A Teltonika EYE Beacon's MAC starts with this OUI. */
-const EYE_MAC_PREFIX = '7CD9F4'
 
 /**
  * One parser for anything printed on a box: a 15-digit IMEI (truck/machine
@@ -298,11 +297,14 @@ export function parseTrackerId(raw: string): { kind: 'imei' | 'mac'; id: string;
     if (!c.ok) return { error: c.reason ?? 'That IMEI does not look right.' }
     return { kind: 'imei', id: imei, model: modelFromImei(imei) ?? 'OTHER' }
   }
-  const hex = text.replace(/[^0-9a-fA-F]/g, '').toUpperCase()
-  if (hex.length === 12 && !/^\d+$/.test(text.replace(/[^0-9a-zA-Z]/g, ''))) {
-    return { kind: 'mac', id: hex, model: hex.startsWith(EYE_MAC_PREFIX) ? 'EYE_BEACON' : 'OTHER' }
-  }
-  if (hex.length === 12) return { kind: 'mac', id: hex, model: hex.startsWith(EYE_MAC_PREFIX) ? 'EYE_BEACON' : 'OTHER' }
+  const alnum = text.replace(/[^0-9a-zA-Z]/g, '')
+  // All digits but not 15 of them: a mistyped IMEI, never a MAC (ship-check,
+  // Sep 9 — a 12-digit slip used to register as an "Other tracker").
+  if (/^\d+$/.test(alnum)) return { error: `That is ${alnum.length} digits — an IMEI is 15. Check the label.` }
+  const hex = alnum.replace(/[^0-9a-fA-F]/g, '').toUpperCase()
+  // Any 12-hex MAC is a tool tag: the ingest matches tags by MAC whatever
+  // the maker, and every drawer/put-on rule for tags keys on this model.
+  if (hex.length === 12 && hex.length === alnum.length) return { kind: 'mac', id: hex, model: 'EYE_BEACON' }
   return { error: 'Enter the 15-digit IMEI from a truck or machine unit, or the 12-character MAC from a tool tag.' }
 }
 

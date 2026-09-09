@@ -47,7 +47,7 @@ export function PutOn({ trackerId, model, trackerless }: {
       toast('On the machine. It shows on the map at its next report.', { variant: 'success' })
       if (res.assetId) router.push(`/assets/${res.assetId}`)
       router.refresh()
-    } catch { setError('Something went wrong. Nothing was changed.') }
+    } catch { setError('Something went wrong. Check Assets before trying again.') }
     finally { setSaving(false) }
   }
 

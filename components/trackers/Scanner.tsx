@@ -38,13 +38,16 @@ export function Scanner({ onCode, hint = 'Point at the barcode or QR on the labe
         if (cancelled) return
         const detector = new Detector({ formats: ['code_128', 'qr_code', 'code_39', 'ean_13', 'itf', 'data_matrix'] })
         setState('on')
+        let detecting = false
         timer = setInterval(async () => {
           const v = videoRef.current
-          if (!v || v.readyState < 2) return
+          if (!v || v.readyState < 2 || detecting) return
+          detecting = true
           try {
             const codes = await detector.detect(v)
-            for (const c of codes) if (c.rawValue) onCodeRef.current(c.rawValue)
+            if (!cancelled) for (const c of codes) if (c.rawValue) onCodeRef.current(c.rawValue)
           } catch { /* next frame */ }
+          finally { detecting = false }
         }, 350)
       } catch {
         if (!cancelled) setState('off')

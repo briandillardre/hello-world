@@ -83,22 +83,25 @@ export async function softDeleteAssetAction(assetId: string): Promise<{ ok: bool
 export async function registerTrackerAction(raw: string): Promise<
   { ok: true; id: string; model: DeviceModel; modelName: string; existed: boolean; onAsset: { id: string; name: string } | null } | { ok: false; error: string }
 > {
-  const denied = await requireEdit(); if (denied) return { ok: false, error: denied }
-  const parsed = parseTrackerId(raw)
+  const denied = await requireTrackersEdit(); if (denied) return { ok: false, error: denied }
+  const parsed = parseTrackerId(String(raw ?? '').slice(0, 64))
   if ('error' in parsed) return { ok: false, error: parsed.error }
   const companyId = await getCurrentCompanyId()
   const { createClient } = await import('@/lib/supabase-server')
   const db = createClient()
   const { data: existing } = await db.from('device_onboarding').select('imei').eq('company_id', companyId).eq('imei', parsed.id).maybeSingle()
   // Already on a machine? Say which, rather than adding a phantom drawer row.
+  // Case-insensitive like the drawer filter and the ingest (a hand-typed
+  // lowercase MAC on an older tool asset must still say "on <tool>").
   const ids = parsed.kind === 'mac' ? [parsed.id, `00000000-0000-0000-0000-${parsed.id}`] : [parsed.id]
-  const { data: holder } = await db.from('assets').select('id, name').eq('company_id', companyId).eq('active', true).in('tracker_id', ids).limit(1).maybeSingle()
+  const { data: holder } = await db.from('assets').select('id, name').eq('company_id', companyId).eq('active', true)
+    .or(ids.map((id) => `tracker_id.ilike.${id}`).join(',')).limit(1).maybeSingle()
   if (!existing) {
     const res = await upsertDevice(companyId, { imei: parsed.id, model: parsed.model })
     if (!res.ok) return { ok: false, error: res.error ?? 'Could not add that tracker.' }
   }
   refresh()
-  return { ok: true, id: parsed.id, model: parsed.model, modelName: MODELS[parsed.model].name, existed: !!existing, onAsset: holder ? { id: holder.id, name: holder.name } : null }
+  return { ok: true, id: parsed.id, model: parsed.model, modelName: MODELS[parsed.model].name, existed: !!existing || !!holder, onAsset: holder ? { id: holder.id, name: holder.name } : null }
 }
 
 /**
@@ -110,7 +113,7 @@ export async function putOnAction(
   trackerId: string,
   dest: { mode: 'asset'; assetId: string } | { mode: 'new'; name: string; type: AssetType },
 ): Promise<{ ok: boolean; error?: string; assetId?: string }> {
-  const denied = await requireEdit(); if (denied) return { ok: false, error: denied }
+  const denied = await requireTrackersEdit(); if (denied) return { ok: false, error: denied }
   const companyId = await getCurrentCompanyId()
   let assetId: string
   if (dest.mode === 'new') {
@@ -123,7 +126,16 @@ export async function putOnAction(
     assetId = dest.assetId
   }
   const res = await changeTracker(companyId, await actor(), assetId, { kind: 'attach', imei: trackerId, sinceIso: new Date().toISOString() })
+  if (!res.ok) {
+    // A machine named here exists only for this attach: take it back out so
+    // a retry does not leave a trail of empty "White F-250"s (ship-check).
+    if (dest.mode === 'new') {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      await createServiceClient().from('assets').delete().eq('id', assetId).eq('company_id', companyId).is('tracker_id', null)
+    }
+    refresh()
+    return { ok: false, error: res.error }
+  }
   refresh(assetId)
-  if (!res.ok) return { ok: false, error: res.error, assetId }
   return { ok: true, assetId }
 }
