@@ -31,6 +31,8 @@ export interface TrackerRow {
   unassignedSince: string | null
   /** Drawer pings buffered and waiting to land on an asset. */
   buffered: number
+  /** Tool tags only: the truck that heard this tag most recently (24 h). */
+  heardBy?: string | null
 }
 
 export interface DeletedAssetRow {

@@ -45,4 +45,9 @@
          a separate Play policy review; the crew tracker runs foreground. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Camera: the label scanner on Trackers → Add trackers and Assets →
+         Scan trackers (getUserMedia). Undeclared, the WebView auto-denies
+         the request and the scanner silently falls back to typing. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

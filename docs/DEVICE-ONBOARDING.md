@@ -6,7 +6,14 @@ pucks. Times are realistic once you've done one.*
 
 ---
 
-## App side is now ONE SCAN — or one paste (Aug 28)
+## App side is now ONE SCAN — or one paste (Aug 28; trackers-first Sep 9)
+
+**Sep 9 — the customer door is Trackers → Add trackers → Put on a machine**
+(`/trackers`): scan the label (IMEI or a tool tag's MAC), the box lands in
+the drawer with its model known, one more tap puts it on an existing or
+newly named machine. The customer-facing how-to per device type is
+`docs/CUSTOMER-SETUP.md`; the in-app copies are Help → Truck unit · Battery
+GPS unit · Tool tags. The two doors below still work.
 
 **Assets → Scan trackers** (`/assets/scan`): point the phone at the IMEI
 barcode on the Teltonika box (or type the 15 digits), pick Truck/Machine,

@@ -9,6 +9,9 @@ import { MODELS } from '@/lib/devices'
 import { undoTrackerMoveAction, restoreAssetAction } from '@/lib/actions/trackers'
 import { toast, confirmSheet } from '@/components/ui/feedback'
 import { formatRelativeTime } from '@/lib/utils'
+import { AddTrackers } from './AddTrackers'
+import { PutOn } from './PutOn'
+import type { AssetType } from '@/lib/types'
 
 const TYPE_EMOJI: Record<string, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const short = (imei: string) => `…${imei.slice(-4)}`
@@ -25,7 +28,7 @@ function seenTone(iso: string | null): string {
  * machine, or in the drawer. Plus the two safety nets (092): recently
  * deleted assets, and the last 30 days of tracker changes with Undo.
  */
-export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdit: boolean }) {
+export function TrackersPage({ data, canEdit, trackerless = [] }: { data: TrackersOverview; canEdit: boolean; trackerless?: { id: string; name: string; type: AssetType }[] }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -65,12 +68,15 @@ export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdi
     // Sep 5: "can't scroll down on trackers page on mobile app").
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
     <div className="p-4 md:p-6 max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-display text-xl font-bold text-ink flex items-center gap-2"><Radio className="h-5 w-5 text-amber" /> Trackers</h1>
-        <p className="text-[13px] text-muted mt-1 leading-snug">
-          Every box you own is either on a machine or in the drawer. Change which from the machine&apos;s page (Tracker button).
-          Mistakes can be undone for {RETENTION_DAYS} days.
-        </p>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-xl font-bold text-ink flex items-center gap-2"><Radio className="h-5 w-5 text-amber" /> Trackers</h1>
+          <p className="text-[13px] text-muted mt-1 leading-snug">
+            Two taps per box: <span className="text-ink">Add trackers</span> (scan the label), then <span className="text-ink">Put on a machine</span>.
+            Every box is either on a machine or in the drawer. Mistakes undo for {RETENTION_DAYS} days.
+          </p>
+        </div>
+        {canEdit && <div className="flex-none pt-1"><AddTrackers /></div>}
       </div>
 
       {/* ── The drawer ── */}
@@ -80,39 +86,48 @@ export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdi
         </h2>
         {data.unassigned.length === 0 ? (
           <p className="text-[13px] text-faint rounded-xl border border-dashed border-navy-700 p-4">
-            Nothing in the drawer. A tracker lands here when you take it out of a machine, delete a machine, or log a new box on <Link href="/assets/onboard" className="text-teal underline">Hardware setup</Link> before it has a home.
+            Nothing waiting. New boxes land here when you tap <span className="text-ink">Add trackers</span> and scan their labels; a tracker also comes back here when you take it out of a machine.
           </p>
         ) : (
           <ul className="rounded-xl border border-navy-800 divide-y divide-navy-800 overflow-hidden">
-            {data.unassigned.map((t) => (
-              <li key={t.imei} className="px-3 py-2.5 flex items-center gap-3 bg-navy-900">
-                <Cpu className="h-4 w-4 text-faint flex-none" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-semibold text-ink truncate">
-                    {modelName(t.model)} <span className="font-mono text-muted">{short(t.imei)}</span>
-                    {t.label && <span className="text-faint font-normal"> · {t.label}</span>}
-                  </p>
-                  <p className="text-[11.5px] leading-snug">
-                    <span className={seenTone(t.lastSeen?.timestamp ?? null)}>
-                      {t.lastSeen ? `reporting · last ${formatRelativeTime(t.lastSeen.timestamp)}` : 'silent'}
-                    </span>
-                    {t.buffered > 0 && <span className="text-faint"> · {t.buffered.toLocaleString()} pings waiting</span>}
-                    {t.unassignedSince && <span className="text-faint"> · pulled {formatRelativeTime(t.unassignedSince)}</span>}
-                  </p>
+            {data.unassigned.map((t) => {
+              const spec = MODELS[t.model ?? 'OTHER']
+              return (
+              <li key={t.imei} className="px-3 py-3 bg-navy-900 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <Cpu className="h-4 w-4 text-faint flex-none" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-semibold text-ink truncate">
+                      {modelName(t.model)} <span className="font-mono text-muted">{short(t.imei)}</span>
+                      {t.label && <span className="text-faint font-normal"> · {t.label}</span>}
+                    </p>
+                    <p className="text-[11.5px] leading-snug">
+                      <span className={seenTone(t.lastSeen?.timestamp ?? null)}>
+                        {t.lastSeen
+                          ? (t.heardBy ? `heard by ${t.heardBy} ${formatRelativeTime(t.lastSeen.timestamp)}` : `alive · last report ${formatRelativeTime(t.lastSeen.timestamp)}`)
+                          : t.model === 'EYE_BEACON' ? 'not heard by a truck yet' : 'no report yet'}
+                      </span>
+                      {t.buffered > 0 && <span className="text-faint"> · {t.buffered.toLocaleString()} pings waiting</span>}
+                      {t.unassignedSince && <span className="text-faint"> · pulled {formatRelativeTime(t.unassignedSince)}</span>}
+                    </p>
+                  </div>
+                  {t.lastSeen?.lat != null && t.lastSeen.lng != null && (
+                    <a href={`https://www.google.com/maps?q=${t.lastSeen.lat},${t.lastSeen.lng}`} target="_blank" rel="noreferrer" title="Where it last reported from" className="grid place-items-center w-9 h-9 rounded-lg border border-navy-700 text-teal">
+                      <MapPin className="h-4 w-4" />
+                    </a>
+                  )}
+                  {canEdit && <PutOn trackerId={t.imei} model={t.model} trackerless={trackerless} />}
                 </div>
-                {t.lastSeen?.lat != null && t.lastSeen.lng != null && (
-                  <a href={`https://www.google.com/maps?q=${t.lastSeen.lat},${t.lastSeen.lng}`} target="_blank" rel="noreferrer" title="Where it last reported from" className="grid place-items-center w-8 h-8 rounded-lg border border-navy-700 text-teal">
-                    <MapPin className="h-4 w-4" />
-                  </a>
-                )}
-                <span className="font-mono text-[11px] text-faint hidden sm:inline">{t.imei}</span>
+                {/* The install card: three things the owner does, in plain words. */}
+                <ol className="ml-7 space-y-0.5 text-[12px] text-muted list-decimal list-inside leading-snug">
+                  {spec.install.map((step, i) => <li key={i}>{step}</li>)}
+                </ol>
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
-        {canEdit && data.unassigned.length > 0 && (
-          <p className="text-[12px] text-faint">To put one on a machine: open that machine under <Link href="/assets" className="text-teal underline">Assets</Link> → <span className="text-ink">Add tracker</span>.</p>
-        )}
+
       </section>
 
       {/* ── Installed ── */}
@@ -210,7 +225,8 @@ export function TrackersPage({ data, canEdit }: { data: TrackersOverview; canEdi
       </section>
 
       <p className="text-[11.5px] text-faint">
-        Bluetooth tool tags live on <Link href="/tags" className="text-teal underline">Tag scanner</Link>; SIM and config steps for a new box on <Link href="/assets/onboard" className="text-teal underline">Hardware setup</Link>.
+        Step-by-step for each device: <Link href="/help/obd-truck-unit" className="text-teal underline">OBD truck unit</Link> · <Link href="/help/battery-gps-unit" className="text-teal underline">battery GPS unit</Link> · <Link href="/help/tool-tags" className="text-teal underline">tool tags</Link>.
+        Installer-side SIM and config checklists stay on <Link href="/assets/onboard" className="text-teal underline">Hardware setup</Link>.
       </p>
     </div>
     </div>

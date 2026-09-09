@@ -51,6 +51,10 @@ export interface ModelSpec {
   /** Beacons reportable per record, when it is a gateway. */
   beaconCap: number | null
   prep: PrepStep[]
+  /** The customer's install card: what to physically do, in order, in plain
+   *  words. Vendor-console steps (SIM, config) are ours before shipping and
+   *  live in `prep`; these are the three things the owner does. */
+  install: string[]
 }
 
 /** Steps every cellular device shares: the vendor consoles we can't see into.
@@ -97,6 +101,11 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
     firstContact: 'Minutes once plugged into a live OBD port; config applies on the next FOTA sync (up to 12 h, usually overnight).',
     gateway: true,
     beaconCap: 100,
+    install: [
+      'Find the OBD port under the dash, driver side, usually left of the steering column.',
+      'Push the unit in until it seats. No tools, no wiring.',
+      'Start the truck and drive. It shows on the map at its first report, usually within minutes of the first ignition.',
+    ],
     prep: [
       {
         key: 'battery',
@@ -127,6 +136,11 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
     firstContact: 'Boots and registers immediately when switched on. Then sleeps: 28,800 s (8 h) default interval when stationary.',
     gateway: false,
     beaconCap: null,
+    install: [
+      'Open the case, flip the internal switch to ON, close it. A blink every 5 seconds means it is alive.',
+      'Mount with a view of the sky — top of the cab, dash, or high on the frame. Not under steel.',
+      'Leave it outdoors. First position lands within an hour; after that it reports on its own schedule.',
+    ],
     prep: [
       { key: 'sim_in', label: 'Micro-SIM (3FF) inserted', detail: 'A different punch than the FMM00A and FMM650 in the same order. Cut corner leads.' },
       PAIR_STEP,
@@ -152,6 +166,11 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
     firstContact: 'Registers within minutes of 12 V, and syncs FOTA on power-up — so queue the config BEFORE first power.',
     gateway: true,
     beaconCap: 25,
+    install: [
+      'Wired install: 8–32 V power through the harness, ground, and the CAN adapter on the diagnostic port.',
+      'GPS and cellular antennas go where they can see the sky; the labels on the cables name the antenna, not the socket.',
+      'Key on. It reports engine hours, fuel and faults once the machine runs.',
+    ],
     prep: [
       {
         key: 'dummy_out',
@@ -194,6 +213,11 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
     firstContact: 'Appears the first time a gateway with beacon scanning is powered near it.',
     gateway: false,
     beaconCap: null,
+    install: [
+      'Zip-tie it to the machine or trailer, anywhere. It has no antenna to aim.',
+      'Put it on a machine in the app using the MAC printed on the tag.',
+      'It shows whenever one of your tracked trucks passes within about 100 feet. Trailers behind trucks are perfect; a machine that lives alone on a site needs its own GPS unit.',
+    ],
     prep: [
       {
         key: 'registered_mac',
@@ -227,6 +251,10 @@ export const MODELS: Record<DeviceModel, ModelSpec> = {
     firstContact: 'Unknown.',
     gateway: false,
     beaconCap: null,
+    install: [
+      'Power it the way its manual says.',
+      'Put it on a machine in the app with the id printed on the label.',
+    ],
     prep: [PAIR_STEP, ...SIM_STEPS, { key: 'installed', label: 'Installed and powered', detail: 'Per manufacturer instructions.' }],
   },
 }
@@ -254,6 +282,32 @@ const TAC_HINTS: [string, DeviceModel][] = [
   ['86249408', 'FMM00A'],
   ['86926707', 'TAT141'],
 ]
+/** A Teltonika EYE Beacon's MAC starts with this OUI. */
+
+/**
+ * One parser for anything printed on a box: a 15-digit IMEI (truck/machine
+ * units) or a 12-hex MAC (tool tags). Returns the canonical id — digits for
+ * an IMEI, UPPERCASE hex for a MAC — and the model it implies.
+ */
+export function parseTrackerId(raw: string): { kind: 'imei' | 'mac'; id: string; model: DeviceModel } | { error: string } {
+  const text = raw.trim()
+  const imei = (text.match(/(?:^|\D)(\d{15})(?!\d)/) ?? [])[1]
+  if (imei) {
+    const c = imeiLooksValid(imei)
+    if (!c.ok) return { error: c.reason ?? 'That IMEI does not look right.' }
+    return { kind: 'imei', id: imei, model: modelFromImei(imei) ?? 'OTHER' }
+  }
+  const alnum = text.replace(/[^0-9a-zA-Z]/g, '')
+  // All digits but not 15 of them: a mistyped IMEI, never a MAC (ship-check,
+  // Sep 9 — a 12-digit slip used to register as an "Other tracker").
+  if (/^\d+$/.test(alnum)) return { error: `That is ${alnum.length} digits — an IMEI is 15. Check the label.` }
+  const hex = alnum.replace(/[^0-9a-fA-F]/g, '').toUpperCase()
+  // Any 12-hex MAC is a tool tag: the ingest matches tags by MAC whatever
+  // the maker, and every drawer/put-on rule for tags keys on this model.
+  if (hex.length === 12 && hex.length === alnum.length) return { kind: 'mac', id: hex, model: 'EYE_BEACON' }
+  return { error: 'Enter the 15-digit IMEI from a truck or machine unit, or the 12-character MAC from a tool tag.' }
+}
+
 export function modelFromImei(imei: string): DeviceModel | null {
   const digits = imei.replace(/\D/g, '')
   if (digits.length < 8) return null
