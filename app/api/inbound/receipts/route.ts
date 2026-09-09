@@ -102,6 +102,10 @@ export async function POST(req: NextRequest) {
   // vendor zones, or no matching truck all degrade to "no hint".
   let vendorZoneId: string | null = null
   let suggestedJobId: string | null = null
+  // Where the swipe happened — the Receipts map layer pins the charge here
+  // while the receipt is missing (099). The truck at the vendor counter is
+  // the best answer; the cardholder's own phone is the fallback.
+  let swipeFix: { lat: number; lng: number; assetId: string | null } | null = null
   try {
     const { pointInPolygon } = await import('@/lib/alerts-engine')
     const { data: zones } = await db.from('geofences_json')
@@ -121,7 +125,7 @@ export async function POST(req: NextRequest) {
         if (seen.has(r.asset_id)) continue
         seen.add(r.asset_id)
         const hit = vendors.find((v) => pointInPolygon([r.lng, r.lat], v.ring))
-        if (hit) { vendorZoneId = hit.id; vendorAsset = r.asset_id; break }
+        if (hit) { vendorZoneId = hit.id; vendorAsset = r.asset_id; swipeFix = { lat: r.lat, lng: r.lng, assetId: r.asset_id }; break }
       }
       if (vendorAsset) {
         // The job this run was FOR: that truck's last fix inside a site zone
@@ -171,6 +175,27 @@ export async function POST(req: NextRequest) {
       .update({ vendor_geofence_id: vendorZoneId, suggested_job_id: suggestedJobId })
       .eq('id', inserted.id)
   }
+  // No truck at a vendor: the cardholder's phone (its personnel asset,
+  // tracker `phone-<user id>`) within the last half hour.
+  if (!swipeFix && cardholderUserId) {
+    try {
+      const { data: phone } = await db.from('assets').select('id')
+        .eq('company_id', company.id).eq('tracker_id', `phone-${cardholderUserId}`).maybeSingle()
+      if (phone?.id) {
+        const { data: fix } = await db.from('asset_locations').select('lat, lng')
+          .eq('asset_id', phone.id).gte('timestamp', new Date(Date.now() - 30 * 60_000).toISOString())
+          .order('timestamp', { ascending: false }).limit(1).maybeSingle()
+        if (fix) swipeFix = { lat: fix.lat, lng: fix.lng, assetId: phone.id }
+      }
+    } catch { /* hint only */ }
+  }
+  if (inserted?.id && swipeFix) {
+    try {
+      await db.from('expenses')
+        .update({ swipe_lat: swipeFix.lat, swipe_lng: swipeFix.lng, swipe_asset_id: swipeFix.assetId })
+        .eq('id', inserted.id)
+    } catch { /* pre-099 schema */ }
+  }
 
   // The instant ping. Push to the cardholder (falls back to all company
   // devices), SMS to the company alert phone if Twilio is live. The link IS
@@ -183,7 +208,7 @@ export async function POST(req: NextRequest) {
   let pushed = 0
   try {
     const { sendPushToUser } = await import('@/lib/push')
-    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body })
+    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` })
   } catch { /* best-effort */ }
   try {
     if (company.alert_phone) {

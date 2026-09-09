@@ -194,6 +194,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'alertpins', label: 'Alert pins', group: 'jobs', status: 'live', isLive: true, hint: 'where alerts fired · follows the timeline: Live shows today, replays reveal pins as the scrubber passes them' },
   { id: 'nightwatch', label: 'Night Watch', group: 'jobs', status: 'live', hint: 'where the fleet sleeps · teal = tucked in a yard/site · amber = out in the open' },
   { id: 'fieldops', label: 'Field activity', group: 'jobs', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
+  { id: 'receipts', label: 'Receipts', group: 'jobs', status: 'live', isLive: true, hint: 'every card swipe, pinned where the truck was — red = still needs a photo (tap: Snap now), teal = captured (tap: see it) · follows the timeline · needs the costs permission' },
   { id: 'siteimg', label: 'Site imagery', group: 'jobs', status: 'live', hasOpacity: true, hint: 'placed drone shots pinned to the ground · follows the timeline — scrub to see the site that day' },
   { id: 'siteplans', label: 'Scaled plans', group: 'jobs', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
   { id: 'measures', label: 'Measurements', group: 'jobs', status: 'live', hint: 'saved points, lines & areas — tap one on the map to open, edit, or delete it' },

@@ -20,17 +20,23 @@ and categorized for job costing. "This would solve 90% of the receipt problem."*
    - admin-defined list (Settings → Receipt categories), or
    - synced QuickBooks chart/classes/projects once QBO is connected —
      so the choice the employee makes IS the job-cost line.
-5. **The nag ladder** (until captured):
-   - T+15 min: second SMS/push
-   - T+1 h: third, tone sharpens
-   - T+4 h: fourth + the employee's foreman is CC'd
-   - Next morning 7 AM: daily nag + it shows on the admin's Receipts inbox
-     as OUTSTANDING with age; repeat daily.
-   - Captured → nags stop instantly, receipt lands in the existing
-     Receipts inbox (AI extraction already built) pre-matched to the
-     transaction → one-tap approve → QBO.
-6. **Admin view**: Receipts page gets an "Outstanding" tab — every
-   uncaptured transaction, who's being nagged, how long, escalation state.
+5. **The nag ladder** (BUILT Sep 9 2026, migration 099 — runs every 15 min):
+   - T+15 min: push (rung 2)
+   - T+1 h: push + text to the cardholder's cell (rung 3, `profiles.phone`)
+   - T+4 h: push + text, sharper (rung 4)
+   - T+24 h: push + text, AND the owner/admins get one push + the office line
+     one text ("Trey hasn't snapped the $312 Home Depot receipt from Tue")
+     (rung 5, `expenses.escalated_at`)
+   - Then 7 AM and 5 PM company-local, every day, for two weeks; after that the
+     nightly digest carries it like any aging charge
+   - Every push carries the capture link as its TAP TARGET (FCM `data.url`,
+     opened by the app) — one tap lands on the camera
+   - In between, the in-app bar (`components/receipts/ReceiptNagBar.tsx`)
+     rides EVERY screen the cardholder opens: "2 receipts need your photo ·
+     $402" → Snap (camera right there, same /api/r/<token> door) · No receipt
+     (closes with the person's reason) · Later (shrinks to a pill for 10 min,
+     never goes away)
+   - Captured → nags stop instantly, receipt lands in the existing inbox
 
 ## The honest constraint: how fast is "instant"?
 
@@ -68,3 +74,19 @@ anyone else can legally get without issuing cards.
 
 Blockers: Plaid account (free sandbox, ~15-min signup) and Twilio (EIN,
 already in motion). Push-only works before Twilio lands.
+
+## Where it shows on the map (Sep 9 2026)
+Layer **Receipts** (My sites group, needs the costs permission): every card
+swipe pinned where it happened — the truck standing in the vendor zone at
+swipe time (051 handshake), else the cardholder's phone (`expenses.swipe_lat/
+lng/swipe_asset_id`). Red while the photo is owed (popup: Snap now for the
+cardholder), teal once captured, pinned where the PHOTO was taken (capture
+page GPS or EXIF → `receipts.lat/lng/taken_at`) with the picture in the popup.
+Live = last 30 days, refreshed every minute; replays follow the window.
+`/api/receipts-map` returns an empty layer to roles without costs.
+
+## Proving the loop without a card
+Receipts → Instant chase → **Send me a test swipe**: a real $12.34 charge on
+your name fires the same push (tap opens the camera) and text the webhook
+would. The three readiness chips on that card say which legs can fire right
+now (bank alert email = `RESEND_INBOUND_SECRET`, push = FCM, texts = Twilio).

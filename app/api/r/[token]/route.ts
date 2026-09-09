@@ -35,6 +35,11 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   if (photo.size > 8 * 1024 * 1024) {
     return NextResponse.json({ ok: false, error: 'Photo too large (8 MB max)' }, { status: 400 })
   }
+  // Where the photo was taken (099) — optional, range-checked, never trusted
+  // beyond a pin: lat/lng floats, accuracy in metres.
+  const num = (k: string) => { const v = Number(form?.get(k)); return Number.isFinite(v) ? v : null }
+  const lat = num('lat'), lng = num('lng')
+  const hasFix = lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0)
   const zoneRaw = String(form?.get('zone') ?? '')
   const zoneId = /^[0-9a-f-]{36}$/i.test(zoneRaw) ? zoneRaw : null
   // Never trust a zone id from an unauthenticated form — it must be this company's.
@@ -55,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   }
   const url = db.storage.from('field-photos').getPublicUrl(path).data.publicUrl
 
-  const { data: receipt, error: rErr } = await db.from('receipts').insert({
+  const row: Record<string, unknown> = {
     company_id: exp.company_id,
     project_geofence_id: projectZone,
     url,
@@ -64,9 +69,17 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     amount: exp.amount,
     txn_date: exp.txn_date,
     note: 'Captured via receipt-chase link',
-  }).select('id').single()
-  if (rErr || !receipt) {
-    console.error('capture receipt insert failed', rErr)
+  }
+  if (hasFix) { row.lat = lat; row.lng = lng; row.taken_at = new Date().toISOString() }
+  let ins = await db.from('receipts').insert(row).select('id').single()
+  if (ins.error && hasFix && /column|schema/i.test(ins.error.message)) {
+    // Pre-099 database — save the receipt without its pin.
+    delete row.lat; delete row.lng; delete row.taken_at
+    ins = await db.from('receipts').insert(row).select('id').single()
+  }
+  const receipt = ins.data
+  if (ins.error || !receipt) {
+    console.error('capture receipt insert failed', ins.error)
     return NextResponse.json({ ok: false, error: 'Save failed — try again' }, { status: 500 })
   }
 

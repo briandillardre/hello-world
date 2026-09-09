@@ -8,7 +8,8 @@ import { useEffect } from 'react'
  * dependency on @capacitor/push-notifications), so the web build is unaffected
  * and this no-ops in a browser. On device it asks permission, registers, and
  * POSTs the FCM/APNs token to /api/push/register so theft alerts can hit the
- * lock screen.
+ * lock screen. A tap on a notification that names an in-app path (data.url)
+ * opens that path — the receipt chase lands the cardholder on the camera.
  *
  * Native side (one-time, once Firebase is set up):
  *   npm i @capacitor/push-notifications && npx cap sync
@@ -47,6 +48,12 @@ export function NativePush() {
             body: JSON.stringify({ token, platform }),
             keepalive: true,
           }).catch(() => { /* registration retries next launch */ })
+        })
+        // A tapped notification carries the in-app path it is about (receipt
+        // capture links, alert pins). Same-origin paths only — never a host.
+        Push.addListener?.('pushNotificationActionPerformed', (ev: unknown) => {
+          const url = (ev as { notification?: { data?: { url?: unknown } } })?.notification?.data?.url
+          if (typeof url === 'string' && /^\/[A-Za-z0-9/_\-?=&.%~]*$/.test(url)) window.location.assign(url)
         })
         await Push.register?.()
       } catch { /* push is best-effort — never break the app */ }

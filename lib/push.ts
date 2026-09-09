@@ -13,7 +13,12 @@
 
 import { createSign } from 'crypto'
 
-interface PushMsg { title: string; body: string }
+/** url: in-app PATH the tap opens (e.g. /r/<token>, /receipts). Relative only —
+ *  the app never navigates to another host off a notification. */
+interface PushMsg { title: string; body: string; url?: string }
+/** Data keys ride beside the notification so the app can act on the tap. */
+const pushData = (msg: PushMsg): Record<string, string> | undefined =>
+  msg.url && /^\/[A-Za-z0-9/_\-?=&.%~]*$/.test(msg.url) ? { url: msg.url } : undefined
 
 // ── FCM v1: service-account JWT → OAuth token (cached ~55 min) ─────────────
 interface SvcAccount { project_id: string; client_email: string; private_key: string }
@@ -74,6 +79,7 @@ async function fcmSendV1(sa: SvcAccount, tokens: string[], msg: PushMsg): Promis
             message: {
               token,
               notification: { title: msg.title, body: msg.body },
+              data: pushData(msg),
               android: { priority: 'HIGH', notification: { sound: 'default' } },
               apns: { payload: { aps: { sound: 'default' } } },
             },
@@ -102,6 +108,7 @@ async function fcmSendLegacy(serverKey: string, tokens: string[], msg: PushMsg):
         body: JSON.stringify({
           registration_ids: batch,
           notification: { title: msg.title, body: msg.body, sound: 'default' },
+          data: pushData(msg),
           priority: 'high',
         }),
         signal: AbortSignal.timeout(10_000),

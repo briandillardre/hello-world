@@ -4681,6 +4681,86 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     return () => { cancelled = true }
   }, [mapReady, overlaysOn.fieldops])
 
+  // ── Receipts (card swipes → photos, mig 099; Brian, Sep 9) ──────────────
+  // Red while a photo is owed (pinned at the swipe), teal once captured
+  // (pinned at the photo). Live = last 30 days, refreshed every minute so a
+  // swipe shows up while the truck is still at the counter; replays follow
+  // the window. Money-gated at the API — non-cost roles get an empty layer.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m) return
+    const on = !!overlaysOn.receipts
+    const ids = ['receipts-halo', 'receipts-dot', 'receipts-amt']
+    if (m.getLayer('receipts-dot')) {
+      for (const id of ids) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none')
+    } else if (on) {
+      m.addSource('receipts', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      const beforeId = m.getLayer('clusters') ? 'clusters' : undefined
+      const fill: maplibregl.ExpressionSpecification = ['match', ['get', 'status'], 'open', '#ef4444', '#2dd4bf']
+      m.addLayer({
+        id: 'receipts-halo', type: 'circle', source: 'receipts',
+        paint: { 'circle-radius': 17, 'circle-color': fill, 'circle-opacity': 0.22, 'circle-blur': 0.4 },
+      }, beforeId)
+      m.addLayer({
+        id: 'receipts-dot', type: 'circle', source: 'receipts',
+        paint: { 'circle-radius': 10, 'circle-color': fill, 'circle-stroke-color': '#0b1523', 'circle-stroke-width': 2 },
+      }, beforeId)
+      m.addLayer({
+        id: 'receipts-amt', type: 'symbol', source: 'receipts',
+        layout: { 'text-field': ['get', 'label'], 'text-size': 8.5, 'text-allow-overlap': true, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
+        paint: { 'text-color': '#001523' },
+      }, beforeId)
+      m.on('click', 'receipts-dot', (e) => {
+        const p = e.features?.[0]?.properties
+        if (!p) return
+        const open = p.status === 'open'
+        const color = open ? '#ef4444' : '#2dd4bf'
+        const head = open ? 'Receipt still missing' : 'Receipt captured'
+        new maplibregl.Popup({ closeButton: false, maxWidth: '280px' })
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">` +
+            `<div style="font-weight:700;color:${color}">${head}</div>` +
+            `<div style="font-weight:700;font-size:14px">$${Number(p.amount).toFixed(2)}${p.merchant ? ` · ${escHtml(p.merchant)}` : ''}</div>` +
+            `<div style="color:#9fb6cc">${escHtml(p.day)}${p.holder ? ` · ${escHtml(p.holder)}` : ''} · ${p.at === 'photo' ? 'where the photo was taken' : 'where the card was swiped'}</div>` +
+            (p.photo ? `<a href="${escHtml(p.photo)}" target="_blank" rel="noreferrer"><img src="${escHtml(p.photo)}" alt="Receipt" style="display:block;margin-top:6px;max-height:120px;border-radius:8px;border:1px solid #223247"/></a>` : '') +
+            (p.token ? `<a href="/r/${escHtml(p.token)}" style="display:inline-block;margin-top:6px;background:#ff9e16;color:#1a1100;font-weight:700;border-radius:8px;padding:4px 10px;font-size:12px">📷 Snap now</a>` : '') +
+            `<div style="margin-top:6px"><a href="/receipts" style="color:#2dd4bf;font-size:11px">open receipts →</a></div></div>`
+          )
+          .addTo(m)
+      })
+      m.on('mouseenter', 'receipts-dot', () => { m.getCanvas().style.cursor = 'pointer' })
+      m.on('mouseleave', 'receipts-dot', () => { m.getCanvas().style.cursor = '' })
+    }
+    if (!on) return
+    let cancelled = false
+    const load = () => {
+      const win = pbActive && realWindowEff ? `?from=${Math.round(realWindowEff.from)}&to=${Math.round(realWindowEff.to)}` : ''
+      fetch(`/api/receipts-map${win}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { pins?: { id: string; merchant: string | null; amount: number; day: string; status: string; holder: string | null; lat: number; lng: number; at: string; photo: string | null; token: string | null }[] } | null) => {
+          if (cancelled || !j?.pins || !mapAlive(m)) return
+          const features = j.pins.map((p) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+            properties: {
+              id: p.id, status: p.status, amount: p.amount, label: `$${Math.round(p.amount)}`, merchant: p.merchant ?? '',
+              day: new Date(`${p.day}T12:00:00`).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+              holder: p.holder ?? '', at: p.at, photo: p.photo ?? '', token: p.token ?? '',
+            },
+          }))
+          ;(m.getSource('receipts') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'receipts', at: Date.now() } }))
+        })
+        .catch(() => { /* pre-099 database or offline — layer stays empty */ })
+    }
+    load()
+    const timer = pbActive ? null : window.setInterval(load, 60_000)
+    const onCaptured = () => load()
+    window.addEventListener('ht:receipt-captured', onCaptured)
+    return () => { cancelled = true; if (timer) window.clearInterval(timer); window.removeEventListener('ht:receipt-captured', onCaptured) }
+  }, [mapReady, overlaysOn.receipts, pbActive, realWindowEff])
+
   // ══ Aug 12 wow-pack: "where is my money and my day" ══════════════════════
 
   // ATTENTION SLOT — top-right, one badge, priority-picked (marker grammar):
@@ -7020,7 +7100,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
+        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'receipts', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
           .map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.

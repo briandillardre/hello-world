@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Zap, Copy, Check, Trash2 } from 'lucide-react'
-import { enableInstantChaseAction, saveCardAction, deleteCardAction, type CompanyCard } from '@/lib/actions/cards'
+import { Zap, Copy, Check, Trash2, Send } from 'lucide-react'
+import { enableInstantChaseAction, saveCardAction, deleteCardAction, sendTestChargeAction, type CompanyCard } from '@/lib/actions/cards'
 
 /**
  * Instant receipt chase setup — the card issuer's own alert emails become the
@@ -10,11 +10,13 @@ import { enableInstantChaseAction, saveCardAction, deleteCardAction, type Compan
  * address, forward card alerts to it, map each card's last-4 to the person
  * carrying it.
  */
-export function InstantChase({ address: initialAddress, cards, members, canManage }: {
+export function InstantChase({ address: initialAddress, cards, members, canManage, ready = { inbound: false, push: false, sms: false } }: {
   address: string | null
   cards: CompanyCard[]
-  members: { id: string; name: string }[]
+  members: { id: string; name: string; phone?: string | null }[]
   canManage: boolean
+  /** Which legs of the chase can fire right now (server env). */
+  ready?: { inbound: boolean; push: boolean; sms: boolean }
 }) {
   const [address, setAddress] = useState(initialAddress)
   const [copied, setCopied] = useState(false)
@@ -23,9 +25,17 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
   const [last4, setLast4] = useState('')
   const [label, setLabel] = useState('')
   const [holder, setHolder] = useState('')
+  const [cell, setCell] = useState('')
+  const [test, setTest] = useState<{ link: string; pushed: number; texted: boolean } | null>(null)
   const [pending, start] = useTransition()
 
   const memberName = (id: string | null) => members.find((m) => m.id === id)?.name ?? '—'
+  const memberPhone = (id: string | null) => members.find((m) => m.id === id)?.phone ?? null
+  const legs: { label: string; ok: boolean; fix: string }[] = [
+    { label: 'Bank alert email', ok: ready.inbound, fix: 'RESEND_INBOUND_SECRET is not set in Vercel — the inbound webhook refuses mail until it is.' },
+    { label: 'Push to phones', ok: ready.push, fix: 'No FCM service account in Vercel — pushes cannot send.' },
+    { label: 'Texts', ok: ready.sms, fix: 'Twilio is not configured — the ladder pushes only.' },
+  ]
 
   return (
     <section className="rounded-xl border border-navy-800 bg-navy-900 overflow-hidden">
@@ -85,6 +95,17 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                 </div>
               </div>
 
+              <div className="flex flex-wrap gap-1.5" title="Whether each leg of the chase can fire right now">
+                {legs.map((l) => (
+                  <span key={l.label} title={l.ok ? 'ready' : l.fix} className={'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ' + (l.ok ? 'border-teal/40 bg-teal/10 text-teal' : 'border-alert/40 bg-alert/10 text-alert')}>
+                    {l.ok ? '✓' : '✗'} {l.label}
+                  </span>
+                ))}
+              </div>
+              {!ready.inbound && canManage && (
+                <p className="text-[12px] text-alert">Bank alerts cannot reach us yet: add <code className="font-mono">RESEND_INBOUND_SECRET</code> in Vercel (Resend → Inbound webhook signing secret) and redeploy.</p>
+              )}
+
               <ol className="text-[12.5px] text-muted space-y-1.5 list-decimal pl-5">
                 <li><span className="text-ink">Chase:</span> chase.com → Profile &amp; Settings → Alerts → add this address as an alert recipient, turn on &ldquo;transaction&rdquo; alerts for each card (set the dollar threshold to $0).</li>
                 <li><span className="text-ink">Capital One:</span> capitalone.com → Alerts → add email → enable purchase notifications. Any other bank works too — forward its per-purchase alert emails here.</li>
@@ -99,7 +120,7 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                       <div key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                         <span className="font-mono text-ink">…{c.last4}</span>
                         {c.label && <span className="text-faint text-xs truncate">{c.label}</span>}
-                        <span className="ml-auto text-muted text-xs">{memberName(c.user_id)}</span>
+                        <span className="ml-auto text-muted text-xs text-right">{memberName(c.user_id)}{memberPhone(c.user_id) ? <span className="block text-faint font-mono text-[10.5px]">{memberPhone(c.user_id)}</span> : null}</span>
                         {canManage && (
                           <button
                             type="button"
@@ -131,18 +152,26 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                     />
                     <select
                       value={holder}
-                      onChange={(e) => setHolder(e.target.value)}
+                      onChange={(e) => { setHolder(e.target.value); setCell(memberPhone(e.target.value) ?? '') }}
                       className="rounded-lg bg-navy-950 border border-navy-700 px-2.5 py-2 text-sm text-ink"
                     >
                       <option value="">Cardholder…</option>
                       {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
+                    <input
+                      value={cell}
+                      onChange={(e) => setCell(e.target.value)}
+                      placeholder="Cell for texts"
+                      inputMode="tel"
+                      title="The chase texts this number at the 1 h, 4 h and daily rungs"
+                      className="w-36 rounded-lg bg-navy-950 border border-navy-700 px-2.5 py-2 text-sm text-ink"
+                    />
                     <button
                       type="button"
                       disabled={pending || last4.length !== 4}
                       onClick={() => start(async () => {
-                        const r = await saveCardAction({ last4, label, userId: holder })
-                        if (r.ok) { setLast4(''); setLabel(''); setHolder(''); setError(null) }
+                        const r = await saveCardAction({ last4, label, userId: holder, phone: cell })
+                        if (r.ok) { setLast4(''); setLabel(''); setHolder(''); setCell(''); setError(null) }
                         else setError(r.error ?? 'Failed')
                       })}
                       className="rounded-lg bg-navy-700 text-ink font-semibold text-sm px-3 py-2 disabled:opacity-40"
@@ -152,6 +181,32 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                   </div>
                 )}
               </div>
+
+              {canManage && (
+                <div className="rounded-lg border border-navy-800 bg-navy-950 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[12.5px] text-muted flex-1">Prove the loop: a $12.34 test swipe on your name fires the same push and text a real card alert would. Snap any photo to close it.</p>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => start(async () => {
+                        const r = await sendTestChargeAction()
+                        if (r.ok && r.link) { setTest({ link: r.link, pushed: r.pushed ?? 0, texted: !!r.texted }); setError(null) }
+                        else setError(r.error ?? 'Failed')
+                      })}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber/50 bg-amber/10 text-amber font-semibold text-sm px-3 py-2 disabled:opacity-40 flex-none"
+                    >
+                      <Send className="h-3.5 w-3.5" /> Send me a test swipe
+                    </button>
+                  </div>
+                  {test && (
+                    <p className="text-[12px] text-teal">
+                      Test charge created · push to {test.pushed} device{test.pushed === 1 ? '' : 's'}{test.texted ? ' · text sent' : ''}. The amber bar is now on every screen for you —
+                      or <a href={test.link} target="_blank" rel="noreferrer" className="underline">open the capture link</a>.
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
           {error && <p className="text-sm text-alert">{error}</p>}
