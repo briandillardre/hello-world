@@ -111,7 +111,9 @@ function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | null): 
     // shift that just started gets 15 minutes before it counts as silent.
     const settled = !!e.outAt || elapsed >= 0.25
     if (e.gps.fixes === 0 && e.inLat == null && settled) out.push('no_gps')
-    if (onSitePct != null && e.gps.fixes >= 5 && onSitePct < OFF_SITE_BELOW_PCT) out.push('off_site')
+    // A zone the viewer cannot see (someone's personal zone) counts nothing
+    // as on-site — that is not a flag, so it needs the zone to be visible.
+    if (onSitePct != null && e.zoneName && e.gps.fixes >= 5 && onSitePct < OFF_SITE_BELOW_PCT) out.push('off_site')
   }
   return out
 }
@@ -221,8 +223,12 @@ export function weekLabel(mondayKey: string): string {
 // ── CSV (payroll-ready) ─────────────────────────────────────────────────────
 
 const csvCell = (v: unknown): string => {
-  const s = v == null ? '' : String(v)
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  let s = v == null ? '' : String(v)
+  // Payroll opens this in Excel: a name or note starting with = + - @ or a
+  // tab would run as a formula (sec-check, Sep 9). Every numeric column here
+  // is non-negative, so prefixing an apostrophe collides with nothing.
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s
+  return /[",\r\n']/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
 /** One row per entry, hours to 2 decimals, times in the company's tz. */

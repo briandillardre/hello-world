@@ -117,6 +117,9 @@ export async function clockInAction(input: {
       plan: (input.plan ?? '').slice(0, 500),
     }
     const hasPos = validCoord(input.lat) && validCoord(input.lng)
+    // Location is REQUIRED to clock in (Sep 9) — the clock card enforces it
+    // first; this makes the rule real for a direct call too.
+    if (!hasPos) return { ok: false, error: 'Location is required to clock in. Allow location for HammerTrack, then try again.' }
     const full = {
       ...base,
       ...(hasPos ? { in_lat: input.lat, in_lng: input.lng } : {}),

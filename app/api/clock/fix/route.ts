@@ -19,8 +19,30 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  */
 type Fix = { lat: number; lng: number; accuracy: number | null; speed: number | null; heading: number | null; at: string | null }
 
+const HOURLY_CAP = 240 // honest max ≈ 120/h at the 30 s cadence + move bursts
+const MIN_GAP_MS = 10_000
+
 export async function POST(req: NextRequest) {
   if (isMock) return NextResponse.json({ ok: true, mode: 'demo', saved: 0 })
+  // Only a clocked-in person with the Time clock view level records shift
+  // fixes, and only so many per hour — a trail cannot be typed in from home
+  // after the fact, and a loop cannot burn the database's IO (sec-check P2).
+  const { getRealPermissions } = await import('@/lib/permissions-server')
+  const perms = await getRealPermissions()
+  if (!perms.userId || !perms.companyId) return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
+  if (!perms.features.includes('clock')) return NextResponse.json({ ok: false, error: 'not allowed' }, { status: 403 })
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const svc = createServiceClient()
+  const { data: open } = await svc.from('time_entries').select('id')
+    .eq('company_id', perms.companyId).eq('user_id', perms.userId).is('clock_out_at', null).limit(1).maybeSingle()
+  if (!open) return NextResponse.json({ ok: false, error: 'not clocked in' }, { status: 409 })
+  const { data: phone } = await svc.from('assets').select('id')
+    .eq('company_id', perms.companyId).eq('tracker_id', `phone-${perms.userId}`).limit(1).maybeSingle()
+  if (phone) {
+    const { count } = await svc.from('asset_locations').select('id', { count: 'exact', head: true })
+      .eq('asset_id', phone.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString())
+    if ((count ?? 0) >= HOURLY_CAP) return NextResponse.json({ ok: false, error: 'too many fixes this hour' }, { status: 429 })
+  }
   let body: unknown
   try { body = await req.json() } catch { return NextResponse.json({ ok: false, error: 'bad json' }, { status: 400 }) }
   const obj = body && typeof body === 'object' ? body as { fixes?: unknown } & Record<string, unknown> : {}
@@ -39,10 +61,17 @@ export async function POST(req: NextRequest) {
   }
   if (!fixes.length) return NextResponse.json({ ok: false, error: 'no usable fix' }, { status: 422 })
 
-  // Oldest first so the asset's last-seen ends on the newest.
+  // Oldest first so the asset's last-seen ends on the newest; fixes closer
+  // than the tracker's own move cadence to the previous one are dropped.
   fixes.sort((a, b) => (a.at ? Date.parse(a.at) : Infinity) - (b.at ? Date.parse(b.at) : Infinity))
-  let saved = 0
+  const spaced: Fix[] = []
   for (const f of fixes) {
+    const prev = spaced[spaced.length - 1]
+    if (prev && f.at && prev.at && Date.parse(f.at) - Date.parse(prev.at) < MIN_GAP_MS) continue
+    spaced.push(f)
+  }
+  let saved = 0
+  for (const f of spaced) {
     const res = await pushPhoneLocation({ ...f, source: 'shift' })
     if (res.reason === 'auth') return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
     if (res.ok) saved++

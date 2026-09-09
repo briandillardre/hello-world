@@ -25,6 +25,11 @@ export interface AiToolCtx {
   /** Session door's role gate: the signed-in user may see dollar figures.
    *  (The MCP door has no per-user roles — a company key is admin-grade.) */
   canViewCosts: boolean
+  /** The signed-in user's view levels (094) — `time_cards` needs `clock`. */
+  features?: string[]
+  /** Whose time cards this user may read: null = the crew's (Foreman+), a
+   *  list = their own (timecardScope). Undefined = no restriction (MCP). */
+  timecardUserIds?: string[] | null
 }
 
 // ── Shared MCP registry (task #28: one brain, three doors) ──────────────────
@@ -39,10 +44,11 @@ const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_stat
 const COST_GATED_TOOLS = new Set(['get_zone_costs', 'whats_worth_a_look'])
 
 /** Anthropic-format defs for the shared MCP tools this user may call. */
-export function sharedMcpToolDefs(canViewCosts: boolean) {
+export function sharedMcpToolDefs(canViewCosts: boolean, features?: string[]) {
   return MCP_TOOLS
     .filter((t) => SHARED_MCP_TOOLS.includes(t.name))
     .filter((t) => canViewCosts || !COST_GATED_TOOLS.has(t.name))
+    .filter((t) => t.name !== 'time_cards' || !features || features.includes('clock'))
     .map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
 }
 
@@ -517,7 +523,10 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       if (COST_GATED_TOOLS.has(name) && !ctx.canViewCosts) {
         return { error: 'This user does not have the cost-visibility permission — answer without dollar figures.' }
       }
-      const res = await runMcpTool(name, input, ctx.companyId)
+      if (name === 'time_cards' && ctx.features && !ctx.features.includes('clock')) {
+        return { error: 'This user does not have the Time clock view level — do not report time cards.' }
+      }
+      const res = await runMcpTool(name, input, ctx.companyId, name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null } : undefined)
       const text = res.content[0]?.text ?? ''
       if (res.isError) return { error: text || 'tool failed' }
       try { return JSON.parse(text) } catch { return { result: text } }

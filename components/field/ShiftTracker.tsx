@@ -75,6 +75,8 @@ export function ShiftTracker() {
 
   // Am I clocked in? On load, every minute, when the clock card says so, and
   // whenever the app comes back to the foreground.
+  const lastOpenRef = useRef(false)
+  const tickRef = useRef(0)
   useEffect(() => {
     let alive = true
     const load = async () => {
@@ -82,6 +84,7 @@ export function ShiftTracker() {
         const r = await fetch('/api/clock/state', { cache: 'no-store' })
         const j = await r.json().catch(() => null) as { open?: boolean; entry?: { id: string; since: string } | null } | null
         if (!alive || !j) return
+        lastOpenRef.current = !!(j.open && j.entry)
         setOpen((cur) => {
           const next = j.open && j.entry ? { id: j.entry.id, since: j.entry.since } : null
           return cur?.id === next?.id ? cur : next
@@ -89,7 +92,15 @@ export function ShiftTracker() {
       } catch { /* offline — keep the last answer */ }
     }
     void load()
-    const t = window.setInterval(load, POLL_MS)
+    // Cheap when idle: no poll while the tab is hidden, and only every fifth
+    // minute while nobody is clocked in (the clock card's event covers the
+    // transition; another device's clock-in shows within 5 min).
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return
+      tickRef.current++
+      if (!lastOpenRef.current && tickRef.current % 5 !== 0) return
+      void load()
+    }, POLL_MS)
     const onClock = () => { void load() }
     const onVis = () => { if (document.visibilityState === 'visible') void load() }
     window.addEventListener(CLOCK_EVENT, onClock)
@@ -129,7 +140,9 @@ export function ShiftTracker() {
       const batch = pending.splice(0, 50)
       try {
         const r = await fetch('/api/clock/fix', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fixes: batch }), keepalive: true })
-        if (r.status === 401) { pending.length = 0 } // signed out — nothing to keep
+        if (r.status === 401 || r.status === 403) { pending.length = 0 } // signed out / no view level — nothing to keep
+        else if (r.status === 409) { pending.length = 0; lastOpenRef.current = false; setOpen(null) } // clocked out elsewhere — stop
+        else if (r.status === 429) { /* over the hourly cap — this batch is dropped */ }
         else if (!r.ok) { pending.unshift(...batch) }
         else { setFixes((n) => n + batch.length); lastFixRef.current = Date.now() }
       } catch {
@@ -161,10 +174,11 @@ export function ShiftTracker() {
     }
 
     const startWeb = () => {
+      if (stopped) return // cleaned up while the native watcher was still starting
       if (typeof navigator === 'undefined' || !('geolocation' in navigator)) { engineRef.current = 'off'; setDenied(true); return }
       engineRef.current = 'web'
       webWatch = navigator.geolocation.watchPosition(
-        (p) => onFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy ?? null, p.coords.speed ?? null, p.coords.heading ?? null, p.timestamp),
+        (p) => { if (!stopped) onFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy ?? null, p.coords.speed ?? null, p.coords.heading ?? null, p.timestamp) },
         (e) => { if (e.code === 1) setDenied(true) },
         { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
       )

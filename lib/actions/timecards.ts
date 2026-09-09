@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getRealPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, getRealPermissions } from '@/lib/permissions-server'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -23,9 +23,12 @@ export async function adjustTimeEntryAction(input: {
   note: string
 }): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode' }
-  const perms = await getRealPermissions()
+  // Abilities from the EFFECTIVE permissions (a view-as preview is read-only,
+  // 096); ids from the real session.
+  const [eff, perms] = await Promise.all([getMyPermissions(), getRealPermissions()])
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Not signed in' }
-  if (!(perms.canManageTeam || perms.canManageBilling)) return { ok: false, error: 'You need the Team or Billing ability to edit time cards.' }
+  if (eff.viewingAs) return { ok: false, error: 'Read-only preview — exit View as to make changes.' }
+  if (!(eff.canManageTeam || eff.canManageBilling)) return { ok: false, error: 'You need the Team or Billing ability to edit time cards.' }
   if (!/^[0-9a-f-]{36}$/i.test(input.id)) return { ok: false, error: 'Bad entry' }
 
   const inMs = Date.parse(input.clockInAt)
@@ -55,9 +58,10 @@ export async function adjustTimeEntryAction(input: {
     edited_by: perms.userId,
     edited_at: new Date().toISOString(),
     edit_note: note,
-    // The first edit freezes what the phone recorded; later edits keep it.
-    ...(cur.original_in_at ? {} : { original_in_at: cur.clock_in_at }),
-    ...(cur.original_out_at ? {} : { original_out_at: cur.clock_out_at }),
+    // The FIRST edit freezes what the phone recorded — both times together,
+    // so an entry that was still open keeps original_out_at = null instead
+    // of adopting the first correction as "recorded" (sec-check, Sep 9).
+    ...(cur.original_in_at ? {} : { original_in_at: cur.clock_in_at, original_out_at: cur.clock_out_at }),
   }
   const { error } = await db.from('time_entries').update(patch).eq('id', input.id).eq('company_id', perms.companyId)
   if (error) return { ok: false, error: error.message }

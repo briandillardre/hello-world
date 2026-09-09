@@ -83,10 +83,27 @@ the `time_cards` MCP/Ask AI tool, so every surface agrees.
 - Already-installed apps (≤ 1.3.1) get everything else on the next web
   deploy: mandatory clock-in fix, foreground shift tracking, /timecards.
 
+## Hardening (sec-check on the ship, Sep 9)
+- `/api/clock/fix` needs the `clock` view level AND an open shift (409
+  otherwise — the tracker stops itself), caps a phone at 240 fixes/hour
+  (429) and drops fixes closer than 10 s.
+- Clock-in without a location is refused server-side too.
+- CSV cells starting with `= + - @` or a tab are apostrophe-prefixed (Excel
+  formula injection through a member's display name).
+- Ask AI's `time_cards` honours the `clock` view level and the page's scope
+  (crew see their own; Foreman+ the crew's); the Agent Interface (company
+  key = admin-grade) stays company-wide.
+- Manager corrections use the EFFECTIVE permissions (a view-as preview is
+  read-only) and freeze both original times on the first edit.
+
 ## Known gaps / next
 - Breaks are entered by a manager, not tracked by the crew (a Break button
   is the natural next step).
 - Overtime is weekly-only; a state with daily OT needs a company setting.
 - Clock-in reminders (push at the usual start time) — no schedule data yet.
-- RLS on `time_entries` is still company-wide FOR ALL (015) — task #60
-  should narrow writes to own rows + service role alongside daily_logs.
+- ~~RLS on `time_entries` was company-wide FOR ALL (015)~~ — **migration 104**
+  (sec-check P1 follow-up, same night): SELECT stays company-wide, INSERT and
+  UPDATE only your own rows, no client DELETE, and a BEFORE UPDATE guard
+  (`guard_time_entry_cols`) lets a session only CLOSE its own open entry —
+  every other column (hours, break, the edit trail) is server-side.
+  `daily_logs` gets the same treatment under task #60.
