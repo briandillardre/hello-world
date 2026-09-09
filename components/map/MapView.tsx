@@ -47,6 +47,8 @@ import { DevicePanel } from './DevicePanel'
 import { ZonePanel } from './ZonePanel'
 import { PlaceSheet, PLACE_KIND_META } from './PlaceSheet'
 import { detectConvoys, convoyRingGeoJSON } from '@/lib/convoy'
+import { pointInPolygon } from '@/lib/alerts-engine'
+import { StackSheet, type StackPick } from '@/components/map/StackSheet'
 import { DirectionsSheet } from './DirectionsSheet'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
@@ -132,7 +134,22 @@ const AGED_COLOR = ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY,
   ['interpolate', ['linear'], ['coalesce', ['get', 'ageH'], 0], 12, ['to-color', ['get', 'color']], 48, ['to-color', DEAD_GRAY]]] as unknown as maplibregl.ExpressionSpecification
 
 // MapLibre layers that represent the live (non-playback) asset view
-const LIVE_LAYERS = ['clusters', 'cluster-count', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
+const LIVE_LAYERS = ['clusters', 'cluster-count', 'cluster-stack', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
+
+/** "2 trucks · 1 machine · 5 tools aboard" from the cluster's rolled-up
+ *  counts — built as one MapLibre expression (clusters exist only inside the
+ *  source, so the label has to be computed there). Each segment carries a
+ *  leading " · " and `slice` drops the first one. */
+function stackSeg(prop: string, one: string, many: string): maplibregl.ExpressionSpecification {
+  const n: maplibregl.ExpressionSpecification = ['coalesce', ['get', prop], 0]
+  return ['case', ['>', n, 0], ['concat', ' · ', ['to-string', n], ' ', ['case', ['==', n, 1], one, many]], '']
+}
+const STACK_LABEL: maplibregl.ExpressionSpecification = ['slice', ['concat',
+  stackSeg('trucks', 'truck', 'trucks'),
+  stackSeg('machines', 'machine', 'machines'),
+  stackSeg('people', 'person', 'people'),
+  stackSeg('toolsAboard', 'tool aboard', 'tools aboard'),
+], 3]
 const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge']
 
 // ── Cinematic camera-follow tuning ──────────────────────────────────────────
@@ -404,11 +421,18 @@ function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, s
 
 // Build label anchor points at the TOP edge of each geofence so the zone name
 // floats above the busy interior instead of being covered by clustered pins.
-function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
+/** Zone label points. With `assets` (live view only), each site/yard/vendor
+ *  label also carries how many machines, trucks, people and tools are inside
+ *  it right now — the "3 here" line under the name (Sep 9 stacks). */
+function geofenceLabelPoints(geofences: Geofence[], assets?: AssetWithLocation[]): GeoJSON.FeatureCollection {
+  const located = (assets ?? []).filter((a) => a.location && Date.now() - new Date(a.location.timestamp).getTime() < DEAD_MS)
   return {
     type: 'FeatureCollection',
     features: geofences.map((g) => {
       const ring = g.geometry.coordinates[0] as [number, number][]
+      const here = g.kind !== 'boundary' && ring.length >= 3
+        ? located.filter((a) => pointInPolygon([a.location!.lng, a.location!.lat], ring)).length
+        : 0
       let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
       for (const [lng, lat] of ring) {
         if (lng < minLng) minLng = lng
@@ -422,7 +446,7 @@ function geofenceLabelPoints(geofences: Geofence[]): GeoJSON.FeatureCollection {
       const head = g.name.split(/[-–—,(]/)[0].trim() || g.name
       const short = head.length > 18 ? head.slice(0, 17).trimEnd() + '…' : head
       // smaller sort key = placed first = wins collisions, so bigger zones win
-      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, short, color: g.color, pri: -area } }
+      return { type: 'Feature', geometry: { type: 'Point', coordinates: [(minLng + maxLng) / 2, maxLat] }, properties: { name: g.name, short, color: g.color, pri: -area, here } }
     }),
   }
 }
@@ -528,6 +552,8 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // sheet; Directions turns the map into preview-nav mode: route line +
   // steps + honest no-traffic ETA. Refs mirror state for init-time handlers.
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null)
+  // A tapped cluster, listed (Sep 9 stacks). Cleared by any other selection.
+  const [stack, setStack] = useState<StackPick | null>(null)
   // Mirrors the layers drawer (WeatherControl owns it) so the LAYERS tab can
   // flip its chevron and read as the close handle while it is open.
   const [layersOpen, setLayersOpen] = useState(false)
@@ -2237,8 +2263,19 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current, selectedIdRef.current),
         cluster: true, clusterMaxZoom: 15, clusterRadius: 40,
         // Roll the alert flag up into clusters so a theft alert can't hide
-        // inside an amber blob at low zoom (ship-check, Aug 22).
-        clusterProperties: { alerts: ['+', ['get', 'alert']] },
+        // inside an amber blob at low zoom (ship-check, Aug 22). Stacks (Sep 9,
+        // Brian: "multiple items in one general area … cleanly show this"):
+        // the cluster also knows WHAT is in it — trucks / machines / people,
+        // the tools riding them, how many are moving — so the blob can say
+        // "2 trucks · 1 machine · 5 tools aboard" and a tap can list them.
+        clusterProperties: {
+          alerts: ['+', ['get', 'alert']],
+          trucks: ['+', ['case', ['==', ['get', 'type'], 'vehicle'], 1, 0]],
+          machines: ['+', ['case', ['==', ['get', 'type'], 'equipment'], 1, 0]],
+          people: ['+', ['case', ['==', ['get', 'type'], 'personnel'], 1, 0]],
+          toolsAboard: ['+', ['get', 'toolCount']],
+          moving: ['+', ['case', ['==', ['get', 'state'], 'moving'], 1, 0]],
+        },
       })
       m.addLayer({
         id: 'clusters', type: 'circle', source: 'assets', filter: ['has', 'point_count'],
@@ -2253,6 +2290,20 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         id: 'cluster-count', type: 'symbol', source: 'assets', filter: ['has', 'point_count'],
         layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 13, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] },
         paint: { 'text-color': ['case', ['>', ['coalesce', ['get', 'alerts'], 0], 0], '#fb5d5d', '#ff9e16'] },
+      })
+      // What the stack IS, under the count (metro zoom and closer — at state
+      // scale the number alone is the honest amount of information).
+      m.addLayer({
+        id: 'cluster-stack', type: 'symbol', source: 'assets', filter: ['has', 'point_count'], minzoom: 9,
+        layout: {
+          'text-field': STACK_LABEL,
+          'text-size': 9.5, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'top', 'text-max-width': 14, 'text-letter-spacing': 0.02,
+          // Clear the circle (radius 20 / 26 / 32 px by size) — offsets are in ems of text-size.
+          'text-offset': ['step', ['get', 'point_count'], ['literal', [0, 2.4]], 5, ['literal', [0, 3.0]], 20, ['literal', [0, 3.6]]],
+          'text-optional': true,
+        },
+        paint: { 'text-color': '#cfe3ee', 'text-halo-color': '#001016', 'text-halo-width': 1.6, 'text-opacity': 0.92 },
       })
       // Expanding pulse ring — MOVING assets, plus a RED pulse on anything
       // wearing a live alert (marker grammar: alert outranks everything).
@@ -2633,16 +2684,24 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       // out"): nothing at region/state scale, the short job code once you're
       // metro-level, the full job name once you're actually looking at sites.
       // A bare "25" floating over three counties is noise, not information.
+      // "3 here" rides under the name while anything is inside (live view;
+      // geofenceLabelPoints leaves `here` at 0 on replays). A `format`
+      // expression styles the count line smaller and teal.
+      const withHere = (nameExpr: maplibregl.ExpressionSpecification): maplibregl.ExpressionSpecification => [
+        'case', ['>', ['coalesce', ['get', 'here'], 0], 0],
+        ['format', nameExpr, {}, '\n', {}, ['concat', ['to-string', ['get', 'here']], ' here'], { 'font-scale': 0.82, 'text-color': '#2dd4bf' }],
+        ['format', nameExpr, {}],
+      ]
       m.addLayer({
         id: 'geofence-labels', type: 'symbol', source: 'geofence-label-pts',
         minzoom: 10.5, maxzoom: 12.5,
-        layout: { ...zoneLabelLayout, 'text-field': ['get', 'short'], 'text-size': 10 },
+        layout: { ...zoneLabelLayout, 'text-field': withHere(['get', 'short']), 'text-size': 10 },
         paint: zoneLabelPaint,
       })
       m.addLayer({
         id: 'geofence-labels-full', type: 'symbol', source: 'geofence-label-pts',
         minzoom: 12.5,
-        layout: { ...zoneLabelLayout, 'text-field': ['get', 'name'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12.5, 11, 15, 13] },
+        layout: { ...zoneLabelLayout, 'text-field': withHere(['get', 'name']), 'text-size': ['interpolate', ['linear'], ['zoom'], 12.5, 11, 15, 13] },
         paint: zoneLabelPaint,
       })
 
@@ -2689,6 +2748,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           setSelectedZone(null)
           setSelectedDevice(null)
           setSelectedPlace(null)
+          setStack(null)
           setSelectedAsset(asset)
         }
       }
@@ -2699,15 +2759,26 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       m.on('click', 'tool-dots', selectAsset)
       m.on('mouseenter', 'tool-dots', () => { m.getCanvas().style.cursor = 'pointer' })
       m.on('mouseleave', 'tool-dots', () => { m.getCanvas().style.cursor = '' })
+      // Tapping a stack LISTS what is in it (Brian, Sep 9: "cleanly show
+      // this") — the sheet names every truck / machine / person in the blob
+      // with its state and the tools it is hauling; "Zoom in here" is the
+      // old expand behaviour, one tap away.
       m.on('click', 'clusters', (e) => {
+        if (measureOnRef.current) return
         const features = m.queryRenderedFeatures(e.point, { layers: ['clusters'] })
         const clusterId = features[0]?.properties?.cluster_id
         if (!clusterId) return
         const source = m.getSource('assets') as maplibregl.GeoJSONSource
-        source.getClusterExpansionZoom(clusterId).then((zoom) => {
-          const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number]
-          m.easeTo({ center: coords, zoom: zoom ?? m.getZoom() + 2 })
-        })
+        const coords = (features[0].geometry as GeoJSON.Point).coordinates as [number, number]
+        Promise.all([source.getClusterLeaves(clusterId, 200, 0), source.getClusterExpansionZoom(clusterId)])
+          .then(([leaves, zoom]) => {
+            const ids = new Set((leaves ?? []).map((f) => String(f.properties?.id)))
+            const members = assetsRef.current.filter((a) => ids.has(a.id))
+            if (!members.length) { m.easeTo({ center: coords, zoom: zoom ?? m.getZoom() + 2 }); return }
+            setSelectedAsset(null); setSelectedZone(null); setSelectedDevice(null); setSelectedPlace(null)
+            setStack({ at: coords, expansionZoom: zoom ?? m.getZoom() + 2, members, toolCounts: toolCountsRef.current })
+          })
+          .catch(() => m.easeTo({ center: coords, zoom: m.getZoom() + 2 }))
       })
       // Device pin → device sheet
       m.on('click', 'device-bg', (e) => {
@@ -2926,8 +2997,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         type: 'Feature', geometry: g.geometry, properties: { id: g.id, name: g.name, color: g.color, kind: fenceKind(g) },
       })),
     })
-    ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences))
+    ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences, rangeRef.current === 'live' ? assetsRef.current : undefined))
   }, [mapReady, geofences])
+
+  // The "N here" line under zone names follows the live fleet (20 s tick) and
+  // drops on replays — presence at a scrubbed moment is the zone sheet's job.
+  useEffect(() => {
+    if (!mapReady) return
+    ;(map.current?.getSource('geofence-label-pts') as maplibregl.GeoJSONSource | undefined)?.setData(geofenceLabelPoints(geofences, range === 'live' ? assets : undefined))
+  }, [mapReady, geofences, assets, range])
 
   // Saved Places stay current as the list changes (create/edit/remove or the
   // 20 s live tick).
@@ -7401,6 +7479,24 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       {/* ── Navigation (rendered BEFORE the asset/zone panels on purpose:
           tapping a machine mid-directions must put ITS sheet on top; ending
           that sheet drops back to the route — ship-check P1). ─────────── */}
+      {stack && !navDest && (
+        <StackSheet
+          stack={stack}
+          onPick={(a: AssetWithLocation) => {
+            setStack(null)
+            setSelectedAsset(a)
+            const m = map.current
+            if (m && a.location) m.easeTo({ center: [a.location.lng, a.location.lat], zoom: Math.max(m.getZoom(), 15), duration: 700 })
+          }}
+          onZoom={() => {
+            const m = map.current
+            if (m) m.easeTo({ center: stack.at, zoom: stack.expansionZoom, duration: 600 })
+            setStack(null)
+          }}
+          onClose={() => setStack(null)}
+        />
+      )}
+
       {selectedPlace && !navDest && (
         <PlaceSheet
           place={selectedPlace}

@@ -59,7 +59,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'list_assets',
     description:
-      'Every asset in the fleet: name, type (vehicle/equipment/personnel/tool), active flag, last known position (lat/lng + minutes since the last report), current speed and whether it is moving right now, and the name of the zone/site it is currently inside (if any). Use for "where is…", "what is at…", "what is moving" questions.',
+      'Every asset in the fleet: name, type (vehicle/equipment/personnel/tool), active flag, last known position (lat/lng + minutes since the last report), current speed and whether it is moving right now, and the name of the zone/site it is currently inside (if any) — plus `siteStacks`: per site, how many trucks / machines / people / tools are there right now, how many are moving, and their names. Use for "where is…", "what is at…", "what is on the Creekside site", "what is moving" questions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -280,7 +280,25 @@ async function runListAssets(companyId: string): Promise<McpToolResult> {
       zone: zone ?? (loc ? 'off-site' : 'no signal'),
     }
   })
-  return ok({ assets: out, truncated: assets.length >= ASSET_ROW_CAP, timezone: DEFAULT_TZ })
+  // Stacks (Sep 9 — Brian: "multiple items in one general area"): what is
+  // piled on each site right now, by kind, so an assistant can answer "what
+  // is at Creekside" without walking the list. Boundaries are perimeters,
+  // not places, so they never stack.
+  const kindOf = (t: string) => t === 'vehicle' ? 'trucks' : t === 'equipment' ? 'machines' : t === 'personnel' ? 'people' : 'tools'
+  const stacks = new Map<string, { site: string; count: number; trucks: number; machines: number; people: number; tools: number; moving: number; names: string[] }>()
+  let offSite = 0
+  for (const a of out) {
+    if (a.lat == null) continue
+    if (a.zone === 'off-site') { offSite++; continue }
+    const st = stacks.get(a.zone) ?? { site: a.zone, count: 0, trucks: 0, machines: 0, people: 0, tools: 0, moving: 0, names: [] }
+    st.count++
+    st[kindOf(a.type)]++
+    if (a.moving) st.moving++
+    if (st.names.length < 12) st.names.push(a.name)
+    stacks.set(a.zone, st)
+  }
+  const siteStacks = Array.from(stacks.values()).sort((x, y) => y.count - x.count)
+  return ok({ assets: out, siteStacks, offSite, truncated: assets.length >= ASSET_ROW_CAP, timezone: DEFAULT_TZ })
 }
 
 interface LedgerRow { geofence_id: string; asset_id: string; day: string; on_site_secs: number; active_secs: number }
