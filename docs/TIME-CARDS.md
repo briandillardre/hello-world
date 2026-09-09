@@ -115,4 +115,5 @@ the `time_cards` MCP/Ask AI tool, so every surface agrees.
   UPDATE only your own rows, no client DELETE, and a BEFORE UPDATE guard
   (`guard_time_entry_cols`) lets a session only CLOSE its own open entry —
   every other column (hours, break, the edit trail) is server-side.
-  `daily_logs` gets the same treatment under task #60.
+  `daily_logs` got the same treatment in **migration 105** (read
+  company-wide, insert your own, no client update/delete).
