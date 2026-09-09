@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera
-} from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -21,6 +20,7 @@ const allItems = [
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
   { href: '/clock', label: 'Time clock', short: 'Clock', icon: Clock },
+  { href: '/timecards', label: 'Time cards', short: 'Cards', icon: CalendarClock },
   { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/measurements', label: 'Measurements', short: 'Measure', icon: Ruler },
   { href: '/tags', label: 'Tag scanner', short: 'Tags', icon: Bluetooth },
@@ -66,7 +66,7 @@ const canonOrder = (role?: string | null): string[] => {
 // user's saved order still decides the bar and the edit grid.
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
-  { title: 'Field',  hrefs: ['/clock', '/logs', '/assets', '/zones', '/measurements', '/tags', '/maintenance', '/track'] },
+  { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/assets', '/zones', '/measurements', '/tags', '/maintenance', '/track'] },
   { title: 'Office', hrefs: ['/reports', '/accounting', '/receipts', '/finance', '/team', '/activity'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
   // fell into "Other" (Hardware setup, Sep 4) or off the phone entirely

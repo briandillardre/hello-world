@@ -33,7 +33,7 @@ export interface AiToolCtx {
 // (fleet_snapshot ⊇ list_assets, recent_alerts ⊇ list_alerts), so an answer
 // in the app and an answer through a customer's own AI come from the same
 // executors and the same house math.
-const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_status', 'find_tool', 'whats_worth_a_look']
+const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_status', 'find_tool', 'whats_worth_a_look', 'time_cards']
 /** Tools that return dollars — hidden AND refused for non-cost roles.
  *  whats_worth_a_look is here because most insight rows carry money. */
 const COST_GATED_TOOLS = new Set(['get_zone_costs', 'whats_worth_a_look'])

@@ -55,6 +55,7 @@ custom agents on the OpenAI/Anthropic SDKs) take the same URL + header pair.
 | `maintenance_status` | "Anything overdue for service?" · "What work orders are open?" |
 | `find_tool` | "Where's the demo saw?" — which truck it last rode with, when, and its recent carrier history (arg: `name`) |
 | `recent_photos` | Geotagged job photos, newest first — when, who, which site, caption, image URL, plus a per-site count (args: `zone`, `days`, `limit`). Camera shots from the map and daily-log photos (migration 101). |
+| `time_cards` | Crew time cards (migration 103): per person paid hours split regular / overtime, hours by job site, clocked-in-now, GPS-verified share (phone fixes per shift, share inside the clocked site), each day's entries with where the clock-in / clock-out happened and plain flags (args: `week`, `days`, `person`). |
 
 All numbers come from the same math the HammerTrack screens use — the
 exact-hours usage ledger for costs, the live telemetry stream for positions —

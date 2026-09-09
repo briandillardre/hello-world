@@ -217,7 +217,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
     ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'],
-    ['/clock', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'],
+    ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],
     ['/team', 'team'], ['/activity', 'activity'], ['/trackers', 'trackers'], ['/settings', 'settings'],

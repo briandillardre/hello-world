@@ -38,11 +38,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Foreground ("while using the app") location: powers Go Live crew
-         tracking and the map's locate-me. Without these the WebView
-         auto-denies navigator.geolocation and the OS prompt never shows.
-         DELIBERATELY no ACCESS_BACKGROUND_LOCATION — background tracking is
-         a separate Play policy review; the crew tracker runs foreground. -->
+    <!-- Foreground ("while using the app") location: Go Live crew tracking,
+         the map's locate-me, clock-in. Without these the WebView auto-denies
+         navigator.geolocation and the OS prompt never shows. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- Camera: the label scanner on Trackers → Add trackers and Assets →
@@ -50,4 +48,15 @@
          the request and the scanner silently falls back to typing. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Background location (v1.4.0, Sep 9 2026 — Brian: "mandatory tracking
+         thru app while clocked in", "native background tracking is a must"):
+         while a person is CLOCKED IN, @capacitor-community/background-geolocation
+         runs a location foreground service so the shift keeps recording with
+         the screen off. Requested only after the in-app disclosure sheet
+         (ShiftTracker) and only while a shift is open. Play requires the
+         background-location declaration + demo video for this permission —
+         docs/APP-STORE-PLAYBOOK.md "Background location". -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 </manifest>
