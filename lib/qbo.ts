@@ -343,21 +343,27 @@ export async function createUsageInvoice(
   return { id: inv.Id, docNumber: inv.DocNumber ?? inv.Id, total: inv.TotalAmt ?? 0 }
 }
 
-/** Record a maintenance service as an expense (Purchase). Pays from the books'
- *  first Bank (else Credit Card) account into Repairs & Maintenance. */
+/** Record a purchase in the books (a maintenance service, a field receipt).
+ *  Pays from the books' first Bank (else Credit Card) account — or from the
+ *  Credit Card account when the swipe was a card (`preferCard`) — into the
+ *  expense account whose name contains `accountLike` (default Repairs &
+ *  Maintenance). `customerId` bills the line to the QuickBooks customer that
+ *  mirrors the job site (geofences.qbo_customer_id, 037) so job costing in
+ *  the books matches the site the receipt was snapped for. */
 export async function createServiceExpense(
   conn: LiveConnection,
-  args: { vendorName: string; amount: number; dateIso: string; memo: string }
+  args: { vendorName: string; amount: number; dateIso: string; memo: string; customerId?: string | null; preferCard?: boolean; accountLike?: string; lineDescription?: string }
 ): Promise<{ id: string }> {
   const vendorId = await findOrCreateVendor(conn, args.vendorName || 'Service vendor')
-  let payFrom = await firstAccount(conn, 'Bank')
-  let paymentType: 'Cash' | 'CreditCard' = 'Cash'
+  let payFrom = args.preferCard ? await firstAccount(conn, 'Credit Card') : null
+  let paymentType: 'Cash' | 'CreditCard' = payFrom ? 'CreditCard' : 'Cash'
+  if (!payFrom) payFrom = await firstAccount(conn, 'Bank')
   if (!payFrom) {
     payFrom = await firstAccount(conn, 'Credit Card')
     paymentType = 'CreditCard'
   }
   if (!payFrom) throw new Error('No Bank or Credit Card account in QuickBooks to pay from')
-  let expense = await firstAccount(conn, 'Expense', 'Repair')
+  let expense = await firstAccount(conn, 'Expense', args.accountLike ?? 'Repair')
   if (!expense) expense = await firstAccount(conn, 'Expense')
   if (!expense) {
     const created = await qboFetch(conn, '/account', {
@@ -375,12 +381,55 @@ export async function createServiceExpense(
     Line: [{
       Amount: Math.round(args.amount * 100) / 100,
       DetailType: 'AccountBasedExpenseLineDetail',
-      Description: args.memo.slice(0, 4000),
-      AccountBasedExpenseLineDetail: { AccountRef: { value: expense.Id } },
+      Description: (args.lineDescription ?? args.memo).slice(0, 4000),
+      AccountBasedExpenseLineDetail: {
+        AccountRef: { value: expense.Id },
+        ...(args.customerId ? { CustomerRef: { value: args.customerId }, BillableStatus: 'NotBillable' } : {}),
+      },
     }],
   }
   const created = await qboFetch(conn, '/purchase', { method: 'POST', body: JSON.stringify(body) })
   return { id: (created.Purchase as Entity).Id }
+}
+
+/**
+ * Attach a receipt photo to a Purchase as a real QuickBooks attachment (the
+ * paperclip on the transaction), not a URL in the memo (Brian, Sep 9: "qbo
+ * receipt attachment is part of the story on receipts"). The Attachable API
+ * takes ONE multipart request: a JSON part naming the transaction, then the
+ * file bytes. Best-effort by design — the Purchase is already posted when
+ * this runs; a failed attachment leaves the photo URL in the note.
+ */
+export async function attachToPurchase(
+  conn: LiveConnection,
+  purchaseId: string,
+  file: { url: string; name: string; note?: string }
+): Promise<{ id: string } | null> {
+  const src = await fetch(file.url, { signal: AbortSignal.timeout(20_000) })
+  if (!src.ok) throw new Error(`Receipt photo fetch failed (${src.status})`)
+  const contentType = (src.headers.get('content-type') ?? 'image/jpeg').split(';')[0]
+  const bytes = new Uint8Array(await src.arrayBuffer())
+  if (bytes.byteLength > 20 * 1024 * 1024) throw new Error('Receipt photo over QuickBooks’ 20 MB attachment cap')
+  const ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : contentType === 'application/pdf' ? 'pdf' : 'jpg'
+  const meta = {
+    AttachableRef: [{ EntityRef: { type: 'Purchase', value: purchaseId }, IncludeOnSend: false }],
+    FileName: `${file.name.replace(/[^A-Za-z0-9 _.-]/g, '').slice(0, 60) || 'receipt'}.${ext}`,
+    ContentType: contentType,
+    ...(file.note ? { Note: file.note.slice(0, 2000) } : {}),
+  }
+  const form = new FormData()
+  form.append('file_metadata_01', new Blob([JSON.stringify(meta)], { type: 'application/json' }), 'attachment.json')
+  form.append('file_content_01', new Blob([bytes], { type: contentType }), meta.FileName)
+  const url = `${QBO_API_BASE}/v3/company/${conn.realmId}/upload?${MINOR}`
+  const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${conn.accessToken}`, Accept: 'application/json' }, body: form })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    console.error('QBO upload error', { status: res.status, intuit_tid: res.headers.get('intuit_tid') ?? 'none', body: text.slice(0, 300) })
+    throw new Error(`QBO upload → ${res.status}`)
+  }
+  const j = await res.json().catch(() => null) as { AttachableResponse?: { Attachable?: { Id?: string }; Fault?: unknown }[] } | null
+  const att = j?.AttachableResponse?.[0]?.Attachable
+  return att?.Id ? { id: att.Id } : null
 }
 
 /** Realm's company name, stored at connect time for the accounting page. */

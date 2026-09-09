@@ -90,3 +90,12 @@ Receipts → Instant chase → **Send me a test swipe**: a real $12.34 charge on
 your name fires the same push (tap opens the camera) and text the webhook
 would. The three readiness chips on that card say which legs can fire right
 now (bank alert email = `RESEND_INBOUND_SECRET`, push = FCM, texts = Twilio).
+
+## Into the books (Sep 9 2026)
+Approve on /receipts → `approveReceiptAction` → one QuickBooks Purchase: the
+line billed to the job's customer (`geofences.qbo_customer_id`), paid from the
+Credit Card account when the receipt closed a card swipe, expense account by
+category, memo "Field receipt · fuel · job: Creekside · card …4821 (Trey) at
+QuikTrip on 2026-09-09 · photo: <url>", and the photo attached with the
+Attachable upload so it is the paperclip on the transaction. If the upload
+fails the Purchase still posts and the note says the photo stayed at its URL.
