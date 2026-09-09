@@ -91,19 +91,56 @@ export async function approveReceiptAction(
     if (!(amount != null && amount > 0)) return { ok: false, error: 'A positive amount is required' }
 
     const companyId = await getCurrentCompanyId()
-    const { getLiveConnection, createServiceExpense } = await import('@/lib/qbo')
+    const { getLiveConnection, createServiceExpense, attachToPurchase } = await import('@/lib/qbo')
     const conn = await getLiveConnection(companyId)
     if (!conn) return { ok: false, error: 'QuickBooks isn\'t connected (Accounting page).' }
+
+    // The job the receipt was snapped for mirrors a QuickBooks customer (037)
+    // — bill the line to it so job costing in the books matches the site.
+    let customerId: string | null = null
+    let zoneName: string | null = null
+    if (rcpt.project_geofence_id) {
+      const { data: z } = await supabase.from('geofences').select('name, qbo_customer_id').eq('id', rcpt.project_geofence_id).maybeSingle()
+      customerId = (z?.qbo_customer_id as string | null) ?? null
+      zoneName = (z?.name as string | null) ?? null
+    }
+    // The card swipe this receipt closed (099 chase): who, which card, when.
+    const { data: charge } = await supabase.from('expenses')
+      .select('merchant, last4, txn_date, cardholder_user_id').eq('receipt_id', id).limit(1).maybeSingle()
+    let holder: string | null = null
+    if (charge?.cardholder_user_id) {
+      const { data: who } = await supabase.from('profiles').select('name').eq('id', charge.cardholder_user_id).maybeSingle()
+      holder = (who?.name as string | null) ?? null
+    }
+    const swipe = charge
+      ? ` · card …${charge.last4 ?? '????'}${holder ? ` (${holder})` : ''}${charge.merchant ? ` at ${charge.merchant}` : ''} on ${charge.txn_date}`
+      : ''
+    const memo = `Field receipt · ${category}${zoneName ? ` · job: ${zoneName}` : ''}${swipe}${rcpt.note ? ` · ${rcpt.note}` : ''} · photo: ${rcpt.url}`
 
     const exp = await createServiceExpense(conn, {
       vendorName: vendor,
       amount,
       dateIso,
-      memo: `Field receipt · ${category}${rcpt.note ? ` · ${rcpt.note}` : ''} · photo: ${rcpt.url}`,
+      memo,
+      lineDescription: `${category}${zoneName ? ` — ${zoneName}` : ''}${swipe ? ` (card …${charge!.last4 ?? '????'})` : ''}`,
+      customerId,
+      preferCard: !!charge,
+      accountLike: category === 'fuel' ? 'Fuel' : category === 'materials' ? 'Material' : category === 'meals' ? 'Meal' : category === 'tools' ? 'Tool' : 'Repair',
     })
+
+    // The photo becomes the paperclip on the transaction. Best-effort: the
+    // Purchase is posted either way and the URL is already in the note.
+    let attached = false
+    try {
+      const r = await attachToPurchase(conn, exp.id, { url: rcpt.url, name: `receipt-${vendor}-${dateIso.slice(0, 10)}`, note: memo.slice(0, 200) })
+      attached = !!r
+    } catch (err) {
+      console.error('Receipt attachment skipped', err instanceof Error ? err.message : err)
+    }
 
     await supabase.from('receipts').update({
       status: 'approved', vendor, amount, txn_date: dateIso.slice(0, 10), category, qbo_purchase_id: exp.id,
+      ...(attached ? {} : { note: `${rcpt.note ? `${rcpt.note} · ` : ''}QBO attachment did not upload — photo stays at ${rcpt.url}`.slice(0, 500) }),
     }).eq('id', id)
     revalidatePath('/receipts')
     return { ok: true }

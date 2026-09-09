@@ -415,11 +415,18 @@ input[type='range'].slider-heat::-moz-range-thumb {
    set by CommandCenter's KioskNav) and the layers drawer (--ht-layers-w, set
    by WeatherControl) publish their widths; everything that used to sit
    underneath steps right by that much. Phones leave both at 0. */
+.ht-layers-tab { transition: left .25s ease, color .15s ease; }
+/* Phones: the drawer is the same min(320px, 55vw) panel WeatherControl draws;
+   while it is open the LAYERS tab rides its right edge instead of sitting on
+   top of the drawer's own switches (Brian, Sep 9: "it is currently blocking
+   things"). Mirrors the MAP TOOLS tab, which slides with its pullout. */
+@media (max-width: 767.98px) {
+  .ht-layers-tab.is-open { left: min(320px, 55vw); }
+}
 @media (min-width: 768px) {
   .map-live .ht-layers-tab,
   .kiosk-map .ht-layers-tab {
     left: calc(var(--ht-nav-w, 0px) + var(--ht-layers-w, 0px));
-    transition: left .25s ease;
   }
   .kiosk-map .ht-layers-wrap {
     /* below the 56px wall header (its tab bar with the X was hidden under

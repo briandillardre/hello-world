@@ -7134,9 +7134,12 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         aria-label={layersOpen ? 'Close map layers' : 'Open map layers'}
         // Kiosk: the desktop CommandRail (z-40) spans past 44% — the handle
         // must ride above it or only a sliver stays clickable (ship-check).
-        // .ht-layers-tab: on md+ the tab rides the drawer's right edge while it
-        // is open (globals.css), so the same handle opens and closes it.
-        className={`ht-layers-tab absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
+        // .ht-layers-tab: the tab rides the drawer's right edge while it is
+        // open (globals.css) — on md+ via the published drawer width, on
+        // phones via .is-open (Brian, Sep 9: parked at the screen edge it sat
+        // ON the drawer's own switches, "blocking things"; MAP TOOLS already
+        // travels with its pullout). Same handle opens and closes it.
+        className={`ht-layers-tab ${layersOpen ? 'is-open' : ''} absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {layersOpen ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
