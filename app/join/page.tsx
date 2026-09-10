@@ -21,31 +21,66 @@ function JoinInner() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // The invite lookup itself failed (offline, a deploy mid-flight, a stale
+  // chunk after a release) — distinct from "this invite is invalid".
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [retry, setRetry] = useState(0)
 
+  // Both of these can REJECT, not just resolve unhappily: a server action
+  // whose request never lands (offline, a deploy swapping the bundle out from
+  // under an open tab, a chunk that 404s after a release). Unguarded, the
+  // invite page sat on "Join …" forever and the only trace was a "browser
+  // error · unhandled rejection @ /join" push to the owner (Sep 10). An
+  // invite is a first impression — it says what happened and offers Retry.
   useEffect(() => {
-    getInviteInfoAction(token).then(setInfo)
+    let alive = true
+    setLoadFailed(false)
+    getInviteInfoAction(token)
+      .then((i) => { if (alive) setInfo(i) })
+      .catch(() => { if (alive) setLoadFailed(true) })
     ;(async () => {
       const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
       if (isMock) { setSignedIn(false); return }
-      const { createClient } = await import('@/lib/supabase')
-      const { data } = await createClient().auth.getUser()
-      setSignedIn(!!data.user)
+      try {
+        const { createClient } = await import('@/lib/supabase')
+        const { data } = await createClient().auth.getUser()
+        if (alive) setSignedIn(!!data.user)
+      } catch {
+        // Signed-out is the safe default — it shows the form instead of a
+        // button that would fail.
+        if (alive) setSignedIn(false)
+      }
     })()
-  }, [token])
+    return () => { alive = false }
+  }, [token, retry])
 
   const finish = async () => {
-    const res = await acceptInviteAction(token)
+    // Same rejection risk as the lookup — a throw here used to leave the
+    // button spinning "Joining…" forever with nothing said.
+    let res: Awaited<ReturnType<typeof acceptInviteAction>>
+    try {
+      res = await acceptInviteAction(token)
+    } catch {
+      setError('Could not reach HammerTrack. Check your connection and try again.')
+      return false
+    }
     if (!res.ok) { setError(res.error ?? 'Could not join.'); return false }
     router.push('/map'); router.refresh(); return true
   }
 
-  const joinAsCurrent = async () => { setBusy(true); setError(''); await finish(); setBusy(false) }
+  const joinAsCurrent = async () => {
+    setBusy(true); setError('')
+    const ok = await finish()
+    // On success the router is already navigating; dropping the spinner then
+    // would flash the form again mid-push.
+    if (!ok) setBusy(false)
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true); setError('')
     const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
-    if (isMock) { router.push('/map'); return }
+    if (isMock) { router.push('/map'); return } // demo: navigating away, keep the spinner
     try {
       const { createClient } = await import('@/lib/supabase')
       const supabase = createClient()
@@ -76,7 +111,15 @@ function JoinInner() {
           <div className="flex justify-center mb-3"><Logo size={34} href="/" /></div>
         </div>
 
-        {info && !info.valid ? (
+        {loadFailed ? (
+          <div className="bg-navy-900 border border-navy-800 rounded-2xl p-6 text-center space-y-3">
+            <p className="text-2xl">📡</p>
+            <h2 className="text-lg font-semibold text-ink">Couldn&rsquo;t load this invite</h2>
+            <p className="text-sm text-muted">We couldn&rsquo;t reach HammerTrack just now. Check your connection and try again — the link stays good.</p>
+            <Button className="w-full" onClick={() => setRetry((n) => n + 1)}>Try again</Button>
+            <Link href="/login" className="inline-block text-amber font-medium hover:underline text-sm">Go to sign in</Link>
+          </div>
+        ) : info && !info.valid ? (
           <div className="bg-navy-900 border border-navy-800 rounded-2xl p-6 text-center space-y-2">
             <p className="text-2xl">🔗</p>
             <h2 className="text-lg font-semibold text-ink">Invite unavailable</h2>

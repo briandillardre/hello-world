@@ -24,6 +24,30 @@ const NOISE = [
   /^script error\.?$/i,
   /reading '(signal|bind|style|transform|painter|_?context|program|_map|_controls)'/i,
 ]
+/**
+ * A rejection reason that isn't an Error has no `.message`, and the old
+ * fallback pushed the literal words "unhandled rejection" — a page at 7 PM
+ * naming a route and nothing else (Sep 10). Say what actually rejected.
+ */
+function describeReason(r: unknown): string {
+  if (r instanceof Error) return r.message || r.name || 'Error'
+  if (typeof r === 'string') return r || 'unhandled rejection (empty string)'
+  if (r === null || r === undefined) return `unhandled rejection (${String(r)})`
+  if (typeof r === 'object') {
+    const o = r as Record<string, unknown>
+    const parts: string[] = []
+    for (const k of ['message', 'error', 'reason', 'status', 'statusText', 'code', 'name', 'type']) {
+      const v = o[k]
+      if (v != null && (typeof v === 'string' || typeof v === 'number')) parts.push(`${k}=${String(v).slice(0, 60)}`)
+      if (parts.length >= 3) break
+    }
+    let tag = 'Object'
+    try { tag = (r as { constructor?: { name?: string } }).constructor?.name || 'Object' } catch { /* null-prototype */ }
+    return `unhandled rejection — ${tag}${parts.length ? ` ${parts.join(' ')}` : ' (no details)'}`
+  }
+  return `unhandled rejection — ${String(r).slice(0, 80)}`
+}
+
 function isNoise(message: string, source: string, stack?: string): boolean {
   const m = (message || '').trim()
   if (!m) return true
@@ -53,8 +77,7 @@ export function ErrorReporter() {
     }
     const onReject = (e: PromiseRejectionEvent) => {
       const r = e.reason
-      const msg = r instanceof Error ? r.message : typeof r === 'string' ? r : 'unhandled rejection'
-      report(msg, location.pathname, r instanceof Error ? r.stack : undefined)
+      report(describeReason(r), location.pathname, r instanceof Error ? r.stack : undefined)
     }
     window.addEventListener('error', onError)
     window.addEventListener('unhandledrejection', onReject)
