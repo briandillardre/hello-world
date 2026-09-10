@@ -173,7 +173,7 @@ Possible at **200-unit MOQ**; first run +2–3 weeks lead, then ~4 weeks per run
 | Unit | IMEI suffix | Hologram SIM | Installed in |
 |------|-------------|--------------|--------------|
 | T1-a | …02222 | 44398 | **Brian's Chevy 1500 — LIVE since Jul 6 2026** (asset "Chevy 1500 - Brian", tracker_id = the unit’s full 15-digit IMEI (ends …02222)) |
-| T1-b | …00200 | 44406 | **2003 Chevrolet Silverado 2500HD** (Trey's truck) — reported from Aug 4, SILENT since ~Aug 13. /diag read 29,842 min stale on Sep 3. SIM healthy/unpaused in Hologram (5.17 MB of 100), so it is the OBD power path, not config. NOTE: this truck was tracked as two separate to-dos ("T1-b in the 2003 Chevy" and "Trey's 2500HD") until Sep 3 — one device, one problem. |
+| T1-b | …00200 | 44406 | **PULLED (Sep 10)** — the 2003 Silverado 2500HD's OBD port never powered it reliably (reported Aug 4–13, then silent); Brian put a **TAT141** on that truck instead. The OBD box is spare: drawer on /trackers, reuse on a newer truck. |
 
 - flespi channel: the Teltonika TCP channel (host:port in the flespi console — kept out of the repo: host + a known IMEI is all a spoofer needs) · Codec 8 Extended · APN `hologram` (no user/pass, roaming on)
 - flespi webhook `hammertrack-ingest` (#16402) → POST https://hammertrackjune28.vercel.app/api/ingest/flespi with `x-flespi-token` header (= FLESPI_WEBHOOK_TOKEN in Vercel)
