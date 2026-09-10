@@ -22,6 +22,10 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>HammerTrack scans for Bluetooth tool tags to show which truck or machine is carrying each tool.</string>
+	<!-- HTTPS only, no custom crypto: the export-compliance question is
+	     answered here once instead of on every TestFlight build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

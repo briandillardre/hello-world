@@ -1,11 +1,27 @@
 # HammerTrack iOS — TestFlight lane, Mac-free (runs on GitHub macOS runners).
 #
-# Auth is an App Store Connect API key (three ASC_* env vars from repo
-# secrets) — no Apple ID password, no 2FA prompts, no match repo. The lane:
-# ensures the app exists in App Store Connect, mints/fetches signing assets,
-# builds the Capacitor shell, and pushes to TestFlight.
+# Auth is an App Store Connect API key (ASC_KEY_ID / ASC_ISSUER_ID /
+# ASC_KEY_P8) plus the Apple Team ID (ASC_TEAM_ID) — no Apple ID password, no
+# 2FA prompts. The lane: registers the app in App Store Connect if it is not
+# there yet, gets a distribution certificate + App Store profile, pins them on
+# the Xcode target (the Capacitor-generated project is "automatic signing, no
+# team", which cannot archive on a headless runner), builds the shell and
+# pushes to TestFlight. The build number is the GitHub run number; the
+# marketing version comes from APP_VERSION when the dispatch gives one.
+#
+# Signing assets, two modes:
+#   • match (preferred once set up): MATCH_GIT_URL + MATCH_GIT_BASIC_AUTHORIZATION
+#     + MATCH_PASSWORD → the certificate + key live encrypted in a PRIVATE git
+#     repo and every run reuses them.
+#   • cert + sigh (zero extra setup — approval day): mints a NEW distribution
+#     certificate each run because the runner's keychain is thrown away. Apple
+#     allows only a couple of live distribution certificates per team, so this
+#     mode carries the first builds; set up match before the third
+#     (docs/APP-STORE-PLAYBOOK.md → "Approval day").
 
 default_platform(:ios)
+
+APP_ID = "com.hammertrack.app"
 
 platform :ios do
   desc "Build and upload to TestFlight"
@@ -16,39 +32,87 @@ platform :ios do
       key_content: ENV.fetch("ASC_KEY_P8"),
       is_key_content_base64: false
     )
+    team_id = ENV.fetch("ASC_TEAM_ID")
 
-    setup_ci # ephemeral keychain on the runner
+    setup_ci # ephemeral, unlocked keychain on the runner (MATCH_KEYCHAIN_NAME)
+    keychain = FastlaneCore::Helper.keychain_path(ENV.fetch("MATCH_KEYCHAIN_NAME", "login.keychain"))
+    keychain_password = ENV.fetch("MATCH_KEYCHAIN_PASSWORD", "")
 
     # Idempotent app registration (App ID + App Store Connect record).
     begin
       produce(
         api_key: api_key,
-        app_identifier: "com.hammertrack.app",
+        app_identifier: APP_ID,
         app_name: "HammerTrack",
         language: "en-US",
         sku: "hammertrack-app",
+        team_id: team_id,
         enable_services: { push_notification: "on" }
       )
     rescue => e
       UI.message("produce skipped (app likely exists): #{e.message}")
     end
 
-    get_certificates(api_key: api_key, output_path: "certs")
-    get_provisioning_profile(
-      api_key: api_key,
-      app_identifier: "com.hammertrack.app",
-      output_path: "certs"
+    if ENV["MATCH_GIT_URL"].to_s.strip.empty?
+      UI.important("No MATCH_GIT_URL — minting a fresh distribution certificate for this run (fine for the first builds; set up match before the third).")
+      get_certificates(
+        api_key: api_key,
+        team_id: team_id,
+        output_path: "certs",
+        keychain_path: keychain,
+        keychain_password: keychain_password
+      )
+      get_provisioning_profile(
+        api_key: api_key,
+        team_id: team_id,
+        app_identifier: APP_ID,
+        output_path: "certs"
+      )
+      profile_name = lane_context[SharedValues::SIGH_NAME]
+      profile_uuid = lane_context[SharedValues::SIGH_UUID]
+    else
+      match(
+        type: "appstore",
+        app_identifier: APP_ID,
+        api_key: api_key,
+        team_id: team_id,
+        git_url: ENV["MATCH_GIT_URL"],
+        git_basic_authorization: ENV["MATCH_GIT_BASIC_AUTHORIZATION"],
+        readonly: false
+      )
+      profile_name = lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING][APP_ID]
+      profile_uuid = ENV["sigh_#{APP_ID}_appstore"]
+    end
+
+    # Manual signing with exactly the assets fetched above.
+    update_code_signing_settings(
+      path: "App.xcodeproj",
+      targets: ["App"],
+      use_automatic_signing: false,
+      team_id: team_id,
+      code_sign_identity: "Apple Distribution",
+      bundle_identifier: APP_ID,
+      profile_name: profile_name,
+      profile_uuid: profile_uuid
     )
 
-    increment_build_number(
-      xcodeproj: "App.xcodeproj",
-      build_number: ENV["GITHUB_RUN_NUMBER"] || "1"
-    )
+    # Versions ride xcargs (the project has no agvtool versioning system).
+    build_number = ENV.fetch("GITHUB_RUN_NUMBER", "1")
+    version = ENV.fetch("APP_VERSION", "").strip
+    xcargs = "CURRENT_PROJECT_VERSION=#{build_number}"
+    xcargs += " MARKETING_VERSION=#{version}" unless version.empty?
+    UI.message("Building #{APP_ID} #{version.empty? ? '(project version)' : version} (#{build_number})")
 
     build_app(
       project: "App.xcodeproj",
       scheme: "App",
-      export_method: "app-store"
+      configuration: "Release",
+      export_method: "app-store",
+      xcargs: xcargs,
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: { APP_ID => profile_name }
+      }
     )
 
     upload_to_testflight(
