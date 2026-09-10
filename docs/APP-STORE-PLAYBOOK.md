@@ -8,8 +8,11 @@
 > icons and the /map entry described below. Brian uploads it in Play Console
 > → Production → Create release — or adds the `PLAY_SERVICE_ACCOUNT_JSON`
 > secret (setup below) and the workflow uploads by itself from then on.
-> Android has been live in Play Production since Aug 21; iOS is blocked on
-> Apple's Aug 31 document request (account checklist below).
+> Android has been live in Play Production since Aug 21 (hands-off uploads
+> proven Sep 3; 1.4.1 waits on the Play Foreground-service declaration, board
+> #119). **iOS waits on Brian's INDIVIDUAL Apple enrollment** — the LLC's
+> organization enrollment was denied as final on Sep 4 — and everything on
+> our side is ready for approval day (readiness pass Sep 10; runbook below).
 >
 > **v1.2 carries the LOCATION permissions (Aug 30).**
 > `AndroidManifest.xml` now declares `ACCESS_COARSE_LOCATION` +
@@ -68,17 +71,32 @@ One codebase. No React Native rewrite, no duplicated screens, no drift.
 projects, committed).
 
 ### Apple "minimum functionality" risk (Guideline 4.2)
-Apple sometimes rejects pure web wrappers. Mitigation plan, in order:
-1. Ship v1.0 with **push notifications** wired (theft alerts to the lock
-   screen — genuinely native, and our killer feature).
-2. Add **camera** for receipt capture (native-only). Location was
-   **foreground only** through v1.3; v1.4.x records clocked-in shifts through
-   a location foreground service (see *Background location*) — no
-   background-location permission, no Play declaration.
-3. In App Review notes, lead with the native capabilities + demo login.
+Apple sometimes rejects pure web wrappers. What makes this shell more than a
+website — and what the App Review notes lead with (docs/APP-STORE-LISTING.md):
+1. **Push notifications** — theft alerts to the lock screen (the APNs key in
+   Firebase is the one-day task after the first TestFlight build).
+2. **Background location** — the clocked-in shift recorder keeps recording
+   with the screen off (`UIBackgroundModes: location`; the when-in-use and
+   always strings are in Info.plist). Requested at point of use, after the
+   in-app explainer; stops at clock-out.
+3. **Camera** — barcode scanning of tracker labels, job photos, receipts.
+4. **Bluetooth** — the phone is a roaming tool-tag gateway while the Tag
+   scanner is open.
+5. A native launch screen, the app opens straight on /map (never the
+   marketing site), in-app account deletion, a reviewer demo account.
+
+Other review rules already met: **4.8 Login Services** — inside the shell the
+only sign-in is our own email + password (Google is hidden there since Sep 10:
+Google refuses OAuth from embedded web views anyway, so the button was a dead
+end), which means Sign in with Apple is NOT required; adding it is one env var
+once the provider is configured (`NEXT_PUBLIC_AUTH_APPLE=1`, Approval day
+step 6). **5.1.1(v) account deletion** — Settings → Delete my account and
+/delete-account. **Export compliance** — `ITSAppUsesNonExemptEncryption =
+false` in Info.plist (HTTPS only), so no per-build questionnaire.
+
 If rejected anyway: appeal with the native feature list; worst case we bundle
-more UI into the shell. Android has no equivalent rule — Play will approve
-the wrapper as-is.
+more UI into the shell. Android has no equivalent rule — Play approved the
+wrapper as-is.
 
 ## Account checklist (Brian — in this order)
 
@@ -86,15 +104,15 @@ the wrapper as-is.
    31; number confirmed Aug 8). Never file again — duplicate records are slow
    to merge. The dnb.com record must read HAMMERTRACK LLC + the Greenville
    address verbatim; Apple matches it literally.
-2. **Apple Developer Program** — 🔴 BLOCKED (Aug 31). Enrollment
-   N37H75H2FX, case 20000149520723. Apple cannot verify Brian's identity nor
-   his association with HAMMERTRACK LLC. Upload at
-   developer.apple.com/contact/file-upload: (1) driver's license, front AND
-   back; (2) employment/ownership verification; (3) an LLC formation
-   document — SC Articles of Organization / Certificate of Formation (a
-   business license is also accepted). Case replies land on
-   Brian’s personal inbox (the Aug 27 ones went to brian@hammertrack.ai —
-   watch both). The $99/yr is charged on approval.
+2. **Apple Developer Program** — 🔴 ORGANIZATION enrollment DENIED as final
+   (phone, Sep 4; enrollment N37H75H2FX, case 20000149520723 — Apple would
+   not say what failed). **Route now: INDIVIDUAL** (board #41): Apple
+   Developer app on the iPhone → Account → Enroll → Individual → driver's
+   license scan + selfie → $99/yr on the Mercury card. No D-U-N-S, no LLC
+   papers; usually approved within a day or two. The App Store seller name
+   reads "Brian Dillard" until Apple converts the account to an Organization
+   later on request (the D&B record must match HAMMERTRACK LLC verbatim).
+   Then: **Approval day** below.
 3. **Google Play Console** — ✅ DONE. Organization account; identity +
    website ownership verified Aug 9; `com.hammertrack.app` live in
    Production since Aug 21 (update Aug 27; v1.2 built Sep 1, upload
@@ -106,8 +124,8 @@ the wrapper as-is.
 4. **Firebase project** — ✅ DONE (project hammertrack-app, FCM v1 sender;
    `FCM_SERVICE_ACCOUNT` in Vercel; Android push end-to-end since Aug 9).
 
-Still to hand over once Apple clears: Apple team ID + an App Store Connect
-invite, and the 3 ASC_* secrets that arm the TestFlight lane.
+Still to hand over once Apple clears: the four `ASC_*` secrets (Approval day
+below).
 
 ## Build + submit
 
@@ -124,9 +142,62 @@ invite, and the 3 ASC_* secrets that arm the TestFlight lane.
   debugging only.
 - **Icons/splash:** regenerated Aug 30 at every density from the navy/amber
   mark (`store-assets/play-icon-512.png` is the Play 512).
-- **iOS:** `ios/App/fastlane/Fastfile` (produce → certs → build →
-  TestFlight) arms with the 3 ASC_* secrets on enrollment-approval day;
-  nothing to do until Apple clears. Xcode only for local debugging.
+- **iOS — the `ios-testflight` workflow does it** (GitHub macOS runner, no
+  Mac): `ios/App/fastlane/Fastfile` registers the app, gets a distribution
+  certificate + App Store profile through the API key, pins them on the
+  target (the Capacitor project is automatic-signing/no-team, which cannot
+  archive headless), builds and uploads to TestFlight. Four `ASC_*` secrets
+  arm it (Approval day). Build number = the run number; the `version` input
+  sets the marketing version (the project carries 1.4.1, matching Android).
+  Xcode only for local debugging.
+
+## Approval day (iOS) — Brian's part is ~15 minutes, then one dispatch
+
+Readiness pass done Sep 10: workflow, lane, signing, versions (1.4.1),
+permission strings, export-compliance key, icon, review notes, demo account,
+in-app login fixed for the shell (Google hidden). Nothing else waits on code.
+
+1. **API key** — App Store Connect → Users and Access → Integrations → App
+   Store Connect API → Team Keys → Generate. Name `github-ci`, role
+   **Admin** (Developer cannot create signing certificates). Download the
+   `.p8` — a ONE-TIME download, keep it in the password manager. Note the
+   **Key ID** and the **Issuer ID** shown on that page.
+2. **Team ID** — developer.apple.com/account → Membership details (10 chars).
+3. **Four GitHub secrets** — repo → Settings → Secrets and variables →
+   Actions: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (paste the whole
+   .p8 file including the BEGIN/END lines), `ASC_TEAM_ID`.
+4. Say "apple secrets are in" → Claude dispatches `ios-testflight` (or
+   Actions → ios-testflight → Run workflow, version `1.4.1`). ~15–25 min
+   later the build is processing in TestFlight; add Brian's Apple ID as an
+   internal tester (App Store Connect → TestFlight → Internal Testing) and
+   install through the TestFlight app.
+5. **App Store Connect listing** (fill while the build processes): name
+   HammerTrack, subtitle, keywords, description, screenshots from
+   `store-assets/ios-6.7` + `ios-12.9`, privacy policy URL, support URL,
+   **App Privacy** answers and **App Review notes** verbatim from
+   docs/APP-STORE-LISTING.md; run `supabase/seed_review_account.sql` and put
+   the review account's password in the notes. Age rating 4+, Business.
+6. Optional, same day — **Sign in with Apple**: Certificates, Identifiers &
+   Profiles → Identifiers → the App ID → enable Sign in with Apple; a new
+   Services ID (`com.hammertrack.app.web`, return URL
+   `https://<supabase-project-ref>.supabase.co/auth/v1/callback`); Keys →
+   new key with Sign in with Apple; Supabase → Authentication → Providers →
+   Apple (Services ID, Team ID, Key ID, .p8); then `NEXT_PUBLIC_AUTH_APPLE=1`
+   in Vercel + redeploy. The button appears on /login, /register and /join.
+7. **Before the third iOS build — certificates.** The runner's keychain is
+   thrown away, so without match the lane mints a new Apple Distribution
+   certificate every run and Apple caps them at a couple per team. Create a
+   PRIVATE repo `hammertrack-certs` (empty), a fine-grained PAT with Contents
+   read/write on it, and three secrets: `MATCH_GIT_URL`
+   (`https://github.com/briandillardre/hammertrack-certs.git`),
+   `MATCH_GIT_BASIC_AUTHORIZATION` (base64 of `briandillardre:<PAT>`),
+   `MATCH_PASSWORD` (any strong passphrase — it encrypts the repo). The lane
+   switches to match by itself. If a build fails with "maximum number of
+   certificates" before that: revoke the old Apple Distribution certificates
+   at developer.apple.com → Certificates and re-run.
+8. **iOS push** after the first TestFlight build: upload an APNs auth key to
+   Firebase (project hammertrack-app) so FCM delivers to iOS tokens — the
+   one-day task noted in the listing doc.
 
 ## Store listing prep (can be done anytime)
 - Name: **HammerTrack** · subtitle: "Know where everything is"
@@ -214,6 +285,10 @@ accepted it). 1.4.0 (versionCode 9) went nowhere and is superseded.
 - Aug 27: Play update published · Aug 31: Apple, 3+ weeks in, asks for
   identity + LLC documents — blocked until Brian uploads them.
 - Sep 1: v1.2 built by the release workflow; Play upload pending.
+- Sep 4: Apple denies the ORGANIZATION enrollment as final (phone). Route
+  changes to Individual (board #41).
+- Sep 10: iOS ready-for-approval-day pass — workflow, signing, versions,
+  review rules; only the enrollment remains.
 - The old estimate ("live in 2–3 weeks, gated by account approvals") held
   for Google and missed for Apple — Apple's organization verification is the
   long pole, not store review.
