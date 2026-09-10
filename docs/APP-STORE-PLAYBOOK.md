@@ -112,7 +112,14 @@ wrapper as-is.
    papers; usually approved within a day or two. The App Store seller name
    reads "Brian Dillard" until Apple converts the account to an Organization
    later on request (the D&B record must match HAMMERTRACK LLC verbatim).
-   Then: **Approval day** below.
+   **Sep 10: SUBMITTED** — on the PC (web), under a NEW Apple ID,
+   brian@dillardconstructiongroup.com. The org enrollment still reads "In
+   Review" in the Apple Developer app, so brian@hammertrack.ai could not
+   start a second enrollment (one Apple ID holds one enrollment) and the
+   iPad app route failed no matter what. The welcome email goes to the DCG
+   inbox; an identity-verification email first is normal. Sign in to App
+   Store Connect with the DCG Apple ID; invite brian@hammertrack.ai as a
+   user afterwards. Then: **Approval day** below.
 3. **Google Play Console** — ✅ DONE. Organization account; identity +
    website ownership verified Aug 9; `com.hammertrack.app` live in
    Production since Aug 21 (update Aug 27; v1.2 built Sep 1, upload
