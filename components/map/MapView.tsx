@@ -19,8 +19,8 @@ import {
   fetchConditions, buildRadarFrames, iemRadarUrl, iemTsForMs,
   PRECIP_PERIODS, iemPrecipUrl,
 } from '@/lib/weather'
-import { measureSummary } from '@/lib/measure'
-import { updateMeasurementAction, deleteMeasurementAction } from '@/lib/actions/measurements'
+import { measureSummary, measureColor, MEASURE_COLORS } from '@/lib/measure'
+import { updateMeasurementAction, deleteMeasurementAction, saveMeasurementAction } from '@/lib/actions/measurements'
 import { toast, confirmSheet } from '@/components/ui/feedback'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
@@ -868,8 +868,22 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       : editingMeasure.geometry.type === 'LineString'
         ? (editingMeasure.geometry.coordinates as [number, number][])
         : (editingMeasure.geometry.coordinates[0] as [number, number][]).slice(0, -1),
+    color: editingMeasure.props.color,
   } : null, [editingMeasure])
   const [measureRename, setMeasureRename] = useState<string | null>(null)
+  // Escape closes the saved-measurement sheet (Brian, Sep 10: "escape needs
+  // to work on measurements"); the measure tool handles its own Escape.
+  useEffect(() => {
+    if (!selectedMeasure) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) { t.blur(); return }
+      setSelectedMeasure(null); setMeasureRename(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedMeasure])
   // The measure toggle lives INSIDE the MapLibre control cluster (same size,
   // same column as zoom/locate/fit — owner ask, Jul 21); this ref lets React
   // paint its active state onto the DOM button.
@@ -1261,20 +1275,21 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           : (g.coordinates[0] as [number, number][])
         if (!coords.length) return []
         const mid = coords[Math.floor(coords.length / 2)]
+        const c = measureColor(mm.props.color)
         return [
-          { type: 'Feature' as const, properties: { id: mm.id, pt: g.type === 'Point' ? 1 : 0 }, geometry: g },
-          { type: 'Feature' as const, properties: { id: mm.id, lbl: `${mm.name} — ${measureSummary(mm.kind, mm.props)}` }, geometry: { type: 'Point' as const, coordinates: g.type === 'Point' ? coords[0] : mid } },
+          { type: 'Feature' as const, properties: { id: mm.id, c, pt: g.type === 'Point' ? 1 : 0 }, geometry: g },
+          { type: 'Feature' as const, properties: { id: mm.id, c, lbl: `${mm.name} — ${measureSummary(mm.kind, mm.props)}` }, geometry: { type: 'Point' as const, coordinates: g.type === 'Point' ? coords[0] : mid } },
         ]
       }),
     }
     const ensure = () => {
       if (!m.getSource(SRC)) m.addSource(SRC, { type: 'geojson', data: fc })
       else (m.getSource(SRC) as maplibregl.GeoJSONSource).setData(fc)
-      if (!m.getLayer('msaved-fill')) m.addLayer({ id: 'msaved-fill', type: 'fill', source: SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.13 } })
-      if (!m.getLayer('msaved-line')) m.addLayer({ id: 'msaved-line', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': '#ffb648', 'line-width': 2, 'line-dasharray': [2, 1.2] } })
+      if (!m.getLayer('msaved-fill')) m.addLayer({ id: 'msaved-fill', type: 'fill', source: SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['coalesce', ['get', 'c'], '#f5a623'], 'fill-opacity': 0.13 } })
+      if (!m.getLayer('msaved-line')) m.addLayer({ id: 'msaved-line', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': ['coalesce', ['get', 'c'], '#ffb648'], 'line-width': 2, 'line-dasharray': [2, 1.2] } })
       // Invisible fat line — a 2px dash is untappable with a thumb.
       if (!m.getLayer('msaved-hit')) m.addLayer({ id: 'msaved-hit', type: 'line', source: SRC, filter: ['!=', '$type', 'Point'], paint: { 'line-color': '#000', 'line-width': 22, 'line-opacity': 0.001 } })
-      if (!m.getLayer('msaved-pts')) m.addLayer({ id: 'msaved-pts', type: 'circle', source: SRC, filter: ['==', 'pt', 1], paint: { 'circle-radius': 6.5, 'circle-color': '#f5a623', 'circle-stroke-color': '#04121d', 'circle-stroke-width': 2 } })
+      if (!m.getLayer('msaved-pts')) m.addLayer({ id: 'msaved-pts', type: 'circle', source: SRC, filter: ['==', 'pt', 1], paint: { 'circle-radius': 6.5, 'circle-color': ['coalesce', ['get', 'c'], '#f5a623'], 'circle-stroke-color': '#04121d', 'circle-stroke-width': 2 } })
       if (!m.getLayer('msaved-pts-hit')) m.addLayer({ id: 'msaved-pts-hit', type: 'circle', source: SRC, filter: ['==', 'pt', 1], paint: { 'circle-radius': 18, 'circle-color': '#000', 'circle-opacity': 0.001 } })
       if (!m.getLayer('msaved-label')) m.addLayer({
         id: 'msaved-label', type: 'symbol', source: SRC, filter: ['has', 'lbl'], minzoom: 12,
@@ -7653,7 +7668,23 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
               <button onClick={() => setMeasureRename(null)} className="flex-1 rounded-md border border-navy-700 text-faint hover:text-ink text-[11.5px] py-1.5">Cancel</button>
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-1.5">
+            <>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[9px] uppercase tracking-wider text-faint flex-none">Color</span>
+              {MEASURE_COLORS.map((c) => (
+                <button key={c.key} type="button" title={c.label} aria-label={c.label}
+                  onClick={async () => {
+                    const props = { ...selectedMeasure.props, color: c.key }
+                    const r = await updateMeasurementAction(selectedMeasure.id, { props })
+                    if (!r.ok) { toast(r.error ?? 'Could not change the colour.', { variant: 'error' }); return }
+                    setMeasures((prev) => prev.map((x) => (x.id === selectedMeasure.id ? { ...x, props } : x)))
+                    setSelectedMeasure((cur) => (cur ? { ...cur, props } : cur))
+                  }}
+                  className={'h-5 w-5 rounded-full border-2 ' + (measureColor(selectedMeasure.props.color) === c.key ? 'border-ink scale-110' : 'border-navy-700 hover:scale-105')}
+                  style={{ background: c.key }} />
+              ))}
+            </div>
+            <div className="grid grid-cols-5 gap-1.5">
               <button
                 onClick={() => {
                   const m2 = map.current
@@ -7671,6 +7702,24 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
                 onClick={() => { setEditingMeasure(selectedMeasure); setSelectedMeasure(null); setMeasureOn(true) }}
                 className="rounded-md bg-amber/15 border border-amber/40 text-amber text-[11px] font-semibold py-1.5"
               >Edit</button>
+              <button
+                onClick={async () => {
+                  // Copy = a second saved shape on top of the first, opened in
+                  // the tool so the corners can be dragged to where it goes
+                  // (Brian, Sep 10: "need a copy measurement option on here").
+                  const src = selectedMeasure
+                  const nm = `${src.name} (copy)`
+                  const r = await saveMeasurementAction({ name: nm, kind: src.kind, personal: src.personal, geometry: src.geometry, props: src.props })
+                  if (!r.ok || !r.id) { toast(r.error ?? 'Copy failed.', { variant: 'error' }); return }
+                  const row = { ...src, id: r.id, name: nm, created_at: new Date().toISOString() }
+                  setMeasures((prev) => [row, ...prev])
+                  setSelectedMeasure(null)
+                  setEditingMeasure(row)
+                  setMeasureOn(true)
+                  toast(`Copied — drag the corners of “${nm}” where it goes, then Update.`, { variant: 'success' })
+                }}
+                className="rounded-md border border-navy-700 text-ink text-[11px] font-semibold py-1.5 hover:bg-navy-900"
+              >Copy</button>
               <button onClick={() => setMeasureRename(selectedMeasure.name)} className="rounded-md border border-navy-700 text-ink text-[11px] font-semibold py-1.5 hover:bg-navy-900">Rename</button>
               <button
                 onClick={async () => {
@@ -7684,6 +7733,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
                 className="rounded-md border border-alert/40 text-alert text-[11px] font-semibold py-1.5 hover:bg-alert/10"
               >Delete</button>
             </div>
+            </>
           )}
         </div>
       )}

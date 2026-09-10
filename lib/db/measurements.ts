@@ -13,6 +13,8 @@ export interface MeasureProps {
   statePlane?: { northing: number; easting: number }
   elevationFt?: number | null
   takeoff?: Takeoff | null
+  /** Map colour (hex). Absent = amber. */
+  color?: string
 }
 
 export interface Measurement {
