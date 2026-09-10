@@ -114,6 +114,24 @@ export const MATERIALS: { key: string; label: string; lbPerFt3: number }[] = [
   { key: 'dirt', label: 'Compacted fill', lbPerFt3: 115 },
 ]
 
+/** Swatches a measurement can wear on the map (Brian, Sep 10: "I need to
+ *  be able to pick colors on these measurements"). Amber is the default —
+ *  the tool's colour since day one, so old rows render unchanged. */
+export const MEASURE_COLORS: { key: string; label: string }[] = [
+  { key: '#f5a623', label: 'Amber' },
+  { key: '#ef4444', label: 'Red' },
+  { key: '#22c55e', label: 'Green' },
+  { key: '#3b82f6', label: 'Blue' },
+  { key: '#a855f7', label: 'Purple' },
+  { key: '#ec4899', label: 'Pink' },
+  { key: '#2dd4bf', label: 'Teal' },
+  { key: '#ffffff', label: 'White' },
+]
+export const MEASURE_DEFAULT_COLOR = MEASURE_COLORS[0].key
+export function measureColor(c: string | undefined | null): string {
+  return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : MEASURE_DEFAULT_COLOR
+}
+
 export interface Takeoff { cubicFt: number; cubicYd: number; tons: number; material: string; depthIn: number }
 
 /** area (SF) × depth (inches) → volume (CY) + tonnage for a material. */

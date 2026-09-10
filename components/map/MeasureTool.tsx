@@ -5,7 +5,7 @@ import type maplibregl from 'maplibre-gl'
 import { Ruler, MapPin, Spline, Hexagon, Undo2, Check, Trash2, X, Globe, Lock, Box } from 'lucide-react'
 import {
   toStatePlaneSC, polylineLengthFt, polygonAreaSqFt, lengthIn, areaIn, takeoff,
-  LENGTH_LABEL, AREA_LABEL, MATERIALS, fmt, type LengthUnit, type AreaUnit,
+  LENGTH_LABEL, AREA_LABEL, MATERIALS, MEASURE_COLORS, MEASURE_DEFAULT_COLOR, measureColor, fmt, type LengthUnit, type AreaUnit,
 } from '@/lib/measure'
 import { saveMeasurementAction, updateMeasurementAction } from '@/lib/actions/measurements'
 
@@ -45,7 +45,7 @@ export function MeasureTool({
   terrainOn: boolean
   /** Editing an EXISTING measurement (tap-to-edit from the saved layer):
    *  loads its shape into the tool and Save becomes an update-in-place. */
-  initial?: { id: string; name: string; kind: Mode; personal: boolean; coords: [number, number][] } | null
+  initial?: { id: string; name: string; kind: Mode; personal: boolean; coords: [number, number][]; color?: string } | null
 }) {
   const [mode, setMode] = useState<Mode>('area')
   const [pts, setPts] = useState<[number, number][]>([])
@@ -70,6 +70,7 @@ export function MeasureTool({
   const [material, setMaterial] = useState('asphalt')
   const [depthIn, setDepthIn] = useState('2')
   const [extrude, setExtrude] = useState(false)
+  const [color, setColor] = useState(MEASURE_DEFAULT_COLOR)
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
   const [personal, setPersonal] = useState(false)
@@ -153,13 +154,49 @@ export function MeasureTool({
     }
   }, [map, active, mode, terrainOn])
 
+  // ── Keyboard (Brian, Sep 10): Escape backs out — closes the phone sheet,
+  // then clears the draft, then closes the tool; Ctrl/Cmd+Z removes the last
+  // corner. Both ignore keystrokes aimed at an input (the name box).
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const sheetOpenRef = useRef(false)
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+      if (e.key === 'Escape') {
+        if (typing) { (t as HTMLElement).blur(); return }
+        e.preventDefault()
+        if (sheetOpenRef.current) { setSheetOpen(false); return }
+        if (ptsRef.current.length) { reset(); return }
+        onCloseRef.current()
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+        if (typing) return
+        e.preventDefault()
+        if (mode === 'point') { setPts([]); return }
+        setPts((p) => p.slice(0, -1)); setDone(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, mode])
+
   // ── Draw the draft geometry ──────────────────────────────────────────────────
   useEffect(() => {
     if (!map) return
     const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
     if (live.length) {
       if (mode === 'area' && live.length >= 3) {
-        fc.features.push({ type: 'Feature', properties: { h: extrude && depth > 0 ? depth / 12 * 8 : 0 }, geometry: { type: 'Polygon', coordinates: [[...live, live[0]]] } })
+        // Lift height in METRES (fill-extrusion units): the real depth × 10 so
+        // a 2" lift reads as a half-metre slab, never under 1.5 m — a true
+        // 5 cm would vanish, and at pitch 0 an extrusion is just a fill (the
+        // toggle tilts the camera for that reason).
+        const hM = extrude && depth > 0 ? Math.max(1.5, (depth / 12) * 0.3048 * 10) : 0
+        fc.features.push({ type: 'Feature', properties: { h: hM }, geometry: { type: 'Polygon', coordinates: [[...live, live[0]]] } })
       } else if (live.length >= 2) {
         fc.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: live } })
       }
@@ -182,21 +219,22 @@ export function MeasureTool({
         }
       }
     }
+    for (const f of fc.features) (f.properties as Record<string, unknown>).c = color
     fcRef.current = fc
     const src = map.getSource(DRAFT_SRC) as maplibregl.GeoJSONSource | undefined
     if (src) src.setData(fc)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, pts, hover, mode, extrude, depth, lenUnit])
+  }, [map, pts, hover, mode, extrude, depth, lenUnit, color])
 
   // Ensure source + layers exist while active; remove on teardown.
   useEffect(() => {
     if (!map || !active) return
     const add = () => {
       if (!map.getSource(DRAFT_SRC)) map.addSource(DRAFT_SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      if (!map.getLayer('measure-fill')) map.addLayer({ id: 'measure-fill', type: 'fill', source: DRAFT_SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': '#f5a623', 'fill-opacity': 0.18 } })
-      if (!map.getLayer('measure-extrude')) map.addLayer({ id: 'measure-extrude', type: 'fill-extrusion', source: DRAFT_SRC, filter: ['all', ['==', '$type', 'Polygon'], ['>', ['get', 'h'], 0]], paint: { 'fill-extrusion-color': '#f5a623', 'fill-extrusion-opacity': 0.35, 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0 } })
-      if (!map.getLayer('measure-line')) map.addLayer({ id: 'measure-line', type: 'line', source: DRAFT_SRC, paint: { 'line-color': '#ffb648', 'line-width': 2.5, 'line-dasharray': [2, 1] } })
-      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#f5a623', 'circle-stroke-width': 2 } })
+      if (!map.getLayer('measure-fill')) map.addLayer({ id: 'measure-fill', type: 'fill', source: DRAFT_SRC, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': ['coalesce', ['get', 'c'], '#f5a623'], 'fill-opacity': 0.18 } })
+      if (!map.getLayer('measure-extrude')) map.addLayer({ id: 'measure-extrude', type: 'fill-extrusion', source: DRAFT_SRC, filter: ['all', ['==', '$type', 'Polygon'], ['>', ['get', 'h'], 0]], paint: { 'fill-extrusion-color': ['coalesce', ['get', 'c'], '#f5a623'], 'fill-extrusion-opacity': 0.55, 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-vertical-gradient': true } })
+      if (!map.getLayer('measure-line')) map.addLayer({ id: 'measure-line', type: 'line', source: DRAFT_SRC, paint: { 'line-color': ['coalesce', ['get', 'c'], '#ffb648'], 'line-width': 2.5, 'line-dasharray': [2, 1] } })
+      if (!map.getLayer('measure-verts')) map.addLayer({ id: 'measure-verts', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': ['coalesce', ['get', 'c'], '#f5a623'], 'circle-stroke-width': 2 } })
       // Invisible fat hit ring over each vertex — a thumb-sized drag target
       // (the visible 6px dot is unhittable on a phone).
       if (!map.getLayer('measure-verts-hit')) map.addLayer({ id: 'measure-verts-hit', type: 'circle', source: DRAFT_SRC, filter: ['==', 'vertex', 1], paint: { 'circle-radius': 18, 'circle-color': '#000', 'circle-opacity': 0.001 } })
@@ -298,7 +336,8 @@ export function MeasureTool({
     return () => { cancelled = true }
   }, [mode, pts])
 
-  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false); setDone(false) }
+  const reset = () => { setPts([]); setHover(null); setName(''); setMsg(null); setSheetOpen(false); setDone(false); setExtrude(false) }
+  sheetOpenRef.current = sheetOpen
   // Loading a saved shape flips `mode`, which would fire the reset below and
   // wipe the points we just loaded — skip exactly that one reset.
   const skipResetRef = useRef(false)
@@ -328,6 +367,7 @@ export function MeasureTool({
     setDone(initial.kind !== 'point')
     setName(initial.name)
     setPersonal(initial.personal)
+    setColor(measureColor(initial.color))
     setMsg(null)
     setSheetOpen(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -349,6 +389,7 @@ export function MeasureTool({
       statePlane: mode === 'point' ? toStatePlaneSC(pts[0][0], pts[0][1]) : undefined,
       elevationFt: mode === 'point' ? (clickElev ?? elev) : undefined,
       takeoff: mode === 'area' && depth > 0 ? takeoff(polygonAreaSqFt(pts), depth, material) : null,
+      color,
     }
     const finalName = name || defaultName(mode, props)
     if (initial?.id) {
@@ -366,6 +407,15 @@ export function MeasureTool({
     onSaved(r.id ? { id: r.id, name: finalName, kind: mode, personal, geometry, props } : undefined)
     reset()
     setMsg('Saved ✓')
+  }
+
+  // 3D lift: at pitch 0 an extrusion is indistinguishable from the flat fill
+  // (Brian, Sep 10: "I don't see anything when I turn it on") — tilt the
+  // camera when the lift goes on so the slab has sides to show.
+  const toggleExtrude = () => {
+    const next = !extrude
+    if (next && map && map.getPitch() < 30) map.easeTo({ pitch: 55, duration: 600 })
+    setExtrude(next)
   }
 
   if (!active) return null
@@ -458,6 +508,7 @@ export function MeasureTool({
               )}
             </div>
           )}
+          <ColorRow val={color} set={setColor} />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Lot A — 2&quot; asphalt)" className="w-full bg-navy-950 border border-navy-700 rounded-md text-[12px] text-ink px-2 py-1.5 outline-none focus:border-amber/50" />
           <div className="flex items-center gap-1.5">
             <button onClick={() => setPersonal(false)} className={'flex-1 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-semibold border ' + (!personal ? 'bg-teal/20 text-teal border-teal/40' : 'text-faint border-navy-700')}><Globe className="h-3 w-3" /> Everyone</button>
@@ -545,13 +596,15 @@ export function MeasureTool({
                   <div className="rounded-md bg-teal/10 px-2 py-1"><p className="font-display font-bold text-teal text-[15px] tabular-nums leading-none">{fmt(to.cubicYd, 1)}<span className="text-[10px] font-normal ml-0.5">CY</span></p></div>
                 </div>
               ) : <p className="text-[10px] text-faint">Close the area + set a depth for tonnage.</p>}
-              <button onClick={() => setExtrude((v) => !v)} className={'w-full flex items-center justify-center gap-1 rounded-md py-1 text-[10.5px] font-semibold border ' + (extrude ? 'bg-amber/20 text-amber border-amber/40' : 'text-faint border-navy-700 hover:text-ink')}>
-                <Box className="h-3 w-3" /> {extrude ? '3D lift on' : 'Show 3D lift'}
+              <button onClick={toggleExtrude} disabled={!(areaSqFt > 0 && depth > 0)} className={'w-full flex items-center justify-center gap-1 rounded-md py-1 text-[10.5px] font-semibold border disabled:opacity-40 ' + (extrude ? 'bg-amber/20 text-amber border-amber/40' : 'text-faint border-navy-700 hover:text-ink')}>
+                <Box className="h-3 w-3" /> {extrude ? '3D lift on · 10× exaggerated' : 'Show 3D lift (tilts the map)'}
               </button>
               <p className="text-[9px] text-faint">Estimate — verify against your supplier ticket.</p>
             </div>
           </>
         )}
+
+        <ColorRow val={color} set={setColor} />
 
         {/* controls */}
         <div className="flex items-center gap-1.5">
@@ -595,6 +648,20 @@ export function MeasureTool({
   )
 }
 
+function ColorRow({ val, set }: { val: string; set: (c: string) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="font-mono text-[9px] uppercase tracking-wider text-faint flex-none">Color</span>
+      <span className="flex items-center gap-1 flex-wrap">
+        {MEASURE_COLORS.map((c) => (
+          <button key={c.key} type="button" onClick={() => set(c.key)} aria-label={c.label} title={c.label}
+            className={'h-5 w-5 rounded-full border-2 transition-transform ' + (val === c.key ? 'border-ink scale-110' : 'border-navy-700 hover:scale-105')}
+            style={{ background: c.key }} />
+        ))}
+      </span>
+    </div>
+  )
+}
 function Row({ k, v }: { k: string; v: string }) {
   return <div className="flex justify-between gap-2"><span className="text-faint">{k}</span><span className="text-ink">{v}</span></div>
 }
