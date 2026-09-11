@@ -103,6 +103,10 @@ export async function GET(req: NextRequest) {
     const prefs = resolveDigestPrefs(co.digest_prefs)
     return force || (prefs.evening.enabled && dueNow({ hour: prefs.evening.hour, tz: prefs.tz, stamp: co.last_evening_digest_at }))
   })
+  // Longest-waited first. With the batch cap and DB order alone, the same
+  // tail companies would lose their digest every day once more than
+  // BATCH share a send hour.
+  due.sort((a, b) => (Date.parse(a.last_evening_digest_at ?? '') || 0) - (Date.parse(b.last_evening_digest_at ?? '') || 0))
   const BATCH = 12
   for (const co of due.slice(0, BATCH)) {
     const prefs = resolveDigestPrefs(co.digest_prefs)

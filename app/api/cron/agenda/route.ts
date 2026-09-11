@@ -99,6 +99,10 @@ export async function GET(req: NextRequest) {
     // weekday 1 = the company's own local Monday.
     return force || (prefs.monday.enabled && dueNow({ hour: prefs.monday.hour, tz: prefs.tz, stamp: co.last_agenda_at, weekday: 1 }))
   })
+  // Longest-waited first. With the batch cap and DB order alone, the same
+  // tail companies would lose their digest every day once more than
+  // BATCH share a send hour.
+  due.sort((a, b) => (Date.parse(a.last_agenda_at ?? '') || 0) - (Date.parse(b.last_agenda_at ?? '') || 0))
   const BATCH = 12
   for (const co of due.slice(0, BATCH)) {
     const prefs = resolveDigestPrefs(co.digest_prefs)
