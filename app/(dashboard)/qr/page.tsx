@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getQrAssets } from '@/lib/db/fieldops'
 import { PrintButton } from '@/components/field/PrintButton'
@@ -15,6 +16,9 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * stock (or laminate paper stickers), stick at the operator's eye line.
  */
 export default async function QrSheetPage() {
+  // Unlisted, but it was reachable by anyone who typed the URL — it lists
+  // every machine. Same gate as the Assets page it belongs to.
+  await requireFeature('assets')
   const companyId = await getCurrentCompanyId()
   const assets = (await getQrAssets(companyId)).filter((a) => a.qr_slug)
 

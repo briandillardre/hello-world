@@ -8,7 +8,7 @@ import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, Sliders
 import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction, updateRolePolicyAction } from '@/lib/actions/team'
 import { viewAsAction } from '@/lib/actions/viewas'
-import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, FEATURES, ROLE_FEATURE_DEFAULTS, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
+import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, GRANTABLE_FEATURES, ROLE_FEATURE_DEFAULTS, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
 import { formatRelativeTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -339,7 +339,7 @@ function GroupRows({ group, editableRoles, policy, busy, onFlip }: {
   group: string; editableRoles: Role[]; policy: RolePolicy; busy: string | null
   onFlip: (role: Role, key: FeatureKey, value: boolean | null) => void
 }) {
-  const rows = FEATURES.filter((f) => f.group === group)
+  const rows = GRANTABLE_FEATURES.filter((f) => f.group === group)
   return (
     <>
       <tr><td colSpan={1 + editableRoles.length} className="px-3 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">{group}</td></tr>

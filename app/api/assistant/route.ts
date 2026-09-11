@@ -209,9 +209,10 @@ export async function POST(request: NextRequest) {
   // finding — so it never knows less than a customer's own AI on the MCP door.
   const tools = [...AI_TOOLS, ...sharedMcpToolDefs(perms.canViewCosts, perms.features)] as Anthropic.Tool[]
 
+  let degradedReason: string | null = null
   try {
     const client = new Anthropic({ apiKey })
-    const model = process.env.AI_MODEL || 'claude-opus-4-8'
+    const model = process.env.AI_MODEL || 'claude-opus-5'
     const messages: Anthropic.MessageParam[] = [
       ...history.map((h) => ({ role: h.role, content: h.content })),
       { role: 'user' as const, content: question },
@@ -256,15 +257,38 @@ export async function POST(request: NextRequest) {
       if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, text)
       return NextResponse.json({ answer: text, grounded: false })
     }
+    // A text-less response (a refusal, or a tool loop that ran out of turns)
+    // is a failure too — fall through to the grounded engine, flagged.
+    degradedReason = 'the model returned no answer'
   } catch (err) {
+    degradedReason = err instanceof Error ? err.message : 'unknown error'
     console.error('Assistant agent error', err)
   }
 
-  // Agent failed (bad key, outage, loop cap) → grounded fallback, never a 500.
+  // The agent path failed (bad key, wrong model id, outage, rate limit, loop
+  // cap). The grounded engine still answers from live data — but its catch-all
+  // is ONE canned sentence, so an undiagnosed outage looks like a bot that
+  // repeats itself (Brian, Sep 11: "it replied with the same last message").
+  // Two changes: the answer is flagged `degraded` so the widget says so, and
+  // the real reason pages the owner once every 30 min instead of dying in a
+  // server log nobody reads.
+  if (degradedReason) void reportDegraded(degradedReason)
   const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
   const grounded = answerQuestion(question, ctx)
   if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, grounded.answer)
-  return NextResponse.json({ answer: grounded.answer, grounded: true })
+  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason })
+}
+
+/** One push per half hour, whatever the traffic — a broken key would
+ *  otherwise ring the phone on every question the crew asks. */
+let lastDegradedPush = 0
+async function reportDegraded(reason: string): Promise<void> {
+  if (Date.now() - lastDegradedPush < 30 * 60_000) return
+  lastDegradedPush = Date.now()
+  try {
+    const { notifySystem } = await import('@/lib/monitor')
+    await notifySystem('Ask AI fell back', `The AI service did not answer — ${reason.slice(0, 200)}. Answers are coming from the built-in engine until it clears.`)
+  } catch { /* monitoring never breaks a reply */ }
 }
 
 /** Legacy enrichment for the no-key path: last-24h movement per asset so

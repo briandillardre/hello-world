@@ -51,7 +51,19 @@ export type FeatureKey =
   | 'trackers' | 'hardware' | 'settings'
   | 'costs' | 'edit' | 'billing' | 'manage_team' | 'ask_ai'
 
-export interface FeatureDef { key: FeatureKey; label: string; group: 'Watch' | 'Field' | 'Office' | 'Setup' | 'Abilities'; hint: string; href?: string }
+export interface FeatureDef {
+  key: FeatureKey
+  label: string
+  group: 'Watch' | 'Field' | 'Office' | 'Setup' | 'Abilities'
+  hint: string
+  href?: string
+  /** The company owner's seat alone. Never grantable, never listed in the
+   *  view-levels table, stripped from everyone else's features — so the page
+   *  is absent from the navs, 404s on a typed URL, and nobody below the
+   *  owner learns it exists (Brian, Sep 11: "they should not know they
+   *  exist if it is not shared with them"). */
+  masterOnly?: true
+}
 
 export const FEATURES: FeatureDef[] = [
   { key: 'map',          group: 'Watch',  label: 'Live map',        hint: 'Where everything is right now', href: '/map' },
@@ -70,7 +82,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'receipts',     group: 'Office', label: 'Receipts',        hint: 'Receipt capture and chase', href: '/receipts' },
   { key: 'finance',      group: 'Office', label: 'Financials',      hint: 'Revenue, margin, valuation', href: '/finance' },
   { key: 'team',         group: 'Office', label: 'Team',            hint: 'Who is on the team', href: '/team' },
-  { key: 'activity',     group: 'Office', label: 'Team activity',   hint: 'Who did what, when', href: '/activity' },
+  { key: 'activity',     group: 'Office', label: 'Team activity',   hint: 'Who did what, when', href: '/activity', masterOnly: true },
   { key: 'trackers',     group: 'Setup',  label: 'Trackers',        hint: 'The drawer, swaps, undo', href: '/trackers' },
   { key: 'hardware',     group: 'Setup',  label: 'Hardware setup',  hint: 'SIM + config checklist per box', href: '/assets/onboard' },
   { key: 'settings',     group: 'Setup',  label: 'Settings',        hint: 'Company settings (your own account is always yours)', href: '/settings' },
@@ -82,6 +94,10 @@ export const FEATURES: FeatureDef[] = [
 ]
 
 export const FEATURE_KEYS = FEATURES.map((f) => f.key)
+/** Owner-seat features — see FeatureDef.masterOnly. */
+export const MASTER_ONLY: FeatureKey[] = FEATURES.filter((f) => f.masterOnly).map((f) => f.key)
+/** What the view-levels table is allowed to show and store. */
+export const GRANTABLE_FEATURES: FeatureDef[] = FEATURES.filter((f) => !f.masterOnly)
 
 const ALL_ON = Object.fromEntries(FEATURE_KEYS.map((k) => [k, true])) as Record<FeatureKey, boolean>
 const on = (...keys: FeatureKey[]): Record<FeatureKey, boolean> => {
@@ -96,7 +112,7 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
   manager: on(
     'map', 'command', 'alerts',
     'clock', 'logs', 'assets', 'zones', 'measurements', 'tags', 'maintenance', 'track',
-    'reports', 'receipts', 'team', 'activity', 'trackers', 'hardware',
+    'reports', 'receipts', 'team', 'trackers', 'hardware',
     'costs', 'edit', 'ask_ai',
   ),
   foreman: on(
@@ -186,6 +202,9 @@ export function resolvePermissions(
     if (p?.can_manage_billing != null) f.billing = p.can_manage_billing
     if (p?.can_manage_team != null) f.manage_team = p.can_manage_team
   }
+  // Master-only features are stripped LAST: not the defaults, not a stored
+  // policy row, not an admin editing the table can hand one out.
+  for (const k of MASTER_ONLY) f[k] = false
   return {
     role, isMaster: false,
     features: FEATURE_KEYS.filter((k) => f[k]),
