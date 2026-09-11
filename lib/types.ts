@@ -125,6 +125,24 @@ export interface Profile {
   name: string
 }
 
+/**
+ * An operating unit inside one company — "DCG Coastal" vs "DCG Upstate"
+ * (Brian, Sep 11). Assets, zones and places carry a division_id; everything
+ * that lists them can filter to one. NULL = unassigned, which every row is
+ * until someone labels it. Migration 106.
+ */
+export interface Division {
+  id: string
+  company_id?: string
+  name: string
+  /** Hex — the chip and the map filter's swatch. */
+  color: string
+  notes?: string | null
+  sort?: number
+  archived_at?: string | null
+  created_at?: string
+}
+
 export interface Asset {
   id: string
   company_id: string
@@ -140,6 +158,8 @@ export interface Asset {
   purchase_price?: number | null // what you PAID (acquisition cost / cost basis)
   purchase_value?: number | null // current replacement value $
   tracker_id: string | null
+  /** Operating unit (106). NULL = unassigned. */
+  division_id?: string | null
   metadata: Record<string, unknown>
   folder_url?: string | null   // link to the asset's document folder (Dropbox/Drive/…)
   active: boolean
@@ -193,6 +213,8 @@ export interface Place {
   id: string
   name: string
   kind: PlaceKind
+  /** Operating unit (106). NULL = unassigned. */
+  division_id?: string | null
   lat: number
   lng: number
   address: string | null
@@ -215,6 +237,8 @@ export interface Geofence {
   kind?: 'site' | 'boundary' | 'yard' | 'vendor'
   /** Owner-written free text ("gate code 4188") — shown on the zone, read by the AI. */
   notes?: string | null
+  /** Operating unit (106). NULL = unassigned. */
+  division_id?: string | null
   /** Link to the zone's document folder (Dropbox/Drive/…). */
   folder_url?: string | null
   /** Job completed (the DCG "Z flip") — name carries the Z prefix while set. */

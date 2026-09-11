@@ -7,6 +7,8 @@ import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
+import { DivisionPicker } from '@/components/divisions/DivisionBits'
+import { getDivisions } from '@/lib/db/divisions'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import type { AssetType, AssetWithLocation } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -73,6 +75,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   // What the Tracker sheet can offer: the drawer, boxes on other machines,
   // machines without one. Cheap (two small queries) and only for editors.
   const trackerChoices = canEdit ? await getTrackerChoices(companyId, asset.id) : null
+  const divisions = await getDivisions(companyId)
   // Every crew the fleet uses — the dropdown in Edit.
   const crews = Array.from(new Set(assets.map((a) => (typeof a.metadata?.crew === 'string' ? (a.metadata.crew as string) : '')).filter(Boolean))).sort()
   const crew = typeof asset.metadata?.crew === 'string' ? (asset.metadata.crew as string) : null
@@ -210,6 +213,14 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                 </a>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* Which half of the business this machine belongs to (106). The
+            card is absent entirely for a company with no divisions. */}
+        {divisions.length > 0 && (
+          <section className="rounded-xl border border-navy-800 bg-navy-900 p-3">
+            <DivisionPicker divisions={divisions} table="assets" rowId={asset.id} value={asset.division_id ?? null} canEdit={canEdit} />
           </section>
         )}
 

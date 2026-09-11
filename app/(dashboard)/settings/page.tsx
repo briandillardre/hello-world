@@ -15,6 +15,9 @@ import { BillingCard } from '@/components/settings/BillingCard'
 import { DeleteAccountCard } from '@/components/settings/DeleteAccountCard'
 import { billingConfigured, isActiveStatus, statusLabel } from '@/lib/stripe'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
+import { DivisionsCard } from '@/components/divisions/DivisionsCard'
+import { getAllDivisions, getDivisionCounts } from '@/lib/db/divisions'
+import { getCurrentCompanyId } from '@/lib/db/company'
 
 export const metadata = { title: 'HammerTrack — Settings' }
 
@@ -24,6 +27,13 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export default async function SettingsPage({ searchParams }: { searchParams?: { billing?: string } }) {
   await requireFeature('settings')
   const [co, perms] = await Promise.all([getCompanySettings(), getMyPermissions()])
+  // Divisions (106) — operating units inside this company. Absent from the
+  // page entirely until 106 lands or someone creates one.
+  const companyId = await getCurrentCompanyId()
+  const [divisions, divisionCounts] = await Promise.all([
+    getAllDivisions(companyId),
+    getDivisionCounts(companyId),
+  ])
   // Checkout lands back here. The webhook is what actually records the
   // subscription (may lag the redirect by a few seconds) — so this banner
   // confirms the ACTION, and the card below catches up on refresh.
@@ -53,6 +63,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
 
         {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}
         <DailyLogBuilder initial={resolveLogForm(co.log_form)} editable={co.isAdmin} />
+
+        <DivisionsCard initial={divisions} counts={divisionCounts} canEdit={perms.canEdit} />
 
         {billingReturn === 'success' && (
           <p className="rounded-xl border border-teal/40 bg-teal/10 px-4 py-3 text-[13px] text-teal leading-snug">

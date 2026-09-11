@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { DivisionChip, DivisionFilter, useDivisionFilter } from '@/components/divisions/DivisionBits'
+import { inDivision } from '@/lib/divisions'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2, MapPin } from 'lucide-react'
@@ -39,6 +41,9 @@ interface AssetListProps {
    *  geocode cache already knew at render ("near 304 N Church St, Greenville"
    *  / "in Greenville, SC"). Rows missing here are asked for client-side. */
   placeNames?: Record<string, string>
+  /** Company divisions (106) — enables the filter + the per-row chip. Empty
+   *  for a company that hasn't created any, which renders nothing at all. */
+  divisions?: import('@/lib/types').Division[]
   onAdd?: (data: AssetFormData) => void
 }
 
@@ -81,8 +86,9 @@ const needsAttention = (a: AssetWithLocation) =>
   rowStatus(a).key === 'offline' ||
   (a.location?.battery != null && a.location.battery < 15)
 
-export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames, onAdd }: AssetListProps) {
+export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames, divisions = [], onAdd }: AssetListProps) {
   const router = useRouter()
+  const [divFilter, setDivFilter] = useDivisionFilter('assets')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<AssetSort>('name')
   const [typeFilter, setTypeFilter] = useState<AssetFilter>('all')
@@ -192,7 +198,9 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
       : t === 'attention' ? searched.filter(needsAttention).length
         : t === 'untracked' ? searched.filter(a => !a.tracker_id).length
           : searched.filter(a => a.type === t).length
+  const divOf = (a: AssetWithLocation) => divisions.find((d) => d.id === a.division_id) ?? null
   const filtered = searched
+    .filter(a => inDivision(a.division_id, divFilter))
     .filter(a =>
       typeFilter === 'all' ||
       (typeFilter === 'attention' ? needsAttention(a)
@@ -264,6 +272,9 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
               {' '}{pillCount(t)}
             </button>
           ))}
+          {/* Operating unit (106) — sits with the type pills because it is the
+              same kind of question: which slice of the fleet am I looking at. */}
+          <DivisionFilter divisions={divisions} value={divFilter} onChange={setDivFilter} />
         </div>
       </div>
 
@@ -297,6 +308,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
               asset={asset}
               toolCount={toolCounts?.[asset.id]}
               carrier={carriers?.[asset.id]}
+              division={divOf(asset)}
               where={whereOf(asset)}
             />
           ))
@@ -320,7 +332,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
 const crewOf = (a: { metadata?: Record<string, unknown> | null }): string | null =>
   typeof a.metadata?.crew === 'string' && a.metadata.crew ? (a.metadata.crew as string) : null
 
-function AssetRow({ asset, toolCount, carrier, where }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; where: string | null }) {
+function AssetRow({ asset, toolCount, carrier, where, division }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; where: string | null; division?: import('@/lib/types').Division | null }) {
   const status = rowStatus(asset)
   const battery = asset.location?.battery
   const fixIso = asset.location?.timestamp
@@ -358,6 +370,7 @@ function AssetRow({ asset, toolCount, carrier, where }: { asset: AssetWithLocati
             keeps the width. A 360px phone used to fit "2003 Chevrolet…". */}
         <div className="flex items-start gap-2">
           <p className="font-semibold text-ink text-[13px] sm:text-sm min-w-0 flex-1 line-clamp-2 leading-tight">{asset.name}</p>
+          <DivisionChip division={division} className="flex-none mt-0.5" />
           <Badge className="hidden sm:inline-flex" variant={TYPE_COLORS[asset.type] as 'default' | 'secondary' | 'success' | 'outline'}>
             {asset.type}
           </Badge>
