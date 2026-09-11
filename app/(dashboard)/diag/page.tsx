@@ -1,6 +1,8 @@
+import { notFound } from 'next/navigation'
 import { LayerDiag } from '@/components/diag/LayerDiag'
 import { getCurrentCompany } from '@/lib/db/company'
 import { getAssetsWithLocations } from '@/lib/db/assets'
+import { isPlatformOwner } from '@/lib/platform-owner'
 
 export const metadata = { title: 'HammerTrack — Diagnostics' }
 
@@ -8,8 +10,13 @@ export const dynamic = 'force-dynamic'
 
 /** Hidden ops page: live health of every external map-data source, plus a
  *  dump of EXACTLY what the map page's asset query returns — so "dots
- *  missing" can be blamed on server data vs client rendering in one look. */
+ *  missing" can be blamed on server data vs client rendering in one look.
+ *
+ *  Platform owners only, and it 404s for everyone else (Brian, Sep 11):
+ *  it had NO gate, so any signed-in crew member who typed /diag got the
+ *  whole fleet's names, coordinates and report ages on one screen. */
 export default async function DiagPage() {
+  if (!(await isPlatformOwner())) notFound()
   let mapData: { name: string; type: string; hasLoc: boolean; ageMin: number | null; coords: string; color: string; ble: string }[] = []
   let mapDataErr: string | null = null
   try {

@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { notFound } from 'next/navigation'
 import { requireFeature } from '@/lib/permissions-server'
 import { Activity, Bot, Users } from 'lucide-react'
 import { safeTz } from '@/lib/dates'
@@ -15,7 +16,9 @@ interface Row { user_id: string; role: 'user' | 'assistant'; content: string; cr
 /**
  * Team activity — the master-admin window into how the crew actually uses
  * the app (owner ask, Aug 6): who signs in, who leans on the AI and what
- * they ask it. Owner/admin only; everyone else gets a closed door.
+ * they ask it. The OWNER's seat alone: `activity` is a master-only feature,
+ * so it is missing from both navs and this route 404s for everyone else —
+ * no card explaining a page they cannot have (Brian, Sep 11).
  * AI threads are per-user under RLS, so this page reads through the service
  * client AFTER verifying the viewer's admin role server-side.
  */
@@ -42,19 +45,11 @@ export default async function ActivityPage() {
     ? await supabase.from('profiles').select('company_id, role').eq('id', user.id).single()
     : { data: null }
   // OWNER only (Brian, Aug 22: "admin should get everything EXCEPT the
-  // ability to see what everyone in the org has used the app for") — the
-  // company founder is the one seat that may watch the team's app usage.
-  const amOwner = (await requireFeature('activity')).isMaster
-  if (!amOwner) {
-    return (
-      <Shell>
-        <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
-          Company owner only — this page shows the whole team&apos;s app + AI activity,
-          so it stays with the person who owns the company.
-        </p>
-      </Shell>
-    )
-  }
+  // ability to see what everyone in the org has used the app for"). The
+  // feature strip already hides it; this is the belt to that suspenders —
+  // and a view-as preview never counts as the owner.
+  const perms = await requireFeature('activity')
+  if (!perms.isMaster || perms.viewingAs) notFound()
 
   const companyId = me!.company_id
   const svc = createServiceClient()

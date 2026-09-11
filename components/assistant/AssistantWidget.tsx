@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX, Search, SquarePen } from 'lucide-react'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
-interface Msg { role: 'user' | 'assistant'; text: string; at?: string }
+interface Msg { role: 'user' | 'assistant'; text: string; at?: string; degraded?: boolean }
 
 // A "meaningful chat" = the latest burst of conversation. A gap this long
 // between turns starts a new session; older turns hide behind "Show earlier"
@@ -167,7 +167,11 @@ export function AssistantWidget() {
       })
       const data = await res.json()
       const answer = data.answer ?? "I couldn't work that one out."
-      setMsgs((m) => [...m, { role: 'assistant', text: answer }])
+      // `degraded` = the AI service itself failed and this is the built-in
+      // fallback engine talking. Without the label its one catch-all summary
+      // comes back for every question and reads as "it repeated itself"
+      // (Brian, Sep 11). Say so instead of pretending.
+      setMsgs((m) => [...m, { role: 'assistant', text: answer, degraded: !!data.degraded }])
       if (voiceModeRef.current) speak(answer)
     } catch {
       setMsgs((m) => [...m, { role: 'assistant', text: "I couldn't reach the fleet just now — try again in a sec." }])
@@ -215,7 +219,13 @@ export function AssistantWidget() {
         // z-[75]: above the map's asset/zone sheets (z-70/71) — the panel you
         // just opened must not render UNDER the sheet you tapped earlier — and
         // below toasts (135) and confirm sheets (140).
-        <div className="fixed z-[75] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+        // h-[70dvh]: vh on Android/iOS is the LARGE viewport — it ignores the
+        // browser's own bottom chrome and the OS gesture bar, so a bottom-0
+        // panel measured in vh runs its last rows off the bottom of the glass
+        // and the ask box goes with them (Brian, Sep 11: "the bottom ai
+        // function is cut off"). dvh is the viewport you can actually see, and
+        // it shrinks again when the keyboard opens.
+        <div className="fixed z-[75] print:hidden inset-x-0 bottom-0 md:inset-auto md:bottom-6 md:right-6 md:w-[380px] h-[70vh] supports-[height:1dvh]:h-[70dvh] md:h-[560px] flex flex-col rounded-t-2xl md:rounded-2xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-navy-800">
             <span className="flex items-center gap-2 font-display font-bold text-ink">
               <span className="grid place-items-center w-6 h-6 rounded-md bg-amber/20"><Sparkles className="h-3.5 w-3.5 text-amber" /></span>
@@ -333,6 +343,11 @@ export function AssistantWidget() {
                         (m.role === 'user' ? 'bg-amber text-[#1a1100] font-medium rounded-br-sm' : 'bg-navy-900 border border-navy-800 text-ink rounded-bl-sm')
                       }>
                         {m.text}
+                        {m.degraded && (
+                          <span className="mt-1.5 block text-[10.5px] text-faint">
+                            Offline answer — the AI service didn&apos;t respond, so this is read straight from your data.
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -355,7 +370,9 @@ export function AssistantWidget() {
             )}
           </div>
 
-          <div className="p-3 border-t border-navy-800 flex items-center gap-2">
+          {/* The row sits at the very bottom of a fixed panel, so it owns the
+              OS inset itself — the shell's page padding cannot reach in here. */}
+          <div className="p-3 pb-[calc(0.75rem+var(--ht-safe-bottom,0px))] border-t border-navy-800 flex items-center gap-2 flex-none">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
