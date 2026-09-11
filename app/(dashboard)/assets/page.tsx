@@ -4,6 +4,7 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
+import { getDivisions } from '@/lib/db/divisions'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 import { lookupCachedPlaces } from '@/lib/reverse-geocode'
@@ -14,12 +15,13 @@ export const metadata = { title: 'HammerTrack — Assets' }
 export default async function AssetsPage() {
   await requireFeature('assets')
   const companyId = await getCurrentCompanyId()
-  const [rawAssets, toolAssociations, geofences, schedules, readings] = await Promise.all([
+  const [rawAssets, toolAssociations, geofences, schedules, readings, divisions] = await Promise.all([
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
     getGeofences(companyId),
     getMaintenanceSchedules(companyId),
     getCurrentReadings(),
+    getDivisions(companyId),
   ])
   const located = resolveToolLocations(rawAssets, toolAssociations)
 
@@ -76,7 +78,7 @@ export default async function AssetsPage() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
-      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} placeNames={placeNames} />
+      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} placeNames={placeNames} divisions={divisions} />
     </div>
   )
 }

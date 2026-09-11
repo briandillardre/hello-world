@@ -11,6 +11,8 @@ import { toast } from '@/components/ui/feedback'
 import { MapSkeleton } from '@/components/ui/loading'
 import { createGeofenceAction, saveGeofenceAction, deleteGeofenceAction } from '@/lib/actions/zones'
 import { saveMapViewsAction } from '@/lib/actions/profile'
+import { DivisionFilter, useDivisionFilter } from '@/components/divisions/DivisionBits'
+import { inDivision } from '@/lib/divisions'
 import { TodayTray } from './TodayTray'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -50,6 +52,8 @@ interface MapPageClientProps {
   defaultWeatherCoords?: { lat: number; lng: number } | null
   /** User's saved map views from their profile (null = none / demo). */
   savedMapViews?: { views: unknown[]; defaultId: string | null } | null
+  /** Company divisions (106). Empty = the filter never renders. */
+  divisions?: import('@/lib/types').Division[]
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
   canViewCosts?: boolean
   /** Recent alert events — powers the "Alert pins" layer. */
@@ -83,7 +87,8 @@ interface MapBootData {
 
 const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 
-export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], brand = null, bootstrap = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], divisions = [], brand = null, bootstrap = false }: MapPageClientProps) {
+  const [divFilter, setDivFilter] = useDivisionFilter('map')
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const [places, setPlaces] = useState<Place[]>(initialPlaces)
   // A just-saved/renamed/removed place must not flicker away when a
@@ -160,6 +165,16 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
   const effSiteOverlays = bootstrap ? (boot?.siteOverlays ?? []) : siteOverlays
   const effEarliestMs = bootstrap ? (boot?.earliestMs ?? null) : earliestMs
   const effSavedViews = bootstrap ? (boot?.savedMapViews ?? null) : savedMapViews
+  // What this division shows. Tools ride their carrier's position and carry
+  // no division of their own, so they follow the gateway they are aboard
+  // rather than vanishing whenever a filter is on.
+  const shownAssets = divFilter
+    ? effAssets.filter((a) => inDivision(a.division_id, divFilter) || (a.type === 'tool' && !a.division_id))
+    : effAssets
+  const shownFences = divFilter ? geofences.filter((g) => inDivision(g.division_id, divFilter)) : geofences
+  const shownPlaces = divFilter
+    ? places.filter((p) => inDivision((p as { division_id?: string | null }).division_id, divFilter))
+    : places
   const effCanViewCosts = bootstrap ? (boot?.canViewCosts ?? false) : canViewCosts
 
   // Deferred history baseline: the server no longer blocks first paint on the
@@ -293,9 +308,9 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
     <>
       <MapView
         brand={brand}
-        assets={effAssets}
-        geofences={geofences}
-        places={places}
+        assets={shownAssets}
+        geofences={shownFences}
+        places={shownPlaces}
         onPlacesChanged={changePlaces}
         tracks={tracks}
         historyRows={effectiveHistory}
@@ -319,7 +334,15 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
       />
       {/* TODAY — the morning exceptions card, once per day on the map
           (Brian, Aug 22: Today pops up on the map, not a full page). */}
-      {!isMock && <TodayTray assets={effAssets} alerts={effAlerts} canViewCosts={effCanViewCosts} />}
+      {/* One operating unit at a time (106). The pill only exists once a
+          company has divisions, and it filters the dots, the zone rings and
+          the place pins together — a half-filtered map would lie. */}
+      {divisions.length > 0 && (
+        <div className="absolute left-2 top-[calc(var(--ht-map-top,8px)+8px)] md:left-3 md:top-16 z-20 print:hidden">
+          <DivisionFilter divisions={divisions} value={divFilter} onChange={setDivFilter} compact />
+        </div>
+      )}
+      {!isMock && <TodayTray assets={shownAssets} alerts={effAlerts} canViewCosts={effCanViewCosts} />}
       {/* Boot pill: only on a true first visit (no cached snapshot yet). */}
       {bootstrap && !boot && (
         <div className="absolute top-[calc(var(--ht-map-top,8px)+48px)] md:top-14 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full bg-navy-950/90 border border-navy-700 px-3.5 py-1.5">

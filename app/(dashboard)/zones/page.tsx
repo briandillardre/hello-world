@@ -7,6 +7,7 @@ import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { getDivisions } from '@/lib/db/divisions'
 import { pointInPolygon } from '@/lib/alerts-engine'
 
 export const metadata = { title: 'HammerTrack — Zones' }
@@ -17,10 +18,11 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 export default async function GeofencesPage() {
   await requireFeature('zones')
   const companyId = await getCurrentCompanyId()
-  const [geofences, rawAssets, toolAssociations] = await Promise.all([
+  const [geofences, rawAssets, toolAssociations, divisions] = await Promise.all([
     getGeofences(companyId),
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
+    getDivisions(companyId),
   ])
   // Tools inherit their carrier's position — without this, every BLE-tagged
   // machine counted nowhere and this list said "0 assets inside" for a site
@@ -47,7 +49,7 @@ export default async function GeofencesPage() {
         </Link>
       </div>
 
-      <GeofencesManager geofences={geofences} counts={counts} editable={!isMock} />
+      <GeofencesManager geofences={geofences} counts={counts} editable={!isMock} divisions={divisions} />
     </div>
   )
 }

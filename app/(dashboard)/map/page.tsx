@@ -1,5 +1,6 @@
 import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
+import { getDivisions } from '@/lib/db/divisions'
 import { getPlaces } from '@/lib/db/places'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
@@ -80,7 +81,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const { getMeasurement, getMeasurements } = await import('@/lib/db/measurements')
   const [
     focusMeasurement, measurements, prefs, perms, savedMapViews,
-    rawAssets, geofences, places, toolAssociations, earliestMs, alerts, siteOverlays,
+    rawAssets, geofences, places, toolAssociations, earliestMs, alerts, siteOverlays, divisions,
   ] = await Promise.all([
     // ?m=<id> — deep link from /measurements: draw it and fly the camera to it.
     searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
@@ -95,6 +96,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     getEarliestLocationTime(companyId),
     getAlertEvents(companyId),
     getPlacedSiteOverlays(companyId),
+    getDivisions(companyId),
   ])
 
   // Tools have no GPS of their own — resolve their position from the gateway
@@ -147,6 +149,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           alerts={alerts}
           focusMeasurement={focusMeasurement}
           measurements={measurements}
+          divisions={divisions}
           brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
         />
       </div>

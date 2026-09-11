@@ -8,6 +8,8 @@ import { saveGeofenceAction, deleteGeofenceAction, setZoneCompletedAction, saveZ
 import { parseJobName, compareJobs } from '@/lib/job-code'
 import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { confirmSheet } from '@/components/ui/feedback'
+import { DivisionChip, DivisionFilter, useDivisionFilter } from '@/components/divisions/DivisionBits'
+import { inDivision } from '@/lib/divisions'
 
 const PALETTE = ['#ff9e16', '#2dd4bf', '#60a5fa', '#a78bfa', '#f87171', '#34d399', '#fbbf24', '#f472b6']
 
@@ -15,11 +17,14 @@ interface Props {
   geofences: Geofence[]
   counts: Record<string, number>
   editable: boolean
+  /** Company divisions (106). Empty = no filter, no chips. */
+  divisions?: import('@/lib/types').Division[]
 }
 
 type SortKey = 'name' | 'assets'
 
-export function GeofencesManager({ geofences, counts, editable }: Props) {
+export function GeofencesManager({ geofences, counts, editable, divisions = [] }: Props) {
+  const [divFilter, setDivFilter] = useDivisionFilter('zones')
   // Search + sort mirror the Assets page, so the two lists feel like one app.
   // "Subcategories" are the existing parent/sub-zone nesting: a match on either
   // a parent or any of its children keeps the whole family visible.
@@ -34,14 +39,20 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
   const parents = useMemo(() => {
     const q = query.trim().toLowerCase()
     const matches = (g: Geofence) => g.name.toLowerCase().includes(q)
+    const inDiv = (g: Geofence) => inDivision(g.division_id, divFilter)
     const tops = geofences.filter((g) => !g.parent_id)
-    const visible = q
+    const searched = q
       ? tops.filter((p) => matches(p) || geofences.some((c) => c.parent_id === p.id && matches(c)))
       : tops
+    // A parent stays when it OR one of its sub-zones is in the division —
+    // hiding a site whose only labelled piece is a sub-zone would lose it.
+    const visible = divFilter
+      ? searched.filter((p) => inDiv(p) || geofences.some((c) => c.parent_id === p.id && inDiv(c)))
+      : searched
     return [...visible].sort((a, b) =>
       sort === 'assets' ? (counts[b.id] ?? 0) - (counts[a.id] ?? 0) : compareJobs(a.name, b.name)
     )
-  }, [geofences, counts, query, sort])
+  }, [geofences, counts, query, sort, divFilter])
   const activeParents = parents.filter((g) => !isDone(g))
   const doneParents = parents.filter(isDone)
   const [showDone, setShowDone] = useState(false)
@@ -56,6 +67,7 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
             value={sort}
             onChange={setSort}
           />
+          <DivisionFilter divisions={divisions} value={divFilter} onChange={setDivFilter} />
         </div>
       )}
       {geofences.length === 0 && (
@@ -76,7 +88,7 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
       )}
       {activeParents.map((g) => (
         <div key={g.id} className="space-y-2">
-          <GeofenceRow fence={g} count={counts[g.id] ?? 0} editable={editable} parents={parents} done={false} />
+          <GeofenceRow fence={g} count={counts[g.id] ?? 0} editable={editable} parents={parents} done={false} division={divisions.find((d) => d.id === g.division_id) ?? null} />
           {childrenOf(g.id).map((c) => (
             <div key={c.id} className="ml-6 flex items-start gap-1.5">
               <CornerDownRight className="h-4 w-4 text-faint mt-4 flex-none" />
@@ -136,8 +148,8 @@ export function GeofencesManager({ geofences, counts, editable }: Props) {
 }
 
 function GeofenceRow({
-  fence, count, editable, parents, done,
-}: { fence: Geofence; count: number; editable: boolean; parents: Geofence[]; done: boolean }) {
+  fence, count, editable, parents, done, division = null,
+}: { fence: Geofence; count: number; editable: boolean; parents: Geofence[]; done: boolean; division?: import('@/lib/types').Division | null }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(fence.name)
   const [color, setColor] = useState(fence.color)
@@ -270,7 +282,10 @@ function GeofenceRow({
           <Hexagon className="h-5 w-5" style={{ color: fence.color }} />
         </div>
         <Link href={`/zones/${fence.id}`} className="flex-1 min-w-0 group">
-          <p className="font-semibold text-[13.5px] md:text-base text-ink group-hover:text-amber transition-colors truncate">{fence.name}</p>
+          <p className="font-semibold text-[13.5px] md:text-base text-ink group-hover:text-amber transition-colors truncate">
+            {fence.name}
+            <DivisionChip division={division} className="ml-1.5 align-middle" />
+          </p>
           <p className="text-xs text-faint mt-0.5 flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
             {kindChip}
             <span className="truncate">· {count} asset{count !== 1 ? 's' : ''} inside</span>

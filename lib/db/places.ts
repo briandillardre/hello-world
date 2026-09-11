@@ -26,7 +26,7 @@ export async function getPlaces(companyId: string): Promise<Place[]> {
     const supabase = createClient()
     const { data, error } = await supabase
       .from('places')
-      .select('id, name, kind, lat, lng, address, notes, active, created_at')
+      .select('id, name, kind, lat, lng, address, notes, active, created_at, division_id')
       .eq('company_id', companyId)
       .eq('active', true)
       .order('name')
@@ -61,7 +61,7 @@ export async function createPlace(companyId: string, p: {
         notes: p.notes ?? null,
         created_by: p.createdBy ?? null,
       })
-      .select('id, name, kind, lat, lng, address, notes, active, created_at')
+      .select('id, name, kind, lat, lng, address, notes, active, created_at, division_id')
       .single()
     if (error) return { place: null, error: error.message }
     return { place: data as Place, error: null }

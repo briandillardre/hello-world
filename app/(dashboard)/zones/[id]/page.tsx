@@ -5,6 +5,8 @@ import { getGeofence, getGeofences, getZoneEvents } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
+import { DivisionPicker } from '@/components/divisions/DivisionBits'
+import { getDivisions } from '@/lib/db/divisions'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { zoneAssetUsage, usageFromLedger, ledgerRowCost, type ZoneAssetUsage } from '@/lib/costs'
 import { ZoneActivityChart, type ChartRow } from '@/components/zones/ZoneActivityChart'
@@ -45,12 +47,13 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 export default async function GeofenceDetailPage({ params }: { params: { id: string } }) {
   await requireFeature('zones')
   const companyId = await getCurrentCompanyId()
-  const [fence, allFences, assets, perms, zoneEvents] = await Promise.all([
+  const [fence, allFences, assets, perms, zoneEvents, divisions] = await Promise.all([
     getGeofence(params.id),
     getGeofences(companyId),
     getAssetsWithLocations(companyId),
     getMyPermissions(),
     getZoneEvents(params.id),
+    getDivisions(companyId),
   ])
   if (!fence) notFound()
 
@@ -357,6 +360,13 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
         {visits !== null && (
           <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
+        )}
+
+        {/* Which half of the business this site belongs to (106). */}
+        {divisions.length > 0 && (
+          <section className="rounded-xl border border-navy-800 bg-navy-900 p-3">
+            <DivisionPicker divisions={divisions} table="geofences" rowId={fence.id} value={fence.division_id ?? null} canEdit={perms.canEdit} />
+          </section>
         )}
 
         {/* Notes + folder ride the editor's single Save above. These standalone
