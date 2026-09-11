@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
-import { BRAND_URL } from '@/lib/brand'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
+import { resolveDigestPrefs, dueNow, proseEmailHtml } from '@/lib/weekly-digest'
+import { deliverSummary, delivered } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -11,11 +12,17 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /**
  * The evening digest — stage 3 of the AI ladder (docs/AI-ROADMAP.md):
- * the AI notices first, the human decides. Runs on Vercel cron at 6 PM ET,
- * reads the day with the service client (no session on a cron), writes a
- * dispatcher's-eye summary, and pushes it to the company channel.
+ * the AI notices first, the human decides. Reads the day with the service
+ * client (no session on a cron) and writes a dispatcher's-eye summary.
+ *
+ * Runs HOURLY and sends at each company's own local hour (digest_prefs.evening)
+ * — until Sep 11 it ran once at 6 PM ET, looped every company, and pushed all
+ * of them to one global NOTIFY_WEBHOOK_URL: the founder's phone got a
+ * notification per company per night and the companies got nothing they could
+ * switch off. lib/digest-delivery.ts is the fix; that file has the full note.
  *
  * Manual test: GET /api/cron/digest with `Authorization: Bearer $CRON_SECRET`.
+ * Add `?force=1` to ignore the hour gate and the once-a-day stamp.
  */
 
 interface DayFacts {
@@ -68,30 +75,6 @@ async function composeWithAi(f: DayFacts): Promise<string | null> {
   }
 }
 
-async function pushDigest(company: string, text: string): Promise<boolean> {
-  const url = process.env.NOTIFY_WEBHOOK_URL
-  if (!url) return false
-  try {
-    if (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/')) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Title: 'Evening digest', Priority: 'default', Tags: 'clipboard', Click: `${BRAND_URL}/logs` },
-        body: text,
-      })
-      return res.ok
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ company, digest: text, at: new Date().toISOString() }),
-    })
-    return res.ok
-  } catch (err) {
-    console.error('Digest push failed', err)
-    return false
-  }
-}
-
 export async function GET(req: NextRequest) {
   // Vercel cron sends `Authorization: Bearer ${CRON_SECRET}` when the env
   // var exists. If it's set, require it — manual pokes need the secret too.
@@ -101,13 +84,29 @@ export async function GET(req: NextRequest) {
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
 
+  const force = req.nextUrl.searchParams.get('force') === '1'
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
   const sinceIso = new Date(Date.now() - 18 * 3_600_000).toISOString()
-  const results: { company: string; sent: boolean; text: string }[] = []
+  const results: { company: string; sent: string[] }[] = []
 
-  const { data: companies } = await db.from('companies').select('id, name').limit(20)
-  for (const co of companies ?? []) {
+  const { data: companies, error } = await db.from('companies')
+    .select('id, name, alert_email, alert_phone, digest_prefs, last_evening_digest_at')
+    .limit(200)
+  if (error) return NextResponse.json({ ok: true, skipped: 'pre-106 DB', detail: error.message })
+
+  // Gate BEFORE any of the day's queries: on a quiet hour this route costs
+  // one row read per company, not a fleet scan each. The cap keeps a busy
+  // hour inside maxDuration — dueNow's grace window picks up the overflow on
+  // the next run rather than losing anyone's day.
+  const due = (companies ?? []).filter((co) => {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    return force || (prefs.evening.enabled && dueNow({ hour: prefs.evening.hour, tz: prefs.tz, stamp: co.last_evening_digest_at }))
+  })
+  const BATCH = 12
+  for (const co of due.slice(0, BATCH)) {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ, geosQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
       db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', sinceIso).limit(50),
@@ -183,9 +182,26 @@ export async function GET(req: NextRequest) {
     }
 
     const text = (await composeWithAi(facts)) ?? plainDigest(facts)
-    const sent = await pushDigest(facts.company, text)
-    results.push({ company: facts.company, sent, text })
+    const res = await deliverSummary({
+      db,
+      company: co,
+      channels: { push: prefs.evening.push, email: prefs.evening.email, sms: prefs.evening.sms },
+      title: 'Evening digest',
+      subject: `${facts.company} — evening digest`,
+      text,
+      emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — evening digest`, text, manageUrl),
+      clickPath: '/logs',
+    })
+    // Stamp even when no channel is configured, or an hourly cron retries
+    // this company every hour for a send that can never land.
+    await db.from('companies').update({ last_evening_digest_at: new Date().toISOString() }).eq('id', co.id)
+    results.push({
+      company: co.name ?? co.id,
+      sent: delivered(res)
+        ? [res.pushed ? `push×${res.pushed}` : '', res.emailed ? 'email' : '', res.texted ? 'sms' : '', res.webhooked ? 'owner-webhook' : ''].filter(Boolean)
+        : ['no channel configured'],
+    })
   }
 
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), results })
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), due: due.length, deferred: Math.max(0, due.length - BATCH), results })
 }

@@ -24,6 +24,15 @@ export interface DigestPrefs {
   sunday: { enabled: boolean; hour: number }
   /** Daily site briefing (054) — weekday mornings; weekends optional. */
   briefing: { enabled: boolean; email: boolean; sms: boolean; hour: number; weekdaysOnly: boolean }
+  /** Evening digest — the day's wrap. Had NO prefs at all until Sep 11:
+   *  the cron pushed every company's day to one global webhook. */
+  evening: { enabled: boolean; email: boolean; sms: boolean; push: boolean; hour: number }
+  /** Monday agenda — last week's anomalies as this week's to-do list. */
+  monday: { enabled: boolean; email: boolean; sms: boolean; push: boolean; hour: number }
+  /** The still-on-the-clock nudge. Off by default: it is the least
+   *  actionable message we send and the fastest way to train someone to
+   *  swipe our notifications away. */
+  nag: { enabled: boolean; push: boolean; hour: number }
   tz: string
 }
 
@@ -31,6 +40,12 @@ export const DIGEST_DEFAULTS: DigestPrefs = {
   friday: { enabled: true, email: true, sms: false, hour: 16 },
   sunday: { enabled: true, hour: 18 },
   briefing: { enabled: true, email: true, sms: false, hour: 6, weekdaysOnly: true },
+  // Push only. A daily recap does not deserve an inbox slot or a text
+  // unless the owner asks for one (Brian, Sep 11: "cut down on clients
+  // feeling too spammed").
+  evening: { enabled: true, email: false, sms: false, push: true, hour: 18 },
+  monday: { enabled: true, email: false, sms: false, push: true, hour: 7 },
+  nag: { enabled: false, push: true, hour: 19 },
   tz: 'America/New_York',
 }
 
@@ -41,7 +56,57 @@ export function resolveDigestPrefs(raw: unknown): DigestPrefs {
     friday: { ...DIGEST_DEFAULTS.friday, ...(p.friday ?? {}) },
     sunday: { ...DIGEST_DEFAULTS.sunday, ...(p.sunday ?? {}) },
     briefing: { ...DIGEST_DEFAULTS.briefing, ...(p.briefing ?? {}) },
+    evening: { ...DIGEST_DEFAULTS.evening, ...(p.evening ?? {}) },
+    monday: { ...DIGEST_DEFAULTS.monday, ...(p.monday ?? {}) },
+    nag: { ...DIGEST_DEFAULTS.nag, ...(p.nag ?? {}) },
     tz: typeof p.tz === 'string' && p.tz ? p.tz : DIGEST_DEFAULTS.tz,
+  }
+}
+
+/**
+ * Sanitize a full prefs blob. EVERY key is written back: the old version
+ * rebuilt `clean` from friday/sunday/tz alone, so the morning briefing —
+ * and anything added after it — was silently reset to its default the next
+ * time anyone touched any other toggle. A customer who turned the 6 AM
+ * briefing off got it back the moment they changed their timezone
+ * (Brian, Sep 11: "cut down on clients feeling too spammed").
+ */
+export function cleanDigestPrefs(prefs: DigestPrefs): DigestPrefs {
+  const p = resolveDigestPrefs(prefs)
+  const hour = (h: number, fallback: number) => Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback
+  return {
+    friday: { enabled: !!p.friday.enabled, email: !!p.friday.email, sms: !!p.friday.sms, hour: hour(p.friday.hour, 16) },
+    sunday: { enabled: !!p.sunday.enabled, hour: hour(p.sunday.hour, 18) },
+    briefing: { enabled: !!p.briefing.enabled, email: !!p.briefing.email, sms: !!p.briefing.sms, hour: hour(p.briefing.hour, 6), weekdaysOnly: !!p.briefing.weekdaysOnly },
+    evening: { enabled: !!p.evening.enabled, email: !!p.evening.email, sms: !!p.evening.sms, push: !!p.evening.push, hour: hour(p.evening.hour, 18) },
+    monday: { enabled: !!p.monday.enabled, email: !!p.monday.email, sms: !!p.monday.sms, push: !!p.monday.push, hour: hour(p.monday.hour, 7) },
+    nag: { enabled: !!p.nag.enabled, push: !!p.nag.push, hour: hour(p.nag.hour, 19) },
+    // Real-IANA check, not just shape: "America/Greenville" passes the regex
+    // but throws in Intl at digest time (ship-check) — reject it at save.
+    tz: (() => {
+      if (typeof p.tz !== 'string' || !/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(p.tz)) return 'America/New_York'
+      try { new Intl.DateTimeFormat('en-US', { timeZone: p.tz }); return p.tz } catch { return 'America/New_York' }
+    })(),
+  }
+}
+
+/** True when every recurring summary is switched off — what the "Turn
+ *  everything off" button on the unsubscribe page leaves behind. */
+export function allDigestsOff(p: DigestPrefs): boolean {
+  return !p.friday.enabled && !p.sunday.enabled && !p.briefing.enabled && !p.evening.enabled && !p.monday.enabled && !p.nag.enabled
+}
+
+/** Same shape, everything silenced. Alerts (theft, left-site) are NOT in
+ *  here — those are safety, not summaries, and have their own switches. */
+export function silenceAll(p: DigestPrefs): DigestPrefs {
+  return {
+    friday: { ...p.friday, enabled: false },
+    sunday: { ...p.sunday, enabled: false },
+    briefing: { ...p.briefing, enabled: false },
+    evening: { ...p.evening, enabled: false },
+    monday: { ...p.monday, enabled: false },
+    nag: { ...p.nag, enabled: false },
+    tz: p.tz,
   }
 }
 
@@ -231,7 +296,14 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
 
 export const day = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'no date'
 
-export function shell(title: string, inner: string): string {
+export function shell(title: string, inner: string, manageUrl?: string | null): string {
+  // Every recurring email carries a one-tap way out. No login, works from a
+  // phone (Brian, Sep 11) — and a live unsubscribe link is also what keeps
+  // us out of spam folders. Falls back to the in-app path when the app has
+  // no signing secret to mint a token with.
+  const footer = manageUrl
+    ? `<p style="margin:14px 0 0;font-size:11px;color:#7fa3bd">Too many emails? <a href="${manageUrl}" style="color:#b8cadb;text-decoration:underline">Turn these off or change when they arrive →</a></p>`
+    : `<p style="margin:14px 0 0;font-size:10.5px;color:#7fa3bd">Change the day, time, or channel any time in Settings → Notifications.</p>`
   return `
   <div style="background:#001523;padding:28px 14px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif">
     <div style="max-width:520px;margin:0 auto;background:#00243d;border:1px solid #0e3a5c;border-radius:14px;padding:24px">
@@ -239,17 +311,76 @@ export function shell(title: string, inner: string): string {
       <h1 style="margin:0 0 16px;font-size:19px;color:#e8f0f7">${esc(title)}</h1>
       ${inner}
       <p style="margin:20px 0 0;font-size:12px"><a href="${BRAND_URL}/command" style="color:#ff9e16;font-weight:700;text-decoration:none">Open the Command Center →</a></p>
-      <p style="margin:14px 0 0;font-size:10.5px;color:#7fa3bd">Change the day, time, or channel any time in Settings → Weekly summaries.</p>
+      ${footer}
     </div>
   </div>`
+}
+
+/** The one line every recurring TEXT ends with. Kept short — an SMS that
+ *  runs past 160 chars bills as two and reads as spam. */
+export function smsOptOut(manageUrl?: string | null): string {
+  return manageUrl ? ` Stop/change these: ${manageUrl}` : ''
 }
 
 export const h2 = (t: string) => `<p style="margin:16px 0 6px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#7fa3bd;font-weight:700">${t}</p>`
 export const li = (t: string) => `<p style="margin:0 0 4px;font-size:13px;line-height:1.5;color:#b8cadb">• ${t}</p>`
 export const none = (t: string) => `<p style="margin:0;font-size:13px;color:#6f88a0">${t}</p>`
 
+/**
+ * The evening digest / Monday agenda body: AI-composed prose, one paragraph
+ * per line, in the same shell as every other summary so the manage link and
+ * the branding are identical wherever a customer meets us.
+ */
+export function proseEmailHtml(title: string, text: string, manageUrl?: string | null): string {
+  const inner = text.split('\n').map((l) => l.trim()).filter(Boolean)
+    .map((l) => `<p style="margin:0 0 10px;font-size:13.5px;line-height:1.6;color:#b8cadb">${esc(l)}</p>`)
+    .join('')
+  return shell(title, inner || none('All quiet.'), manageUrl)
+}
+
+/** Has this daily summary already gone out for the company's local day?
+ *  The crons run hourly (a per-company hour needs it), so without this a
+ *  clock change or a manual poke sends the same digest twice. */
+export function sentSameLocalDay(stamp: string | null | undefined, tz: string): boolean {
+  if (!stamp) return false
+  const ms = Date.parse(stamp)
+  if (!Number.isFinite(ms)) return false
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+    return fmt.format(new Date(ms)) === fmt.format(new Date())
+  } catch {
+    return Date.now() - ms < 20 * 3_600_000
+  }
+}
+
+/**
+ * Is a daily/weekly summary due for this company right now?
+ *
+ * True at its local hour AND for a few hours after, because an exact-hour
+ * match is brittle: an hourly cron that ran long, a batch that hit its
+ * per-run cap, or a cold start on the wrong side of the minute would drop
+ * that company's send for the whole day with no retry. The same-local-day
+ * stamp is what keeps the grace window from sending twice.
+ *
+ * `weekday` (0=Sun…6=Sat) pins a weekly summary to its own local day — a
+ * fixed UTC Monday is Sunday evening for a third of the country.
+ */
+export function dueNow(opts: {
+  hour: number
+  tz: string
+  stamp?: string | null
+  weekday?: number
+  graceHours?: number
+}): boolean {
+  const { day, hour } = localNow(opts.tz)
+  if (opts.weekday !== undefined && day !== opts.weekday) return false
+  const grace = opts.graceHours ?? 3
+  if (hour < opts.hour || hour > opts.hour + grace) return false
+  return !sentSameLocalDay(opts.stamp, opts.tz)
+}
+
 /** Friday afternoon — the week that just happened. */
-export function fridayEmailHtml(f: WeeklyFacts): string {
+export function fridayEmailHtml(f: WeeklyFacts, manageUrl?: string | null): string {
   let inner = ''
   if (f.noticed.length) {
     inner += h2('Noticed this week')
@@ -278,22 +409,22 @@ export function fridayEmailHtml(f: WeeklyFacts): string {
     if (f.receiptsOutstanding.count) inner += li(`<b style="color:#ff9e16">${f.receiptsOutstanding.count} receipt${f.receiptsOutstanding.count === 1 ? '' : 's'} still missing</b> ($${f.receiptsOutstanding.total.toFixed(2)})`)
     if (f.darkAssets.length) inner += li(`Not reporting: ${esc(f.darkAssets.join(', '))} — check power/parking`)
   }
-  return shell(`${f.company} — Friday wrap-up`, inner)
+  return shell(`${f.company} — Friday wrap-up`, inner, manageUrl)
 }
 
 /** The Friday SMS — one message, the essentials only. */
-export function fridaySms(f: WeeklyFacts): string {
+export function fridaySms(f: WeeklyFacts, manageUrl?: string | null): string {
   const hrs = f.hoursByPerson.reduce((s, [, h]) => s + h, 0)
   const bits = [`${f.company} week: ${hrs.toFixed(0)}h clocked`, `${f.logsFiled} logs`]
   if (f.siteActivity.length) bits.push(`busiest site ${f.siteActivity[0].zone} (${f.siteActivity[0].totalH.toFixed(0)}h)`)
   if (f.tasksDone) bits.push(`${f.tasksDone} punch items done`)
   if (f.alertsFired) bits.push(`${f.alertsFired} alerts`)
   if (f.receiptsOutstanding.count) bits.push(`${f.receiptsOutstanding.count} receipts missing ($${f.receiptsOutstanding.total.toFixed(0)})`)
-  return `${bits.join(' · ')}. Full picture: ${BRAND_URL}/reports`
+  return `${bits.join(' · ')}. Full picture: ${BRAND_URL}/reports${smsOptOut(manageUrl)}`
 }
 
 /** Sunday evening — what needs to happen this week. */
-export function sundayEmailHtml(f: WeeklyFacts): string {
+export function sundayEmailHtml(f: WeeklyFacts, manageUrl?: string | null): string {
   let inner = ''
   if (f.openAlerts.length) {
     inner += h2('Deal with first')
@@ -320,5 +451,5 @@ export function sundayEmailHtml(f: WeeklyFacts): string {
     inner += li(`${f.receiptsOutstanding.count} receipt${f.receiptsOutstanding.count === 1 ? '' : 's'} outstanding ($${f.receiptsOutstanding.total.toFixed(2)})`)
   }
   if (!inner) inner = none('Clean slate — nothing queued for the week.')
-  return shell(`${f.company} — the week ahead`, inner)
+  return shell(`${f.company} — the week ahead`, inner, manageUrl)
 }

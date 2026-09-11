@@ -4,7 +4,7 @@ import { MOCK_COMPANY } from '@/lib/mock-data'
 import { getCompanySettings } from '@/lib/db/company'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { ApiKeyReveal } from '@/components/settings/ApiKeyCard'
-import { WeeklyDigests } from '@/components/settings/WeeklyDigests'
+import { NotifyPrefsForm } from '@/components/settings/NotifyPrefsForm'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
 import { resolveLogForm } from '@/lib/log-form'
@@ -49,7 +49,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
         </div>
 
         {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
-        <WeeklyDigests initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
+        <NotifyPrefsForm initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
 
         {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}
         <DailyLogBuilder initial={resolveLogForm(co.log_form)} editable={co.isAdmin} />

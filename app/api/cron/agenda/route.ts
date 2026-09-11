@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
-import { BRAND_URL } from '@/lib/brand'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
+import { resolveDigestPrefs, dueNow, proseEmailHtml } from '@/lib/weekly-digest'
+import { deliverSummary, delivered } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -11,11 +12,17 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /**
  * The Monday agenda — AI roadmap stages 5-6: last week's anomalies become
- * this week's to-do list. Runs Monday morning, reads the past 7 days with
- * the service client, flags what looks wrong, and pushes one message the
- * owner can run the 7 AM meeting from.
+ * this week's to-do list. Reads the past 7 days with the service client,
+ * flags what looks wrong, and sends one message the owner can run the 7 AM
+ * meeting from.
+ *
+ * Runs HOURLY and sends on each company's own local Monday at its own hour
+ * (digest_prefs.monday) — a fixed UTC Monday is the wrong Monday for half
+ * the map. Delivery goes to the COMPANY, not the founder's global webhook;
+ * see lib/digest-delivery.ts for what that used to do.
  *
  * Manual test: GET /api/cron/agenda with `Authorization: Bearer $CRON_SECRET`.
+ * Add `?force=1` to ignore the day/hour gate and the once-a-day stamp.
  */
 
 interface WeekFacts {
@@ -69,30 +76,6 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
   }
 }
 
-async function pushAgenda(company: string, text: string): Promise<boolean> {
-  const url = process.env.NOTIFY_WEBHOOK_URL
-  if (!url) return false
-  try {
-    if (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/')) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Title: 'Monday agenda', Priority: 'default', Tags: 'calendar', Click: `${BRAND_URL}/command` },
-        body: text,
-      })
-      return res.ok
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ company, agenda: text, at: new Date().toISOString() }),
-    })
-    return res.ok
-  } catch (err) {
-    console.error('Agenda push failed', err)
-    return false
-  }
-}
-
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
@@ -100,13 +83,26 @@ export async function GET(req: NextRequest) {
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
 
+  const force = req.nextUrl.searchParams.get('force') === '1'
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString()
-  const results: { company: string; sent: boolean; text: string }[] = []
+  const results: { company: string; sent: string[] }[] = []
 
-  const { data: companies } = await db.from('companies').select('id, name').limit(20)
-  for (const co of companies ?? []) {
+  const { data: companies, error } = await db.from('companies')
+    .select('id, name, alert_email, alert_phone, digest_prefs, last_agenda_at')
+    .limit(200)
+  if (error) return NextResponse.json({ ok: true, skipped: 'pre-106 DB', detail: error.message })
+
+  const due = (companies ?? []).filter((co) => {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    // weekday 1 = the company's own local Monday.
+    return force || (prefs.monday.enabled && dueNow({ hour: prefs.monday.hour, tz: prefs.tz, stamp: co.last_agenda_at, weekday: 1 }))
+  })
+  const BATCH = 12
+  for (const co of due.slice(0, BATCH)) {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
       db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', weekAgo).limit(50),
@@ -203,9 +199,24 @@ export async function GET(req: NextRequest) {
     }
 
     const text = (await composeWithAi(facts)) ?? plainAgenda(facts)
-    const sent = await pushAgenda(facts.company, text)
-    results.push({ company: facts.company, sent, text })
+    const res = await deliverSummary({
+      db,
+      company: co,
+      channels: { push: prefs.monday.push, email: prefs.monday.email, sms: prefs.monday.sms },
+      title: 'Monday agenda',
+      subject: `${facts.company} — Monday agenda`,
+      text,
+      emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — Monday agenda`, text, manageUrl),
+      clickPath: '/command',
+    })
+    await db.from('companies').update({ last_agenda_at: new Date().toISOString() }).eq('id', co.id)
+    results.push({
+      company: co.name ?? co.id,
+      sent: delivered(res)
+        ? [res.pushed ? `push×${res.pushed}` : '', res.emailed ? 'email' : '', res.texted ? 'sms' : '', res.webhooked ? 'owner-webhook' : ''].filter(Boolean)
+        : ['no channel configured'],
+    })
   }
 
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), results })
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), due: due.length, deferred: Math.max(0, due.length - BATCH), results })
 }
