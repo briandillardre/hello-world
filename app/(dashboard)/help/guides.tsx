@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Satellite, Clock, Hexagon, Siren, QrCode, CreditCard, BellRing, type LucideIcon } from 'lucide-react'
+import { Satellite, Clock, Hexagon, Siren, QrCode, CreditCard, BellRing, Plane, type LucideIcon } from 'lucide-react'
 
 /**
  * Help center content — one place for all guide copy so /help (the card grid)
@@ -788,6 +788,83 @@ export const GUIDES: HelpGuide[] = [
             scheduled, and it stays refundable until the kit ships. Need more trackers or tags?
             Email <B>support@hammertrack.ai</B> and we&apos;ll get you into the next batch.
           </P>
+        ),
+      },
+    ],
+  },
+  {
+    slug: 'flight-log',
+    title: 'Looking up an aircraft',
+    tagline: 'Type a tail number, see where it has been, and keep the ones you care about.',
+    icon: Plane,
+    sections: [
+      {
+        heading: 'Search',
+        body: (
+          <>
+            <P>
+              Open <B>Flight log</B> and type a tail number — <B>N628TS</B>. If you have the
+              aircraft&apos;s six-character address instead, type that; it works either way.
+              Tapping a plane on the live map gets you here too.
+            </P>
+            <P>
+              You get every flight it has flown, newest first: when it left, when it landed, how
+              long, how far, how high and how fast.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'The charts',
+        body: (
+          <>
+            <P>
+              Tap any flight. You get the shape of the route from above, then three charts —
+              <B> altitude</B>, <B>ground speed</B> and <B>vertical speed</B> (how fast it was
+              climbing or descending). Move across any one of them and all three read the same
+              moment, so you can see what the aircraft was doing at that point in the flight.
+            </P>
+            <P>
+              <B>Show numbers</B> turns the same thing into a table if you would rather read it
+              than hover it.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Why you would save a plane',
+        body: (
+          <>
+            <P>
+              This is the part worth knowing. The public aircraft archive only keeps about a
+              <B> month</B>. Search any tail and you get that month for free, instantly.
+            </P>
+            <P>
+              <B>Save</B> a plane and we start keeping its flights ourselves, every night. From
+              that day on its history keeps going — a year later you can still pull up last
+              spring. Anything before you saved it is still limited to whatever the public
+              archive can still remember.
+            </P>
+            <P>
+              So: if a plane matters to you, save it now rather than the day you need the history.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'When a flight looks odd',
+        body: (
+          <>
+            <P>
+              Aircraft are tracked by a network of volunteer ground receivers, so coverage has
+              holes — low, remote, or over water and nobody hears them.
+            </P>
+            <P>
+              Where that happens we say so rather than guessing: a flight marked
+              <B> &quot;part of a flight&quot;</B> is a stretch nobody heard take off or land, and
+              the charts leave a gap instead of drawing a straight line through the missing bit.
+            </P>
+          </>
         ),
       },
     ],

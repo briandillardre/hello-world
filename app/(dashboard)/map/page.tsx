@@ -64,6 +64,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
             defaultWeatherPlace={prefs.weatherPlace}
             defaultWeatherCoords={prefs.weatherCoords}
             canViewCosts={false}
+            canFlightLog={false}
             savedMapViews={null}
             alerts={[]}
             focusMeasurement={focusMeasurement}
@@ -145,6 +146,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
           defaultWeatherPlace={prefs.weatherPlace}
           defaultWeatherCoords={prefs.weatherCoords}
           canViewCosts={perms.canViewCosts}
+          canFlightLog={perms.features.includes('aircraft')}
           savedMapViews={savedMapViews}
           alerts={alerts}
           focusMeasurement={focusMeasurement}

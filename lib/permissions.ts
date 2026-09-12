@@ -45,7 +45,7 @@ export const ROLE_BLURB: Record<Role, string> = {
  * its nav entry; the Abilities gate what you can do inside pages.
  */
 export type FeatureKey =
-  | 'map' | 'command' | 'alerts'
+  | 'map' | 'command' | 'alerts' | 'aircraft'
   | 'clock' | 'logs' | 'assets' | 'zones' | 'measurements' | 'tags' | 'maintenance' | 'track'
   | 'reports' | 'accounting' | 'receipts' | 'finance' | 'team' | 'activity'
   | 'trackers' | 'hardware' | 'settings'
@@ -69,6 +69,7 @@ export const FEATURES: FeatureDef[] = [
   { key: 'map',          group: 'Watch',  label: 'Live map',        hint: 'Where everything is right now', href: '/map' },
   { key: 'command',      group: 'Watch',  label: 'Command Center',  hint: 'The wall display', href: '/command' },
   { key: 'alerts',       group: 'Watch',  label: 'Alerts',          hint: 'Theft, after-hours, left-site', href: '/alerts' },
+  { key: 'aircraft',     group: 'Watch',  label: 'Flight log',      hint: 'Aircraft history by tail number', href: '/aircraft' },
   { key: 'clock',        group: 'Field',  label: 'Time clock',      hint: 'Clock in and out', href: '/clock' },
   { key: 'logs',         group: 'Field',  label: 'Daily logs',      hint: 'Daily reports from the field', href: '/logs' },
   { key: 'assets',       group: 'Field',  label: 'Assets',          hint: 'The fleet list and each machine', href: '/assets' },
@@ -110,19 +111,19 @@ const on = (...keys: FeatureKey[]): Record<FeatureKey, boolean> => {
 export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = {
   admin: ALL_ON,
   manager: on(
-    'map', 'command', 'alerts',
+    'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'measurements', 'tags', 'maintenance', 'track',
     'reports', 'receipts', 'team', 'trackers', 'hardware',
     'costs', 'edit', 'ask_ai',
   ),
   foreman: on(
-    'map', 'command', 'alerts',
+    'map', 'command', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'measurements', 'tags', 'maintenance', 'track',
     'reports', 'receipts', 'trackers', 'hardware',
     'edit', 'ask_ai',
   ),
   associate: on(
-    'map', 'alerts',
+    'map', 'alerts', 'aircraft',
     'clock', 'logs', 'assets', 'zones', 'tags', 'maintenance', 'track',
     'receipts',
     'ask_ai',
@@ -247,7 +248,7 @@ export function featureForPath(pathname: string): FeatureKey | null {
   if (UNGATED_PATHS.some((u) => pathname === u || pathname.startsWith(u + '/'))) return null
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
-    ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'],
+    ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'], ['/aircraft', 'aircraft'],
     ['/clock', 'clock'], ['/timecards', 'clock'], ['/logs', 'logs'], ['/photos', 'logs'], ['/assets', 'assets'], ['/zones', 'zones'],
     ['/measurements', 'measurements'], ['/tags', 'tags'], ['/maintenance', 'maintenance'], ['/track', 'track'],
     ['/reports', 'reports'], ['/accounting', 'accounting'], ['/receipts', 'receipts'], ['/finance', 'finance'],

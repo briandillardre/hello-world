@@ -56,6 +56,8 @@ interface MapPageClientProps {
   divisions?: import('@/lib/types').Division[]
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
   canViewCosts?: boolean
+  /** Flight-log view level — gates the aircraft popup's history link. */
+  canFlightLog?: boolean
   /** Recent alert events — powers the "Alert pins" layer. */
   alerts?: import('@/lib/types').AlertEvent[]
   /** Saved measurement to draw + fly to (deep link from /measurements). */
@@ -87,7 +89,7 @@ interface MapBootData {
 
 const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 
-export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], divisions = [], brand = null, bootstrap = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], divisions = [], brand = null, bootstrap = false }: MapPageClientProps) {
   const [divFilter, setDivFilter] = useDivisionFilter('map')
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const [places, setPlaces] = useState<Place[]>(initialPlaces)
@@ -328,6 +330,7 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
         savedMapViews={effSavedViews as import('@/lib/map-views').MapViewsState | null}
         onSaveMapViews={isMock ? undefined : saveMapViewsAction}
         canViewCosts={effCanViewCosts}
+        canFlightLog={canFlightLog}
         alerts={effAlerts}
         focusMeasurement={focusMeasurement}
         measurements={measurements}
