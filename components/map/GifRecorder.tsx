@@ -21,13 +21,23 @@ import {
  * 90-frame capture that blocks the main thread is a frozen phone — and the
  * person watching needs to see it moving to believe it is working.
  */
-export function GifRecorder({ open, onClose, grabFrameAt, rangeLabel, companyName }: {
+export function GifRecorder({
+  open, onClose, grabFrameAt, range, ranges, onRange, companyName, mapAspect,
+}: {
   open: boolean
   onClose: () => void
   /** Put the replay at 0..1 of the window, let it settle, return a frame. */
   grabFrameAt: (t: number) => Promise<string>
-  rangeLabel: string
+  /** The timeline's current range. 'live' has NO replay to record. */
+  range: string
+  ranges: { key: string; label: string }[]
+  /** Change the map's range from in here — asking someone to close this,
+   *  set the timeline, and come back is how you get a recording of nothing
+   *  (Brian, Sep 12: "it is a crapshoot trying to start the GIF recording"). */
+  onRange: (key: string) => void
   companyName?: string | null
+  /** Real width/height of the map, so the size estimate is not fiction. */
+  mapAspect?: number
 }) {
   const [seconds, setSeconds] = useState(6)
   const [frames, setFrames] = useState<number>(45)
@@ -37,7 +47,12 @@ export function GifRecorder({ open, onClose, grabFrameAt, rangeLabel, companyNam
   const [done, setDone] = useState(0)
   const [err, setErr] = useState<string | null>(null)
   const [out, setOut] = useState<{ url: string; blob: Blob; kb: number } | null>(null)
-  const [aspect, setAspect] = useState(16 / 9)
+  const [aspect, setAspect] = useState(mapAspect && mapAspect > 0.2 ? mapAspect : 16 / 9)
+  useEffect(() => { if (mapAspect && mapAspect > 0.2) setAspect(mapAspect) }, [mapAspect])
+  /** A replay range has to be picked before there is anything to record. */
+  const isLive = range === 'live'
+  const replayRanges = ranges.filter((r) => r.key !== 'live')
+  const rangeLabel = ranges.find((r) => r.key === range)?.label ?? 'Live'
   const cancelRef = useRef(false)
   const urlRef = useRef<string | null>(null)
 
@@ -146,9 +161,19 @@ export function GifRecorder({ open, onClose, grabFrameAt, rangeLabel, companyNam
           ) : (
             <>
               <p className="text-[12.5px] text-muted leading-snug">
-                Plays the <span className="text-ink font-semibold">{rangeLabel}</span> replay and records the map into
-                a file that moves by itself in a text or an email. Only the map is in the picture — no buttons, no timeline.
+                {isLive
+                  ? 'Live is happening now — there is no stretch of time to play back. Pick the day or week you want recorded:'
+                  : <>Plays the <span className="text-ink font-semibold">{rangeLabel}</span> replay and records the map into a file that moves by itself in a text or an email. Only the map is in the picture — no buttons, no timeline.</>}
               </p>
+
+              {/* The stretch being recorded is the FIRST decision, and it is
+                  made here — not by closing this, setting the timeline, and
+                  hoping ("a crapshoot", Brian, Sep 12). */}
+              <Row label={isLive ? 'Pick what to record' : 'What it records'}>
+                {replayRanges.map((r) => (
+                  <Chip key={r.key} on={range === r.key} onClick={() => onRange(r.key)}>{r.label}</Chip>
+                ))}
+              </Row>
 
               <Row label="How long it plays">
                 {[4, 6, 10, 15].map((s) => (
@@ -214,9 +239,10 @@ export function GifRecorder({ open, onClose, grabFrameAt, rangeLabel, companyNam
                 className="flex-1 rounded-xl border border-navy-700 text-muted py-3 text-sm font-semibold hover:text-ink">
                 Cancel
               </button>
-              <button type="button" onClick={record}
-                className="flex-[2] rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3">
-                Record
+              <button type="button" onClick={record} disabled={isLive}
+                title={isLive ? 'Pick a day or a week above first' : undefined}
+                className="flex-[2] rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3 disabled:opacity-40">
+                {isLive ? 'Pick a range' : 'Record'}
               </button>
             </>
           )}

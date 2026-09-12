@@ -27,13 +27,20 @@ export type GifSizeKey = (typeof GIF_SIZES)[number]['key']
 /** More frames = smoother and heavier, in a straight line. */
 export const GIF_FRAMES = [30, 45, 60, 90] as const
 
-/** Roughly how many megabytes that plan lands on, to warn BEFORE the wait.
- *  Empirical: ~0.9 bytes per pixel per frame after palette + LZW on map
- *  imagery (a lot of flat green, which compresses well). */
+/**
+ * Roughly how many megabytes that plan lands on, to warn BEFORE the wait.
+ *
+ * 0.35 bytes per pixel per frame, measured against 256-colour satellite
+ * imagery after palette + LZW. The first pass guessed 0.9 and told Brian a
+ * default recording would be 11 MB — scary, and wrong by ~3×. It is still
+ * only an estimate, which is why the REAL size is shown on the result.
+ */
+const BYTES_PER_PX_PER_FRAME = 0.35
+
 export function estimateMb(px: number, frames: number, aspect: number): number {
   const w = px
-  const h = Math.round(px / aspect)
-  return (w * h * frames * 0.9) / (1024 * 1024)
+  const h = Math.round(px / Math.max(0.2, aspect))
+  return (w * h * frames * BYTES_PER_PX_PER_FRAME) / (1024 * 1024)
 }
 
 /** Carriers choke well before this; warn rather than fail after a long wait. */
