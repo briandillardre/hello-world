@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Building2, Users, Radio, LogOut } from 'lucide-react'
+import { Building2, Users, Radio, LogOut, BellRing } from 'lucide-react'
 import { Logo } from '@/components/brand/Logo'
 import { TopBarWeather } from './TopBarWeather'
 import { TopBarSearch } from './TopBarSearch'
@@ -40,7 +40,10 @@ function CompanyMenu({ companyName, features, children }: { companyName: string;
           {canSee('/settings') && <Link href="/settings" className={item} onClick={() => setOpen(false)}><Building2 className="h-4 w-4 text-teal" /> Company settings</Link>}
           {canSee('/team') && <Link href="/team" className={item} onClick={() => setOpen(false)}><Users className="h-4 w-4 text-teal" /> Team</Link>}
           {canSee('/trackers') && <Link href="/trackers" className={item} onClick={() => setOpen(false)}><Radio className="h-4 w-4 text-teal" /> Trackers</Link>}
-          {(canSee('/settings') || canSee('/team') || canSee('/trackers')) && <div className="my-1 border-t border-navy-800" />}
+          {/* Quieting your own phone needs no view level — the card lives
+              inside Company settings for anyone who can open that. */}
+          {!canSee('/settings') && <Link href="/settings/phone" className={item} onClick={() => setOpen(false)}><BellRing className="h-4 w-4 text-teal" /> My phone</Link>}
+          <div className="my-1 border-t border-navy-800" />
           <button type="button" onClick={() => signOutAction()} className={item + ' w-full text-left text-faint hover:text-alert'}><LogOut className="h-4 w-4" /> Sign out</button>
         </div>
       )}

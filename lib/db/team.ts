@@ -4,6 +4,7 @@ import {
   type Role, type RolePolicy, type Permissions,
 } from '../permissions'
 import { getRealPermissions, getMyPermissions } from '../permissions-server'
+import { resolvePersonNotify, defaultPersonNotify, type PersonNotifyPrefs } from '../person-notify'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -22,6 +23,8 @@ export interface TeamMember {
   can_view_costs?: boolean | null
   can_manage_billing?: boolean | null
   can_manage_team?: boolean | null
+  /** Which pushes reach this person's phone (107). */
+  notify: PersonNotifyPrefs
   /** Can the CALLER change this person's role/switches, preview as them, read their AI chats? */
   manageable: boolean
 }
@@ -48,10 +51,10 @@ export async function getTeam(): Promise<TeamData> {
   if (isMock) {
     return {
       members: [
-        { id: 'you', name: 'You (demo)', email: 'you@demo', role: 'admin', isMaster: true, isYou: true, manageable: false },
-        { id: 'm4', name: 'Office admin (demo)', email: 'admin@demo', role: 'admin', isMaster: false, isYou: false, manageable: true },
-        { id: 'm2', name: 'Foreman (demo)', email: 'foreman@demo', role: 'foreman', isMaster: false, isYou: false, manageable: true },
-        { id: 'm3', name: 'Crew member (demo)', email: 'crew@demo', role: 'associate', isMaster: false, isYou: false, manageable: true },
+        { id: 'you', name: 'You (demo)', email: 'you@demo', role: 'admin', isMaster: true, isYou: true, manageable: false, notify: defaultPersonNotify('admin') },
+        { id: 'm4', name: 'Office admin (demo)', email: 'admin@demo', role: 'admin', isMaster: false, isYou: false, manageable: true, notify: defaultPersonNotify('admin') },
+        { id: 'm2', name: 'Foreman (demo)', email: 'foreman@demo', role: 'foreman', isMaster: false, isYou: false, manageable: true, notify: defaultPersonNotify('foreman') },
+        { id: 'm3', name: 'Crew member (demo)', email: 'crew@demo', role: 'associate', isMaster: false, isYou: false, manageable: true, notify: defaultPersonNotify('associate') },
       ],
       invites: [],
       myRole: 'admin', isAdmin: true, isMaster: true,
@@ -73,7 +76,7 @@ export async function getTeam(): Promise<TeamData> {
     let profiles: Record<string, unknown>[] | null = null
     {
       const wide = await supabase.from('profiles')
-        .select('id, name, email, role, can_view_costs, can_manage_billing, can_manage_team')
+        .select('id, name, email, role, can_view_costs, can_manage_billing, can_manage_team, notify_prefs')
         .eq('company_id', companyId)
       profiles = wide.error
         ? (await supabase.from('profiles').select('id, name, email, role').eq('company_id', companyId)).data
@@ -88,6 +91,7 @@ export async function getTeam(): Promise<TeamData> {
     const members: TeamMember[] = ((profiles ?? []) as {
       id: string; name: string | null; email: string | null; role: string | null
       can_view_costs?: boolean | null; can_manage_billing?: boolean | null; can_manage_team?: boolean | null
+      notify_prefs?: unknown
     }[]).map((p) => {
       const isMaster = p.id === companyId
       const role = isMaster ? 'admin' : normalizeRole(p.role, 'associate')
@@ -100,6 +104,9 @@ export async function getTeam(): Promise<TeamData> {
         can_view_costs: p.can_view_costs ?? null,
         can_manage_billing: p.can_manage_billing ?? null,
         can_manage_team: p.can_manage_team ?? null,
+        // Their phone switches (107) — resolved here so a Team row shows the
+        // effective state without re-deriving role defaults per row.
+        notify: resolvePersonNotify(p.notify_prefs, role),
         manageable: isAdmin && p.id !== me.userId && outranks(me, { role, isMaster }),
       }
     }).sort((a, b) => (a.isYou ? -1 : b.isYou ? 1 : RANK[b.role] - RANK[a.role] || a.name.localeCompare(b.name)))

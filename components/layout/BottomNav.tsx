@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -302,12 +302,17 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
+                {/* Settings is an Admin view level, so for everyone else this
+                    goes to the one page nobody needs permission for: their own
+                    phone's notification switches (ship-check, Sep 12). */}
                 <Link
-                  href="/settings"
+                  href={allowed('/settings') ? '/settings' : '/settings/phone'}
                   onClick={closeDrawer}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-ink"
                 >
-                  <Settings className="h-4 w-4" /> Account
+                  {allowed('/settings')
+                    ? <><Settings className="h-4 w-4" /> Account</>
+                    : <><BellRing className="h-4 w-4" /> My phone</>}
                 </Link>
                 {onSignOut && (
                   <button

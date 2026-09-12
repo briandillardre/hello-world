@@ -42,6 +42,7 @@ timezone.
 | Delivery | `lib/digest-delivery.ts` — `deliverSummary()` is the one door |
 | Dedupe | `companies.last_*_at` stamps (106) + `sentSameLocalDay()` |
 | The off switch | `/n/<token>` (signed, no login) and `Settings → Summaries` — **the same component**, `components/settings/NotifyPrefsForm.tsx` |
+| Who gets the PUSH | `profiles.notify_prefs` (107) — per person, `lib/person-notify.ts`; `Settings → My phone` and the Team row |
 
 ### The summaries
 
@@ -62,6 +63,76 @@ weekend but the two weekly emails.
 The Monday agenda and the nag both default **off**. The evening digest is the
 daily habit; a second recurring push nobody asked for is the complaint, not the
 feature. Both are one tap away in Settings for an owner who wants them.
+
+## Two switches, both have to say yes
+
+The company preferences decide **whether** a summary exists, **when** it goes,
+and whether it also emails or texts the company's alert address. The person
+preferences decide **whose phone lights up** (Brian, Sep 12: *"the push need to
+be per person and admins can go in to change this for people"*).
+
+| Push kind | What it is | Default |
+|---|---|---|
+| `alerts` | Theft, left-site, a tracker going quiet, safety reports | everyone |
+| `receipts` | Their own card's missing receipt — push AND the chase texts | everyone |
+| `evening` | The evening digest | Admin · Manager · Foreman |
+| `monday` | The Monday agenda | Admin · Manager · Foreman |
+| `nag` | Still on the clock | Admin · Manager |
+
+An Associate is on the map and the clock, not the digest — so a new crew
+member's phone is quiet without anyone configuring them, while still getting a
+2 AM theft alert and the receipt for a card they personally ran.
+
+`audienceTokens()` in `lib/push.ts` is the one resolver: every company-wide
+push joins `device_tokens` to `profiles` and keeps only the devices whose owner
+wants that kind. Three cases, and they are not the same case
+(`audienceFilter()` is the pure half, so they are unit-tested):
+
+| The token belongs to | Summaries | Alerts |
+|---|---|---|
+| Somebody on the roster | their switch | their switch |
+| A user id that is not on the roster (they left) | dropped | **dropped** |
+| No user id at all (a pre-100 row) | dropped | kept |
+
+A removed employee's phone must stop buzzing with the company's theft alerts
+the moment they are off the team — `removeMemberAction` deletes their
+`device_tokens` rows, and this filter is the belt to that suspenders. A legacy
+row we cannot attribute is the opposite call: nobody should get a digest we
+cannot attribute, and nobody should miss a theft alert over a stale join.
+
+If the `profiles` read itself **fails**, there is no roster, so every token is
+unattributable and the same rule applies: alerts still go out, summaries do
+not. A digest is worth losing to a transient error; a muted phone staying
+muted is the entire feature.
+
+**What is stored is SPARSE** — only the switches somebody actually touched.
+Writing all five on every save froze a person against their own role: promote
+a Foreman to Admin and they should start getting the nag, but a resolved
+`false` on file is indistinguishable from a chosen one. Untouched keys keep
+following `defaultPersonNotify(role)` forever. The blob also carries `_by` /
+`_at` (ignored by every resolver, which reads `PUSH_KINDS` only): an admin may
+silence a subordinate's theft alerts — a shop hand's phone should not scream at
+2 AM — but the person sees *who did it and when* on their own card, and can
+change it back.
+
+The **Master Admin** resolves as Admin here exactly as they do on /team
+(`notifyRole()`, one helper, three call sites). An owner whose stored role is
+blank would otherwise fall to Associate and silently lose their own digest.
+
+**Who can change it:** yourself, always — including an Associate whose role has
+no other settings at all; nobody needs permission to quiet their own phone.
+Somebody else only if you outrank them (docs/ROLES.md) **and** hold the team
+ability, checked server-side in `lib/actions/person-notify.ts`. `profiles` is
+write-locked for sessions (068), so the write itself is service-role behind
+that check, and view-as is refused outright.
+
+**Where the card lives.** `settings` is an Admin-only view level, so /settings
+404s for a Manager, Foreman or Associate — which for one day made "yourself,
+always" false for three of the four roles. The card therefore has its own
+route, **`/settings/phone`**, exempted in `featureForPath` (`UNGATED_PATHS`)
+and reachable without any view level. Admins see it inside Settings as before;
+everyone else reaches it from the More drawer's account button and the map's
+company menu, both of which now point there instead of at a page they 404 on.
 
 **Money never rides the push.** `getInsightHeadlines` takes `includeMoney` and
 it is `false` for the digest and agenda, because those go to *every* registered
@@ -179,12 +250,14 @@ bug and are fixed the same way:
 
 ## Known gaps
 
-* **Preferences are per company, not per person.** Everyone on the company's
-  registered devices gets the same push. Per-person mute is the next step and
-  matters most once a company has more than one admin. The clean fix is a
-  `sendPushToRoles(companyId, msg, { requires })` that joins
-  `device_tokens.user_id → profiles.role`; that would also let the digest push
-  carry money again for the people allowed to see it.
+* **Money is still stripped from every push**, even though the audience is now
+  resolved per person and their role is right there. Restoring it would mean
+  composing two variants of the same digest (one with dollars, one without) and
+  doubling the model call — worth doing only if an owner asks why the push says
+  less than the email.
+* **Email and SMS are still per company**, addressed to `alert_email` /
+  `alert_phone`. Only the push is per person. A second admin who wants their own
+  copy of the Friday email has to be added to that address.
 * **Vercel Analytics would carry the token** if `NEXT_PUBLIC_VERCEL_ANALYTICS`
   is ever switched on — add a `beforeSend` that rewrites `/n/`, `/r/`, `/share/`
   and `/t/` URLs first. (Client error reports already scrub them: `safePath()`
@@ -194,4 +267,6 @@ bug and are fixed the same way:
   can be closed with "No receipt", but a company that turns the feature on gets
   the full 15 min / 1 h / 4 h / 24 h / twice-daily ladder. Deliberate for now
   (Brian, Sep 9: "annoy the hell out of them until they take a picture") —
-  revisit if a customer complains.
+  revisit if a customer complains. The *person* switch does cover it end to
+  end: `receipts` off means no push **and no text** (the SMS rung used to sit
+  outside the gate, so switching it off still bought six texts over two weeks).
