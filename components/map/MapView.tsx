@@ -52,6 +52,7 @@ import { pointInPolygon } from '@/lib/alerts-engine'
 import { StackSheet, type StackPick } from '@/components/map/StackSheet'
 import { DirectionsSheet } from './DirectionsSheet'
 import { NavGuidance, type NavRoute } from './NavGuidance'
+import { GifRecorder } from './GifRecorder'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
@@ -795,6 +796,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // imperative MapLibre control (created once at init) always calls the
   // freshest closure (assets/brand/range change between renders).
   const makePdfRef = useRef<(() => Promise<void>) | null>(null)
+  /** Record-a-GIF sheet (Brian, Sep 12). Rail button sits under Create PDF. */
+  const [gifOpen, setGifOpen] = useState(false)
+  const openGifRef = useRef<(() => void) | null>(null)
+  openGifRef.current = () => setGifOpen(true)
   // Control-rail "New zone" handler — assigned after handleRange/startDrawing
   // exist (they're declared much later in this file).
   const drawZoneRef = useRef<(() => void) | null>(null)
@@ -1794,6 +1799,26 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       onRemove() {},
     }
     map.current.addControl(pdfControl, ctrlCorner)
+
+    // Record a GIF — the moving cousin of Create PDF, so it sits under it.
+    if (!kiosk) {
+      const gifControl: maplibregl.IControl = {
+        onAdd() {
+          const div = document.createElement('div')
+          div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
+          const btn = document.createElement('button')
+          btn.type = 'button'
+          btn.title = 'Record a GIF — the replay as a file you can text'
+          btn.setAttribute('aria-label', 'Record a GIF')
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="m4 11 16-5"/><path d="m6.5 5.5 3 3.5"/><path d="m11 4 3 3.5"/><rect width="20" height="12" x="2" y="11" rx="2"/></svg>'
+          btn.onclick = () => { openGifRef.current?.() }
+          div.appendChild(btn)
+          return div
+        },
+        onRemove() {},
+      }
+      map.current.addControl(gifControl, ctrlCorner)
+    }
 
     map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     // The compact attribution is a <details> that AUTO-OPENS on load and
@@ -7593,6 +7618,26 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           }}
           trafficOn={!!overlaysOn.traffic}
           onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
+        />
+      )}
+
+      {gifOpen && (
+        <GifRecorder
+          open
+          onClose={() => setGifOpen(false)}
+          rangeLabel={RANGES.find((r) => r.key === range)?.label ?? 'Live'}
+          companyName={brand?.companyName ?? null}
+          grabFrameAt={async (t: number) => {
+            const m = map.current
+            if (!m) throw new Error('The map is not ready.')
+            // Put the playhead there, then let React commit the new positions
+            // AND the map repaint before reading pixels — one frame is not
+            // enough, and a frame captured too early shows the LAST position.
+            handleSeek(t)
+            await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+            const { captureMapCanvas } = await import('@/lib/pdf-brand')
+            return captureMapCanvas(m)
+          }}
         />
       )}
 
