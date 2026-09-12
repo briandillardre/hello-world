@@ -96,6 +96,93 @@ async function resolveZone(companyId: string, lat: number, lng: number): Promise
   return null
 }
 
+/**
+ * Where WAS this person when the photo was taken (Brian, Sep 12: "I would
+ * prefer all images to have gps data. Not placing them manually").
+ *
+ * Android strips the GPS out of a gallery photo and there is no way to get it
+ * back through a file picker — the only Android door to the unredacted
+ * original is broad photo-library permission, which is a scary prompt, a Play
+ * policy declaration, and still no help on a photo somebody texted you.
+ *
+ * But the phone's clock SURVIVES the strip. And we already know, minute by
+ * minute, where this company's people and machines were. So instead of asking
+ * the OS where the picture was taken, we ask ourselves where the PERSON was
+ * at that moment — which is the one thing we have that a photo app does not.
+ *
+ * Two rungs, both the person's own data:
+ *   1. their phone's own track (`phone-<uid>`), nearest fix within ±15 min —
+ *      exact coordinates, the same fixes the shift recorder banks;
+ *   2. the job they were clocked into at that instant — the site, not a point.
+ *
+ * Nothing found is a real answer too: the sheet then asks, rather than
+ * guessing. Never widened to "whatever site the company worked that day" —
+ * that is the kind of plausible guess that put two Creekside photos on a
+ * couch in the first place.
+ */
+export async function locatePhotosByTimeAction(times: string[]): Promise<
+  ({ lat: number; lng: number; source: 'track' | 'clock'; zoneId: string | null; zoneName: string | null } | null)[]
+> {
+  const asked = (times ?? []).slice(0, 12)
+  const empty = asked.map(() => null)
+  if (isMock) return empty
+  const perms = await getRealPermissions()
+  if (!perms.userId || !perms.companyId) return empty
+
+  const stamps = asked.map((t) => Date.parse(t))
+  try {
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    const svc = createServiceClient()
+
+    // The person's own phone asset. No phone asset = rung 1 is simply absent.
+    const { data: phone } = await svc.from('assets').select('id')
+      .eq('company_id', perms.companyId).eq('tracker_id', `phone-${perms.userId}`)
+      .eq('active', true).maybeSingle()
+
+    const WINDOW_MS = 15 * 60_000
+    const out = await Promise.all(stamps.map(async (ms) => {
+      if (!Number.isFinite(ms) || ms > Date.now() + 60_000) return null
+
+      // 1 — a fix of their own, either side of the shutter.
+      if (phone?.id) {
+        const { data: fixes } = await svc.from('asset_locations')
+          .select('timestamp, lat, lng')
+          .eq('asset_id', phone.id)
+          .gte('timestamp', new Date(ms - WINDOW_MS).toISOString())
+          .lte('timestamp', new Date(ms + WINDOW_MS).toISOString())
+          .limit(200)
+        let best: { lat: number; lng: number; d: number } | null = null
+        for (const f of (fixes ?? []) as { timestamp: string; lat: number; lng: number }[]) {
+          const d = Math.abs(Date.parse(f.timestamp) - ms)
+          if (Number.isFinite(f.lat) && Number.isFinite(f.lng) && (!best || d < best.d)) best = { lat: f.lat, lng: f.lng, d }
+        }
+        if (best) {
+          const zone = await resolveZone(perms.companyId!, best.lat, best.lng)
+          return { lat: best.lat, lng: best.lng, source: 'track' as const, zoneId: zone?.id ?? null, zoneName: zone?.name ?? null }
+        }
+      }
+
+      // 2 — the job they were clocked into when the shutter went.
+      const at = new Date(ms).toISOString()
+      const { data: entries } = await svc.from('time_entries')
+        .select('project_geofence_id, clock_in_at, clock_out_at')
+        .eq('company_id', perms.companyId).eq('user_id', perms.userId)
+        .lte('clock_in_at', at)
+        .order('clock_in_at', { ascending: false }).limit(3)
+      type Entry = { project_geofence_id: string | null; clock_in_at: string; clock_out_at: string | null }
+      const covering = ((entries ?? []) as Entry[]).find((e) =>
+        e.project_geofence_id && Date.parse(e.clock_out_at ?? new Date().toISOString()) >= ms)
+      if (covering?.project_geofence_id) {
+        const sites = await listPhotoSitesAction()
+        const site = sites.find((z) => z.id === covering.project_geofence_id)
+        if (site) return { lat: site.lat, lng: site.lng, source: 'clock' as const, zoneId: site.id, zoneName: site.name }
+      }
+      return null
+    }))
+    return out
+  } catch { return empty }
+}
+
 /** A site id, confirmed to belong to this company — never trust the client's. */
 async function siteById(companyId: string, id: string): Promise<{ id: string; name: string } | null> {
   try {
