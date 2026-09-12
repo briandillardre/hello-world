@@ -1,7 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireEditOrThrow, getMyPermissions } from '@/lib/permissions-server'
+import { headers } from 'next/headers'
+import { requireEditOrThrow, getMyPermissions, requireFeature } from '@/lib/permissions-server'
+import { ipRateLimited } from '@/lib/rate-limit'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { lookupAircraft, identFromTrace } from '@/lib/aircraft-source'
 import type { SavedAircraft } from '@/lib/db/aircraft'
@@ -20,6 +22,26 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 export interface SaveResult { ok: boolean; error?: string; aircraft?: SavedAircraft }
 
+/**
+ * How many aircraft one company may watch.
+ *
+ * Every saved plane is permanent nightly cron work and permanent JSONB in
+ * `aircraft_flights`. Without a cap, a script that saves fifty thousand hexes
+ * starves every real customer's plane behind the nightly budget forever
+ * (sec-check, Sep 12).
+ */
+const MAX_SAVED = 25
+
+/** Server actions never pass through the route rate limiter, so they need
+ *  their own — this one reaches two third-party APIs. */
+function actionRateLimited(tag: string, limit: number): boolean {
+  try {
+    return ipRateLimited({ headers: { get: (k: string) => headers().get(k) } }, tag, limit)
+  } catch {
+    return false // no request context (tests) — nothing to limit
+  }
+}
+
 const clean = (v: unknown, max: number): string | null => {
   const s = String(v ?? '').trim().slice(0, max)
   return s || null
@@ -31,8 +53,10 @@ const clean = (v: unknown, max: number): string | null => {
 export async function saveAircraftAction(input: { hex: string; label?: string; notes?: string }): Promise<SaveResult> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — saving planes works once signed in to your company.' }
+  await requireFeature('aircraft')
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can read the flight log but not save planes.' }
+  if (actionRateLimited('ac-save', 10)) return { ok: false, error: 'Slow down a moment.' }
 
   const hex = String(input.hex ?? '').trim().toLowerCase()
   if (!/^[0-9a-f]{6}$/.test(hex)) return { ok: false, error: 'That is not an aircraft address.' }
@@ -40,7 +64,6 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
   const companyId = await getCurrentCompanyId()
   if (!companyId) return { ok: false, error: 'No company.' }
 
-  const ident = (await lookupAircraft(hex)) ?? (await identFromTrace(hex))
   const { createClient, createServiceClient } = await import('@/lib/supabase-server')
   const { data: { user } } = await createClient().auth.getUser()
   const db = createServiceClient()
@@ -49,6 +72,18 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
   // un-deleting a previously removed one keeps its banked history attached.
   const { data: existing } = await db.from('aircraft_saved')
     .select('id').eq('company_id', companyId).eq('hex', hex).eq('active', true).maybeSingle()
+
+  if (!existing) {
+    const { count } = await db.from('aircraft_saved')
+      .select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('active', true)
+    if ((count ?? 0) >= MAX_SAVED) {
+      return { ok: false, error: `You can watch ${MAX_SAVED} aircraft. Remove one to add another.` }
+    }
+  }
+
+  // Identity lookup AFTER the cap check, so a refused save costs no upstream
+  // calls at all.
+  const ident = (await lookupAircraft(hex)) ?? (await identFromTrace(hex))
 
   const row = {
     company_id: companyId,
@@ -82,6 +117,7 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
 export async function removeAircraftAction(hex: string): Promise<SaveResult> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — nothing is saved.' }
+  await requireFeature('aircraft')
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can read the flight log but not change it.' }
   const h = String(hex ?? '').trim().toLowerCase()
@@ -103,6 +139,7 @@ export async function removeAircraftAction(hex: string): Promise<SaveResult> {
 export async function labelAircraftAction(hex: string, label: string, notes?: string): Promise<SaveResult> {
   await requireEditOrThrow()
   if (isMock) return { ok: false, error: 'Demo mode — nothing is saved.' }
+  await requireFeature('aircraft')
   const perms = await getMyPermissions()
   if (!perms.canEdit) return { ok: false, error: 'Your role can read the flight log but not change it.' }
   const h = String(hex ?? '').trim().toLowerCase()

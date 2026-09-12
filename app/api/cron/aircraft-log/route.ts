@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => (syncedAt.get(a) ?? '').localeCompare(syncedAt.get(b) ?? ''))
     .slice(0, budget)
 
-  const results: { hex: string; days: number; banked: number }[] = []
+  const results: { hex: string; days: number; banked: number; failed?: number }[] = []
   const window = availableDays(now)
 
   for (const hex of queue) {
@@ -74,12 +74,19 @@ export async function GET(req: NextRequest) {
       // finished; a day whose flight is still open gets re-read so its other
       // half can be joined on.
       const banked = await getBankedFlights(db, hex, new Date(now.getTime() - 32 * 86_400_000).toISOString())
+      // A day counts as settled only if we read it AFTER it finished.
+      //
+      // This cron runs at 02:20 UTC, so its read of "today" only ever sees
+      // 00:00–02:20 of it. Marking that day done because a red-eye landed at
+      // 01:00 UTC lost every later flight that day, permanently — the day was
+      // never re-read and the live path skipped it too (ship-check, Sep 12).
+      const dayEndMs = (d: string) => Date.parse(`${d}T00:00:00Z`) + 86_400_000
       const settled = new Set<string>()
       for (const f of banked) {
         const day = utcDay(new Date(f.startedAt * 1000))
-        if (!f.openEnd) settled.add(day)
+        const readAfterDayEnded = f.bankedAt ? Date.parse(f.bankedAt) >= dayEndMs(day) : false
+        if (!f.openEnd && readAfterDayEnded) settled.add(day)
       }
-      // Today is never settled — it is still being written.
       settled.delete(utcDay(now))
       const todo = force ? window : window.filter((d) => !settled.has(d))
       if (!todo.length) {
@@ -88,12 +95,23 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const traces = await fetchTraceDays(hex, todo, now)
+      // Never derive a day without the day BEFORE it. A red-eye is stitched
+      // from two files; reading the later one alone yields an orphan
+      // `openStart` fragment that banks as a second copy of the same trip and
+      // never self-heals (ship-check, Sep 12). The stitched result upserts
+      // onto the earlier day's id, so this stays idempotent.
+      const withPredecessors = Array.from(new Set(todo.flatMap((d) => [
+        d,
+        utcDay(new Date(Date.parse(`${d}T00:00:00Z`) - 86_400_000)),
+      ]))).sort().reverse()
+      const traces = await fetchTraceDays(hex, withPredecessors, now)
       const { ident, flights } = flightsFromTraces(traces)
-      const wrote = await bankFlights(db, flights)
+      const { written: wrote, failed } = await bankFlights(db, flights)
 
       const newest = flights.reduce((m, f) => Math.max(m, f.endedAt), 0)
-      const patch: Record<string, unknown> = { last_synced_at: now.toISOString() }
+      // A partial write must not look like progress — leaving last_synced_at
+      // alone puts this airframe back at the front of tomorrow's queue.
+      const patch: Record<string, unknown> = failed ? {} : { last_synced_at: now.toISOString() }
       if (newest) patch.last_flight_at = new Date(newest * 1000).toISOString()
       // Keep the saved row's identity honest — tail numbers do get reassigned.
       if (ident?.reg) { patch.reg = ident.reg; patch.type_code = ident.typeCode; patch.descr = ident.desc }
@@ -101,8 +119,12 @@ export async function GET(req: NextRequest) {
         const looked = await lookupAircraft(hex)
         if (looked?.reg) { patch.reg = looked.reg; patch.type_code = looked.typeCode; patch.descr = looked.desc; patch.owner = looked.owner }
       }
-      await db.from('aircraft_saved').update(patch).eq('hex', hex).eq('active', true)
-      results.push({ hex, days: todo.length, banked: wrote })
+      if (Object.keys(patch).length) {
+        // By hex across every company: each field written here is public
+        // upstream data, and `label` / `notes` are never touched.
+        await db.from('aircraft_saved').update(patch).eq('hex', hex).eq('active', true)
+      }
+      results.push({ hex, days: todo.length, banked: wrote, failed })
     } catch (e) {
       console.error('aircraft-log failed for', hex, e instanceof Error ? e.message : e)
     }

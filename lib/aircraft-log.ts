@@ -158,7 +158,9 @@ export function parseTrace(raw: unknown): ParsedTrace | null {
   const j = raw as Record<string, unknown>
   const base = num(j.timestamp)
   const hex = typeof j.icao === 'string' ? j.icao.toLowerCase().replace(/[^0-9a-f]/g, '') : ''
-  if (base == null || hex.length < 6 || !Array.isArray(j.trace)) return null
+  // Exactly six: a longer string would build an id no route regex matches
+  // and a row the CHECK constraint rejects.
+  if (base == null || hex.length !== 6 || !Array.isArray(j.trace)) return null
 
   const str = (v: unknown): string | null => {
     const s = typeof v === 'string' ? v.trim() : ''
@@ -404,13 +406,17 @@ export function flightsFromTraces(
   opts: SegmentOpts = {},
 ): { ident: TraceIdent | null; flights: Flight[] } {
   let ident: TraceIdent | null = null
+  let identAt = -Infinity
   const all: Flight[] = []
   for (const { raw } of traces) {
     const parsed = parseTrace(raw)
     if (!parsed) continue
-    // Later files win: an airframe can be re-registered, and the newest file
-    // carries the name it wears now.
-    ident = parsed.ident
+    // The NEWEST file wins: an airframe can be re-registered, and the newest
+    // file carries the name it wears now. Picking "the last one processed"
+    // silently took the OLDEST, because the callers hand days back
+    // newest-first (ship-check, Sep 12).
+    const at = parsed.fixes[0]?.t ?? -Infinity
+    if (at >= identAt) { ident = parsed.ident; identAt = at }
     const rows = (raw as { trace?: unknown[] }).trace ?? []
     all.push(...segmentFlights(parsed.ident.hex, parsed.fixes, rows, opts))
   }

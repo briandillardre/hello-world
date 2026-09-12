@@ -66,10 +66,12 @@ function buildTrack(leg: Leg, startSec: number, durationSec: number): Fix[] {
 }
 
 export function demoFlights(now = new Date()): Flight[] {
+  // Anchored to UTC days, not local ones: ids built with setHours() shifted
+  // under a page left open across local midnight (or a DST change), and the
+  // detail fetch then missed its own flight (ship-check, Sep 12).
+  const todayUtc = Math.floor(now.getTime() / 86_400_000) * 86_400_000
   return LEGS.map((leg) => {
-    const day = new Date(now.getTime() - leg.daysAgo * 86_400_000)
-    day.setHours(leg.hour, 0, 0, 0)
-    const startedAt = Math.round(day.getTime() / 1000)
+    const startedAt = Math.round((todayUtc - leg.daysAgo * 86_400_000) / 1000) + leg.hour * 3600
     const nm = haversineNm(leg.fromLat, leg.fromLon, leg.toLat, leg.toLon)
     const durationSec = Math.round((nm / leg.cruiseKt) * 3600 + 900)
     const track = buildTrack(leg, startedAt, durationSec)

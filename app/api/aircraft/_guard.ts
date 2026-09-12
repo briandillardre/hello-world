@@ -21,6 +21,14 @@ export async function guard(req: NextRequest, tag: string, limit = 40): Promise<
   const { createClient } = await import('@/lib/supabase-server')
   const { data } = await createClient().auth.getUser()
   if (!data?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  // The page checks `requireFeature('aircraft')`, but an admin can switch the
+  // view level off per role and the routes have to honour that too — same gap
+  // that /diag and /qr had before Sep 11 (sec-check).
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  const perms = await getMyPermissions()
+  if (!perms.features.includes('aircraft')) {
+    return NextResponse.json({ error: 'not found' }, { status: 404 })
+  }
   return null
 }
 

@@ -122,6 +122,25 @@ const rj = midnight.flights[0]
 ok('a stitched flight reports the real takeoff and landing',
   rj && rj.departed === false && rj.arrived === false)
 
+// ── Identity comes from the NEWEST file, not the last one processed ──────
+// Callers hand days back newest-first, so "later file wins" silently took
+// the oldest and could write a stale tail number over a re-registered one.
+const idDay = (base, reg) => ({
+  icao: 'dddddd', timestamp: base, r: reg, t: 'C172',
+  trace: Array.from({ length: 10 }, (_, i) => [i * 60, 34 + i * 0.02, -82, 5000, 120, 90, 0, 0]),
+})
+const newestFirst = flightsFromTraces([
+  { raw: idDay(1_700_172_800, 'N-NEW') },
+  { raw: idDay(1_700_086_400, 'N-MID') },
+  { raw: idDay(1_700_000_000, 'N-OLD') },
+])
+ok('identity comes from the newest day file', newestFirst.ident.reg === 'N-NEW', newestFirst.ident?.reg)
+const oldestFirst = flightsFromTraces([
+  { raw: idDay(1_700_000_000, 'N-OLD') },
+  { raw: idDay(1_700_172_800, 'N-NEW') },
+])
+ok('…whichever order the days arrive in', oldestFirst.ident.reg === 'N-NEW', oldestFirst.ident?.reg)
+
 // ── Charts ────────────────────────────────────────────────────────────────
 const long = f2.reduce((a, b) => (b.durationSec > a.durationSec ? b : a))
 ok('the track has enough points to chart', long.track.length > 50, String(long.track.length))

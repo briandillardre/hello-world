@@ -121,13 +121,25 @@ export function FlightProfile({ track }: { track: Fix[] }) {
 
   const x = (i: number) => PAD_L + ((pts[i].t - t0) / span) * plotW
 
-  // One pointer handler for all three charts: the crosshair is shared, so
-  // moving across any of them reads the same instant on every one.
+  /**
+   * One pointer handler for all three charts: the crosshair is shared, so
+   * moving across any of them reads the same instant on every one.
+   *
+   * Measured off the SVG the pointer is actually over, NOT the wrapper. The
+   * wrapper is wider than the plot by the card padding plus the y-axis
+   * gutter, so mapping against it put the crosshair ~45 px right of the
+   * finger at the left edge and named a time the user was not pointing at
+   * (ship-check, Sep 12).
+   */
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const box = wrapRef.current?.getBoundingClientRect()
-    if (!box) return
-    const frac = (e.clientX - box.left) / box.width
-    const want = t0 + Math.max(0, Math.min(1, frac)) * span
+    const svg = (e.target as Element).closest('figure')?.querySelector('svg')
+      ?? wrapRef.current?.querySelector('svg')
+    const box = svg?.getBoundingClientRect()
+    if (!box || !box.width) return
+    // Wrapper px → viewBox units → fraction of the plot area.
+    const vbX = ((e.clientX - box.left) / box.width) * w
+    const frac = Math.max(0, Math.min(1, (vbX - PAD_L) / plotW))
+    const want = t0 + frac * span
     let best = 0
     for (let i = 1; i < pts.length; i++) {
       if (Math.abs(pts[i].t - want) < Math.abs(pts[best].t - want)) best = i
@@ -158,7 +170,18 @@ export function FlightProfile({ track }: { track: Fix[] }) {
         </span>
       </div>
 
-      <div ref={wrapRef} onPointerMove={onMove} onPointerLeave={() => setHoverIdx(null)} className="space-y-2">
+      {/* pointerdown so a TAP reads the chart on a phone (pointermove alone
+          never fires), pointercancel so scrolling away clears the crosshair
+          instead of freezing it — pointerleave does not fire on touch. */}
+      <div
+        ref={wrapRef}
+        onPointerDown={onMove}
+        onPointerMove={onMove}
+        onPointerUp={() => setHoverIdx(null)}
+        onPointerCancel={() => setHoverIdx(null)}
+        onPointerLeave={() => setHoverIdx(null)}
+        className="space-y-2"
+      >
         {series.map((s) => (
           <Chart key={s.key} s={s} pts={pts} x={x} hoverIdx={hoverIdx} span={span} w={w} plotW={plotW} />
         ))}
@@ -191,8 +214,8 @@ export function FlightProfile({ track }: { track: Fix[] }) {
               </tr>
             </thead>
             <tbody className="text-muted">
-              {pts.filter((_, i) => i % Math.ceil(pts.length / 120) === 0).map((f) => (
-                <tr key={f.t} className="border-t border-navy-800/60">
+              {pts.filter((_, i) => i % Math.ceil(pts.length / 120) === 0).map((f, i) => (
+                <tr key={`${f.t}-${i}`} className="border-t border-navy-800/60">
                   <td className="px-2.5 py-1 font-mono">{new Date(f.t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</td>
                   <td className="px-2.5 py-1">{f.altFt != null ? nf(f.altFt) : '—'}</td>
                   <td className="px-2.5 py-1">{f.gsKt != null ? nf(f.gsKt) : '—'}</td>
@@ -232,18 +255,28 @@ function Chart({
 
   // Break the line wherever the feed lost the aircraft rather than drawing a
   // straight line through a hole it never flew.
-  const segments: string[] = []
+  // Each segment remembers its OWN extent. Closing every fill to the whole
+  // chart's width painted a translucent wedge straight across the coverage
+  // gaps the line deliberately breaks at (ship-check, Sep 12).
+  const segments: { d: string; from: number; to: number }[] = []
   let cur: string[] = []
+  let curFrom = 0
+  let curTo = 0
+  const flush = () => {
+    if (cur.length > 1) segments.push({ d: cur.join(' '), from: curFrom, to: curTo })
+    cur = []
+  }
   vals.forEach((v, i) => {
     const gap = i > 0 && pts[i].t - pts[i - 1].t > 300
     if (v == null || gap) {
-      if (cur.length > 1) segments.push(cur.join(' '))
-      cur = []
+      flush()
       if (v == null) return
     }
+    if (!cur.length) curFrom = i
+    curTo = i
     cur.push(`${cur.length ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`)
   })
-  if (cur.length > 1) segments.push(cur.join(' '))
+  flush()
 
   const ticks = s.diverging ? [bottom, 0, top] : [0, top / 2, top]
   const timeTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ f, sec: f * span }))
@@ -290,21 +323,24 @@ function Chart({
               <clipPath id={`up-${s.key}`}><rect x={PAD_L} y={PAD_T} width={plotW} height={Math.max(0, zeroY - PAD_T)} /></clipPath>
               <clipPath id={`dn-${s.key}`}><rect x={PAD_L} y={zeroY} width={plotW} height={Math.max(0, PAD_T + PLOT_H - zeroY)} /></clipPath>
             </defs>
-            {segments.map((d, i) => (
-              <g key={i}>
-                <path d={`${d} L${x(pts.length - 1)},${zeroY} L${x(0)},${zeroY} Z`} fill={CLIMB} opacity={0.22} clipPath={`url(#up-${s.key})`} />
-                <path d={`${d} L${x(pts.length - 1)},${zeroY} L${x(0)},${zeroY} Z`} fill={DESCEND} opacity={0.22} clipPath={`url(#dn-${s.key})`} />
-                <path d={d} fill="none" stroke={CLIMB} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#up-${s.key})`} />
-                <path d={d} fill="none" stroke={DESCEND} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#dn-${s.key})`} />
-              </g>
-            ))}
+            {segments.map(({ d, from, to }, i) => {
+              const area = `${d} L${x(to)},${zeroY} L${x(from)},${zeroY} Z`
+              return (
+                <g key={i}>
+                  <path d={area} fill={CLIMB} opacity={0.22} clipPath={`url(#up-${s.key})`} />
+                  <path d={area} fill={DESCEND} opacity={0.22} clipPath={`url(#dn-${s.key})`} />
+                  <path d={d} fill="none" stroke={CLIMB} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#up-${s.key})`} />
+                  <path d={d} fill="none" stroke={DESCEND} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#dn-${s.key})`} />
+                </g>
+              )
+            })}
             {/* The neutral midpoint — level flight. */}
             <line x1={PAD_L} x2={w - PAD_R} y1={zeroY} y2={zeroY} stroke={AXIS_TEXT} strokeWidth={1} strokeDasharray="3 3" />
           </>
         ) : (
-          segments.map((d, i) => (
+          segments.map(({ d, from, to }, i) => (
             <g key={i}>
-              <path d={`${d} L${x(pts.length - 1)},${PAD_T + PLOT_H} L${x(0)},${PAD_T + PLOT_H} Z`} fill={s.color} opacity={0.13} />
+              <path d={`${d} L${x(to)},${PAD_T + PLOT_H} L${x(from)},${PAD_T + PLOT_H} Z`} fill={s.color} opacity={0.13} />
               <path d={d} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
             </g>
           ))

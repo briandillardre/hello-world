@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getBankedFlight, getFlights } from '@/lib/db/aircraft'
+import { getBankedFlight } from '@/lib/db/aircraft'
+import { fetchTraceDays, utcDay } from '@/lib/aircraft-source'
+import { flightsFromTraces } from '@/lib/aircraft-log'
 import { guard, safeHex, isMock } from '../_guard'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +16,7 @@ export const maxDuration = 45
  * is a single day file, not the whole window.
  */
 export async function GET(req: NextRequest) {
-  const blocked = await guard(req, 'ac-flight', 60)
+  const blocked = await guard(req, 'ac-flight', 12)
   if (blocked) return blocked
   const id = (req.nextUrl.searchParams.get('id') ?? '').trim()
   if (isMock) {
@@ -34,11 +36,15 @@ export async function GET(req: NextRequest) {
     const banked = await getBankedFlight(db, id)
     if (banked?.track?.length) return NextResponse.json({ flight: banked })
 
-    // Not banked: re-derive from the day it took off, plus the day either
-    // side so a midnight crossing comes back whole.
-    const ageDays = Math.floor((Date.now() / 1000 - startedAt) / 86_400) + 2
-    const res = await getFlights(db, hex, Math.max(2, ageDays), { withTrack: true })
-    const flight = res.flights.find((f) => f.id === id) ?? null
+    // Not banked: re-derive from the day this flight took off, plus the day
+    // either side so a midnight crossing comes back whole. THREE day files —
+    // never the whole window. Going through getFlights() here pulled every
+    // banked track in the span out of Postgres (up to 500 × ~38 KB ≈ 19 MB)
+    // to then keep one of them (sec-check, Sep 12).
+    const day = utcDay(new Date(startedAt * 1000))
+    const around = [-1, 0, 1].map((d) => utcDay(new Date((startedAt + d * 86_400) * 1000)))
+    const traces = await fetchTraceDays(hex, Array.from(new Set([day, ...around])))
+    const flight = flightsFromTraces(traces).flights.find((f) => f.id === id) ?? null
     return NextResponse.json({ flight })
   } catch {
     return NextResponse.json({ error: 'Could not read that flight.' }, { status: 503 })

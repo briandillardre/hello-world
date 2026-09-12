@@ -83,6 +83,7 @@ interface FlightRow {
   distance_nm: number; max_alt_ft: number; max_gs_kt: number
   fix_count: number; track: unknown; open_ended: boolean
   departed: boolean | null; arrived: boolean | null
+  banked_at: string | null
 }
 
 /** A flight as the API hands it out: our Flight plus where it was banked. */
@@ -90,6 +91,8 @@ export interface LoggedFlight extends Flight {
   banked: boolean
   fromLabel: string | null
   toLabel: string | null
+  /** When we wrote it down. Null for a flight derived live, just now. */
+  bankedAt: string | null
 }
 
 const rowToFlight = (r: FlightRow): LoggedFlight => ({
@@ -115,6 +118,7 @@ const rowToFlight = (r: FlightRow): LoggedFlight => ({
   banked: true,
   fromLabel: r.from_label,
   toLabel: r.to_label,
+  bankedAt: r.banked_at,
 })
 
 const flightToRow = (f: Flight) => ({
@@ -144,16 +148,23 @@ const flightToRow = (f: Flight) => ({
  * it has already read changes nothing — except for a flight still flagged
  * open, which is allowed to grow a second half when tomorrow's file lands.
  */
-export async function bankFlights(db: SupabaseClient, flights: Flight[]): Promise<number> {
-  if (!flights.length) return 0
+export async function bankFlights(
+  db: SupabaseClient,
+  flights: Flight[],
+): Promise<{ written: number; failed: number }> {
+  if (!flights.length) return { written: 0, failed: 0 }
   let written = 0
+  let failed = 0
   for (let i = 0; i < flights.length; i += 50) {
     const chunk = flights.slice(i, i + 50).map(flightToRow)
     const { error } = await db.from('aircraft_flights').upsert(chunk, { onConflict: 'id' })
-    if (error) { console.error('bankFlights failed', error.message); continue }
+    // A chunk that failed must NOT let the caller mark the day done, or those
+    // flights are lost for good: the day would read as settled and the live
+    // path would skip it too (ship-check, Sep 12).
+    if (error) { console.error('bankFlights failed', error.message); failed += chunk.length; continue }
     written += chunk.length
   }
-  return written
+  return { written, failed }
 }
 
 /** Banked rows for one airframe, newest first. */
@@ -163,7 +174,7 @@ export async function getBankedFlights(
   sinceIso: string,
   withTrack = false,
 ): Promise<LoggedFlight[]> {
-  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived'
+  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at'
   const cols = withTrack ? `${base}, track` : base
   const { data, error } = await db
     .from('aircraft_flights')
@@ -180,7 +191,7 @@ export async function getBankedFlights(
 export async function getBankedFlight(db: SupabaseClient, id: string): Promise<LoggedFlight | null> {
   const { data, error } = await db
     .from('aircraft_flights')
-    .select('id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, track')
+    .select('id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, track')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -194,6 +205,8 @@ export interface FlightLogResult {
   beyondArchive: boolean
   /** The oldest day this answer actually covers. */
   oldestDay: string
+  /** We stopped short of the requested window to stay a good upstream guest. */
+  truncated: boolean
 }
 
 /**
@@ -203,6 +216,16 @@ export interface FlightLogResult {
  * days with nothing banked are read from upstream, so a saved plane costs
  * one archive fetch per day ever, and an unsaved one costs the window.
  */
+/**
+ * At most this many day files may be read from upstream to answer ONE
+ * request. Without it, `?days=365` on an unsaved plane was 30 adsb.lol
+ * fetches per HTTP request, and a loop over random hexes defeats every cache
+ * and gets our egress banned — which kills the feature for real customers
+ * (sec-check, Sep 12). A saved plane never hits this: the cron banked its
+ * days one at a time.
+ */
+const MAX_LIVE_DAYS_PER_REQUEST = 8
+
 export async function getFlights(
   db: SupabaseClient,
   hex: string,
@@ -217,7 +240,13 @@ export async function getFlights(
   // Which UTC days already have something banked? A day with a banked flight
   // needs no upstream read — that is the whole saving.
   const haveDay = new Set(banked.map((f) => utcDay(new Date(f.startedAt * 1000))))
-  const live = availableDays(now, Math.min(span, ARCHIVE_DAYS)).filter((d) => !haveDay.has(d))
+  // TODAY is never "already have it" — the day file is still being written,
+  // and a flight banked from this morning's cron run must not hide this
+  // afternoon's for the rest of the day (ship-check, Sep 12).
+  haveDay.delete(utcDay(now))
+  const wanted = availableDays(now, Math.min(span, ARCHIVE_DAYS)).filter((d) => !haveDay.has(d))
+  const live = wanted.slice(0, MAX_LIVE_DAYS_PER_REQUEST)
+  const truncated = wanted.length > live.length
 
   let fresh: Flight[] = []
   if (live.length) {
@@ -226,12 +255,23 @@ export async function getFlights(
   }
 
   // Same flight from both sides = the banked one, which the cron may have
-  // already stitched across a midnight the live read cannot see.
+  // already stitched across a midnight the live read cannot see. EXCEPT when
+  // the banked row is still open: it was written mid-flight and the live read
+  // has the finished version.
   const byId = new Map<string, LoggedFlight>()
-  for (const f of fresh) byId.set(f.id, { ...f, banked: false, fromLabel: null, toLabel: null })
-  for (const f of banked) byId.set(f.id, f)
+  for (const f of fresh) byId.set(f.id, { ...f, banked: false, fromLabel: null, toLabel: null, bankedAt: null })
+  for (const f of banked) if (!f.openEnd || !byId.has(f.id)) byId.set(f.id, f)
 
-  const merged = stitchFlights(Array.from(byId.values())) as LoggedFlight[]
+  // A banked flight stitched across midnight starts on the earlier day, so a
+  // live read of the later day alone produces its second half under a
+  // DIFFERENT id — the same trip listed twice, one of them labelled "takeoff
+  // not covered". Drop any fresh flight that lies inside a banked one
+  // (ship-check, Sep 12).
+  const bankedSpans = banked.map((f) => [f.startedAt, f.endedAt] as const)
+  const deduped = Array.from(byId.values()).filter((f) =>
+    f.banked || !bankedSpans.some(([a, b]) => f.startedAt >= a - 60 && f.endedAt <= b + 60))
+
+  const merged = stitchFlights(deduped) as LoggedFlight[]
   const flights = merged
     .filter((f) => f.startedAt * 1000 >= sinceMs)
     .sort((a, b) => b.startedAt - a.startedAt)
@@ -240,5 +280,8 @@ export async function getFlights(
     flights,
     beyondArchive: span > ARCHIVE_DAYS && !banked.length,
     oldestDay: utcDay(new Date(sinceMs)),
+    // Some of the window went unread to stay inside the upstream budget.
+    // The page says so rather than showing a short list as if it were all.
+    truncated,
   }
 }

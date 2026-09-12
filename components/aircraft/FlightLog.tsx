@@ -62,6 +62,7 @@ export function FlightLog({
   const [ident, setIdent] = useState<Ident | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [flights, setFlights] = useState<FlightRow[] | null>(null)
+  const [truncated, setTruncated] = useState(false)
   const [days, setDays] = useState(archiveDays)
   const [openFlight, setOpenFlight] = useState<FlightRow | null>(null)
   const [busy, setBusy] = useState(false)
@@ -78,6 +79,7 @@ export function FlightLog({
       const j = await r.json()
       if (!r.ok) { setNote(j?.error ?? 'Could not read the flight log.'); setFlights([]); return }
       setFlights(j.flights ?? [])
+      setTruncated(!!j.truncated)
     } catch {
       setNote('Could not reach the flight log.')
       setFlights([])
@@ -138,8 +140,14 @@ export function FlightLog({
       try {
         const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(t)}`)
         const j = await r.json()
-        if (j?.aircraft) await open(j.aircraft as Ident)
-      } catch { /* the search box is still there */ }
+        if (j?.aircraft) { await open(j.aircraft as Ident); return }
+        // Arriving from the map popup for an airframe the registry has never
+        // heard of (military, a fresh registration) used to land on a page
+        // with the tail in the box and no explanation at all (ship-check).
+        setNote(j?.note ?? j?.error ?? 'No aircraft found with that tail number.')
+      } catch {
+        setNote('Could not reach the aircraft registry.')
+      }
     })()
   }, [open])
 
@@ -278,6 +286,13 @@ export function FlightLog({
               No flights in the last {days} days.
               {days > archiveDays && ' The public archive only reaches back ' + archiveDays +
                 ' days — anything older would have to have been banked while the plane was saved.'}
+            </p>
+          )}
+
+          {truncated && flights && (
+            <p className="rounded-lg border border-navy-800 bg-navy-950 px-3 py-2 text-[11.5px] text-faint">
+              Showing the most recent days. The archive is a shared community feed and we read it
+              a few days at a time — {isSaved ? 'the rest fills in overnight now that this plane is saved.' : 'save this plane and we fill the rest in overnight.'}
             </p>
           )}
 
