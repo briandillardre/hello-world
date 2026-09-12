@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BRAND_URL } from './brand'
 import { notifyPrefsUrl } from './notify-token'
+import type { PushKind } from './person-notify'
 
 /**
  * ONE door for every recurring summary (Brian, Sep 11 — two evening digests
@@ -165,6 +166,8 @@ export async function deliverSummary(opts: {
   emailHtml?: (manageUrl: string | null) => string
   /** In-app path the notification opens. */
   clickPath?: string
+  /** Which per-person switch the push answers to (107). */
+  pushKind: PushKind
 }): Promise<DeliveryResult> {
   const { db, company, channels } = opts
   const clickPath = opts.clickPath ?? '/command'
@@ -179,7 +182,7 @@ export async function deliverSummary(opts: {
         // A lock screen shows ~2 lines. The full read is one tap away.
         body: opts.text.length > 240 ? `${opts.text.slice(0, 237)}…` : opts.text,
         url: clickPath,
-      })
+      }, opts.pushKind)
     } catch { /* push is best-effort */ }
   }
 

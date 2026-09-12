@@ -673,6 +673,27 @@ export const GUIDES: HelpGuide[] = [
         ),
       },
       {
+        heading: 'Your phone vs the whole company',
+        body: (
+          <>
+            <P>
+              Two different switches. The ones above are the <B>company&apos;s</B> — whether a
+              summary goes out at all, and when. <B>Settings → My phone</B> is <B>yours</B>: which
+              of them actually buzz on your device.
+            </P>
+            <P>
+              Both have to be on for a notification to reach you. Anyone can quiet their own phone,
+              whatever their role. A supervisor can set it for anyone below them on the team from
+              <B> Team → the person → the sliders button</B>.
+            </P>
+            <P>
+              New crew are quiet by default: they get theft alerts and reminders for a card they
+              ran themselves, but not the company-wide summaries until someone turns those on.
+            </P>
+          </>
+        ),
+      },
+      {
         heading: 'Pick the channel, not just the switch',
         body: (
           <>

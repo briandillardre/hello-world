@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
       subject: `${co.name ?? 'Your crew'} — still on the clock`,
       text,
       clickPath: '/logs',
+      pushKind: 'nag',
     })
     results.push({
       company: co.name ?? co.id,

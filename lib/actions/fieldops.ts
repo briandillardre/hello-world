@@ -375,11 +375,12 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     if (safety) {
       try {
         const { sendPushToCompanyPlain } = await import('@/lib/push')
+        // Safety traffic rides the alerts switch, not a summary switch.
         await sendPushToCompanyPlain(companyId, {
           title: 'Safety report',
           body: `${personName}: ${safety}`.slice(0, 240),
           url: '/logs',
-        })
+        }, 'alerts')
       } catch { /* best-effort */ }
       try {
         const { mirrorOwnerWebhook } = await import('@/lib/digest-delivery')

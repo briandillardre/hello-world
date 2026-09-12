@@ -5,6 +5,9 @@ import { getCompanySettings } from '@/lib/db/company'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { ApiKeyReveal } from '@/components/settings/ApiKeyCard'
 import { NotifyPrefsForm } from '@/components/settings/NotifyPrefsForm'
+import { PushPrefs } from '@/components/settings/PushPrefs'
+import { resolvePersonNotify } from '@/lib/person-notify'
+import { normalizeRole } from '@/lib/permissions'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
 import { resolveLogForm } from '@/lib/log-form'
@@ -37,6 +40,22 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
   // Checkout lands back here. The webhook is what actually records the
   // subscription (may lag the redirect by a few seconds) — so this banner
   // confirms the ACTION, and the card below catches up on refresh.
+  // My own phone switches (107). Everyone gets this card, including an
+  // Associate whose role has no other settings at all — nobody should need
+  // to ask permission to quiet their own phone.
+  let mine: { userId: string; prefs: ReturnType<typeof resolvePersonNotify> } | null = null
+  if (!isMock) {
+    try {
+      const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+      const { data: { user } } = await createClient().auth.getUser()
+      if (user) {
+        const { data: row } = await createServiceClient()
+          .from('profiles').select('role, notify_prefs').eq('id', user.id).eq('company_id', companyId).maybeSingle()
+        const p = row as { role: string | null; notify_prefs: unknown } | null
+        mine = { userId: user.id, prefs: resolvePersonNotify(p?.notify_prefs, normalizeRole(p?.role, 'associate')) }
+      }
+    } catch { /* the card just doesn't render */ }
+  }
   const billingReturn = searchParams?.billing
   return (
     <div className="h-full overflow-auto pb-36 md:pb-24">
@@ -59,6 +78,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
         </div>
 
         {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
+        {mine && <PushPrefs userId={mine.userId} initial={mine.prefs} whose="mine" />}
+
         <NotifyPrefsForm initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
 
         {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}

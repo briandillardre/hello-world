@@ -42,6 +42,7 @@ timezone.
 | Delivery | `lib/digest-delivery.ts` — `deliverSummary()` is the one door |
 | Dedupe | `companies.last_*_at` stamps (106) + `sentSameLocalDay()` |
 | The off switch | `/n/<token>` (signed, no login) and `Settings → Summaries` — **the same component**, `components/settings/NotifyPrefsForm.tsx` |
+| Who gets the PUSH | `profiles.notify_prefs` (107) — per person, `lib/person-notify.ts`; `Settings → My phone` and the Team row |
 
 ### The summaries
 
@@ -62,6 +63,38 @@ weekend but the two weekly emails.
 The Monday agenda and the nag both default **off**. The evening digest is the
 daily habit; a second recurring push nobody asked for is the complaint, not the
 feature. Both are one tap away in Settings for an owner who wants them.
+
+## Two switches, both have to say yes
+
+The company preferences decide **whether** a summary exists, **when** it goes,
+and whether it also emails or texts the company's alert address. The person
+preferences decide **whose phone lights up** (Brian, Sep 12: *"the push need to
+be per person and admins can go in to change this for people"*).
+
+| Push kind | What it is | Default |
+|---|---|---|
+| `alerts` | Theft, left-site, a tracker going quiet, safety reports | everyone |
+| `receipts` | Their own card's missing receipt | everyone |
+| `evening` | The evening digest | Admin · Manager · Foreman |
+| `monday` | The Monday agenda | Admin · Manager · Foreman |
+| `nag` | Still on the clock | Admin · Manager |
+
+An Associate is on the map and the clock, not the digest — so a new crew
+member's phone is quiet without anyone configuring them, while still getting a
+2 AM theft alert and the receipt for a card they personally ran.
+
+`audienceTokens()` in `lib/push.ts` is the one resolver: every company-wide
+push joins `device_tokens` to `profiles` and keeps only the devices whose owner
+wants that kind. A token whose user cannot be resolved is **dropped for
+summaries and kept for alerts** — nobody should get a digest we cannot
+attribute, and nobody should miss a theft alert over a stale join.
+
+**Who can change it:** yourself, always — including an Associate whose role has
+no other settings at all; nobody needs permission to quiet their own phone.
+Somebody else only if you outrank them (docs/ROLES.md) **and** hold the team
+ability, checked server-side in `lib/actions/person-notify.ts`. `profiles` is
+write-locked for sessions (068), so the write itself is service-role behind
+that check, and view-as is refused outright.
 
 **Money never rides the push.** `getInsightHeadlines` takes `includeMoney` and
 it is `false` for the digest and agenda, because those go to *every* registered
@@ -179,12 +212,14 @@ bug and are fixed the same way:
 
 ## Known gaps
 
-* **Preferences are per company, not per person.** Everyone on the company's
-  registered devices gets the same push. Per-person mute is the next step and
-  matters most once a company has more than one admin. The clean fix is a
-  `sendPushToRoles(companyId, msg, { requires })` that joins
-  `device_tokens.user_id → profiles.role`; that would also let the digest push
-  carry money again for the people allowed to see it.
+* **Money is still stripped from every push**, even though the audience is now
+  resolved per person and their role is right there. Restoring it would mean
+  composing two variants of the same digest (one with dollars, one without) and
+  doubling the model call — worth doing only if an owner asks why the push says
+  less than the email.
+* **Email and SMS are still per company**, addressed to `alert_email` /
+  `alert_phone`. Only the push is per person. A second admin who wants their own
+  copy of the Friday email has to be added to that address.
 * **Vercel Analytics would carry the token** if `NEXT_PUBLIC_VERCEL_ANALYTICS`
   is ever switched on — add a `beforeSend` that rewrites `/n/`, `/r/`, `/share/`
   and `/t/` URLs first. (Client error reports already scrub them: `safePath()`

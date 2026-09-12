@@ -147,7 +147,7 @@ export async function GET(req: NextRequest) {
         const msg = copyFor(rung, e, link, tz, now)
         const holder = e.cardholder_user_id ? person.get(e.cardholder_user_id) : null
 
-        await sendPushToUser(e.company_id, e.cardholder_user_id, { title: msg.title, body: msg.body, url: `/r/${e.capture_token}` }, { strict: true })
+        await sendPushToUser(e.company_id, e.cardholder_user_id, { title: msg.title, body: msg.body, url: `/r/${e.capture_token}` }, { strict: true, kind: 'receipts' })
         if (msg.sms && holder?.phone) {
           try { await sendAlertSms(String(holder.phone), `${co?.name ?? 'HammerTrack'}: ${msg.body}`); texted++ } catch { /* best-effort */ }
         }
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
           const body = `${who} hasn't snapped the ${money(e.amount)}${e.merchant ? ` ${e.merchant}` : ''} receipt from ${dayLabel(e.txn_date, tz)} — 24 hours and counting.`
           const bosses = (people ?? []).filter((p) => p.company_id === e.company_id && (p.id === e.company_id || p.role === 'admin') && p.id !== e.cardholder_user_id)
           for (const b of bosses) {
-            try { await sendPushToUser(e.company_id, b.id as string, { title: '🧾 Receipt overdue a day', body, url: '/receipts' }, { strict: true }) } catch { /* best-effort */ }
+            try { await sendPushToUser(e.company_id, b.id as string, { title: '🧾 Receipt overdue a day', body, url: '/receipts' }, { strict: true, kind: 'receipts' }) } catch { /* best-effort */ }
           }
           if (co?.alert_phone) { try { await sendAlertSms(String(co.alert_phone), `${co.name}: ${body}`) } catch { /* best-effort */ } }
           patch.escalated_at = new Date(now).toISOString()
