@@ -7675,8 +7675,14 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         <GifRecorder
           open
           onClose={() => setGifOpen(false)}
-          rangeLabel={RANGES.find((r) => r.key === range)?.label ?? 'Live'}
+          range={range}
+          ranges={RANGES}
+          onRange={(k) => handleRange(k as TimeRange)}
           companyName={brand?.companyName ?? null}
+          mapAspect={(() => {
+            const c = map.current?.getCanvas()
+            return c && c.height ? c.width / c.height : undefined
+          })()}
           grabFrameAt={async (t: number) => {
             const m = map.current
             if (!m) throw new Error('The map is not ready.')
