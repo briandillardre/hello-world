@@ -150,6 +150,9 @@ const flightToRow = (f: Flight) => ({
   // the same resolver, so the two layers cannot disagree.
   from_label: resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).label,
   to_label: resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).label,
+  // Only set when the end is confirmed — this is what airport boards query.
+  from_ident: resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).ident,
+  to_ident: resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).ident,
   departed: f.departed,
   arrived: f.arrived,
   distance_nm: f.distanceNm,
@@ -195,8 +198,11 @@ export async function getBankedFlights(
   sinceIso: string,
   withTrack = false,
 ): Promise<LoggedFlight[]> {
-  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, pattern'
-  const cols = withTrack ? `${base}, track` : base
+  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at'
+  // `pattern` carries every circuit's ground track, and the list only ever
+  // shows a count — selecting it there dragged the paths out of Postgres for
+  // up to 500 rows just to throw them away (ship-check).
+  const cols = withTrack ? `${base}, pattern, track` : base
   const { data, error } = await db
     .from('aircraft_flights')
     .select(cols)
@@ -315,4 +321,111 @@ export async function getFlights(
     // The page says so rather than showing a short list as if it were all.
     truncated,
   }
+}
+
+
+// ── Airport boards (110) ──────────────────────────────────────────────────
+
+export interface SavedAirport {
+  id: string
+  ident: string
+  name: string | null
+  label: string | null
+  lastSweptAt: string | null
+}
+
+export const MOCK_AIRPORTS: SavedAirport[] = [
+  { id: 'ap-1', ident: 'KGMU', name: 'Greenville Downtown', label: null, lastSweptAt: null },
+]
+
+interface AirportRow {
+  id: string; ident: string; name: string | null; label: string | null; last_swept_at: string | null
+}
+
+export async function getSavedAirports(companyId: string): Promise<SavedAirport[]> {
+  if (isMock) return MOCK_AIRPORTS
+  try {
+    const { createClient } = await import('../supabase-server')
+    const { data, error } = await createClient()
+      .from('airports_saved')
+      .select('id, ident, name, label, last_swept_at')
+      .eq('company_id', companyId).eq('active', true).order('ident')
+    if (error) return [] // 110 not applied yet
+    return ((data ?? []) as AirportRow[]).map((r) => ({
+      id: r.id, ident: r.ident, name: r.name, label: r.label, lastSweptAt: r.last_swept_at,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/** Every field any company watches — the sweep cron's work list. */
+export async function getAllSavedAirports(db: SupabaseClient): Promise<string[]> {
+  const { data, error } = await db.from('airports_saved').select('ident').eq('active', true)
+  if (error) return []
+  return Array.from(new Set(((data ?? []) as { ident: string }[]).map((r) => r.ident)))
+}
+
+export interface Movement extends LoggedFlight {
+  /** From this field, or into it. A local flight is both, and appears twice. */
+  kind: 'departure' | 'arrival'
+  /** The other end, as a person would read it. */
+  otherEnd: string | null
+  reg: string | null
+  typeCode: string | null
+}
+
+/**
+ * What used this field — the board.
+ *
+ * Purely a read of flights we have already derived, which is the whole point
+ * of storing the codes: a departure is a flight whose confirmed origin was
+ * here, an arrival one whose confirmed destination was. Nothing is inferred
+ * at read time.
+ */
+export async function getAirportBoard(
+  db: SupabaseClient,
+  ident: string,
+  sinceIso: string,
+  limit = 200,
+): Promise<Movement[]> {
+  const code = ident.trim().toUpperCase()
+  if (!/^[A-Z0-9]{3,4}$/.test(code)) return []
+  const cols = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, pattern, from_ident, to_ident'
+  const { data, error } = await db.from('aircraft_flights')
+    .select(cols)
+    .or(`from_ident.eq.${code},to_ident.eq.${code}`)
+    .gte('started_at', sinceIso)
+    .order('started_at', { ascending: false })
+    .limit(limit)
+  if (error) return []
+
+  const rows = (data ?? []) as unknown as (FlightRow & { from_ident: string | null; to_ident: string | null })[]
+  // One registry read for every airframe on the board, rather than one each.
+  const hexes = Array.from(new Set(rows.map((r) => r.hex)))
+  const idents = new Map<string, { reg: string | null; typeCode: string | null }>()
+  if (hexes.length) {
+    const { data: known } = await db.from('aircraft_saved')
+      .select('hex, reg, type_code').in('hex', hexes)
+    for (const k of (known ?? []) as { hex: string; reg: string | null; type_code: string | null }[]) {
+      if (!idents.has(k.hex)) idents.set(k.hex, { reg: k.reg, typeCode: k.type_code })
+    }
+  }
+
+  const out: Movement[] = []
+  for (const r of rows) {
+    const base = rowToFlight(r)
+    const id = idents.get(r.hex) ?? { reg: null, typeCode: null }
+    // A circuit that starts and ends here is both a departure and an arrival,
+    // and a board that showed it once would be lying about half of it.
+    if (r.from_ident === code) {
+      out.push({ ...base, kind: 'departure', otherEnd: r.to_label, ...id })
+    }
+    if (r.to_ident === code) {
+      out.push({ ...base, kind: 'arrival', otherEnd: r.from_label, ...id })
+    }
+  }
+  // Departures by when they left, arrivals by when they landed.
+  return out.sort((a, b) =>
+    (b.kind === 'departure' ? b.startedAt : b.endedAt) - (a.kind === 'departure' ? a.startedAt : a.endedAt))
 }

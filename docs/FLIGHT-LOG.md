@@ -140,6 +140,34 @@ Detection runs on the **full-resolution** fix stream inside `segmentFlights`
 circuit past the point the dips survive), and the result is stored on
 `aircraft_flights.pattern` by migration 109.
 
+### What the review pass caught
+
+Three of these would have shipped as silent wrong answers:
+
+* **Pressure altitude is not MSL.** Trace altitudes are `alt_baro`, referenced
+  to 29.92; field elevations are true MSL. A tenth of an inch of mercury is
+  ~100 ft, and the real flight bottoms out 81 ft under the 500 ft threshold —
+  so on an ordinary high-pressure morning the same flight detected **zero**
+  touch-and-goes. The segmenter now measures the day's offset where the
+  aircraft is known to be ON a field (`baroOffset`) and subtracts it. The
+  harness sweeps ±300 ft.
+* **A low pattern was invisible.** Helicopters and ultralights fly circuits at
+  500-700 ft AGL and never climb through a fixed 800 ft "clear" height, so
+  every lap merged into one endless dip and the whole session vanished. A dip
+  now also ends 300 ft above **its own** lowest point.
+* **A session across UTC midnight was two rows.** Pattern work was
+  concatenated blind across a stitch, so one airfield appeared twice with the
+  count split between them — and 00:00 UTC is 8 PM Eastern, which is exactly
+  when a pilot flies night landings for currency. `mergePatternWork` unions by
+  field, re-flags the seam approach as a go-around and recomputes the spread.
+
+Also: a lap that leaves to do airwork at 3,000 ft is no longer averaged in
+with the circuits (it was reporting "1,500 ft ± 866" for a pattern flown at a
+rock-steady 1,000); a single balked landing reads "1 go-around", not "1
+touch-and-go"; circuit paths are thinned to 64 points before banking; and the
+flight LIST no longer drags every circuit's ground track out of Postgres just
+to show a count.
+
 Field elevation earns its keep twice here: it is how a dip is measured, and
 it is how `departed` / `arrived` are decided now that the resolver is
 injected into the segmenter — so the two layers cannot disagree about whether
@@ -181,6 +209,35 @@ which answers the actual question ("what was it doing *here*?").
 * The line **breaks at coverage gaps** rather than drawing straight through
   them, and a "Show numbers" table gives the same data without hovering or
   reading a colour.
+
+## Airport boards
+
+`/aircraft` → **By airfield**. Migration 110.
+
+FR24 locks a field's departures past 12 hours behind a paid tier, and no free
+endpoint answers "what used KGMU today" at any price. So this is assembled
+from what the flight log already does, plus one genuinely new step:
+
+1. **Discovery** — `/api/cron/airport-board`, every 20 minutes, makes ONE
+   call per watched field to see which aircraft are near it.
+2. **Reading** — for each airframe found (skipping any already banked today),
+   the same trace → flights pipeline runs.
+3. **Filing** — flights whose *confirmed* origin or destination is that field
+   are banked with `from_ident` / `to_ident`.
+
+The board itself is then a plain query on those two columns: no upstream
+calls, instant, and a local circuit correctly appears as both a departure and
+an arrival. An ident is only ever written for a **confirmed** end — "near
+Hickory" must not put a flight on Hickory's board.
+
+**The honesty problem is bigger here than anywhere else in the log.** An empty
+board means one of two completely different things, so the page always says
+which: it shows when the field was first watched and when it was last checked,
+and the empty state distinguishes "nothing flew" from "nobody was looking yet".
+Watching a field is the same bargain as saving a plane — it starts recording
+from that moment, and there is no history before it.
+
+Capped at 10 fields per company, 60 upstream reads per sweep.
 
 ## Being a good guest
 

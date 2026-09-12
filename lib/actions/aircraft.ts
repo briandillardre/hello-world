@@ -156,3 +156,69 @@ export async function labelAircraftAction(hex: string, label: string, notes?: st
   revalidatePath('/aircraft')
   return { ok: true }
 }
+
+// ── Airport boards (110) ──────────────────────────────────────────────────
+
+/** Same bargain as saving a plane: a board fills from the day you add it. */
+const MAX_AIRPORTS = 10
+
+export async function saveAirportAction(code: string, label?: string): Promise<SaveResult> {
+  await requireEditOrThrow()
+  if (isMock) return { ok: false, error: 'Demo mode — saving airports works once signed in to your company.' }
+  await requireFeature('aircraft')
+  const perms = await getMyPermissions()
+  if (!perms.canEdit) return { ok: false, error: 'Your role can read the flight log but not add airports.' }
+  if (actionRateLimited('ac-airport', 10)) return { ok: false, error: 'Slow down a moment.' }
+
+  const { findAirport } = await import('@/lib/airports')
+  const field = findAirport(String(code ?? ''))
+  if (!field) return { ok: false, error: `No airfield called ${String(code ?? '').toUpperCase()}.` }
+
+  const companyId = await getCurrentCompanyId()
+  if (!companyId) return { ok: false, error: 'No company.' }
+
+  const { createClient, createServiceClient } = await import('@/lib/supabase-server')
+  const { data: { user } } = await createClient().auth.getUser()
+  const db = createServiceClient()
+
+  const { data: existing } = await db.from('airports_saved')
+    .select('id').eq('company_id', companyId).eq('ident', field.ident).eq('active', true).maybeSingle()
+  if (!existing) {
+    const { count } = await db.from('airports_saved')
+      .select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('active', true)
+    if ((count ?? 0) >= MAX_AIRPORTS) {
+      return { ok: false, error: `You can watch ${MAX_AIRPORTS} airfields. Remove one to add another.` }
+    }
+  }
+
+  const row = { company_id: companyId, ident: field.ident, name: field.name, label: clean(label, 60), active: true }
+  const { error } = existing
+    ? await db.from('airports_saved').update(row).eq('id', (existing as { id: string }).id)
+    : await db.from('airports_saved').insert({ ...row, created_by: user?.id ?? null })
+  if (error) {
+    console.error('saveAirport failed', error.message)
+    return { ok: false, error: error.message.includes('relation') ? 'Airport boards are still deploying — try again in a minute.' : 'Could not save that airfield.' }
+  }
+  revalidatePath('/aircraft')
+  return { ok: true }
+}
+
+export async function removeAirportAction(code: string): Promise<SaveResult> {
+  await requireEditOrThrow()
+  if (isMock) return { ok: false, error: 'Demo mode — nothing is saved.' }
+  await requireFeature('aircraft')
+  const perms = await getMyPermissions()
+  if (!perms.canEdit) return { ok: false, error: 'Your role can read the flight log but not change it.' }
+  const ident = String(code ?? '').trim().toUpperCase()
+  if (!/^[A-Z0-9]{3,4}$/.test(ident)) return { ok: false, error: 'That is not an airfield code.' }
+  const companyId = await getCurrentCompanyId()
+  if (!companyId) return { ok: false, error: 'No company.' }
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  // Soft, like planes: the movements already banked stay, so re-adding it
+  // picks the board back up rather than starting from nothing.
+  const { error } = await createServiceClient()
+    .from('airports_saved').update({ active: false }).eq('company_id', companyId).eq('ident', ident)
+  if (error) return { ok: false, error: 'Could not remove that airfield.' }
+  revalidatePath('/aircraft')
+  return { ok: true }
+}

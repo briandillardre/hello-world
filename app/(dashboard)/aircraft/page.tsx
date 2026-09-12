@@ -1,6 +1,6 @@
 import { requireFeature, getMyPermissions } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { getSavedAircraft } from '@/lib/db/aircraft'
+import { getSavedAircraft, getSavedAirports } from '@/lib/db/aircraft'
 import { ARCHIVE_DAYS } from '@/lib/aircraft-source'
 import { FlightLog } from '@/components/aircraft/FlightLog'
 
@@ -15,11 +15,14 @@ export const dynamic = 'force-dynamic'
  * answers straight away with nothing set up. Saving a plane is what makes it
  * keep going: the nightly cron banks that airframe's flights into our own
  * tables, past the point the free archive forgets them.
+ *
+ * Airport boards (110) work the same way and for the same reason — nobody
+ * publishes "what used this field", so watching one starts recording it.
  */
 export default async function AircraftPage() {
   await requireFeature('aircraft')
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
-  const saved = await getSavedAircraft(companyId)
+  const [saved, airports] = await Promise.all([getSavedAircraft(companyId), getSavedAirports(companyId)])
   return (
     <div className="h-full overflow-auto pb-36 md:pb-24">
       <div className="sticky top-0 z-10 border-b border-navy-800 bg-navy-950/95 p-4 backdrop-blur">
@@ -28,7 +31,7 @@ export default async function AircraftPage() {
           Look up any aircraft by tail number and read where it has been.
         </p>
       </div>
-      <FlightLog saved={saved} canEdit={perms.canEdit} archiveDays={ARCHIVE_DAYS} />
+      <FlightLog saved={saved} airports={airports} canEdit={perms.canEdit} archiveDays={ARCHIVE_DAYS} />
     </div>
   )
 }

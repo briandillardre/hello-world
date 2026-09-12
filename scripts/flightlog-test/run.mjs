@@ -225,7 +225,7 @@ console.log('  ' + (work ? consistencyNote(work) ?? '' : ''))
 ok('counts 4 touch-and-goes', work?.touchAndGoes === 4, String(work?.touchAndGoes))
 ok('every one of them climbed away again', work?.approaches.every((a) => a.wentAround))
 ok('each got down near the runway', work?.approaches.every((a) => a.lowestAgl < 500))
-ok('the touchdowns sit in coverage gaps', work?.approaches.every((a) => a.gapSec > 60))
+ok('each was down there for a while', work?.approaches.every((a) => a.secondsLow > 60))
 
 // The departure is not an arrival, and the cross-country is not a circuit —
 // both were false positives on the first cut.
@@ -247,6 +247,68 @@ ok('a cross-country reports no touch-and-goes',
   plain.every((f) => f.pattern.every((w) => w.touchAndGoes === 0)))
 ok('…and no field resolver means no pattern work at all',
   segmentFlights('a761fa', pd.fixes, patternDay.trace)[0].pattern.length === 0)
+
+// A high-pressure morning must not silently switch the feature off. Trace
+// altitudes are pressure altitude; field elevations are true MSL.
+for (const offset of [-200, -100, 0, 100, 200, 300]) {
+  const shifted = {
+    ...patternDay,
+    trace: patternDay.trace.map((r) => (typeof r[3] === 'number' ? [...r.slice(0, 3), r[3] + offset, ...r.slice(4)] : r)),
+  }
+  const pf = parseTrace(shifted)
+  const f = segmentFlights('a761fa', pf.fixes, shifted.trace, { fieldAt: stubField })[0]
+  const w2 = f?.pattern.find((x) => x.field.ident === 'KGRD')
+  ok(`still 4 touch-and-goes with the altimeter ${offset >= 0 ? '+' : ''}${offset} ft off`,
+    w2?.touchAndGoes === 4, String(w2?.touchAndGoes))
+}
+
+// A circuit flown low (helicopters, ultralights) never climbs through the
+// fixed clear height, and every lap used to merge into one endless dip.
+const lowPattern = (patAgl) => {
+  const base = 1_700_000_000
+  const F = FIELDS[1]
+  const trace = []
+  let t = 0
+  const at = (dLat, dLon, agl) => { trace.push([t, F.lat + dLat / 60, F.lon + dLon / 60, F.elevationFt + agl, 90, 0, 0, 0]); t += 15 }
+  at(0, 0, 40)
+  for (let lap = 0; lap < 4; lap++) {
+    at(0.3, 0, patAgl - 100); at(1.2, 0.8, patAgl); at(0.2, 1.4, patAgl)
+    at(-1.0, 1.1, patAgl - 150); at(-0.9, 0.2, patAgl - 350); at(-0.2, 0.02, 120)
+  }
+  at(2, 2, patAgl + 1500)
+  return { icao: 'a761fa', timestamp: base, trace }
+}
+for (const patAgl of [600, 700, 1000]) {
+  const lp = parseTrace(lowPattern(patAgl))
+  const f = segmentFlights('a761fa', lp.fixes, [], { fieldAt: stubField })[0]
+  const w3 = f?.pattern.find((x) => x.field.ident === 'KGRD')
+  ok(`a ${patAgl} ft pattern is still counted`, (w3?.touchAndGoes ?? 0) >= 3, String(w3?.touchAndGoes))
+}
+
+// A session across UTC midnight is ONE set of pattern work, not two rows for
+// the same field. 00:00 UTC is 8 PM Eastern — night-currency o'clock.
+const cutAt = patternDay.trace[Math.floor(patternDay.trace.length * 0.55)][0]
+const half = (from, to, base) => ({
+  icao: 'a761fa', timestamp: patternDay.timestamp + base,
+  trace: patternDay.trace.filter((r) => r[0] >= from && r[0] < to).map((r) => [r[0] - base, ...r.slice(1)]),
+})
+const straddle = flightsFromTraces(
+  [{ raw: half(cutAt, 1e9, cutAt) }, { raw: half(0, cutAt, 0) }],
+  { fieldAt: stubField },
+)
+const sf = straddle.flights[0]
+ok('a session across midnight is one flight', straddle.flights.length === 1, String(straddle.flights.length))
+ok('…with ONE entry for the field, not two',
+  sf?.pattern.filter((w) => w.field.ident === 'KGRD').length === 1,
+  JSON.stringify(sf?.pattern.map((w) => [w.field.ident, w.touchAndGoes])))
+ok('…and the seam does not eat a touch-and-go',
+  (sf?.pattern.find((w) => w.field.ident === 'KGRD')?.touchAndGoes ?? 0) >= 4,
+  String(sf?.pattern.find((w) => w.field.ident === 'KGRD')?.touchAndGoes))
+
+// A lone balked landing is a go-around, not pattern work.
+ok('one approach with no lap reads as a go-around',
+  patternSummary({ field: FIELDS[0], approaches: [{ at: 1, lowestAgl: 200, wentAround: true, secondsLow: 30 }],
+    touchAndGoes: 1, circuits: [], consistency: null }).includes('go-around'))
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed')
 process.exit(fail ? 1 : 0)

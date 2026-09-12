@@ -176,6 +176,12 @@ export interface FlightEnd {
   /** True when we can honestly say the aircraft was at an airfield here. */
   confirmed: boolean
   label: string | null
+  /**
+   * The field's identifier, and ONLY when we are confident the aircraft was
+   * actually there. Airport boards are built by querying this, so a guess
+   * would put a flight on a board it never visited.
+   */
+  ident: string | null
 }
 
 /**
@@ -187,8 +193,10 @@ export interface FlightEnd {
  */
 export function resolveEnd(lat: number, lon: number, altFt: number | null, sawGround: boolean): FlightEnd {
   const field = atField(lat, lon, sawGround ? null : altFt)
-  if (field) return { confirmed: true, label: airportLabel(field) }
+  if (field) return { confirmed: true, label: airportLabel(field), ident: field.ident }
   const near = nearestAirport(lat, lon, 12)
   const label = airportLabel(near)
-  return { confirmed: false, label: label ? `near ${label}` : null }
+  // No ident on an unconfirmed end: "near Hickory" must not put this flight
+  // on Hickory's board.
+  return { confirmed: false, label: label ? `near ${label}` : null, ident: null }
 }

@@ -63,8 +63,12 @@ export interface Approach {
    * is the landing.
    */
   wentAround: boolean
-  /** Seconds of missing data across the touchdown, if any. */
-  gapSec: number
+  /**
+   * Seconds spent below the threshold and out of sight — from the lowest fix
+   * to the next one clear of the field. Named for what it measures: with
+   * continuous coverage this is just how long the aircraft was low.
+   */
+  secondsLow: number
 }
 
 /** One lap of the pattern: the climb-out, the circuit, the next approach. */
@@ -108,6 +112,25 @@ export interface PatternOpts {
   /** Fewer than this and it is a visit, not pattern work worth summarising. */
   minApproaches?: number
   /**
+   * Feet to subtract from every altitude before comparing it to a field.
+   *
+   * Trace altitudes are `alt_baro` — PRESSURE altitude against 29.92 — while
+   * field elevations are true MSL. A tenth of an inch of mercury is about a
+   * hundred feet, so on a 30.1 day every height above the field reads ~200 ft
+   * high. The real flight this was built from bottoms out at 419 ft AGL
+   * against a 500 ft threshold: 81 feet of headroom, i.e. one ordinary
+   * high-pressure morning away from detecting nothing at all. The caller
+   * measures the offset where the aircraft is known to be ON a field.
+   */
+  baroOffsetFt?: number
+  /**
+   * A dip also ends once the aircraft has climbed this far above its own
+   * lowest point, not just above `clearAgl`. A helicopter or ultralight
+   * circuit flown at 600 ft AGL never reaches 800, so every lap of it used to
+   * merge into one endless dip and vanish.
+   */
+  climbOutFt?: number
+  /**
    * A lap that strays further than this from the field is not a lap — it is
    * a departure and a return with a cross-country in between. Without it,
    * "GMU → Greenwood → GMU" reported the whole 78-minute trip as one circuit
@@ -124,6 +147,18 @@ const DEFAULTS: Required<PatternOpts> = {
   withinNm: 3,
   minApproaches: 2,
   lapMaxNm: 5,
+  baroOffsetFt: 0,
+  climbOutFt: 300,
+}
+
+/** Evenly thin a path, always keeping its first and last point. */
+function thin<T>(xs: T[], max: number): T[] {
+  if (xs.length <= max || max < 2) return xs
+  const out: T[] = []
+  const step = (xs.length - 1) / (max - 1)
+  for (let i = 0; i < max - 1; i++) out.push(xs[Math.round(i * step)])
+  out.push(xs[xs.length - 1])
+  return out
 }
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
@@ -166,7 +201,7 @@ export function findPatternWork(
     // A feed-reported ground fix IS the runway.
     if (alt == null) return 0
     if (nm(pts[i].lat, pts[i].lon, field.lat, field.lon) > o.withinNm) return null
-    return alt - field.elevationFt
+    return alt - o.baroOffsetFt - field.elevationFt
   }
 
   // ── Dips, with hysteresis so a wobble on final is not two arrivals ──────
@@ -180,13 +215,12 @@ export function findPatternWork(
     // touch-and-go at the airport it left from.
     if (low.fromIdx === 0) { low = null; return }
     const entry = byField.get(low.field.ident) ?? { field: low.field, approaches: [] }
-    const gapSec = nextIdx != null ? pts[nextIdx].t - pts[low.bestIdx].t : 0
     entry.approaches.push({
       at: pts[low.bestIdx].t,
       lowestAgl: Math.round(low.bestAgl),
-      // Filled in below, once we know whether the flight continued.
+      // No next fix means the track ends here: that is the landing.
       wentAround: nextIdx != null,
-      gapSec: Math.round(gapSec),
+      secondsLow: nextIdx != null ? Math.round(pts[nextIdx].t - pts[low.bestIdx].t) : 0,
     })
     byField.set(low.field.ident, entry)
     low = null
@@ -200,16 +234,16 @@ export function findPatternWork(
       else if (agl < low.bestAgl) { low.bestIdx = i; low.bestAgl = agl }
       continue
     }
-    // Climbed clear (or left the field): that dip is over.
-    if (low && (agl == null || agl > o.clearAgl)) closeDip(i)
+    // Climbed clear (or left the field): that dip is over. "Clear" is
+    // whichever comes first — a fixed circuit height, or 300 ft above this
+    // dip's own bottom, so a low pattern still separates into laps.
+    if (low && (agl == null || agl > o.clearAgl || agl > low.bestAgl + o.climbOutFt)) closeDip(i)
   }
-  // A dip still open at the end of the track is the landing, not a go-around.
-  if (low) {
-    const entry = byField.get(low.field.ident) ?? { field: low.field, approaches: [] }
-    entry.approaches.push({ at: pts[low.bestIdx].t, lowestAgl: Math.round(low.bestAgl), wentAround: false, gapSec: 0 })
-    byField.set(low.field.ident, entry)
-    low = null
-  }
+  // A dip still open at the end of the track is the landing, not a go-around
+  // — but it goes through the same door, so it cannot skip the take-off rule
+  // (a fragment that starts low and never climbs was logging its DEPARTURE
+  // as a landing).
+  closeDip(null)
 
   // ── Turn the dips into laps, and the laps into a consistency read ───────
   const out: PatternWork[] = []
@@ -225,33 +259,42 @@ export function findPatternWork(
       const widthNm = Math.max(...lap.map((f) => nm(f.lat, f.lon, field.lat, field.lon)))
       // Left the circuit: these two arrivals are separate visits, not laps.
       if (widthNm > o.lapMaxNm) continue
-      const alts = lap.map((f) => (f.altFt ?? field.elevationFt) - field.elevationFt)
+      const alts = lap.map((f) => (f.altFt ?? field.elevationFt) - o.baroOffsetFt - field.elevationFt)
+      const patternAgl = Math.round(Math.max(...alts))
+      // Nor is going away to do airwork at 3,000 ft and coming back. One
+      // excursion between two landings used to drag the whole consistency
+      // line with it — "1,500 ft ± 866" for a pattern flown at a rock-steady
+      // 1,000.
+      if (patternAgl > 2500) continue
       circuits.push({
         startedAt: from,
         endedAt: to,
         durationSec: to - from,
-        patternAgl: Math.round(Math.max(...alts)),
+        patternAgl,
         widthNm: Math.round(widthNm * 100) / 100,
-        path: lap.map((f) => ({ lat: f.lat, lon: f.lon })),
+        // Thinned before it is ever stored: this is drawn in a 260 px box, and
+        // a flight school doing ten 1 Hz laps would otherwise bank ~120 KB of
+        // path per flight and drag it through every list query.
+        path: thin(lap.map((f) => ({ lat: f.lat, lon: f.lon })), 64),
       })
     }
 
-    const aglList = circuits.map((c) => c.patternAgl)
-    const durList = circuits.map((c) => c.durationSec)
-    const widthList = circuits.map((c) => c.widthNm)
+    // Drop a lap that took far longer than its siblings — the same excursion
+    // seen from the clock rather than the altimeter.
+    if (circuits.length >= 3) {
+      const sorted = circuits.map((c) => c.durationSec).sort((a, b) => a - b)
+      const median = sorted[Math.floor(sorted.length / 2)]
+      for (let i = circuits.length - 1; i >= 0; i--) {
+        if (circuits[i].durationSec > median * 2.5) circuits.splice(i, 1)
+      }
+    }
+
     out.push({
       field,
       approaches,
       touchAndGoes: approaches.filter((a: Approach) => a.wentAround).length,
       circuits,
-      consistency: circuits.length >= 2 ? {
-        patternAglMean: Math.round(mean(aglList)),
-        patternAglSpread: Math.round(spread(aglList)),
-        durationMeanSec: Math.round(mean(durList)),
-        durationSpreadSec: Math.round(spread(durList)),
-        widthMeanNm: Math.round(mean(widthList) * 100) / 100,
-        widthSpreadNm: Math.round(spread(widthList) * 100) / 100,
-      } : null,
+      consistency: summarise(circuits),
     })
   }
   return out.sort((a, b) => b.approaches.length - a.approaches.length)
@@ -262,8 +305,14 @@ export function patternSummary(p: PatternWork): string {
   const n = p.touchAndGoes
   const where = p.field.name || p.field.ident
   if (n <= 0) return `Pattern work at ${where}`
+  // One approach that climbed away, with no lap after it, is a balked landing
+  // or a missed approach — not pattern work, and this is somebody's logbook.
+  if (n === 1 && p.circuits.length === 0) return `1 go-around at ${where}`
   return `${n} touch-and-go${n === 1 ? '' : 'es'} at ${where}`
 }
+
+/** True when this is worth showing as pattern work at all. */
+export const isPatternWork = (p: PatternWork): boolean => p.touchAndGoes >= 2 || p.circuits.length > 0
 
 /**
  * How tight the laps were, in words. Deliberately not a grade out of ten —
@@ -274,4 +323,55 @@ export function consistencyNote(p: PatternWork): string | null {
   if (!c) return null
   const mm = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
   return `Pattern altitude held within ${c.patternAglSpread} ft of ${c.patternAglMean.toLocaleString()} ft AGL · laps ${mm(c.durationMeanSec)} ± ${Math.round(c.durationSpreadSec)}s · downwind ${c.widthMeanNm.toFixed(1)} ± ${c.widthSpreadNm.toFixed(1)} nm`
+}
+
+
+/**
+ * Join the pattern work of two halves of one flight.
+ *
+ * `stitchFlights` merges every other field of a midnight-crossing flight
+ * semantically — distance re-added across the seam, altitudes maxed — but
+ * pattern work was concatenated blind, so the same airfield appeared twice in
+ * one flight: two rows reading "1 touch-and-go at Greenwood County" and
+ * "2 touch-and-goes at Greenwood County", duplicate React keys, and a count
+ * short by the approach that fell on the seam.
+ *
+ * 00:00 UTC is 8 PM Eastern — the exact hour a pilot flies night landings for
+ * currency, so this is the normal case for night pattern work.
+ */
+export function mergePatternWork(a: PatternWork[], b: PatternWork[]): PatternWork[] {
+  const byField = new Map<string, PatternWork>()
+  for (const w of [...a, ...b]) {
+    const prev = byField.get(w.field.ident)
+    if (!prev) { byField.set(w.field.ident, { ...w, approaches: [...w.approaches], circuits: [...w.circuits] }); continue }
+    const approaches = [...prev.approaches, ...w.approaches].sort((x, y) => x.at - y.at)
+    // The last approach of the earlier half is not a landing — the flight
+    // demonstrably carried on into the later half.
+    for (let i = 0; i < approaches.length - 1; i++) approaches[i] = { ...approaches[i], wentAround: true }
+    const circuits = [...prev.circuits, ...w.circuits].sort((x, y) => x.startedAt - y.startedAt)
+    byField.set(w.field.ident, {
+      ...prev,
+      approaches,
+      circuits,
+      touchAndGoes: approaches.filter((x) => x.wentAround).length,
+      consistency: summarise(circuits),
+    })
+  }
+  return Array.from(byField.values()).sort((x, y) => y.approaches.length - x.approaches.length)
+}
+
+/** The spread across a set of laps — shared by detection and merging. */
+export function summarise(circuits: Circuit[]): PatternWork['consistency'] {
+  if (circuits.length < 2) return null
+  const agl = circuits.map((c) => c.patternAgl)
+  const dur = circuits.map((c) => c.durationSec)
+  const wid = circuits.map((c) => c.widthNm)
+  return {
+    patternAglMean: Math.round(mean(agl)),
+    patternAglSpread: Math.round(spread(agl)),
+    durationMeanSec: Math.round(mean(dur)),
+    durationSpreadSec: Math.round(spread(dur)),
+    widthMeanNm: Math.round(mean(wid) * 100) / 100,
+    widthSpreadNm: Math.round(spread(wid) * 100) / 100,
+  }
 }
