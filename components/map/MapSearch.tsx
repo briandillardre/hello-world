@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Mic, X, Hexagon } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Search, Mic, X, Hexagon, Plane, TowerControl } from 'lucide-react'
 import type { AssetType } from '@/lib/types'
 
 /**
@@ -22,6 +23,37 @@ export interface SearchItem {
   color?: string
   /** e.g. "on site now" / "last seen 3h ago" */
   sub?: string
+}
+
+/**
+ * An aircraft or airfield the flight log knows about.
+ *
+ * Brian typed a tail number into this box (the obvious place to type one) and
+ * got "N5 2LD, London" — the geocoder happily reading N575LD as a British
+ * postcode. A registration is not an address, so it is answered here and
+ * ranked ABOVE every address hit.
+ */
+export interface AeroHit {
+  kind: 'aircraft' | 'airfield'
+  /** Where tapping it goes: a tail number, or a field's code. */
+  q: string
+  name: string
+  sub: string
+}
+
+/**
+ * Is this worth asking the flight log about? Only shapes that could BE an
+ * aircraft or a field — otherwise every keystroke of "Greenville" would hit
+ * our own API for nothing.
+ */
+export function looksAeronautical(raw: string): boolean {
+  const s = raw.trim().toUpperCase()
+  if (s.length < 3 || s.length > 12) return false
+  if (/^[A-Z0-9]{3,4}$/.test(s)) return true                       // KGMU, GMU
+  if (/^[A-Z0-9]{3,4}\s*(?:-|–|>|TO)\s*[A-Z0-9]{3,4}$/.test(s)) return true // GMU-CLT
+  // A registration: letters and digits, and it must contain a digit —
+  // "GREENVILLE" is a place, "N575LD" is an aeroplane.
+  return /^[A-Z]{1,2}-?[0-9][A-Z0-9-]{0,7}$/.test(s)
 }
 
 /** A geocoded address hit (Photon — same free geocoder the server uses). */
@@ -50,7 +82,7 @@ function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
 }
 
-export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false }: {
+export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false, flightLog = false }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
   /** Address hit chosen — fly the camera there (Brian, Aug 22: search finds
@@ -68,7 +100,11 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   /** No trigger of its own: opens on the 'ht:open-search' window event (the
    *  rail's search button) as a top-center overlay with a dim backdrop. */
   overlay?: boolean
+  /** Caller holds the flight-log view level — a tail number or field code
+   *  answers with the aircraft instead of a same-looking postcode. */
+  flightLog?: boolean
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   // Overlay mode: the rail button is the trigger.
   useEffect(() => {
@@ -132,6 +168,47 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   }, [q, biasLat, biasLng, placesOn])
   useEffect(() => { if (!open) setPlaces([]) }, [open])
 
+  // Aircraft + airfields. Only fires on text that could BE one, so typing an
+  // address never touches this, and the answer is ranked above the geocoder's
+  // — "N575LD" is a Cirrus, not a London postcode.
+  const [aero, setAero] = useState<AeroHit[]>([])
+  useEffect(() => {
+    if (!flightLog) return
+    const s = q.trim()
+    if (!looksAeronautical(s)) { setAero([]); return }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      fetch(`/api/aircraft/search?q=${encodeURIComponent(s)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!j) { setAero([]); return }
+          if (j.kind === 'aircraft' && j.aircraft?.hex) {
+            const a = j.aircraft
+            setAero([{
+              kind: 'aircraft',
+              q: a.reg || a.hex,
+              name: a.reg || String(a.hex).toUpperCase(),
+              sub: [a.desc, a.owner].filter(Boolean).join(' · ') || 'aircraft',
+            }])
+          } else if (j.kind === 'airport' && j.field?.ident) {
+            setAero([{ kind: 'airfield', q: j.field.ident, name: j.field.name || j.field.ident, sub: `${j.field.ident} · airfield` }])
+          } else if (j.kind === 'route' && j.from?.ident && j.to?.ident) {
+            setAero([{ kind: 'airfield', q: `${j.from.ident}-${j.to.ident}`, name: `${j.from.ident} → ${j.to.ident}`, sub: 'flights on this route' }])
+          } else setAero([])
+        })
+        .catch(() => { /* flight log unreachable — the rest of search is fine */ })
+    }, 350)
+    return () => { clearTimeout(t); ctrl.abort() }
+  }, [q, flightLog])
+  useEffect(() => { if (!open) setAero([]) }, [open])
+
+  const pickAero = (h: AeroHit) => {
+    setQ('')
+    setOpen(false)
+    recRef.current?.stop()
+    router.push(`/aircraft?tail=${encodeURIComponent(h.q)}`)
+  }
+
   const pickPlace = (p: PlaceHit) => {
     onPickPlaceRef.current?.(p)
     setQ('')
@@ -175,14 +252,15 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   // One keyboard list across fleet matches AND address rows — typing an
   // address usually means ZERO fleet matches, and Enter must still work
   // (ship-check P1).
-  const totalRows = matches.length + places.length
+  const totalRows = matches.length + aero.length + places.length
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.max(0, Math.min(h + 1, totalRows - 1))) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)) }
     else if (e.key === 'Enter') {
       e.preventDefault()
       if (hi < matches.length && matches[hi]) pick(matches[hi])
-      else if (places[hi - matches.length]) pickPlace(places[hi - matches.length])
+      else if (aero[hi - matches.length]) pickAero(aero[hi - matches.length])
+      else if (places[hi - matches.length - aero.length]) pickPlace(places[hi - matches.length - aero.length])
     }
     else if (e.key === 'Escape') { setOpen(false); setQ('') }
   }
@@ -239,7 +317,7 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
           Listening… say an asset or zone name
         </p>
       )}
-      {(matches.length > 0 || places.length > 0) && (
+      {(matches.length > 0 || aero.length > 0 || places.length > 0) && (
         <ul className="mt-1.5 rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           {matches.map((it, i) => (
             <li key={`${it.kind}-${it.id}`}>
@@ -261,12 +339,34 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
               </button>
             </li>
           ))}
+          {/* Aircraft and airfields sit ABOVE addresses: a tail number that
+              also reads as a postcode is an aeroplane. */}
+          {aero.map((h, i) => (
+            <li key={`aero-${h.kind}-${h.q}`}>
+              <button
+                onMouseDown={(e) => { e.preventDefault(); pickAero(h) }}
+                onMouseEnter={() => setHi(matches.length + i)}
+                className={'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ' + (matches.length + i === hi ? 'bg-navy-800' : '')}
+              >
+                {h.kind === 'aircraft'
+                  ? <Plane className="h-4 w-4 flex-none text-amber" />
+                  : <TowerControl className="h-4 w-4 flex-none text-teal" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] text-ink truncate">{h.name}</span>
+                  <span className="block font-mono text-[10px] text-faint truncate">{h.sub}</span>
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wide text-faint flex-none">
+                  {h.kind === 'aircraft' ? 'flight log' : 'airfield'}
+                </span>
+              </button>
+            </li>
+          ))}
           {onPickPlace && places.map((p, i) => (
             <li key={`place-${i}-${p.lat}-${p.lng}`}>
               <button
                 onMouseDown={(e) => { e.preventDefault(); pickPlace(p) }}
-                onMouseEnter={() => setHi(matches.length + i)}
-                className={'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ' + (matches.length + i === hi ? 'bg-navy-800' : '')}
+                onMouseEnter={() => setHi(matches.length + aero.length + i)}
+                className={'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ' + (matches.length + aero.length + i === hi ? 'bg-navy-800' : '')}
               >
                 <span className="text-base flex-none">📍</span>
                 <span className="min-w-0 flex-1">

@@ -241,6 +241,20 @@ like an airport code (N92 is both a tail number and a New Jersey field), and
 someone typing into a flight log means the aeroplane. A field the company is
 not watching still opens — with a line saying nobody is recording it yet.
 
+### …including the map's search bar
+
+Brian typed `N575ld` into the map's find-anything box — the obvious place to
+type a tail number — and got **"N5 2LD, London"**, the geocoder happily
+reading a registration as a British postcode.
+
+`MapSearch` now asks the flight log too, and ranks aircraft and airfields
+**above** every address hit, because a tail number that also looks like a
+postcode is an aeroplane. It only asks when the text could BE one
+(`looksAeronautical`: an airfield code, a route, or letters-with-a-digit) —
+verified that "Greenville", "Woodruff Road" and "Chevy" make zero calls to
+our API. Picking the row opens that aircraft's log or that field's board.
+Hidden entirely for a role without the `aircraft` view level.
+
 ## Airport boards
 
 `/aircraft` → **By airfield**. Migration 110.
