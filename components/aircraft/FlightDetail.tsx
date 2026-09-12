@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { Fix } from '@/lib/aircraft-log'
+import type { PatternWork } from '@/lib/pattern'
+import { PatternCard } from './PatternCard'
 import { FlightProfile } from './FlightProfile'
 import type { FlightRow } from './FlightLog'
 
@@ -13,15 +15,17 @@ import type { FlightRow } from './FlightLog'
  */
 export function FlightDetail({ flight }: { flight: FlightRow }) {
   const [track, setTrack] = useState<Fix[] | null>(null)
+  const [pattern, setPattern] = useState<PatternWork[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
-    setTrack(null); setError(null)
+    setTrack(null); setPattern([]); setError(null)
     fetch(`/api/aircraft/flight?id=${encodeURIComponent(flight.id)}`)
       .then((r) => r.json())
       .then((j) => {
         if (!live) return
+        setPattern(Array.isArray(j?.flight?.pattern) ? (j.flight.pattern as PatternWork[]) : [])
         if (j?.flight?.track?.length) setTrack(j.flight.track as Fix[])
         else setError('No track was recorded for this flight.')
       })
@@ -40,7 +44,13 @@ export function FlightDetail({ flight }: { flight: FlightRow }) {
       {track && (
         <>
           <PlanView track={track} />
-          <FlightProfile track={track} />
+          {/* Circuits before the profile charts: on a flight with pattern
+              work, "how were the laps" is the question, and the altitude
+              trace is just four sawteeth until you know that. */}
+          {pattern.filter((w) => w.circuits.length > 0).map((w) => (
+            <PatternCard key={w.field.ident} work={w} />
+          ))}
+          <FlightProfile track={track} touchdowns={pattern.flatMap((w) => w.approaches.map((a) => a.at))} />
         </>
       )}
     </div>

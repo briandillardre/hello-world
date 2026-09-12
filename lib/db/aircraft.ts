@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { flightsFromTraces, stitchFlights, type Flight } from '../aircraft-log'
-import { resolveEnd } from '../airports'
+import { resolveEnd, nearestAirport } from '../airports'
+import type { PatternWork } from '../pattern'
 import { ARCHIVE_DAYS, availableDays, fetchTraceDays, utcDay } from '../aircraft-source'
 
 /**
@@ -14,6 +15,16 @@ import { ARCHIVE_DAYS, availableDays, fetchTraceDays, utcDay } from '../aircraft
  * not already hold, so a saved plane's log gets cheaper the longer you keep
  * it and a plane nobody saved still answers instantly for the last month.
  */
+
+/**
+ * The airfield a position is over — handed to the segmenter so it can spot
+ * touch-and-goes. Kept here (not in the pure core) because it needs the
+ * bundled airport table.
+ */
+export const fieldAt = (lat: number, lon: number) => {
+  const a = nearestAirport(lat, lon, 3)
+  return a ? { ident: a.ident, name: a.name, lat: a.lat, lon: a.lon, elevationFt: a.elevationFt } : null
+}
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -85,6 +96,7 @@ interface FlightRow {
   fix_count: number; track: unknown; open_ended: boolean
   departed: boolean | null; arrived: boolean | null
   banked_at: string | null
+  pattern: unknown
 }
 
 /** A flight as the API hands it out: our Flight plus where it was banked. */
@@ -115,6 +127,7 @@ const rowToFlight = (r: FlightRow): LoggedFlight => ({
   // which is what they were assumed to be when they were written.
   departed: r.departed ?? true,
   arrived: r.arrived ?? true,
+  pattern: Array.isArray(r.pattern) ? (r.pattern as PatternWork[]) : [],
   track: Array.isArray(r.track) ? (r.track as Flight['track']) : [],
   banked: true,
   fromLabel: r.from_label,
@@ -132,19 +145,19 @@ const flightToRow = (f: Flight) => ({
   from_lat: f.from.lat, from_lng: f.from.lon,
   to_lat: f.to.lat, to_lng: f.to.lon,
   // Named once, at bank time — the airfield a flight left from does not
-  // change, and this saves 48k-row lookups on every page view. The airport
-  // lookup also UPGRADES departed/arrived: a light aircraft at a small field
-  // never sends the ground flag, so field elevation is what proves it flew
-  // from there rather than appearing mid-air.
+  // change, and this saves 48k-row lookups on every page view. `departed` /
+  // `arrived` already account for field elevation: the segmenter is handed
+  // the same resolver, so the two layers cannot disagree.
   from_label: resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).label,
   to_label: resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).label,
-  departed: f.departed || resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).confirmed,
-  arrived: f.arrived || resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).confirmed,
+  departed: f.departed,
+  arrived: f.arrived,
   distance_nm: f.distanceNm,
   max_alt_ft: f.maxAltFt,
   max_gs_kt: f.maxGsKt,
   fix_count: f.fixCount,
   track: f.track,
+  pattern: f.pattern,
   open_ended: f.openEnd,
   banked_at: new Date().toISOString(),
 })
@@ -182,7 +195,7 @@ export async function getBankedFlights(
   sinceIso: string,
   withTrack = false,
 ): Promise<LoggedFlight[]> {
-  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at'
+  const base = 'id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, pattern'
   const cols = withTrack ? `${base}, track` : base
   const { data, error } = await db
     .from('aircraft_flights')
@@ -199,7 +212,7 @@ export async function getBankedFlights(
 export async function getBankedFlight(db: SupabaseClient, id: string): Promise<LoggedFlight | null> {
   const { data, error } = await db
     .from('aircraft_flights')
-    .select('id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, track')
+    .select('id, hex, callsign, started_at, ended_at, duration_sec, from_lat, from_lng, to_lat, to_lng, from_label, to_label, distance_nm, max_alt_ft, max_gs_kt, fix_count, open_ended, departed, arrived, banked_at, pattern, track')
     .eq('id', id)
     .maybeSingle()
   if (error || !data) return null
@@ -259,7 +272,7 @@ export async function getFlights(
   let fresh: Flight[] = []
   if (live.length) {
     const traces = await fetchTraceDays(hex, live, now)
-    fresh = flightsFromTraces(traces).flights
+    fresh = flightsFromTraces(traces, { fieldAt }).flights
   }
 
   // Same flight from both sides = the banked one, which the cron may have
@@ -272,8 +285,6 @@ export async function getFlights(
     const b = resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived)
     byId.set(f.id, {
       ...f,
-      departed: f.departed || a.confirmed,
-      arrived: f.arrived || b.confirmed,
       banked: false,
       fromLabel: a.label,
       toLabel: b.label,

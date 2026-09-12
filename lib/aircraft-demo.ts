@@ -1,6 +1,8 @@
 import type { Fix, Flight } from './aircraft-log'
 import { haversineNm } from './aircraft-log'
-import { resolveEnd } from './airports'
+import { resolveEnd, findAirport } from './airports'
+import { findPatternWork } from './pattern'
+import { fieldAt } from './db/aircraft'
 
 /**
  * A believable flight log for demo mode (no env vars, no signed-in company).
@@ -66,12 +68,109 @@ function buildTrack(leg: Leg, startSec: number, durationSec: number): Fix[] {
   return out
 }
 
+/**
+ * A training flight: out to another field, a handful of touch-and-goes, home
+ * again — the shape Brian described. Generated, like the rest of the demo,
+ * but flown with a real pattern so the circuits card has something to draw.
+ */
+function patternLeg(startedAt: number): Fix[] {
+  const gmu = findAirport('KGMU')
+  const grd = findAirport('KGRD')
+  if (!gmu || !grd) return []
+  const out: Fix[] = []
+  let t = startedAt
+  const push = (lat: number, lon: number, altFt: number, gsKt: number) => {
+    const prev = out[out.length - 1]
+    const vs = prev && prev.altFt != null ? Math.round(((altFt - prev.altFt) / 12) * 60) : 0
+    out.push({ t, lat, lon, altFt: Math.round(altFt), gsKt, trackDeg: null, vsFpm: vs })
+    t += 12
+  }
+  // Climb out of the home field and run down to the training field.
+  const legN = 90
+  for (let i = 0; i < legN; i++) {
+    const k = i / (legN - 1)
+    push(gmu.lat + (grd.lat - gmu.lat) * k, gmu.lon + (grd.lon - gmu.lon) * k,
+      Math.min(3400, gmu.elevationFt + 60 + k * 6000) - (k > 0.75 ? (k - 0.75) * 7000 : 0), 120)
+  }
+  // Four laps: a rectangle around the field, down to the numbers each time.
+  const nmLat = 1 / 60
+  const nmLon = nmLat / Math.cos((grd.lat * Math.PI) / 180)
+  for (let lap = 0; lap < 4; lap++) {
+    // Slight, believable variation lap to lap — nobody flies it identically.
+    const wobble = [0, 0.06, -0.05, 0.03][lap]
+    const pat = grd.elevationFt + 900 + [0, 25, -15, 10][lap]
+    const box: [number, number, number][] = [
+      [0.15, 0.0, grd.elevationFt + 380],                    // over the numbers
+      [0.9, 0.0, pat - 200],                                  // upwind climb
+      [1.3, 0.55 + wobble, pat],                              // crosswind
+      [0.2, 1.0 + wobble, pat],                               // downwind
+      [-0.9, 0.9 + wobble, pat],                              // base turn
+      [-1.1, 0.25, pat - 350],                                // base
+      [-0.4, 0.02, grd.elevationFt + 700],                    // final
+    ]
+    for (const [dLat, dLon, alt] of box) {
+      // Ten fixes a side so the circuit reads as a curve, not a triangle.
+      const prev = out[out.length - 1]
+      const toLat = grd.lat + dLat * nmLat * 2
+      const toLon = grd.lon + dLon * nmLon * 2
+      for (let i = 1; i <= 8; i++) {
+        const k = i / 8
+        push(prev.lat + (toLat - prev.lat) * k, prev.lon + (toLon - prev.lon) * k,
+          (prev.altFt ?? alt) + (alt - (prev.altFt ?? alt)) * k, 95)
+      }
+    }
+  }
+  // Home.
+  for (let i = 0; i < legN; i++) {
+    const k = i / (legN - 1)
+    push(grd.lat + (gmu.lat - grd.lat) * k, grd.lon + (gmu.lon - grd.lon) * k,
+      Math.min(2900, grd.elevationFt + 60 + k * 6000) - (k > 0.75 ? (k - 0.75) * 6500 : 0), 118)
+  }
+  return out
+}
+
 export function demoFlights(now = new Date()): (Flight & { fromLabel: string | null; toLabel: string | null })[] {
   // Anchored to UTC days, not local ones: ids built with setHours() shifted
   // under a page left open across local midnight (or a DST change), and the
   // detail fetch then missed its own flight (ship-check, Sep 12).
   const todayUtc = Math.floor(now.getTime() / 86_400_000) * 86_400_000
-  return LEGS.map((leg) => {
+
+  // The training flight, built first so it sorts in with the rest.
+  const trainStart = Math.round((todayUtc - 2 * 86_400_000) / 1000) + 14 * 3600
+  const trainTrack = patternLeg(trainStart)
+  const training: (Flight & { fromLabel: string | null; toLabel: string | null })[] = []
+  if (trainTrack.length > 10) {
+    const last = trainTrack[trainTrack.length - 1]
+    const gmuLabel = resolveEnd(trainTrack[0].lat, trainTrack[0].lon, null, true).label
+    let dist = 0
+    for (let i = 1; i < trainTrack.length; i++) {
+      dist += haversineNm(trainTrack[i - 1].lat, trainTrack[i - 1].lon, trainTrack[i].lat, trainTrack[i].lon)
+    }
+    training.push({
+      id: `${DEMO_HEX}-${trainStart}`,
+      hex: DEMO_HEX,
+      callsign: 'DEMO04',
+      startedAt: trainStart,
+      endedAt: last.t,
+      durationSec: last.t - trainStart,
+      from: { lat: trainTrack[0].lat, lon: trainTrack[0].lon },
+      to: { lat: last.lat, lon: last.lon },
+      distanceNm: Math.round(dist * 10) / 10,
+      maxAltFt: Math.max(...trainTrack.map((f) => f.altFt ?? 0)),
+      maxGsKt: Math.max(...trainTrack.map((f) => f.gsKt ?? 0)),
+      fixCount: trainTrack.length,
+      openStart: false,
+      openEnd: false,
+      departed: true,
+      arrived: true,
+      pattern: findPatternWork(trainTrack, fieldAt),
+      track: trainTrack,
+      fromLabel: gmuLabel,
+      toLabel: gmuLabel,
+    })
+  }
+
+  return training.concat(LEGS.map((leg) => {
     const startedAt = Math.round((todayUtc - leg.daysAgo * 86_400_000) / 1000) + leg.hour * 3600
     const nm = haversineNm(leg.fromLat, leg.fromLon, leg.toLat, leg.toLon)
     const durationSec = Math.round((nm / leg.cruiseKt) * 3600 + 900)
@@ -93,9 +192,10 @@ export function demoFlights(now = new Date()): (Flight & { fromLabel: string | n
       openEnd: false,
       departed: true,
       arrived: true,
+      pattern: [],
       track,
       fromLabel: resolveEnd(leg.fromLat, leg.fromLon, null, true).label,
       toLabel: resolveEnd(leg.toLat, leg.toLon, null, true).label,
     }
-  }).sort((a, b) => b.startedAt - a.startedAt)
+  })).sort((a, b) => b.startedAt - a.startedAt)
 }

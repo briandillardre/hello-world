@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { flightsFromTraces } from '@/lib/aircraft-log'
 import { availableDays, fetchTraceDays, lookupAircraft, utcDay } from '@/lib/aircraft-source'
-import { bankFlights, getAllSavedHexes, getBankedFlights } from '@/lib/db/aircraft'
+import { bankFlights, getAllSavedHexes, getBankedFlights, fieldAt } from '@/lib/db/aircraft'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
         utcDay(new Date(Date.parse(`${d}T00:00:00Z`) - 86_400_000)),
       ]))).sort().reverse()
       const traces = await fetchTraceDays(hex, withPredecessors, now)
-      const { ident, flights } = flightsFromTraces(traces)
+      const { ident, flights } = flightsFromTraces(traces, { fieldAt })
       const { written: wrote, failed } = await bankFlights(db, flights)
 
       const newest = flights.reduce((m, f) => Math.max(m, f.endedAt), 0)

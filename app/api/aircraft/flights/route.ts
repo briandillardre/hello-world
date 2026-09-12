@@ -25,7 +25,12 @@ export async function GET(req: NextRequest) {
   if (isMock) {
     const { demoFlights } = await import('@/lib/aircraft-demo')
     return NextResponse.json({
-      flights: demoFlights().map(({ track, ...rest }) => ({ ...rest, banked: true, hasTrack: track.length > 0 })),
+      flights: demoFlights().map(({ track, pattern, ...rest }) => ({
+        ...rest,
+        banked: true,
+        hasTrack: track.length > 0,
+        pattern: pattern.map((w) => ({ field: w.field.name || w.field.ident, touchAndGoes: w.touchAndGoes })),
+      })),
       archiveDays: ARCHIVE_DAYS,
       demo: true,
     })
@@ -50,7 +55,13 @@ export async function GET(req: NextRequest) {
 
     const res = await getFlights(db, hex, days)
     return NextResponse.json({
-      flights: res.flights.map(({ track, ...rest }) => ({ ...rest, hasTrack: track.length > 0 })),
+      flights: res.flights.map(({ track, pattern, ...rest }) => ({
+        ...rest,
+        hasTrack: track.length > 0,
+        // Just the counts on the list — the circuits themselves are megabytes
+        // and only the opened flight needs them.
+        pattern: pattern.map((w) => ({ field: w.field.name || w.field.ident, touchAndGoes: w.touchAndGoes })),
+      })),
       archiveDays: ARCHIVE_DAYS,
       // Only meaningful for a plane we are actually keeping; for anyone else
       // it would answer "has someone else banked this?".

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getBankedFlight } from '@/lib/db/aircraft'
+import { getBankedFlight, fieldAt } from '@/lib/db/aircraft'
 import { fetchTraceDays, utcDay } from '@/lib/aircraft-source'
 import { flightsFromTraces } from '@/lib/aircraft-log'
 import { guard, safeHex, isMock } from '../_guard'
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const day = utcDay(new Date(startedAt * 1000))
     const around = [-1, 0, 1].map((d) => utcDay(new Date((startedAt + d * 86_400) * 1000)))
     const traces = await fetchTraceDays(hex, Array.from(new Set([day, ...around])))
-    const flight = flightsFromTraces(traces).flights.find((f) => f.id === id) ?? null
+    const flight = flightsFromTraces(traces, { fieldAt }).flights.find((f) => f.id === id) ?? null
     return NextResponse.json({ flight })
   } catch {
     return NextResponse.json({ error: 'Could not read that flight.' }, { status: 503 })
