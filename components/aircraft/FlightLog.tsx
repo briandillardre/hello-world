@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState, useTransition } from 'react'
 import { Plane, Search, Star, StarOff, Loader2, ChevronRight, X, Repeat } from 'lucide-react'
 import { saveAircraftAction, removeAircraftAction } from '@/lib/actions/aircraft'
 import { fmtDuration, isPartial } from '@/lib/aircraft-log'
-import type { SavedAircraft } from '@/lib/db/aircraft'
+import type { SavedAircraft, SavedAirport } from '@/lib/db/aircraft'
+import { AirportBoard } from './AirportBoard'
 import { FlightDetail } from './FlightDetail'
 
 /**
@@ -55,9 +56,10 @@ const timeLabel = (sec: number) =>
   new Date(sec * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
 export function FlightLog({
-  saved: initialSaved, canEdit, archiveDays,
+  saved: initialSaved, airports, canEdit, archiveDays,
 }: {
   saved: SavedAircraft[]
+  airports: SavedAirport[]
   canEdit: boolean
   archiveDays: number
 }) {
@@ -69,6 +71,7 @@ export function FlightLog({
   const [truncated, setTruncated] = useState(false)
   const [days, setDays] = useState(archiveDays)
   const [openFlight, setOpenFlight] = useState<FlightRow | null>(null)
+  const [tab, setTab] = useState<'aircraft' | 'airports'>('aircraft')
   const [busy, setBusy] = useState(false)
   const [loadingFlights, setLoadingFlights] = useState(false)
   const [, startSave] = useTransition()
@@ -157,8 +160,42 @@ export function FlightLog({
 
   const title = ident ? (ident.reg || ident.hex.toUpperCase()) : ''
 
+  /** Jumping from an airport board straight into an aircraft's own log. */
+  const openTail = useCallback((tail: string) => {
+    setTab('aircraft')
+    setQ(tail)
+    void (async () => {
+      setBusy(true)
+      try {
+        const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(tail)}`)
+        const j = await r.json()
+        if (j?.aircraft) await open(j.aircraft as Ident)
+        else setNote(j?.note ?? 'No aircraft found with that tail number.')
+      } catch { setNote('Could not reach the aircraft registry.') } finally { setBusy(false) }
+    })()
+  }, [open])
+
   return (
     <div className="max-w-3xl space-y-4 p-4">
+      <div className="flex gap-1.5" role="tablist">
+        {([['aircraft', 'By aircraft'], ['airports', 'By airfield']] as const).map(([k, label]) => (
+          <button
+            key={k} role="tab" aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={`rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold ${
+              tab === k ? 'border-amber/50 bg-amber/15 text-amber' : 'border-navy-800 bg-navy-950 text-muted hover:text-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'airports' && (
+        <AirportBoard saved={airports} canEdit={canEdit} onOpenTail={openTail} />
+      )}
+
+      {tab === 'aircraft' && (<>
       <form onSubmit={search} className="flex gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
@@ -366,10 +403,13 @@ export function FlightLog({
             Flight data from the <a href="https://adsb.lol" target="_blank" rel="noopener"
               className="text-muted underline underline-offset-2">adsb.lol</a> receiver network (ODbL).
             Aircraft registry from <a href="https://www.adsbdb.com" target="_blank" rel="noopener"
-              className="text-muted underline underline-offset-2">adsbdb</a>.
+              className="text-muted underline underline-offset-2">adsbdb</a>. Airfields from{' '}
+            <a href="https://ourairports.com" target="_blank" rel="noopener"
+              className="text-muted underline underline-offset-2">OurAirports</a> (public domain).
           </p>
         </section>
       )}
+      </>)}
     </div>
   )
 }

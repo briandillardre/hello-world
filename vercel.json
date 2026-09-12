@@ -59,6 +59,10 @@
     {
       "path": "/api/cron/aircraft-log",
       "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/airport-board",
+      "schedule": "*/20 * * * *"
     }
   ]
 }

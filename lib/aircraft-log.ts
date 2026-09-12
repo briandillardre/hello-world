@@ -25,7 +25,7 @@
  *   [8] details object (carries `flight`, the callsign)
  */
 
-import { findPatternWork, type Field, type PatternWork } from './pattern'
+import { findPatternWork, mergePatternWork, type Field, type PatternWork } from './pattern'
 
 /** One position report, normalised. `altFt: null` means "on the ground". */
 export interface Fix {
@@ -307,6 +307,24 @@ export function segmentFlights(
     return f.altFt == null || f.altFt - fd.elevationFt <= 1500
   }
 
+  /**
+   * How far this aircraft's altimeter is from true, in feet.
+   *
+   * Trace altitudes are pressure altitude against 29.92; field elevations are
+   * true MSL. Where the flight demonstrably STARTS on a field, the difference
+   * between the two IS the day's offset, and correcting for it is what keeps
+   * a 500 ft threshold meaningful on a 30.1 morning. Clamped, because a
+   * flight that did not really begin on that field would otherwise poison it.
+   */
+  const baroOffset = (airborne: Fix[]): number => {
+    const first = airborne[0]
+    if (!first || first.altFt == null) return 0
+    const fd = o.fieldAt?.(first.lat, first.lon)
+    if (!fd) return 0
+    const off = first.altFt - fd.elevationFt
+    return Math.abs(off) < 600 ? off : 0
+  }
+
   /** Was the aircraft seen on the ground just before / after this run? */
   const groundNear = (idx: number, dir: -1 | 1): boolean => {
     for (let i = idx + dir; i >= 0 && i < withVs.length; i += dir) {
@@ -359,7 +377,7 @@ export function segmentFlights(
       arrived: groundNear(endIdx, 1) || overField(airborne[airborne.length - 1]),
       // On `airborne`, not `track` — the downsample would thin a two-minute
       // circuit to a handful of points and lose the dips entirely.
-      pattern: o.fieldAt ? findPatternWork(airborne, o.fieldAt) : [],
+      pattern: o.fieldAt ? findPatternWork(airborne, o.fieldAt, { baroOffsetFt: baroOffset(airborne) }) : [],
       track: downsampleTrack(airborne),
     })
     start = -1
@@ -442,7 +460,7 @@ export function stitchFlights(flights: Flight[], maxGapSec = 900, maxJumpNm = 40
       openEnd: f.openEnd,
       departed: prev.departed,
       arrived: f.arrived,
-      pattern: [...prev.pattern, ...f.pattern],
+      pattern: mergePatternWork(prev.pattern, f.pattern),
       track,
     }
   }

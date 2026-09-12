@@ -218,3 +218,45 @@ export async function identFromTrace(hex: string, now = new Date()): Promise<Air
   }
   return null
 }
+
+
+/**
+ * Which aircraft are near a point right now — the DISCOVERY half of an
+ * airport board.
+ *
+ * Nobody publishes "what used this field today", so we find out who to go and
+ * read by looking. One cheap call returns everything within `radiusNm`; the
+ * expensive part (reading each aircraft's trace) then runs only for airframes
+ * we have not already banked.
+ */
+export async function aircraftNear(
+  lat: number,
+  lon: number,
+  radiusNm = 10,
+): Promise<{ hex: string; reg: string | null; type: string | null; onGround: boolean; altFt: number | null }[]> {
+  const r = Math.min(Math.max(Math.round(radiusNm), 1), 50)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85) return []
+  try {
+    const j = (await getJson(
+      `https://api.adsb.lol/v2/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${r}`,
+      12_000,
+    )) as { ac?: Record<string, unknown>[] } | null
+    const out: { hex: string; reg: string | null; type: string | null; onGround: boolean; altFt: number | null }[] = []
+    for (const a of j?.ac ?? []) {
+      const hex = typeof a.hex === 'string' ? a.hex.toLowerCase().replace(/[^0-9a-f]/g, '') : ''
+      if (!/^[0-9a-f]{6}$/.test(hex)) continue
+      const alt = a.alt_baro
+      out.push({
+        hex,
+        reg: typeof a.r === 'string' && a.r.trim() ? a.r.trim() : null,
+        type: typeof a.t === 'string' && a.t.trim() ? a.t.trim() : null,
+        onGround: alt === 'ground',
+        altFt: typeof alt === 'number' ? alt : null,
+      })
+      if (out.length >= 400) break
+    }
+    return out
+  } catch {
+    return []
+  }
+}

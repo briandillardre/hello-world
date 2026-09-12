@@ -113,18 +113,24 @@ function patternLeg(startedAt: number): Fix[] {
       const prev = out[out.length - 1]
       const toLat = grd.lat + dLat * nmLat * 2
       const toLon = grd.lon + dLon * nmLon * 2
-      for (let i = 1; i <= 8; i++) {
-        const k = i / 8
+      // Four fixes a side: eight made an eleven-minute "circuit", which is
+      // not a believable GA lap (the real trace flies 4:58).
+      for (let i = 1; i <= 4; i++) {
+        const k = i / 4
         push(prev.lat + (toLat - prev.lat) * k, prev.lon + (toLon - prev.lon) * k,
           (prev.altFt ?? alt) + (alt - (prev.altFt ?? alt)) * k, 95)
       }
     }
   }
-  // Home.
+  // Home — climbing away from the LAST lap, not teleporting back down to the
+  // runway. Starting this leg at field elevation made the detector see a
+  // fifth arrival, so the card claimed five touch-and-goes above a four-row
+  // lap table and contradicted itself.
+  const leaveAt = out[out.length - 1]?.altFt ?? grd.elevationFt + 700
   for (let i = 0; i < legN; i++) {
     const k = i / (legN - 1)
     push(grd.lat + (gmu.lat - grd.lat) * k, grd.lon + (gmu.lon - grd.lon) * k,
-      Math.min(2900, grd.elevationFt + 60 + k * 6000) - (k > 0.75 ? (k - 0.75) * 6500 : 0), 118)
+      Math.min(2900, leaveAt + k * 6000) - (k > 0.75 ? (k - 0.75) * 6500 : 0), 118)
   }
   return out
 }
@@ -198,4 +204,37 @@ export function demoFlights(now = new Date()): (Flight & { fromLabel: string | n
       toLabel: resolveEnd(leg.toLat, leg.toLon, null, true).label,
     }
   })).sort((a, b) => b.startedAt - a.startedAt)
+}
+
+
+/**
+ * A believable morning at Greenville Downtown, for demo mode. Generated, and
+ * the page says so — the point is to show what a board looks like, not to
+ * claim these aeroplanes flew.
+ */
+export function demoBoard(now = new Date()) {
+  const base = Math.floor(now.getTime() / 1000 / 3600) * 3600
+  const rows: { hex: string; reg: string; typeCode: string; kind: 'departure' | 'arrival'; otherEnd: string; at: number; durationSec: number; distanceNm: number; touchAndGoes: number }[] = [
+    { hex: 'a11111', reg: 'N781PW', typeCode: 'SR22', kind: 'departure', otherEnd: 'Cape Girardeau Regional (CGI)', at: base - 3600, durationSec: 9300, distanceNm: 505, touchAndGoes: 0 },
+    { hex: 'a22222', reg: 'N8511M', typeCode: 'BE55', kind: 'departure', otherEnd: 'Knoxville Downtown Island (KDKX)', at: base - 5400, durationSec: 2640, distanceNm: 118, touchAndGoes: 0 },
+    { hex: 'a33333', reg: 'N432RJ', typeCode: 'C55B', kind: 'arrival', otherEnd: 'Birmingham-Shuttlesworth International (BHM)', at: base - 7200, durationSec: 3300, distanceNm: 214, touchAndGoes: 0 },
+    { hex: 'a44444', reg: 'N575LD', typeCode: 'SR20', kind: 'arrival', otherEnd: 'Greenwood County (KGRD)', at: base - 10800, durationSec: 4700, distanceNm: 152, touchAndGoes: 4 },
+    { hex: 'a55555', reg: 'N543KP', typeCode: 'C425', kind: 'departure', otherEnd: 'North Perry (HWO)', at: base - 14400, durationSec: 10800, distanceNm: 611, touchAndGoes: 0 },
+  ]
+  return rows.map((r) => ({
+    id: `${r.hex}-${r.at}`,
+    hex: r.hex,
+    reg: r.reg,
+    typeCode: r.typeCode,
+    callsign: null,
+    kind: r.kind,
+    otherEnd: r.otherEnd,
+    startedAt: r.at,
+    endedAt: r.at + r.durationSec,
+    durationSec: r.durationSec,
+    distanceNm: r.distanceNm,
+    touchAndGoes: r.touchAndGoes,
+    hasTrack: false,
+    banked: true,
+  }))
 }

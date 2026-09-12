@@ -19,15 +19,26 @@ import { patternSummary } from '@/lib/pattern'
  * legend names each lap, so order never rides colour alone.
  */
 
-/** Teal, light → dark. Lap 1 is palest; the last lap is the strongest. */
-const LAP_RAMP = ['#7fe8dc', '#4fd6c6', '#2dbfae', '#1a9e91', '#0d7f76', '#075f59']
+/**
+ * Teal, light → dark: lap 1 is palest, the last is strongest. Interpolated
+ * across however many laps there are, because a night-currency session is ten
+ * landings and clamping at six made laps 6-10 one indistinguishable colour —
+ * which kills the "stack them and look" premise.
+ */
+const RAMP_FROM = [0x7f, 0xe8, 0xdc]
+const RAMP_TO = [0x05, 0x52, 0x4d]
+function lapShade(i: number, n: number): string {
+  const k = n <= 1 ? 0 : i / (n - 1)
+  const c = RAMP_FROM.map((from, j) => Math.round(from + (RAMP_TO[j] - from) * k))
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+}
 const FIELD = '#ffd94f'
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 
 export function PatternCard({ work }: { work: PatternWork }) {
   const { field, circuits, approaches, consistency } = work
-  const lapColor = (i: number) => LAP_RAMP[Math.min(i, LAP_RAMP.length - 1)]
+  const lapColor = (i: number) => lapShade(i, circuits.length)
 
   // One frame centred on the field, sized to the widest lap, so every circuit
   // is drawn at the same scale and they can be compared by eye.
