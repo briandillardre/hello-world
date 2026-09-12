@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveDigestPrefs, dueNow } from '@/lib/weekly-digest'
-import { deliverSummary, delivered } from '@/lib/digest-delivery'
+import { deliverSummary, delivered, claimSend } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +24,9 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  // FAIL CLOSED (sec-check, Sep 11): this run spends model tokens and mails
+  // every company. Unset secret = no run, same as /api/cron/usage and /memo.
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
@@ -43,7 +45,8 @@ export async function GET(req: NextRequest) {
   const due = (companies ?? []).filter((co) => {
     const prefs = resolveDigestPrefs(co.digest_prefs)
     // Grace 1h: a "you forgot to clock out" nudge stops being useful late.
-    return force || (prefs.nag.enabled && dueNow({ hour: prefs.nag.hour, tz: prefs.tz, stamp: co.last_nag_at, graceHours: 1 }))
+    // `force` skips the schedule, never the off switch.
+    return prefs.nag.enabled && (force || dueNow({ hour: prefs.nag.hour, tz: prefs.tz, stamp: co.last_nag_at, graceHours: 1 }))
   }).slice(0, 25)
   if (!due.length) return NextResponse.json({ ok: true, due: 0 })
 
@@ -65,6 +68,10 @@ export async function GET(req: NextRequest) {
     // clocks in late and is still on at the next check, that is worth one.
     if (!names.length) { results.push({ company: co.name ?? co.id, stillOn: 0, sent: [] }); continue }
 
+    // Claim before sending: a run killed between the send and the stamp
+    // would nag the same crew twice.
+    if (!force && !(await claimSend(db, 'last_nag_at', co.id, co.last_nag_at))) continue
+
     const text = `${names.join(', ')} never clocked out. The daily log is the way out — give ${names.length === 1 ? 'them' : 'em'} a nudge.`
     const res = await deliverSummary({
       db,
@@ -75,7 +82,6 @@ export async function GET(req: NextRequest) {
       text,
       clickPath: '/logs',
     })
-    await db.from('companies').update({ last_nag_at: new Date().toISOString() }).eq('id', co.id)
     results.push({
       company: co.name ?? co.id,
       stillOn: names.length,

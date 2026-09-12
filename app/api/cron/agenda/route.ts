@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
 import { resolveDigestPrefs, dueNow, proseEmailHtml } from '@/lib/weekly-digest'
-import { deliverSummary, delivered } from '@/lib/digest-delivery'
+import { deliverSummary, delivered, claimSend } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -67,7 +67,9 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
       system:
         'You write a construction company owner\'s MONDAY MORNING agenda from last week\'s fleet facts. Sharp dispatcher voice, plain sentences, under 140 words, no markdown. Order: 1) anything unsafe or alerting, 2) overdue maintenance/checks, 3) equipment problems (dark units, weak batteries), 4) money observations (machines that sat unused all week), 5) one-line crew hours recap. Use ONLY the facts given — never invent. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — open with the most important one.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
-    })
+      // The SDK defaults to a 10-minute timeout with 2 retries; one hung
+      // call would burn the whole 60 s budget and strand the batch.
+    }, { timeout: 12_000, maxRetries: 1 })
     const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim()
     return text || null
   } catch (err) {
@@ -78,7 +80,9 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  // FAIL CLOSED (sec-check, Sep 11): this run spends model tokens and mails
+  // every company. Unset secret = no run, same as /api/cron/usage and /memo.
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
@@ -97,7 +101,9 @@ export async function GET(req: NextRequest) {
   const due = (companies ?? []).filter((co) => {
     const prefs = resolveDigestPrefs(co.digest_prefs)
     // weekday 1 = the company's own local Monday.
-    return force || (prefs.monday.enabled && dueNow({ hour: prefs.monday.hour, tz: prefs.tz, stamp: co.last_agenda_at, weekday: 1 }))
+    // `force` skips the SCHEDULE, never the off switch — a test poke must
+    //  not send to a company that unsubscribed (sec + ship-check, Sep 11).
+    return prefs.monday.enabled && (force || dueNow({ hour: prefs.monday.hour, tz: prefs.tz, stamp: co.last_agenda_at, weekday: 1 }))
   })
   // Longest-waited first. With the batch cap and DB order alone, the same
   // tail companies would lose their digest every day once more than
@@ -106,6 +112,10 @@ export async function GET(req: NextRequest) {
   const BATCH = 12
   for (const co of due.slice(0, BATCH)) {
     const prefs = resolveDigestPrefs(co.digest_prefs)
+    // Claim first, send second. `force` re-sends deliberately, so it skips
+    // the claim AND leaves the stamp alone (poking the route to check
+    // formatting must not silence tonight's real send).
+    if (!force && !(await claimSend(db, 'last_agenda_at', co.id, co.last_agenda_at))) continue
 
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
@@ -115,6 +125,9 @@ export async function GET(req: NextRequest) {
       db.from('equipment_checks').select('asset_id, check_type, created_at').eq('company_id', co.id).gte('created_at', new Date(Date.now() - 60 * 86_400_000).toISOString()).limit(2000),
     ])
     const assets = assetsQ.data ?? []
+    // Nothing to report is a DECISION for today, not a deferral — and the
+    // slot is already claimed, so an asset-less trial account can no longer
+    // squat the batch every hour forever (ship-check, Sep 11).
     if (!assets.length) continue
     const nameOf = new Map(assets.map((a) => [a.id, a.name]))
     const trackable = assets.filter((a) => a.type === 'vehicle' || a.type === 'equipment')
@@ -197,7 +210,11 @@ export async function GET(req: NextRequest) {
       noticed: await (async () => {
         try {
           const { getInsightHeadlines } = await import('@/lib/insights')
-          return await getInsightHeadlines(db, co.id, 3)
+          // NO money: this text is pushed to every registered device in the
+          // company, and Roles v2 says a Foreman or Associate never sees
+          // dollars. A job-cost figure on a laborer's lock screen is exactly
+          // what the role ladder exists to prevent (ship-check, Sep 11).
+          return await getInsightHeadlines(db, co.id, 3, false)
         } catch { return [] }
       })(),
     }
@@ -213,7 +230,6 @@ export async function GET(req: NextRequest) {
       emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — Monday agenda`, text, manageUrl),
       clickPath: '/command',
     })
-    await db.from('companies').update({ last_agenda_at: new Date().toISOString() }).eq('id', co.id)
     results.push({
       company: co.name ?? co.id,
       sent: delivered(res)

@@ -104,6 +104,48 @@ async function mirrorToWebhook(title: string, text: string, clickPath: string, c
   }
 }
 
+/**
+ * Owner-gated mirror for the non-summary paths (real-time alerts, safety
+ * reports). Same rule, one call: nothing reaches NOTIFY_WEBHOOK_URL unless
+ * the company is provably the platform owner's.
+ */
+export async function mirrorOwnerWebhook(
+  db: SupabaseClient,
+  companyId: string,
+  title: string,
+  text: string,
+  clickPath = '/map',
+): Promise<boolean> {
+  if (!process.env.NOTIFY_WEBHOOK_URL) return false
+  if (!(await isPlatformOwnerCompany(db, companyId))) return false
+  return mirrorToWebhook(title, text, clickPath, companyId)
+}
+
+/**
+ * Take a company's send slot for today BEFORE delivering anything.
+ *
+ * Stamping after the send looked fine until you count the ways a run dies
+ * between the two: maxDuration kills the lambda mid-loop, the model call
+ * hangs, the UPDATE itself errors. The company is then still un-stamped,
+ * still inside dueNow's grace window, and sorts FIRST next hour — so it gets
+ * the same summary twice. That is the exact complaint this whole change
+ * exists to fix (ship-check P0, Sep 11).
+ *
+ * Matching on the PREVIOUS value makes it a compare-and-set, so two
+ * overlapping runs can never both claim the same company.
+ */
+export async function claimSend(
+  db: SupabaseClient,
+  column: 'last_evening_digest_at' | 'last_agenda_at' | 'last_nag_at',
+  companyId: string,
+  previous: string | null,
+): Promise<boolean> {
+  const base = db.from('companies').update({ [column]: new Date().toISOString() }).eq('id', companyId)
+  const { data, error } = await (previous === null ? base.is(column, null) : base.eq(column, previous)).select('id')
+  if (error) { console.error(`claimSend ${column} failed`, error.message); return false }
+  return (data?.length ?? 0) > 0
+}
+
 // ── Delivery ───────────────────────────────────────────────────────────────
 
 /**

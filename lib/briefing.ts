@@ -171,7 +171,8 @@ export async function gatherBriefingFacts(
     noticed: await (async () => {
       try {
         const { getInsightHeadlines } = await import('./insights')
-        return await getInsightHeadlines(db, companyId, 3)
+        // includeMoney: the briefing goes to alert_email/alert_phone — the owner.
+        return await getInsightHeadlines(db, companyId, 3, true)
       } catch { return [] }
     })(),
   }

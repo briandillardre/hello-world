@@ -44,7 +44,9 @@ export const DIGEST_DEFAULTS: DigestPrefs = {
   // unless the owner asks for one (Brian, Sep 11: "cut down on clients
   // feeling too spammed").
   evening: { enabled: true, email: false, sms: false, push: true, hour: 18 },
-  monday: { enabled: true, email: false, sms: false, push: true, hour: 7 },
+  // OFF by default: the evening digest is the daily habit. A second weekly
+  // push nobody asked for is the complaint, not the feature (Sep 11).
+  monday: { enabled: false, email: false, sms: false, push: true, hour: 7 },
   nag: { enabled: false, push: true, hour: 19 },
   tz: 'America/New_York',
 }
@@ -83,10 +85,36 @@ export function cleanDigestPrefs(prefs: DigestPrefs): DigestPrefs {
     nag: { enabled: !!p.nag.enabled, push: !!p.nag.push, hour: hour(p.nag.hour, 19) },
     // Real-IANA check, not just shape: "America/Greenville" passes the regex
     // but throws in Intl at digest time (ship-check) — reject it at save.
+    // Intl IS the validation — a regex here only ever rejected legitimate
+    // zones (Etc/GMT+5 has digits, America/Argentina/Buenos_Aires has two
+    // slashes) while catching nothing the try/catch misses.
     tz: (() => {
-      if (typeof p.tz !== 'string' || !/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(p.tz)) return 'America/New_York'
+      if (typeof p.tz !== 'string' || p.tz.length > 64) return 'America/New_York'
       try { new Intl.DateTimeFormat('en-US', { timeZone: p.tz }); return p.tz } catch { return 'America/New_York' }
     })(),
+  }
+}
+
+/**
+ * Clamp `next` so it can only be QUIETER than `current`.
+ *
+ * The unsubscribe token is a 180-day bearer credential sitting in an inbox
+ * that may be shared or forwarded, and it has no revocation path. Without
+ * this, whoever holds it could flip every summary to email + text and turn
+ * the opt-out link into a spam amplifier aimed at the owner's phone, on our
+ * Twilio bill (sec-check, Sep 11). Hour and timezone stay freely editable —
+ * they cannot increase volume. The signed-in Settings page is unaffected.
+ */
+export function onlyQuieter(current: DigestPrefs, next: DigestPrefs): DigestPrefs {
+  const down = (was: boolean, want: boolean) => was && want   // false can never become true
+  return {
+    friday: { enabled: down(current.friday.enabled, next.friday.enabled), email: down(current.friday.email, next.friday.email), sms: down(current.friday.sms, next.friday.sms), hour: next.friday.hour },
+    sunday: { enabled: down(current.sunday.enabled, next.sunday.enabled), hour: next.sunday.hour },
+    briefing: { enabled: down(current.briefing.enabled, next.briefing.enabled), email: down(current.briefing.email, next.briefing.email), sms: down(current.briefing.sms, next.briefing.sms), hour: next.briefing.hour, weekdaysOnly: next.briefing.weekdaysOnly },
+    evening: { enabled: down(current.evening.enabled, next.evening.enabled), email: down(current.evening.email, next.evening.email), sms: down(current.evening.sms, next.evening.sms), push: down(current.evening.push, next.evening.push), hour: next.evening.hour },
+    monday: { enabled: down(current.monday.enabled, next.monday.enabled), email: down(current.monday.email, next.monday.email), sms: down(current.monday.sms, next.monday.sms), push: down(current.monday.push, next.monday.push), hour: next.monday.hour },
+    nag: { enabled: down(current.nag.enabled, next.nag.enabled), push: down(current.nag.push, next.nag.push), hour: next.nag.hour },
+    tz: next.tz,
   }
 }
 
@@ -286,7 +314,8 @@ export async function gatherWeeklyFacts(db: SupabaseClient, companyId: string, c
     noticed: await (async () => {
       try {
         const { getInsightHeadlines } = await import('./insights')
-        return await getInsightHeadlines(db, companyId, 3)
+        // includeMoney: the Friday/Sunday emails go to alert_email — the owner.
+        return await getInsightHeadlines(db, companyId, 3, true)
       } catch { return [] }
     })(),
   }

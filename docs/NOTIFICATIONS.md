@@ -49,15 +49,25 @@ timezone.
 |---|---|---|---|
 | Evening digest | `/api/cron/digest` | `evening` | on, **push only**, 6 PM local |
 | Morning site briefing | `/api/cron/briefing` | `briefing` | on, email, 6 AM local, weekdays |
-| Monday agenda | `/api/cron/agenda` | `monday` | on, **push only**, 7 AM local Monday |
+| Monday agenda | `/api/cron/agenda` | `monday` | **off** |
 | Friday wrap-up | `/api/cron/weekly` | `friday` | on, email, 4 PM local |
 | Sunday week-ahead | `/api/cron/weekly` | `sunday` | on, email, 6 PM local |
 | Still on the clock | `/api/cron/nag` | `nag` | **off** |
 
 Push-only defaults are deliberate: a daily recap does not earn an inbox slot or
-a text unless the owner asks for one. The nag is off because it is the least
-actionable thing we send and the fastest way to teach someone to swipe our
-notifications away.
+a text unless the owner asks for one. A brand-new company therefore gets **two**
+recurring messages a day at most (one push, one email) and nothing on the
+weekend but the two weekly emails.
+
+The Monday agenda and the nag both default **off**. The evening digest is the
+daily habit; a second recurring push nobody asked for is the complaint, not the
+feature. Both are one tap away in Settings for an owner who wants them.
+
+**Money never rides the push.** `getInsightHeadlines` takes `includeMoney` and
+it is `false` for the digest and agenda, because those go to *every* registered
+device in the company and Roles v2 says a Foreman or Associate never sees
+dollars. The Friday/Sunday/briefing emails pass `true` — those go to
+`alert_email`, which is the owner.
 
 **Alerts are not summaries.** Theft, left-site and after-hours events go
 through `dispatchAlerts` (`lib/notify.ts`) and are untouched by any of this.
@@ -72,13 +82,33 @@ day. The gate is cheap by design: prefs come off the company row that the loop
 already reads, and the expensive fact-gathering happens only for companies
 whose hour it actually is.
 
-The `last_*_at` stamp is what stops an hourly cron, a retry, or a manual poke
-from sending twice. It is written even when no channel is configured —
-otherwise the cron rebuilds that company's digest every hour, all evening, for
-a send that can never land.
+### Claim the slot, then send
 
-Both `/api/cron/digest` and `/api/cron/agenda` take `?force=1` (with the cron
-secret) to skip the hour gate and the stamp when you are testing.
+`claimSend()` writes the `last_*_at` stamp **before** delivery, matching on the
+previous value so it is a compare-and-set. Stamping *after* the send looked
+fine until you count the ways a run dies in between — `maxDuration` kills the
+lambda mid-loop, the model call hangs, the UPDATE errors. The company would
+then still be un-stamped, still inside the grace window, and (with the
+longest-waited-first sort) *first* in line next hour: the same digest, twice.
+Proven against production: two runs racing from the same previous value, one
+wins, one gets nothing.
+
+The claim also covers the company with no assets, which bails out before it
+composes anything. Its slot is already taken, so an asset-less trial account
+can no longer sit at the front of the batch every hour forever and starve the
+real customers behind it.
+
+The model call is bounded (`timeout: 12_000, maxRetries: 1`) — the SDK default
+is ten minutes with two retries, and one hung request would eat the whole
+60-second budget.
+
+`?force=1` (with the cron secret) skips the schedule and the claim, so a test
+poke neither dedupes nor silences that evening's real send. It does **not**
+skip the off switch: a company that unsubscribed is never sent to, by any path.
+
+All three crons **fail closed** on `CRON_SECRET`, matching `/api/cron/usage`
+and `/memo`. They spend model tokens and mail every company; an unset secret
+must mean no run, not an open door.
 
 ### The founder webhook
 
@@ -105,8 +135,16 @@ there is no table and nothing to look up.
   is how you get marked as spam.
 * What it grants is deliberately tiny: read and write `digest_prefs` for one
   company, plus that company's name to show on the page. Not assets, not crew,
-  not costs. The worst a leaked link can do is silence summaries its own
-  recipient already receives.
+  not costs.
+* **It can only make things quieter** (`onlyQuieter()`). A 180-day link sitting
+  in a shared or forwarded inbox, with no revocation path, must not be able to
+  switch every summary to email + text and become a spam amplifier aimed at the
+  owner's phone on our Twilio bill. Hours and timezone stay editable; turning a
+  summary back **on** is a signed-in action. The action returns what it actually
+  stored, so the page never shows a switch the server refused.
+* The signing key is always **derived**, never the raw `SHARE_LINK_SECRET`, so a
+  leaked unsubscribe link can be revoked without killing every public replay
+  link too.
 * SMS truncation reserves room for the tail **first**, so the opt-out link is
   never the part that gets cut.
 
@@ -123,11 +161,34 @@ email inherits it. `smsOptOut()` is the text equivalent.
    signed-out one at once.
 5. Add it to the table above and to the `notifications` help guide.
 
+## Alerts use the same rule
+
+`dispatchAlerts` (`lib/notify.ts`) and the clock-out safety note
+(`lib/actions/fieldops.ts`) are not summaries, but they had the same shape of
+bug and are fixed the same way:
+
+* The safety note used to POST straight to the global webhook, so any crew
+  member on any customer could put their own name plus free text into a topic
+  belonging to someone else. It goes to the company's own devices now.
+* `ALERT_SMS_TO` and `NOTIFY_WEBHOOK_URL` are **founder fallbacks**, not
+  channels. A customer who never set `alert_phone` — the default for every new
+  signup — was having their theft alerts texted to the founder's number. Both
+  are gated on `isPlatformOwnerCompany()` and both fail closed.
+* `mirrorOwnerWebhook()` is the one call for any non-summary path that wants the
+  founder mirror.
+
 ## Known gaps
 
 * **Preferences are per company, not per person.** Everyone on the company's
   registered devices gets the same push. Per-person mute is the next step and
-  matters most once a company has more than one admin.
+  matters most once a company has more than one admin. The clean fix is a
+  `sendPushToRoles(companyId, msg, { requires })` that joins
+  `device_tokens.user_id → profiles.role`; that would also let the digest push
+  carry money again for the people allowed to see it.
+* **Vercel Analytics would carry the token** if `NEXT_PUBLIC_VERCEL_ANALYTICS`
+  is ever switched on — add a `beforeSend` that rewrites `/n/`, `/r/`, `/share/`
+  and `/t/` URLs first. (Client error reports already scrub them: `safePath()`
+  in `components/system/ErrorReporter.tsx`.)
 * **The missing-receipt ladder has no company-level off switch** — it is opt-in
   by construction (no card-alert inbound, no charges to chase) and each message
   can be closed with "No receipt", but a company that turns the feature on gets

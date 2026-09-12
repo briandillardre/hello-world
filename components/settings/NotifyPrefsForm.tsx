@@ -117,24 +117,39 @@ export function NotifyPrefsForm({
   const off = !editable
 
   function save(next: DigestPrefs) {
+    // Roll back on failure. Leaving the switch showing "off" after a failed
+    // save is the worst outcome this page has: someone reads it as
+    // unsubscribed, closes the page, and keeps getting the digest
+    // (ship-check, Sep 11).
+    const prev = p
     setP(next)
     setSaved(false)
     start(async () => {
       const r = token ? await saveNotifyPrefsByTokenAction(token, next) : await saveDigestPrefsAction(next)
-      if (r.ok) { setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
-      else setError(r.error ?? 'Save failed')
+      if (r.ok) {
+        setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200)
+        // The emailed link can only turn things DOWN, so show what the server
+        // actually stored rather than what the switch was tapped to.
+        const res = r as { prefs?: DigestPrefs; clamped?: boolean }
+        if (res.prefs) setP(res.prefs)
+        if (res.clamped) setError('This link can only turn things off. Sign in to switch a summary back on.')
+      } else { setError(r.error ?? 'Save failed'); setP(prev) }
     })
   }
 
   function silence() {
     // Optimistic so a thumb on a slow connection sees it take.
+    const prev = p
     const next = silenceAll(p)
     setP(next)
     setSaved(false)
     start(async () => {
       const r = token ? await silenceAllByTokenAction(token) : await saveDigestPrefsAction(next)
-      if (r.ok) { setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
-      else { setError(r.error ?? 'Save failed'); setP(p) }
+      if (r.ok) {
+        setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200)
+        const res = r as { prefs?: DigestPrefs }
+        if (res.prefs) setP(res.prefs)
+      } else { setError(r.error ?? 'Save failed'); setP(prev) }
     })
   }
 
@@ -142,6 +157,11 @@ export function NotifyPrefsForm({
 
   return (
     <section className="rounded-xl border border-navy-800 bg-navy-900 p-4">
+      {error && (
+        <p role="alert" className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {error}
+        </p>
+      )}
       <div className="mb-3 flex items-center gap-2">
         <h2 className="flex-1 font-display text-sm font-bold text-ink">Summaries</h2>
         {pending && <span className="text-[11px] text-faint">Saving…</span>}
@@ -236,7 +256,6 @@ export function NotifyPrefsForm({
         )}
       </div>
 
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
     </section>
   )
 }

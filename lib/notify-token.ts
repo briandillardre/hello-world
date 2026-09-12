@@ -28,11 +28,13 @@ export interface NotifyPayload {
 export const NOTIFY_TOKEN_DAYS = 180
 
 function secret(): string | null {
-  if (process.env.SHARE_LINK_SECRET) return process.env.SHARE_LINK_SECRET
-  const k = process.env.SUPABASE_SERVICE_ROLE_KEY
-  // Namespaced away from the share-link derivation so a replay token can
-  // never be read as a prefs token or the other way round.
-  return k ? createHmac('sha256', 'hammertrack-notify-v1').update(k).digest('hex') : null
+  // ALWAYS derive. The earlier version returned SHARE_LINK_SECRET raw, so with
+  // that env var set both token types signed under the identical key — no
+  // replay is possible today (the formats cannot collide) but you could not
+  // revoke a leaked unsubscribe link without killing every public replay link
+  // too, and a future token type would inherit a forgery oracle (sec-check).
+  const base = process.env.SHARE_LINK_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
+  return base ? createHmac('sha256', 'hammertrack-notify-v1').update(base).digest('hex') : null
 }
 
 function uuidToBytes(id: string): Buffer | null {
