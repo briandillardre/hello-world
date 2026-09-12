@@ -1,0 +1,25 @@
+# Read-only look at what Play actually holds for com.hammertrack.app.
+#
+# Exists because the console is the only place some release state lives, and
+# asking Brian to go read it at 2 AM is not a debugging strategy (Sep 12).
+# Prints every track, its releases and version codes, and the bundles Play
+# has finished processing. Opens a throwaway edit and deletes it — nothing
+# is ever committed, so this cannot change the store listing or a release.
+name: play-status
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Ask Play what it has
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/play-status.mjs
