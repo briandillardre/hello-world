@@ -19,7 +19,7 @@ const allItems = [
   { href: '/map', label: 'Map', icon: Map },
   { href: '/assets', label: 'Assets', icon: Package },
   { href: '/alerts', label: 'Alerts', icon: Bell },
-  { href: '/clock', label: 'Time clock', short: 'Clock', icon: Clock },
+  { href: '/clock', label: 'Time clock', short: 'Clock in', icon: Clock }, // Brian, Sep 12: the bar should say what you DO there
   { href: '/timecards', label: 'Time cards', short: 'Cards', icon: CalendarClock },
   { href: '/zones', label: 'Zones', icon: Hexagon },
   { href: '/measurements', label: 'Measurements', short: 'Measure', icon: Ruler },
