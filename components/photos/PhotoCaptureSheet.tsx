@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase'
 import { createPhotoUploadAction, finalizePhotoAction, listPhotoSitesAction, locatePhotosByTimeAction } from '@/lib/actions/photos'
 import type { FieldPhoto } from '@/lib/db/photos'
 import { busy as trackBusy } from '@/lib/busy'
-import { nativePhotosAvailable, pickOriginalPhotos, readNativePhoto, clearNativePhotos } from '@/lib/native-photos'
+import { nativePhotosAvailable, pickOriginalPhotos, readNativePhoto, clearNativePhotos, exifInstant } from '@/lib/native-photos'
 
 /**
  * Take or add job photos that land on the map (Brian, Sep 9).
@@ -72,6 +72,14 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   // shell on Android 10+ can; everywhere else the web input is the door.
   const [nativeGallery, setNativeGallery] = useState(false)
   const [denied, setDenied] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  // Reading a batch natively takes seconds (base64 over the bridge). If the
+  // sheet is closed in the middle, the finished half must be thrown away —
+  // appending it means reopening later to a partial batch of photos somebody
+  // cancelled, with Save armed.
+  const openRef = useRef(open)
+  const readingRef = useRef(false)
+  useEffect(() => { openRef.current = open }, [open])
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
@@ -109,9 +117,16 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   useEffect(() => {
     if (open) return
     setItems((xs) => { xs.forEach((x) => URL.revokeObjectURL(x.preview)); return [] })
-    setCaption(''); setDenied(false)
-    void clearNativePhotos()
+    setCaption(''); setDenied(false); setNote(null)
+    // Only when nothing is mid-read — purging under a running loop makes the
+    // remaining reads fail and the photos vanish with no explanation.
+    if (!readingRef.current) void clearNativePhotos()
   }, [open])
+
+  // Leaving the page entirely (not just closing the sheet) has to release the
+  // previews too — each one pins a full-size JPEG in a WebView Android is
+  // happy to kill for memory.
+  useEffect(() => () => { setItems((xs) => { xs.forEach((x) => URL.revokeObjectURL(x.preview)); return [] }) }, [])
 
   async function add(files: FileList | null, fromCamera: boolean) {
     if (!files?.length) return
@@ -157,6 +172,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         takenAt, timeSrc, fromCamera, guess: null, state: 'ready',
       })
     }
+    if (!openRef.current) { next.forEach((x) => URL.revokeObjectURL(x.preview)); return }
     setItems((xs) => [...xs, ...next])
     void locateByTime(next)
   }
@@ -175,31 +191,61 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
    * unplaced path as before. The door changed; the honesty did not.
    */
   async function addNative() {
-    const { photos, denied: refused } = await pickOriginalPhotos()
+    const { photos, denied: refused, cancelled, originals } = await pickOriginalPhotos()
     setDenied(refused)
-    if (!photos.length) return
+    if (refused) {
+      // A refusal must not kill the feature. The WebView's own file input
+      // needs no app permission at all and still recovers EXIF from iPhone,
+      // drone and camera photos — it is simply the door we prefer second.
+      galRef.current?.click()
+      return
+    }
+    if (!photos.length) {
+      if (!cancelled) setNote('Nothing came back from the gallery. Try again, or use a photo you took in the app.')
+      return
+    }
     const done = trackBusy(`Reading ${photos.length} photo${photos.length === 1 ? '' : 's'}…`)
+    readingRef.current = true
     const next: Item[] = []
+    let dropped = 0
     try {
       for (const meta of photos) {
         const file = await readNativePhoto(meta)
-        if (!file) continue
+        // Unreadable, or past the 25 MB ceiling. Silently skipping made the
+        // button look dead when a batch of panoramas all failed.
+        if (!file) { dropped++; continue }
         const fix = meta.hasGps && Number.isFinite(meta.lat) && Number.isFinite(meta.lng)
           ? { lat: meta.lat as number, lng: meta.lng as number, acc: null, heading: null }
           : null
         // The plugin's takenAt is EXIF DateTimeOriginal — a real capture time.
         // Only when the picture carries none do we fall back to the file's.
-        const takenAt = meta.takenAt ? new Date(meta.takenAt).toISOString()
-          : (Number.isFinite(file.lastModified) && file.lastModified > 0 ? new Date(file.lastModified).toISOString() : null)
+        const shot = exifInstant(meta.shotAt, meta.shotOffset)
+        const takenAt = shot
+          ?? (Number.isFinite(file.lastModified) && file.lastModified > 0 ? new Date(file.lastModified).toISOString() : null)
         next.push({
           key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           file, preview: URL.createObjectURL(file),
           fix, fixSrc: fix ? 'exif' : null, siteId: null, siteName: null,
-          takenAt, timeSrc: meta.takenAt ? 'exif' : takenAt ? 'file' : 'now',
+          takenAt, timeSrc: shot ? 'exif' : takenAt ? 'file' : 'now',
           fromCamera: false, guess: null, state: 'ready',
         })
       }
-    } finally { done() }
+    } finally { done(); readingRef.current = false }
+
+    // Closed while we were reading: this batch was cancelled. Let the
+    // previews go and leave the sheet empty for next time.
+    if (!openRef.current) {
+      next.forEach((x) => URL.revokeObjectURL(x.preview))
+      void clearNativePhotos()
+      return
+    }
+    setNote(
+      dropped > 0
+        ? `${dropped} photo${dropped === 1 ? '' : 's'} couldn’t be read — too large, or the phone wouldn’t hand ${dropped === 1 ? 'it' : 'them'} over.`
+        : !originals
+          ? 'This phone wouldn’t give us the original files, so the coordinates saved inside these photos aren’t readable. Pick the job below.'
+          : null,
+    )
     setItems((xs) => [...xs, ...next])
     void locateByTime(next)
   }
@@ -262,7 +308,11 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
     const t = Date.parse(localValue)
     if (!Number.isFinite(t)) return
     const iso = new Date(t).toISOString()
-    setItems((xs) => xs.map((x) => (x.state === 'ready' && x.timeSrc !== 'exif' ? { ...x, takenAt: iso, timeSrc: 'set' } : x)))
+    // Never a photo taken in the app three seconds ago — that clock is the
+    // phone's own and is not a guess. Correcting yesterday's grade must not
+    // drag the shot you just took onto yesterday with it.
+    setItems((xs) => xs.map((x) => (x.state === 'ready' && x.timeSrc !== 'exif' && !x.fromCamera
+      ? { ...x, takenAt: iso, timeSrc: 'set' } : x)))
   }
 
   async function makeThumb(file: File): Promise<Blob | null> {
@@ -322,7 +372,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   const unplaced = pending.length - savable
   // The clock we had to guess at, if any — EXIF wins and is never offered up
   // for editing, so this only appears when it would otherwise be a guess.
-  const guessedWhen = pending.find((x) => x.timeSrc !== 'exif')?.takenAt ?? null
+  const guessedWhen = pending.find((x) => x.timeSrc !== 'exif' && !x.fromCamera)?.takenAt ?? null
   // Our own answer to "where was this taken", when the picture would not say.
   const guessName = pending.find((x) => !x.fix && x.guess)?.guess?.zoneName ?? null
   const allDone = items.length > 0 && items.every((x) => x.state === 'done')
@@ -372,11 +422,15 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
                       : <span className="text-amber">no location yet</span>}
                   </div>
                   {it.state === 'ready' && (
-                    <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} aria-label="Remove" className="absolute top-1 right-1 grid place-items-center w-6 h-6 rounded-full bg-navy-950/80 text-faint hover:text-ink"><X className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => { URL.revokeObjectURL(it.preview); setItems((xs) => xs.filter((x) => x.key !== it.key)) }} aria-label="Remove" className="absolute top-1 right-1 grid place-items-center w-6 h-6 rounded-full bg-navy-950/80 text-faint hover:text-ink"><X className="h-3.5 w-3.5" /></button>
                   )}
                 </li>
               ))}
             </ul>
+          )}
+
+          {note && (
+            <p className="rounded-lg border border-amber/40 bg-amber/10 p-2.5 text-[11.5px] text-amber leading-snug">{note}</p>
           )}
 
           {denied && (

@@ -230,6 +230,13 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
           <span className="font-semibold text-ink truncate">{liveStatus.label}</span>
           {idleTodayMin != null && idleTodayMin > 0 && <span className="text-amber flex-none">· idled {idleTodayMin}m</span>}
           {fixAge && <span className="text-faint truncate">· {fixAge}</span>}
+          {/* The kind of box belongs HERE, in the peek: MapSheet hides the
+              subtitle at level 0 on phones (MapSheet.tsx), and the peek is
+              the "small view when clicked on map" the ask was about. The
+              subtitle's own badge covers desktop and the expanded sheet, so
+              this is the only other place it goes — putting it in
+              AssetDetails as well showed it twice. */}
+          {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} size="xs" className="flex-none ml-auto" />}
         </p>
       )}
 
@@ -481,15 +488,9 @@ function AssetDetails({
             className="w-24 h-24 object-cover rounded-xl border border-navy-800 flex-none"
           />
           <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {showStatus && (
-                <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
-              )}
-              {/* The kind of box belongs in the PEEK, not only the expanded
-                  sheet: on phones MapSheet hides the subtitle at level 0, and
-                  the peek is the "small view when clicked on map" Brian meant. */}
-              {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
-            </div>
+            {showStatus && (
+              <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
+            )}
             {(place || poi) && (
               <div className="flex items-start gap-1.5">
                 <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
@@ -510,9 +511,8 @@ function AssetDetails({
       )}
       {/* No photo: still lead with the live status for vehicles/equipment. */}
       {!asset.photo_url && showStatus && (
-        <div className="bg-navy-800 rounded-lg px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="bg-navy-800 rounded-lg px-3 py-2.5">
           <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} />
-          {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
         </div>
       )}
       {asset.type === 'tool' && gateway && (

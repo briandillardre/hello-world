@@ -247,7 +247,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <section>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Identity &amp; hardware</h2>
           <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
-            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker" value={asset.tracker_id ?? '—'} note={trackerKind(asset.tracker_id).hint} badge={<TrackerBadge trackerId={asset.tracker_id} />} />
+            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker" value={asset.tracker_id ?? '—'} note={trackerKind(asset.tracker_id).hint} />
             <Field icon={<Hash className="h-4 w-4 text-faint" />} label="Serial number" value={serial ?? '— (add later)'} />
             {detailRows.map(([k, v]) => (
               <Field key={k} icon={<Tag className="h-4 w-4 text-faint" />} label={k.replace(/_/g, ' ')} value={String(v)} />
@@ -572,10 +572,8 @@ function MiniStat({ label, value, unit }: { label: string; value: string; unit?:
   )
 }
 
-function Field({ icon, label, value, badge, note }: {
+function Field({ icon, label, value, note }: {
   icon: React.ReactNode; label: string; value: string
-  /** Optional chip beside the value — the tracker row names its own kind. */
-  badge?: React.ReactNode
   /** One plain line under the row. Used for "what to expect from this box",
    *  which is what turns a normal silence into something you don't call about. */
   note?: string
@@ -586,7 +584,6 @@ function Field({ icon, label, value, badge, note }: {
         {icon}
         <span className="text-faint capitalize w-28 flex-none">{label}</span>
         <span className="text-ink font-medium truncate">{value}</span>
-        {badge}
       </div>
       {note && <p className="text-[11.5px] text-faint leading-snug mt-1 ml-[calc(1rem+0.5rem)] sm:ml-[calc(1rem+0.5rem+7rem)]">{note}</p>}
     </div>
