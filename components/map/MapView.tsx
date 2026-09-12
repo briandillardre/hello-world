@@ -53,6 +53,8 @@ import { StackSheet, type StackPick } from '@/components/map/StackSheet'
 import { DirectionsSheet } from './DirectionsSheet'
 import { NavGuidance, type NavRoute } from './NavGuidance'
 import { GifRecorder } from './GifRecorder'
+import { ExportMenu, ExportResult } from './ExportMenu'
+import { exportFilename, deliverFile, type ExportKind, type DeliveryHow } from '@/lib/map-export'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
@@ -796,10 +798,23 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // imperative MapLibre control (created once at init) always calls the
   // freshest closure (assets/brand/range change between renders).
   const makePdfRef = useRef<(() => Promise<void>) | null>(null)
-  /** Record-a-GIF sheet (Brian, Sep 12). Rail button sits under Create PDF. */
   const [gifOpen, setGifOpen] = useState(false)
-  const openGifRef = useRef<(() => void) | null>(null)
-  openGifRef.current = () => setGifOpen(true)
+  /** Export flyout: one rail button, three answers (Brian, Sep 12). */
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportTop, setExportTop] = useState(0)
+  const [exportBusy, setExportBusy] = useState<ExportKind | null>(null)
+  const [exportRes, setExportRes] = useState<
+    { title: string; imageUrl?: string | null; how?: DeliveryHow | null; error?: string | null; filename?: string } | null
+  >(null)
+  const exportUrlRef = useRef<string | null>(null)
+  const openExportRef = useRef<((btn: HTMLElement) => void) | null>(null)
+  openExportRef.current = (btn) => {
+    // Line the flyout up with the button that opened it.
+    const host = mapContainer.current?.getBoundingClientRect()
+    const r = btn.getBoundingClientRect()
+    setExportTop(host ? Math.max(8, r.top - host.top) : 8)
+    setExportOpen((v) => !v)
+  }
   // Control-rail "New zone" handler — assigned after handleRange/startDrawing
   // exist (they're declared much later in this file).
   const drawZoneRef = useRef<(() => void) | null>(null)
@@ -844,9 +859,31 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         doc.text(label, lx + 4.5, legendY + 1.1)
         lx += wTxt + 4
       }
-      pdf.finish(`hammertrack-${kiosk ? 'command' : 'map'}-${new Date().toISOString().slice(0, 10)}.pdf`)
+      const file = exportFilename(brand?.companyName ?? 'HammerTrack', kiosk ? 'command' : 'fleet map', 'pdf')
+      const how = await pdf.finish(file)
+      setExportRes({ title: 'PDF', how, filename: file })
     } catch (e) {
-      console.error('PDF export failed', e)
+      setExportRes({ title: 'PDF', error: e instanceof Error ? e.message : 'Could not build the PDF.' })
+    }
+  }
+
+  /** The map as a picture — the one export that can always be SAVED inside
+   *  the app, because a long press on an image is Android's own save menu. */
+  const makePng = async () => {
+    const m = map.current
+    if (!m) return
+    try {
+      const { captureMapCanvas } = await import('@/lib/pdf-brand')
+      const dataUrl = await captureMapCanvas(m, 'image/png')
+      const blob = await (await fetch(dataUrl)).blob()
+      const file = exportFilename(brand?.companyName ?? 'HammerTrack', kiosk ? 'command' : 'fleet map', 'png')
+      const how = await deliverFile(blob, file, 'image/png')
+      if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current)
+      const url = URL.createObjectURL(blob)
+      exportUrlRef.current = url
+      setExportRes({ title: 'PNG', imageUrl: url, how, filename: file })
+    } catch (e) {
+      setExportRes({ title: 'PNG', error: e instanceof Error ? e.message : 'Could not take the picture.' })
     }
   }
 
@@ -1789,10 +1826,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
         const btn = document.createElement('button')
         btn.type = 'button'
-        btn.title = 'Create PDF — branded snapshot of this view'
-        btn.setAttribute('aria-label', 'Create PDF')
+        btn.title = 'Export this view — PDF, PNG or GIF'
+        btn.setAttribute('aria-label', 'Export this view')
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>'
-        btn.onclick = () => { makePdfRef.current?.() }
+        btn.onclick = () => { openExportRef.current?.(btn) }
         div.appendChild(btn)
         return div
       },
@@ -1800,27 +1837,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     }
     map.current.addControl(pdfControl, ctrlCorner)
 
-    // Record a GIF — the moving cousin of Create PDF, so it sits under it.
-    if (!kiosk) {
-      const gifControl: maplibregl.IControl = {
-        onAdd() {
-          const div = document.createElement('div')
-          div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-          const btn = document.createElement('button')
-          btn.type = 'button'
-          btn.title = 'Record a GIF — the replay as a file you can text'
-          btn.setAttribute('aria-label', 'Record a GIF')
-          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="m4 11 16-5"/><path d="m6.5 5.5 3 3.5"/><path d="m11 4 3 3.5"/><rect width="20" height="12" x="2" y="11" rx="2"/></svg>'
-          btn.onclick = () => { openGifRef.current?.() }
-          div.appendChild(btn)
-          return div
-        },
-        onRemove() {},
-      }
-      map.current.addControl(gifControl, ctrlCorner)
-    }
-
-    map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
+map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     // The compact attribution is a <details> that AUTO-OPENS on load and
     // whenever attributions change — billboarding "Esri, Maxar…" across the
     // map (Brian, twice tonight; the CSS-only fix lost to MapLibre's own
@@ -7620,6 +7637,39 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
         />
       )}
+
+      <ExportMenu
+        open={exportOpen}
+        anchorTop={exportTop}
+        onClose={() => setExportOpen(false)}
+        onPick={(kind) => {
+          if (kind === 'gif') { setGifOpen(true); return }
+          setExportBusy(kind)
+          const run = kind === 'pdf' ? makePdfRef.current?.() : makePng()
+          void Promise.resolve(run).finally(() => setExportBusy(null))
+        }}
+      />
+
+      {exportBusy && (
+        <div className="absolute inset-x-0 z-40 flex justify-center pointer-events-none" style={{ top: 'calc(var(--ht-map-top, 56px) + 8px)' }}>
+          <span className="rounded-full border border-teal/40 bg-navy-950/95 backdrop-blur px-3.5 py-1.5 text-[12px] font-semibold text-teal shadow-panel">
+            Building the {exportBusy.toUpperCase()}…
+          </span>
+        </div>
+      )}
+
+      <ExportResult
+        open={!!exportRes}
+        onClose={() => {
+          if (exportUrlRef.current) { URL.revokeObjectURL(exportUrlRef.current); exportUrlRef.current = null }
+          setExportRes(null)
+        }}
+        title={exportRes?.title ?? ''}
+        imageUrl={exportRes?.imageUrl}
+        how={exportRes?.how}
+        error={exportRes?.error}
+        filename={exportRes?.filename}
+      />
 
       {gifOpen && (
         <GifRecorder
