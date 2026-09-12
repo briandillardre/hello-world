@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Images, X, MapPin, Check, CalendarClock } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
-import { createPhotoUploadAction, finalizePhotoAction, listPhotoSitesAction } from '@/lib/actions/photos'
+import { createPhotoUploadAction, finalizePhotoAction, listPhotoSitesAction, locatePhotosByTimeAction } from '@/lib/actions/photos'
 import type { FieldPhoto } from '@/lib/db/photos'
 import { busy as trackBusy } from '@/lib/busy'
 
@@ -36,7 +36,7 @@ type Fix = { lat: number; lng: number; acc: number | null; heading: number | nul
 type Site = { id: string; name: string; lat: number; lng: number }
 /** Where the pin came from. 'site' is a filing, not a measurement — it saves
  *  with no accuracy and the tile says the site's name instead of a ±. */
-type FixSrc = 'exif' | 'gps' | 'site'
+type FixSrc = 'exif' | 'gps' | 'site' | 'track' | 'clock'
 type Item = {
   key: string; file: File; preview: string
   fix: Fix | null; fixSrc: FixSrc | null; siteId: string | null; siteName: string | null
@@ -44,6 +44,11 @@ type Item = {
   /** Where the clock came from, so a guess can be labelled as one. */
   timeSrc: 'exif' | 'file' | 'set' | 'now'
   fromCamera: boolean
+  /** Where we worked out the person WAS at that moment, when the picture
+   *  itself would not say. Applied straight away when the photo carries a
+   *  real capture time; offered as a one-tap suggestion when the clock was
+   *  itself a guess. */
+  guess: { lat: number; lng: number; source: 'track' | 'clock'; zoneId: string | null; zoneName: string | null } | null
   state: 'ready' | 'uploading' | 'done' | 'error'; error?: string
 }
 
@@ -132,11 +137,50 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         file, preview: URL.createObjectURL(file),
         fix, fixSrc, siteId: null, siteName: null,
-        takenAt, timeSrc, fromCamera, state: 'ready',
+        takenAt, timeSrc, fromCamera, guess: null, state: 'ready',
       })
     }
     setItems((xs) => [...xs, ...next])
+    void locateByTime(next)
   }
+
+  /**
+   * Ask our own data where this person was when the shutter went.
+   *
+   * Runs only for photos that arrived WITHOUT coordinates, which on Android
+   * is most of them — the OS strips the GPS but leaves the clock, and the
+   * clock is enough when we already recorded where everybody was.
+   *
+   * A real capture time (EXIF) places the photo outright. A guessed one (the
+   * file's own timestamp, which a copied photo carries from the copy) only
+   * earns a one-tap suggestion — being roughly right is not a licence to be
+   * silently wrong.
+   */
+  async function locateByTime(batch: Item[]) {
+    const need = batch.filter((x) => !x.fix && x.takenAt)
+    if (!need.length) return
+    let found: Awaited<ReturnType<typeof locatePhotosByTimeAction>>
+    try { found = await locatePhotosByTimeAction(need.map((x) => x.takenAt as string)) }
+    catch { return }
+    const byKey = new Map(need.map((x, i) => [x.key, found[i] ?? null]))
+    setItems((xs) => xs.map((x) => {
+      const hit = byKey.get(x.key)
+      if (!hit || x.fix || x.state !== 'ready') return x
+      if (x.timeSrc === 'exif') {
+        return {
+          ...x,
+          fix: { lat: hit.lat, lng: hit.lng, acc: null, heading: null },
+          fixSrc: hit.source, siteId: hit.zoneId, siteName: hit.zoneName, guess: hit,
+        }
+      }
+      return { ...x, guess: hit }
+    }))
+  }
+
+  /** Take the suggestion for everything still unplaced that has one. */
+  const useGuesses = () => setItems((xs) => xs.map((x) => (x.state === 'ready' && !x.fix && x.guess
+    ? { ...x, fix: { lat: x.guess.lat, lng: x.guess.lng, acc: null, heading: null }, fixSrc: x.guess.source, siteId: x.guess.zoneId, siteName: x.guess.zoneName }
+    : x)))
 
   /** Place everything still unplaced — a batch off one phone is one job and
    *  one decision, not N taps. A photo that already knows where it was is
@@ -219,6 +263,8 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   // The clock we had to guess at, if any — EXIF wins and is never offered up
   // for editing, so this only appears when it would otherwise be a guess.
   const guessedWhen = pending.find((x) => x.timeSrc !== 'exif')?.takenAt ?? null
+  // Our own answer to "where was this taken", when the picture would not say.
+  const guessName = pending.find((x) => !x.fix && x.guess)?.guess?.zoneName ?? null
   const allDone = items.length > 0 && items.every((x) => x.state === 'done')
 
   return (
@@ -255,7 +301,11 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
                       : it.state === 'error' ? <span className="text-alert">{it.error}</span>
                       : it.fix ? (
                         <span className="text-faint truncate block">
-                          📍 {it.fixSrc === 'exif' ? 'from photo' : it.fixSrc === 'site' ? (it.siteName ?? 'site') : 'here'}
+                          📍 {it.fixSrc === 'exif' ? 'from photo'
+                            : it.fixSrc === 'track' ? (it.siteName ?? 'your track')
+                            : it.fixSrc === 'clock' ? (it.siteName ?? 'your shift')
+                            : it.fixSrc === 'site' ? (it.siteName ?? 'site')
+                            : 'here'}
                           {it.takenAt && <span className="text-faint/70"> · {new Date(it.takenAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>}
                         </span>
                       )
@@ -278,9 +328,16 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
               <p className="text-[12.5px] text-amber font-semibold leading-snug">
                 {unplaced === 1 ? 'This photo has no location saved in it.' : `${unplaced} photos have no location saved in them.`}
                 <span className="block font-normal text-[11.5px] text-amber/80 mt-0.5">
-                  Phones strip it when you share a picture out of the gallery. Tell us which job it was and it lands there.
+                  Phones strip it when you share a picture out of the gallery.
+                  {guessName ? ' We checked where you were at that time:' : ' Tell us which job it was and it lands there.'}
                 </span>
               </p>
+              {guessName && (
+                <button type="button" onClick={useGuesses}
+                  className="w-full rounded-lg bg-amber text-[#1a1100] font-display font-bold text-[13px] py-2.5 active:scale-[0.98]">
+                  You were at {guessName} — use that
+                </button>
+              )}
               {sites.length > 0 && (
                 <select
                   defaultValue=""
@@ -316,7 +373,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
           )}
 
           <input value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 240))} placeholder="Caption (optional) — what are we looking at?" className="w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink" />
-          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. A photo you take here uses your location now. A photo from the gallery uses the location saved in it — and when the phone stripped that out, you pick the job.</p>
+          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. A photo you take here uses your location now. A photo from the gallery uses the location saved in it — and when the phone stripped that out, we place it from where you were at that time.</p>
         </div>
 
         {/* The OS nav bar overlays the viewport in the native shell
