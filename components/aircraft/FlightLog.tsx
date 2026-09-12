@@ -72,6 +72,8 @@ export function FlightLog({
   const [days, setDays] = useState(archiveDays)
   const [openFlight, setOpenFlight] = useState<FlightRow | null>(null)
   const [tab, setTab] = useState<'aircraft' | 'airports'>('aircraft')
+  /** Set when the search box resolved to a field (or a route) instead. */
+  const [jumpTo, setJumpTo] = useState<{ ident: string; to?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadingFlights, setLoadingFlights] = useState(false)
   const [, startSave] = useTransition()
@@ -109,7 +111,12 @@ export function FlightLog({
       const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(term)}`)
       const j = await r.json()
       if (!r.ok) { setNote(j?.error ?? 'Search failed.'); return }
-      if (!j.aircraft) { setNote(j?.note ?? 'No aircraft found with that tail number.'); return }
+      // An airfield or a route belongs on the board, not in the aircraft view.
+      if (j.kind === 'airport' && j.field?.ident) { setJumpTo({ ident: j.field.ident }); setTab('airports'); return }
+      if (j.kind === 'route' && j.from?.ident && j.to?.ident) {
+        setJumpTo({ ident: j.from.ident, to: j.to.ident }); setTab('airports'); return
+      }
+      if (!j.aircraft) { setNote(j?.note ?? 'Nothing found with that name.'); return }
       await open(j.aircraft as Ident)
     } catch {
       setNote('Could not reach the aircraft registry.')
@@ -192,7 +199,7 @@ export function FlightLog({
       </div>
 
       {tab === 'airports' && (
-        <AirportBoard saved={airports} canEdit={canEdit} onOpenTail={openTail} />
+        <AirportBoard saved={airports} canEdit={canEdit} onOpenTail={openTail} jumpTo={jumpTo} />
       )}
 
       {tab === 'aircraft' && (<>
@@ -202,8 +209,8 @@ export function FlightLog({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Tail number — N628TS"
-            aria-label="Search by tail number"
+            placeholder="Tail number, airfield or route"
+            aria-label="Search by tail number, airfield or route"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}

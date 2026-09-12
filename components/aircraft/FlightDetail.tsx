@@ -6,6 +6,7 @@ import type { Fix } from '@/lib/aircraft-log'
 import { isPatternWork, type PatternWork } from '@/lib/pattern'
 import { PatternCard } from './PatternCard'
 import { FlightProfile } from './FlightProfile'
+import { FlightPlayback } from './FlightPlayback'
 import type { FlightRow } from './FlightLog'
 
 /**
@@ -17,10 +18,15 @@ export function FlightDetail({ flight }: { flight: FlightRow }) {
   const [track, setTrack] = useState<Fix[] | null>(null)
   const [pattern, setPattern] = useState<PatternWork[]>([])
   const [error, setError] = useState<string | null>(null)
+  // Replay state lives here so the plan view, the charts and the transport
+  // controls are all looking at the same moment of the flight.
+  const [idx, setIdx] = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState(60)
 
   useEffect(() => {
     let live = true
-    setTrack(null); setPattern([]); setError(null)
+    setTrack(null); setPattern([]); setError(null); setIdx(0); setPlaying(false)
     fetch(`/api/aircraft/flight?id=${encodeURIComponent(flight.id)}`)
       .then((r) => r.json())
       .then((j) => {
@@ -43,14 +49,24 @@ export function FlightDetail({ flight }: { flight: FlightRow }) {
       {error && <p className="text-[12px] text-faint">{error}</p>}
       {track && (
         <>
-          <PlanView track={track} />
+          <PlanView track={track} atIdx={idx} />
+          <FlightPlayback
+            track={track} idx={idx} onIdx={setIdx}
+            playing={playing} onPlaying={setPlaying}
+            speed={speed} onSpeed={setSpeed}
+          />
           {/* Circuits before the profile charts: on a flight with pattern
               work, "how were the laps" is the question, and the altitude
               trace is just four sawteeth until you know that. */}
           {pattern.filter(isPatternWork).map((w) => (
             <PatternCard key={w.field.ident} work={w} />
           ))}
-          <FlightProfile track={track} touchdowns={pattern.flatMap((w) => w.approaches.map((a) => a.at))} />
+          <FlightProfile
+            track={track}
+            touchdowns={pattern.flatMap((w) => w.approaches.map((a) => a.at))}
+            focusIdx={idx}
+            onScrub={(i) => { setPlaying(false); setIdx(i) }}
+          />
         </>
       )}
     </div>
@@ -63,7 +79,7 @@ export function FlightDetail({ flight }: { flight: FlightRow }) {
  * Equirectangular with a cos(lat) correction, which is honest at the scale of
  * one flight.
  */
-function PlanView({ track }: { track: Fix[] }) {
+function PlanView({ track, atIdx = null }: { track: Fix[]; atIdx?: number | null }) {
   const pts = track.filter((f) => Number.isFinite(f.lat) && Number.isFinite(f.lon))
   if (pts.length < 2) return null
 
@@ -117,6 +133,17 @@ function PlanView({ track }: { track: Fix[] }) {
         {/* Takeoff hollow, landing filled — direction without an arrowhead. */}
         <circle cx={px(0)} cy={py(0)} r={4.5} fill="#00203a" stroke="#2dd4bf" strokeWidth={2} />
         <circle cx={px(last)} cy={py(last)} r={4.5} fill="#2dd4bf" stroke="#00203a" strokeWidth={2} />
+        {/* Where the replay has got to. The flown part is drawn brighter over
+            the whole route, so the picture reads as progress, not a dot. */}
+        {atIdx != null && atIdx > 0 && atIdx < pts.length && (
+          <>
+            <path
+              d={pts.slice(0, atIdx + 1).map((_, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)},${py(i).toFixed(1)}`).join(' ')}
+              fill="none" stroke="#ffd94f" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"
+            />
+            <circle cx={px(atIdx)} cy={py(atIdx)} r={5} fill="#ffd94f" stroke="#00203a" strokeWidth={2} />
+          </>
+        )}
       </svg>
       <figcaption className="mt-1 text-center text-[10.5px] text-faint">
         The path from above — hollow marks the takeoff, solid the landing.

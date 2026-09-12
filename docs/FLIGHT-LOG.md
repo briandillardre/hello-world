@@ -210,6 +210,37 @@ which answers the actual question ("what was it doing *here*?").
   them, and a "Show numbers" table gives the same data without hovering or
   reading a colour.
 
+## Flying it back
+
+`components/aircraft/FlightPlayback.tsx`. Play, scrub, 10× – 120×.
+
+Speeds are multiples of **real time**, the way FR24 and the rest of this app
+mean them: at 60× a minute of flight passes in a second. The clock is what
+advances, not an index — stepping one fix per frame would run a sparse
+stretch of track faster than a dense one, which is exactly the lie the map's
+trail scrubber avoids. The plan view brightens the flown portion and carries
+the aircraft; the three charts' crosshair follows the same moment.
+
+Two rules kept from the map timeline: **nothing animates while paused**, and
+the pointer always wins — hovering a chart reads the point under your finger
+even mid-replay, and dragging one scrubs the replay rather than fighting it.
+
+## One box, three answers
+
+FR24's search takes "Flight number, airport, route or reg", and now so does
+ours:
+
+| Typed | Answer |
+|---|---|
+| `N628TS`, `a835af` | the aircraft |
+| `KGMU`, `GMU` | that airfield's board |
+| `GMU-CLT`, `GMU to CLT` | the board, filtered to that route |
+
+**Aircraft is tried first**, deliberately: a registration can look exactly
+like an airport code (N92 is both a tail number and a New Jersey field), and
+someone typing into a flight log means the aeroplane. A field the company is
+not watching still opens — with a line saying nobody is recording it yet.
+
 ## Airport boards
 
 `/aircraft` → **By airfield**. Migration 110.
