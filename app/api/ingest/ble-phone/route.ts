@@ -57,8 +57,16 @@ export async function POST(req: NextRequest) {
 
   // The fix lands on the phone's own asset first (creates/reactivates it and
   // enforces the session); that asset is the gateway.
-  const fix = await pushPhoneLocation({ lat, lng, accuracy, heading: num(body.heading, 0, 360), battery: num(body.battery, 0, 100) })
+  const fix = await pushPhoneLocation({
+    lat, lng, accuracy, heading: num(body.heading, 0, 360), battery: num(body.battery, 0, 100),
+    source: 'gateway',
+    // Never revives a stopped share — the gateway is not a way back onto the map.
+    reactivate: false,
+  })
   if (!fix.ok || !fix.assetId) {
+    if (fix.reason === 'sharing_off') {
+      return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
+    }
     return NextResponse.json({ ok: false, error: fix.reason === 'auth' ? 'sign in' : 'could not record the phone fix' }, { status: fix.reason === 'auth' ? 401 : 500 })
   }
   if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0 })
