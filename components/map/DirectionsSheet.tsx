@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp,
-  CornerUpLeft, CornerUpRight, ExternalLink, Flag, List, LocateFixed, Merge, TrafficCone,
+  CornerUpLeft, CornerUpRight, ExternalLink, Flag, List, LocateFixed, Merge,
+  Navigation2, TrafficCone,
 } from 'lucide-react'
 import { MapSheet } from './MapSheet'
 
@@ -14,6 +15,9 @@ interface RouteStep {
   name: string | null
   type: string
   modifier: string | null
+  /** Guidance needs the maneuver point; the list itself never uses it. */
+  at?: [number, number] | null
+  durationSec?: number
 }
 interface RouteData {
   distanceM: number
@@ -75,7 +79,7 @@ function stepIcon(type: string, modifier: string | null) {
  * colours on the same roads). The minutes never pretend to include it.
  */
 export function DirectionsSheet({
-  dest, origin, mapCenter, onRouteGeometry, onEnd, trafficOn, onToggleTraffic,
+  dest, origin, mapCenter, onRouteGeometry, onEnd, trafficOn, onToggleTraffic, onStart,
 }: {
   dest: { lat: number; lng: number; name: string }
   /** Route start when the caller already knows one (an asset's fix, a place).
@@ -89,6 +93,9 @@ export function DirectionsSheet({
   onEnd: () => void
   trafficOn: boolean
   onToggleTraffic: () => void
+  /** Hands the fetched route up so the guidance screen can take over.
+   *  Absent = preview only (no Start button). */
+  onStart?: (route: RouteData) => void
 }) {
   const [from, setFrom] = useState<Origin | null>(origin)
   const [geoFailed, setGeoFailed] = useState(false)
@@ -283,6 +290,17 @@ export function DirectionsSheet({
 
         {/* ── controls ── */}
         <div className="pt-3 border-t border-navy-800 space-y-2">
+          {/* Turn-by-turn in OUR app (Brian, Sep 12) — the Google handoff
+              stays below it for voice nav on a route we can't drive. */}
+          {onStart && route && route.steps.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onStart(route)}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-teal text-[#04212b] font-display font-bold text-[15px] py-3 hover:brightness-110 transition-all"
+            >
+              <Navigation2 className="h-4.5 w-4.5" /> Start
+            </button>
+          )}
           <a
             href={gmapsHref}
             target="_blank" rel="noopener noreferrer"
