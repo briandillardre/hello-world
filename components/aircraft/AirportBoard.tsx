@@ -48,11 +48,14 @@ const ago = (iso: string | null) => {
 }
 
 export function AirportBoard({
-  saved: initialSaved, canEdit, onOpenTail,
+  saved: initialSaved, canEdit, onOpenTail, jumpTo = null,
 }: {
   saved: SavedAirport[]
   canEdit: boolean
   onOpenTail: (tail: string) => void
+  /** The search box resolved to a field (and maybe a destination) — show it
+   *  even if nobody is watching it yet. */
+  jumpTo?: { ident: string; to?: string } | null
 }) {
   const [saved, setSaved] = useState(initialSaved)
   const [active, setActive] = useState<string | null>(initialSaved[0]?.ident ?? null)
@@ -62,6 +65,8 @@ export function AirportBoard({
   const [meta, setMeta] = useState<{ name: string; watchingSince: string | null; lastSweptAt: string | null } | null>(null)
   const [days, setDays] = useState(7)
   const [filter, setFilter] = useState<Filter>('all')
+  /** Set from a "GMU-CLT" search: show only movements to/from this other end. */
+  const [routeTo, setRouteTo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [, start] = useTransition()
 
@@ -79,6 +84,13 @@ export function AirportBoard({
   }, [])
 
   useEffect(() => { if (active) void load(active, days) }, [active, days, load])
+
+  // The search box handed us a field — open it, watched or not.
+  useEffect(() => {
+    if (!jumpTo) return
+    setActive(jumpTo.ident)
+    setRouteTo(jumpTo.to ?? null)
+  }, [jumpTo])
 
   const add = (e: React.FormEvent) => {
     e.preventDefault()
@@ -102,7 +114,11 @@ export function AirportBoard({
     })
   }
 
-  const shown = (movements ?? []).filter((m) => filter === 'all' || m.kind === filter)
+  const shown = (movements ?? [])
+    .filter((m) => filter === 'all' || m.kind === filter)
+    // A route search narrows to the other end, matched on the code we print
+    // in the label ("… (CLT)").
+    .filter((m) => !routeTo || (m.otherEnd ?? '').toUpperCase().includes(`(${routeTo})`))
 
   return (
     <section className="space-y-3">
@@ -157,7 +173,20 @@ export function AirportBoard({
             </h2>
             <span className="font-mono text-[11px] text-faint">{active}</span>
             {meta?.lastSweptAt && <span className="text-[11px] text-faint">checked {ago(meta.lastSweptAt)}</span>}
+            {routeTo && (
+              <button onClick={() => setRouteTo(null)}
+                className="inline-flex items-center gap-1 rounded-lg border border-teal/40 bg-teal/10 px-2 py-0.5 text-[11px] font-semibold text-teal">
+                only to/from {routeTo} <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
+          {!saved.some((a) => a.ident === active) && (
+            <p className="rounded-lg border border-navy-800 bg-navy-950 px-3 py-2 text-[11.5px] text-faint">
+              Nobody is watching this field yet, so there is nothing recorded for it beyond
+              flights we happened to read for another reason.
+              {canEdit && ' Add it above and we start keeping its movements.'}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             {(['all', 'departure', 'arrival'] as Filter[]).map((f) => (

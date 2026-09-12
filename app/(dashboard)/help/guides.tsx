@@ -852,6 +852,36 @@ export const GUIDES: HelpGuide[] = [
         ),
       },
       {
+        heading: 'Airfields and routes',
+        body: (
+          <>
+            <P>
+              The same search box takes more than a tail number. Type <B>KGMU</B> (or just
+              <B> GMU</B>) for that airfield&apos;s board — everything that flew in and out, with
+              the aircraft, where it went and how long it took. Type <B>GMU-CLT</B> for just the
+              flights between two fields.
+            </P>
+            <P>
+              Worth knowing: <B>nobody publishes airfield history</B>, so we build it by watching.
+              Add a field under <B>By airfield</B> and it starts recording from that moment — there
+              is nothing before it. The board always says when it started watching and when it last
+              checked, so an empty morning is never mistaken for a quiet one.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Flying a flight back',
+        body: (
+          <P>
+            Open any flight and press play. The aircraft flies its own track while the altitude,
+            speed and climb charts follow along; the speeds are multiples of real time, so
+            <B> 60×</B> means a minute of flight per second. Drag the slider — or any of the
+            charts — to jump to a moment.
+          </P>
+        ),
+      },
+      {
         heading: 'Touch-and-goes',
         body: (
           <>

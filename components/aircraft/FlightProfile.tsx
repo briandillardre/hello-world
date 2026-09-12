@@ -77,11 +77,16 @@ function niceMax(v: number): number {
   return step * mag
 }
 
-export function FlightProfile({ track, touchdowns = [] }: {
+export function FlightProfile({ track, touchdowns = [], focusIdx = null, onScrub }: {
   track: Fix[]
   /** Epoch seconds of each arrival at a runway — marked on the altitude
    *  trace, so the sawtooth reads as circuits rather than noise. */
   touchdowns?: number[]
+  /** Driven by playback: the point the replay is currently sitting on.
+   *  Hovering still wins, so the charts never fight the pointer. */
+  focusIdx?: number | null
+  /** Scrubbing a chart moves the replay too, rather than only the crosshair. */
+  onScrub?: (idx: number) => void
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
@@ -150,9 +155,14 @@ export function FlightProfile({ track, touchdowns = [] }: {
       if (Math.abs(pts[i].t - want) < Math.abs(pts[best].t - want)) best = i
     }
     setHoverIdx(best)
+    onScrub?.(best)
   }
 
-  const hov = hoverIdx != null ? pts[hoverIdx] : null
+  // The crosshair follows the pointer when there is one, and the replay
+  // otherwise — so playing back and then reaching for the chart does the
+  // obvious thing.
+  const shownIdx = hoverIdx ?? focusIdx
+  const hov = shownIdx != null ? pts[shownIdx] ?? null : null
 
   return (
     <div className="space-y-2">
@@ -188,7 +198,7 @@ export function FlightProfile({ track, touchdowns = [] }: {
         className="space-y-2"
       >
         {series.map((s) => (
-          <Chart key={s.key} s={s} pts={pts} x={x} hoverIdx={hoverIdx} span={span} w={w} plotW={plotW}
+          <Chart key={s.key} s={s} pts={pts} x={x} hoverIdx={shownIdx} span={span} w={w} plotW={plotW}
             touchdowns={s.key === 'alt' ? touchdowns : []} />
         ))}
       </div>
