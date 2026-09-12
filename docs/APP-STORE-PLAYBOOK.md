@@ -282,7 +282,7 @@ accepted it). 1.4.0 (versionCode 9) went nowhere and is superseded.
    + `UIBackgroundModes: location` are in Info.plist for the day Apple
    enrollment clears.
 3. **Camera** — receipt-chase capture flow
-4. **BLE scanning** — every crew phone becomes a roaming tool-tag gateway — **shipped Sep 9 (foreground):** the Tag scanner switch turns the phone into a gateway while the app is open; the native background piece stays on this list.
+4. **BLE scanning** — every crew phone becomes a roaming tool-tag gateway — **shipped Sep 9 (foreground), on by default Sep 12:** the gateway runs on every screen of the app (duty-cycled 10 s of each 20 s window, a fix only when a tag is heard), behind a one-time in-app card that explains it before the OS Bluetooth prompt. No new Play declaration: the scan runs in the app, not in a foreground service — only adding an FGS for it (type `connectedDevice`) would need a second declaration. The native background piece stays on this list.
 
 ## Timeline (actuals)
 - Jul 31: D-U-N-S requested · early Aug: landed.
