@@ -7338,6 +7338,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       {!kiosk && (
         <MapSearch
           overlay
+          flightLog={canFlightLog}
           items={searchItems}
           onPick={pickSearchItem}
           bias={assets.find((a) => a.location)?.location ?? null}
