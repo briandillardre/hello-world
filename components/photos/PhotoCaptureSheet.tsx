@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import { createPhotoUploadAction, finalizePhotoAction, listPhotoSitesAction, locatePhotosByTimeAction } from '@/lib/actions/photos'
 import type { FieldPhoto } from '@/lib/db/photos'
 import { busy as trackBusy } from '@/lib/busy'
+import { nativePhotosAvailable, pickOriginalPhotos, readNativePhoto, clearNativePhotos } from '@/lib/native-photos'
 
 /**
  * Take or add job photos that land on the map (Brian, Sep 9).
@@ -67,6 +68,10 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   const [items, setItems] = useState<Item[]>([])
   const [live, setLive] = useState<Fix | null>(null)
   const [sites, setSites] = useState<Site[]>([])
+  // Can this device hand us the photo's OWN coordinates? Only the native
+  // shell on Android 10+ can; everywhere else the web input is the door.
+  const [nativeGallery, setNativeGallery] = useState(false)
+  const [denied, setDenied] = useState(false)
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
@@ -88,13 +93,25 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   // needed when something arrives without a location, but it has to be in
   // hand by then — asking after the fact is a spinner in the way.
   useEffect(() => {
+    if (!open) return
+    let alive = true
+    void nativePhotosAvailable().then((ok) => { if (alive) setNativeGallery(ok) })
+    return () => { alive = false }
+  }, [open])
+
+  useEffect(() => {
     if (!open || sites.length) return
     let alive = true
     void listPhotoSitesAction().then((rows) => { if (alive) setSites(rows) }).catch(() => {})
     return () => { alive = false }
   }, [open, sites.length])
 
-  useEffect(() => { if (!open) { setItems((xs) => { xs.forEach((x) => URL.revokeObjectURL(x.preview)); return [] }); setCaption('') } }, [open])
+  useEffect(() => {
+    if (open) return
+    setItems((xs) => { xs.forEach((x) => URL.revokeObjectURL(x.preview)); return [] })
+    setCaption(''); setDenied(false)
+    void clearNativePhotos()
+  }, [open])
 
   async function add(files: FileList | null, fromCamera: boolean) {
     if (!files?.length) return
@@ -140,6 +157,49 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         takenAt, timeSrc, fromCamera, guess: null, state: 'ready',
       })
     }
+    setItems((xs) => [...xs, ...next])
+    void locateByTime(next)
+  }
+
+  /**
+   * The gallery, read natively, so the photo's OWN coordinates survive.
+   *
+   * The web file input cannot do this on Android: the OS redacts the GPS out
+   * of whatever it hands a file chooser. The plugin asks MediaStore for the
+   * unredacted original instead, reads the EXIF off those exact bytes, and
+   * hands us the picture one at a time.
+   *
+   * A photo that still arrives without coordinates — permission refused, an
+   * OEM that ignores the request, or a picture that simply never had a fix
+   * (a screenshot, something texted to you) — falls into exactly the same
+   * unplaced path as before. The door changed; the honesty did not.
+   */
+  async function addNative() {
+    const { photos, denied: refused } = await pickOriginalPhotos()
+    setDenied(refused)
+    if (!photos.length) return
+    const done = trackBusy(`Reading ${photos.length} photo${photos.length === 1 ? '' : 's'}…`)
+    const next: Item[] = []
+    try {
+      for (const meta of photos) {
+        const file = await readNativePhoto(meta)
+        if (!file) continue
+        const fix = meta.hasGps && Number.isFinite(meta.lat) && Number.isFinite(meta.lng)
+          ? { lat: meta.lat as number, lng: meta.lng as number, acc: null, heading: null }
+          : null
+        // The plugin's takenAt is EXIF DateTimeOriginal — a real capture time.
+        // Only when the picture carries none do we fall back to the file's.
+        const takenAt = meta.takenAt ? new Date(meta.takenAt).toISOString()
+          : (Number.isFinite(file.lastModified) && file.lastModified > 0 ? new Date(file.lastModified).toISOString() : null)
+        next.push({
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          file, preview: URL.createObjectURL(file),
+          fix, fixSrc: fix ? 'exif' : null, siteId: null, siteName: null,
+          takenAt, timeSrc: meta.takenAt ? 'exif' : takenAt ? 'file' : 'now',
+          fromCamera: false, guess: null, state: 'ready',
+        })
+      }
+    } finally { done() }
     setItems((xs) => [...xs, ...next])
     void locateByTime(next)
   }
@@ -282,7 +342,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
             <button type="button" onClick={() => camRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl border border-teal/40 bg-teal/10 text-teal font-semibold py-3 active:scale-95">
               <Camera className="h-4 w-4" /> Take photo
             </button>
-            <button type="button" onClick={() => galRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl border border-navy-700 bg-navy-950 text-ink font-semibold py-3 active:scale-95">
+            <button type="button" onClick={() => { if (nativeGallery) void addNative(); else galRef.current?.click() }} className="flex items-center justify-center gap-2 rounded-xl border border-navy-700 bg-navy-950 text-ink font-semibold py-3 active:scale-95">
               <Images className="h-4 w-4" /> From gallery
             </button>
             <input ref={camRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={(e) => { void add(e.target.files, true); e.target.value = '' }} />
@@ -317,6 +377,13 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
                 </li>
               ))}
             </ul>
+          )}
+
+          {denied && (
+            <p className="rounded-lg border border-navy-700 bg-navy-950 p-2.5 text-[11.5px] text-faint leading-snug">
+              Without access to your photos we can&apos;t read the location saved inside them, so you&apos;ll be asked
+              which job each one was. To let it read them: <span className="text-ink">Settings → Apps → HammerTrack → Permissions → Photos</span>.
+            </p>
           )}
 
           {/* The ask. Android hands a web page a gallery photo with its GPS
@@ -373,7 +440,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
           )}
 
           <input value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 240))} placeholder="Caption (optional) — what are we looking at?" className="w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink" />
-          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. A photo you take here uses your location now. A photo from the gallery uses the location saved in it — and when the phone stripped that out, we place it from where you were at that time.</p>
+          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. A photo you take here uses your location now. A photo from the gallery uses the coordinates saved inside it{nativeGallery ? '' : ' — and when the phone stripped those out, we place it from where you were at that time'}.</p>
         </div>
 
         {/* The OS nav bar overlays the viewport in the native shell
