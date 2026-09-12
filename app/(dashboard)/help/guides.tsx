@@ -678,13 +678,16 @@ export const GUIDES: HelpGuide[] = [
           <>
             <P>
               Two different switches. The ones above are the <B>company&apos;s</B> — whether a
-              summary goes out at all, and when. <B>Settings → My phone</B> is <B>yours</B>: which
-              of them actually buzz on your device.
+              summary goes out at all, and when. <B>My phone</B> is <B>yours</B>: which of them
+              actually buzz on your device. Admins find it inside <B>Settings</B>; everyone else
+              gets to it from the <B>More</B> drawer (or the menu behind the company name on the
+              map) — it is the one page no role can be locked out of.
             </P>
             <P>
               Both have to be on for a notification to reach you. Anyone can quiet their own phone,
               whatever their role. A supervisor can set it for anyone below them on the team from
-              <B> Team → the person → the sliders button</B>.
+              <B> Team → the person → the sliders button</B> — and if they do, the person sees who
+              changed it on their own card and can change it back.
             </P>
             <P>
               New crew are quiet by default: they get theft alerts and reminders for a card they

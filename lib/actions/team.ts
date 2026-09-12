@@ -219,7 +219,14 @@ export async function removeMemberAction(memberId: string): Promise<boolean> {
   const t = await target(c, memberId)
   if (!t || !t.manageable) return false
   const { createServiceClient } = await import('@/lib/supabase-server')
-  await createServiceClient().from('profiles').delete().eq('id', memberId).eq('company_id', c.companyId)
+  const db = createServiceClient()
+  // Their registered phones go with them. Without this the tokens outlive the
+  // profile, and a token we cannot attribute is kept for alerts — so a removed
+  // employee's phone would keep buzzing with the company's theft alerts
+  // forever (sec-check, Sep 12).
+  try { await db.from('device_tokens').delete().eq('user_id', memberId).eq('company_id', c.companyId) }
+  catch { /* pre-029 schema — the profile delete is what matters */ }
+  await db.from('profiles').delete().eq('id', memberId).eq('company_id', c.companyId)
   revalidatePath('/team')
   return true
 }

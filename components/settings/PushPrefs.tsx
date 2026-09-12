@@ -20,6 +20,7 @@ export function PushPrefs({
   whose = 'mine',
   firstName,
   compact = false,
+  changedBy = null,
 }: {
   userId: string
   initial: PersonNotifyPrefs
@@ -27,11 +28,16 @@ export function PushPrefs({
   firstName?: string
   /** Team-row rendering: no card chrome, tighter. */
   compact?: boolean
+  /** Somebody else last set these — shown so an admin silencing a
+   *  subordinate's alerts is never invisible to them (sec-check, Sep 12). */
+  changedBy?: { name: string; at: string | null } | null
 }) {
   const [p, setP] = useState(initial)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
+  /** Once I touch a switch myself, the "somebody else set these" note is stale. */
+  const [touched, setTouched] = useState(false)
   const theirs = whose === 'theirs'
   const who = firstName || 'they'
 
@@ -39,6 +45,7 @@ export function PushPrefs({
     const prev = p
     setP({ ...p, ...patch })
     setSaved(false)
+    setTouched(true)
     start(async () => {
       const r = await savePersonNotifyAction(userId, patch)
       if (r.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
@@ -50,6 +57,7 @@ export function PushPrefs({
     const prev = p
     setP(Object.fromEntries(PUSH_KIND_META.map((k) => [k.key, false])) as PersonNotifyPrefs)
     setSaved(false)
+    setTouched(true)
     start(async () => {
       const r = await mutePersonPushAction(userId)
       if (r.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
@@ -58,9 +66,15 @@ export function PushPrefs({
   }
 
   const silent = allPushOff(p)
+  const changedNote = changedBy && !touched
+    ? `${changedBy.name} set these${changedBy.at ? ` on ${new Date(changedBy.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}. You can change them back.`
+    : null
 
   const body = (
     <>
+      {changedNote && (
+        <p className="mb-3 rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-[11.5px] text-muted">{changedNote}</p>
+      )}
       {error && (
         <p role="alert" className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>
       )}

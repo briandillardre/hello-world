@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -39,6 +39,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/trackers', label: 'Trackers', icon: Satellite },
     { href: '/assets/onboard', label: 'Hardware setup', icon: Cpu },
     { href: '/settings', label: 'Settings', icon: Settings },
+    { href: '/settings/phone', label: 'My phone', icon: BellRing },
     { href: '/welcome', label: 'Getting started', icon: Rocket },
     { href: '/help', label: 'Help', icon: HelpCircle },
   ]},
@@ -70,7 +71,10 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
   // Pages outside the caller's view levels don't exist for them — not
   // greyed, not there. (The page itself 404s too; this keeps the two honest.)
   const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
-  const sections = navSections.map((sec) => ({ ...sec, items: sec.items.filter((i) => allowed(i.href)) })).filter((sec) => sec.items.length)
+  // "My phone" is the notification card for people who cannot open Settings
+  // at all (it lives inside that page for everyone else) — one row, not two.
+  const show = (href: string) => allowed(href) && !(href === '/settings/phone' && allowed('/settings'))
+  const sections = navSections.map((sec) => ({ ...sec, items: sec.items.filter((i) => show(i.href)) })).filter((sec) => sec.items.length)
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
   const pathname = usePathname()
   if (fullCollapse && collapsed) {

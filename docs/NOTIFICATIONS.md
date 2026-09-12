@@ -74,7 +74,7 @@ be per person and admins can go in to change this for people"*).
 | Push kind | What it is | Default |
 |---|---|---|
 | `alerts` | Theft, left-site, a tracker going quiet, safety reports | everyone |
-| `receipts` | Their own card's missing receipt | everyone |
+| `receipts` | Their own card's missing receipt — push AND the chase texts | everyone |
 | `evening` | The evening digest | Admin · Manager · Foreman |
 | `monday` | The Monday agenda | Admin · Manager · Foreman |
 | `nag` | Still on the clock | Admin · Manager |
@@ -85,9 +85,39 @@ member's phone is quiet without anyone configuring them, while still getting a
 
 `audienceTokens()` in `lib/push.ts` is the one resolver: every company-wide
 push joins `device_tokens` to `profiles` and keeps only the devices whose owner
-wants that kind. A token whose user cannot be resolved is **dropped for
-summaries and kept for alerts** — nobody should get a digest we cannot
-attribute, and nobody should miss a theft alert over a stale join.
+wants that kind. Three cases, and they are not the same case
+(`audienceFilter()` is the pure half, so they are unit-tested):
+
+| The token belongs to | Summaries | Alerts |
+|---|---|---|
+| Somebody on the roster | their switch | their switch |
+| A user id that is not on the roster (they left) | dropped | **dropped** |
+| No user id at all (a pre-100 row) | dropped | kept |
+
+A removed employee's phone must stop buzzing with the company's theft alerts
+the moment they are off the team — `removeMemberAction` deletes their
+`device_tokens` rows, and this filter is the belt to that suspenders. A legacy
+row we cannot attribute is the opposite call: nobody should get a digest we
+cannot attribute, and nobody should miss a theft alert over a stale join.
+
+If the `profiles` read itself **fails**, there is no roster, so every token is
+unattributable and the same rule applies: alerts still go out, summaries do
+not. A digest is worth losing to a transient error; a muted phone staying
+muted is the entire feature.
+
+**What is stored is SPARSE** — only the switches somebody actually touched.
+Writing all five on every save froze a person against their own role: promote
+a Foreman to Admin and they should start getting the nag, but a resolved
+`false` on file is indistinguishable from a chosen one. Untouched keys keep
+following `defaultPersonNotify(role)` forever. The blob also carries `_by` /
+`_at` (ignored by every resolver, which reads `PUSH_KINDS` only): an admin may
+silence a subordinate's theft alerts — a shop hand's phone should not scream at
+2 AM — but the person sees *who did it and when* on their own card, and can
+change it back.
+
+The **Master Admin** resolves as Admin here exactly as they do on /team
+(`notifyRole()`, one helper, three call sites). An owner whose stored role is
+blank would otherwise fall to Associate and silently lose their own digest.
 
 **Who can change it:** yourself, always — including an Associate whose role has
 no other settings at all; nobody needs permission to quiet their own phone.
@@ -95,6 +125,14 @@ Somebody else only if you outrank them (docs/ROLES.md) **and** hold the team
 ability, checked server-side in `lib/actions/person-notify.ts`. `profiles` is
 write-locked for sessions (068), so the write itself is service-role behind
 that check, and view-as is refused outright.
+
+**Where the card lives.** `settings` is an Admin-only view level, so /settings
+404s for a Manager, Foreman or Associate — which for one day made "yourself,
+always" false for three of the four roles. The card therefore has its own
+route, **`/settings/phone`**, exempted in `featureForPath` (`UNGATED_PATHS`)
+and reachable without any view level. Admins see it inside Settings as before;
+everyone else reaches it from the More drawer's account button and the map's
+company menu, both of which now point there instead of at a page they 404 on.
 
 **Money never rides the push.** `getInsightHeadlines` takes `includeMoney` and
 it is `false` for the digest and agenda, because those go to *every* registered
@@ -229,4 +267,6 @@ bug and are fixed the same way:
   can be closed with "No receipt", but a company that turns the feature on gets
   the full 15 min / 1 h / 4 h / 24 h / twice-daily ladder. Deliberate for now
   (Brian, Sep 9: "annoy the hell out of them until they take a picture") —
-  revisit if a customer complains.
+  revisit if a customer complains. The *person* switch does cover it end to
+  end: `receipts` off means no push **and no text** (the SMS rung used to sit
+  outside the gate, so switching it off still bought six texts over two weeks).

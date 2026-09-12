@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { normalizeRole, outranks } from '@/lib/permissions'
-import { cleanPersonNotify, resolvePersonNotify, PUSH_KINDS, type PersonNotifyPrefs, type PushKind } from '@/lib/person-notify'
+import { outranks } from '@/lib/permissions'
+import { notifyRole, resolvePersonNotify, sparsePersonNotify, PUSH_KINDS, type PersonNotifyPrefs, type PushKind } from '@/lib/person-notify'
 
 /**
  * Who gets a push, set per person (Brian, Sep 12: "the push need to be per
@@ -50,25 +50,30 @@ export async function savePersonNotifyAction(
     .select('id, role, notify_prefs').eq('id', targetUserId).eq('company_id', companyId).maybeSingle()
   if (!target) return { ok: false, error: 'That person is not on this team.' }
 
+  const role = notifyRole(targetUserId, companyId, (target as { role: string | null }).role)
   const isSelf = targetUserId === user.id
   if (!isSelf) {
-    const targetRole = normalizeRole((target as { role: string | null }).role, 'associate')
-    const targetIsMaster = targetUserId === companyId
-    if (!me.canManageTeam || !outranks(me, { role: targetRole, isMaster: targetIsMaster })) {
+    if (!me.canManageTeam || !outranks(me, { role, isMaster: targetUserId === companyId })) {
       return { ok: false, error: 'Only someone above them on the team can change this.' }
     }
   }
 
-  const role = normalizeRole((target as { role: string | null }).role, 'associate')
-  const current = resolvePersonNotify((target as { notify_prefs: unknown }).notify_prefs, role)
-  const next = cleanPersonNotify({ ...current, ...patch }, role)
+  // SPARSE on disk: only the switches somebody actually set, so an untouched
+  // key keeps following the role default (a promoted Foreman starts getting
+  // the nag without anyone editing their phone). `_by` / `_at` say who last
+  // touched it — an admin may silence a subordinate's theft alerts, but the
+  // person sees on their own card that it happened.
+  const stored = sparsePersonNotify((target as { notify_prefs: unknown }).notify_prefs, patch)
+  const blob = { ...stored, _by: user.id, _at: new Date().toISOString() }
+  const next = resolvePersonNotify(stored, role)
 
-  const { error } = await db.from('profiles').update({ notify_prefs: next }).eq('id', targetUserId).eq('company_id', companyId)
+  const { error } = await db.from('profiles').update({ notify_prefs: blob }).eq('id', targetUserId).eq('company_id', companyId)
   if (error) {
     console.error('person notify save failed', error.message)
     return { ok: false, error: 'Could not save that. Try again in a minute.' }
   }
   revalidatePath('/settings')
+  revalidatePath('/settings/phone')
   revalidatePath('/team')
   return { ok: true, prefs: next }
 }

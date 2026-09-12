@@ -1,4 +1,4 @@
-import type { Role } from './permissions'
+import { normalizeRole, type Role } from './permissions'
 
 /**
  * WHO gets a push, person by person (Brian, Sep 12: "the push need to be per
@@ -75,9 +75,84 @@ export function resolvePersonNotify(raw: unknown, role: Role): PersonNotifyPrefs
   return out
 }
 
-/** Exactly the five booleans, nothing else, before it hits the database. */
-export function cleanPersonNotify(prefs: Partial<Record<PushKind, unknown>>, role: Role): PersonNotifyPrefs {
-  return resolvePersonNotify(prefs, role)
+/**
+ * What we actually STORE: only the switches somebody has touched.
+ *
+ * The first cut wrote all five booleans on every save, which froze a person
+ * against their own role. Promote a Foreman to Admin and they should start
+ * getting the still-on-the-clock nag; with a full blob on file they never
+ * would, because a resolved `false` is indistinguishable from a chosen one.
+ * Sparse keeps every untouched key following the role default forever
+ * (ship-check, Sep 12).
+ *
+ * OWN properties only, same reason as resolvePersonNotify.
+ */
+export function sparsePersonNotify(
+  raw: unknown,
+  patch: Partial<Record<PushKind, boolean>> = {},
+): Partial<Record<PushKind, boolean>> {
+  const out: Partial<Record<PushKind, boolean>> = {}
+  const take = (o: Record<string, unknown>) => {
+    for (const k of PUSH_KINDS) {
+      if (Object.prototype.hasOwnProperty.call(o, k) && typeof o[k] === 'boolean') out[k] = o[k] as boolean
+    }
+  }
+  if (raw && typeof raw === 'object') take(raw as Record<string, unknown>)
+  take(patch as Record<string, unknown>)
+  return out
+}
+
+/**
+ * Who last changed this phone and when — stored beside the switches as `_by`
+ * / `_at`, ignored by every resolver above (they read PUSH_KINDS only).
+ *
+ * An admin can silence a subordinate's theft alerts. That is deliberate — a
+ * shop hand's phone should not scream at 2 AM — but it must never be
+ * invisible: the person sees who did it on their own card (sec-check, Sep 12).
+ */
+export interface PersonNotifyMeta { by: string | null; at: string | null }
+
+export function personNotifyMeta(raw: unknown): PersonNotifyMeta {
+  const p = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const get = (k: string) =>
+    Object.prototype.hasOwnProperty.call(p, k) && typeof p[k] === 'string' ? (p[k] as string) : null
+  return { by: get('_by'), at: get('_at') }
+}
+
+/**
+ * The role that decides a person's push defaults. The Master Admin is the
+ * company creator (`profiles.id === companies.id`) and reads as Admin
+ * everywhere else (lib/db/team.ts) — resolve them the same way here, or an
+ * owner whose stored role is blank falls to Associate and silently loses
+ * their own evening digest (ship-check, Sep 12).
+ */
+export function notifyRole(profileId: string, companyId: string, storedRole: string | null): Role {
+  return profileId === companyId ? 'admin' : normalizeRole(storedRole, 'associate')
 }
 
 export const allPushOff = (p: PersonNotifyPrefs): boolean => PUSH_KINDS.every((k) => !p[k])
+
+/**
+ * Which of a company's device tokens this push may go to — the pure half of
+ * `audienceTokens` in lib/push.ts, kept here so it can be tested without a
+ * database.
+ *
+ * `wants` maps profile id → their answer for this kind. `rosterKnown` is
+ * false when the profiles read failed, which is NOT the same as an empty
+ * roster: with no roster we cannot say a token belongs to somebody who left,
+ * only that we cannot attribute it.
+ */
+export function audienceFilter(
+  rows: { token: string | null; user_id: string | null }[],
+  wants: Map<string, boolean>,
+  opts: { rosterKnown: boolean; kind: PushKind },
+): string[] {
+  return rows
+    .filter((r) => {
+      if (!r.token) return false
+      if (r.user_id && wants.has(r.user_id)) return wants.get(r.user_id)!
+      if (r.user_id && opts.rosterKnown) return false // off the team
+      return opts.kind === 'alerts' // unattributable: safety only
+    })
+    .map((r) => r.token as string)
+}
