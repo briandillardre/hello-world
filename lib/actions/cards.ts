@@ -176,7 +176,7 @@ export async function sendTestChargeAction(): Promise<{ ok: boolean; link?: stri
   let pushed = 0
   try {
     const { sendPushToUser } = await import('@/lib/push')
-    pushed = await sendPushToUser(perms.companyId, perms.userId, { title: '🧾 Snap the receipt? (test)', body, url: `/r/${token}` })
+    pushed = await sendPushToUser(perms.companyId, perms.userId, { title: '🧾 Snap the receipt? (test)', body, url: `/r/${token}` }, { strict: true, kind: 'receipts' })
   } catch { /* best-effort */ }
   let texted = false
   try {

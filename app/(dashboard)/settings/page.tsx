@@ -5,6 +5,8 @@ import { getCompanySettings } from '@/lib/db/company'
 import { CompanySettings } from '@/components/settings/CompanySettings'
 import { ApiKeyReveal } from '@/components/settings/ApiKeyCard'
 import { NotifyPrefsForm } from '@/components/settings/NotifyPrefsForm'
+import { PushPrefs } from '@/components/settings/PushPrefs'
+import { loadMyPushPrefs } from '@/lib/db/person-notify'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
 import { resolveLogForm } from '@/lib/log-form'
@@ -37,6 +39,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
   // Checkout lands back here. The webhook is what actually records the
   // subscription (may lag the redirect by a few seconds) — so this banner
   // confirms the ACTION, and the card below catches up on refresh.
+  // My own phone switches (107). Same card as /settings/phone, which is the
+  // ungated route every other role reaches it by.
+  const mine = await loadMyPushPrefs()
   const billingReturn = searchParams?.billing
   return (
     <div className="h-full overflow-auto pb-36 md:pb-24">
@@ -59,6 +64,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
         </div>
 
         {/* Weekly summaries — Friday wrap-up + Sunday week-ahead (Brian, Aug 1) */}
+        {mine && <PushPrefs userId={mine.userId} initial={mine.prefs} whose="mine" changedBy={mine.changedBy} />}
+
         <NotifyPrefsForm initial={resolveDigestPrefs(co.digest_prefs)} editable={co.isAdmin} />
 
         {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}

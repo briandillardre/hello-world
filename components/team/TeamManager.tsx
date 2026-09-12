@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, SlidersHorizontal, DollarSign, Receipt, Users, Mail, Crown, Sparkles, RotateCcw } from 'lucide-react'
 import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction, updateRolePolicyAction } from '@/lib/actions/team'
+import { PushPrefs } from '@/components/settings/PushPrefs'
 import { viewAsAction } from '@/lib/actions/viewas'
 import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, GRANTABLE_FEATURES, ROLE_FEATURE_DEFAULTS, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
 import { formatRelativeTime } from '@/lib/utils'
@@ -256,6 +257,12 @@ function MemberRow({
             <Link href={`/team/${m.id}/ai`} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border border-navy-700 text-ink hover:bg-navy-800">
               <Sparkles className="h-3 w-3 text-amber" /> AI conversations
             </Link>
+          </div>
+          <div className="rounded-lg border border-navy-800 bg-navy-950/60 p-2.5">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">
+              {m.name.split(' ')[0]}&apos;s phone
+            </p>
+            <PushPrefs userId={m.id} initial={m.notify} whose="theirs" firstName={m.name.split(' ')[0]} compact />
           </div>
           {switchable && (
             <div className="flex flex-wrap gap-2">

@@ -212,6 +212,7 @@ export async function GET(req: NextRequest) {
       text,
       emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — evening digest`, text, manageUrl),
       clickPath: '/logs',
+      pushKind: 'evening',
     })
     results.push({
       company: co.name ?? co.id,

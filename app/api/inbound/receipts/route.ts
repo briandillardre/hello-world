@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
     const { sendPushToUser } = await import('@/lib/push')
     // Strict: the cardholder's own phones or nobody — the office text below
     // is the "lands somewhere" fallback, not every crew member's lock screen.
-    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` }, { strict: true })
+    pushed = await sendPushToUser(company.id, cardholderUserId, { title: '🧾 Snap the receipt?', body, url: `/r/${captureToken}` }, { strict: true, kind: 'receipts' })
   } catch { /* best-effort */ }
   try {
     if (company.alert_phone) {

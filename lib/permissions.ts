@@ -231,8 +231,20 @@ export function rolesEditableBy(actor: Pick<Permissions, 'role' | 'isMaster' | '
   return []
 }
 
+/**
+ * Routes that are deliberately ungated for every signed-in person, even
+ * though a longer-prefix rule below would otherwise catch them.
+ *
+ * /settings/phone is the one switch nobody needs permission for: quieting
+ * your own phone. `settings` is an Admin-only view level, so without this a
+ * Manager, Foreman or Associate could not reach their own notification
+ * switches at all (ship-check, Sep 12).
+ */
+const UNGATED_PATHS = ['/settings/phone']
+
 /** Which feature gates a route. Longest prefix wins; unknown = ungated. */
 export function featureForPath(pathname: string): FeatureKey | null {
+  if (UNGATED_PATHS.some((u) => pathname === u || pathname.startsWith(u + '/'))) return null
   const map: [string, FeatureKey][] = [
     ['/assets/onboard', 'hardware'],
     ['/map', 'map'], ['/command', 'command'], ['/alerts', 'alerts'],

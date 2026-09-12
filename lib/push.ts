@@ -12,6 +12,8 @@
  */
 
 import { createSign } from 'crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolvePersonNotify, notifyRole, audienceFilter, type PushKind } from './person-notify'
 
 /** url: in-app PATH the tap opens (e.g. /r/<token>, /receipts). Relative only —
  *  the app never navigates to another host off a notification. */
@@ -136,6 +138,49 @@ async function fcmSend(tokens: string[], msg: PushMsg): Promise<number> {
  * whole company). No user mapped — or the user has no registered device —
  * falls back to every company device so the ping still lands somewhere.
  */
+/**
+ * The devices in a company whose OWNER wants this kind of push
+ * (Brian, Sep 12: "the push need to be per person").
+ *
+ * Every company-wide push goes through here. Before this, one query returned
+ * every `device_tokens` row and the evening digest lit up a laborer's lock
+ * screen exactly as loudly as the owner's. Now the token has to belong to
+ * somebody whose `profiles.notify_prefs` says yes for this kind — falling
+ * back to their role default when they have never touched it.
+ *
+ * Three cases, and they are not the same case:
+ *   • On the roster — their switch decides, full stop.
+ *   • Named a user we cannot find — they left the company. DROPPED, every
+ *     kind. A removed employee's phone must stop buzzing with theft alerts
+ *     the moment they are off the team (sec-check, Sep 12); removeMemberAction
+ *     also deletes their tokens, this is the belt to that suspenders.
+ *   • No user_id at all (a pre-100 row) — unattributable. Kept for alerts,
+ *     dropped for summaries: nobody should get a digest we cannot attribute,
+ *     and nobody should miss a theft alert over a legacy row.
+ *
+ * If the profiles read itself FAILS there is no roster, so every token is
+ * unattributable and the same rule applies: alerts still go out, summaries do
+ * not. A digest is worth losing to a transient error; the whole point of this
+ * feature is that a muted phone stays muted.
+ */
+async function audienceTokens(
+  db: SupabaseClient,
+  companyId: string,
+  kind: PushKind,
+): Promise<string[]> {
+  const [{ data: rows }, { data: people, error: pErr }] = await Promise.all([
+    db.from('device_tokens').select('token, user_id').eq('company_id', companyId),
+    db.from('profiles').select('id, role, notify_prefs').eq('company_id', companyId),
+  ])
+  if (pErr) console.error('audienceTokens: profiles read failed', pErr.message)
+  const rosterKnown = !pErr && Array.isArray(people)
+  const wants = new Map<string, boolean>()
+  for (const p of (people ?? []) as { id: string; role: string | null; notify_prefs: unknown }[]) {
+    wants.set(p.id, resolvePersonNotify(p.notify_prefs, notifyRole(p.id, companyId, p.role))[kind])
+  }
+  return audienceFilter((rows ?? []) as { token: string; user_id: string | null }[], wants, { rosterKnown, kind })
+}
+
 export async function sendPushToUser(
   companyId: string,
   userId: string | null,
@@ -145,7 +190,7 @@ export async function sendPushToUser(
    *  (the receipt chase): a cardholder without a registered phone must not
    *  put "$4,812 at Blanchard — snap it" on every Associate's lock screen
    *  thirty times over two weeks (sec-check, Sep 9). */
-  opts: { strict?: boolean } = {},
+  opts: { strict?: boolean; kind?: PushKind } = {},
 ): Promise<number> {
   if (!pushConfigured()) return 0
   try {
@@ -153,13 +198,18 @@ export async function sendPushToUser(
     const db = createServiceClient()
     let tokens: string[] = []
     if (userId) {
+      // Their own switch for this kind, if the caller named one.
+      if (opts.kind) {
+        const { data: me } = await db.from('profiles').select('role, notify_prefs').eq('id', userId).eq('company_id', companyId).maybeSingle()
+        const row = me as { role: string | null; notify_prefs: unknown } | null
+        if (row && !resolvePersonNotify(row.notify_prefs, notifyRole(userId, companyId, row.role))[opts.kind]) return 0
+      }
       const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId).eq('user_id', userId)
       tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)
     }
     if (!tokens.length && opts.strict) return 0
     if (!tokens.length) {
-      const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId)
-      tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)
+      tokens = await audienceTokens(db, companyId, opts.kind ?? 'alerts')
     }
     if (!tokens.length) return 0
     return await fcmSend(tokens, msg)
@@ -181,13 +231,13 @@ export async function sendPushToUser(
 export async function sendPushToCompanyPlain(
   companyId: string,
   msg: PushMsg,
+  /** Which switch this push answers to, per person. */
+  kind: PushKind,
 ): Promise<number> {
   if (!pushConfigured()) return 0
   try {
     const { createServiceClient } = await import('./supabase-server')
-    const db = createServiceClient()
-    const { data: rows } = await db.from('device_tokens').select('token').eq('company_id', companyId)
-    const tokens = (rows ?? []).map((r) => r.token as string).filter(Boolean)
+    const tokens = await audienceTokens(createServiceClient(), companyId, kind)
     if (!tokens.length) return 0
     return await fcmSend(tokens, msg)
   } catch {
@@ -204,8 +254,9 @@ export async function sendPushToCompany(
   try {
     const { createServiceClient } = await import('./supabase-server')
     const db = createServiceClient()
-    const { data: rows } = await db.from('device_tokens').select('token').eq('company_id', companyId)
-    const tokens = (rows ?? []).map((r) => r.token as string).filter(Boolean)
+    // Alerts have their own per-person switch. A token we cannot attribute
+    // is KEPT here — missing a theft alert is worse than one extra buzz.
+    const tokens = await audienceTokens(db, companyId, 'alerts')
     if (!tokens.length) return 0
 
     let sent = 0
