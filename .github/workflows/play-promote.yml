@@ -1,0 +1,35 @@
+# Start the rollout on a release already parked in the Play Console as a draft.
+#
+# The normal path is android-release, which uploads and rolls out in one edit.
+# This is the other half of `status: draft`: when a build was parked because
+# Play was blocking on a declaration, nothing in CI could finish it — the AAB
+# is already up there and re-uploading the same versionCode is refused. This
+# promotes what Play holds. Nothing is built and no version number changes.
+#
+# Safe to re-run: a Play edit is atomic, so if Play still refuses (a
+# declaration under review, an unmet requirement) the commit fails and the
+# whole edit is discarded, leaving the draft exactly as it was.
+name: play-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Track whose draft release should start rolling out'
+        type: choice
+        default: production
+        options: [production, internal]
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start the rollout
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/play-promote.mjs "${{ inputs.track || 'production' }}"
