@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, useTransition } from 'react'
-import { Plane, Search, Star, StarOff, Loader2, ChevronRight, X } from 'lucide-react'
+import { Plane, Search, Star, StarOff, Loader2, ChevronRight, X, Repeat } from 'lucide-react'
 import { saveAircraftAction, removeAircraftAction } from '@/lib/actions/aircraft'
 import { fmtDuration, isPartial } from '@/lib/aircraft-log'
 import type { SavedAircraft } from '@/lib/db/aircraft'
@@ -44,6 +44,8 @@ export interface FlightRow {
   arrived: boolean
   fromLabel: string | null
   toLabel: string | null
+  /** Touch-and-goes per field, summarised for the row. */
+  pattern?: { field: string; touchAndGoes: number }[]
 }
 
 const nf = (n: number) => Math.round(n).toLocaleString()
@@ -325,6 +327,14 @@ export function FlightLog({
                         {f.fromLabel ?? 'unknown'} <span className="text-faint">→</span> {f.toLabel ?? 'unknown'}
                       </div>
                     )}
+                    {/* The headline of the whole ask: a training flight is
+                        one trip, and this is what happened inside it. */}
+                    {(f.pattern ?? []).filter((w) => w.touchAndGoes > 0).map((w) => (
+                      <div key={w.field} className="mt-0.5 flex items-center gap-1.5 text-[11.5px] font-semibold text-teal">
+                        <Repeat className="h-3 w-3 flex-none" />
+                        {w.touchAndGoes} touch-and-go{w.touchAndGoes === 1 ? '' : 'es'} at {w.field}
+                      </div>
+                    ))}
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-faint">
                       <span>{fmtDuration(f.durationSec)}</span>
                       <span>{nf(f.distanceNm)} nm</span>

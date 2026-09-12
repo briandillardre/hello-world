@@ -852,6 +852,29 @@ export const GUIDES: HelpGuide[] = [
         ),
       },
       {
+        heading: 'Touch-and-goes',
+        body: (
+          <>
+            <P>
+              Fly out somewhere, shoot a few approaches and come home and that is
+              <B> one flight</B>, not eight — which is how the log files it. It also counts the
+              circuits: the row says <B>&quot;4 touch-and-goes at Greenwood County&quot;</B> before
+              you open anything.
+            </P>
+            <P>
+              Open it and the laps are drawn on top of each other at the same scale, with the
+              pattern altitude, lap time and downwind distance for each one. Circuits that stack
+              into a single line are consistent circuits; you can see it faster than you can read it.
+            </P>
+            <P>
+              One honest note: receivers usually lose an aircraft at runway height, so the
+              touchdown itself falls in a two- or three-minute gap. What we show is the lowest
+              point recorded on each approach, and we say what that height was.
+            </P>
+          </>
+        ),
+      },
+      {
         heading: 'When a flight looks odd',
         body: (
           <>

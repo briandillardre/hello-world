@@ -13,7 +13,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
-npx tsc lib/aircraft-log.ts --target es2020 --module esnext --moduleResolution bundler \
+npx tsc lib/aircraft-log.ts lib/pattern.ts --target es2020 --module esnext --moduleResolution bundler \
   --outDir "$OUT" --skipLibCheck
 echo '{"type":"module"}' > "$OUT/package.json"
+# tsc emits extensionless relative imports; Node's ESM loader needs the .js
+sed -i "s#from './pattern'#from './pattern.js'#" "$OUT/aircraft-log.js"
 FL_JS="$OUT/aircraft-log.js" node scripts/flightlog-test/run.mjs

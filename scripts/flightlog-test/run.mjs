@@ -17,6 +17,8 @@ const {
   parseTrace, segmentFlights, stitchFlights, flightsFromTraces, isPartial,
   deriveVerticalSpeed, downsampleTrack, haversineNm, fmtDuration, normalizeReg, asHex,
 } = await import(LIB)
+const { findPatternWork, patternSummary, consistencyNote } = await import(
+  LIB.replace('aircraft-log.js', 'pattern.js'))
 
 let fail = 0
 const ok = (name, cond, extra = '') => {
@@ -189,6 +191,62 @@ ok('durations read like a person wrote them', fmtDuration(3660) === '1h 01m' && 
 ok('tail numbers normalise', normalizeReg(' n628ts ') === 'N628TS')
 ok('an icao hex is recognised', asHex('a835af') === 'a835af')
 ok('a tail number is not a hex', asHex('N628TS') === null)
+
+// ── Pattern work: a REAL touch-and-go session ─────────────────────────────
+// pattern-day.json is the actual trace of the flight Brian described:
+// Greenville Downtown out to Greenwood County, a series of touch-and-goes,
+// then home. Two airfields, one trip. The stub below stands in for the
+// airport table so this needs no data file.
+const patternDay = load('pattern-day.json')
+const FIELDS = [
+  { ident: 'KGMU', name: 'Greenville Downtown', lat: 34.8479, lon: -82.3502, elevationFt: 1048 },
+  { ident: 'KGRD', name: 'Greenwood County', lat: 34.2487, lon: -82.1554, elevationFt: 631 },
+]
+const stubField = (lat, lon) => {
+  for (const f of FIELDS) {
+    const d = Math.hypot((lat - f.lat) * 60, (lon - f.lon) * 60 * Math.cos(lat * Math.PI / 180))
+    if (d < 3) return f
+  }
+  return null
+}
+const pd = parseTrace(patternDay)
+const pFlights = segmentFlights('a761fa', pd.fixes, patternDay.trace, { fieldAt: stubField })
+
+// The headline ask: this is ONE trip, not eight.
+ok('a touch-and-go session is ONE flight', pFlights.length === 1, `${pFlights.length}`)
+const trip = pFlights[0]
+ok('…that starts and ends at the home field', trip.departed && trip.arrived)
+ok('…and lasts the whole session', Math.abs(trip.durationSec - 4700) < 120, String(trip.durationSec))
+
+const work = trip.pattern.find((w) => w.field.ident === 'KGRD')
+ok('the pattern work is found, at the right field', !!work)
+console.log('\n  ' + (work ? patternSummary(work) : 'none'))
+console.log('  ' + (work ? consistencyNote(work) ?? '' : ''))
+ok('counts 4 touch-and-goes', work?.touchAndGoes === 4, String(work?.touchAndGoes))
+ok('every one of them climbed away again', work?.approaches.every((a) => a.wentAround))
+ok('each got down near the runway', work?.approaches.every((a) => a.lowestAgl < 500))
+ok('the touchdowns sit in coverage gaps', work?.approaches.every((a) => a.gapSec > 60))
+
+// The departure is not an arrival, and the cross-country is not a circuit —
+// both were false positives on the first cut.
+ok('the take-off is not counted as a touch-and-go',
+  !trip.pattern.some((w) => w.field.ident === 'KGMU' && w.touchAndGoes > 0),
+  JSON.stringify(trip.pattern.map((w) => [w.field.ident, w.touchAndGoes])))
+ok('the 152 nm round trip is not a "circuit"',
+  trip.pattern.every((w) => w.circuits.every((c) => c.widthNm <= 5)))
+
+// Consistency — the second half of the ask.
+ok('laps are compared to each other', (work?.circuits.length ?? 0) >= 3, String(work?.circuits.length))
+ok('pattern altitude is reported', (work?.consistency?.patternAglMean ?? 0) > 500)
+ok('…and so is how tightly it was held', work?.consistency?.patternAglSpread != null)
+ok('each lap keeps its ground track for drawing', work?.circuits.every((c) => c.path.length >= 3))
+
+// A plain A-to-B flight has no pattern work to report.
+const plain = segmentFlights('a835af', parseTrace(day2).fixes, day2.trace, { fieldAt: stubField })
+ok('a cross-country reports no touch-and-goes',
+  plain.every((f) => f.pattern.every((w) => w.touchAndGoes === 0)))
+ok('…and no field resolver means no pattern work at all',
+  segmentFlights('a761fa', pd.fixes, patternDay.trace)[0].pattern.length === 0)
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed')
 process.exit(fail ? 1 : 0)

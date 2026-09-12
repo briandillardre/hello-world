@@ -25,6 +25,8 @@
  *   [8] details object (carries `flight`, the callsign)
  */
 
+import { findPatternWork, type Field, type PatternWork } from './pattern'
+
 /** One position report, normalised. `altFt: null` means "on the ground". */
 export interface Fix {
   /** Epoch SECONDS (not ms) — trace files are second-resolution. */
@@ -88,6 +90,13 @@ export interface Flight {
    */
   departed: boolean
   arrived: boolean
+  /**
+   * Touch-and-goes and circuits flown DURING this flight — empty unless the
+   * caller supplied a field resolver. A pilot who flies to another field,
+   * shoots six approaches and comes home made ONE trip, not eight; this is
+   * how the log says what happened in the middle of it (Brian, Sep 12).
+   */
+  pattern: PatternWork[]
   track: Fix[]
 }
 
@@ -102,6 +111,12 @@ export interface SegmentOpts {
   /** Airborne runs shorter than this are noise, not trips. */
   minFlightSec?: number
   /**
+   * Resolves a position to the airfield it is over. Injected so this file
+   * stays pure; lib/airports.ts supplies the real one. Without it, pattern
+   * work is simply not looked for.
+   */
+  fieldAt?: (lat: number, lon: number) => Field | null
+  /**
    * …and a self-contained trip climbs at least this far. Applied ONLY to
    * segments closed at both ends: a fragment that runs to the edge of its
    * day file is half of something bigger, and the far side of a red-eye is
@@ -111,7 +126,7 @@ export interface SegmentOpts {
   minClimbFt?: number
 }
 
-const DEFAULTS: Required<SegmentOpts> = {
+const DEFAULTS: Required<Omit<SegmentOpts, 'fieldAt'>> = {
   groundBreakSec: 240,
   gapBreakSec: 900,
   minFlightSec: 180,
@@ -268,13 +283,29 @@ export function segmentFlights(
   rawRows: unknown[] = [],
   opts: SegmentOpts = {},
 ): Flight[] {
-  const o = { ...DEFAULTS, ...opts }
+  const o: Required<Omit<SegmentOpts, 'fieldAt'>> & Pick<SegmentOpts, 'fieldAt'> = { ...DEFAULTS, ...opts }
   const withVs = deriveVerticalSpeed(fixes)
   const flights: Flight[] = []
 
   let start = -1 // index of the first airborne fix of the run in progress
   let last = -1  // index of the most recent airborne fix
   let groundSince: number | null = null
+
+  /**
+   * Is this fix sitting on an airfield?
+   *
+   * The ground flag alone is not enough: light aircraft at small fields never
+   * send it (N575LD has zero ground rows in a whole day), so a perfectly
+   * ordinary departure looked like the middle of a flight. A fix over a known
+   * field, within circuit height of that field's own elevation, is a takeoff
+   * or a landing. Needs the injected resolver, so without one this falls back
+   * to the flag alone.
+   */
+  const overField = (f: Fix): boolean => {
+    const fd = o.fieldAt?.(f.lat, f.lon)
+    if (!fd) return false
+    return f.altFt == null || f.altFt - fd.elevationFt <= 1500
+  }
 
   /** Was the aircraft seen on the ground just before / after this run? */
   const groundNear = (idx: number, dir: -1 | 1): boolean => {
@@ -324,8 +355,11 @@ export function segmentFlights(
       fixCount: airborne.length,
       openStart,
       openEnd,
-      departed: groundNear(start, -1),
-      arrived: groundNear(endIdx, 1),
+      departed: groundNear(start, -1) || overField(airborne[0]),
+      arrived: groundNear(endIdx, 1) || overField(airborne[airborne.length - 1]),
+      // On `airborne`, not `track` — the downsample would thin a two-minute
+      // circuit to a handful of points and lose the dips entirely.
+      pattern: o.fieldAt ? findPatternWork(airborne, o.fieldAt) : [],
       track: downsampleTrack(airborne),
     })
     start = -1
@@ -408,6 +442,7 @@ export function stitchFlights(flights: Flight[], maxGapSec = 900, maxJumpNm = 40
       openEnd: f.openEnd,
       departed: prev.departed,
       arrived: f.arrived,
+      pattern: [...prev.pattern, ...f.pattern],
       track,
     }
   }

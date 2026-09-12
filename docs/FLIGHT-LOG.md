@@ -90,6 +90,61 @@ hole in the data of 15. Four rules earned their place:
    (`departed` / `arrived` / `isPartial()`), or the log is lying about what
    it knows.
 
+## Touch-and-goes and pattern work
+
+Brian, Sep 12, describing his own flight: *"Also need a way to show how many
+touch and gos were done etc. Vs categorizing as multiple flights. For example
+yesterday I went gmu to grd and did a bunch of touch and gos then back to
+gmu. Would be a nice feature to show traffic pattern consistency."*
+
+The "vs categorizing as multiple flights" half already held — a touch-and-go
+never produces the four-minute ground stop that ends a flight, so the trip
+came through as one. What was missing was saying what happened in the middle.
+
+**What a touch-and-go actually looks like in ADS-B**, from that exact flight
+(N575LD at Greenwood County, 11 Sep): the aircraft comes down the pattern to
+a few hundred feet above the field, **vanishes for two or three minutes** —
+small fields have no receiver coverage at runway height — and reappears
+climbing back to circuit altitude. The touchdown itself is essentially never
+in the data. So `lib/pattern.ts` detects the DIP, not the wheels: a descent
+below 500 ft AGL within 3 nm of a known field, with hysteresis at 800 ft so a
+wobble on final is not counted twice.
+
+Two false positives had to be designed out, both real:
+
+* **The take-off is not an arrival.** A flight starts low over the field it
+  departed, so every A-to-B trip was reporting a phantom touch-and-go at its
+  origin. A dip that begins at the first fix is the departure.
+* **A cross-country is not a circuit.** GMU → Greenwood → GMU was reported as
+  one lap with a 42 nm downwind. A lap that strays more than 5 nm from the
+  field is a departure and a return, not a circuit.
+
+What comes out for that flight, from the real trace:
+
+```
+4 touch-and-goes at Greenwood County
+Pattern altitude held within 12 ft of 902 ft AGL · laps 4:58 ± 22s
+                                                  · downwind 2.0 ± 0.1 nm
+```
+
+**Consistency is shown as a shape, not a score.** The laps are drawn on top
+of each other at one scale (`components/aircraft/PatternCard.tsx`); three
+circuits that stack into a single line say more than any statistic, and the
+table underneath is there to be quoted. The laps take a SEQUENTIAL ramp (one
+hue, light → dark by lap order) because they are the same thing repeated —
+categorical hues would imply they differ in kind. Each touchdown also gets a
+tick on the altitude chart, so a row of sawteeth reads as circuits.
+
+Detection runs on the **full-resolution** fix stream inside `segmentFlights`
+(the stored `track` is downsampled to 400 points, which thins a two-minute
+circuit past the point the dips survive), and the result is stored on
+`aircraft_flights.pattern` by migration 109.
+
+Field elevation earns its keep twice here: it is how a dip is measured, and
+it is how `departed` / `arrived` are decided now that the resolver is
+injected into the segmenter — so the two layers cannot disagree about whether
+an aircraft was ever on the ground.
+
 ## Run the harness
 
 ```
@@ -99,9 +154,11 @@ hole in the data of 15. Four rules earned their place:
 Same standing as the ledger and navigation harnesses: **run it after ANY
 change to `lib/aircraft-log.ts`.** It drives two REAL archive files (baked in
 under `scripts/flightlog-test/`, so it needs no network) plus synthetic edge
-cases, and asserts the things a pilot reading their own log would notice — a
+cases, plus `pattern-day.json`, the real trace of Brian's Greenwood County training
+flight, and asserts the things a pilot reading their own log would notice — a
 takeoff that never happened, two trips welded together, a red-eye cut in
-half, a chart with holes in it. 48 assertions.
+half, a training session filed as eight flights instead of one, a chart with
+holes in it. 71 assertions.
 
 The ledger harness exists because hours are money and the nav harness exists
 because a missed turn is dangerous. This one exists because a flight log that

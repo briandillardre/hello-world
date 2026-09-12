@@ -77,7 +77,12 @@ function niceMax(v: number): number {
   return step * mag
 }
 
-export function FlightProfile({ track }: { track: Fix[] }) {
+export function FlightProfile({ track, touchdowns = [] }: {
+  track: Fix[]
+  /** Epoch seconds of each arrival at a runway — marked on the altitude
+   *  trace, so the sawtooth reads as circuits rather than noise. */
+  touchdowns?: number[]
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -183,7 +188,8 @@ export function FlightProfile({ track }: { track: Fix[] }) {
         className="space-y-2"
       >
         {series.map((s) => (
-          <Chart key={s.key} s={s} pts={pts} x={x} hoverIdx={hoverIdx} span={span} w={w} plotW={plotW} />
+          <Chart key={s.key} s={s} pts={pts} x={x} hoverIdx={hoverIdx} span={span} w={w} plotW={plotW}
+            touchdowns={s.key === 'alt' ? touchdowns : []} />
         ))}
       </div>
 
@@ -231,7 +237,7 @@ export function FlightProfile({ track }: { track: Fix[] }) {
 }
 
 function Chart({
-  s, pts, x, hoverIdx, span, w, plotW,
+  s, pts, x, hoverIdx, span, w, plotW, touchdowns = [],
 }: {
   s: Series
   pts: Fix[]
@@ -240,6 +246,7 @@ function Chart({
   span: number
   w: number
   plotW: number
+  touchdowns?: number[]
 }) {
   const vals = s.values
   const present = vals.filter((v): v is number => v != null)
@@ -345,6 +352,19 @@ function Chart({
             </g>
           ))
         )}
+
+        {/* Each arrival at a runway, so a row of sawteeth reads as circuits. */}
+        {touchdowns.map((t) => {
+          let idx = 0
+          for (let i = 1; i < pts.length; i++) if (Math.abs(pts[i].t - t) < Math.abs(pts[idx].t - t)) idx = i
+          if (Math.abs(pts[idx].t - t) > 120) return null
+          return (
+            <g key={t}>
+              <line x1={x(idx)} x2={x(idx)} y1={PAD_T + PLOT_H - 10} y2={PAD_T + PLOT_H}
+                stroke="#2dd4bf" strokeWidth={2} strokeLinecap="round" />
+            </g>
+          )
+        })}
 
         {/* Crosshair */}
         {hoverIdx != null && vals[hoverIdx] != null && (
