@@ -85,12 +85,13 @@ try {
   // userFraction is invalid on a completed release, so it is dropped.
   const { userFraction: _drop, ...rest } = draft
   void _drop
+  // ONLY the promoted release. Sending the outgoing one alongside it is a
+  // 400 — "Only one completed release is allowed" — and it is not needed:
+  // Play retires the previous release itself (it shows up under Release
+  // history as "Replaced on ..."), exactly as the upload path does.
   await call(`/edits/${edit.id}/tracks/${TRACK}`, 'PUT', {
     track: TRACK,
-    releases: [
-      { ...rest, status: 'completed' },
-      ...releases.filter((r) => r !== draft && r.status !== 'draft'),
-    ],
+    releases: [{ ...rest, status: 'completed' }],
   })
   const done = await call(`/edits/${edit.id}:commit`, 'POST')
   committed = true
