@@ -122,6 +122,24 @@ const rj = midnight.flights[0]
 ok('a stitched flight reports the real takeoff and landing',
   rj && rj.departed === false && rj.arrived === false)
 
+// ── The live file re-serves an old session (real, seen on a Cirrus) ──────
+// adsb.lol's live trace_full is "the current trace": for an aircraft that
+// has not flown today it still holds its last session, so the same flight
+// arrives from the live file AND the archived day it happened on.
+const sameDay = (base, offsetToSameAbsoluteTime) => ({
+  icao: 'eeeeee', timestamp: base,
+  trace: Array.from({ length: 30 }, (_, i) => [
+    offsetToSameAbsoluteTime + i * 60, 34 + i * 0.01, -82 + i * 0.01, 3000 + i * 200, 130, 90, 0, 200,
+  ]),
+})
+const T = 1_700_050_000
+const twice = flightsFromTraces([
+  { raw: sameDay(1_700_086_400, T - 1_700_086_400) }, // "today" file, later base
+  { raw: sameDay(1_700_000_000, T - 1_700_000_000) }, // the archived day
+])
+ok('the same flight from two files is listed once', twice.flights.length === 1, `${twice.flights.length}`)
+ok('…keeping one stable id', twice.flights[0]?.id === `eeeeee-${T}`, twice.flights[0]?.id)
+
 // ── Identity comes from the NEWEST file, not the last one processed ──────
 // Callers hand days back newest-first, so "later file wins" silently took
 // the oldest and could write a stale tail number over a re-registered one.

@@ -366,7 +366,21 @@ export function segmentFlights(
  * Pass every day's flights in chronological order.
  */
 export function stitchFlights(flights: Flight[], maxGapSec = 900, maxJumpNm = 40): Flight[] {
-  const sorted = flights.slice().sort((a, b) => a.startedAt - b.startedAt)
+  /*
+   * Drop exact repeats first. adsb.lol's live `trace_full` file is "the
+   * current trace", which for an aircraft that has not flown TODAY still
+   * holds its last session — so the same flight comes back from both the
+   * live file and the archived day it actually happened on, with the same
+   * id (hex + takeoff second) and a different file timestamp. Seen on a real
+   * Cirrus, Sep 12. Same id is the same flight by construction.
+   */
+  const byId = new Map<string, Flight>()
+  for (const f of flights) {
+    const prev = byId.get(f.id)
+    // Keep whichever copy saw more of the flight.
+    if (!prev || f.endedAt > prev.endedAt || f.fixCount > prev.fixCount) byId.set(f.id, f)
+  }
+  const sorted = Array.from(byId.values()).sort((a, b) => a.startedAt - b.startedAt)
   const out: Flight[] = []
   for (const f of sorted) {
     const prev = out[out.length - 1]

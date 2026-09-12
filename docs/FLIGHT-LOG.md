@@ -75,11 +75,16 @@ hole in the data of 15. Four rules earned their place:
    file is half of something bigger, and the far side of a red-eye is pure
    cruise with no climb in it. Applying the climb test to fragments deleted
    every midnight crossing. The harness caught it.
-3. **Midnight crossings are stitched**, but only when the two halves meet at
+3. **The same flight from two files is one flight.** adsb.lol's live
+   `trace_full` is "the current trace" — for an aircraft that has not flown
+   today it still serves its last session, so the same trip arrives from both
+   the live file and the archived day, under the same id. Seen on a real
+   Cirrus the day this shipped.
+4. **Midnight crossings are stitched**, but only when the two halves meet at
    the boundary in *both* time (≤ 15 min) and space (≤ 40 nm). A coincidence
    of timing must not weld a Georgia trip to a British one.
-4. **A segment nobody saw take off or land is flagged, not sold as a short
-   flight.** An airliner with a coverage hole produced an "11 minute, 63 nm
+5. **A segment nobody saw take off or land is flagged, not sold as a short
+   flight** (after the field-elevation test above has had its say). An airliner with a coverage hole produced an "11 minute, 63 nm
    flight starting at 25,000 ft". Splitting there is right — we will not draw
    a line through an hour we cannot see — but the row has to say *partial*
    (`departed` / `arrived` / `isPartial()`), or the log is lying about what
@@ -136,12 +141,29 @@ trivially abuse them.
   query-and-display — one airframe at a time, never bulk-imported (same rule
   as the map popup's filed routes).
 
-## Known gaps
+## Naming the ends
 
-* **No airport names.** Departure and arrival are coordinates, drawn as a
-  plan view. Naming them needs an airport table — OurAirports is public
-  domain and importable (unlike adsbdb's route DB), and `from_label` /
-  `to_label` columns are already waiting in 108.
+`lib/airports.ts` + `lib/data/airports.json` — OurAirports, which is **public
+domain**, so unlike adsbdb's route database we can bundle it outright.
+Trimmed to real airfields (no heliports, closed fields, seaplane bases) and
+to eight fields: 48,009 rows, ~3.3 MB, loaded once per lambda into a 1°
+lat/lon grid. 2,000 lookups take ~22 ms.
+
+Rows read the way anyone expects — `Greenville Downtown (GMU) → Knoxville
+Downtown Island (KDKX)` — resolved once at bank time, since the field a
+flight left from does not change.
+
+**Field elevation is also how we tell a real departure from a coverage gap.**
+The feed's ground flag is authoritative when present, but on light aircraft
+at small fields it usually is not: N575LD, a Cirrus working out of Greenville
+Downtown, has ZERO ground rows in a whole day's trace — its lowest fix is
+925 ft against a field elevation of 1,048 ft. Judging it by the ground flag
+labelled an ordinary training flight "part of a flight". So `atField()` adds
+the geographic test: an endpoint over a known field, within ~1,500 ft of that
+field's own elevation, is a takeoff or a landing. Anything still unconfirmed
+is written "near X", never stated.
+
+## Known gaps
 * **Banked flights are keyed by airframe, not company.** Two companies
   watching the same jet share one copy — it is public ADS-B, and fetching it
   twice would be rude to the upstream. Who watches what stays private:

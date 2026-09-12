@@ -42,6 +42,8 @@ export interface FlightRow {
   hasTrack: boolean
   departed: boolean
   arrived: boolean
+  fromLabel: string | null
+  toLabel: string | null
 }
 
 const nf = (n: number) => Math.round(n).toLocaleString()
@@ -314,6 +316,15 @@ export function FlightLog({
                       </span>
                       {f.callsign && <span className="ml-auto font-mono text-[10.5px] text-teal">{f.callsign}</span>}
                     </div>
+                    {/* Where it actually went, the way anyone reading a flight
+                        list expects to see it. */}
+                    {/* Wraps rather than truncating: losing the second half
+                        of "A → B" loses the whole point of the line. */}
+                    {(f.fromLabel || f.toLabel) && (
+                      <div className="mt-0.5 text-[12px] leading-snug text-muted">
+                        {f.fromLabel ?? 'unknown'} <span className="text-faint">→</span> {f.toLabel ?? 'unknown'}
+                      </div>
+                    )}
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-faint">
                       <span>{fmtDuration(f.durationSec)}</span>
                       <span>{nf(f.distanceNm)} nm</span>

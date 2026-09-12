@@ -1,5 +1,6 @@
 import type { Fix, Flight } from './aircraft-log'
 import { haversineNm } from './aircraft-log'
+import { resolveEnd } from './airports'
 
 /**
  * A believable flight log for demo mode (no env vars, no signed-in company).
@@ -65,7 +66,7 @@ function buildTrack(leg: Leg, startSec: number, durationSec: number): Fix[] {
   return out
 }
 
-export function demoFlights(now = new Date()): Flight[] {
+export function demoFlights(now = new Date()): (Flight & { fromLabel: string | null; toLabel: string | null })[] {
   // Anchored to UTC days, not local ones: ids built with setHours() shifted
   // under a page left open across local midnight (or a DST change), and the
   // detail fetch then missed its own flight (ship-check, Sep 12).
@@ -93,6 +94,8 @@ export function demoFlights(now = new Date()): Flight[] {
       departed: true,
       arrived: true,
       track,
+      fromLabel: resolveEnd(leg.fromLat, leg.fromLon, null, true).label,
+      toLabel: resolveEnd(leg.toLat, leg.toLon, null, true).label,
     }
   }).sort((a, b) => b.startedAt - a.startedAt)
 }

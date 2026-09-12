@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { flightsFromTraces, stitchFlights, type Flight } from '../aircraft-log'
+import { resolveEnd } from '../airports'
 import { ARCHIVE_DAYS, availableDays, fetchTraceDays, utcDay } from '../aircraft-source'
 
 /**
@@ -130,14 +131,21 @@ const flightToRow = (f: Flight) => ({
   duration_sec: f.durationSec,
   from_lat: f.from.lat, from_lng: f.from.lon,
   to_lat: f.to.lat, to_lng: f.to.lon,
+  // Named once, at bank time — the airfield a flight left from does not
+  // change, and this saves 48k-row lookups on every page view. The airport
+  // lookup also UPGRADES departed/arrived: a light aircraft at a small field
+  // never sends the ground flag, so field elevation is what proves it flew
+  // from there rather than appearing mid-air.
+  from_label: resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).label,
+  to_label: resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).label,
+  departed: f.departed || resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed).confirmed,
+  arrived: f.arrived || resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived).confirmed,
   distance_nm: f.distanceNm,
   max_alt_ft: f.maxAltFt,
   max_gs_kt: f.maxGsKt,
   fix_count: f.fixCount,
   track: f.track,
   open_ended: f.openEnd,
-  departed: f.departed,
-  arrived: f.arrived,
   banked_at: new Date().toISOString(),
 })
 
@@ -259,7 +267,19 @@ export async function getFlights(
   // the banked row is still open: it was written mid-flight and the live read
   // has the finished version.
   const byId = new Map<string, LoggedFlight>()
-  for (const f of fresh) byId.set(f.id, { ...f, banked: false, fromLabel: null, toLabel: null, bankedAt: null })
+  for (const f of fresh) {
+    const a = resolveEnd(f.from.lat, f.from.lon, f.track[0]?.altFt ?? null, f.departed)
+    const b = resolveEnd(f.to.lat, f.to.lon, f.track[f.track.length - 1]?.altFt ?? null, f.arrived)
+    byId.set(f.id, {
+      ...f,
+      departed: f.departed || a.confirmed,
+      arrived: f.arrived || b.confirmed,
+      banked: false,
+      fromLabel: a.label,
+      toLabel: b.label,
+      bankedAt: null,
+    })
+  }
   for (const f of banked) if (!f.openEnd || !byId.has(f.id)) byId.set(f.id, f)
 
   // A banked flight stitched across midnight starts on the earlier day, so a
