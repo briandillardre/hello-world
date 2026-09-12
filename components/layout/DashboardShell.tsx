@@ -71,8 +71,10 @@ export function DashboardShell({
       </main>
       <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} features={features} askAi={askAi} onSignOut={signOutAction} />
       {askAi && <AssistantWidget />}
-      {/* Native app only: the phone reports the BLE tags it hears (switch on the Tag scanner page). */}
-      <PhoneGateway />
+      {/* Native app only: the phone reports the BLE tags it hears. On by
+          default; the Tag scanner switch turns it off on one phone. A role
+          without both view levels never arms the radio at all. */}
+      <PhoneGateway allowed={!features || (features.includes('tags') && features.includes('track'))} />
       {/* While the person is clocked in, the phone records where the shift goes (mandatory; native background when the app has the plugin). */}
       <ShiftTracker />
     </>

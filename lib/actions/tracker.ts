@@ -21,6 +21,14 @@ export interface PhoneFix {
   /** Who produced it: 'live' (Share location), 'shift' (the clock's tracker),
    *  'gateway' (the BLE phone gateway). Lands in raw.source for the record. */
   source?: 'live' | 'shift' | 'gateway' | null
+  /**
+   * May this fix bring a phone asset back from a stopped share? TRUE for the
+   * two paths a person opts into (Share location, being on the clock). FALSE
+   * for the always-on BLE gateway: "Stop sharing" has to mean it (ship-check,
+   * Sep 12 — the gateway silently put a foreman's dot back on the map after
+   * he turned sharing off). An inactive asset then answers 'sharing_off'.
+   */
+  reactivate?: boolean
 }
 
 /**
@@ -65,6 +73,7 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
     if (error || !created) return { ok: false, reason: 'asset' }
     assetId = created.id
   } else if (existing && !existing.active) {
+    if (fix.reactivate === false) return { ok: false, reason: 'sharing_off' }
     await svc.from('assets').update({ active: true }).eq('id', assetId)
   }
 
@@ -76,8 +85,8 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
     const t = Date.parse(fix.at)
     if (Number.isFinite(t)) atMs = Math.min(nowMs, Math.max(nowMs - 24 * 3_600_000, t))
   }
-  const { at: _at, source, ...rest } = fix
-  void _at
+  const { at: _at, source, reactivate: _re, ...rest } = fix
+  void _at; void _re
   const { error: locErr } = await svc.from('asset_locations').insert({
     asset_id: assetId,
     company_id: companyId,

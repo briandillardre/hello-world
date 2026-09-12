@@ -17,38 +17,50 @@ import { parseIBeacon, APPLE_COMPANY_ID } from '@/lib/ble'
  * Always-on means battery discipline is not optional:
  *  - the radio listens for SCAN_MS of each WINDOW_MS and sleeps the rest (a
  *    tag advertises about once a second, so ten seconds hears everything in
- *    range);
+ *    range), and it stops the moment the app leaves the screen;
  *  - a location fix is only taken when something was actually heard, so a
- *    phone with no tags near it costs nothing but the short listen.
- *
- * Scanning stops the moment the switch goes off or the component unmounts.
- * Background scanning with the app closed is the native update's job (#57).
+ *    phone with no tags near it costs nothing but the short listen;
+ *  - a phone that has not MOVED and hears the same tags repeats itself at most
+ *    once every QUIET_MS — otherwise a truck parked with five tagged tools
+ *    would write three near-identical rows a minute, all day, into the same
+ *    table the hours ledger and the trail rollups scan.
  *
  * The FIRST scan on a phone summons the OS Bluetooth prompt ("Nearby
  * devices" / "Use Bluetooth"), so it gets the same treatment as location: a
- * one-time card that says why in plain words BEFORE the prompt. Cold-prompting
- * a crew member gets a Deny that kills the feature on that phone forever —
- * and an unexplained prompt is exactly what Play's disclosure rule is about.
- * One showing per device; after that the gateway just runs.
+ * one-time card that says why in plain words BEFORE the prompt, and only once
+ * the location primer is done with the screen. Cold-prompting a crew member
+ * gets a Deny that kills the feature on that phone forever — and an
+ * unexplained prompt is exactly what Play's disclosure rule is about.
+ *
+ * A refusal is FINAL for the session (ship-check, Sep 12): the plugin's
+ * initialize() re-requests the permission on every call, so retrying each
+ * window would throw the system dialog over whatever the person is doing and
+ * earn the second denial Android treats as permanent. Scanning stops when the
+ * switch goes off or the component unmounts. Background scanning with the app
+ * closed is the native update's job (#57).
  */
 const KEY = 'ht_phone_gateway'
-/** Stamped the one time the pre-prompt card appears — never a second showing. */
+/** Stamped when the pre-prompt card is actually SEEN — never a second showing. */
 const PRIMER_KEY = 'ht_ble_primer'
 /** One report per window; the radio is only live for the first SCAN_MS of it. */
 const WINDOW_MS = 20_000
 const SCAN_MS = 10_000
+/** A parked phone hearing the same tags repeats itself at most this often. */
+const QUIET_MS = 300_000
+/** Under this much movement a report counts as "the same place". */
+const MOVED_M = 25
 export const GATEWAY_EVENT = 'ht:phone-gateway'
 export const GATEWAY_STATUS_EVENT = 'ht:phone-gateway-status'
 export interface GatewayStatus { on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null }
 
+function stored(): '1' | '0' | null {
+  try { const v = localStorage.getItem(KEY); return v === '1' || v === '0' ? v : null } catch { return null }
+}
 /**
  * On inside the app, off in a browser. An UNSET key reads as on in the shell
  * (Brian: always, through the app); an explicit '0' — someone turned the
  * switch off, or a 403 turned it off for them — still wins.
  */
-function stored(): '1' | '0' | null {
-  try { const v = localStorage.getItem(KEY); return v === '1' || v === '0' ? v : null } catch { return null }
-}
 export function phoneGatewayEnabled(): boolean {
   const v = stored()
   if (v) return v === '1'
@@ -61,18 +73,30 @@ export function setPhoneGateway(on: boolean) {
 
 interface ScanResultLike { device: { deviceId: string; name?: string }; localName?: string; rssi?: number; manufacturerData?: Record<string, DataView> }
 
-export function PhoneGateway() {
+/** Metres between two fixes — flat-earth is plenty at this scale. */
+function metresApart(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const dLat = (a.lat - b.lat) * 111_320
+  const dLng = (a.lng - b.lng) * 111_320 * Math.cos((a.lat * Math.PI) / 180)
+  return Math.sqrt(dLat * dLat + dLng * dLng)
+}
+
+export function PhoneGateway({ allowed = true }: {
+  /** The caller's view levels cover both the Tag scanner and Share location.
+   *  Without them every report would 403, so the radio never arms at all. */
+  allowed?: boolean
+}) {
   const [on, setOn] = useState(false)
   const [ask, setAsk] = useState(false)
 
   useEffect(() => {
-    if (!isNativeApp()) return
+    if (!isNativeApp() || !allowed) return
     const h = (e: Event) => { setAsk(false); setOn(!!(e as CustomEvent<{ on: boolean }>).detail?.on) }
     window.addEventListener(GATEWAY_EVENT, h)
 
-    let cancelled = false
+    let done = false
     const decide = () => {
-      if (cancelled) return
+      if (done) return
+      done = true
       const choice = stored()
       if (choice) { setOn(choice === '1'); return }
       let seen = true
@@ -82,36 +106,55 @@ export function PhoneGateway() {
       try { localStorage.setItem(PRIMER_KEY, String(Date.now())) } catch { /* fine */ }
       setAsk(true)
     }
-    // The location primer owns the first screen; queue behind it so two
-    // sheets never stack on a new install.
-    if (typeof document !== 'undefined' && document.documentElement.dataset.htPrimer === '1') {
-      const after = () => { window.removeEventListener('ht:primer-done', after); decide() }
-      window.addEventListener('ht:primer-done', after)
-      return () => { cancelled = true; window.removeEventListener('ht:primer-done', after); window.removeEventListener(GATEWAY_EVENT, h) }
+
+    // The location primer owns the first screen, and it raises its flag a
+    // render AFTER this effect runs — so check on a later tick, never now, or
+    // the card is created underneath it and burnt (ship-check, Sep 12).
+    const after = () => { window.removeEventListener('ht:primer-done', after); decide() }
+    window.addEventListener('ht:primer-done', after)
+    const t = window.setTimeout(() => {
+      if (document.documentElement.dataset.htPrimer !== '1') {
+        window.removeEventListener('ht:primer-done', after)
+        decide()
+      }
+    }, 400)
+
+    return () => {
+      done = true
+      window.clearTimeout(t)
+      window.removeEventListener('ht:primer-done', after)
+      window.removeEventListener(GATEWAY_EVENT, h)
     }
-    decide()
-    return () => { cancelled = true; window.removeEventListener(GATEWAY_EVENT, h) }
-  }, [])
+  }, [allowed])
 
   useEffect(() => {
     if (!on) return
     let stopped = false
     let stopScan: (() => Promise<void>) | null = null
     let scanning = false
+    let starting = false
+    let inited = false
+    // A permission refusal is final for the session; everything else backs
+    // off, so a phone with Bluetooth off is not re-asked every 20 seconds.
+    let refused = false
+    let retryAfter = 0
     let sleepTimer: number | null = null
     const heard = new Map<string, { id: string; rssi: number | null; at: number }>()
     // The fix carries WHEN it was taken: a phone that loses location must not
     // keep pinning tags to where it WAS (sec-check, Sep 9) — stale (> 2 min)
     // or coarse (> 250 m) fixes skip the report.
-    let fix: { lat: number; lng: number; acc: number | null; heading: number | null; at: number } | null = null
+    type Fix = { lat: number; lng: number; acc: number | null; heading: number | null; at: number }
+    let fix: Fix | null = null
+    let sent: { at: number; lat: number; lng: number; tags: string } | null = null
     const status: GatewayStatus = { on: true, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null }
     const publish = () => window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { ...status } }))
     publish()
 
     // Asked for only when there is something to report, so an all-day gateway
     // that hears nothing never wakes the GPS. maximumAge lets the OS hand back
-    // the shift recorder's fix when that is already running.
-    const getFix = () => new Promise<typeof fix>((resolve) => {
+    // the shift recorder's fix when that is already running — and the fix's
+    // OWN timestamp is kept, so a cached one cannot read as brand new.
+    const getFix = () => new Promise<Fix | null>((resolve) => {
       if (typeof navigator === 'undefined' || !('geolocation' in navigator)) { resolve(null); return }
       navigator.geolocation.getCurrentPosition(
         (p) => resolve({
@@ -119,19 +162,32 @@ export function PhoneGateway() {
           lng: p.coords.longitude,
           acc: p.coords.accuracy ?? null,
           heading: Number.isFinite(p.coords.heading as number) ? (p.coords.heading as number) : null,
-          at: Date.now(),
+          at: Number.isFinite(p.timestamp) ? p.timestamp : Date.now(),
         }),
         () => resolve(null),
         { enableHighAccuracy: true, maximumAge: 30_000, timeout: 15_000 },
       )
     })
 
+    const sleep = () => { if (sleepTimer != null) { window.clearTimeout(sleepTimer); sleepTimer = null } }
+
     const start = async () => {
-      if (stopped || scanning) return
-      if (sleepTimer != null) { window.clearTimeout(sleepTimer); sleepTimer = null }
+      if (stopped || scanning || starting || refused || Date.now() < retryAfter) return
+      starting = true
+      sleep()
       try {
         const { BleClient } = await import('@capacitor-community/bluetooth-le')
-        await BleClient.initialize({ androidNeverForLocation: false })
+        // ONCE per effect: initialize() re-requests the OS permission on every
+        // call, so calling it each window would re-throw the system dialog.
+        if (!inited) { await BleClient.initialize({ androidNeverForLocation: false }); inited = true }
+        // Android's startScan is a silent no-op with the adapter off — without
+        // this the status line would claim to be listening forever.
+        if (!(await BleClient.isEnabled())) {
+          retryAfter = Date.now() + 120_000
+          status.error = 'Bluetooth is off — turn it on to hear your tool tags.'
+          publish(); return
+        }
+        if (stopped) return
         scanning = true
         // Assigned BEFORE the scan starts: a switch-off during initialize /
         // requestLEScan used to leave a scan running with nothing to stop it.
@@ -155,8 +211,19 @@ export function PhoneGateway() {
       } catch (e) {
         scanning = false
         const msg = e instanceof Error ? e.message : 'Scan failed.'
-        status.error = /permission|denied/i.test(msg) ? 'Bluetooth or location permission was denied — allow it in system settings.' : /enabled|off|state/i.test(msg) ? 'Bluetooth is off.' : msg
+        if (/permission|denied|unauthorized|not authorized/i.test(msg)) {
+          refused = true
+          status.error = 'Bluetooth permission was denied — allow "Nearby devices" in system settings, then reopen the app.'
+        } else if (/enabled|disabled|off|state|power/i.test(msg)) {
+          retryAfter = Date.now() + 120_000
+          status.error = 'Bluetooth is off — turn it on to hear your tool tags.'
+        } else {
+          retryAfter = Date.now() + 300_000
+          status.error = msg
+        }
         publish()
+      } finally {
+        starting = false
       }
     }
 
@@ -166,6 +233,12 @@ export function PhoneGateway() {
       heard.clear()
       status.heard = fresh.length
       if (!fresh.length) { publish(); return }
+      const tags = fresh.map((b) => b.id).sort().join(',')
+      const samePlace = (f: { lat: number; lng: number }) =>
+        !!sent && sent.tags === tags && now - sent.at < QUIET_MS && metresApart(f, sent) < MOVED_M
+      // Nothing new to say: same tags, same spot, said recently. Checked
+      // against the fix we already hold BEFORE spending one on a new one.
+      if (fix && samePlace(fix)) { publish(); return }
       if (!fix || now - fix.at > 60_000) fix = await getFix()
       if (stopped) return
       if (!fix || Date.now() - fix.at > 120_000) {
@@ -176,18 +249,27 @@ export function PhoneGateway() {
         status.error = 'Location is too rough right now to place the tags.'
         publish(); return
       }
+      if (samePlace(fix)) { publish(); return }
       try {
         const res = await fetch('/api/ingest/ble-phone', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ beacons: fresh.map((b) => ({ id: b.id, rssi: b.rssi })), lat: fix.lat, lng: fix.lng, accuracy: fix.acc, heading: fix.heading }),
         })
         const j = await res.json().catch(() => ({})) as { ok?: boolean; matched?: number; holding?: number; error?: string }
-        if (res.ok && j.ok) { status.matched = j.matched ?? 0; status.holding = j.holding ?? 0; status.reportedAt = now; status.error = null }
-        else if (res.status === 403) {
+        if (res.ok && j.ok) {
+          status.matched = j.matched ?? 0; status.holding = j.holding ?? 0; status.reportedAt = now; status.error = null
+          sent = { at: now, lat: fix.lat, lng: fix.lng, tags }
+        } else if (res.status === 403) {
           // View levels changed under us (Tag scanner / Share location turned
           // off for this role) — the switch goes off, not just the report.
           status.error = 'Your view levels no longer include the Tag scanner — the switch was turned off.'
           setPhoneGateway(false)
+        } else if (res.status === 409) {
+          // They turned Share location off. That has to mean it, so the
+          // gateway stands down rather than putting their dot back on the
+          // map through the back door.
+          status.error = 'Location sharing is off, so tags stay off the map. Turn sharing back on to hear them.'
+          setOn(false)
         } else status.error = j.error ?? 'Report failed'
       } catch { status.error = 'No signal — will retry' }
       publish()
@@ -195,18 +277,23 @@ export function PhoneGateway() {
 
     const tick = window.setInterval(() => {
       if (stopped) return
-      void start()   // top of the window: radio back on
-      void report()  // and send what the last one heard
+      if (document.visibilityState === 'visible') void start() // top of the window: radio back on
+      void report()                                            // and send what the last one heard
     }, WINDOW_MS)
 
-    // Scans stop when the app goes to the background; pick up again on return.
-    const onVis = () => { if (document.visibilityState === 'visible') void start() }
+    // Leaving the screen STOPS the radio — Android does not unregister a scan
+    // for us, it only stops delivering results, so a scan left armed in a
+    // pocket is pure battery (ship-check, Sep 12).
+    const onVis = () => {
+      if (document.visibilityState === 'visible') { retryAfter = 0; void start() }
+      else { sleep(); void stopScan?.() }
+    }
     document.addEventListener('visibilitychange', onVis)
     void start()
     return () => {
       stopped = true
       window.clearInterval(tick)
-      if (sleepTimer != null) window.clearTimeout(sleepTimer)
+      sleep()
       document.removeEventListener('visibilitychange', onVis)
       void stopScan?.()
       window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { on: false, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null } satisfies GatewayStatus }))
