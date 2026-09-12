@@ -291,6 +291,38 @@ Then re-run `android-release` with `track: production` — nothing in the
 repo needs to change (the same versionCode 10 AAB is fine, Play never
 accepted it). 1.4.0 (versionCode 9) went nowhere and is superseded.
 
+## Photo and Video Permissions declaration (v1.5.0 / versionCode 11, Sep 12)
+
+The second one-time Play form, and the same shape as the Foreground-service
+one above. It is triggered by `READ_MEDIA_IMAGES` in the manifest, which
+v1.5.0 declares so `OriginalPhotosPlugin` can read a job photo's OWN GPS
+coordinates. Play Console → **App content** → *Photo and Video Permissions*:
+
+- *Why does your app need broad access to photos?* — HammerTrack pins job
+  photos to the job they were taken on. Android removes the GPS coordinates
+  from any photo handed to an app through the system photo picker, so the
+  picker cannot serve this feature: without the original file the app has no
+  idea which job site a photo belongs to. The app reads only the photos the
+  person chooses to add, uses the coordinates and capture time stored inside
+  them, and asks the person which job it was whenever a photo has no
+  coordinates.
+- *Video:* a 30–60 s screen recording on the installed app: /photos → Take
+  photos → **From gallery** → the OS permission prompt (choose **Select
+  photos**) → pick two shots taken on a site → each tile shows *📍 from
+  photo* → Save → the pictures on the map at the site they came from.
+- On Android 14+ the app requests `READ_MEDIA_VISUAL_USER_SELECTED` alongside
+  it, so the prompt offers "Select photos" and most people never grant the
+  whole library.
+
+**Why it is a draft, not a rollout.** Same atomic-edit trap as the
+Foreground-service form: a commit that fails on a missing declaration
+discards the uploaded bundle too, and Play only shows the form once a build
+declaring the permission is sitting in the console. So versionCode 11 was
+dispatched with `status: draft` and parked — run #11 (Sep 12 08:54 UTC)
+logged *Successfully committed 05359266549184880773*. Fill the form, then run
+the **`play-promote`** workflow to flip that draft to a completed production
+release — no rebuild, same versionCode 11.
+
 ## Native roadmap after v1
 1. **Push notifications** — ✅ DONE for Android (FCM v1, Aug 9 — theft alerts
    to the lock screen). iOS push (APNs) waits on Apple enrollment.
