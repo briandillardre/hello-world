@@ -17,6 +17,17 @@
 # With it set, the built AAB uploads straight to the PRODUCTION track with
 # in-app-update priority defaults; without it, the job still succeeds and
 # the signed AAB artifact is the deliverable for a manual upload.
+#
+# The `status` input exists because a Play edit is ATOMIC (Sep 12): run #9
+# uploaded the 1.4.1 bundle fine and then died on "You must let us know
+# whether your app uses any Foreground Service permissions" — and because the
+# COMMIT failed, the whole edit was discarded, bundle included. Play only
+# shows the Foreground service permissions form once a build that declares
+# the permission is actually sitting in the console, so the declaration and
+# the release were deadlocked on each other. `status: draft` breaks it: the
+# edit commits (nothing is published), the build lands, the form appears.
+# Fill it, then start the rollout on that draft — no rebuild, no new
+# versionCode.
 name: android-release
 
 on:
@@ -27,6 +38,11 @@ on:
         type: choice
         default: production
         options: [production, internal]
+      status:
+        description: 'completed = roll it out · draft = park the build in the console (use when Play is blocking the commit on a declaration)'
+        type: choice
+        default: completed
+        options: [completed, draft]
 
 jobs:
   build:
@@ -85,7 +101,7 @@ jobs:
           packageName: com.hammertrack.app
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track || 'production' }}
-          status: completed
+          status: ${{ inputs.status || 'completed' }}
 
       - name: Note the manual step when Play upload was skipped
         if: ${{ env.HAS_PLAY_SA != 'true' }}

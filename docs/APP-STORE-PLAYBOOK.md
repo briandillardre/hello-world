@@ -268,6 +268,23 @@ also appears in the release error's link) → for type **Location**:
   ("While using the app") → background the app → the persistent
   notification → Clock out → the notification disappears.
 
+**Why the form was not there (Sep 12).** Brian went to App content and found
+ten actioned declarations, none of them Foreground service permissions, and
+"Need attention" empty. A Play edit is ATOMIC: run #9's log reads *Creating a
+new Edit → Uploading → Successfully uploaded 1 artifacts → Committing the Edit
+→ error*. Because the COMMIT failed, the whole edit was thrown away, bundle
+included — so Play has never processed a build declaring
+`FOREGROUND_SERVICE_LOCATION`, and it only shows the declaration once such a
+build is sitting in the console. The declaration and the release were each
+waiting on the other.
+
+Broken by `status: draft` on the release workflow (a new input): the edit
+commits, nothing is published, the build parks in the console as a draft
+production release, and the form appears under App content. Fill it, then
+**start the rollout on that draft** — same build, same versionCode 10, no
+rebuild needed. (Only if the draft is discarded does a re-dispatch need a
+fresh versionCode.)
+
 Then re-run `android-release` with `track: production` — nothing in the
 repo needs to change (the same versionCode 10 AAB is fine, Play never
 accepted it). 1.4.0 (versionCode 9) went nowhere and is superseded.
