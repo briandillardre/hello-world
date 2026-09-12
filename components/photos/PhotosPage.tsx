@@ -1,11 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Camera, MapPin, Trash2 } from 'lucide-react'
+import { Camera, MapPin, Trash2, Move } from 'lucide-react'
 import { PhotoCaptureSheet } from './PhotoCaptureSheet'
 import { PhotoLightbox } from '@/components/zones/PhotoLightbox'
-import { deletePhotoAction } from '@/lib/actions/photos'
+import { deletePhotoAction, listPhotoSitesAction, movePhotoAction } from '@/lib/actions/photos'
 import type { FieldPhoto } from '@/lib/db/photos'
 import { useRouter } from 'next/navigation'
 
@@ -20,6 +20,23 @@ export function PhotosPage({ photos, canEdit, myId, demo }: { photos: FieldPhoto
   const [lightbox, setLightbox] = useState<FieldPhoto | null>(null)
   const [list, setList] = useState(photos)
   const [filterZone, setFilterZone] = useState<string>('')
+  // "Wrong spot" — a photo whose GPS was stripped by the phone (or mis-filed
+  // on the way in) can be put on the right job without deleting it.
+  const [moving, setMoving] = useState<FieldPhoto | null>(null)
+  const [sites, setSites] = useState<{ id: string; name: string; lat: number; lng: number }[]>([])
+  useEffect(() => {
+    if (!moving || sites.length) return
+    let alive = true
+    void listPhotoSitesAction().then((r) => { if (alive) setSites(r) }).catch(() => {})
+    return () => { alive = false }
+  }, [moving, sites.length])
+
+  async function move(p: FieldPhoto, geofenceId: string) {
+    const r = await movePhotoAction(p.id, geofenceId)
+    if (!r.ok) { window.alert(r.error ?? 'Could not move it.'); return }
+    setList((xs) => xs.map((x) => (x.id === p.id ? { ...x, zone: r.zone ?? null, geofence_id: geofenceId, lat: r.lat!, lng: r.lng! } : x)))
+    setMoving(null); setLightbox(null)
+  }
 
   const zones = useMemo(() => Array.from(new Set(list.map((p) => p.zone ?? 'Off-site'))).sort(), [list])
   const shown = filterZone ? list.filter((p) => (p.zone ?? 'Off-site') === filterZone) : list
@@ -83,6 +100,29 @@ export function PhotosPage({ photos, canEdit, myId, demo }: { photos: FieldPhoto
         ))}
       </div>
 
+      {moving && (
+        <div className="fixed inset-0 z-[95] flex items-end md:items-center justify-center bg-navy-950/70" onClick={() => setMoving(null)}>
+          <div className="w-full md:max-w-sm bg-navy-900 border border-navy-700 rounded-t-2xl md:rounded-2xl max-h-[calc(80dvh-var(--ht-safe-bottom,0px))] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 pt-3 pb-2 border-b border-navy-800">
+              <h2 className="font-display font-bold text-[15px] text-ink">Which job was this?</h2>
+              <p className="text-[11.5px] text-faint mt-0.5">It moves to that site on the map and files under it. The picture and its date don&apos;t change.</p>
+            </div>
+            <div className="overflow-y-auto p-2">
+              {sites.length === 0 && <p className="p-3 text-[12.5px] text-faint">Loading your sites…</p>}
+              {sites.map((z) => (
+                <button key={z.id} type="button" onClick={() => void move(moving, z.id)}
+                  className="w-full text-left rounded-lg px-3 py-2.5 text-sm text-ink hover:bg-navy-800">
+                  {z.name}
+                </button>
+              ))}
+            </div>
+            <div className="p-4 pt-2 pb-[calc(1rem+var(--ht-safe-bottom,0px))] border-t border-navy-800">
+              <button type="button" onClick={() => setMoving(null)} className="w-full rounded-xl border border-navy-700 text-muted py-2.5 text-sm font-semibold">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PhotoCaptureSheet open={sheet} onClose={() => { setSheet(false); router.refresh() }} onSaved={(p) => setList((xs) => [p, ...xs])} />
       {lightbox && (
         <>
@@ -92,9 +132,14 @@ export function PhotosPage({ photos, canEdit, myId, demo }: { photos: FieldPhoto
               <MapPin className="h-3.5 w-3.5 text-teal" /> On the map
             </Link>
             {(canEdit || (myId && lightbox.user_id === myId)) && (
-              <button type="button" onClick={() => remove(lightbox)} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-navy-900/90 border border-navy-700 text-alert text-[12px] font-semibold px-3 py-1.5">
-                <Trash2 className="h-3.5 w-3.5" /> Remove
-              </button>
+              <>
+                <button type="button" onClick={() => setMoving(lightbox)} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-navy-900/90 border border-navy-700 text-ink text-[12px] font-semibold px-3 py-1.5">
+                  <Move className="h-3.5 w-3.5 text-amber" /> Wrong spot
+                </button>
+                <button type="button" onClick={() => remove(lightbox)} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-navy-900/90 border border-navy-700 text-alert text-[12px] font-semibold px-3 py-1.5">
+                  <Trash2 className="h-3.5 w-3.5" /> Remove
+                </button>
+              </>
             )}
           </div>
         </>

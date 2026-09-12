@@ -11,6 +11,7 @@ import { vehiclePower } from '@/lib/vehicle-power'
 import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { shortTracker } from '@/lib/devices'
+import { TrackerBadge } from '@/components/assets/TrackerBadge'
 import { LiveStatusBadge } from '@/components/assets/LiveStatus'
 import { Badge } from '@/components/ui/badge'
 import { MapSheet } from './MapSheet'
@@ -352,9 +353,14 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
       // Type badge shares the tracker line — a third header row was pure
       // blank space on a phone (Brian, Sep 4: "too much blank space").
       subtitle={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Badge variant="secondary" className="py-0 text-[11px]">{TYPE_LABELS[asset.type]}</Badge>
-          <TrackerChip trackerId={asset.tracker_id} />
+          {/* WHAT kind of box, beside WHICH box — the id names the unit, the
+              badge says what to expect from it (Brian, Sep 12). */}
+          {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
+          {/* The id only when there IS one — the badge already says "No
+              tracker", and two ways of saying it is one too many. */}
+          {(asset.tracker_id || asset.type === 'personnel') && <TrackerChip trackerId={asset.tracker_id} />}
         </div>
       }
       onClose={onClose}
@@ -475,9 +481,15 @@ function AssetDetails({
             className="w-24 h-24 object-cover rounded-xl border border-navy-800 flex-none"
           />
           <div className="flex-1 min-w-0 space-y-1.5">
-            {showStatus && (
-              <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
-            )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {showStatus && (
+                <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
+              )}
+              {/* The kind of box belongs in the PEEK, not only the expanded
+                  sheet: on phones MapSheet hides the subtitle at level 0, and
+                  the peek is the "small view when clicked on map" Brian meant. */}
+              {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
+            </div>
             {(place || poi) && (
               <div className="flex items-start gap-1.5">
                 <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
@@ -498,8 +510,9 @@ function AssetDetails({
       )}
       {/* No photo: still lead with the live status for vehicles/equipment. */}
       {!asset.photo_url && showStatus && (
-        <div className="bg-navy-800 rounded-lg px-3 py-2.5">
+        <div className="bg-navy-800 rounded-lg px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} />
+          {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
         </div>
       )}
       {asset.type === 'tool' && gateway && (

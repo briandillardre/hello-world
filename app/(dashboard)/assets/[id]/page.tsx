@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge'
 import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
 import { TrackerSheet } from '@/components/assets/TrackerSheet'
+import { TrackerBadge } from '@/components/assets/TrackerBadge'
+import { trackerKind } from '@/lib/devices'
 import { getTrackerChoices } from '@/lib/db/trackers'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
 import { TripLog } from '@/components/assets/TripLog'
@@ -123,6 +125,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
                 buttons on phones when the type + category didn't fit. */}
             <div className="flex flex-wrap items-center gap-1 mt-0.5 overflow-hidden">
               <Badge variant="secondary" className="whitespace-nowrap">{TYPE_LABEL[asset.type]}</Badge>
+              {/* what KIND of box is on it — the glance answer; the "what to
+                  expect from it" line lives in Identity & hardware below */}
+              {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
               {asset.category && <Badge variant="outline" className="max-w-full truncate">{asset.category}</Badge>}
               {crew && <Badge variant="outline" className="max-w-full truncate border-teal/40 text-teal">👷 {crew}</Badge>}
             </div>
@@ -242,7 +247,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <section>
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Identity &amp; hardware</h2>
           <div className="rounded-xl border border-navy-800 bg-navy-900 p-4 space-y-3">
-            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker ID" value={asset.tracker_id ?? '—'} />
+            <Field icon={<Wifi className="h-4 w-4 text-[#60a5fa]" />} label="Tracker" value={asset.tracker_id ?? '—'} note={trackerKind(asset.tracker_id).hint} badge={<TrackerBadge trackerId={asset.tracker_id} />} />
             <Field icon={<Hash className="h-4 w-4 text-faint" />} label="Serial number" value={serial ?? '— (add later)'} />
             {detailRows.map(([k, v]) => (
               <Field key={k} icon={<Tag className="h-4 w-4 text-faint" />} label={k.replace(/_/g, ' ')} value={String(v)} />
@@ -567,12 +572,23 @@ function MiniStat({ label, value, unit }: { label: string; value: string; unit?:
   )
 }
 
-function Field({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Field({ icon, label, value, badge, note }: {
+  icon: React.ReactNode; label: string; value: string
+  /** Optional chip beside the value — the tracker row names its own kind. */
+  badge?: React.ReactNode
+  /** One plain line under the row. Used for "what to expect from this box",
+   *  which is what turns a normal silence into something you don't call about. */
+  note?: string
+}) {
   return (
-    <div className="flex items-center gap-2 text-sm">
-      {icon}
-      <span className="text-faint capitalize w-28 flex-none">{label}</span>
-      <span className="text-ink font-medium truncate">{value}</span>
+    <div className="text-sm">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-faint capitalize w-28 flex-none">{label}</span>
+        <span className="text-ink font-medium truncate">{value}</span>
+        {badge}
+      </div>
+      {note && <p className="text-[11.5px] text-faint leading-snug mt-1 ml-[calc(1rem+0.5rem)] sm:ml-[calc(1rem+0.5rem+7rem)]">{note}</p>}
     </div>
   )
 }

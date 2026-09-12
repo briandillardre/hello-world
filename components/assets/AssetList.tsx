@@ -6,6 +6,7 @@ import { inDivision } from '@/lib/divisions'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2, MapPin } from 'lucide-react'
+import { TrackerBadge } from './TrackerBadge'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
@@ -387,11 +388,15 @@ function AssetRow({ asset, toolCount, carrier, where, division }: { asset: Asset
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">
           <span className="sm:hidden uppercase tracking-wide text-[10px] font-semibold text-muted">{asset.type}</span>
-          {untracked && (
+          {untracked ? (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber/15 border border-amber/50 text-amber text-[10px] font-semibold px-1.5 py-px">
               📵 No tracker
             </span>
-          )}
+          ) : asset.type !== 'personnel' ? (
+            // WHAT kind of box is on it (Brian, Sep 12). The list is where you
+            // scan a fleet, so the answer belongs on the row, not one tap in.
+            <TrackerBadge trackerId={asset.tracker_id} size="xs" />
+          ) : null}
           {(toolCount ?? 0) > 0 && (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[10px] font-semibold px-1.5 py-px">
               🔧 {toolCount} aboard

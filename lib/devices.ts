@@ -476,3 +476,111 @@ export function shortTracker(
   if (full.length <= 10) return { kind: 'tag', label: 'Tag', short: full, full }
   return { kind: 'tag', label: 'Tag', short: `····${full.slice(-4)}`, full }
 }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* What KIND of box is on this machine                                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export type TrackerKindKey = 'obd' | 'battery' | 'wired' | 'tag' | 'phone' | 'gps' | 'none'
+
+export interface TrackerKind {
+  key: TrackerKindKey
+  /** Plain words for the chip. Never a model number — model numbers stay out
+   *  of customer-facing copy, and "OBD plug-in" tells a foreman more than
+   *  "FMM00A" ever will. */
+  label: string
+  /** One glyph, so the chip reads before it is read. */
+  icon: string
+  /**
+   * What to EXPECT from it. This is the half that stops the support call:
+   * an OBD box goes quiet with the engine, a battery box checks in a few
+   * times a day, and a tag is only ever as fresh as the truck that heard it.
+   * Without this line, every one of those normal silences looks like a fault.
+   */
+  hint: string
+}
+
+const KINDS: Record<TrackerKindKey, Omit<TrackerKind, 'key'>> = {
+  obd: {
+    label: 'OBD plug-in',
+    icon: '🔌',
+    hint: 'Plugged into the truck’s OBD port. Reports constantly while the engine runs, then sleeps and checks in about once an hour. It also hears the Bluetooth tool tags riding in the truck.',
+  },
+  battery: {
+    label: 'Battery GPS',
+    icon: '🔋',
+    hint: 'A battery box stuck on the machine, no wiring. It wakes to report while the machine is moving and a few times a day when it sits — a quiet afternoon is normal, not a fault.',
+  },
+  wired: {
+    label: 'Wired GPS',
+    icon: '⚡',
+    hint: 'Wired into the machine’s power. Reads true engine hours, fuel and fault codes straight off the machine, and hears Bluetooth tool tags near it.',
+  },
+  tag: {
+    label: 'Tool tag',
+    icon: '🏷️',
+    hint: 'A Bluetooth tag with no GPS of its own. It shows wherever the truck, machine or phone that last heard it was — so it moves when its ride moves.',
+  },
+  phone: {
+    label: 'Phone',
+    icon: '📱',
+    hint: 'This person’s phone is the tracker. It reports while they are clocked in or sharing their location, and nothing while the app is off.',
+  },
+  gps: {
+    label: 'GPS tracker',
+    icon: '📡',
+    hint: 'A GPS tracker we have no profile for. It reports on whatever schedule it was configured with.',
+  },
+  none: {
+    label: 'No tracker',
+    icon: '—',
+    hint: 'Nothing is reporting for this one. It will sit at its last known spot until a tracker goes on it.',
+  },
+}
+
+/**
+ * The kind of tracker on an asset, from the id alone.
+ *
+ * Deliberately PURE and query-free: this renders in the map sheet, which is
+ * behind the 20-second tick, and a per-asset registry lookup there would be a
+ * new database read every twenty seconds for a label that never changes.
+ * `assets.tracker_id` is already the source of truth for "what is installed",
+ * and the shape of the id plus the TAC is enough to name the box.
+ *
+ * Pass `model` when the caller already holds the registry row (the /trackers
+ * page, the Tracker sheet) — a registered box knows itself better than a TAC
+ * guess, and it is the only way an EYE Beacon registered by its printed MAC
+ * announces itself as a tag rather than a mystery id.
+ */
+export function trackerKind(
+  trackerId: string | null | undefined,
+  model?: DeviceModel | null,
+): TrackerKind {
+  const id = (trackerId ?? '').trim()
+  if (!id) return { key: 'none', ...KINDS.none }
+  // A phone share is a phone whatever the registry thinks.
+  if (/^phone-/i.test(id)) return { key: 'phone', ...KINDS.phone }
+
+  const fromModel = (m: DeviceModel): TrackerKindKey | null =>
+    m === 'FMM00A' ? 'obd'
+    : m === 'TAT141' ? 'battery'
+    : m === 'FMM650' ? 'wired'
+    : m === 'EYE_BEACON' ? 'tag'
+    : null // OTHER carries no information — fall through to the id itself
+
+  if (model) {
+    const k = fromModel(model)
+    if (k) return { key: k, ...KINDS[k] }
+  }
+
+  if (/^\d{15}$/.test(id)) {
+    const guessed = modelFromImei(id)
+    const k = guessed ? fromModel(guessed) : null
+    // An IMEI we don't recognise is still unambiguously a cellular tracker.
+    return k ? { key: k, ...KINDS[k] } : { key: 'gps', ...KINDS.gps }
+  }
+
+  // Everything else printed on a box is a tag: a 12-hex MAC, a beacon Minor,
+  // a short shop id like `bt-042`.
+  return { key: 'tag', ...KINDS.tag }
+}
