@@ -51,6 +51,7 @@ import { detectConvoys, convoyRingGeoJSON } from '@/lib/convoy'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { StackSheet, type StackPick } from '@/components/map/StackSheet'
 import { DirectionsSheet } from './DirectionsSheet'
+import { NavGuidance, type NavRoute } from './NavGuidance'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
@@ -564,6 +565,22 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     return () => window.removeEventListener('ht:layers-state', onState)
   }, [])
   const [navDest, setNavDest] = useState<{ lat: number; lng: number; name: string } | null>(null)
+  /** Set once the driver taps Start: the preview panel gives way to guidance. */
+  const [navGuide, setNavGuide] = useState<NavRoute | null>(null)
+  /** Nav camera chases the driver until they pan away to look ahead. */
+  const [navFollow, setNavFollow] = useState(true)
+  const navFollowRef = useRef(true)
+  navFollowRef.current = navFollow
+  // A drag during guidance means "let me look ahead" — the chase stops until
+  // Re-center. Only `dragstart` (a user gesture); the camera's own easeTo
+  // fires movestart/zoomstart and would switch itself off every second.
+  useEffect(() => {
+    const m = map.current
+    if (!navGuide || !m) return
+    const release = () => setNavFollow(false)
+    m.on('dragstart', release)
+    return () => { m.off('dragstart', release) }
+  }, [navGuide])
   // A searched address drops a candidate pin offering Directions / Save.
   const [searchedPin, setSearchedPin] = useState<{ lat: number; lng: number; name: string; sub: string; err?: string } | null>(null)
   const placesRef = useRef<Place[]>(places)
@@ -2230,6 +2247,21 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         id: 'nav-route-line', type: 'line', source: 'nav-route',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#ff9e16', 'line-width': 5.5, 'line-opacity': 0.95 },
+      })
+      // The driver's own puck while turn-by-turn is running — SNAPPED to the
+      // road (lib/navigation.ts), not the raw fix: on a divided highway a raw
+      // dot sits in the median and reads as a wrong turn.
+      m.addSource('nav-me', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: 'nav-me-halo', type: 'circle', source: 'nav-me',
+        paint: { 'circle-radius': 17, 'circle-color': '#2dd4bf', 'circle-opacity': 0.16 },
+      })
+      m.addLayer({
+        id: 'nav-me-dot', type: 'circle', source: 'nav-me',
+        paint: {
+          'circle-radius': 8, 'circle-color': '#2dd4bf',
+          'circle-stroke-width': 3, 'circle-stroke-color': '#04121d',
+        },
       })
 
       // ── Saved Places — always-on pins (they are the company's own data,
@@ -7538,9 +7570,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         />
       )}
 
-      {navDest && (
+      {navDest && !navGuide && (
         <DirectionsSheet
           dest={navDest}
+          onStart={(r: NavRoute) => { setNavGuide(r); setNavFollow(true) }}
           origin={null}
           mapCenter={map.current ? { lat: map.current.getCenter().lat, lng: map.current.getCenter().lng } : undefined}
           onRouteGeometry={(geo: GeoJSON.LineString | null) => {
@@ -7561,6 +7594,57 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           trafficOn={!!overlaysOn.traffic}
           onToggleTraffic={() => setOverlaysOn((prev) => ({ ...prev, traffic: !prev.traffic }))}
         />
+      )}
+
+      {navDest && navGuide && (
+        <NavGuidance
+          route={navGuide}
+          dest={navDest}
+          onReroute={async (from) => {
+            try {
+              const r = await fetch(`/api/route?from=${from.lng},${from.lat}&to=${navDest.lng},${navDest.lat}`)
+              const j = await r.json().catch(() => null)
+              if (!r.ok || !j?.geometry) return null
+              ;(map.current?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined)
+                ?.setData({ type: 'Feature', geometry: j.geometry, properties: {} })
+              return j as NavRoute
+            } catch { return null }
+          }}
+          onFollow={(lng, lat, bearing) => {
+            // Chase view, heading up. A pan hands the map back to the driver
+            // until they tap Re-center — looking ahead should not be a fight.
+            if (!navFollowRef.current) return
+            map.current?.easeTo({
+              center: [lng, lat], bearing, pitch: 55, zoom: 17,
+              duration: 900, essential: true,
+            })
+          }}
+          onProgress={(snapped) => {
+            (map.current?.getSource('nav-me') as maplibregl.GeoJSONSource | undefined)?.setData({
+              type: 'Feature', properties: {},
+              geometry: { type: 'Point', coordinates: snapped },
+            })
+          }}
+          onEnd={() => {
+            setNavGuide(null)
+            setNavDest(null)
+            const m = map.current
+            ;(m?.getSource('nav-route') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+            ;(m?.getSource('nav-me') as maplibregl.GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] })
+            m?.easeTo({ pitch: 0, bearing: 0, duration: 600 })
+          }}
+        />
+      )}
+
+      {/* Panning during guidance stops the chase; this puts it back. */}
+      {navGuide && !navFollow && (
+        <button
+          onClick={() => setNavFollow(true)}
+          className="absolute left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-navy-950/95 backdrop-blur px-4 py-2 text-[12.5px] font-semibold text-teal shadow-panel"
+          style={{ bottom: 'calc(var(--ht-safe-bottom, 0px) + 118px)' }}
+        >
+          Re-center
+        </button>
       )}
 
       {/* A searched address becomes a candidate pin: route to it now, or keep

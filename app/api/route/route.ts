@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 20
 
 /**
- * Turn-by-turn driving directions for the in-app navigation panel.
+ * Driving directions — the route behind both the preview panel and the
+ * turn-by-turn guidance screen (lib/navigation.ts does the guidance math).
  *
  * Proxies OSRM (the public demo server: free, keyless, OSM road data). Server
  * side rather than browser-side so we send one polite User-Agent, keep the
@@ -27,6 +28,12 @@ interface Step {
   type: string
   /** 'left' | 'right' | 'straight' … */
   modifier: string | null
+  /** The maneuver point (lng, lat). Turn-by-turn needs it: without a location
+   *  per step there is no "400 feet to the turn", only a list to read. */
+  at: [number, number] | null
+  /** OSRM's own seconds for this step — used to keep the remaining-time
+   *  estimate honest as the drive goes on. */
+  durationSec: number
 }
 
 const cache = new Map<string, { at: number; body: unknown }>()
@@ -115,12 +122,17 @@ export async function GET(req: NextRequest) {
       for (const st of leg.steps ?? []) {
         const name: string | null = st.name || null
         // OSRM emits a zero-length "arrive" per leg; keep only the real last one.
+        const loc = st.maneuver?.location
         steps.push({
           instruction: instructionFor(st.maneuver ?? {}, name),
           distanceM: Math.round(st.distance ?? 0),
           name,
           type: st.maneuver?.type ?? 'continue',
           modifier: st.maneuver?.modifier ?? null,
+          at: Array.isArray(loc) && loc.length >= 2 && Number.isFinite(loc[0]) && Number.isFinite(loc[1])
+            ? [loc[0] as number, loc[1] as number]
+            : null,
+          durationSec: Math.round(st.duration ?? 0),
         })
       }
     }
