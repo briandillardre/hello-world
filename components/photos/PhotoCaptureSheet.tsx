@@ -1,22 +1,58 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Images, X, MapPin, Check } from 'lucide-react'
+import { Camera, Images, X, MapPin, Check, CalendarClock } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
-import { createPhotoUploadAction, finalizePhotoAction } from '@/lib/actions/photos'
+import { createPhotoUploadAction, finalizePhotoAction, listPhotoSitesAction } from '@/lib/actions/photos'
 import type { FieldPhoto } from '@/lib/db/photos'
 import { busy as trackBusy } from '@/lib/busy'
 
 /**
- * Take or add job photos that land on the map (Brian, Sep 9). Every shot
- * carries WHERE it was taken: the phone's live fix for camera shots, the EXIF
- * GPS for pictures picked from the gallery (a gallery photo without one can
- * be pinned to where you stand). Full-size + a 320 px thumbnail stream
- * straight to storage (signed URLs — the file never rides a server action),
- * then finalize records the shot under the site it fell in.
+ * Take or add job photos that land on the map (Brian, Sep 9).
+ *
+ * Every shot carries WHERE and WHEN — and the hard rule, learned the hard
+ * way (Brian, Sep 12: "just tried the upload function and it put them at my
+ * house instead of at creekside where they were actually taken yesterday"):
+ * a photo NEVER inherits where you are standing now unless you just took it.
+ *
+ * The trap is that Android redacts the EXIF GPS out of anything handed to a
+ * file picker — an app only gets the original by asking MediaStore for it,
+ * and a WebView's file input never does. So "gallery photos use the location
+ * in the picture" quietly had no location to use, and the old code filled the
+ * hole with the live fix. That is not a missing pin; it is a CONFIDENTLY
+ * WRONG one, on a map people attach to pay apps and insurance claims.
+ *
+ * So: camera shots use the live fix (you are there). Gallery photos use their
+ * EXIF when it survived — iPhones and anything copied off a real camera or
+ * the drone usually keep it — and otherwise stay UNPLACED until somebody says
+ * which job it was. Same for the clock: EXIF date, else the file's own
+ * timestamp, else you set it — never a silent "now" that files yesterday's
+ * work under today.
+ *
+ * Full-size + a 320 px thumbnail stream straight to storage (signed URLs —
+ * the file never rides a server action), then finalize records the shot.
  */
 type Fix = { lat: number; lng: number; acc: number | null; heading: number | null }
-type Item = { key: string; file: File; preview: string; fix: Fix | null; fixSrc: 'exif' | 'gps' | null; takenAt: string | null; state: 'ready' | 'uploading' | 'done' | 'error'; error?: string }
+type Site = { id: string; name: string; lat: number; lng: number }
+/** Where the pin came from. 'site' is a filing, not a measurement — it saves
+ *  with no accuracy and the tile says the site's name instead of a ±. */
+type FixSrc = 'exif' | 'gps' | 'site'
+type Item = {
+  key: string; file: File; preview: string
+  fix: Fix | null; fixSrc: FixSrc | null; siteId: string | null; siteName: string | null
+  takenAt: string | null
+  /** Where the clock came from, so a guess can be labelled as one. */
+  timeSrc: 'exif' | 'file' | 'set' | 'now'
+  fromCamera: boolean
+  state: 'ready' | 'uploading' | 'done' | 'error'; error?: string
+}
+
+/** `2026-09-11T14:30` for a datetime-local input, in the viewer's own zone. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   open: boolean
@@ -25,6 +61,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
 }) {
   const [items, setItems] = useState<Item[]>([])
   const [live, setLive] = useState<Fix | null>(null)
+  const [sites, setSites] = useState<Site[]>([])
   const [caption, setCaption] = useState('')
   const [busy, setBusy] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
@@ -41,6 +78,16 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
     )
     return () => navigator.geolocation.clearWatch(id)
   }, [open])
+
+  // The jobs a photo can be filed under, fetched once per opening. Only ever
+  // needed when something arrives without a location, but it has to be in
+  // hand by then — asking after the fact is a spinner in the way.
+  useEffect(() => {
+    if (!open || sites.length) return
+    let alive = true
+    void listPhotoSitesAction().then((rows) => { if (alive) setSites(rows) }).catch(() => {})
+    return () => { alive = false }
+  }, [open, sites.length])
 
   useEffect(() => { if (!open) { setItems((xs) => { xs.forEach((x) => URL.revokeObjectURL(x.preview)); return [] }); setCaption('') } }, [open])
 
@@ -66,14 +113,53 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         const t = d instanceof Date ? d.getTime() : d ? Date.parse(String(d)) : NaN
         if (Number.isFinite(t)) takenAt = new Date(t).toISOString()
       } catch { /* no EXIF */ }
-      if (!fix && (fromCamera || live)) { fix = live; fixSrc = live ? 'gps' : null }
-      next.push({ key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, file, preview: URL.createObjectURL(file), fix, fixSrc, takenAt: fromCamera ? null : takenAt, state: 'ready' })
+      // ONLY a camera shot may borrow the live fix — you are standing there.
+      // A gallery photo with no EXIF stays unplaced until somebody names the
+      // job; the alternative is pinning last week's work to wherever you
+      // happen to be reading your phone.
+      if (!fix && fromCamera && live) { fix = live; fixSrc = 'gps' }
+      let timeSrc: Item['timeSrc'] = 'now'
+      if (fromCamera) { takenAt = new Date().toISOString(); timeSrc = 'now' }
+      else if (takenAt) timeSrc = 'exif'
+      else if (Number.isFinite(file.lastModified) && file.lastModified > 0) {
+        // The file's own timestamp. Not gospel — a photo copied between
+        // phones carries the copy's time — but it is yesterday when the shot
+        // was yesterday, which "now" never is. Shown, and editable.
+        takenAt = new Date(file.lastModified).toISOString()
+        timeSrc = 'file'
+      }
+      next.push({
+        key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file, preview: URL.createObjectURL(file),
+        fix, fixSrc, siteId: null, siteName: null,
+        takenAt, timeSrc, fromCamera, state: 'ready',
+      })
     }
     setItems((xs) => [...xs, ...next])
   }
 
-  /** Pin a gallery photo without EXIF to where the phone is right now. */
-  const pinHere = (key: string) => { if (!live) return; setItems((xs) => xs.map((x) => (x.key === key ? { ...x, fix: live, fixSrc: 'gps' } : x))) }
+  /** Place everything still unplaced — a batch off one phone is one job and
+   *  one decision, not N taps. A photo that already knows where it was is
+   *  never touched. */
+  const placeAtSite = (id: string) => {
+    const site = sites.find((z) => z.id === id)
+    if (!site) return
+    setItems((xs) => xs.map((x) => (x.state === 'ready' && !x.fix
+      ? { ...x, fix: { lat: site.lat, lng: site.lng, acc: null, heading: null }, fixSrc: 'site', siteId: site.id, siteName: site.name }
+      : x)))
+  }
+  const placeHere = () => {
+    if (!live) return
+    setItems((xs) => xs.map((x) => (x.state === 'ready' && !x.fix ? { ...x, fix: live, fixSrc: 'gps', siteId: null, siteName: null } : x)))
+  }
+  /** One clock for the batch. Only moves the photos that were GUESSING —
+   *  a shot with a real EXIF timestamp keeps it. */
+  const setWhen = (localValue: string) => {
+    const t = Date.parse(localValue)
+    if (!Number.isFinite(t)) return
+    const iso = new Date(t).toISOString()
+    setItems((xs) => xs.map((x) => (x.state === 'ready' && x.timeSrc !== 'exif' ? { ...x, takenAt: iso, timeSrc: 'set' } : x)))
+  }
 
   async function makeThumb(file: File): Promise<Blob | null> {
     try {
@@ -109,7 +195,11 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         }
         const fin = await finalizePhotoAction({
           path: pre.path, thumbPath, lat: it.fix!.lat, lng: it.fix!.lng, accuracy: it.fix!.acc, heading: it.fix!.heading,
-          takenAt: it.takenAt, caption: caption || null, source: it.fixSrc === 'exif' ? 'import' : 'camera',
+          takenAt: it.takenAt, caption: caption || null,
+          // `source` is where the PICTURE came from, not how it got pinned —
+          // a gallery shot placed by hand is still an import.
+          source: it.fromCamera ? 'camera' : 'import',
+          geofenceId: it.siteId,
         })
         if (!fin.ok || !fin.photo) throw new Error(fin.error || 'Save failed')
         setItems((xs) => xs.map((x) => (x.key === it.key ? { ...x, state: 'done' } : x)))
@@ -125,6 +215,10 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   if (!open) return null
   const pending = items.filter((x) => x.state === 'ready')
   const savable = pending.filter((x) => x.fix).length
+  const unplaced = pending.length - savable
+  // The clock we had to guess at, if any — EXIF wins and is never offered up
+  // for editing, so this only appears when it would otherwise be a guess.
+  const guessedWhen = pending.find((x) => x.timeSrc !== 'exif')?.takenAt ?? null
   const allDone = items.length > 0 && items.every((x) => x.state === 'done')
 
   return (
@@ -159,8 +253,13 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
                     {it.state === 'done' ? <span className="text-teal inline-flex items-center gap-1"><Check className="h-3 w-3" /> saved</span>
                       : it.state === 'uploading' ? <span className="text-amber">uploading…</span>
                       : it.state === 'error' ? <span className="text-alert">{it.error}</span>
-                      : it.fix ? <span className="text-faint">📍 {it.fixSrc === 'exif' ? 'from photo' : 'here'}</span>
-                      : <button type="button" onClick={() => pinHere(it.key)} disabled={!live} className="text-amber underline disabled:opacity-50">no location · pin it here</button>}
+                      : it.fix ? (
+                        <span className="text-faint truncate block">
+                          📍 {it.fixSrc === 'exif' ? 'from photo' : it.fixSrc === 'site' ? (it.siteName ?? 'site') : 'here'}
+                          {it.takenAt && <span className="text-faint/70"> · {new Date(it.takenAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>}
+                        </span>
+                      )
+                      : <span className="text-amber">no location yet</span>}
                   </div>
                   {it.state === 'ready' && (
                     <button type="button" onClick={() => setItems((xs) => xs.filter((x) => x.key !== it.key))} aria-label="Remove" className="absolute top-1 right-1 grid place-items-center w-6 h-6 rounded-full bg-navy-950/80 text-faint hover:text-ink"><X className="h-3.5 w-3.5" /></button>
@@ -170,8 +269,54 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
             </ul>
           )}
 
+          {/* The ask. Android hands a web page a gallery photo with its GPS
+              stripped, so this is the NORMAL path for added pictures — not a
+              rare error state. It asks once for the whole batch, because a
+              batch off one phone is one job. */}
+          {unplaced > 0 && (
+            <div className="rounded-xl border border-amber/40 bg-amber/10 p-3 space-y-2">
+              <p className="text-[12.5px] text-amber font-semibold leading-snug">
+                {unplaced === 1 ? 'This photo has no location saved in it.' : `${unplaced} photos have no location saved in them.`}
+                <span className="block font-normal text-[11.5px] text-amber/80 mt-0.5">
+                  Phones strip it when you share a picture out of the gallery. Tell us which job it was and it lands there.
+                </span>
+              </p>
+              {sites.length > 0 && (
+                <select
+                  defaultValue=""
+                  onChange={(e) => { placeAtSite(e.target.value); e.target.value = '' }}
+                  className="w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2.5 text-sm text-ink"
+                >
+                  <option value="" disabled>Pick the job site…</option>
+                  {sites.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+                </select>
+              )}
+              <button type="button" onClick={placeHere} disabled={!live}
+                className="w-full rounded-lg border border-navy-700 bg-navy-950 text-ink text-[12.5px] font-semibold py-2 disabled:opacity-40">
+                {live ? 'Or: I am standing there right now' : 'Or: where I am now (finding you…)'}
+              </button>
+            </div>
+          )}
+
+          {/* WHEN, when we had to guess. A photo of yesterday's grade filed
+              under today is wrong on the timeline, in the day's report and in
+              every replay that scrubs past it. */}
+          {guessedWhen && (
+            <label className="flex items-center gap-2 text-[12px] text-faint">
+              <CalendarClock className="h-4 w-4 text-teal flex-none" />
+              <span className="flex-none">Taken</span>
+              <input
+                type="datetime-local"
+                value={toLocalInput(guessedWhen)}
+                max={toLocalInput(new Date().toISOString())}
+                onChange={(e) => setWhen(e.target.value)}
+                className="flex-1 min-w-0 rounded-lg bg-navy-950 border border-navy-700 px-2 py-1.5 text-[12.5px] text-ink"
+              />
+            </label>
+          )}
+
           <input value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 240))} placeholder="Caption (optional) — what are we looking at?" className="w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2 text-sm text-ink" />
-          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. Camera shots use your location now; gallery photos use the location in the picture.</p>
+          <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. A photo you take here uses your location now. A photo from the gallery uses the location saved in it — and when the phone stripped that out, you pick the job.</p>
         </div>
 
         {/* The OS nav bar overlays the viewport in the native shell
@@ -182,7 +327,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
         <div className="p-4 pt-2 pb-[calc(1rem+var(--ht-safe-bottom,0px))] border-t border-navy-800 flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-navy-700 text-muted py-3 text-sm font-semibold hover:text-ink">{allDone ? 'Done' : 'Cancel'}</button>
           <button type="button" disabled={busy || savable === 0} onClick={saveAll} className="flex-[2] rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3 disabled:opacity-40">
-            {busy ? 'Saving…' : savable ? `Save ${savable} photo${savable === 1 ? '' : 's'}` : pending.length ? 'Waiting for a location…' : 'Save'}
+            {busy ? 'Saving…' : savable ? `Save ${savable} photo${savable === 1 ? '' : 's'}` : pending.length ? 'Pick where they were taken' : 'Save'}
           </button>
         </div>
       </div>
