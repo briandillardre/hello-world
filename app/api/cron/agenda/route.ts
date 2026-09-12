@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
-import { BRAND_URL } from '@/lib/brand'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
+import { resolveDigestPrefs, dueNow, proseEmailHtml } from '@/lib/weekly-digest'
+import { deliverSummary, delivered, claimSend } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -11,11 +12,17 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /**
  * The Monday agenda — AI roadmap stages 5-6: last week's anomalies become
- * this week's to-do list. Runs Monday morning, reads the past 7 days with
- * the service client, flags what looks wrong, and pushes one message the
- * owner can run the 7 AM meeting from.
+ * this week's to-do list. Reads the past 7 days with the service client,
+ * flags what looks wrong, and sends one message the owner can run the 7 AM
+ * meeting from.
+ *
+ * Runs HOURLY and sends on each company's own local Monday at its own hour
+ * (digest_prefs.monday) — a fixed UTC Monday is the wrong Monday for half
+ * the map. Delivery goes to the COMPANY, not the founder's global webhook;
+ * see lib/digest-delivery.ts for what that used to do.
  *
  * Manual test: GET /api/cron/agenda with `Authorization: Bearer $CRON_SECRET`.
+ * Add `?force=1` to ignore the day/hour gate and the once-a-day stamp.
  */
 
 interface WeekFacts {
@@ -60,7 +67,9 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
       system:
         'You write a construction company owner\'s MONDAY MORNING agenda from last week\'s fleet facts. Sharp dispatcher voice, plain sentences, under 140 words, no markdown. Order: 1) anything unsafe or alerting, 2) overdue maintenance/checks, 3) equipment problems (dark units, weak batteries), 4) money observations (machines that sat unused all week), 5) one-line crew hours recap. Use ONLY the facts given — never invent. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — open with the most important one.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
-    })
+      // The SDK defaults to a 10-minute timeout with 2 retries; one hung
+      // call would burn the whole 60 s budget and strand the batch.
+    }, { timeout: 12_000, maxRetries: 1 })
     const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim()
     return text || null
   } catch (err) {
@@ -69,44 +78,45 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
   }
 }
 
-async function pushAgenda(company: string, text: string): Promise<boolean> {
-  const url = process.env.NOTIFY_WEBHOOK_URL
-  if (!url) return false
-  try {
-    if (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/')) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Title: 'Monday agenda', Priority: 'default', Tags: 'calendar', Click: `${BRAND_URL}/command` },
-        body: text,
-      })
-      return res.ok
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ company, agenda: text, at: new Date().toISOString() }),
-    })
-    return res.ok
-  } catch (err) {
-    console.error('Agenda push failed', err)
-    return false
-  }
-}
-
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  // FAIL CLOSED (sec-check, Sep 11): this run spends model tokens and mails
+  // every company. Unset secret = no run, same as /api/cron/usage and /memo.
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
 
+  const force = req.nextUrl.searchParams.get('force') === '1'
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString()
-  const results: { company: string; sent: boolean; text: string }[] = []
+  const results: { company: string; sent: string[] }[] = []
 
-  const { data: companies } = await db.from('companies').select('id, name').limit(20)
-  for (const co of companies ?? []) {
+  const { data: companies, error } = await db.from('companies')
+    .select('id, name, alert_email, alert_phone, digest_prefs, last_agenda_at')
+    .limit(200)
+  if (error) return NextResponse.json({ ok: true, skipped: 'pre-106 DB', detail: error.message })
+
+  const due = (companies ?? []).filter((co) => {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    // weekday 1 = the company's own local Monday.
+    // `force` skips the SCHEDULE, never the off switch — a test poke must
+    //  not send to a company that unsubscribed (sec + ship-check, Sep 11).
+    return prefs.monday.enabled && (force || dueNow({ hour: prefs.monday.hour, tz: prefs.tz, stamp: co.last_agenda_at, weekday: 1 }))
+  })
+  // Longest-waited first. With the batch cap and DB order alone, the same
+  // tail companies would lose their digest every day once more than
+  // BATCH share a send hour.
+  due.sort((a, b) => (Date.parse(a.last_agenda_at ?? '') || 0) - (Date.parse(b.last_agenda_at ?? '') || 0))
+  const BATCH = 12
+  for (const co of due.slice(0, BATCH)) {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    // Claim first, send second. `force` re-sends deliberately, so it skips
+    // the claim AND leaves the stamp alone (poking the route to check
+    // formatting must not silence tonight's real send).
+    if (!force && !(await claimSend(db, 'last_agenda_at', co.id, co.last_agenda_at))) continue
+
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
       db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', weekAgo).limit(50),
@@ -115,6 +125,9 @@ export async function GET(req: NextRequest) {
       db.from('equipment_checks').select('asset_id, check_type, created_at').eq('company_id', co.id).gte('created_at', new Date(Date.now() - 60 * 86_400_000).toISOString()).limit(2000),
     ])
     const assets = assetsQ.data ?? []
+    // Nothing to report is a DECISION for today, not a deferral — and the
+    // slot is already claimed, so an asset-less trial account can no longer
+    // squat the batch every hour forever (ship-check, Sep 11).
     if (!assets.length) continue
     const nameOf = new Map(assets.map((a) => [a.id, a.name]))
     const trackable = assets.filter((a) => a.type === 'vehicle' || a.type === 'equipment')
@@ -197,15 +210,33 @@ export async function GET(req: NextRequest) {
       noticed: await (async () => {
         try {
           const { getInsightHeadlines } = await import('@/lib/insights')
-          return await getInsightHeadlines(db, co.id, 3)
+          // NO money: this text is pushed to every registered device in the
+          // company, and Roles v2 says a Foreman or Associate never sees
+          // dollars. A job-cost figure on a laborer's lock screen is exactly
+          // what the role ladder exists to prevent (ship-check, Sep 11).
+          return await getInsightHeadlines(db, co.id, 3, false)
         } catch { return [] }
       })(),
     }
 
     const text = (await composeWithAi(facts)) ?? plainAgenda(facts)
-    const sent = await pushAgenda(facts.company, text)
-    results.push({ company: facts.company, sent, text })
+    const res = await deliverSummary({
+      db,
+      company: co,
+      channels: { push: prefs.monday.push, email: prefs.monday.email, sms: prefs.monday.sms },
+      title: 'Monday agenda',
+      subject: `${facts.company} — Monday agenda`,
+      text,
+      emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — Monday agenda`, text, manageUrl),
+      clickPath: '/command',
+    })
+    results.push({
+      company: co.name ?? co.id,
+      sent: delivered(res)
+        ? [res.pushed ? `push×${res.pushed}` : '', res.emailed ? 'email' : '', res.texted ? 'sms' : '', res.webhooked ? 'owner-webhook' : ''].filter(Boolean)
+        : ['no channel configured'],
+    })
   }
 
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), results })
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), due: due.length, deferred: Math.max(0, due.length - BATCH), results })
 }

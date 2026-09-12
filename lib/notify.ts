@@ -145,10 +145,26 @@ export async function dispatchAlerts(
   // Normalize at the point of dialing too — protects numbers stored before
   // the settings form normalized on save (e.g. a bare "8649152351").
   const { normalizeUsPhone } = await import('./phone')
-  const smsTo = normalizeUsPhone(recipients.phone) || normalizeUsPhone(process.env.ALERT_SMS_TO)
+
+  // ALERT_SMS_TO and NOTIFY_WEBHOOK_URL are FOUNDER fallbacks, not delivery
+  // channels (sec-check, Sep 11). A customer who never set alert_phone — the
+  // default for every new signup — was having their theft alerts, asset names
+  // included, texted to the founder's number and posted to the founder's ntfy
+  // topic. Both are now gated on the company provably being the owner's, and
+  // both fail closed. Same rule as lib/digest-delivery.ts.
+  let isOwnCompany = false
+  if (companyId && (process.env.ALERT_SMS_TO || process.env.NOTIFY_WEBHOOK_URL)) {
+    try {
+      const { isPlatformOwnerCompany } = await import('./digest-delivery')
+      const { createServiceClient } = await import('./supabase-server')
+      isOwnCompany = await isPlatformOwnerCompany(createServiceClient(), companyId)
+    } catch { isOwnCompany = false }
+  }
+
+  const smsTo = normalizeUsPhone(recipients.phone) || (isOwnCompany ? normalizeUsPhone(process.env.ALERT_SMS_TO) : null)
   let smsSent = 0
 
-  await postWebhook({ company: companyName, alerts, at: new Date().toISOString() })
+  if (isOwnCompany) await postWebhook({ company: companyName, alerts, at: new Date().toISOString() })
 
   // Native push to the lock screen (no-op without Firebase creds / devices).
   if (companyId) {

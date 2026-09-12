@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CHECK_TYPES } from '@/lib/field-types'
-import { BRAND_URL } from '@/lib/brand'
 import { isZoneLogEvent } from '@/lib/alerts-engine'
+import { resolveDigestPrefs, dueNow, proseEmailHtml } from '@/lib/weekly-digest'
+import { deliverSummary, delivered, claimSend } from '@/lib/digest-delivery'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -11,11 +12,17 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /**
  * The evening digest — stage 3 of the AI ladder (docs/AI-ROADMAP.md):
- * the AI notices first, the human decides. Runs on Vercel cron at 6 PM ET,
- * reads the day with the service client (no session on a cron), writes a
- * dispatcher's-eye summary, and pushes it to the company channel.
+ * the AI notices first, the human decides. Reads the day with the service
+ * client (no session on a cron) and writes a dispatcher's-eye summary.
+ *
+ * Runs HOURLY and sends at each company's own local hour (digest_prefs.evening)
+ * — until Sep 11 it ran once at 6 PM ET, looped every company, and pushed all
+ * of them to one global NOTIFY_WEBHOOK_URL: the founder's phone got a
+ * notification per company per night and the companies got nothing they could
+ * switch off. lib/digest-delivery.ts is the fix; that file has the full note.
  *
  * Manual test: GET /api/cron/digest with `Authorization: Bearer $CRON_SECRET`.
+ * Add `?force=1` to ignore the hour gate and the once-a-day stamp.
  */
 
 interface DayFacts {
@@ -59,7 +66,9 @@ async function composeWithAi(f: DayFacts): Promise<string | null> {
       system:
         'You write a construction company owner\'s evening fleet digest. Plain sentences, sharp dispatcher voice, under 110 words, no markdown, no preamble. Lead with what needs action (still on the clock, safety notes, alerts, overdue checks); end with the routine. Use ONLY the facts given — never invent names or numbers. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — weave the most important one in naturally.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
-    })
+      // The SDK defaults to a 10-minute timeout with 2 retries; one hung
+      // call would burn the whole 60 s budget and strand the batch.
+    }, { timeout: 12_000, maxRetries: 1 })
     const text = res.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('').trim()
     return text || null
   } catch (err) {
@@ -68,46 +77,50 @@ async function composeWithAi(f: DayFacts): Promise<string | null> {
   }
 }
 
-async function pushDigest(company: string, text: string): Promise<boolean> {
-  const url = process.env.NOTIFY_WEBHOOK_URL
-  if (!url) return false
-  try {
-    if (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/')) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Title: 'Evening digest', Priority: 'default', Tags: 'clipboard', Click: `${BRAND_URL}/logs` },
-        body: text,
-      })
-      return res.ok
-    }
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ company, digest: text, at: new Date().toISOString() }),
-    })
-    return res.ok
-  } catch (err) {
-    console.error('Digest push failed', err)
-    return false
-  }
-}
-
 export async function GET(req: NextRequest) {
   // Vercel cron sends `Authorization: Bearer ${CRON_SECRET}` when the env
   // var exists. If it's set, require it — manual pokes need the secret too.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  // FAIL CLOSED (sec-check, Sep 11): this run spends model tokens and mails
+  // every company. Unset secret = no run, same as /api/cron/usage and /memo.
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ error: 'demo mode' }, { status: 501 })
 
+  const force = req.nextUrl.searchParams.get('force') === '1'
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
   const sinceIso = new Date(Date.now() - 18 * 3_600_000).toISOString()
-  const results: { company: string; sent: boolean; text: string }[] = []
+  const results: { company: string; sent: string[] }[] = []
 
-  const { data: companies } = await db.from('companies').select('id, name').limit(20)
-  for (const co of companies ?? []) {
+  const { data: companies, error } = await db.from('companies')
+    .select('id, name, alert_email, alert_phone, digest_prefs, last_evening_digest_at')
+    .limit(200)
+  if (error) return NextResponse.json({ ok: true, skipped: 'pre-106 DB', detail: error.message })
+
+  // Gate BEFORE any of the day's queries: on a quiet hour this route costs
+  // one row read per company, not a fleet scan each. The cap keeps a busy
+  // hour inside maxDuration — dueNow's grace window picks up the overflow on
+  // the next run rather than losing anyone's day.
+  const due = (companies ?? []).filter((co) => {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    // `force` skips the SCHEDULE, never the off switch — a test poke must
+    //  not send to a company that unsubscribed (sec + ship-check, Sep 11).
+    return prefs.evening.enabled && (force || dueNow({ hour: prefs.evening.hour, tz: prefs.tz, stamp: co.last_evening_digest_at }))
+  })
+  // Longest-waited first. With the batch cap and DB order alone, the same
+  // tail companies would lose their digest every day once more than
+  // BATCH share a send hour.
+  due.sort((a, b) => (Date.parse(a.last_evening_digest_at ?? '') || 0) - (Date.parse(b.last_evening_digest_at ?? '') || 0))
+  const BATCH = 12
+  for (const co of due.slice(0, BATCH)) {
+    const prefs = resolveDigestPrefs(co.digest_prefs)
+    // Claim first, send second. `force` re-sends deliberately, so it skips
+    // the claim AND leaves the stamp alone (poking the route to check
+    // formatting must not silence tonight's real send).
+    if (!force && !(await claimSend(db, 'last_evening_digest_at', co.id, co.last_evening_digest_at))) continue
+
     const [assetsQ, alertsQ, entriesQ, logsQ, checksQ, geosQ] = await Promise.all([
       db.from('assets').select('id, name, type').eq('company_id', co.id),
       db.from('alert_events').select('asset_id, kind, rule:alert_rules(trigger)').eq('company_id', co.id).is('acknowledged_at', null).gte('triggered_at', sinceIso).limit(50),
@@ -117,6 +130,9 @@ export async function GET(req: NextRequest) {
       db.from('geofences').select('id, name').eq('company_id', co.id),
     ])
     const assets = assetsQ.data ?? []
+    // Nothing to report is a DECISION for today, not a deferral — and the
+    // slot is already claimed, so an asset-less trial account can no longer
+    // squat the batch every hour forever (ship-check, Sep 11).
     if (!assets.length) continue
     const nameOf = new Map(assets.map((a) => [a.id, a.name]))
     const zoneOf = new Map((geosQ.data ?? []).map((g) => [g.id, g.name]))
@@ -175,7 +191,11 @@ export async function GET(req: NextRequest) {
       noticed: await (async () => {
         try {
           const { getInsightHeadlines } = await import('@/lib/insights')
-          return await getInsightHeadlines(db, co.id, 3)
+          // NO money: this text is pushed to every registered device in the
+          // company, and Roles v2 says a Foreman or Associate never sees
+          // dollars. A job-cost figure on a laborer's lock screen is exactly
+          // what the role ladder exists to prevent (ship-check, Sep 11).
+          return await getInsightHeadlines(db, co.id, 3, false)
         } catch { return [] }
       })(),
       safetyNotes: (logsQ.data ?? []).map((l) => l.safety).filter((s): s is string => !!s?.trim()).slice(0, 5),
@@ -183,9 +203,23 @@ export async function GET(req: NextRequest) {
     }
 
     const text = (await composeWithAi(facts)) ?? plainDigest(facts)
-    const sent = await pushDigest(facts.company, text)
-    results.push({ company: facts.company, sent, text })
+    const res = await deliverSummary({
+      db,
+      company: co,
+      channels: { push: prefs.evening.push, email: prefs.evening.email, sms: prefs.evening.sms },
+      title: 'Evening digest',
+      subject: `${facts.company} — evening digest`,
+      text,
+      emailHtml: (manageUrl) => proseEmailHtml(`${facts.company} — evening digest`, text, manageUrl),
+      clickPath: '/logs',
+    })
+    results.push({
+      company: co.name ?? co.id,
+      sent: delivered(res)
+        ? [res.pushed ? `push×${res.pushed}` : '', res.emailed ? 'email' : '', res.texted ? 'sms' : '', res.webhooked ? 'owner-webhook' : ''].filter(Boolean)
+        : ['no channel configured'],
+    })
   }
 
-  return NextResponse.json({ ok: true, at: new Date().toISOString(), results })
+  return NextResponse.json({ ok: true, at: new Date().toISOString(), due: due.length, deferred: Math.max(0, due.length - BATCH), results })
 }

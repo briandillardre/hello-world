@@ -13,7 +13,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BRAND_URL } from './brand'
-import { shell, h2, li, none, day } from './weekly-digest'
+import { shell, smsOptOut, h2, li, none, day } from './weekly-digest'
 import { escapeHtml } from './email'
 import { zoneAssetUsage, type HistoryPoint } from './costs'
 import { rangeWindow } from './dates'
@@ -171,7 +171,8 @@ export async function gatherBriefingFacts(
     noticed: await (async () => {
       try {
         const { getInsightHeadlines } = await import('./insights')
-        return await getInsightHeadlines(db, companyId, 3)
+        // includeMoney: the briefing goes to alert_email/alert_phone — the owner.
+        return await getInsightHeadlines(db, companyId, 3, true)
       } catch { return [] }
     })(),
   }
@@ -179,7 +180,7 @@ export async function gatherBriefingFacts(
 
 // ── Composition ────────────────────────────────────────────────────────────
 
-export function briefingEmailHtml(f: BriefingFacts): string {
+export function briefingEmailHtml(f: BriefingFacts, manageUrl?: string | null): string {
   let inner = ''
   // The engine's findings open the read — the "here's what I noticed"
   // moment. Names inside headlines are user text: escape them.
@@ -213,10 +214,10 @@ export function briefingEmailHtml(f: BriefingFacts): string {
     inner += broken.join('')
   }
 
-  return shell(`${f.company} — morning briefing · ${f.dateLabel}`, inner)
+  return shell(`${f.company} — morning briefing · ${f.dateLabel}`, inner, manageUrl)
 }
 
-export function briefingSms(f: BriefingFacts): string {
+export function briefingSms(f: BriefingFacts, manageUrl?: string | null): string {
   const bits: string[] = []
   const totalH = f.sites.reduce((s, z) => s + z.yesterdayHours, 0)
   if (totalH) bits.push(`yesterday ${Math.round(totalH)}h across ${f.sites.filter((s) => s.yesterdayHours > 0).length} site(s)`)
@@ -228,5 +229,5 @@ export function briefingSms(f: BriefingFacts): string {
   if (f.maintenanceOverdue.length) bits.push(`${f.maintenanceOverdue.length} service overdue`)
   if (f.noticed.length) bits.push(f.noticed[0])
   if (!bits.length) bits.push('quiet board — nothing urgent')
-  return `${f.company} ${f.dateLabel}: ${bits.join(' · ')}. ${BRAND_URL}/command`
+  return `${f.company} ${f.dateLabel}: ${bits.join(' · ')}. ${BRAND_URL}/command${smsOptOut(manageUrl)}`
 }

@@ -173,6 +173,28 @@ export async function sendPushToUser(
  * alerts lead with the THEFT framing. Returns the number of pushes delivered
  * (0 when unconfigured or no devices).
  */
+/**
+ * One plain notification to every device in a company — the recurring
+ * summaries (evening digest, Monday agenda, still-on-the-clock). Separate
+ * from sendPushToCompany, which speaks in alert severities and shouts.
+ */
+export async function sendPushToCompanyPlain(
+  companyId: string,
+  msg: PushMsg,
+): Promise<number> {
+  if (!pushConfigured()) return 0
+  try {
+    const { createServiceClient } = await import('./supabase-server')
+    const db = createServiceClient()
+    const { data: rows } = await db.from('device_tokens').select('token').eq('company_id', companyId)
+    const tokens = (rows ?? []).map((r) => r.token as string).filter(Boolean)
+    if (!tokens.length) return 0
+    return await fcmSend(tokens, msg)
+  } catch {
+    return 0 // push is best-effort
+  }
+}
+
 export async function sendPushToCompany(
   companyId: string,
   companyName: string,

@@ -55,6 +55,14 @@ function isNoise(message: string, source: string, stack?: string): boolean {
   return NOISE.some((re) => re.test(m))
 }
 
+/** Signed-token paths (/n, /r, /share, /t) carry a live bearer credential in
+ *  the URL. Monitoring forwards the path verbatim into the ntfy topic, whose
+ *  history would then hold a working unsubscribe or receipt-capture link
+ *  (sec-check, Sep 11). Report the shape, never the token. */
+function safePath(): string {
+  try { return location.pathname.replace(/^\/(n|r|share|t)\/[^/]+/, '/$1/[token]') } catch { return '' }
+}
+
 export function ErrorReporter() {
   useEffect(() => {
     const seen = new Set<string>()
@@ -73,11 +81,11 @@ export function ErrorReporter() {
       } catch { /* ditto */ }
     }
     const onError = (e: ErrorEvent) => {
-      report(e.message || 'window error', `${e.filename ?? location.pathname}:${e.lineno ?? 0}`, e.error?.stack)
+      report(e.message || 'window error', `${e.filename ?? safePath()}:${e.lineno ?? 0}`, e.error?.stack)
     }
     const onReject = (e: PromiseRejectionEvent) => {
       const r = e.reason
-      report(describeReason(r), location.pathname, r instanceof Error ? r.stack : undefined)
+      report(describeReason(r), safePath(), r instanceof Error ? r.stack : undefined)
     }
     window.addEventListener('error', onError)
     window.addEventListener('unhandledrejection', onReject)

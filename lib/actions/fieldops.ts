@@ -366,15 +366,26 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
 
     // Safety triage (stage 3 of the AI ladder): anything written in the
     // safety field goes to the owner's phone NOW, not in tonight's digest.
+    //
+    // It used to POST straight to the global NOTIFY_WEBHOOK_URL, which meant
+    // any crew member on any customer could type free text plus their own
+    // name into a topic belonging to someone else (sec-check, Sep 11). It
+    // goes to the company's OWN registered devices now; the founder mirror is
+    // gated the same way every summary is.
     if (safety) {
-      const url = process.env.NOTIFY_WEBHOOK_URL
-      if (url && (/(^|\/\/|\.)ntfy\./.test(url) || url.includes('ntfy.sh/'))) {
-        fetch(url, {
-          method: 'POST',
-          headers: { Title: 'Safety report', Priority: 'high', Tags: 'warning', Click: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://hammertrackjune28.vercel.app'}/logs` },
-          body: `${personName}: ${safety}`,
-        }).catch((err) => console.error('Safety push failed', err))
-      }
+      try {
+        const { sendPushToCompanyPlain } = await import('@/lib/push')
+        await sendPushToCompanyPlain(companyId, {
+          title: 'Safety report',
+          body: `${personName}: ${safety}`.slice(0, 240),
+          url: '/logs',
+        })
+      } catch { /* best-effort */ }
+      try {
+        const { mirrorOwnerWebhook } = await import('@/lib/digest-delivery')
+        const { createServiceClient } = await import('@/lib/supabase-server')
+        await mirrorOwnerWebhook(createServiceClient(), companyId, 'Safety report', `${personName}: ${safety}`, '/logs')
+      } catch { /* best-effort */ }
     }
 
     revalidatePath('/clock')

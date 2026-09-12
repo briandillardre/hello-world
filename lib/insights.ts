@@ -562,8 +562,17 @@ export async function getActiveInsights(
  *  email composers list as facts (the email AI narrates, never invents).
  *  Owner emails include money rows; caps at 3 so a busy week can't flood
  *  the morning read. */
-export async function getInsightHeadlines(db: SupabaseClient, companyId: string, limit = 3): Promise<string[]> {
-  const rows = await getActiveInsights(db, companyId, { limit, includeMoney: true })
+/** Money is a CALLER decision, never a default (sec/ship-check, Sep 11): the
+ *  evening digest and Monday agenda now push to every registered device in a
+ *  company, and Roles v2 says a Foreman or Associate never sees dollars. Pass
+ *  includeMoney only where the audience is known to be cost-cleared. */
+export async function getInsightHeadlines(
+  db: SupabaseClient,
+  companyId: string,
+  limit = 3,
+  includeMoney = false,
+): Promise<string[]> {
+  const rows = await getActiveInsights(db, companyId, { limit, includeMoney })
   return rows.map((r) => r.headline)
 }
 

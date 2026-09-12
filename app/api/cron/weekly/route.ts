@@ -45,17 +45,20 @@ export async function GET(req: NextRequest) {
     if (!wantFriday && !wantSunday) continue
 
     const facts = await gatherWeeklyFacts(db, co.id, co.name ?? 'Your company', prefs.tz)
+    // One-tap way out in every email and text (Brian, Sep 11).
+    const { notifyPrefsUrl } = await import('@/lib/notify-token')
+    const manageUrl = notifyPrefsUrl(co.id)
 
     if (wantFriday) {
       let delivered = false
       if (prefs.friday.email && co.alert_email) {
         const { sendEmail } = await import('@/lib/email')
-        const r = await sendEmail(co.alert_email, `${facts.company} — Friday wrap-up`, fridayEmailHtml(facts))
+        const r = await sendEmail(co.alert_email, `${facts.company} — Friday wrap-up`, fridayEmailHtml(facts, manageUrl))
         delivered = delivered || r.ok
       }
       if (prefs.friday.sms && co.alert_phone) {
         const { sendAlertSms } = await import('@/lib/notify')
-        const r = await sendAlertSms(co.alert_phone, fridaySms(facts))
+        const r = await sendAlertSms(co.alert_phone, fridaySms(facts, manageUrl))
         delivered = delivered || r.ok
       }
       // Stamp even when nothing is configured — otherwise the cron re-tries
@@ -68,7 +71,7 @@ export async function GET(req: NextRequest) {
       let delivered = false
       if (co.alert_email) {
         const { sendEmail } = await import('@/lib/email')
-        const r = await sendEmail(co.alert_email, `${facts.company} — the week ahead`, sundayEmailHtml(facts))
+        const r = await sendEmail(co.alert_email, `${facts.company} — the week ahead`, sundayEmailHtml(facts, manageUrl))
         delivered = r.ok
       }
       await db.from('companies').update({ last_sunday_digest_at: new Date().toISOString() }).eq('id', co.id)

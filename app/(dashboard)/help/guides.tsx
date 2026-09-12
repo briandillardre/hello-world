@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Satellite, Clock, Hexagon, Siren, QrCode, CreditCard, type LucideIcon } from 'lucide-react'
+import { Satellite, Clock, Hexagon, Siren, QrCode, CreditCard, BellRing, type LucideIcon } from 'lucide-react'
 
 /**
  * Help center content — one place for all guide copy so /help (the card grid)
@@ -629,6 +629,90 @@ export const GUIDES: HelpGuide[] = [
             One tap = one timestamped record: who, what, which machine, when. That history feeds the
             machine&apos;s service record, so &quot;when was the 130 last greased&quot; stops being a
             radio call.
+          </P>
+        ),
+      },
+    ],
+  },
+  {
+    slug: 'notifications',
+    title: 'Too many notifications?',
+    tagline: 'Every summary has a switch. Here is where they are and what each one is.',
+    icon: BellRing,
+    sections: [
+      {
+        heading: 'The fastest way to stop them',
+        body: (
+          <>
+            <P>
+              Every summary email and text we send ends with a link that says
+              <B> Stop/change these</B>. Tap it. It opens one page with a switch for each
+              summary and a <B>Turn everything off</B> button. No login, so it works from a
+              text on the job site.
+            </P>
+            <P>
+              Signed in, the same page is <B>Settings → Summaries</B>. Changes save as you
+              make them; there is no Save button to forget.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'What each one is',
+        body: (
+          <L
+            items={[
+              <><B>Evening digest</B> — each evening: what moved, who is still on the clock, open alerts, overdue checks. Phone notification only unless you ask for email or text.</>,
+              <><B>Morning site briefing</B> — weather at each active site, yesterday&apos;s hours and cost, punch items due today, silent trackers.</>,
+              <><B>Monday agenda</B> — last week&apos;s problems written up as this week&apos;s to-do list.</>,
+              <><B>Friday wrap-up</B> — the week that happened: hours, jobs, punch items done, missing receipts.</>,
+              <><B>Sunday week-ahead</B> — what needs to happen: open punch items, milestones, maintenance.</>,
+              <><B>Still on the clock</B> — one evening reminder naming anyone who never clocked out. <B>Off unless you turn it on.</B></>,
+            ]}
+          />
+        ),
+      },
+      {
+        heading: 'Pick the channel, not just the switch',
+        body: (
+          <>
+            <P>
+              Under each summary you can choose <B>Phone</B> (a notification on the lock
+              screen), <B>Email</B>, or <B>Text</B>. Most owners want one channel, not three.
+              A daily summary on the phone and the weekly ones by email is the setup we
+              default to.
+            </P>
+            <P>
+              Emails and texts go to the alert address and phone in
+              <B> Settings → Company</B> — change those and every summary follows.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'What will still reach you',
+        body: (
+          <>
+            <P>
+              Turning summaries off does <B>not</B> silence alerts. A machine leaving a site
+              at 2 AM is a theft alert, not a summary, and it stays on. Those live in
+              <B> Settings → Alerts</B> and in the guide on theft alerts.
+            </P>
+            <P>
+              Missing-receipt reminders are their own thing too: they stop the moment the
+              photo is in, or when whoever ran the card taps <B>No receipt</B> on the
+              reminder.
+            </P>
+          </>
+        ),
+      },
+      {
+        heading: 'Times are yours',
+        body: (
+          <P>
+            Every summary has its own hour, and the <B>Timezone</B> at the bottom of the page
+            is what those hours mean. Set it once. A 6 AM briefing arrives at 6 AM where the
+            crew is, not where our servers are.
           </P>
         ),
       },

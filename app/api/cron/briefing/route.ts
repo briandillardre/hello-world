@@ -42,16 +42,19 @@ export async function GET(req: NextRequest) {
     if (co.last_briefing_at && Date.now() - Date.parse(co.last_briefing_at) < FRESH) continue
 
     const facts = await gatherBriefingFacts(db, co.id, co.name ?? 'Your company', prefs.tz)
+    // One-tap way out in every email and text (Brian, Sep 11).
+    const { notifyPrefsUrl } = await import('@/lib/notify-token')
+    const manageUrl = notifyPrefsUrl(co.id)
 
     let delivered = false
     if (b.email && co.alert_email) {
       const { sendEmail } = await import('@/lib/email')
-      const r = await sendEmail(co.alert_email, `${facts.company} — morning briefing · ${facts.dateLabel}`, briefingEmailHtml(facts))
+      const r = await sendEmail(co.alert_email, `${facts.company} — morning briefing · ${facts.dateLabel}`, briefingEmailHtml(facts, manageUrl))
       delivered = delivered || r.ok
     }
     if (b.sms && co.alert_phone) {
       const { sendAlertSms } = await import('@/lib/notify')
-      const r = await sendAlertSms(co.alert_phone, briefingSms(facts))
+      const r = await sendAlertSms(co.alert_phone, briefingSms(facts, manageUrl))
       delivered = delivered || r.ok
     }
     // Stamp even when no channel is configured — otherwise this retries

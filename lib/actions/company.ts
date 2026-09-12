@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
+import { cleanDigestPrefs, type DigestPrefs } from '@/lib/weekly-digest'
 
 /** Admin-guarded helper: resolve companyId + confirm the caller can write it. */
 async function requireAdminCompany(): Promise<string | null> {
@@ -87,25 +88,11 @@ export async function updateCompanySettingsAction(input: {
  * the company id; pass an empty FormData (no `logo` file) to remove it.
  */
 /** Weekly digest schedule (Friday recap / Sunday week-ahead) — Settings card. */
-export async function saveDigestPrefsAction(prefs: {
-  friday: { enabled: boolean; email: boolean; sms: boolean; hour: number }
-  sunday: { enabled: boolean; hour: number }
-  tz: string
-}): Promise<{ ok: boolean; error?: string }> {
+export async function saveDigestPrefsAction(prefs: DigestPrefs): Promise<{ ok: boolean; error?: string }> {
   const companyId = await requireAdminCompany()
   if (!companyId) return { ok: false, error: 'Admins only.' }
-  const hour = (h: number, fallback: number) => Number.isInteger(h) && h >= 0 && h <= 23 ? h : fallback
-  const clean = {
-    friday: { enabled: !!prefs.friday?.enabled, email: !!prefs.friday?.email, sms: !!prefs.friday?.sms, hour: hour(prefs.friday?.hour, 16) },
-    sunday: { enabled: !!prefs.sunday?.enabled, hour: hour(prefs.sunday?.hour, 18) },
-    // Real-IANA check, not just shape: "America/Greenville" passes the regex
-    // but throws in Intl at digest time (ship-check) — reject it at save.
-    tz: (() => {
-      if (typeof prefs.tz !== 'string' || !/^[A-Za-z_]+\/[A-Za-z_+-]+$/.test(prefs.tz)) return 'America/New_York'
-      try { new Intl.DateTimeFormat('en-US', { timeZone: prefs.tz }); return prefs.tz } catch { return 'America/New_York' }
-    })(),
-  }
   const { createClient } = await import('@/lib/supabase-server')
+  const clean = cleanDigestPrefs(prefs)
   const { error } = await createClient().from('companies').update({ digest_prefs: clean }).eq('id', companyId)
   if (error) return { ok: false, error: 'Save failed — run migration 047 in the Supabase SQL Editor first.' }
   revalidatePath('/settings')
