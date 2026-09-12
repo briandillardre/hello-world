@@ -109,7 +109,7 @@ export function FeedbackHost() {
       {/* ── Confirm sheet — bottom sheet on phones, centered card on desktop ── */}
       {confirm && (
         <div
-          className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 pb-[calc(1rem+var(--ht-safe-bottom,0px))] sm:pb-4"
           onClick={() => settle(false)}
         >
           <div

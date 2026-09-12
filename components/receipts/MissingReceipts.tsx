@@ -14,11 +14,14 @@ const money = (n: number) => '$' + n.toLocaleString(undefined, { minimumFraction
 const day = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 
 export function MissingReceipts({
-  open, suggestions, receiptsById,
+  open, suggestions, receiptsById, bankSync = false,
 }: {
   open: Expense[]
   suggestions: Record<string, Suggestion[]>
   receiptsById: Record<string, ReceiptLite>
+  /** Plaid keys are set. Without them the Connect-bank door is not offered at
+   *  all — see the note in app/(dashboard)/receipts/page.tsx. */
+  bankSync?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -54,7 +57,7 @@ export function MissingReceipts({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PlaidConnect onMessage={setMsg} />
+          {bankSync && <PlaidConnect onMessage={setMsg} />}
           <button onClick={() => setShowImport((v) => !v)} className="flex-none whitespace-nowrap inline-flex items-center gap-1 text-[12px] font-semibold text-teal hover:text-ink px-2 py-1">
             <Upload className="h-3.5 w-3.5" /> Import
           </button>

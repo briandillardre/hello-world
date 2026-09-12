@@ -16,6 +16,16 @@ export const dynamic = 'force-dynamic'
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
+/**
+ * Bank sync (Plaid) is DECLINED, not missing (Brian, Aug 1: $1,000/mo quoted,
+ * and again Sep 12 seeing the nag — "I thought we did not need plaid for
+ * this"). The code stays for a future customer who asks for it and pays
+ * pay-as-you-go, but with no keys the app must not advertise the door or tell
+ * the owner to go buy something he already said no to. Keys present = the
+ * button comes back on its own.
+ */
+const bankSync = !!(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET)
+
 /** Demo mode: show the receipt chase working instead of an empty page —
  *  two swipes already pinged to their cardholders, one imported charge with
  *  no card mapping yet. Display-only; every action returns "Demo mode". */
@@ -105,7 +115,7 @@ export default async function ReceiptsPage() {
       ) : (
         <>
           <InstantChase address={chase.address} cards={chase.cards} members={chase.members} canManage={perms.canManageBilling} ready={chase.ready} />
-          <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} />
+          <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} bankSync={bankSync} />
           <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
         </>
       )}
