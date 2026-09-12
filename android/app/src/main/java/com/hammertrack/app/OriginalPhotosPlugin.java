@@ -87,10 +87,50 @@ public class OriginalPhotosPlugin extends Plugin {
     /** Matches the sheet's own ceiling; also the memory ceiling for one pick. */
     private static final int MAX_PHOTOS = 12;
 
+    /** Same ceiling the server enforces (createPhotoUploadAction). Checked HERE
+     *  too, or a 60 MB panorama is copied and base64'd into memory before
+     *  anything gets to reject it. */
+    private static final long MAX_BYTES = 25L * 1024 * 1024;
+
+    /** A refusal is final for this mount. Re-asking is how Android turns a
+     *  "no" into a permanent one (the BLE burn, Sep 12). */
+    private boolean refused = false;
+
     private String aliasForThisAndroid() {
         if (Build.VERSION.SDK_INT >= 34) return "media34";
         if (Build.VERSION.SDK_INT >= 33) return "media33";
         return "mediaLegacy";
+    }
+
+    private boolean has(String permission) {
+        return getContext().checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Can we read the person's picked images at all?
+     *
+     * NOT `getPermissionState(alias)`. Capacitor aggregates an alias
+     * all-or-nothing, and on Android 14 the grant most people give — "Select
+     * photos" — grants READ_MEDIA_VISUAL_USER_SELECTED while DENYING
+     * READ_MEDIA_IMAGES. Read through the alias and that reads as "denied",
+     * so the feature would have re-thrown the system dialog on every single
+     * tap and earned the permanent denial. The request still asks for both
+     * together (that is what makes Android offer the partial option at all);
+     * only the verdict is read per permission.
+     */
+    private boolean canReadPicked() {
+        if (Build.VERSION.SDK_INT >= 34) {
+            return has(Manifest.permission.READ_MEDIA_IMAGES)
+                || has(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+        }
+        if (Build.VERSION.SDK_INT >= 33) return has(Manifest.permission.READ_MEDIA_IMAGES);
+        return has(Manifest.permission.READ_EXTERNAL_STORAGE);
+    }
+
+    /** Without this the picked file arrives with its GPS already stripped —
+     *  usable as a picture, useless as a location. */
+    private boolean canReadLocation() {
+        return Build.VERSION.SDK_INT < 29 || has(Manifest.permission.ACCESS_MEDIA_LOCATION);
     }
 
     private File cacheDir() {
@@ -106,29 +146,35 @@ public class OriginalPhotosPlugin extends Plugin {
         // setRequireOriginal landed in Android 10. Below that nothing is
         // redacted in the first place and the web input is already fine.
         out.put("available", Build.VERSION.SDK_INT >= 29);
-        out.put("granted", getPermissionState(aliasForThisAndroid()) == com.getcapacitor.PermissionState.GRANTED);
+        out.put("granted", canReadPicked());
+        out.put("location", canReadLocation());
         call.resolve(out);
     }
 
     @PluginMethod
     public void pick(PluginCall call) {
-        String alias = aliasForThisAndroid();
-        if (getPermissionState(alias) != com.getcapacitor.PermissionState.GRANTED) {
-            requestPermissionForAlias(alias, call, "afterPermission");
+        if (!canReadPicked()) {
+            if (refused) { denied(call); return; }
+            requestPermissionForAlias(aliasForThisAndroid(), call, "afterPermission");
             return;
         }
         launchPicker(call);
     }
 
+    private void denied(PluginCall call) {
+        JSObject out = new JSObject();
+        out.put("denied", true);
+        out.put("photos", new JSArray());
+        call.resolve(out);
+    }
+
     @PermissionCallback
     private void afterPermission(PluginCall call) {
-        if (getPermissionState(aliasForThisAndroid()) != com.getcapacitor.PermissionState.GRANTED) {
+        if (!canReadPicked()) {
+            refused = true;
             // A refusal is an answer, not an error — the page falls back to
             // its own picker and asks where the photos were taken.
-            JSObject out = new JSObject();
-            out.put("denied", true);
-            out.put("photos", new JSArray());
-            call.resolve(out);
+            denied(call);
             return;
         }
         launchPicker(call);
@@ -163,13 +209,25 @@ public class OriginalPhotosPlugin extends Plugin {
         Intent data = result.getData();
         int count = data.getClipData() != null ? data.getClipData().getItemCount() : (data.getData() != null ? 1 : 0);
         if (count > MAX_PHOTOS) count = MAX_PHOTOS;
+        boolean anyOriginal = false;
         for (int i = 0; i < count; i++) {
             Uri uri = data.getClipData() != null ? data.getClipData().getItemAt(i).getUri() : data.getData();
             if (uri == null) continue;
             JSObject row = ingest(uri);
-            if (row != null) photos.put(row);
+            if (row != null) {
+                photos.put(row);
+                if (row.optBoolean("original")) anyOriginal = true;
+            }
         }
         out.put("photos", photos);
+        // Whether this device let us ask for the unredacted file at all. If
+        // it did not, every photo comes back without coordinates and the page
+        // must say WHY rather than let it read as "none of these had GPS" —
+        // some OEM providers hand back a URI MediaStore does not own, and
+        // ACTION_PICK can be redirected to the system picker, whose URIs
+        // setRequireOriginal rejects outright.
+        out.put("originals", photos.length() > 0 && anyOriginal);
+        out.put("location", canReadLocation());
         call.resolve(out);
     }
 
@@ -211,6 +269,9 @@ public class OriginalPhotosPlugin extends Plugin {
             while ((n = in.read(buf)) > 0) {
                 os.write(buf, 0, n);
                 total += n;
+                // Stop at the server's own ceiling instead of copying a 60 MB
+                // panorama and then base64'ing it into memory for nothing.
+                if (total > MAX_BYTES) { os.close(); dest.delete(); return null; }
             }
             size = total;
         } catch (Throwable t) {
@@ -219,14 +280,30 @@ public class OriginalPhotosPlugin extends Plugin {
         }
 
         double[] latLng = null;
-        long takenAt = 0L;
+        String shotAt = null;    // "2026:09:11 14:30:00", EXIF's own local wall clock
+        String shotOffset = null; // "-04:00" when the camera bothered to write it
         try {
             ExifInterface exif = new ExifInterface(dest.getAbsolutePath());
             float[] ll = new float[2];
             if (exif.getLatLong(ll) && !(ll[0] == 0f && ll[1] == 0f)) latLng = new double[] { ll[0], ll[1] };
-            Long when = exif.getDateTimeOriginal();
-            if (when == null) when = exif.getDateTime();
-            if (when != null) takenAt = when;
+            // The RAW strings, deliberately — NOT getDateTimeOriginal().
+            //
+            // That helper parses EXIF's local wall clock with a UTC formatter
+            // and returns "milliseconds since 1970 LOCAL time" (its own
+            // javadoc says so), correcting only when the camera wrote the
+            // EXIF 2.31 offset tag, which most do not. Treating that as an
+            // epoch shifts every photo by the phone's UTC offset — four hours
+            // in South Carolina — and a four-hour-wrong clock is exactly what
+            // sends the auto-placement to the wrong job. It is also
+            // @RestrictTo(LIBRARY) in 1.4.1 for this reason.
+            //
+            // So the wall clock crosses the bridge as text and is read in
+            // lib/native-photos.ts with the same local-time convention the
+            // web path (exifr) already uses, and the two doors agree.
+            shotAt = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL);
+            if (shotAt == null) shotAt = exif.getAttribute(ExifInterface.TAG_DATETIME);
+            shotOffset = exif.getAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL);
+            if (shotOffset == null) shotOffset = exif.getAttribute(ExifInterface.TAG_OFFSET_TIME);
         } catch (Throwable ignored) { /* no EXIF block at all */ }
 
         JSObject row = new JSObject();
@@ -239,7 +316,8 @@ public class OriginalPhotosPlugin extends Plugin {
             row.put("lat", latLng[0]);
             row.put("lng", latLng[1]);
         }
-        if (takenAt > 0) row.put("takenAt", takenAt);
+        if (shotAt != null) row.put("shotAt", shotAt);
+        if (shotOffset != null) row.put("shotOffset", shotOffset);
         // Diagnostic, shown to nobody but useful in a bug report: did the OS
         // actually let us ask for the original on this device?
         row.put("original", original);
@@ -289,6 +367,18 @@ public class OriginalPhotosPlugin extends Plugin {
     public void clear(PluginCall call) {
         purge();
         call.resolve();
+    }
+
+    /**
+     * Byte-for-byte copies of the originals — the ones that still carry the
+     * GPS — must not outlive the pick. The page calls clear() when the sheet
+     * closes, but a kill mid-batch never gets there, so the lifecycle hooks
+     * cover it too.
+     */
+    @Override
+    protected void handleOnDestroy() {
+        purge();
+        super.handleOnDestroy();
     }
 
     private void purge() {

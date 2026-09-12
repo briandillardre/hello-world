@@ -60,6 +60,10 @@ export async function listPhotoSitesAction(): Promise<{ id: string; name: string
   if (isMock) return []
   const perms = await getRealPermissions()
   if (!perms.companyId) return []
+  // "Hidden means hidden" (Sep 11): a role whose Master switched off the map
+  // and the zones page must not be able to enumerate every site name and
+  // centroid by calling the action directly.
+  if (!perms.features?.includes('logs')) return []
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const { data: zones } = await createServiceClient().from('geofences_json')
@@ -132,7 +136,25 @@ export async function locatePhotosByTimeAction(times: string[]): Promise<
   const stamps = asked.map((t) => Date.parse(t))
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
+    const { pointInPolygon } = await import('@/lib/alerts-engine')
     const svc = createServiceClient()
+
+    // ONE read of the company's polygons for the whole call. The first cut
+    // resolved the zone inside the per-photo Promise.all, so twelve photos
+    // meant twelve simultaneous full-geometry reads of every freehand ring
+    // this company has drawn — repeatable by any signed-in account at
+    // whatever rate it can POST. This app has already had one Supabase Disk
+    // IO incident (087); it does not need a second one shaped like this.
+    const sites = await listPhotoSitesAction()
+    const { data: zoneRows } = await svc.from('geofences_json')
+      .select('id, name, kind, geometry').eq('company_id', perms.companyId).is('owner_id', null)
+    type Zone = { id: string; name: string; kind: string | null; geometry: { coordinates?: number[][][] } | null }
+    const rings = ((zoneRows ?? []) as Zone[])
+      .filter((z) => ((z.kind ?? 'site') === 'site' || (z.kind ?? 'site') === 'yard'))
+      .map((z) => ({ id: z.id, name: z.name, ring: (z.geometry?.coordinates?.[0] ?? []) as [number, number][] }))
+      .filter((z) => z.ring.length >= 3)
+    const zoneAt = (lat: number, lng: number) =>
+      rings.find((z) => pointInPolygon([lng, lat], z.ring)) ?? null
 
     // The person's own phone asset. No phone asset = rung 1 is simply absent.
     const { data: phone } = await svc.from('assets').select('id')
@@ -150,6 +172,9 @@ export async function locatePhotosByTimeAction(times: string[]): Promise<
           .eq('asset_id', phone.id)
           .gte('timestamp', new Date(ms - WINDOW_MS).toISOString())
           .lte('timestamp', new Date(ms + WINDOW_MS).toISOString())
+          // Ordered, or a dense track hands back an arbitrary 200 rows out of
+          // the window and "nearest fix" is whatever the planner felt like.
+          .order('timestamp', { ascending: true })
           .limit(200)
         let best: { lat: number; lng: number; d: number } | null = null
         for (const f of (fixes ?? []) as { timestamp: string; lat: number; lng: number }[]) {
@@ -157,7 +182,7 @@ export async function locatePhotosByTimeAction(times: string[]): Promise<
           if (Number.isFinite(f.lat) && Number.isFinite(f.lng) && (!best || d < best.d)) best = { lat: f.lat, lng: f.lng, d }
         }
         if (best) {
-          const zone = await resolveZone(perms.companyId!, best.lat, best.lng)
+          const zone = zoneAt(best.lat, best.lng)
           return { lat: best.lat, lng: best.lng, source: 'track' as const, zoneId: zone?.id ?? null, zoneName: zone?.name ?? null }
         }
       }
@@ -170,10 +195,21 @@ export async function locatePhotosByTimeAction(times: string[]): Promise<
         .lte('clock_in_at', at)
         .order('clock_in_at', { ascending: false }).limit(3)
       type Entry = { project_geofence_id: string | null; clock_in_at: string; clock_out_at: string | null }
-      const covering = ((entries ?? []) as Entry[]).find((e) =>
-        e.project_geofence_id && Date.parse(e.clock_out_at ?? new Date().toISOString()) >= ms)
+      // A forgotten clock-out is a FIRST-CLASS state here — /timecards ships a
+      // "Still clocked in" flag precisely because people forget. Substituting
+      // `now` for a missing clock_out made a shift opened on Monday cover a
+      // photo taken Wednesday at a different job, forever. An open entry only
+      // covers a plausible shift.
+      const OPEN_SHIFT_MAX_MS = 16 * 3_600_000
+      const covering = ((entries ?? []) as Entry[]).find((e) => {
+        if (!e.project_geofence_id) return false
+        const start = Date.parse(e.clock_in_at)
+        if (!Number.isFinite(start) || start > ms) return false
+        return e.clock_out_at
+          ? Date.parse(e.clock_out_at) >= ms
+          : ms - start <= OPEN_SHIFT_MAX_MS
+      })
       if (covering?.project_geofence_id) {
-        const sites = await listPhotoSitesAction()
         const site = sites.find((z) => z.id === covering.project_geofence_id)
         if (site) return { lat: site.lat, lng: site.lng, source: 'clock' as const, zoneId: site.id, zoneName: site.name }
       }
@@ -184,13 +220,10 @@ export async function locatePhotosByTimeAction(times: string[]): Promise<
 }
 
 /** A site id, confirmed to belong to this company — never trust the client's. */
-async function siteById(companyId: string, id: string): Promise<{ id: string; name: string } | null> {
-  try {
-    const { createServiceClient } = await import('@/lib/supabase-server')
-    const { data } = await createServiceClient().from('geofences_json')
-      .select('id, name').eq('company_id', companyId).eq('id', id).is('owner_id', null).maybeSingle()
-    return data ? { id: data.id as string, name: data.name as string } : null
-  } catch { return null }
+async function siteById(companyId: string, id: string): Promise<{ id: string; name: string; lat: number; lng: number } | null> {
+  const sites = await listPhotoSitesAction()
+  void companyId // listPhotoSitesAction is already scoped to the caller's company
+  return sites.find((z) => z.id === id) ?? null
 }
 
 export async function finalizePhotoAction(input: {
@@ -235,6 +268,13 @@ export async function finalizePhotoAction(input: {
   // was, and a centroid can legitimately sit outside its own ring.
   const picked = input.geofenceId ? await siteById(perms.companyId, input.geofenceId) : null
   const zone = picked ?? await resolveZone(perms.companyId, lat, lng)
+  // A picked site is a FILING, not a measurement — so the SITE supplies the
+  // point and the accuracy claim goes, instead of trusting a client that
+  // could file under Creekside while pinning in Charleston at ±5 m. Same
+  // rule movePhotoAction already enforces.
+  const at = picked ? { lat: picked.lat, lng: picked.lng } : { lat, lng }
+  const accuracy = picked ? null
+    : (input.accuracy != null && Number.isFinite(input.accuracy) ? Math.round(input.accuracy) : null)
   const takenAt = input.takenAt && Number.isFinite(Date.parse(input.takenAt)) && Date.parse(input.takenAt) <= Date.now() + 60_000
     ? new Date(input.takenAt).toISOString() : new Date().toISOString()
 
@@ -248,8 +288,8 @@ export async function finalizePhotoAction(input: {
     geofence_id: zone?.id ?? null,
     url,
     thumb_url: thumbUrl,
-    lat, lng,
-    accuracy_m: input.accuracy != null && Number.isFinite(input.accuracy) ? Math.round(input.accuracy) : null,
+    lat: at.lat, lng: at.lng,
+    accuracy_m: accuracy,
     heading: input.heading != null && Number.isFinite(input.heading) ? Math.round(input.heading) : null,
     taken_at: takenAt,
     caption: input.caption?.trim().slice(0, 240) || null,
@@ -259,7 +299,7 @@ export async function finalizePhotoAction(input: {
   return {
     ok: true,
     photo: {
-      id: data.id as string, url, thumb_url: thumbUrl, lat, lng, taken_at: data.taken_at as string,
+      id: data.id as string, url, thumb_url: thumbUrl, lat: at.lat, lng: at.lng, taken_at: data.taken_at as string,
       caption: input.caption?.trim().slice(0, 240) || null, source: input.source === 'import' ? 'import' : 'camera',
       source_id: null, geofence_id: zone?.id ?? null, user_id: perms.userId, zone: zone?.name ?? null, by: null,
     },
@@ -278,14 +318,27 @@ export async function finalizePhotoAction(input: {
  */
 export async function movePhotoAction(id: string, geofenceId: string): Promise<{ ok: boolean; zone?: string | null; lat?: number; lng?: number; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode' }
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'That photo is gone.' }
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
+  // A view-as preview is read-only by rule (096) — and getRealPermissions
+  // deliberately ignores the cookie, so the check has to be explicit.
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  if ((await getMyPermissions()).viewingAs) {
+    return { ok: false, error: 'Read-only preview — exit View as to make changes.' }
+  }
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()
-  const { data: row } = await svc.from('field_photos').select('id, user_id, company_id').eq('id', id)
+  const { data: row } = await svc.from('field_photos').select('id, user_id, company_id, source').eq('id', id)
     .eq('company_id', perms.companyId).maybeSingle()
   if (!row) return { ok: false, error: 'That photo is gone.' }
   if (!perms.canEdit && row.user_id !== perms.userId) return { ok: false, error: 'That one isn’t yours to move.' }
+  // A daily log's photo is the log's own evidence, taken at the fix the log
+  // was filed from. Moving it here would leave the log and its picture
+  // claiming two different places with nothing recording the change.
+  if (row.source === 'daily_log') {
+    return { ok: false, error: 'This photo belongs to a daily log — fix it on the log, not here.' }
+  }
 
   const sites = await listPhotoSitesAction()
   const site = sites.find((z) => z.id === geofenceId)
