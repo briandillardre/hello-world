@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing, Plane } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -15,6 +15,7 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/map', label: 'Live Map', icon: Map },
     { href: '/command', label: 'Command Center', icon: MonitorPlay },
     { href: '/alerts', label: 'Alerts', icon: Bell },
+    { href: '/aircraft', label: 'Flight log', icon: Plane },
   ]},
   { title: 'Field', items: [
     { href: '/clock', label: 'Time clock', icon: Clock },

@@ -507,6 +507,8 @@ interface MapViewProps {
   /** Show the admin-only "save as company default" control in the weather panel. */
   /** False hides every dollar figure (timeline chip, $ chart mode, zone $). */
   canViewCosts?: boolean
+  /** Flight-log view level — without it the aircraft popup shows no history link. */
+  canFlightLog?: boolean
   /** User's saved map views from their profile (DB copy wins over device). */
   savedMapViews?: MapViewsState | null
   /** Persist saved views to the user's profile (absent in demo mode). */
@@ -525,7 +527,7 @@ function popupAsOf(v: unknown): string {
   return sameDay ? `as of ${time}` : `as of ${time} · ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
 }
 
-export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
   // reading the map at noon in the truck — pure CSS filter on the canvas
@@ -4351,7 +4353,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           const pl = planesRef.current?.find((x) => x.hex === hex)
           return pl ? { sx: pl.sx, sy: pl.sy } : null
         }
-        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${escHtml(title)}</div><div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
+        // Where this aircraft has BEEN, not just where it is (Brian, Sep 12).
+        // The tail number is the friendly key; the hex always resolves.
+        const logHref = `/aircraft?tail=${encodeURIComponent(hit.reg || hit.hex)}`
+        const logHtml = canFlightLog
+          ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
+          : ''
+        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${escHtml(title)}</div><div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${logHtml}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
         popup(e.lngLat, baseHtml, locatePlane)
         // FlightAware-lite (Brian, Aug 29): the route this flight is flying
         // and a photo of the ACTUAL airframe stream in a beat later. Guard on

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -40,6 +40,10 @@ const allItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
   { href: '/welcome', label: 'Getting started', short: 'Start', icon: Rocket },
   { href: '/help', label: 'Help', icon: HelpCircle },
+  // Deliberately last: the flight log is an extra, and a new page must never
+  // splice itself into somebody's five-slot bottom bar over something they
+  // use every day (sanitizeOrder inserts at the canonical slot).
+  { href: '/aircraft', label: 'Flight log', short: 'Flights', icon: Plane },
 ] as { href: string; label: string; short?: string; icon: typeof Map }[]
 const DEFAULT_ORDER = allItems.map((i) => i.href)
 const ORDER_KEY = 'ht_nav_order_v1'
@@ -65,7 +69,7 @@ const canonOrder = (role?: string | null): string[] => {
 // the flat 19-tile grid threw that information away). Visual only: the
 // user's saved order still decides the bar and the edit grid.
 const DRAWER_GROUPS: { title: string; hrefs: string[] }[] = [
-  { title: 'Watch',  hrefs: ['/map', '/command', '/alerts'] },
+  { title: 'Watch',  hrefs: ['/map', '/command', '/alerts', '/aircraft'] },
   { title: 'Field',  hrefs: ['/clock', '/timecards', '/logs', '/photos', '/assets', '/zones', '/measurements', '/tags', '/maintenance', '/track'] },
   { title: 'Office', hrefs: ['/reports', '/accounting', '/receipts', '/finance', '/team', '/activity'] },
   // Mirrors the desktop sidebar's Setup group exactly — a page missing here
