@@ -129,7 +129,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end md:items-center justify-center bg-navy-950/60" onClick={onClose}>
-      <div className="w-full md:max-w-lg bg-navy-900 border border-navy-700 rounded-t-2xl md:rounded-2xl shadow-2xl max-h-[88dvh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full md:max-w-lg bg-navy-900 border border-navy-700 rounded-t-2xl md:rounded-2xl shadow-2xl max-h-[calc(88dvh-var(--ht-safe-bottom,0px))] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-navy-800">
           <Camera className="h-4 w-4 text-teal" />
           <h2 className="font-display font-bold text-[15px] text-ink flex-1">Job photos</h2>
@@ -174,7 +174,12 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
           <p className="text-[11.5px] text-faint">Photos land on the map where they were taken and file under the site they fall in. Camera shots use your location now; gallery photos use the location in the picture.</p>
         </div>
 
-        <div className="p-4 pt-2 border-t border-navy-800 flex gap-2">
+        {/* The OS nav bar overlays the viewport in the native shell
+            (viewport-fit=cover), so a bottom sheet has to pay the inset
+            itself or its buttons sit under the system bar — Brian, Sep 12,
+            on this exact sheet. The height cap pays it too, or a tall sheet
+            just pushes the footer back under the bar. */}
+        <div className="p-4 pt-2 pb-[calc(1rem+var(--ht-safe-bottom,0px))] border-t border-navy-800 flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-navy-700 text-muted py-3 text-sm font-semibold hover:text-ink">{allDone ? 'Done' : 'Cancel'}</button>
           <button type="button" disabled={busy || savable === 0} onClick={saveAll} className="flex-[2] rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3 disabled:opacity-40">
             {busy ? 'Saving…' : savable ? `Save ${savable} photo${savable === 1 ? '' : 's'}` : pending.length ? 'Waiting for a location…' : 'Save'}
