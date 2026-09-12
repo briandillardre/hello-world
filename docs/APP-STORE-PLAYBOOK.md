@@ -280,7 +280,9 @@ waiting on the other.
 
 Broken by `status: draft` on the release workflow (a new input): the edit
 commits, nothing is published, the build parks in the console as a draft
-production release, and the form appears under App content. Fill it, then
+production release, and the form appears under App content. Done — run #10
+(Sep 12 06:09 UTC) logged *Successfully committed 05146173393203113094*,
+where run #9 had died on the commit. Fill it, then
 **start the rollout on that draft** — same build, same versionCode 10, no
 rebuild needed. (Only if the draft is discarded does a re-dispatch need a
 fresh versionCode.)
