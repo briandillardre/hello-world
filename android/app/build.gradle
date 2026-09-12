@@ -10,8 +10,8 @@ android {
         // Jumped to 5 deliberately: the console carries builds this repo
         // never saw (Aug 21 prod + Aug 27 update), and Play hard-rejects a
         // reused versionCode while skipped numbers cost nothing.
-        versionCode 10
-        versionName "1.4.1"
+        versionCode 11
+        versionName "1.5.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -55,6 +55,10 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Reads the GPS + capture time out of a photo's EXIF block. The framework
+    // class exists too, but androidx's handles HEIC and the vendor-specific
+    // layouts phone cameras actually write.
+    implementation "androidx.exifinterface:exifinterface:1.4.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

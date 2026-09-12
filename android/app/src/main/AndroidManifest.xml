@@ -60,4 +60,27 @@
          permissions and POST_NOTIFICATIONS; repeated here so the intent is visible. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Job photos keep their OWN GPS coordinates (Brian, Sep 12: "I want the
+         gps coordinates of photos"). Since Android 10 the system REDACTS the
+         GPS tags out of every image handed to an app; the only way back to the
+         original is MediaStore.setRequireOriginal() while holding
+         ACCESS_MEDIA_LOCATION, which a WebView file chooser never does. So
+         OriginalPhotosPlugin owns the gallery door.
+
+         READ_MEDIA_VISUAL_USER_SELECTED is requested alongside READ_MEDIA_IMAGES
+         on Android 14+, so the system offers "Select photos" and most people
+         never grant the whole library.
+
+         NOTE: declaring READ_MEDIA_IMAGES puts the release through Play's
+         Photo and Video Permissions declaration (Play Console → App content),
+         same shape as the Foreground-service one. The justification is the
+         feature itself: reading the coordinates stored in a job-site photo so
+         it files under the right job. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 </manifest>
