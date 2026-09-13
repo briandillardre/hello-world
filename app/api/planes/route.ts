@@ -21,6 +21,9 @@ interface Plane {
   lat: number
   lon: number
   altFt: number
+  /** The feed says this one is on the ground — parked, taxiing or rolling.
+   *  Drawn only with the "Aircraft on the ground" layer on. */
+  onGround: boolean
   gsKt: number | null
   /** Feet per minute, + climbing. Barometric where the aircraft sends it,
    *  else GNSS-derived; null when it sends neither (many light aircraft). */
@@ -61,7 +64,8 @@ export async function GET(req: NextRequest) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85) {
     return NextResponse.json({ error: 'lat/lon required' }, { status: 400 })
   }
-  const key = `${lat.toFixed(1)},${lon.toFixed(1)},${Math.round(r)}`
+  const wantGround = sp.get('ground') === '1'
+  const key = `${lat.toFixed(1)},${lon.toFixed(1)},${Math.round(r)},${wantGround ? 'g' : 's'}`
   const hit = cache.get(key)
   // ageMs = how old this snapshot already is on OUR side (cache hits), so the
   // client can date fixes correctly without trusting its clock against ours.
@@ -80,9 +84,18 @@ export async function GET(req: NextRequest) {
     const planes: Plane[] = []
     for (const a of j.ac ?? []) {
       if (typeof a.lat !== 'number' || typeof a.lon !== 'number' || !a.hex) continue
-      // alt_baro is the string "ground" for taxiing aircraft — sky only here.
+      // alt_baro is the string "ground" for an aircraft the feed says is on
+      // the ground. Those used to be dropped outright — which is why a field
+      // like GMU looked empty next to FlightRadar24 (Brian, Sep 13). They come
+      // through now, FLAGGED, and the map only draws them when asked.
       const alt = typeof a.alt_baro === 'number' ? a.alt_baro : typeof a.alt_geom === 'number' ? a.alt_geom : null
-      if (alt == null || alt < 100) continue
+      // The feed's own word for it — never an altitude threshold. Barometric
+      // altitude is above SEA level, so a jet parked at Denver reads ~5,300 ft
+      // and any threshold would call it airborne (the same trap the flight log
+      // had to design around).
+      const onGround = a.alt_baro === 'ground' || (alt != null && alt < 100)
+      if (!onGround && alt == null) continue
+      if (onGround && !wantGround) continue
       planes.push({
         hex: a.hex,
         flight: a.flight?.trim() || null,
@@ -90,7 +103,8 @@ export async function GET(req: NextRequest) {
         type: a.t?.trim() || null,
         lat: a.lat,
         lon: a.lon,
-        altFt: Math.round(alt),
+        altFt: onGround ? 0 : Math.round(alt as number),
+        onGround,
         gsKt: typeof a.gs === 'number' ? Math.round(a.gs) : null,
         vsFpm: typeof a.baro_rate === 'number' ? Math.round(a.baro_rate)
           : typeof a.geom_rate === 'number' ? Math.round(a.geom_rate) : null,

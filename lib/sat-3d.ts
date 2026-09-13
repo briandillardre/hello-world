@@ -60,6 +60,9 @@ export interface Plane3D {
   fixLat: number
   fixAt: number
   altFt: number
+  /** On the ground per the FEED's own flag — parked, taxiing or rolling.
+   *  Drawn flat, inert and only close in; never dead-reckoned. */
+  onGround?: boolean
   mph: number | null
   track: number | null
   /** Estimated bank angle (rad, + = right turn) inferred from turn rate. */
@@ -182,6 +185,16 @@ const CORE_COLORS: Record<string, [number, number, number]> = {
 const CORE_DEFAULT: [number, number, number] = [0.91, 0.941, 0.969] // #e8f0f7
 const GLOW: [number, number, number] = [0.49, 0.827, 0.988] // #7dd3fc
 const PLANE_COLOR: [number, number, number] = [1.0, 0.85, 0.35] // amber dart (trail lines)
+/** Aircraft on the ground: one inert slate, deliberately NOT a class colour.
+ *  Parked traffic is context for the airfield, not the thing you are watching
+ *  — and colouring it like flying traffic is how a ramp full of Cessnas ends
+ *  up looking like rush hour. */
+const PLANE_GROUND_COLOR: [number, number, number] = [0.62, 0.68, 0.74]
+/** Below this zoom, aircraft parked at a field are specks piled on each other.
+ *  The poll stops ASKING for them here, and the draw stops showing them —
+ *  both, so zooming out drops them on the next frame instead of the next
+ *  six-second poll. */
+export const GROUND_PLANE_MIN_ZOOM = 11
 // Per-class paint (Brian, Aug 12) — airliners amber, widebodies deep
 // orange, bizjets sky, GA props teal, helicopters violet. App palette.
 const PLANE_CLASS_COLOR: Record<PlaneClass, [number, number, number]> = {
@@ -944,7 +957,9 @@ export function createSat3DLayer(
 
         // Pass 1: project + declutter, then soft glows (point program bound).
         const glowables: { pl: Plane3D; clip: V4; spanPx: number }[] = []
+        const groundOk = zoom >= GROUND_PLANE_MIN_ZOOM
         for (const pl of planes) {
+          if (pl.onGround && !groundOk) { pl.visible = false; continue }
           const P = toWorld(pl.lon, pl.lat, Math.min(pl.altFt * 0.3048, altCapM))
           if (occluded(P)) { pl.visible = false; continue }
           const p = project(P)
@@ -956,7 +971,11 @@ export function createSat3DLayer(
             const key = (Math.round(pl.sx / CELL_PX) + 4096) * 8192 + (Math.round(pl.sy / CELL_PX) + 4096)
             const prev = cellBest.get(key)
             if (prev) {
-              if (prev.pl.altFt >= pl.altFt) { pl.visible = false; continue }
+              // Highest wins, and anything airborne beats anything parked —
+              // otherwise one ramp could hide the traffic overhead it.
+              const prevRank = prev.pl.onGround ? -1 : prev.pl.altFt
+              const rank = pl.onGround ? -1 : pl.altFt
+              if (prevRank >= rank) { pl.visible = false; continue }
               prev.pl.visible = false
             }
             cellBest.set(key, { pl, clip: p.clip, spanPx })
@@ -1117,7 +1136,13 @@ export function createSat3DLayer(
 
           const shadowV: number[] = []
           const classV: Record<PlaneClass, number[]> = { prop: [], biz: [], narrow: [], wide: [], heli: [] }
+          // Aircraft ON the ground batch separately: they wear one inert
+          // colour instead of their class colour, so a parked Cessna never
+          // reads as a flying one. They also cast no shadow — they are ON the
+          // shadow's surface.
+          const groundV: number[] = []
           for (const { pl } of glowables) {
+            if (pl.onGround) { emitMesh(groundV, pl, 0); continue }
             const altM = Math.min(pl.altFt * 0.3048, altCapM)
             if (shadowsOn) emit(shadowV, pl, 0, 0.92)
             emitMesh(classV[pl.shape], pl, altM)
@@ -1156,6 +1181,13 @@ export function createSat3DLayer(
               const c = PLANE_CLASS_COLOR[cls]
               gl.uniform4f(mColor, c[0], c[1], c[2], 1)
               gl.drawArrays(gl.TRIANGLES, 0, arr.length / 4)
+            }
+            if (groundV.length) {
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundV), gl.DYNAMIC_DRAW)
+              gl.vertexAttribPointer(mPos, 3, gl.FLOAT, false, 16, 0)
+              gl.vertexAttribPointer(mShade, 1, gl.FLOAT, false, 16, 12)
+              gl.uniform4f(mColor, PLANE_GROUND_COLOR[0], PLANE_GROUND_COLOR[1], PLANE_GROUND_COLOR[2], 1)
+              gl.drawArrays(gl.TRIANGLES, 0, groundV.length / 4)
             }
             gl.disableVertexAttribArray(mShade)
           }
