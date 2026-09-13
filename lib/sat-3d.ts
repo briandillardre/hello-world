@@ -420,22 +420,29 @@ const PLANE_MESH = (() => {
 const LINE_VERT = `
 attribute vec3 a_pos;
 attribute float a_t;
+attribute vec3 a_rgb;
 uniform mat4 u_matrix;
 varying float v_t;
+varying vec3 v_rgb;
 void main() {
   vec4 p = u_matrix * vec4(a_pos, 1.0);
   p.z = clamp(p.z, -abs(p.w) * 0.999, abs(p.w) * 0.999);
   gl_Position = p;
   v_t = a_t;
+  v_rgb = a_rgb;
 }`
 
 const LINE_FRAG = `
 precision mediump float;
-uniform vec4 u_color;
+uniform float u_alpha;
+// How much the age fade is allowed to bite. Plain trails fade hard (the tail
+// is just context); a COLOUR-CODED trail must not, or the ramp's own reading
+// gets mixed up with "this bit is old" — two meanings on one channel.
+uniform float u_fade;
 varying float v_t;
+varying vec3 v_rgb;
 void main() {
-  // Fade the tail out: oldest (t=0) faint, newest (t=1) bright.
-  gl_FragColor = vec4(u_color.rgb, u_color.a * (0.12 + 0.88 * v_t));
+  gl_FragColor = vec4(v_rgb, u_alpha * (1.0 - u_fade + u_fade * v_t));
 }`
 
 interface ModelTransform {
@@ -471,6 +478,12 @@ export interface PlaneTrail {
   /** [lon, lat, altM] triplets, oldest → newest (aircraft at the end). */
   pts: Float32Array
   n: number
+  /** [r, g, b] per point, 0..1 — the metric colouring (lib/plane-trail.ts).
+   *  Absent = the plain amber trail. */
+  rgb?: Float32Array
+  /** Plain trails fade the tail out; a colour-coded one barely fades, so the
+   *  ramp is the only thing the colour is saying. */
+  fade?: number
 }
 
 export function createSat3DLayer(
@@ -517,8 +530,10 @@ export function createSat3DLayer(
   let lineBuf: WebGLBuffer | null = null
   let lPos = 0
   let lT = 0
+  let lRgb = 0
   let lMatrix: WebGLUniformLocation | null = null
-  let lColor: WebGLUniformLocation | null = null
+  let lAlpha: WebGLUniformLocation | null = null
+  let lFade: WebGLUniformLocation | null = null
   let sPos = 0
   let sMeta = 0
   let sMatrix: WebGLUniformLocation | null = null
@@ -574,8 +589,10 @@ export function createSat3DLayer(
       if (lineProg) {
         lPos = gl.getAttribLocation(lineProg, 'a_pos')
         lT = gl.getAttribLocation(lineProg, 'a_t')
+        lRgb = gl.getAttribLocation(lineProg, 'a_rgb')
         lMatrix = gl.getUniformLocation(lineProg, 'u_matrix')
-        lColor = gl.getUniformLocation(lineProg, 'u_color')
+        lAlpha = gl.getUniformLocation(lineProg, 'u_alpha')
+        lFade = gl.getUniformLocation(lineProg, 'u_fade')
         lineBuf = gl.createBuffer()
       }
     },
@@ -846,24 +863,39 @@ export function createSat3DLayer(
       // the aircraft. Drawn before the planes so the silhouette sits on top.
       if (lineProg && lineBuf && trail && trail.n > 1) {
         const n = trail.n
-        const arr = new Float32Array(n * 4)
+        // 7 floats a vertex: position, age, colour. The colour is per-point
+        // because that IS the reading when a metric is picked.
+        const STRIDE = 7
+        const arr = new Float32Array(n * STRIDE)
+        const rgb = trail.rgb
         for (let i = 0; i < n; i++) {
           const P = toWorld(trail.pts[i * 3], trail.pts[i * 3 + 1], trail.pts[i * 3 + 2])
-          arr[i * 4] = P[0]; arr[i * 4 + 1] = P[1]; arr[i * 4 + 2] = P[2]
-          arr[i * 4 + 3] = i / (n - 1)
+          const o = i * STRIDE
+          arr[o] = P[0]; arr[o + 1] = P[1]; arr[o + 2] = P[2]
+          arr[o + 3] = i / (n - 1)
+          if (rgb && rgb.length >= (i + 1) * 3) {
+            arr[o + 4] = rgb[i * 3]; arr[o + 5] = rgb[i * 3 + 1]; arr[o + 6] = rgb[i * 3 + 2]
+          } else {
+            arr[o + 4] = PLANE_COLOR[0]; arr[o + 5] = PLANE_COLOR[1]; arr[o + 6] = PLANE_COLOR[2]
+          }
         }
         gl.useProgram(lineProg)
         gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf)
         gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW)
+        const bytes = STRIDE * 4
         gl.enableVertexAttribArray(lPos)
-        gl.vertexAttribPointer(lPos, 3, gl.FLOAT, false, 16, 0)
+        gl.vertexAttribPointer(lPos, 3, gl.FLOAT, false, bytes, 0)
         gl.enableVertexAttribArray(lT)
-        gl.vertexAttribPointer(lT, 1, gl.FLOAT, false, 16, 12)
+        gl.vertexAttribPointer(lT, 1, gl.FLOAT, false, bytes, 12)
+        gl.enableVertexAttribArray(lRgb)
+        gl.vertexAttribPointer(lRgb, 3, gl.FLOAT, false, bytes, 16)
         gl.uniformMatrix4fv(lMatrix, false, Array.from(main))
-        gl.uniform4f(lColor, PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], 0.85)
+        gl.uniform1f(lAlpha, 0.9)
+        gl.uniform1f(lFade, trail.fade ?? 0.88)
         try { gl.lineWidth(2) } catch { /* clamped to 1 on many GPUs */ }
         gl.drawArrays(gl.LINE_STRIP, 0, n)
         gl.disableVertexAttribArray(lT)
+        gl.disableVertexAttribArray(lRgb)
         // Restore point-program vertex state for the passes below.
         gl.useProgram(prog!)
         gl.bindBuffer(gl.ARRAY_BUFFER, buf)

@@ -14,11 +14,18 @@ export const maxDuration = 20
  * a manageable polyline. Cached ~30s per hex.
  */
 
-interface Cached { at: number; pts: [number, number, number][] }
+/** Each point: lon, lat, altitude m, ground speed kt, vertical speed fpm.
+ *  The last two exist so the trail can be COLOURED by them (Brian, Sep 13);
+ *  NaN where the aircraft sent no such value — never 0, which would paint a
+ *  measurement nobody took. JSON has no NaN, so the wire carries null. */
+type TrackPt = [number, number, number, number | null, number | null]
+interface Cached { at: number; pts: TrackPt[] }
 const cache = new Map<string, Cached>()
 const TTL_MS = 30_000
 
-// Trace fixes: [dt, lat, lon, altFt|"ground"|null, gs, track, flags, ...]
+// readsb trace fix:
+//   [dt, lat, lon, altFt|"ground"|null, gs, track, flags, vert_rate, …]
+// Index 7 is the vertical rate in feet per minute; it is frequently absent.
 type Fix = [number, number, number, number | string | null, ...unknown[]]
 
 export async function GET(req: NextRequest) {
@@ -49,18 +56,20 @@ export async function GET(req: NextRequest) {
     }
     const j: { trace?: Fix[] } = JSON.parse(text)
     const fixes = j.trace ?? []
-    const all: [number, number, number][] = []
+    const all: TrackPt[] = []
     for (const f of fixes) {
       const lat = f[1]
       const lon = f[2]
       const alt = f[3]
       if (typeof lat !== 'number' || typeof lon !== 'number') continue
       const altM = typeof alt === 'number' ? alt * 0.3048 : 0 // "ground"/null → 0
-      all.push([lon, lat, altM])
+      const gs = typeof f[4] === 'number' ? Math.round(f[4] as number) : null
+      const vs = typeof f[7] === 'number' ? Math.round(f[7] as number) : null
+      all.push([lon, lat, altM, gs, vs])
     }
     // Downsample to ~220 points, keeping the newest (end of the array).
     const MAX = 220
-    let pts = all
+    let pts: TrackPt[] = all
     if (all.length > MAX) {
       const step = all.length / MAX
       pts = []

@@ -22,6 +22,9 @@ interface Plane {
   lon: number
   altFt: number
   gsKt: number | null
+  /** Feet per minute, + climbing. Barometric where the aircraft sends it,
+   *  else GNSS-derived; null when it sends neither (many light aircraft). */
+  vsFpm: number | null
   track: number | null
   /** Seconds since this aircraft's position was last updated at the feed
    *  (adsb.lol seen_pos). The client dates the fix by it instead of by the
@@ -33,6 +36,8 @@ interface Plane {
 
 interface AdsbAc {
   hex?: string
+  baro_rate?: number
+  geom_rate?: number
   flight?: string
   r?: string
   t?: string
@@ -87,6 +92,8 @@ export async function GET(req: NextRequest) {
         lon: a.lon,
         altFt: Math.round(alt),
         gsKt: typeof a.gs === 'number' ? Math.round(a.gs) : null,
+        vsFpm: typeof a.baro_rate === 'number' ? Math.round(a.baro_rate)
+          : typeof a.geom_rate === 'number' ? Math.round(a.geom_rate) : null,
         track: typeof a.track === 'number' ? Math.round(a.track) : null,
         seenPos: typeof a.seen_pos === 'number' && a.seen_pos >= 0 ? Math.min(60, a.seen_pos) : null,
       })
