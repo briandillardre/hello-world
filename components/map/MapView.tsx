@@ -33,6 +33,7 @@ import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type Save
 import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { fetchPlaneInfo } from '@/lib/plane-card'
 import { advancePlane, createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
+import { PLANE_TRAIL_MODES, trailColor, trailScale, legendStops, type PlaneTrailMode, type PlaneTrailScale } from '@/lib/plane-trail'
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -4253,11 +4254,36 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const planeShownRef = useRef<Map<string, { lon: number; lat: number }>>(new Map())
   // Rolling flight-path history per aircraft (flat lon,lat,altM triplets),
   // accumulated each poll; a clicked plane's path renders as a 3D trail.
+  // Same five-wide shape as the backfilled trace, so the two concatenate.
   const planeHistRef = useRef<Map<string, number[]>>(new Map())
   const selPlaneRef = useRef<string | null>(null)
   const planeTrailRef = useRef<PlaneTrail | null>(null)
-  // Real recent track per hex, backfilled once from adsb.lol (flat triplets).
+  // The trail's own control strip: which measurement paints it, and the ramp
+  // with real numbers on it. Lives OUTSIDE the popup on purpose — minimising
+  // the aircraft card must not take the legend with it, because the whole
+  // point of minimising is to go look at the path (Brian, Sep 13).
+  const [planeTrailMode, setPlaneTrailMode] = useState<PlaneTrailMode>('plain')
+  const [trailLegend, setTrailLegend] = useState<{ mode: PlaneTrailMode; stops: { label: string; hex: string }[] } | null>(null)
+  const [trailOn, setTrailOn] = useState(false)
+  // Real recent track per hex, backfilled once from adsb.lol. FIVE numbers a
+  // point — lon, lat, altM, ground-speed kt, vertical-speed fpm — because the
+  // trail can be coloured by the last two (Brian, Sep 13).
   const traceRef = useRef<Map<string, number[]>>(new Map())
+  // Which measurement paints the trail. Remembered per device: somebody who
+  // flies looks at the same one every time.
+  const planeTrailModeRef = useRef<PlaneTrailMode>('plain')
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ht_plane_trail_mode') as PlaneTrailMode | null
+      if (saved && PLANE_TRAIL_MODES.some((d) => d.key === saved)) { planeTrailModeRef.current = saved; setPlaneTrailMode(saved) }
+    } catch { /* private window */ }
+  }, [])
+  const pickPlaneTrailMode = useCallback((mode: PlaneTrailMode) => {
+    planeTrailModeRef.current = mode
+    setPlaneTrailMode(mode)
+    try { localStorage.setItem('ht_plane_trail_mode', mode) } catch { /* private window */ }
+    rebuildTrailRef.current?.()
+  }, [])
   // Set by the sky-layer effect so the plane poll can refresh a live trail.
   const rebuildTrailRef = useRef<(() => void) | null>(null)
   const swarmRef = useRef<SwarmState | null>(null)
@@ -4311,16 +4337,60 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // the object left the feed — the popup goes with it.
     let skyPopup: maplibregl.Popup | null = null
     let locateSky: (() => { sx: number; sy: number } | null) | null = null
-    const popup = (lngLat: maplibregl.LngLatLike, html: string, locate?: () => { sx: number; sy: number } | null) => {
+    // The card COLLAPSES to a title pill (Brian, Sep 13: "I need to be able to
+    // minimize this pop up so that I can zoom around and see the flight path").
+    // It is deliberately not a close: clearing the card used to mean tapping
+    // empty sky, which also throws the trail away — the opposite of what you
+    // want when you minimise. Collapsed state survives the route/photo
+    // enrichment that re-sets the HTML a beat later.
+    let skyMin = false
+    let skyFull = ''
+    let skyTitle = ''
+    const paintPopup = () => {
+      if (!skyPopup) return
+      const btn = 'background:none;border:0;color:#9fb6cc;font:600 15px/1 system-ui;cursor:pointer;padding:2px 6px'
+      const head = skyTitle
+        ? `<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;min-width:0">${skyTitle}</div>`
+          + `<button data-sky="min" aria-label="${skyMin ? 'Expand' : 'Minimise'}" style="${btn}">${skyMin ? '▢' : '—'}</button>`
+          + `<button data-sky="close" aria-label="Close" style="${btn}">✕</button></div>`
+        : ''
+      skyPopup.setHTML(
+        `<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7;max-width:230px">`
+        + head + (skyMin ? '' : skyFull) + `</div>`,
+      )
+      const el = skyPopup.getElement()
+      el?.querySelectorAll('[data-sky]').forEach((b) => {
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation()
+          const act = (b as HTMLElement).dataset.sky
+          if (act === 'close') { skyPopup?.remove(); return }
+          skyMin = !skyMin
+          paintPopup()
+        })
+      })
+    }
+    const popup = (
+      lngLat: maplibregl.LngLatLike,
+      html: string,
+      locate?: () => { sx: number; sy: number } | null,
+      title?: string,
+    ) => {
       skyPopup?.remove()
       locateSky = locate ?? null
+      skyMin = false
+      skyFull = html
+      skyTitle = title ?? ''
       const sp = new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
         .setLngLat(lngLat)
-        .setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">${html}</div>`)
+        .setHTML('')
         .addTo(m)
       sp.on('close', () => { if (skyPopup === sp) { skyPopup = null; locateSky = null } })
       skyPopup = sp
+      if (title) paintPopup()
+      else sp.setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7">${html}</div>`)
     }
+    /** Replace the BODY of the open card, keeping it collapsed if it is. */
+    const repaintPopupBody = (html: string) => { skyFull = html; paintPopup() }
     const followSky = () => {
       if (!skyPopup || !locateSky) return
       const p = locateSky()
@@ -4342,13 +4412,40 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // followed by everything we've watched live since, newest last.
     const rebuildPlaneTrail = () => {
       const hex = selPlaneRef.current
-      if (!hex) { planeTrailRef.current = null; m.triggerRepaint(); return }
+      if (!hex) { planeTrailRef.current = null; setTrailOn(false); setTrailLegend(null); m.triggerRepaint(); return }
       const trace = traceRef.current.get(hex) ?? []
       const hist = planeHistRef.current.get(hex) ?? []
       const flat = trace.concat(hist)
-      const n = Math.floor(flat.length / 3)
-      if (n < 2) { planeTrailRef.current = null; m.triggerRepaint(); return }
-      planeTrailRef.current = { pts: new Float32Array(flat), n }
+      const n = Math.floor(flat.length / 5)
+      if (n < 2) { planeTrailRef.current = null; setTrailOn(false); setTrailLegend(null); m.triggerRepaint(); return }
+      setTrailOn(true)
+      // The renderer wants bare lon/lat/alt; the metrics stay here.
+      const pts = new Float32Array(n * 3)
+      const metric = new Float64Array(n)
+      const mode = planeTrailModeRef.current
+      for (let i = 0; i < n; i++) {
+        pts[i * 3] = flat[i * 5]
+        pts[i * 3 + 1] = flat[i * 5 + 1]
+        pts[i * 3 + 2] = flat[i * 5 + 2]
+        metric[i] = mode === 'speed' ? flat[i * 5 + 3]
+          : mode === 'climb' ? flat[i * 5 + 4]
+          : mode === 'alt' ? flat[i * 5 + 2] / 0.3048 // metres back to feet
+          : NaN
+      }
+      let rgb: Float32Array | undefined
+      let scale: PlaneTrailScale | null = null
+      if (mode !== 'plain') {
+        scale = trailScale(mode, metric)
+        rgb = new Float32Array(n * 3)
+        for (let i = 0; i < n; i++) {
+          const c = trailColor(mode, metric[i], scale)
+          rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2]
+        }
+      }
+      // A coloured trail barely fades: the age fade and the ramp would
+      // otherwise both be speaking through brightness.
+      planeTrailRef.current = { pts, n, rgb, fade: mode === 'plain' ? 0.88 : 0.25 }
+      setTrailLegend(scale && mode !== 'plain' ? { mode, stops: legendStops(mode, scale) } : null)
       m.triggerRepaint()
     }
     rebuildTrailRef.current = rebuildPlaneTrail
@@ -4367,7 +4464,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const hit = pickAll(e.point.x, e.point.y)
       if (!hit) {
         // Tap on empty sky clears the trail.
-        if (selPlaneRef.current) { selPlaneRef.current = null; planeTrailRef.current = null; m.triggerRepaint() }
+        if (selPlaneRef.current) {
+          selPlaneRef.current = null; planeTrailRef.current = null
+          setTrailOn(false); setTrailLegend(null); m.triggerRepaint()
+        }
         return
       }
       if ('kind' in hit) {
@@ -4401,8 +4501,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const logHtml = canFlightLog
           ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
           : ''
-        const baseHtml = `<div style="font-weight:700;color:#ffd94f">✈ ${escHtml(title)}</div><div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${logHtml}<div style="color:#9fb6cc;margin-top:3px">flight trail on — tap empty sky to clear</div>`
-        popup(e.lngLat, baseHtml, locatePlane)
+        const headHtml = `<div style="font-weight:700;color:#ffd94f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✈ ${escHtml(title)}</div>`
+        const baseHtml = `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${logHtml}<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>`
+        popup(e.lngLat, baseHtml, locatePlane, headHtml)
         // FlightAware-lite (Brian, Aug 29): the route this flight is flying
         // and a photo of the ACTUAL airframe stream in a beat later. Guard on
         // the popup INSTANCE, not just the selected hex — tapping a satellite
@@ -4411,7 +4512,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const ownPopup = skyPopup
         void fetchPlaneInfo(hit.hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
           if ((photoHtml || routeHtml) && selPlaneRef.current === hit.hex && ownPopup && skyPopup === ownPopup && ownPopup.isOpen()) {
-            ownPopup.setHTML(`<div style="padding:10px 12px;font:12px/1.5 system-ui,sans-serif;color:#e8f0f7;max-width:230px">${baseHtml.replace('flight trail on — tap empty sky to clear', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">flight trail on — tap empty sky to clear</div></div>`)
+            // Through repaintPopupBody, so a card the person has already
+            // minimised does not spring back open when the photo lands.
+            repaintPopupBody(`${baseHtml.replace('<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">— to minimise · the trail stays</div>`)
           }
         })
       } else {
@@ -4664,7 +4767,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const c = m.getCenter()
         const r = await fetch(`/api/planes?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&r=250`)
         if (!r.ok) throw new Error(`feed ${r.status}`)
-        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; track: number | null; seenPos?: number | null }[]; ageMs?: number } = await r.json()
+        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; vsFpm?: number | null; track: number | null; seenPos?: number | null }[]; ageMs?: number } = await r.json()
         if (cancelled) return
         const nowMs = Date.now()
         // A fix is as old as the feed says (seen_pos) plus however long our
@@ -4716,9 +4819,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           seen.add(p.hex)
           const buf = planeHistRef.current.get(p.hex) ?? []
           const L = buf.length
-          if (L < 3 || buf[L - 3] !== p.lon || buf[L - 2] !== p.lat) {
-            buf.push(p.lon, p.lat, p.altFt * 0.3048)
-            if (buf.length > 600) buf.splice(0, buf.length - 600)
+          if (L < 5 || buf[L - 5] !== p.lon || buf[L - 4] !== p.lat) {
+            // NaN, never 0, for anything this aircraft did not send — the
+            // ramp paints "no data" grey rather than inventing level flight.
+            buf.push(p.lon, p.lat, p.altFt * 0.3048, p.gsKt ?? NaN, p.vsFpm ?? NaN)
+            if (buf.length > 1000) buf.splice(0, buf.length - 1000)
             planeHistRef.current.set(p.hex, buf)
           }
         }
@@ -7790,6 +7895,47 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             </button>
           )}
           <button onClick={() => setSearchedPin(null)} aria-label="Dismiss" className="flex-none p-1.5 text-faint hover:text-ink">✕</button>
+        </div>
+      )}
+
+      {/* The flight trail's own strip: what paints it, and what the colours
+          mean. Separate from the aircraft card on purpose — minimising the
+          card is how you go LOOK at the path, so the key has to survive it.
+          Sits above the timeline pill and left of the rail. */}
+      {trailOn && (
+        <div className="absolute left-2 md:left-3 z-20 max-w-[calc(100%-88px)]" style={{ bottom: 'calc(96px + var(--ht-safe-bottom, 0px))' }}>
+          <div className="rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-2 py-1.5">
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-[9.5px] font-mono uppercase tracking-[0.12em] text-faint pr-0.5">Trail</span>
+              {PLANE_TRAIL_MODES.map((d) => (
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => pickPlaneTrailMode(d.key)}
+                  className={'rounded-md px-1.5 py-0.5 text-[11px] font-semibold leading-none border transition-colors '
+                    + (planeTrailMode === d.key
+                      ? 'bg-teal/15 border-teal/50 text-teal'
+                      : 'border-navy-700 text-muted hover:text-ink')}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            {trailLegend && trailLegend.stops.length > 0 && (
+              <div className="flex items-center gap-1 mt-1.5">
+                {trailLegend.stops.map((st, i) => (
+                  <div key={i} className="flex-1 min-w-0">
+                    <div className="h-1.5 rounded-sm" style={{ background: st.hex }} />
+                    {/* Only the ends are labelled — a number under every
+                        swatch is unreadable at this width on a phone. */}
+                    <div className="text-[8.5px] text-faint mt-0.5 text-center truncate">
+                      {i === 0 || i === trailLegend.stops.length - 1 ? st.label : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
