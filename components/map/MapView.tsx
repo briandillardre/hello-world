@@ -32,8 +32,9 @@ import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
 import { hexHeatGeoJSON } from '@/lib/heat3d'
 import { fetchPlaneInfo } from '@/lib/plane-card'
-import { advancePlane, createSat3DLayer, pickSat, SKY_LAYER_ID, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
+import { advancePlane, createSat3DLayer, pickSat, SKY_LAYER_ID, GROUND_PLANE_MIN_ZOOM, type Sat3D, type Plane3D, type CelestialBody, type CelestialState, type SwarmState, type PlaneTrail } from '@/lib/sat-3d'
 import { PLANE_TRAIL_MODES, trailColor, trailScale, legendStops, type PlaneTrailMode, type PlaneTrailScale } from '@/lib/plane-trail'
+
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
@@ -4258,6 +4259,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const planeHistRef = useRef<Map<string, number[]>>(new Map())
   const selPlaneRef = useRef<string | null>(null)
   const planeTrailRef = useRef<PlaneTrail | null>(null)
+  // "Aircraft on the ground" — off by default, and never below airport zoom.
+  const groundPlanesRef = useRef(false)
   // The trail's own control strip: which measurement paints it, and the ramp
   // with real numbers on it. Lives OUTSIDE the popup on purpose — minimising
   // the aircraft card must not take the legend with it, because the whole
@@ -4502,7 +4505,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
           : ''
         const headHtml = `<div style="font-weight:700;color:#ffd94f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✈ ${escHtml(title)}</div>`
-        const baseHtml = `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${logHtml}<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>`
+        // "altitude 0 ft" is a wrong-sounding way to say parked — and for a
+        // taxiing aircraft the speed is the only interesting number.
+        const stateHtml = hit.onGround
+          ? `<div style="margin-top:3px"><b style="color:#9fb6cc">on the ground</b>${hit.mph && hit.mph > 3 ? ` · taxiing ${hit.mph.toLocaleString()} mph` : ' · parked'}</div>`
+          : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}`
+        const baseHtml = `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateHtml}${logHtml}<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>`
         popup(e.lngLat, baseHtml, locatePlane, headHtml)
         // FlightAware-lite (Brian, Aug 29): the route this flight is flying
         // and a photo of the ACTUAL airframe stream in a beat later. Guard on
@@ -4743,6 +4751,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
   }, [mapReady, overlaysOn.planes])
 
+  // The ground layer is read by the poll through a ref (it is also gated on
+  // zoom, which changes constantly and must not re-run the effect).
+  useEffect(() => { groundPlanesRef.current = !!overlaysOn['planes-ground'] }, [overlaysOn])
+
   // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
   useEffect(() => {
     const m = map.current
@@ -4765,9 +4777,14 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       inflight = true
       try {
         const c = m.getCenter()
-        const r = await fetch(`/api/planes?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&r=250`)
+        // Ground traffic is only asked for when the layer is on AND the view
+        // is tight enough to tell one aircraft from the next. At state zoom a
+        // busy field is a single smear of parked Cessnas that would also eat
+        // the feed's 1,200-aircraft budget away from the sky.
+        const wantGround = groundPlanesRef.current && m.getZoom() >= GROUND_PLANE_MIN_ZOOM
+        const r = await fetch(`/api/planes?lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}&r=250${wantGround ? '&ground=1' : ''}`)
         if (!r.ok) throw new Error(`feed ${r.status}`)
-        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; vsFpm?: number | null; track: number | null; seenPos?: number | null }[]; ageMs?: number } = await r.json()
+        const j: { planes?: { hex: string; flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; gsKt: number | null; vsFpm?: number | null; onGround?: boolean; track: number | null; seenPos?: number | null }[]; ageMs?: number } = await r.json()
         if (cancelled) return
         const nowMs = Date.now()
         // A fix is as old as the feed says (seen_pos) plus however long our
@@ -4807,7 +4824,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             fixAt: nowMs - snapshotAge - (typeof p.seenPos === 'number' ? Math.min(p.seenPos, 30) * 1000 : 0),
             altFt: p.altFt,
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
-            track: p.track, bankRad,
+            track: p.track, bankRad, onGround: !!p.onGround,
             sx: 0, sy: 0, visible: false,
           }
         })
@@ -4861,7 +4878,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       if (moveTimer) clearTimeout(moveTimer)
       m.off('moveend', onMove)
     }
-  }, [mapReady, overlaysOn.planes])
+  }, [mapReady, overlaysOn.planes, overlaysOn['planes-ground']])
 
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
   useEffect(() => {
