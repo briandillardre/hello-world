@@ -4352,7 +4352,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     let skyTitle = ''
     const paintPopup = () => {
       if (!skyPopup) return
-      const btn = 'background:none;border:0;color:#9fb6cc;font:600 15px/1 system-ui;cursor:pointer;padding:2px 6px'
+      // Roomy enough for a thumb: the destructive ✕ sits next to the
+      // harmless —, and at 27x19 px a gloved miss closed the card and lost
+      // the streamed route while the aircraft moved on.
+      const btn = 'background:none;border:0;color:#9fb6cc;font:600 15px/1 system-ui;cursor:pointer;padding:8px 10px;min-width:34px'
       const head = skyTitle
         ? `<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;min-width:0">${skyTitle}</div>`
           + `<button data-sky="min" aria-label="${skyMin ? 'Expand' : 'Minimise'}" style="${btn}">${skyMin ? '▢' : '—'}</button>`
@@ -4457,9 +4460,15 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       if (traceRef.current.has(hex)) return
       fetch(`/api/plane-track?hex=${hex}`)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-        .then((j: { pts?: [number, number, number][] }) => {
+        .then((j: { pts?: (number | null)[][] }) => {
           if (!j.pts?.length) { traceRef.current.set(hex, []); return }
-          traceRef.current.set(hex, j.pts.flat())
+          // The wire carries null for a value the aircraft never sent (JSON
+          // has no NaN). Left as null it lands in a Float64Array as 0 — which
+          // Number.isFinite accepts — and the ramp paints a measurement
+          // nobody took: a whole flight drawn "dead level", or a 205 kt
+          // cruise squashed into the top of a scale whose floor is a fix that
+          // does not exist. NaN is the only value trailColor reads as grey.
+          traceRef.current.set(hex, j.pts.flat().map((v) => (v == null ? NaN : v)))
           if (selPlaneRef.current === hex) rebuildPlaneTrail()
         })
         .catch(() => { traceRef.current.set(hex, []) })
@@ -4778,6 +4787,15 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     let cancelled = false
     let inflight = false
+    // Both rows answer to the same feed, so both must carry its stamp and its
+    // failures — a ground-only viewer used to watch a row that read healthy
+    // forever and never settled out of "live feed loading".
+    const feedKeys = () => {
+      const ks: string[] = []
+      if (skyPlanesRef.current) ks.push('planes')
+      if (groundPlanesRef.current) ks.push('planes-ground')
+      return ks.length ? ks : ['planes']
+    }
     const load = async () => {
       if (inflight || cancelled) return
       // ADS-B is live-only — during replay, showing NOW's planes over LAST
@@ -4877,9 +4895,13 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // Stamp the layers panel with the SNAPSHOT's age, not this moment's:
         // while the feed is rate-limiting us the proxy rides the last good
         // one out, and "updated 1m ago" is the truth the panel should show.
-        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() - rawAge } }))
+        for (const k of feedKeys()) {
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: k, at: Date.now() - rawAge } }))
+        }
       } catch (err) {
-        window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'planes', msg: err instanceof Error ? err.message : 'ADS-B feed down' } }))
+        for (const k of feedKeys()) {
+          window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: k, msg: err instanceof Error ? err.message : 'ADS-B feed down' } }))
+        }
       } finally {
         inflight = false
       }
@@ -4899,6 +4921,23 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.off('moveend', onMove)
     }
   }, [mapReady, overlaysOn.planes, overlaysOn['planes-ground']])
+
+  // The trail belongs to a LIVE aircraft on a LIVE map. Leaving live, or
+  // switching the sky off, has to take it with them: the draw call in
+  // sat-3d is independent of the plane list, so nulling the list alone left
+  // today's flight path painted across yesterday's map — and the Trail strip
+  // stranded on screen with dead chips, since its only off switch lives in an
+  // effect that had already torn down.
+  useEffect(() => {
+    const sky = !!overlaysOn.satellites || !!overlaysOn.planes || !!overlaysOn['planes-ground']
+    if (range === 'live' && sky) return
+    if (!selPlaneRef.current && !planeTrailRef.current) return
+    selPlaneRef.current = null
+    planeTrailRef.current = null
+    setTrailOn(false)
+    setTrailLegend(null)
+    map.current?.triggerRepaint()
+  }, [range, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground']])
 
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
   useEffect(() => {
@@ -7948,7 +7987,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           card is how you go LOOK at the path, so the key has to survive it.
           Sits above the timeline pill and left of the rail. */}
       {trailOn && (
-        <div className="absolute left-2 md:left-3 z-20 max-w-[calc(100%-88px)]" style={{ bottom: 'calc(96px + var(--ht-safe-bottom, 0px))' }}>
+        <div className="absolute left-2 md:left-3 z-20 max-w-[calc(100%-88px)]" style={{ bottom: 'calc(96px + var(--ht-sheet-lift, 0px) + var(--ht-safe-bottom, 0px))' }}>
           <div className="rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel px-2 py-1.5">
             <div className="flex items-center gap-1 flex-wrap">
               <span className="text-[9.5px] font-mono uppercase tracking-[0.12em] text-faint pr-0.5">Trail</span>
