@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
-import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom } from '@/lib/map-layers'
+import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom, LAYER_ROWS } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent, Place } from '@/lib/types'
@@ -7590,8 +7590,16 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         frameTime={radarLabel}
         parcelsOn={parcelsOn}
         onParcels={PARCEL_SERVICE_URL ? setParcelsOn : undefined}
-        overlays={['nwswarn', 'gauges', 'pwsnet', 'daynight', 'windanim', 'alertpins', 'fieldops', 'receipts', 'photos', 'webcams', 'satellites', 'satswarm', 'planes', 'airspace3d', 'siteimg', 'siteplans', 'burnmap', 'idledollars', 'nightwatch', 'closures', 'pourcast', 'measures', 'wayback', ...MAP_OVERLAYS.map((o) => o.key)]
-          .map((key) => ({ key, on: !!overlaysOn[key] }))}
+        // EVERY registry row, not a hand-kept list. The panel draws its rows
+        // from LAYER_ROWS but read their on-state from this array, so a layer
+        // added to the registry and forgotten here rendered a switch that
+        // could never turn on — which is exactly what "Aircraft on the ground
+        // button is not working" was (Brian, Sep 14). One source of truth
+        // means the next layer cannot repeat it.
+        overlays={Array.from(new Set([
+          ...LAYER_ROWS.map((l) => l.id),
+          ...MAP_OVERLAYS.map((o) => o.key),
+        ])).map((key) => ({ key, on: !!overlaysOn[key] }))}
         onOverlay={(key, on) => {
           // Surface shadings are one-at-a-time; everything else stacks.
           if (on && (key === 'temp' || key === 'feels' || key === 'wind' || key === 'lightning')) soloWeather(key)
