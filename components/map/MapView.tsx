@@ -4800,7 +4800,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // proxy had it cached — NOT "just now". Dating it at arrival put the
         // dead-reckoned truth several seconds behind the rendered plane on
         // every poll, and the ease dragged the plane backward to meet it.
-        const snapshotAge = typeof j.ageMs === 'number' && j.ageMs > 0 ? Math.min(j.ageMs, 30_000) : 0
+        const rawAge = typeof j.ageMs === 'number' && j.ageMs > 0 ? j.ageMs : 0
+        const snapshotAge = Math.min(rawAge, 30_000)
         // Each checkbox shows exactly what it names: ground-only must not
         // paint the whole sky, and sky-only must not paint the ramp.
         const showAir = skyPlanesRef.current
@@ -4870,7 +4871,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         }
         if (selPlaneRef.current) rebuildTrailRef.current?.()
         m.triggerRepaint()
-        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() } }))
+        // Stamp the layers panel with the SNAPSHOT's age, not this moment's:
+        // while the feed is rate-limiting us the proxy rides the last good
+        // one out, and "updated 1m ago" is the truth the panel should show.
+        window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'planes', at: Date.now() - rawAge } }))
       } catch (err) {
         window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'planes', msg: err instanceof Error ? err.message : 'ADS-B feed down' } }))
       } finally {
