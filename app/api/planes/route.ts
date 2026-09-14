@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ipRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -78,6 +79,9 @@ async function fetchSnapshot(lat: number, lon: number, r: number): Promise<{ at:
   })
   if (resp.status === 429) cooldownUntil = Date.now() + COOLDOWN_MS
   if (!resp.ok) throw new Error(`feed ${resp.status}`)
+  // Recovered — don't keep serving stale for the rest of a cooldown the feed
+  // has already forgiven.
+  cooldownUntil = 0
   const j: { ac?: AdsbAc[] } = await resp.json()
   const planes: Plane[] = []
   let air = 0
@@ -91,9 +95,12 @@ async function fetchSnapshot(lat: number, lon: number, r: number): Promise<{ at:
     const alt = typeof a.alt_baro === 'number' ? a.alt_baro : typeof a.alt_geom === 'number' ? a.alt_geom : null
     // The feed's own word for it — never an altitude threshold. Barometric
     // altitude is above SEA level, so a jet parked at Denver reads ~5,300 ft
-    // and any threshold would call it airborne (the same trap the flight log
-    // had to design around).
-    const onGround = a.alt_baro === 'ground' || (alt != null && alt < 100)
+    // and any threshold would call it airborne, while a coastal approach at
+    // 80 ft would be drawn parked (the same trap the flight log designed
+    // around). A stray `|| alt < 100` used to sit here saying otherwise; it
+    // caught nothing the flag missed — 45 aircraft over Atlanta, 8 on the
+    // ground, none of them by altitude.
+    const onGround = a.alt_baro === 'ground'
     if (!onGround && alt == null) continue
     if (onGround) {
       if (gnd >= 600) continue
@@ -126,11 +133,26 @@ async function fetchSnapshot(lat: number, lon: number, r: number): Promise<{ at:
 }
 
 export async function GET(req: NextRequest) {
+  // Public — /live renders this map signed out, so a session can't be the
+  // gate. The limit is what stops a scraper relaying through us: abuse on our
+  // egress IP gets US rate-limited at adsb.lol and kills the layer for every
+  // real customer. A viewer polls ~10/min and a whole site office can sit
+  // behind ONE public IP, so the ceiling is 120 — a dozen honest maps, and
+  // still nothing like a scraper. Same guard /api/route and /api/plane-info
+  // already carry.
+  if (ipRateLimited(req, 'planes', 120)) {
+    return NextResponse.json({ error: 'Slow down a moment.' }, { status: 429 })
+  }
   const sp = req.nextUrl.searchParams
   const lat = Number(sp.get('lat'))
   const lon = Number(sp.get('lon'))
-  const r = Math.min(Math.max(Number(sp.get('r')) || 250, 10), 250)
-  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85) {
+  // Radius is served in 50 nm steps. The key space is what an anonymous
+  // caller can inflate — 241 legal radii over one dense centre was 241
+  // upstream calls and a cache wipe — and rounding UP always answers with at
+  // least the coverage asked for.
+  const rIn = Math.min(Math.max(Number(sp.get('r')) || 250, 10), 250)
+  const r = Math.min(250, Math.ceil(rIn / 50) * 50)
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) {
     return NextResponse.json({ error: 'lat/lon required' }, { status: 400 })
   }
   const wantGround = sp.get('ground') === '1'
@@ -147,8 +169,12 @@ export async function GET(req: NextRequest) {
   // layers panel stamps an outage honestly instead of claiming freshness.
   if (hit && Date.now() - hit.at < TTL_MS) return reply(hit.planes, Date.now() - hit.at)
   // Told to slow down: ride the last snapshot out rather than earning another.
-  if (Date.now() < cooldownUntil && hit && Date.now() - hit.at < STALE_MS) {
-    return reply(hit.planes, Date.now() - hit.at)
+  // A MISS has to be refused here too — a miss is precisely the request that
+  // makes the upstream call, so letting it fall through left the brake
+  // touching only the requests that were never going to press the pedal.
+  if (Date.now() < cooldownUntil) {
+    if (hit && Date.now() - hit.at < STALE_MS) return reply(hit.planes, Date.now() - hit.at)
+    return NextResponse.json({ error: 'ADS-B feed unavailable' }, { status: 503 })
   }
   try {
     let job = inflight.get(key)
@@ -159,14 +185,20 @@ export async function GET(req: NextRequest) {
       tracked.catch(() => {}).finally(() => { if (inflight.get(key) === tracked) inflight.delete(key) })
     }
     const snap = await job
-    // Keep the per-center cache from growing unbounded across a long session.
-    if (cache.size > 200) cache.clear()
+    // Bounded in BYTES, not just entries: a snapshot holds up to 1,800
+    // aircraft (~450 KB), so 200 of them was ~90 MB of resident heap. With
+    // the radius quantised there are five keys per 0.1 degree cell and a
+    // real map needs a handful.
+    if (cache.size > 24) cache.clear()
     const held = cache.get(key)
     if (!held || held.at < snap.at) cache.set(key, snap)
     return reply(snap.planes, Math.max(0, Date.now() - snap.at))
   } catch (e) {
     // A snapshot a minute old beats a red error badge on a layer that works.
     if (hit && Date.now() - hit.at < STALE_MS) return reply(hit.planes, Date.now() - hit.at)
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'ADS-B feed unreachable' }, { status: 503 })
+    // The upstream status stays in OUR logs. Relaying "feed 429" told an
+    // abuser exactly when they had succeeded in getting our egress throttled.
+    console.warn('[planes] upstream failed:', e instanceof Error ? e.message : e)
+    return NextResponse.json({ error: 'ADS-B feed unavailable' }, { status: 503 })
   }
 }

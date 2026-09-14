@@ -4726,7 +4726,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // becomes a banking turn instead of a snap.
   useEffect(() => {
     const m = map.current
-    if (!mapReady || !m || !overlaysOn.planes) return
+    // Either layer: a viewer watching only the ramp still needs the smoothing,
+    // or a taxiing aircraft jumps once every 6 s and its info box lags behind
+    // the sprite (the same gate that made the ground switch inert twice).
+    if (!mapReady || !m || (!overlaysOn.planes && !overlaysOn['planes-ground'])) return
     let raf = 0
     let last = performance.now()
     const tick = (now: number) => {
@@ -4750,7 +4753,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       cancelAnimationFrame(raf)
       planeShownRef.current.clear()
     }
-  }, [mapReady, overlaysOn.planes])
+  }, [mapReady, overlaysOn.planes, overlaysOn['planes-ground']])
 
   // The ground layer is read by the poll through a ref (it is also gated on
   // zoom, which changes constantly and must not re-run the effect).
@@ -6836,7 +6839,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    if (overlaysOn.satellites || overlaysOn.planes) {
+    if (overlaysOn.satellites || overlaysOn.planes || overlaysOn['planes-ground']) {
       try { m.setMaxPitch(85) } catch { /* mid-gesture */ }
       return
     }
@@ -6851,7 +6854,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.off('zoom', apply)
       try { m.setMaxPitch(85) } catch { /* teardown */ }
     }
-  }, [mapReady, overlaysOn.satellites, overlaysOn.planes])
+  }, [mapReady, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground']])
 
   // "Flyover" — the slow-plane pass: visit every located asset in
   // nearest-neighbor order at altitude, bank around each for a few seconds,
