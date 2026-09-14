@@ -4261,6 +4261,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const planeTrailRef = useRef<PlaneTrail | null>(null)
   // "Aircraft on the ground" — off by default, and never below airport zoom.
   const groundPlanesRef = useRef(false)
+  const skyPlanesRef = useRef(false)
   // The trail's own control strip: which measurement paints it, and the ramp
   // with real numbers on it. Lives OUTSIDE the popup on purpose — minimising
   // the aircraft card must not take the legend with it, because the whole
@@ -4320,7 +4321,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    const on = !!overlaysOn.satellites || !!overlaysOn.planes
+    const on = !!overlaysOn.satellites || !!overlaysOn.planes || !!overlaysOn['planes-ground']
     if (!on) {
       if (m.getLayer(SKY_LAYER_ID)) m.removeLayer(SKY_LAYER_ID)
       return
@@ -4557,7 +4558,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       rebuildTrailRef.current = null
       if (skyHover) m.getCanvas().style.cursor = ''
     }
-  }, [mapReady, overlaysOn.satellites, overlaysOn.planes])
+  }, [mapReady, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground']])
 
   // Satellites + celestial data (the Satellites toggle owns the whole sky look).
   useEffect(() => {
@@ -4753,13 +4754,21 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
 
   // The ground layer is read by the poll through a ref (it is also gated on
   // zoom, which changes constantly and must not re-run the effect).
-  useEffect(() => { groundPlanesRef.current = !!overlaysOn['planes-ground'] }, [overlaysOn])
+  useEffect(() => {
+    groundPlanesRef.current = !!overlaysOn['planes-ground']
+    skyPlanesRef.current = !!overlaysOn.planes
+  }, [overlaysOn])
 
   // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
   useEffect(() => {
     const m = map.current
     if (!mapReady || !m) return
-    if (!overlaysOn.planes) {
+    // EITHER aircraft layer keeps the poll alive. Gating this on `planes`
+    // alone meant turning on "Aircraft on the ground" by itself did nothing
+    // at all — the checkbox went on and the sky stayed empty, with nothing
+    // saying why (Brian, Sep 14: "ATL airport not showing anything on
+    // ground"). A toggle has to do the thing it names.
+    if (!overlaysOn.planes && !overlaysOn['planes-ground']) {
       planesRef.current = null
       m.triggerRepaint()
       return
@@ -4792,7 +4801,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // dead-reckoned truth several seconds behind the rendered plane on
         // every poll, and the ease dragged the plane backward to meet it.
         const snapshotAge = typeof j.ageMs === 'number' && j.ageMs > 0 ? Math.min(j.ageMs, 30_000) : 0
-        planesRef.current = (j.planes ?? []).map((p) => {
+        // Each checkbox shows exactly what it names: ground-only must not
+        // paint the whole sky, and sky-only must not paint the ramp.
+        const showAir = skyPlanesRef.current
+        const showGnd = groundPlanesRef.current
+        planesRef.current = (j.planes ?? []).filter((p) => (p.onGround ? showGnd : showAir)).map((p) => {
           const info = typeInfo(p.type)
           // Bank angle from turn rate: ADS-B carries no roll, but successive
           // tracks give ω, and coordinated flight obeys tan(φ) = v·ω/g.
