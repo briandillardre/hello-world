@@ -243,7 +243,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // ── Sky & extras: the planetarium & spectacle layers — fun on a TV wall,
   //    noise on a Tuesday. Lives at the bottom, collapsed. ──────────────────
   { id: 'planes', label: 'Aircraft (live)', group: 'sky', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details' },
-  { id: 'planes-ground', label: 'Aircraft on the ground', group: 'sky', status: 'live', isLive: true, hint: 'parked, taxiing and rolling aircraft at the airfields in view — the ones FlightRadar24 shows sitting on the ramp · needs Aircraft (live) on, and only draws from airport zoom' },
+  { id: 'planes-ground', label: 'Aircraft on the ground', group: 'sky', status: 'live', isLive: true, hint: 'parked, taxiing and rolling aircraft at the airfields in view — the ones FlightRadar24 shows sitting on the ramp · draws from airport zoom in, on its own or alongside Aircraft (live)' },
   { id: 'airspace3d', label: 'Airspace 3D', group: 'sky', status: 'live', isLive: true, hasOpacity: true, minZoom: 6, hint: 'Class B/C/D shelves at their charted altitudes — the upside-down cake · TILT the map · tap a shelf for floor/ceiling · FAA data' },
   { id: 'satellites', label: 'Satellites & sky (live)', group: 'sky', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
   { id: 'satswarm', label: '↳ 11k satellites', group: 'sky', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
