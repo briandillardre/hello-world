@@ -56,7 +56,8 @@ interface AdsbAc {
   seen_pos?: number
 }
 
-const cache = new Map<string, { at: number; planes: Plane[] }>()
+interface Snap { at: number; lat: number; lon: number; r: number; planes: Plane[] }
+const cache = new Map<string, Snap>()
 /** One upstream call in flight per key — a second viewer waits on it rather
  *  than opening its own. */
 const inflight = new Map<string, Promise<{ at: number; planes: Plane[] }>>()
@@ -69,6 +70,36 @@ const STALE_MS = 90_000
  *  next one. Brian's "feed 503" (Sep 13) was this, surfaced raw. */
 let cooldownUntil = 0
 const COOLDOWN_MS = 20_000
+/** During a cooldown a cache MISS still gets through — one every few seconds,
+ *  platform-wide. A single viewer panning to a new cell is not the flood the
+ *  brake exists for, and refusing them outright turned every such poll into
+ *  a red "feed 503" on the layer (the miss path did exactly that for a night
+ *  before this trickle existed). The flood still gets refused. */
+let lastTrickleAt = 0
+const TRICKLE_MS = 5_000
+/** A snapshot fetched for a centre this close covers almost the same sky
+ *  (each one reaches 250 nm), so it stands in for a missing cell while the
+ *  feed is unavailable — served with its true age, never as fresh. */
+const NEIGHBOUR_NM = 60
+
+const nmBetween = (aLat: number, aLon: number, bLat: number, bLon: number) => {
+  const toRad = Math.PI / 180
+  const dLat = (bLat - aLat) * toRad
+  const dLon = (bLon - aLon) * toRad
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toRad) * Math.cos(bLat * toRad) * Math.sin(dLon / 2) ** 2
+  return (2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)))) / 1852
+}
+
+/** The freshest usable snapshot fetched for a centre near this one. */
+function neighbourSnapshot(lat: number, lon: number, r: number, now: number): Snap | null {
+  let best: Snap | null = null
+  for (const snap of Array.from(cache.values())) {
+    if (snap.r !== r || now - snap.at >= STALE_MS) continue
+    if (nmBetween(lat, lon, snap.lat, snap.lon) > NEIGHBOUR_NM) continue
+    if (!best || snap.at > best.at) best = snap
+  }
+  return best
+}
 
 async function fetchSnapshot(lat: number, lon: number, r: number): Promise<{ at: number; planes: Plane[] }> {
   const url = `https://api.adsb.lol/v2/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${Math.round(r)}`
@@ -161,30 +192,40 @@ export async function GET(req: NextRequest) {
   // Keying by it doubled our call rate the day the ground layer shipped, and
   // adsb.lol answered with 429s that reached the map as "feed 503".
   const key = `${lat.toFixed(1)},${lon.toFixed(1)},${Math.round(r)}`
+  const now = Date.now()
   const hit = cache.get(key)
-  const reply = (planes: Plane[], ageMs: number) =>
-    NextResponse.json({ planes: wantGround ? planes : planes.filter((p) => !p.onGround), ageMs })
+  const reply = (snap: Snap) =>
+    NextResponse.json({ planes: wantGround ? snap.planes : snap.planes.filter((p) => !p.onGround), ageMs: Math.max(0, Date.now() - snap.at) })
   // ageMs = how old this snapshot already is on OUR side, so the client can
   // date fixes correctly without trusting its clock against ours — and so the
   // layers panel stamps an outage honestly instead of claiming freshness.
-  if (hit && Date.now() - hit.at < TTL_MS) return reply(hit.planes, Date.now() - hit.at)
+  if (hit && now - hit.at < TTL_MS) return reply(hit)
+  // What answers when the feed can't: this cell's last snapshot, then a
+  // neighbour's (same sky, true age), then — during a cooldown — nothing,
+  // unless the trickle lets this one miss through.
+  const standIn = () => (hit && now - hit.at < STALE_MS ? hit : neighbourSnapshot(lat, lon, r, now))
+  let job = inflight.get(key)
   // Told to slow down: ride the last snapshot out rather than earning another.
-  // A MISS has to be refused here too — a miss is precisely the request that
-  // makes the upstream call, so letting it fall through left the brake
-  // touching only the requests that were never going to press the pedal.
-  if (Date.now() < cooldownUntil) {
-    if (hit && Date.now() - hit.at < STALE_MS) return reply(hit.planes, Date.now() - hit.at)
-    return NextResponse.json({ error: 'ADS-B feed unavailable' }, { status: 503 })
+  // A MISS is precisely the request that makes the upstream call, so the
+  // brake has to cover it too — but one honest viewer's miss every few
+  // seconds is served, and only the flood is refused.
+  if (!job && now < cooldownUntil) {
+    const s = standIn()
+    if (s) return reply(s)
+    if (now - lastTrickleAt < TRICKLE_MS) {
+      return NextResponse.json({ error: 'ADS-B feed unavailable' }, { status: 503 })
+    }
+    lastTrickleAt = now
   }
   try {
-    let job = inflight.get(key)
     if (!job) {
       job = fetchSnapshot(lat, lon, r)
       const tracked = job
       inflight.set(key, tracked)
       tracked.catch(() => {}).finally(() => { if (inflight.get(key) === tracked) inflight.delete(key) })
     }
-    const snap = await job
+    const fetched = await job
+    const snap: Snap = { ...fetched, lat, lon, r }
     // Bounded in BYTES, not just entries: a snapshot holds up to 1,800
     // aircraft (~450 KB), so 200 of them was ~90 MB of resident heap. With
     // the radius quantised there are five keys per 0.1 degree cell and a
@@ -192,10 +233,12 @@ export async function GET(req: NextRequest) {
     if (cache.size > 24) cache.clear()
     const held = cache.get(key)
     if (!held || held.at < snap.at) cache.set(key, snap)
-    return reply(snap.planes, Math.max(0, Date.now() - snap.at))
+    return reply(snap)
   } catch (e) {
-    // A snapshot a minute old beats a red error badge on a layer that works.
-    if (hit && Date.now() - hit.at < STALE_MS) return reply(hit.planes, Date.now() - hit.at)
+    // A snapshot a minute old — ours or a neighbour's — beats a red error
+    // badge on a layer that works.
+    const s = standIn()
+    if (s) return reply(s)
     // The upstream status stays in OUR logs. Relaying "feed 429" told an
     // abuser exactly when they had succeeded in getting our egress throttled.
     console.warn('[planes] upstream failed:', e instanceof Error ? e.message : e)

@@ -4787,6 +4787,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     let cancelled = false
     let inflight = false
+    // Consecutive failed polls. One blip is not an outage: the last good sky
+    // stays on screen (it dead-reckons for a while, then holds) and the red
+    // badge is raised only once the feed has failed three polls running,
+    // ~18 s — a badge that flickers on every hiccup stops meaning anything.
+    let fails = 0
     // Both rows answer to the same feed, so both must carry its stamp and its
     // failures — a ground-only viewer used to watch a row that read healthy
     // forever and never settled out of "live feed loading".
@@ -4895,10 +4900,13 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // Stamp the layers panel with the SNAPSHOT's age, not this moment's:
         // while the feed is rate-limiting us the proxy rides the last good
         // one out, and "updated 1m ago" is the truth the panel should show.
+        fails = 0
         for (const k of feedKeys()) {
           window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: k, at: Date.now() - rawAge } }))
         }
       } catch (err) {
+        fails++
+        if (fails < 3) return
         for (const k of feedKeys()) {
           window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: k, msg: err instanceof Error ? err.message : 'ADS-B feed down' } }))
         }
