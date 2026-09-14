@@ -972,7 +972,12 @@ export function createSat3DLayer(
             const prev = cellBest.get(key)
             if (prev) {
               // Highest wins, and anything airborne beats anything parked —
-              // otherwise one ramp could hide the traffic overhead it.
+              // otherwise one ramp could hide the traffic overhead it. Dead
+              // as written: declutter runs below z7.5 and ground aircraft are
+              // only admitted from z11, so the two never meet. Kept because
+              // the rule is the one we'd want the moment either bound moves,
+              // and a ramp is deliberately NOT decluttered at airport zoom —
+              // seeing every aircraft parked on it is the whole point.
               const prevRank = prev.pl.onGround ? -1 : prev.pl.altFt
               const rank = pl.onGround ? -1 : pl.altFt
               if (prevRank >= rank) { pl.visible = false; continue }

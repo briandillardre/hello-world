@@ -86,6 +86,22 @@ for (const m of ['speed', 'alt']) {
   ok('legend: plain explains nothing', legendStops('plain', sc).length === 0)
 }
 
+// ── A ramp nobody measured must not be drawn ─────────────────────────────
+// Light aircraft frequently send no vertical rate at all, and the backfilled
+// trace carries null for every value the airframe withheld. Five swatches
+// reading "0 fpm" over a grey line is a reading that does not exist.
+{
+  const none = trailScale('speed', [NaN, NaN, NaN])
+  ok('scale: counts the fixes that actually carried the value', none.samples === 0)
+  ok('legend: nothing measured, nothing drawn', legendStops('speed', none).length === 0)
+  const one = trailScale('climb', [64])
+  ok('climb: a lone fix still comes back symmetric', one.lo === -one.hi && one.hi > 0)
+  ok('climb: one fix is not a ramp', legendStops('climb', one).length === 0)
+  ok('legend: a collapsed range explains nothing', legendStops('speed', trailScale('speed', [100, 100, 100])).length === 0)
+  const real = trailScale('climb', [-800, -200, 400, 900])
+  ok('legend: a measured climb still draws', legendStops('climb', real).length === 5 && real.samples === 4)
+}
+
 ok('every mode is reachable from the chip row', PLANE_TRAIL_MODES.length === 4)
 
 console.log(`\n${fail ? '✗' : '✓'} plane-trail: ${pass} passed, ${fail} failed`)

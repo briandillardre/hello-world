@@ -116,6 +116,11 @@ const LEVEL = hexToOklab('#8b9299')
 export interface PlaneTrailScale {
   lo: number
   hi: number
+  /** How many fixes actually carried this measurement. Fewer than two and
+   *  there is no reading to draw a legend for, whatever lo/hi say — climb's
+   *  fallback range is symmetric by necessity, not because anyone measured
+   *  it. */
+  samples: number
 }
 
 /**
@@ -131,17 +136,20 @@ export function trailScale(mode: PlaneTrailMode, values: ArrayLike<number>): Pla
     const v = values[i]
     if (Number.isFinite(v)) ok.push(v)
   }
-  if (ok.length < 2) return { lo: 0, hi: 1 }
+  // Nothing to scale. Climb still has to come back symmetric about zero, or
+  // a single +64 fpm fix paints FULL climb against a legend reading 0 at both
+  // ends.
+  if (ok.length < 2) return mode === 'climb' ? { lo: -200, hi: 200, samples: ok.length } : { lo: 0, hi: 1, samples: ok.length }
   ok.sort((a, b) => a - b)
   const at = (p: number) => ok[Math.min(ok.length - 1, Math.max(0, Math.round(p * (ok.length - 1))))]
   if (mode === 'climb') {
     // Symmetric about zero, or the colour stops meaning "which side of level".
     const span = Math.max(Math.abs(at(0.05)), Math.abs(at(0.95)), 200)
-    return { lo: -span, hi: span }
+    return { lo: -span, hi: span, samples: ok.length }
   }
   const lo = at(0.05)
   const hi = at(0.95)
-  return hi - lo < 1e-6 ? { lo, hi: lo + 1 } : { lo, hi }
+  return hi - lo < 1e-6 ? { lo, hi: lo + 1, samples: ok.length } : { lo, hi, samples: ok.length }
 }
 
 /** A value → its colour, as 0..1 floats ready for a vertex buffer. */
@@ -169,6 +177,11 @@ export const rgbToHex = (c: RGB) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`
  */
 export function legendStops(mode: PlaneTrailMode, scale: PlaneTrailScale): { label: string; hex: string }[] {
   if (mode === 'plain') return []
+  // A trail with no measurements (or one collapsed to a single value) has no
+  // ramp to explain — five swatches all labelled "0 kt" over a grey line is
+  // decoration pretending to be a reading.
+  if (scale.samples < 2) return []
+  if (mode !== 'climb' && !(scale.hi - scale.lo > 1)) return []
   const def = PLANE_TRAIL_MODES.find((d) => d.key === mode)!
   const n = 5
   return Array.from({ length: n }, (_, i) => {
