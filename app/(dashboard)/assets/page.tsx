@@ -1,5 +1,6 @@
 import { AssetList } from '@/components/assets/AssetList'
 import { requireFeature } from '@/lib/permissions-server'
+import { visibleAssets } from '@/lib/permissions'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getToolAssociations, resolveToolLocations, toolsAboard } from '@/lib/db/tools'
 import { getCurrentCompanyId } from '@/lib/db/company'
@@ -13,9 +14,9 @@ import { placeKey, formatPlace } from '@/lib/place-label'
 export const metadata = { title: 'HammerTrack — Assets' }
 
 export default async function AssetsPage() {
-  await requireFeature('assets')
+  const perms = await requireFeature('assets')
   const companyId = await getCurrentCompanyId()
-  const [rawAssets, toolAssociations, geofences, schedules, readings, divisions] = await Promise.all([
+  const [rawAssetsAll, toolAssociations, geofences, schedules, readings, divisions] = await Promise.all([
     getAssetsWithLocations(companyId),
     getToolAssociations(companyId),
     getGeofences(companyId),
@@ -23,6 +24,8 @@ export default async function AssetsPage() {
     getCurrentReadings(),
     getDivisions(companyId),
   ])
+  // Per-asset visibility (111) — RLS for the real viewer, this for view-as.
+  const rawAssets = visibleAssets(rawAssetsAll, perms)
   const located = resolveToolLocations(rawAssets, toolAssociations)
 
   // Which zone each asset sits in right now — same containment test the zones

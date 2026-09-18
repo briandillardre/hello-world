@@ -16,6 +16,8 @@ import { CostCard } from '@/components/assets/CostCard'
 import { AssetActions } from '@/components/assets/AssetActions'
 import { TrackerSheet } from '@/components/assets/TrackerSheet'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
+import { VisibilityCard } from '@/components/assets/VisibilityCard'
+import { RANK, rankOf, canSeeAsset, assetVisibility, visibilityLabel } from '@/lib/permissions'
 import { trackerKind } from '@/lib/devices'
 import { getTrackerChoices } from '@/lib/db/trackers'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
@@ -74,6 +76,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const asset = assets.find((a) => a.id === params.id)
   if (!asset) notFound()
+  // Per-asset visibility (111): RLS hides it from the real viewer already;
+  // this keeps a "view app as" preview honest. Hidden means hidden — 404.
+  if (!canSeeAsset(perms, asset.metadata)) notFound()
   // What the Tracker sheet can offer: the drawer, boxes on other machines,
   // machines without one. Cheap (two small queries) and only for editors.
   const trackerChoices = canEdit ? await getTrackerChoices(companyId, asset.id) : null
@@ -128,6 +133,9 @@ export default async function AssetDetailPage({ params }: { params: { id: string
               {/* what KIND of box is on it — the glance answer; the "what to
                   expect from it" line lives in Identity & hardware below */}
               {asset.type !== 'personnel' && <TrackerBadge trackerId={asset.tracker_id} />}
+              {assetVisibility(asset.metadata) !== 'everyone' && (
+                <Badge variant="outline" className="max-w-full truncate border-amber/40 text-amber">🔒 {visibilityLabel(assetVisibility(asset.metadata))}</Badge>
+              )}
               {asset.category && <Badge variant="outline" className="max-w-full truncate">{asset.category}</Badge>}
               {crew && <Badge variant="outline" className="max-w-full truncate border-teal/40 text-teal">👷 {crew}</Badge>}
             </div>
@@ -170,6 +178,11 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <Suspense fallback={<StatusSkeleton showDriveStats={showDriveStats} isVehicle={asset.type === 'vehicle'} loc={loc ?? null} />}>
           <StatusAndTripsSection asset={asset} companyId={companyId} tz={tz} showDriveStats={showDriveStats} />
         </Suspense>
+
+        {/* who can see this (111) — Admins and the owner only */}
+        {rankOf(perms) >= RANK.admin && (
+          <VisibilityCard assetId={asset.id} current={assetVisibility(asset.metadata)} viewerRank={rankOf(perms)} />
+        )}
 
         {/* cost structure — dollar figures are permission-gated */}
         {perms.canViewCosts && (

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createAsset, updateAsset, addAssetPhotos, deleteAssetPhoto, getAssetPhotos, setAssetPhotoOrder } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
+import { RANK, rankOf, ASSET_VISIBILITY, assetVisibility, visibilityRank, type AssetVisibility } from '@/lib/permissions'
 import { extractImei, luhnOk, resolveSheet, trackerKey, MAX_IMPORT_ROWS, type ImportRow, type ExistingIndex } from '@/lib/bulk-import'
 import type { AssetType } from '@/lib/types'
 
@@ -420,11 +421,27 @@ export async function updateAssetAction(
     }
   }
 
+  // Who-can-see-this (111) is set ONLY by setAssetVisibilityAction. The edit
+  // form round-trips the whole metadata blob, so carry the stored level
+  // across an edit rather than letting a stale form drop or invent one.
+  let metaPatch: { metadata?: Record<string, unknown> } = {}
+  if (input.metadata !== undefined) {
+    const next: Record<string, unknown> = { ...input.metadata }
+    delete next.visibility
+    if (!isMock) {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data: cur } = await createClient().from('assets').select('metadata').eq('id', id).maybeSingle()
+      const v = assetVisibility(cur?.metadata)
+      if (v !== 'everyone') next.visibility = v
+    }
+    metaPatch = { metadata: next }
+  }
+
   const { asset, error } = await updateAsset(id, {
     ...(input.name !== undefined ? { name: input.name.trim() } : {}),
     ...(input.type !== undefined ? { type: input.type } : {}),
     ...(input.tracker_id !== undefined ? { tracker_id: orNull(input.tracker_id) } : {}),
-    ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    ...metaPatch,
     ...(input.active !== undefined ? { active: input.active } : {}),
     ...(input.category !== undefined ? { category: orNull(input.category) } : {}),
     ...(input.serial !== undefined ? { serial: orNull(input.serial) } : {}),
@@ -446,3 +463,31 @@ export async function updateAssetAction(
 }
 
 
+
+/**
+ * Who can see one asset (111): Everyone · Managers+ · Admins · Owner only.
+ * Admins and the owner set it; nobody can set a level above their own rank
+ * (an Admin cannot hide a machine from themselves — the DB's WITH CHECK
+ * refuses that too). Read-only under view-as like every other write.
+ */
+export async function setAssetVisibilityAction(id: string, level: AssetVisibility): Promise<{ ok: boolean; error?: string }> {
+  const perms = await requireEditOrThrow()
+  if (perms.viewingAs) return { ok: false, error: 'Read-only while viewing the app as someone else.' }
+  if (rankOf(perms) < RANK.admin) return { ok: false, error: 'Only Admins and the owner can change who sees an asset.' }
+  if (!ASSET_VISIBILITY.some((d) => d.key === level)) return { ok: false, error: 'Unknown level.' }
+  if (visibilityRank(level) > rankOf(perms)) return { ok: false, error: 'You can only restrict an asset to a level you hold yourself.' }
+  if (isMock) return { ok: false, error: 'Not available in demo.' }
+  const { createClient } = await import('@/lib/supabase-server')
+  const supabase = createClient()
+  const { data: cur, error: readErr } = await supabase.from('assets').select('metadata').eq('id', id).maybeSingle()
+  if (readErr || !cur) return { ok: false, error: 'Asset not found.' }
+  const next: Record<string, unknown> = { ...((cur.metadata as Record<string, unknown> | null) ?? {}) }
+  if (level === 'everyone') delete next.visibility
+  else next.visibility = level
+  const { error } = await supabase.from('assets').update({ metadata: next }).eq('id', id)
+  if (error) return { ok: false, error: error.code === '42501' ? 'You can only restrict an asset to a level you hold yourself.' : 'Could not save.' }
+  revalidatePath('/assets')
+  revalidatePath(`/assets/${id}`)
+  revalidatePath('/map')
+  return { ok: true }
+}

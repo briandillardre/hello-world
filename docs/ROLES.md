@@ -43,3 +43,14 @@ Team → a member → **View app as …** (Master + Admins, only for people they
 ## Where the old "viewer" went
 
 `normalizeRole()` maps a stored `'viewer'` to `associate`; 094 rewrites the rows and the CHECK constraints (profiles + invites). No code compares role strings for edit rights any more — `perms.canEdit` / `perms.features` do.
+
+## Per-asset visibility (migration 111)
+
+The view-levels table says which PAGES a role may open. This says who may see ONE asset — anywhere.
+
+- `assets.metadata.visibility` is `managers`, `admins` or `master`; absent means everyone in the company. Ranks line up with the ladder: a viewer sees an asset when their rank ≥ the asset's (Master 4 · Admin 3 · Manager 2 · Foreman 1 · Associate 0).
+- **Enforced in RLS.** A RESTRICTIVE policy on `assets` (`ht_visibility_rank(metadata) <= ht_viewer_rank()`), also as WITH CHECK, so nobody can write a level above their own rank. Every asset-keyed table carries a `follows asset visibility` policy that `EXISTS`-joins to `assets` under the caller's own RLS — pings, trails, alerts, site hours, service history, photos and tag pairings vanish with the machine. `tool_associations` checks both ends: a tag aboard a hidden truck is hidden with it.
+- **Who bypasses it:** service-role paths — ingest, crons, the company-key MCP door. They see everything by design.
+- **What RLS cannot see:** "View app as" (RLS sees the real uid). `canSeeAsset` / `visibleAssets` in `lib/permissions.ts` mirror the ladder and are applied to the effective permissions in `/api/map-data`, the assets list and the asset page (404).
+- **UI:** the *Who can see this* card on the asset page (Admins and the owner; levels above your own rank are shown disabled), a 🔒 chip on list rows and the asset header. `setAssetVisibilityAction` is the only writer; the edit form carries the stored level across a save.
+- **Defaults:** an owner's phone asset is created `master`, an Admin's `admins`. Crew phones stay visible — that is what clock-in tracking is for.

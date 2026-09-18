@@ -49,7 +49,7 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, reason: 'auth' }
 
-  const { data: profile } = await supabase.from('profiles').select('company_id, name').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('company_id, name, role').eq('id', user.id).single()
   const companyId = profile?.company_id ?? user.id
   const trackerId = phoneTracker(user.id)
 
@@ -65,9 +65,15 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
   let assetId = existing?.id as string | undefined
   if (!assetId) {
     const name = profile?.name ? `${profile.name} (phone)` : 'My phone'
+    // The owner's phone starts "owner only" and an Admin's "Admins" (111 —
+    // Brian, Sep 18: "I do not want to be tracked as admin"). The crew's
+    // phones stay visible: that is what clock-in tracking is for. Widen it
+    // any time on the asset page.
+    const visibility = user.id === companyId ? 'master' : profile?.role === 'admin' ? 'admins' : null
     const { data: created, error } = await svc
       .from('assets')
-      .insert({ company_id: companyId, name, type: 'personnel', tracker_id: trackerId, active: true, metadata: { source: 'phone' } })
+      .insert({ company_id: companyId, name, type: 'personnel', tracker_id: trackerId, active: true,
+        metadata: { source: 'phone', ...(visibility ? { visibility } : {}) } })
       .select('id')
       .single()
     if (error || !created) return { ok: false, reason: 'asset' }
