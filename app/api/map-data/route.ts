@@ -7,6 +7,7 @@ import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpiso
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
 import { getCurrentCompanyId, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
+import { visibleAssets } from '@/lib/permissions'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 
 export const dynamic = 'force-dynamic'
@@ -100,7 +101,7 @@ async function getAssetHealth(companyId: string): Promise<AssetHealthMaps> {
 export async function GET() {
   try {
     const companyId = await getCurrentCompanyId()
-    const [perms, savedMapViews, rawAssets, geofences, places, toolAssociations, earliestMs, alerts, siteOverlays, health] =
+    const [perms, savedMapViews, rawAssetsAll, geofences, places, toolAssociationsAll, earliestMs, alertsAll, siteOverlays, health] =
       await Promise.all([
         getMyPermissions(),
         getMyMapViews(),
@@ -116,6 +117,17 @@ export async function GET() {
       ])
     // The view-levels table can switch the map off for a role (094).
     if (!perms.features.includes('map')) return NextResponse.json({ error: 'not enabled for your role' }, { status: 403 })
+    // Per-asset visibility (111). RLS already trims all of this for the REAL
+    // viewer; this pass makes a "view app as" preview honest too, and drops
+    // tags riding a gateway the viewer cannot see (a tag's location IS its
+    // truck's) and alerts about machines they cannot see.
+    const rawAssets = visibleAssets(rawAssetsAll, perms)
+    const visibleIds = new Set(rawAssets.map((a) => a.id))
+    const toolAssociations = toolAssociationsAll.filter((t) => visibleIds.has(t.tool_asset_id) && visibleIds.has(t.gateway_asset_id))
+    const alerts = alertsAll.filter((a) => {
+      const id = (a as { asset_id?: string | null }).asset_id
+      return !id || visibleIds.has(id)
+    })
     const now = Date.now()
     const assets = resolveToolLocations(rawAssets, toolAssociations).map((a) => {
       const lastMove = health.lastMoveMs.get(a.id)

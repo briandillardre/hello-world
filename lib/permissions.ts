@@ -258,3 +258,35 @@ export function featureForPath(pathname: string): FeatureKey | null {
   for (const m of map) if (pathname === m[0] || pathname.startsWith(m[0] + '/')) if (!best || m[0].length > best[0].length) best = m
   return best?.[1] ?? null
 }
+
+// ── Per-asset visibility (111) ──────────────────────────────────────────────
+// Who may see ONE asset, on top of the feature gates above. Stored as
+// assets.metadata.visibility (absent = everyone); enforced by RLS so every
+// reader obeys it, and mirrored here so "view app as" previews and the UI
+// can reason about it without a round trip. Ranks line up with RANK /
+// MASTER_RANK: a viewer sees an asset when rankOf(viewer) >= its rank.
+export type AssetVisibility = 'everyone' | 'managers' | 'admins' | 'master'
+export const ASSET_VISIBILITY: { key: AssetVisibility; rank: number; label: string; blurb: string }[] = [
+  { key: 'everyone', rank: 0, label: 'Everyone', blurb: 'The whole company, as usual' },
+  { key: 'managers', rank: 2, label: 'Managers+', blurb: 'Managers, Admins and the owner' },
+  { key: 'admins', rank: 3, label: 'Admins', blurb: 'Admins and the owner' },
+  { key: 'master', rank: MASTER_RANK, label: 'Owner only', blurb: 'Only the account owner' },
+]
+export function assetVisibility(meta: unknown): AssetVisibility {
+  const v = meta && typeof meta === 'object' ? (meta as Record<string, unknown>).visibility : undefined
+  return v === 'managers' || v === 'admins' || v === 'master' ? v : 'everyone'
+}
+export function visibilityRank(v: AssetVisibility): number {
+  return ASSET_VISIBILITY.find((d) => d.key === v)?.rank ?? 0
+}
+export function visibilityLabel(v: AssetVisibility): string {
+  return ASSET_VISIBILITY.find((d) => d.key === v)?.label ?? 'Everyone'
+}
+/** May this viewer see an asset with this metadata? */
+export function canSeeAsset(p: Pick<Permissions, 'role' | 'isMaster'>, meta: unknown): boolean {
+  return rankOf(p) >= visibilityRank(assetVisibility(meta))
+}
+/** The subset of `list` this viewer may see. */
+export function visibleAssets<T extends { metadata?: unknown }>(list: T[], p: Pick<Permissions, 'role' | 'isMaster'>): T[] {
+  return list.filter((a) => canSeeAsset(p, a.metadata))
+}

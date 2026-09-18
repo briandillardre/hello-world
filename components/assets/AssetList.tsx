@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Battery, Clock, ChevronRight, ScanLine, Table2, MapPin } from 'lucide-react'
 import { TrackerBadge } from './TrackerBadge'
+import { assetVisibility, visibilityLabel } from '@/lib/permissions'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
 import { formatRelativeTime } from '@/lib/utils'
 import { toolIsFresh } from '@/lib/tools-resolve'
@@ -397,6 +398,12 @@ function AssetRow({ asset, toolCount, carrier, where, division }: { asset: Asset
             // scan a fleet, so the answer belongs on the row, not one tap in.
             <TrackerBadge trackerId={asset.tracker_id} size="xs" />
           ) : null}
+          {assetVisibility(asset.metadata) !== 'everyone' && (
+            // Who can see it (111) — a restricted row says so where you scan.
+            <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber/15 border border-amber/40 text-amber text-[10px] font-semibold px-1.5 py-px">
+              🔒 {visibilityLabel(assetVisibility(asset.metadata))}
+            </span>
+          )}
           {(toolCount ?? 0) > 0 && (
             <span className="flex-shrink-0 inline-flex items-center rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/35 text-[#c4b5fd] text-[10px] font-semibold px-1.5 py-px">
               🔧 {toolCount} aboard
