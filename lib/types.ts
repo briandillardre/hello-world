@@ -300,8 +300,8 @@ export interface AlertEvent {
   /** Null for system (vehicle-health) alerts — those carry `kind` instead. */
   rule_id: string | null
   asset_id: string
-  /** 'fuel_low' | 'battery_low' for telemetry-driven alerts; null when the
-   *  event came from a geofence rule. */
+  /** 'fuel_low' | 'battery_low' | 'oem_fault' | 'power_lost' for telemetry-
+   *  driven alerts; null when the event came from a geofence rule. */
   kind?: string | null
   triggered_at: string
   acknowledged_at: string | null

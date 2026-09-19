@@ -50,7 +50,7 @@ Ford or a work van).
 |---|---|
 | `external.powersource.voltage` | vehicle battery via OBD port (~12.6 V engine off, ~14 V running — cheap "engine running" proxy and a dead-battery early warning) |
 | `battery.voltage` / `battery.level` | internal backup battery (→ `battery`) |
-| Unplug event | device pulled from OBD port — **tamper alert**, fires on backup battery |
+| Unplug | `external.powersource.voltage` under 6 V for ≥ 60 s of device time = the **Lost truck power** alert (`lib/power-loss.ts`, Sep 19): the plug is out or the port has no power; the unit runs on its backup cell for roughly 25–40 minutes, then goes dark. Power returning clears the alert. Teltonika's own unplug event is not relied on — it needs device-side configuration we do not control on every box. |
 | `sleep.mode.status` | which sleep state it's in |
 | Jamming detection | GSM jamming event |
 

@@ -28,6 +28,19 @@ const TRIGGER_COLORS: Record<AlertRule['trigger'], 'default' | 'destructive' | '
 }
 
 const CRITICAL_TRIGGERS: AlertRule['trigger'][] = ['after_hours_movement', 'left_site']
+/** Telemetry-driven alerts (022) carry `kind` and no rule; `zone` is the
+ *  text that sits where a zone name would. */
+const SYSTEM_KINDS: Record<string, { label: string; zone: string; hint?: string }> = {
+  fuel_low: { label: 'Fuel low', zone: 'Vehicle health' },
+  battery_low: { label: '12V battery weak', zone: 'Vehicle health' },
+  oem_fault: { label: 'OEM fault code', zone: 'Vehicle health' },
+  // The OBD plug came out, or the port lost power — the unit is on its own
+  // battery and about to go dark (lib/power-loss). Clears itself when power
+  // returns.
+  power_lost: { label: 'Lost truck power', zone: 'Tracker power', hint: 'The OBD plug is out or the port has no power. Reseat it; the alert clears itself when power returns.' },
+}
+const systemKind = (kind: string | null | undefined) =>
+  kind && Object.prototype.hasOwnProperty.call(SYSTEM_KINDS, kind) ? SYSTEM_KINDS[kind] : null
 const SNOOZE_KEY = 'ht_alert_snooze'
 
 interface AlertListProps {
@@ -130,9 +143,9 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
       g.unreadIds.push(a.id)
       if (!critical) g.nonCriticalIds.push(a.id)
       const trigger = (a.rule?.trigger ?? 'exit') as AlertRule['trigger']
-      const sysLabel = a.kind === 'fuel_low' ? 'Fuel low' : a.kind === 'battery_low' ? '12V battery weak'
-        : a.kind === 'oem_fault' ? 'OEM fault code' : null
-      const zone = sysLabel ? 'Vehicle health' : (a.rule?.geofence?.name ?? 'Unknown zone')
+      const sys = systemKind(a.kind)
+      const sysLabel = sys?.label ?? null
+      const zone = sys ? sys.zone : (a.rule?.geofence?.name ?? 'Unknown zone')
       const key = `${a.kind ?? trigger}|${zone}`
       let line = g.lines.find((l) => l.key === key)
       if (!line) {
@@ -412,13 +425,12 @@ function replayHref(alert: AlertEvent): string {
 function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?: (id: string) => void }) {
   const trigger = alert.rule?.trigger ?? 'exit'
   // System (vehicle-health) alerts carry `kind` and no rule/zone.
-  const sysLabel = alert.kind === 'fuel_low' ? 'Fuel low'
-    : alert.kind === 'battery_low' ? '12V battery weak'
-    : alert.kind === 'oem_fault' ? 'OEM fault code' : null
+  const sys = systemKind(alert.kind)
+  const sysLabel = sys?.label ?? null
   const isUnread = !alert.acknowledged_at
   const isCritical = CRITICAL_TRIGGERS.includes(trigger) && !sysLabel
   const assetName = alert.asset?.name ?? 'Unknown Asset'
-  const zoneName = sysLabel ? 'Vehicle health' : (alert.rule?.geofence?.name ?? 'Unknown Zone')
+  const zoneName = sys ? sys.zone : (alert.rule?.geofence?.name ?? 'Unknown Zone')
 
   const rowBg = isCritical && isUnread
     ? 'bg-alert/15 border-l-4 border-alert'
@@ -444,6 +456,7 @@ function AlertRow({ alert, onAcknowledge }: { alert: AlertEvent; onAcknowledge?:
           <MapPin className="h-3 w-3" />
           {zoneName}
         </div>
+        {sys?.hint && <p className="text-xs text-amber/90 mt-0.5 leading-snug">{sys.hint}</p>}
         {/* suppressHydrationWarning: "Xm ago" drifts between server render and
             client hydration — cosmetic, not worth a mismatch error. */}
         <p className="text-xs text-faint mt-0.5" suppressHydrationWarning>

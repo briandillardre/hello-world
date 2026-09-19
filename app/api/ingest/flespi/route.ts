@@ -5,6 +5,9 @@ import { evaluateAlerts, pointInPolygon } from '@/lib/alerts-engine'
 import { vehiclePower } from '@/lib/vehicle-power'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 import { recordBeaconSightings } from '@/lib/ble-sightings'
+import { checkTruckPower } from '@/lib/power-loss-check'
+import { POWERED_MIN_V, externalVolts } from '@/lib/power-loss'
+import { safeTz } from '@/lib/dates'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
@@ -74,6 +77,14 @@ export async function POST(request: NextRequest) {
   // alerts (left/entered = a transition, not a state — otherwise a truck
   // driving around town re-fires "left site" every dedupe window all day).
   const prevFix = new Map<string, { lat: number; lng: number }>()
+  // Names for the alert lines, and which assets reported their power pin in
+  // this batch — the plug-came-out detector (lib/power-loss) runs for those.
+  const assetNames = new Map<string, string>()
+  const hadPowerPin = new Set<string>()
+  // …and which of those read NO truck power in this batch, plus how many
+  // rows each asset gained — the detector reads only what those say it must.
+  const lowInBatch = new Set<string>()
+  const insertedRows = new Map<string, number>()
   for (const r of normalized) {
     // Plausibility gate (sec-check, Sep 1): a fix dated in the future would sit
     // as the asset's 'latest' position forever (every read orders by
@@ -91,7 +102,7 @@ export async function POST(request: NextRequest) {
     // real device's readings via a two-row .single() error (sec-check).
     const { data: asset } = await supabase
       .from('assets')
-      .select('id, company_id')
+      .select('id, company_id, name')
       .eq('tracker_id', r.tracker_id)
       .eq('active', true)
       .single()
@@ -126,6 +137,13 @@ export async function POST(request: NextRequest) {
         else if (!bufErr) buffered++
       }
       continue
+    }
+
+    assetNames.set(asset.id, (asset.name as string | null) ?? 'Tracker')
+    const pinVolts = externalVolts(r.params)
+    if (pinVolts != null) {
+      hadPowerPin.add(asset.id)
+      if (pinVolts < POWERED_MIN_V) lowInBatch.add(asset.id)
     }
 
     if (!prevFix.has(asset.id)) {
@@ -171,6 +189,7 @@ export async function POST(request: NextRequest) {
       console.error(`flespi: asset_locations insert failed for ${asset.id}: ${locErr.code} ${locErr.message}`)
     } else {
       persisted++
+      insertedRows.set(asset.id, (insertedRows.get(asset.id) ?? 0) + 1)
       if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
       updated.get(asset.company_id)!.set(asset.id, r)
     }
@@ -229,11 +248,36 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+      // Truck power: the plug-came-out detector, for every unit in this batch
+      // that reported its power pin. One alert per episode, debounced past a
+      // flicker; power returning clears it by itself (lib/power-loss-check).
+      const powerAssets = Array.from(byAsset.keys()).filter((id) => hadPowerPin.has(id)).slice(0, 25)
+      // The company row is read at most once, and only when there is a line
+      // to send — a steady, powered truck costs this batch nothing extra.
+      type CompanyRow = { name?: string | null; alert_phone?: string | null; alert_email?: string | null; digest_prefs?: unknown }
+      let co: CompanyRow | null = null
+      const company = async (): Promise<CompanyRow> => {
+        if (!co) {
+          const { data } = await supabase
+            .from('companies').select('name, alert_phone, alert_email, digest_prefs').eq('id', companyId).single()
+          co = (data as CompanyRow | null) ?? {}
+        }
+        return co
+      }
+      const getTz = async () => safeTz(((await company()).digest_prefs as { tz?: string } | null | undefined)?.tz)
+      for (const assetId of powerAssets) {
+        const note = await checkTruckPower(
+          supabase,
+          { id: assetId, company_id: companyId, name: assetNames.get(assetId) ?? 'Tracker' },
+          getTz,
+          { lowInBatch: lowInBatch.has(assetId), inserted: insertedRows.get(assetId) ?? 0 },
+        )
+        if (note) healthNotes.push(note)
+      }
       if (healthNotes.length) {
-        const { data: co } = await supabase
-          .from('companies').select('name, alert_phone, alert_email').eq('id', companyId).single()
+        const c = await company()
         const { dispatchAlerts } = await import('@/lib/notify')
-        await dispatchAlerts(co?.name ?? 'Your fleet', { phone: co?.alert_phone, email: co?.alert_email }, healthNotes, companyId)
+        await dispatchAlerts(c.name ?? 'Your fleet', { phone: c.alert_phone, email: c.alert_email }, healthNotes, companyId)
       }
     }
   } catch (err) {

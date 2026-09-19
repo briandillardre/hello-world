@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { notifySystem } from '@/lib/monitor'
+import { diagnoseSilence } from '@/lib/power-loss-check'
+import { clockLabel, shortName } from '@/lib/power-loss'
+import { readState, writeState } from '@/lib/system-state'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -14,6 +17,9 @@ export const maxDuration = 60
  *     the newest location across the fleet being >6h old means the pipeline
  *     (device → SIM → flespi → webhook) is down somewhere. Pings at most
  *     4×/day while broken (11/15/19/23 UTC) instead of every hour.
+ *  2b. Per-unit silence — hourly, but announced on CHANGE only (a unit went
+ *     dark → once, with why; it came back → once), remembered across runs
+ *     in system_state (112).
  *  3. Once a day (11 UTC ≈ 7 AM ET): /diag layer probes — any red feed rows
  *     land in one summary push.
  *
@@ -26,10 +32,36 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 const STALE_HOURS = 6
 const REMIND_HOURS_UTC = [11, 15, 19, 23]
 const DIAG_HOUR_UTC = 11
+/** Where the silent-unit set lives between runs (system_state, 112). */
+const STATE_KEY = 'health.silent_units'
+/** The founder feed is one person's phone; clock labels read in his zone. */
+const FOUNDER_TZ = process.env.FOUNDER_TZ || 'America/New_York'
+
+type SilentUnit = { name: string; since: string; why: string; firstSeenAt: string }
+
+/** The stored blob is ours, but a row edited by hand or written by an older
+ *  build must not be able to wedge every hourly run (sec-check): anything
+ *  that is not a well-formed entry is dropped and rewritten this run. */
+function sanitizeSilent(v: unknown): Record<string, SilentUnit> {
+  const out: Record<string, SilentUnit> = {}
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out
+  for (const [id, e] of Object.entries(v as Record<string, unknown>)) {
+    const u = (e && typeof e === 'object' ? e : {}) as Partial<SilentUnit>
+    if (typeof u.name !== 'string' || typeof u.since !== 'string' || !Number.isFinite(Date.parse(u.since))) continue
+    out[id] = {
+      name: u.name, since: u.since,
+      why: typeof u.why === 'string' ? u.why : '',
+      firstSeenAt: typeof u.firstSeenAt === 'string' ? u.firstSeenAt : u.since,
+    }
+  }
+  return out
+}
 
 export async function GET(req: NextRequest) {
+  // Fails closed like the other crons that write state or page a human: an
+  // unset secret is a misconfiguration, not an invitation (sec-check).
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ ok: true, skipped: 'demo mode' })
@@ -92,39 +124,91 @@ export async function GET(req: NextRequest) {
     // source reports (e.g. a phone tracker), which masks a dead hardware
     // unit. Watch each IMEI unit (15-digit tracker_id) individually; phones
     // and BLE tags are sporadic by nature and are not outages.
-    if (REMIND_HOURS_UTC.includes(hour) && out.notified !== 'ingest-stale') {
-      const { data: hw } = await db
-        .from('assets')
-        .select('id, name, tracker_id')
-        .eq('active', true)
-        .not('tracker_id', 'is', null)
-        .limit(100)
-      const units = (hw ?? []).filter((a) => /^\d{15}$/.test(String(a.tracker_id ?? ''))).slice(0, 25)
+    //
+    // Hourly, and about CHANGE: the silent set is remembered in system_state
+    // (112) and diffed against the last run, so a unit that goes dark is
+    // announced once, WITH its diagnosis, and heard from again only when it
+    // comes back. The old version re-sent the same two dead units every four
+    // hours (Brian, Sep 19: three identical pushes in sixteen hours).
+    const { data: hw, error: hwErr } = out.notified !== 'ingest-stale'
+      ? await db.from('assets').select('id, name, tracker_id').eq('active', true).not('tracker_id', 'is', null).order('id').limit(200)
+      : { data: null, error: null }
+    // A failed roster read must not be read as "every unit came back".
+    if (hwErr) out.silentCheck = 'assets query failed'
+    if (out.notified !== 'ingest-stale' && !hwErr) {
+      const units = (hw ?? []).filter((a) => /^\d{15}$/.test(String(a.tracker_id ?? ''))).slice(0, 60)
       const sinceIso = new Date(Date.now() - STALE_HOURS * 3_600_000).toISOString()
-      const stale: string[] = []
+      // `undefined` = no memory at all (pre-112, or the read failed): fall
+      // back to the old four-a-day cadence rather than go quiet about a dead
+      // unit. `null` = memory works, nothing stored yet.
+      const rawPrev = await readState<unknown>(db, STATE_KEY)
+      const prev = rawPrev === undefined ? undefined : rawPrev === null ? null : sanitizeSilent(rawPrev)
+      if (prev === undefined) out.silentState = 'unavailable'
+      const before = prev ?? {}
+      const silent: Record<string, SilentUnit> = {}
+      let partial = false
       for (const u of units) {
         // Count in the window — same reasoning as the fleet check above.
         const recent = await db.from('asset_locations')
           .select('id', { count: 'exact', head: true })
           .eq('asset_id', u.id).gte('timestamp', sinceIso)
-        if (recent.error || (recent.count ?? 0) > 0) continue
-        // A unit that has NEVER reported is mid-setup, not an outage.
-        const ever = await db.from('asset_locations')
-          .select('id', { count: 'exact', head: true }).eq('asset_id', u.id)
-        if (ever.error || (ever.count ?? 0) === 0) continue
+        if (recent.error) {
+          // Unknown, not healthy: a unit we already had as silent stays so.
+          partial = true
+          if (before[u.id]) silent[u.id] = before[u.id]
+          continue
+        }
+        if ((recent.count ?? 0) > 0) continue
+        // Its newest fix: what the unit said last IS the diagnosis. A unit
+        // that has NEVER reported is mid-setup, not an outage.
         const newest = await db.from('asset_locations')
-          .select('timestamp').eq('asset_id', u.id).not('timestamp', 'is', null)
+          .select('timestamp, speed, battery, raw').eq('asset_id', u.id).not('timestamp', 'is', null)
           .order('timestamp', { ascending: false, nullsFirst: false }).limit(1)
-        const t = newest.data?.[0]?.timestamp ? Date.parse(newest.data[0].timestamp as string) : NaN
-        stale.push(Number.isFinite(t) ? `${u.name}: ${Math.round((Date.now() - t) / 3_600_000)}h` : u.name)
+        if (newest.error) {
+          partial = true
+          if (before[u.id]) silent[u.id] = before[u.id]
+          continue
+        }
+        const last = newest.data?.[0]
+        if (!last?.timestamp) continue
+        const why = await diagnoseSilence(db, u.id, {
+          timestamp: last.timestamp as string,
+          speed: typeof last.speed === 'number' ? last.speed : null,
+          battery: typeof last.battery === 'number' ? last.battery : null,
+          raw: last.raw,
+        }, FOUNDER_TZ)
+        silent[u.id] = { name: u.name, since: last.timestamp as string, why, firstSeenAt: new Date().toISOString() }
       }
-      out.staleUnits = stale
-      if (stale.length) {
-        await notifySystem(
-          'tracker silent',
-          `${stale.length === 1 ? 'A hardware tracker is' : `${stale.length} hardware trackers are`} silent while other sources report fine — ${stale.join(' · ')}. Check that unit's power/SIM (Hologram balance, OBD seated, flespi last-message).`
-        )
+      const hoursAgo = (iso: string) => Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 3_600_000))
+      out.staleUnits = Object.values(silent).map((s) => `${s.name}: ${hoursAgo(s.since)}h`)
+      if (partial) out.silentCheck = 'partial'
+
+      const unitIds = new Set(units.map((u) => u.id))
+      const newly = Object.keys(silent).filter((id) => !before[id])
+      // "Back" means it reported again. A unit that left the roster (deleted,
+      // deactivated, tracker taken off) is dropped from the watch quietly.
+      const back = Object.keys(before).filter((id) => !silent[id] && unitIds.has(id))
+      const gone = Object.keys(before).filter((id) => !silent[id] && !unitIds.has(id))
+      for (const id of Object.keys(silent)) if (before[id]?.firstSeenAt) silent[id].firstSeenAt = before[id].firstSeenAt
+
+      if (newly.length && (prev !== undefined || REMIND_HOURS_UTC.includes(hour))) {
+        // ntfy shows ~800 chars: three full diagnoses, names for the rest.
+        const lines = newly.slice(0, 3).map((id) => `${shortName(silent[id].name)} — silent ${hoursAgo(silent[id].since)}h. ${silent[id].why}`)
+        const rest = newly.slice(3).map((id) => `${shortName(silent[id].name)} (${hoursAgo(silent[id].since)}h)`)
+        if (rest.length) lines.push(`Also silent: ${rest.join(', ')}`)
+        const still = Object.keys(silent).filter((id) => before[id]).map((id) => `${shortName(silent[id].name)} (${hoursAgo(silent[id].since)}h)`)
+        if (still.length) lines.push(`Still silent: ${still.join(', ')}`)
+        await notifySystem(newly.length === 1 ? 'tracker silent' : `${newly.length} trackers silent`, lines.join('\n'))
         out.notified = out.notified ?? 'device-stale'
+      }
+      if (back.length && prev !== undefined) {
+        await notifySystem(
+          back.length === 1 ? 'tracker back' : `${back.length} trackers back`,
+          back.map((id) => `${shortName(before[id].name)} is reporting again — it had been silent since ${clockLabel(Date.parse(before[id].since), FOUNDER_TZ)}.`).join('\n'),
+        )
+      }
+      if (prev !== undefined && (prev === null || newly.length || back.length || gone.length)) {
+        await writeState(db, STATE_KEY, silent)
       }
     }
   } catch (err) {

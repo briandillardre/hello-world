@@ -28,7 +28,8 @@ import { safeTz } from '@/lib/dates'
 import { cookies } from 'next/headers'
 import { vehiclePower } from '@/lib/vehicle-power'
 import { deriveLiveStatus } from '@/lib/live-status'
-import { LiveStatusBadge } from '@/components/assets/LiveStatus'
+import { LiveStatusBadge, TruckPowerNote } from '@/components/assets/LiveStatus'
+import { POWERED_MIN_V } from '@/lib/power-loss'
 import { FolderLink } from '@/components/ui/FolderLink'
 import { SectionLoading, SweepBar } from '@/components/ui/loading'
 
@@ -364,6 +365,7 @@ async function StatusAndTripsSection({ asset, companyId, tz, showDriveStats }: {
           idleTodayMin={todayStats?.idleMin}
           lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null}
         />
+        <TruckPowerNote raw={loc?.raw} battery={loc?.battery} />
         <div className={`grid ${showDriveStats ? 'grid-cols-3 sm:grid-cols-6' : 'grid-cols-3'} gap-1.5 text-center`}>
           {showDriveStats && <MiniStat label="Speed" value={loc?.speed != null && loc.timestamp && Date.now() - Date.parse(loc.timestamp) < 48 * 3_600_000 ? `${loc.speed}` : '—'} unit="mph" />}
           {showDriveStats && <MiniStat label="Miles today" value={todayStats ? `${todayStats.miles}` : '—'} unit="mi" />}
@@ -373,6 +375,8 @@ async function StatusAndTripsSection({ asset, companyId, tz, showDriveStats }: {
           {(() => {
             if (asset.type !== 'vehicle') return <MiniStat label="Starts today" value={todayStats ? `${todayStats.starts}` : '—'} />
             const p = vehiclePower(loc?.raw)
+            // Under POWERED_MIN_V the pin reads no truck at all (plug out), not a weak battery.
+            if (p.volts != null && p.volts < POWERED_MIN_V) return <MiniStat label="Truck power" value="none" />
             return <MiniStat label={p.health === 'low' ? '12V · LOW' : p.health === 'weak' ? '12V · weak' : '12V battery'} value={p.volts != null ? p.volts.toFixed(1) : '—'} unit="V" />
           })()}
         </div>
