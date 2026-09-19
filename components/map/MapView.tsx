@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
-import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom, LAYER_ROWS } from '@/lib/map-layers'
+import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom, LAYER_ROWS, BASEMAPS } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { AssetWithLocation, AssetType, Geofence, AlertEvent, Place } from '@/lib/types'
@@ -57,6 +57,11 @@ import { NavGuidance, type NavRoute } from './NavGuidance'
 import { GifRecorder } from './GifRecorder'
 import { ExportMenu, ExportResult } from './ExportMenu'
 import { exportFilename, deliverFile, type ExportKind, type DeliveryHow } from '@/lib/map-export'
+import { ShareViewSheet } from './ShareViewSheet'
+import { publishExport, exportLinksAvailable, type ExportLink } from '@/lib/export-upload'
+import type { LinkState } from './ExportMenu'
+import { defaultViewTitle, type SharedView } from '@/lib/share-links'
+import type { OpenedViewLink } from '@/lib/db/share-links'
 import { createPlaceAction } from '@/lib/actions/places'
 import { GeofenceDrawer } from './GeofenceDrawer'
 import { TimelinePlayback } from './TimelinePlayback'
@@ -518,6 +523,13 @@ interface MapViewProps {
   savedMapViews?: MapViewsState | null
   /** Persist saved views to the user's profile (absent in demo mode). */
   onSaveMapViews?: (s: MapViewsState) => void
+  /** A teammate's shared view being opened (/map?v=<id>, migration 113):
+   *  applied once, when the map is ready. */
+  sharedView?: OpenedViewLink | null
+  /** Division filter (106) — owned by MapPageClient. The share sheet
+   *  snapshots it and an opened shared view sets it. */
+  divisionFilter?: string | null
+  onDivisionFilter?: (v: string | null) => void
 }
 
 /** "as of 2:41 AM · Sep 3" in the viewer's clock for a feed timestamp (ISO or
@@ -532,7 +544,7 @@ function popupAsOf(v: unknown): string {
   return sameDay ? `as of ${time}` : `as of ${time} · ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`
 }
 
-export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, onSaveMapViews, brand = null }: MapViewProps) {
+export function MapView({ assets, geofences, places = [], onPlacesChanged, tracks = [], historyRows = null, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, onGeofenceSave, onGeofenceEdit, onGeofenceDelete, alerts = [], focusMeasurement = null, measurements = [], kiosk = false, tourOn = true, onTourInterrupt, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, onSaveMapViews, brand = null, sharedView = null, divisionFilter = null, onDivisionFilter }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   // Sunlight mode (Brian, Aug 22, decision 8c-f): a high-contrast boost for
   // reading the map at noon in the truck — pure CSS filter on the canvas
@@ -803,12 +815,18 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // freshest closure (assets/brand/range change between renders).
   const makePdfRef = useRef<(() => Promise<void>) | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
+  /** Share this screen (Brian, Sep 19): the snapshot is taken as the sheet opens. */
+  const [shareSnap, setShareSnap] = useState<SharedView | null>(null)
   /** Export flyout: one rail button, three answers (Brian, Sep 12). */
   const [exportOpen, setExportOpen] = useState(false)
   const [exportTop, setExportTop] = useState(0)
   const [exportBusy, setExportBusy] = useState<ExportKind | null>(null)
   const [exportRes, setExportRes] = useState<
-    { title: string; imageUrl?: string | null; how?: DeliveryHow | null; error?: string | null; filename?: string } | null
+    {
+      title: string; imageUrl?: string | null; how?: DeliveryHow | null; error?: string | null; filename?: string
+      /** The file as an object URL (a browser's direct Save) and its storage link (the app's). */
+      blobUrl?: string | null; link?: ExportLink | null; linkState?: LinkState; linkError?: string | null
+    } | null
   >(null)
   const exportUrlRef = useRef<string | null>(null)
   const openExportRef = useRef<((btn: HTMLElement) => void) | null>(null)
@@ -864,15 +882,30 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
         lx += wTxt + 4
       }
       const file = exportFilename(brand?.companyName ?? 'HammerTrack', kiosk ? 'command' : 'fleet map', 'pdf')
-      const how = await pdf.finish(file)
-      setExportRes({ title: 'PDF', how, filename: file })
+      const { how, blob } = await pdf.finish(file)
+      if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current)
+      const url = URL.createObjectURL(blob)
+      exportUrlRef.current = url
+      setExportRes({ title: 'PDF', how, filename: file, blobUrl: url, linkState: exportLinksAvailable ? 'pending' : 'off' })
+      void linkExport(blob, file, 'pdf', 'PDF')
     } catch (e) {
       setExportRes({ title: 'PDF', error: e instanceof Error ? e.message : 'Could not build the PDF.' })
     }
   }
 
-  /** The map as a picture — the one export that can always be SAVED inside
-   *  the app, because a long press on an image is Android's own save menu. */
+  /** Park a finished export in storage and hand the result sheet its link —
+   *  the door that works inside the app, where <a download> is a no-op
+   *  (Brian, Sep 19: "GIF won't save to phone"; lib/export-upload.ts). */
+  const linkExport = async (blob: Blob, file: string, kind: 'gif' | 'png' | 'pdf', title: string) => {
+    if (!exportLinksAvailable) return
+    const r = await publishExport(blob, file, kind, `${brand?.companyName ?? 'HammerTrack'} — ${title}`)
+    setExportRes((cur) => (cur && cur.filename === file
+      ? { ...cur, link: r.ok ? r.link : null, linkState: r.ok ? 'ready' : 'failed', linkError: r.ok ? null : r.error }
+      : cur))
+  }
+
+  /** The map as a picture — a link inside the app, a straight download in a
+   *  browser, and a long press on the picture for Android's own save menu. */
   const makePng = async () => {
     const m = map.current
     if (!m) return
@@ -885,7 +918,8 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current)
       const url = URL.createObjectURL(blob)
       exportUrlRef.current = url
-      setExportRes({ title: 'PNG', imageUrl: url, how, filename: file })
+      setExportRes({ title: 'PNG', imageUrl: url, how, filename: file, blobUrl: url, linkState: exportLinksAvailable ? 'pending' : 'off' })
+      void linkExport(blob, file, 'png', 'PNG')
     } catch (e) {
       setExportRes({ title: 'PNG', error: e instanceof Error ? e.message : 'Could not take the picture.' })
     }
@@ -1513,6 +1547,65 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
     base, threeD, terrain: terrain3d, terrainExag, radar: radarOn, clouds: cloudsOn, precip: precipOn, precipPeriod,
     overlays: { ...overlaysOn }, parcels: parcelsOn, trailMode, zones: showZones, markers: markerStyle,
   }), [base, threeD, terrain3d, terrainExag, radarOn, cloudsOn, precipOn, precipPeriod, overlaysOn, parcelsOn, trailMode, showZones, markerStyle])
+
+  // "This screen", for a teammate (Brian, Sep 19; migration 113): the
+  // snapshot a saved view keeps, plus the camera, the time range and
+  // playhead, what is followed or open, and the division filter.
+  const buildSharedView = useCallback((): SharedView | null => {
+    const m = map.current
+    if (!m) return null
+    const c = m.getCenter()
+    const view: SharedView = {
+      v: 1,
+      cfg: currentViewCfg(),
+      cam: { lng: c.lng, lat: c.lat, zoom: m.getZoom(), bearing: m.getBearing(), pitch: m.getPitch() },
+      range,
+    }
+    if (range === 'custom') { view.from = customFrom; view.to = customTo }
+    if (range !== 'live') view.t = pbT
+    if (followId) view.follow = followId
+    if (selectedAsset) view.asset = selectedAsset.id
+    if (selectedZone) view.zone = selectedZone.id
+    if (divisionFilter) view.division = divisionFilter
+    if (!showLabels) view.labels = false
+    if (sunMode) view.sun = true
+    if (Object.keys(overlayOpacity).length) view.opacity = overlayOpacity
+    return view
+  }, [currentViewCfg, range, customFrom, customTo, pbT, followId, selectedAsset, selectedZone, divisionFilter, showLabels, sunMode, overlayOpacity])
+
+  /** What a recipient will see, in plain words — the chips on the share sheet. */
+  const shareSummary = useCallback((v: SharedView): { chips: string[]; title: string } => {
+    const chips: string[] = []
+    const baseLabel = BASEMAPS.find((b) => b.id === v.cfg.base)?.label ?? v.cfg.base
+    chips.push(baseLabel)
+    if (v.cfg.threeD || v.cfg.terrain) chips.push('3D')
+    if (v.cfg.trailMode === 'trails') chips.push('Trails')
+    else if (v.cfg.trailMode === 'heatmap') chips.push('Heat map')
+    else if (v.cfg.trailMode === '3d') chips.push('3D activity')
+    if (v.cfg.radar) chips.push('Radar')
+    if (v.cfg.precip) chips.push('Rain totals')
+    const n = Object.keys(v.cfg.overlays).length
+    if (n) chips.push(`${n} layer${n === 1 ? '' : 's'}`)
+    if (v.cfg.parcels) chips.push('Parcels')
+    if (!v.cfg.zones) chips.push('Zones off')
+    const rangeLabel = v.range === 'custom' ? 'Custom range' : (RANGES.find((r) => r.key === v.range)?.label ?? v.range)
+    chips.push(rangeLabel)
+    let subject: string | null = null
+    if (v.follow) {
+      subject = v.follow.startsWith('zone:')
+        ? geofences.find((g) => g.id === v.follow!.slice(5))?.name ?? null
+        : assets.find((a) => a.id === v.follow)?.name ?? null
+      if (subject) chips.push(`Following ${subject}`)
+    } else if (v.asset) {
+      subject = assets.find((a) => a.id === v.asset)?.name ?? null
+      if (subject) chips.push(subject)
+    } else if (v.zone) {
+      subject = geofences.find((g) => g.id === v.zone)?.name ?? null
+      if (subject) chips.push(subject)
+    }
+    chips.push(`Zoom ${Math.round(v.cam.zoom)}`)
+    return { chips, title: defaultViewTitle({ range: rangeLabel, subject, base: baseLabel }) }
+  }, [assets, geofences])
 
   const handleSaveView = useCallback((name: string) => {
     const v: SavedMapView = {
@@ -2996,8 +3089,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           }
         }
         // A deep link to a spot (/map?lat&lng, the /photos "On the map" link)
-        // owns the opening frame instead.
-        const urlSpot = typeof window !== 'undefined' && /[?&]lat=/.test(window.location.search) && /[?&]lng=/.test(window.location.search)
+        // or a teammate's shared view (/map?v=) owns the opening frame instead.
+        const urlSpot = typeof window !== 'undefined' && (
+          (/[?&]lat=/.test(window.location.search) && /[?&]lng=/.test(window.location.search)) ||
+          /[?&]v=/.test(window.location.search))
         if (pts.length > 0 && !urlSpot) {
           const bounds = pts.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(pts[0], pts[0]))
           m.fitBounds(bounds, { padding: 70, maxZoom: 16, duration: 0 })
@@ -7180,6 +7275,70 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
   }, [mapReady, handleRange])
 
+  // Open a teammate's shared view (/map?v=<id>, migration 113): layers,
+  // camera, range + playhead, follow / selection, division — once, when the
+  // map is ready. Then the recipient owns the map; a shared view is a
+  // starting point exactly like a saved one.
+  const sharedViewAppliedRef = useRef(false)
+  useEffect(() => {
+    if (!mapReady || kiosk || !sharedView || sharedViewAppliedRef.current) return
+    sharedViewAppliedRef.current = true
+    const v = sharedView.view
+    applyView({ id: `shared-${sharedView.id}`, name: sharedView.title ?? 'Shared view', cfg: v.cfg })
+    setShowLabels(v.labels !== false)
+    setSunMode(!!v.sun)
+    if (v.opacity) setOverlayOpacity((prev) => ({ ...prev, ...v.opacity }))
+    map.current?.jumpTo({ center: [v.cam.lng, v.cam.lat], zoom: v.cam.zoom, bearing: v.cam.bearing ?? 0, pitch: v.cam.pitch ?? 0 })
+    if (v.range !== 'live') {
+      if (v.range === 'custom' && v.from && v.to) { setCustomFrom(v.from); setCustomTo(v.to) }
+      handleRange(v.range)
+      if (typeof v.t === 'number') { tRef.current = v.t; setPbT(v.t) }
+    }
+    // The sender's filter is part of the picture — including "no filter".
+    onDivisionFilter?.(v.division ?? null)
+    if (v.follow) {
+      // Pin the camera without auto-playing (handleFollow would start playback).
+      bearingRef.current = v.cam.bearing ?? 0
+      pitchRef.current = v.cam.pitch ?? 0
+      entranceRef.current = 0
+      camRef.current = null
+      setFollowId(v.follow)
+    }
+    // Shell-first boot streams assets and zones in after mount: look for the
+    // open sheet's subject briefly, then let it go quietly — it may simply be
+    // hidden from this person (111), which is the right outcome.
+    const started = Date.now()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let gone = false
+    const attempt = () => {
+      if (gone) return
+      if (v.asset) {
+        const a = assetsRef.current.find((x) => x.id === v.asset)
+        if (a) { setSelectedAsset(a); return }
+      } else if (v.zone) {
+        const g = geofencesRef.current.find((x) => x.id === v.zone)
+        if (g) { setSelectedZone(g); return }
+      } else {
+        return
+      }
+      if (Date.now() - started < 8000) timer = setTimeout(attempt, 400)
+    }
+    attempt()
+    // Drop ?v= once applied — a refresh should behave like a normal map
+    // open, not snap back to the shared frame (same rule as ?m= and ?follow=).
+    try {
+      const u = new URL(window.location.href)
+      if (u.searchParams.has('v')) {
+        u.searchParams.delete('v')
+        const qs = u.searchParams.toString()
+        window.history.replaceState(null, '', u.pathname + (qs ? '?' + qs : ''))
+      }
+    } catch { /* harmless */ }
+    toast(`${sharedView.from ?? 'A teammate'} shared this view${sharedView.title ? `: ${sharedView.title}` : ''}`, { ttl: 5000 })
+    return () => { gone = true; if (timer) clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, sharedView])
+
   // ── Geofence drawing ──
   const handleDrawClick = useCallback((e: maplibregl.MapMouseEvent) => {
     const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat]
@@ -7850,6 +8009,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         onClose={() => setExportOpen(false)}
         onPick={(kind) => {
           if (kind === 'gif') { setGifOpen(true); return }
+          if (kind === 'link') {
+            const snap = buildSharedView()
+            if (!snap) { toast('The map is still loading — try again in a second.', { variant: 'error' }); return }
+            setShareSnap(snap)
+            return
+          }
           setExportBusy(kind)
           const run = kind === 'pdf' ? makePdfRef.current?.() : makePng()
           void Promise.resolve(run).finally(() => setExportBusy(null))
@@ -7875,6 +8040,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         how={exportRes?.how}
         error={exportRes?.error}
         filename={exportRes?.filename}
+        blobUrl={exportRes?.blobUrl}
+        link={exportRes?.link}
+        linkState={exportRes?.linkState ?? 'off'}
+        linkError={exportRes?.linkError}
       />
 
       {gifOpen && (
@@ -7902,6 +8071,19 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           }}
         />
       )}
+
+      {shareSnap && (() => {
+        const sum = shareSummary(shareSnap)
+        return (
+          <ShareViewSheet
+            open
+            onClose={() => setShareSnap(null)}
+            snapshot={shareSnap}
+            summary={sum.chips}
+            defaultTitle={sum.title}
+          />
+        )
+      })()}
 
       {navDest && navGuide && (
         <NavGuidance

@@ -291,6 +291,37 @@ export async function GET(req: NextRequest) {
       }
       out.photoOrphansSwept = swept
     } catch (err) { out.photoSweep = err instanceof Error ? err.message : 'failed' }
+
+    // 6 — share links (113): a link past its date goes, and a FILE link takes
+    // its storage object with it. Exports that were uploaded but never
+    // finalized (an object with no row after a day) go too. Bounded: 200
+    // expired rows and 50 company folders per run.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const svc = createServiceClient()
+      const { data: dead } = await svc.from('share_links').select('id, kind, payload').lt('expires_at', new Date().toISOString()).limit(200)
+      const paths = (dead ?? [])
+        .filter((r) => r.kind === 'file')
+        .map((r) => (r.payload as { path?: unknown } | null)?.path)
+        .filter((x): x is string => typeof x === 'string')
+      if (paths.length) await svc.storage.from('exports').remove(paths)
+      if (dead?.length) await svc.from('share_links').delete().in('id', dead.map((r) => r.id as string))
+      let orphans = 0
+      const { data: folders } = await svc.storage.from('exports').list('', { limit: 50 })
+      for (const f of folders ?? []) {
+        if (!f.name || f.id) continue // a folder row carries no object id
+        const { data: objects } = await svc.storage.from('exports').list(`${f.name}/exports`, { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } })
+        const stale = (objects ?? []).filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - 86_400_000)
+        if (!stale.length) continue
+        const idOf = (name: string) => name.replace(/\.[a-z0-9]+$/i, '')
+        const { data: rows } = await svc.from('share_links').select('id').in('id', stale.map((o) => idOf(o.name)))
+        const live = new Set((rows ?? []).map((r) => r.id as string))
+        const gone = stale.filter((o) => !live.has(idOf(o.name))).map((o) => `${f.name}/exports/${o.name}`)
+        if (gone.length) { await svc.storage.from('exports').remove(gone.slice(0, 200)); orphans += Math.min(200, gone.length) }
+      }
+      out.shareLinksPurged = (dead ?? []).length
+      out.exportOrphansSwept = orphans
+    } catch (err) { out.shareLinkSweep = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

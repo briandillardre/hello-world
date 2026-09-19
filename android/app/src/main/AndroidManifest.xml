@@ -48,6 +48,14 @@
          the request and the scanner silently falls back to typing. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Microphone: talking to Ask AI and the map search (v1.5.2, Sep 19 2026 —
+         Brian: "Talk to ai verbally button not working"). The WebView's own
+         speech API has no recognition service behind it, so voice goes
+         through @capacitor-community/speech-recognition — Android's
+         SpeechRecognizer — which needs RECORD_AUDIO (a plain runtime
+         permission, no Play declaration). The plugin's manifest declares it
+         too; repeated here so the intent is visible. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Shift recording (v1.4.0/1.4.1, Sep 9 2026 — Brian: "mandatory tracking
          thru app while clocked in", "native background tracking is a must"):
          while a person is CLOCKED IN, @capacitor-community/background-geolocation
