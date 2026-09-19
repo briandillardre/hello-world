@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { DEAD_MS, DEAD_GRAY, DEAD_H, FADE_FROM_H } from '@/lib/glance'
 import { ensureMapLibreWorkerShims } from '@/lib/maplibre-setup'
 import { cartoTiles, cartoAttribution, fallbackLabelTiles, basemapKeyless, cartoMaxZoom, LAYER_ROWS, BASEMAPS } from '@/lib/map-layers'
 import maplibregl from 'maplibre-gl'
@@ -122,11 +123,10 @@ const ASSET_COLORS: Record<AssetType, string> = {
   tool: '#a78bfa',
 }
 
-// Silent past this long = the DEVICE is dark, not the machine parked —
-// trackers check in hourly even asleep, so 48h of nothing is a dead/unplugged
-// unit. Those dots go gray (color is for living hardware) — Brian, Aug 28.
-const DEAD_MS = 48 * 3_600_000
-const DEAD_GRAY = '#46586a'
+// Silent past DEAD_MS = the DEVICE is dark, not the machine parked —
+// trackers check in hourly even asleep, so a day of nothing is a dead or
+// unplugged unit. Those dots go gray (color is for living hardware) — Brian,
+// Aug 28; tightened from 48 h to 24 h Sep 19 (lib/glance.ts has the story).
 /** False once map.remove() ran — MapLibre drops `style`, so any later
  *  getLayer/getSource/setPaintProperty throws "Cannot read properties of
  *  undefined (reading 'getLayer')". Effect cleanups run AFTER the map's own
@@ -139,11 +139,13 @@ const WX_LOAD_CAP_MS = 6000
 const mapAlive = (m: maplibregl.Map | null | undefined): m is maplibregl.Map =>
   !!m && !(m as unknown as { _removed?: boolean })._removed && !!(m as unknown as { style?: unknown }).style
 // Live-dot color: the asset's own color, fading toward DEAD_GRAY as the last
-// fix ages from 12h to 48h (gray past that). Overnight parking (8–14h) barely
-// moves; a day-old truck is visibly washed out; two days = gray (Brian, Sep 4:
-// "know how stale the data is… older than a day or two turn gray").
+// fix ages from FADE_FROM_H (6 h — where the health cron starts calling a
+// unit silent) to DEAD_H (24 h — gray past that). A truck parked overnight
+// (8–14 h) is visibly washed out by morning; a day of silence is gray
+// (Brian, Sep 4: "know how stale the data is"; Sep 19: a 24 h-silent RAM
+// under a bright blue dot — "this should show gray or something").
 const AGED_COLOR = ['case', ['==', ['get', 'state'], 'dead'], DEAD_GRAY,
-  ['interpolate', ['linear'], ['coalesce', ['get', 'ageH'], 0], 12, ['to-color', ['get', 'color']], 48, ['to-color', DEAD_GRAY]]] as unknown as maplibregl.ExpressionSpecification
+  ['interpolate', ['linear'], ['coalesce', ['get', 'ageH'], 0], FADE_FROM_H, ['to-color', ['get', 'color']], DEAD_H, ['to-color', DEAD_GRAY]]] as unknown as maplibregl.ExpressionSpecification
 
 // MapLibre layers that represent the live (non-playback) asset view
 const LIVE_LAYERS = ['clusters', 'cluster-count', 'cluster-stack', 'asset-pulse', 'state-ring', 'unclustered-circle', 'unclustered-label', 'unclustered-name', 'tool-count-badge', 'wrench-badge']
