@@ -267,6 +267,27 @@ bug and are fixed the same way:
   episodes write the event without paging), and power returning acknowledges
   it by itself.
 
+## Person-to-person: a shared map view (Sep 19, migration 113)
+
+The one push that is neither an alert nor a summary. Someone taps **Share view**
+on the map, picks teammates, and each of them gets *"Brian shared a map view —
+Today · Chevy 1500 · Satellite"* whose tap opens `/map?v=<id>`. Rules:
+
+- **Strict.** `sendPushToUser(..., { strict: true })` — THEIR phones or nobody.
+  A person-to-person note never falls back to the whole company.
+- **Roster only.** The action re-reads the company's profiles and drops any id
+  not on it; the link itself must belong to the sender's company.
+- **No switch.** It answers to none of the five per-person switches (a
+  teammate choosing to send you something is not a broadcast), and the
+  sender is told who could not be reached instead of a silent skip: the
+  picker greys out anyone without a phone in the app.
+- **Never from a preview.** `viewingAs` refuses both minting and sending.
+- The body is the link's title plus an optional 140-character note; both go
+  through `cleanTitle()` (control characters out, length capped) — the
+  sender's name too.
+
+`lib/actions/share-links.ts` · `components/map/ShareViewSheet.tsx`.
+
 ## Known gaps
 
 * **`CRON_SECRET` was found unset in production on Sep 19.** Every cron that
