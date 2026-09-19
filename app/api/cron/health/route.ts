@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { notifySystem } from '@/lib/monitor'
 import { diagnoseSilence } from '@/lib/power-loss-check'
 import { clockLabel, shortName } from '@/lib/power-loss'
-import { readState, writeState } from '@/lib/system-state'
+import { readState, readStateDetailed, writeState } from '@/lib/system-state'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -174,6 +174,14 @@ export async function GET(req: NextRequest) {
       const rawPrev = await readState<unknown>(db, STATE_KEY)
       const prev = rawPrev === undefined ? undefined : rawPrev === null ? null : sanitizeSilent(rawPrev)
       if (prev === undefined) out.silentState = 'unavailable'
+      // Sep 19: the feed repeated the silent set at 3, 4 and 4:05 PM although
+      // both memory rows were on disk. The response now says what the memory
+      // read actually returned (status + the stored keys), so the next repeat
+      // can be read off the endpoint instead of guessed at.
+      const probe = await readStateDetailed(db, STATE_KEY)
+      out.stateProbe = probe.status === 'ok'
+        ? { status: 'ok', keys: probe.value && typeof probe.value === 'object' ? Object.keys(probe.value as object).length : typeof probe.value, sanitized: prev ? Object.keys(prev).length : prev }
+        : probe
       const before = prev ?? {}
       const silent: Record<string, SilentUnit> = {}
       let partial = false
@@ -291,6 +299,69 @@ export async function GET(req: NextRequest) {
       }
       out.photoOrphansSwept = swept
     } catch (err) { out.photoSweep = err instanceof Error ? err.message : 'failed' }
+
+    // 6 — share links (113): a link past its date goes, and a FILE link takes
+    // its storage object with it. Exports that were uploaded but never
+    // finalized (an object with no row after a day) go too. Bounded: 200
+    // expired rows and 50 company folders per run.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const svc = createServiceClient()
+      // Only a path of OUR shape is ever handed to remove(): a row is service-
+      // role-written, but the sweep must not become a delete-anything door if
+      // a payload is ever malformed (sec-check).
+      const EXPORT_PATH = /^[0-9a-f]{16}\/exports\/[23456789abcdefghjkmnpqrstuvwxyz]{12}\.(gif|png|pdf)$/
+      const { data: dead, error: deadErr } = await svc.from('share_links').select('id, kind, payload').lt('expires_at', new Date().toISOString()).limit(200)
+      if (deadErr) throw new Error(`share_links read: ${deadErr.message}`)
+      const paths = (dead ?? [])
+        .filter((r) => r.kind === 'file')
+        .map((r) => (r.payload as { path?: unknown } | null)?.path)
+        .filter((x): x is string => typeof x === 'string' && EXPORT_PATH.test(x))
+      if (paths.length) {
+        const { error } = await svc.storage.from('exports').remove(paths)
+        if (error) throw new Error(`exports remove: ${error.message}`)
+      }
+      // The rows go only once their objects are gone (an object with no row
+      // would otherwise wait a day for the orphan sweep — harmless, but the
+      // order keeps "row exists ⇒ object exists" true).
+      if (dead?.length) {
+        const { error } = await svc.from('share_links').delete().in('id', dead.map((r) => r.id as string))
+        if (error) throw new Error(`share_links delete: ${error.message}`)
+      }
+      let orphans = 0
+      const { data: folders, error: folderErr } = await svc.storage.from('exports').list('', { limit: 500 })
+      if (folderErr) throw new Error(`exports list: ${folderErr.message}`)
+      for (const f of folders ?? []) {
+        if (!f.name || f.id || !/^[0-9a-f]{16}$/.test(f.name)) continue // a folder row carries no object id
+        const { data: objects, error: objErr } = await svc.storage.from('exports').list(`${f.name}/exports`, { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } })
+        if (objErr) continue
+        const stale = (objects ?? []).filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - 86_400_000)
+        if (!stale.length) continue
+        const idOf = (name: string) => name.replace(/\.[a-z0-9]+$/i, '')
+        // PostgREST caps a URL, and 1,000 ids in one `.in()` is past it — ask
+        // in slices of 200; a slice that fails is treated as ALL live (never
+        // delete what could not be checked).
+        const live = new Set<string>()
+        let checkFailed = false
+        for (let i = 0; i < stale.length; i += 200) {
+          const slice = stale.slice(i, i + 200).map((o) => idOf(o.name))
+          const { data: rows, error } = await svc.from('share_links').select('id').in('id', slice)
+          if (error) { checkFailed = true; break }
+          for (const r of rows ?? []) live.add(r.id as string)
+        }
+        if (checkFailed) continue
+        const gone = stale
+          .filter((o) => !live.has(idOf(o.name)))
+          .map((o) => `${f.name}/exports/${o.name}`)
+          .filter((path) => EXPORT_PATH.test(path))
+        if (gone.length) {
+          const { error } = await svc.storage.from('exports').remove(gone.slice(0, 200))
+          if (!error) orphans += Math.min(200, gone.length)
+        }
+      }
+      out.shareLinksPurged = (dead ?? []).length
+      out.exportOrphansSwept = orphans
+    } catch (err) { out.shareLinkSweep = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

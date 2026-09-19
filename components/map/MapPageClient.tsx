@@ -52,6 +52,8 @@ interface MapPageClientProps {
   defaultWeatherCoords?: { lat: number; lng: number } | null
   /** User's saved map views from their profile (null = none / demo). */
   savedMapViews?: { views: unknown[]; defaultId: string | null } | null
+  /** A teammate's shared view being opened (/map?v=<id>, migration 113). */
+  sharedView?: import('@/lib/db/share-links').OpenedViewLink | null
   /** Company divisions (106). Empty = the filter never renders. */
   divisions?: import('@/lib/types').Division[]
   /** Dollar figures (timeline cost chip, $ chart, zone $) are permission-gated. */
@@ -89,7 +91,7 @@ interface MapBootData {
 
 const BOOT_CACHE_KEY = 'ht_mapboot_v1'
 
-export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], divisions = [], brand = null, bootstrap = false }: MapPageClientProps) {
+export function MapPageClient({ assets, geofences: initialGeofences, places: initialPlaces = [], tracks, historyRows = null, deferHistory = false, siteOverlays = [], earliestMs = null, tz = 'America/New_York', toolGateways, aboard, pairingEpisodes, defaultWeatherPlace = null, defaultWeatherCoords = null, canViewCosts = true, canFlightLog = false, savedMapViews = null, alerts = [], focusMeasurement = null, measurements = [], divisions = [], brand = null, bootstrap = false, sharedView = null }: MapPageClientProps) {
   const [divFilter, setDivFilter] = useDivisionFilter('map')
   const [geofences, setGeofences] = useState<Geofence[]>(initialGeofences)
   const [places, setPlaces] = useState<Place[]>(initialPlaces)
@@ -334,6 +336,12 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
         alerts={effAlerts}
         focusMeasurement={focusMeasurement}
         measurements={measurements}
+        sharedView={sharedView}
+        divisionFilter={divFilter}
+        // A shared view's filter is applied only when it names one of THIS
+        // company's divisions (or the "unassigned" pick); anything else reads
+        // as "no filter" — a stale or crafted id must never blank the map.
+        onDivisionFilter={(v) => setDivFilter(v === 'none' || (v != null && divisions.some((d) => d.id === v)) ? v : null)}
       />
       {/* TODAY — the morning exceptions card, once per day on the map
           (Brian, Aug 22: Today pops up on the map, not a full page). */}

@@ -6,6 +6,7 @@ import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
 import { getCurrentCompany, getCompanyPrefs, getMyMapViews } from '@/lib/db/company'
+import { getViewLink } from '@/lib/db/share-links'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { generateTracks } from '@/lib/trails'
 import { MapPageClient } from '@/components/map/MapPageClient'
@@ -26,7 +27,7 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, maxi
 const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
   process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://your-project.supabase.co'
 
-export default async function MapPage({ searchParams }: { searchParams?: { m?: string } }) {
+export default async function MapPage({ searchParams }: { searchParams?: { m?: string; v?: string } }) {
   const mapPerms = await requireFeature('map')
   // ── Real mode: SHELL FIRST. The app icon opens straight into the map —
   // this render awaits only the top-bar basics (company + weather prefs),
@@ -37,10 +38,12 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   // Brian, Aug 9. Demo mode keeps the original all-server render below.
   if (isRealMode) {
     const { getMeasurement, getMeasurements } = await import('@/lib/db/measurements')
-    const [company, prefs, focusMeasurement] = await Promise.all([
+    const [company, prefs, focusMeasurement, sharedView] = await Promise.all([
       getCurrentCompany(),
       getCompanyPrefs(),
       searchParams?.m ? getMeasurement(searchParams.m) : Promise.resolve(null),
+      // ?v=<id> — a teammate's shared view (113); RLS makes it this company's or nothing.
+      searchParams?.v ? getViewLink(searchParams.v) : Promise.resolve(null),
     ])
     const measurements = await getMeasurements(company.id)
     const tz = safeTz(cookies().get('ht_tz')?.value)
@@ -69,6 +72,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
             alerts={[]}
             focusMeasurement={focusMeasurement}
             measurements={measurements}
+            sharedView={sharedView}
             brand={{ companyName: company.name, logoUrl: company.logoUrl, logoBg: company.logoBg }}
           />
         </div>

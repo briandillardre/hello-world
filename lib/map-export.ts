@@ -22,6 +22,9 @@
  * to work on the next web deploy.
  */
 
+import { isNativeApp, nativePlatform } from './native'
+import { smsHref } from './share-links'
+
 export type DeliveryHow = 'shared' | 'downloaded' | 'cancelled' | 'blocked'
 
 /**
@@ -46,11 +49,13 @@ export async function deliverFile(blob: Blob, filename: string, mime: string): P
     }
   } catch { /* File or share unsupported — try the anchor */ }
 
-  // The anchor path. It works on every desktop browser and silently does
-  // nothing inside the app, so we report what we CAN'T know as blocked when
-  // there is no share door and we are in the shell.
+  // The anchor path works on every desktop browser and silently does NOTHING
+  // inside the app — so in the shell it is not tried and not claimed (the
+  // first cut clicked it and reported "Saved to your downloads", which was a
+  // lie; Brian, Sep 19: "GIF won't save to phone"). The shell's door is a
+  // storage link (lib/export-upload.ts), which the result sheet offers.
   try {
-    if (typeof document === 'undefined') return 'blocked'
+    if (typeof document === 'undefined' || isNativeApp()) return 'blocked'
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -77,5 +82,42 @@ export const EXPORT_KINDS = [
   { key: 'pdf', label: 'PDF', note: 'branded sheet for a binder' },
   { key: 'png', label: 'PNG', note: 'a picture you can text' },
   { key: 'gif', label: 'GIF', note: 'the replay, moving' },
+  { key: 'link', label: 'Share view', note: 'this screen, to your team' },
 ] as const
 export type ExportKind = (typeof EXPORT_KINDS)[number]['key']
+
+/**
+ * Hand a LINK to whoever it is for. Web Share where the browser has it
+ * (phones, Safari), else the Messages app through an `sms:` URL — the one
+ * door every WebView has — else the clipboard. Reports which, never throws.
+ */
+export type LinkDelivery = 'shared' | 'cancelled' | 'sms' | 'copied' | 'none'
+export async function deliverLink(url: string, text: string, title?: string): Promise<LinkDelivery> {
+  const nav = typeof navigator !== 'undefined' ? navigator : null
+  if (nav && typeof nav.share === 'function') {
+    try {
+      await nav.share({ title, text, url })
+      return 'shared'
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return 'cancelled'
+      // Some browsers throw on the URL member alone — fall through to sms/copy.
+    }
+  }
+  if (isNativeApp() || /Android|iPhone|iPad/i.test(nav?.userAgent ?? '')) {
+    try {
+      const plat = nativePlatform() === 'ios' || /iPhone|iPad/i.test(nav?.userAgent ?? '') ? 'ios' : 'android'
+      window.location.href = smsHref(`${text} ${url}`.trim(), plat)
+      return 'sms'
+    } catch { /* no handler for sms: — copy instead */ }
+  }
+  return (await copyText(url)) ? 'copied' : 'none'
+}
+
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}

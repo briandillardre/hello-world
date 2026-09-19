@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, Mic, X, Hexagon, Plane, TowerControl } from 'lucide-react'
+import { speechDoor, startSpeech, SPEECH_UPDATE_HINT, type SpeechDoor, type SpeechSession } from '@/lib/speech-input'
+import { toast } from '@/components/ui/feedback'
 import type { AssetType } from '@/lib/types'
 
 /**
@@ -64,23 +66,6 @@ export interface PlaceHit {
   lng: number
 }
 
-// Minimal typings for the vendor-prefixed Web Speech API.
-type SpeechRecognitionLike = {
-  lang: string
-  interimResults: boolean
-  maxAlternatives: number
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null
-  onend: (() => void) | null
-  onerror: (() => void) | null
-  start: () => void
-  stop: () => void
-}
-
-function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
-  if (typeof window === 'undefined') return null
-  const w = window as unknown as Record<string, unknown>
-  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
-}
 
 export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false, flightLog = false }: {
   items: SearchItem[]
@@ -117,7 +102,10 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   const [hi, setHi] = useState(0)
   const [listening, setListening] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const recRef = useRef<SpeechRecognitionLike | null>(null)
+  const recRef = useRef<SpeechSession | null>(null)
+  // Voice door (lib/speech-input.ts) — decided on the client, once.
+  const [door, setDoor] = useState<SpeechDoor>('none')
+  useEffect(() => { setDoor(speechDoor()) }, [])
   const itemsRef = useRef(items)
   itemsRef.current = items
 
@@ -224,29 +212,23 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   }
 
   const startVoice = () => {
-    const Ctor = getSpeechCtor()
-    if (!Ctor) return
-    const rec = new Ctor()
-    recRef.current = rec
-    rec.lang = 'en-US'
-    rec.interimResults = true
-    rec.maxAlternatives = 1
-    rec.onresult = (e) => {
-      const results = Array.from(e.results as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>)
-      const text = results.map((r) => r[0].transcript).join(' ').trim()
-      setQ(text)
+    if (door === 'update') { toast(SPEECH_UPDATE_HINT, { ttl: 6000 }); return }
+    const session = startSpeech({
+      onPartial: (text) => setQ(text),
       // Final phrase with one clear winner → hands-free select.
-      if (results.some((r) => r.isFinal)) {
+      onFinal: (text) => {
+        setQ(text)
         const s = text.toLowerCase()
         const hits = itemsRef.current.filter((i) => i.name.toLowerCase().includes(s))
         if (hits.length === 1) pick(hits[0])
-      }
-    }
-    rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
+      },
+      onEnd: () => setListening(false),
+      onError: (msg) => { setListening(false); toast(msg, { variant: 'error', ttl: 6000 }) },
+    })
+    if (!session) return
+    recRef.current = session
     setListening(true)
     setOpen(true)
-    rec.start()
   }
 
   // One keyboard list across fleet matches AND address rows — typing an
@@ -295,9 +277,10 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
           placeholder={onPickPlace ? 'Find asset, zone, or address…' : 'Find asset or zone…'}
           className="flex-1 min-w-0 bg-transparent text-[13px] text-ink placeholder:text-faint outline-none"
         />
-        {getSpeechCtor() && (
+        {door !== 'none' && (
           <button
             onClick={startVoice}
+            title={door === 'update' ? SPEECH_UPDATE_HINT : 'Search by voice'}
             aria-label="Search by voice"
             className={'grid place-items-center w-6 h-6 rounded-md flex-none transition-colors ' + (listening ? 'text-alert animate-blink' : 'text-faint hover:text-teal')}
           >

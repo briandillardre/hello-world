@@ -106,7 +106,7 @@ not. A digest is worth losing to a transient error; a muted phone staying
 muted is the entire feature.
 
 **What is stored is SPARSE** — only the switches somebody actually touched.
-Writing all five on every save froze a person against their own role: promote
+Writing every switch on every save froze a person against their own role: promote
 a Foreman to Admin and they should start getting the nag, but a resolved
 `false` on file is indistinguishable from a chosen one. Untouched keys keep
 following `defaultPersonNotify(role)` forever. The blob also carries `_by` /
@@ -266,6 +266,31 @@ bug and are fixed the same way:
   SMS), debounced past a flicker, at most one push per asset per 24 h (later
   episodes write the event without paging), and power returning acknowledges
   it by itself.
+
+## Person-to-person: a shared map view (Sep 19, migration 113)
+
+The one push that is neither an alert nor a summary. Someone taps **Share this view**
+on the map, picks teammates, and each of them gets *"Brian shared a map view —
+Today · Chevy 1500 · Satellite"* whose tap opens `/x/<id>` → the view. Rules:
+
+- **Strict.** `sendPushToUser(..., { strict: true })` — THEIR phones or nobody.
+  A person-to-person note never falls back to the whole company.
+- **Roster only.** The action re-reads the company's profiles and drops any id
+  not on it; the link itself must belong to the sender's company.
+- **One switch of its own.** `shares` — *Shared map views* — is the sixth
+  per-person switch, on by default for every role (a teammate choosing to
+  send you something is not a broadcast, so nobody starts muted), and the
+  sender is told who could not be reached instead of a silent skip: the
+  picker greys out anyone without a phone in the app.
+- **Counted.** One row per recipient in `share_link_sends` (migration 114):
+  25 recipients per send, 100 per link, 100 sends per sender per day — a
+  scripted member cannot flood the roster.
+- **Never from a preview.** `viewingAs` refuses both minting and sending.
+- The body is the link's title plus an optional 140-character note; both go
+  through `cleanTitle()` (control characters out, length capped) — the
+  sender's name too.
+
+`lib/actions/share-links.ts` · `components/map/ShareViewSheet.tsx`.
 
 ## Known gaps
 

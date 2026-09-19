@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Clapperboard, Download, Share2, X } from 'lucide-react'
+import { Clapperboard, X } from 'lucide-react'
 import {
   GIF_SIZES, GIF_FRAMES, fitSize, framePlan, frameDelayMs, estimateMb,
   encodeGif, gifFilename, MMS_LIMIT_MB, type GifSizeKey, type GifFrame,
 } from '@/lib/map-gif'
+import { publishExport, exportLinksAvailable, type ExportLink } from '@/lib/export-upload'
+import { ExportActions, type LinkState } from './ExportMenu'
 
 /**
  * Record the replay as an animated GIF (Brian, Sep 12: "need a gif creator
@@ -20,6 +22,13 @@ import {
  * The work happens a frame at a time with a yield between each, because a
  * 90-frame capture that blocks the main thread is a frozen phone — and the
  * person watching needs to see it moving to believe it is working.
+ *
+ * Getting it OUT (Brian, Sep 19: "GIF won't save to phone"): the finished
+ * file is parked in storage the moment it is done and comes back as a link
+ * — Save opens it in the system browser (which downloads it), Send puts the
+ * link in a text, Copy link copies it. The old Save was an <a download>,
+ * which is a no-op inside the app, and Send needed a share sheet the WebView
+ * does not have; both looked like a button that did nothing.
  */
 export function GifRecorder({
   open, onClose, grabFrameAt, range, ranges, onRange, companyName, mapAspect,
@@ -47,6 +56,7 @@ export function GifRecorder({
   const [done, setDone] = useState(0)
   const [err, setErr] = useState<string | null>(null)
   const [out, setOut] = useState<{ url: string; blob: Blob; kb: number } | null>(null)
+  const [link, setLink] = useState<{ state: LinkState; link: ExportLink | null; error: string | null }>({ state: 'off', link: null, error: null })
   const [aspect, setAspect] = useState(mapAspect && mapAspect > 0.2 ? mapAspect : 16 / 9)
   useEffect(() => { if (mapAspect && mapAspect > 0.2) setAspect(mapAspect) }, [mapAspect])
   /** A replay range has to be picked before there is anything to record. */
@@ -55,18 +65,35 @@ export function GifRecorder({
   const rangeLabel = ranges.find((r) => r.key === range)?.label ?? 'Live'
   const cancelRef = useRef(false)
   const urlRef = useRef<string | null>(null)
+  /** Which recording an in-flight upload belongs to — "Record again" bumps
+   *  it, so the first GIF's link can never land on the second GIF's sheet. */
+  const linkSeqRef = useRef(0)
 
   // A blob URL outlives the component unless it is revoked — and a handful of
   // un-revoked GIFs is real memory on a phone.
   const clearOut = useCallback(() => {
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null }
+    linkSeqRef.current++
     setOut(null)
+    setLink({ state: 'off', link: null, error: null })
   }, [])
   useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current) }, [])
   useEffect(() => { if (!open) { cancelRef.current = true; clearOut(); setErr(null); setBusy(false) } }, [open, clearOut])
 
   const px = GIF_SIZES.find((s) => s.key === size)!.px
   const estMb = estimateMb(px, frames, aspect)
+  const name = gifFilename(`${companyName ?? 'HammerTrack'} ${rangeLabel}`)
+
+  /** Park the file in storage and turn it into a link — in the background,
+   *  while the person is already looking at the preview. */
+  const linkIt = async (blob: Blob, filename: string) => {
+    if (!exportLinksAvailable) { setLink({ state: 'off', link: null, error: null }); return }
+    const seq = ++linkSeqRef.current
+    setLink({ state: 'pending', link: null, error: null })
+    const r = await publishExport(blob, filename, 'gif', `${companyName ?? 'HammerTrack'} — ${rangeLabel} replay`)
+    if (cancelRef.current || seq !== linkSeqRef.current) return
+    setLink(r.ok ? { state: 'ready', link: r.link, error: null } : { state: 'failed', link: null, error: r.error })
+  }
 
   const record = async () => {
     if (busy) return
@@ -107,6 +134,7 @@ export function GifRecorder({
       const url = URL.createObjectURL(blob)
       urlRef.current = url
       setOut({ url, blob, kb: Math.round(blob.size / 1024) })
+      void linkIt(blob, name)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not make the GIF.')
     } finally {
@@ -114,23 +142,8 @@ export function GifRecorder({
     }
   }
 
-  const name = gifFilename(`${companyName ?? 'HammerTrack'} ${rangeLabel}`)
-
-  const share = async () => {
-    if (!out) return
-    const file = new File([out.blob], name, { type: 'image/gif' })
-    try {
-      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean }
-      if (nav.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `${rangeLabel} — ${companyName ?? 'HammerTrack'}` })
-        return
-      }
-    } catch { /* a cancelled share is not an error */ return }
-    setErr('This phone cannot share files directly — use Save and attach it.')
-  }
-
   if (!open) return null
-  const total = phase === 'capture' ? frames : frames
+  const total = frames
   const pct = total ? Math.round((done / total) * 100) : 0
 
   return (
@@ -157,6 +170,14 @@ export function GifRecorder({
                 {frames} frames · {seconds}s · {out.kb > 1024 ? `${(out.kb / 1024).toFixed(1)} MB` : `${out.kb} KB`}
                 {out.kb / 1024 > MMS_LIMIT_MB && <span className="text-amber"> · may be too big to text</span>}
               </p>
+              <ExportActions
+                filename={name}
+                blobUrl={out.url}
+                link={link.link}
+                linkState={link.state}
+                linkError={link.error}
+                shareText={`${rangeLabel} replay — ${companyName ?? 'HammerTrack'}`}
+              />
             </>
           ) : (
             <>
@@ -216,16 +237,12 @@ export function GifRecorder({
           {out ? (
             <>
               <button type="button" onClick={() => { clearOut(); setErr(null) }}
-                className="rounded-xl border border-navy-700 text-muted py-3 px-4 text-sm font-semibold hover:text-ink">
-                Again
+                className="flex-1 rounded-xl border border-navy-700 text-muted py-3 text-sm font-semibold hover:text-ink">
+                Record again
               </button>
-              <a href={out.url} download={name}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-navy-700 bg-navy-950 text-ink py-3 text-sm font-semibold">
-                <Download className="h-4 w-4" /> Save
-              </a>
-              <button type="button" onClick={share}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3">
-                <Share2 className="h-4 w-4" /> Send
+              <button type="button" onClick={onClose}
+                className="flex-1 rounded-xl border border-navy-700 bg-navy-950 text-ink py-3 text-sm font-semibold">
+                Done
               </button>
             </>
           ) : busy ? (

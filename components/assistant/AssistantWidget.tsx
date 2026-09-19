@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Sparkles, X, Send, HardHat, Mic, Volume2, VolumeX, Search, SquarePen } from 'lucide-react'
+import { speechDoor, startSpeech, SPEECH_UPDATE_HINT, type SpeechDoor, type SpeechSession } from '@/lib/speech-input'
+import { toast } from '@/components/ui/feedback'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
 interface Msg { role: 'user' | 'assistant'; text: string; at?: string; degraded?: boolean }
@@ -24,23 +26,6 @@ function sessionStart(msgs: Msg[]): number {
   return Math.max(start, msgs.length - VISIBLE_CAP)
 }
 
-// Minimal typings for the vendor-prefixed Web Speech API (same shape as MapSearch).
-type SpeechRecognitionLike = {
-  lang: string
-  interimResults: boolean
-  maxAlternatives: number
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null
-  onend: (() => void) | null
-  onerror: (() => void) | null
-  start: () => void
-  stop: () => void
-}
-
-function getSpeechCtor(): (new () => SpeechRecognitionLike) | null {
-  if (typeof window === 'undefined') return null
-  const w = window as unknown as Record<string, unknown>
-  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null
-}
 
 export function AssistantWidget() {
   const [open, setOpen] = useState(false)
@@ -81,9 +66,15 @@ export function AssistantWidget() {
   const voiceModeRef = useRef(false)
   voiceModeRef.current = voiceMode
   const scrollRef = useRef<HTMLDivElement>(null)
-  const recRef = useRef<SpeechRecognitionLike | null>(null)
+  const recRef = useRef<SpeechSession | null>(null)
   const historyLoaded = useRef(false)
-  const voiceOk = !!getSpeechCtor()
+  // Which door voice has here (lib/speech-input.ts): the browser's own
+  // recognizer, the native plugin, an app build from before the plugin (the
+  // mic stays and SAYS so — Brian, Sep 19: "Talk to ai verbally button not
+  // working"), or none at all, which hides it.
+  const [door, setDoor] = useState<SpeechDoor>('none')
+  useEffect(() => { setDoor(speechDoor()) }, [])
+  const voiceOk = door !== 'none'
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -181,6 +172,7 @@ export function AssistantWidget() {
   }
 
   const toggleVoiceMode = () => {
+    if (door === 'update') { toast(SPEECH_UPDATE_HINT, { ttl: 6000 }); return }
     const next = !voiceMode
     setVoiceMode(next)
     voiceModeRef.current = next
@@ -192,24 +184,18 @@ export function AssistantWidget() {
   }
 
   const startVoice = () => {
-    const Ctor = getSpeechCtor()
-    if (!Ctor || listening) return
-    const rec = new Ctor()
-    recRef.current = rec
-    rec.lang = 'en-US'
-    rec.interimResults = true
-    rec.maxAlternatives = 1
-    rec.onresult = (e) => {
-      const results = Array.from(e.results as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>)
-      const text = results.map((r) => r[0].transcript).join(' ').trim()
-      setInput(text)
+    if (listening) return
+    if (door === 'update') { toast(SPEECH_UPDATE_HINT, { ttl: 6000 }); return }
+    const session = startSpeech({
+      onPartial: (text) => setInput(text),
       // Final phrase → hands-free ask.
-      if (results.some((r) => r.isFinal) && text) ask(text)
-    }
-    rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
+      onFinal: (text) => { setInput(text); if (text) ask(text) },
+      onEnd: () => setListening(false),
+      onError: (msg) => { setListening(false); toast(msg, { variant: 'error', ttl: 6000 }) },
+    })
+    if (!session) return
+    recRef.current = session
     setListening(true)
-    rec.start()
   }
 
   return (
@@ -387,10 +373,11 @@ export function AssistantWidget() {
             {voiceOk && (
               <button
                 onClick={startVoice}
-                title="Ask by voice"
+                title={door === 'update' ? SPEECH_UPDATE_HINT : 'Ask by voice'}
                 className={
                   'grid place-items-center w-10 h-10 rounded-full border transition flex-none ' +
-                  (listening ? 'bg-alert/20 border-alert text-alert animate-pulse' : 'bg-navy-900 border-navy-700 text-faint hover:text-ink')
+                  (listening ? 'bg-alert/20 border-alert text-alert animate-pulse' : 'bg-navy-900 border-navy-700 text-faint hover:text-ink') +
+                  (door === 'update' ? ' opacity-60' : '')
                 }
               >
                 <Mic className="h-4 w-4" />
