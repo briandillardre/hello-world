@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { X, Siren, WifiOff, Wrench, DollarSign, Sun, Sparkles } from 'lucide-react'
+import { DEAD_MS } from '@/lib/glance'
 import type { AlertEvent, AssetWithLocation } from '@/lib/types'
 
 interface TrayInsight {
@@ -104,11 +105,12 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
         href: '/alerts',
       })
     }
-    // Silent = has a tracker but stale 48h+ — OR has a tracker that has NEVER
-    // reported (no location at all), the failure mode a brand-new install hits.
+    // Silent = has a tracker but dark (DEAD_MS, the same day the map dot goes
+    // gray) — OR has a tracker that has NEVER reported (no location at all),
+    // the failure mode a brand-new install hits.
     const silent = assets.filter((a) =>
       (a.type === 'vehicle' || a.type === 'equipment') && (
-        (a.location && Date.now() - new Date(a.location.timestamp).getTime() > 48 * 3_600_000) ||
+        (a.location && Date.now() - new Date(a.location.timestamp).getTime() > DEAD_MS) ||
         (!a.location && !!a.tracker_id)
       ))
     if (silent.length) {

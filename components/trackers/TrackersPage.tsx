@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Radio, Inbox, Trash2, Undo2, ArrowRight, Cpu, MapPin } from 'lucide-react'
+import { DEAD_MS } from '@/lib/glance'
 import { RETENTION_DAYS, type TrackersOverview, type TrackerRow, type MoveRow } from '@/lib/trackers-types'
 import { MODELS } from '@/lib/devices'
 import { undoTrackerMoveAction, restoreAssetAction } from '@/lib/actions/trackers'
@@ -20,7 +21,7 @@ const modelName = (m: TrackerRow['model']) => (m ? MODELS[m].name : 'Tracker')
 function seenTone(iso: string | null): string {
   if (!iso) return 'text-faint'
   const age = Date.now() - Date.parse(iso)
-  return age < 2 * 3_600_000 ? 'text-[#34d399]' : age < 48 * 3_600_000 ? 'text-amber' : 'text-faint'
+  return age < 2 * 3_600_000 ? 'text-[#34d399]' : age < DEAD_MS ? 'text-amber' : 'text-faint'
 }
 
 /**

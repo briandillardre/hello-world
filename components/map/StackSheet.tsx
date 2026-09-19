@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { Layers, ZoomIn } from 'lucide-react'
+import { DEAD_MS } from '@/lib/glance'
 import type { AssetType, AssetWithLocation } from '@/lib/types'
 import { MapSheet } from './MapSheet'
 
@@ -29,7 +30,6 @@ const ORDER: AssetType[] = ['vehicle', 'equipment', 'personnel', 'tool']
 const GROUP_LABEL: Record<AssetType, [string, string]> = {
   vehicle: ['truck', 'trucks'], equipment: ['machine', 'machines'], personnel: ['person', 'people'], tool: ['tool', 'tools'],
 }
-const DEAD_MS = 48 * 3_600_000
 
 function ageWord(ms: number): string {
   if (ms < 3_600_000) return `${Math.max(1, Math.floor(ms / 60_000))} min`
