@@ -5,11 +5,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Teltonika box in a truck (flespi webhook) and, since Sep 9 (Brian: "phone
  * as ble gateway is a must"), a crew phone running the app.
  *
- *  • Identity tolerance: a tool's tracker_id may be the tag's MAC, its
- *    iBeacon identity with HEX major/minor (how Teltonika reports it), the
- *    same with DECIMAL major/minor (what every beacon app and our own Tag
- *    scanner show), or the owner shorthand UUID:minor (decimal only — a raw
- *    hex shorthand collided across pucks, ship-check Aug 12).
+ *  • Identity tolerance: a tool's tracker_id may be the tag's MAC (bare, or
+ *    in the zero-UUID form a Teltonika box reports a factory EYE Beacon in —
+ *    the two are the same tag and match each other), its iBeacon identity
+ *    with HEX major/minor (how Teltonika reports it), the same with DECIMAL
+ *    major/minor (what every beacon app and our own Tag scanner show), or
+ *    the owner shorthand UUID:minor (decimal only — a raw hex shorthand
+ *    collided across pucks, ship-check Aug 12). Harness:
+ *    `node scripts/ble-sightings-test.mjs` — run it after ANY change here.
  *  • Strongest-signal arbitration: two trucks parked side by side BOTH hear
  *    every tag; the one that hears it LOUDEST is holding it. A challenger
  *    takes a tool only by out-shouting the current holder by 6 dB, or once
@@ -35,11 +38,24 @@ export function beaconCandidates(id: string, reportedAs: BeaconNumbering = 'hex'
   // segment: "00000000-0000-0000-0000-7CD9F408B572". The MAC is printed on
   // the tag, so a tool registered with just that 12-hex MAC must match — no
   // EYE-app reconfiguration needed (Sep 9, five beacons zip-tied on in the
-  // field and heard within the hour; PR #80). A phone gateway on Android
-  // reports the same tag by its MAC directly ("7C:D9:F4:08:B5:72") — the
-  // separator-insensitive fallback in recordBeaconSightings covers that form.
+  // field and heard within the hour; PR #80).
   const zeroMac = id.match(/^0{8}-0{4}-0{4}-0{4}-([0-9a-fA-F]{12})$/)
   if (zeroMac) out.push(zeroMac[1])
+  // The SAME tag heard by a phone: Android hands the app the bare MAC
+  // ("7C:D9:F4:08:B5:53" — an Eddystone frame carries no Apple manufacturer
+  // data, so parseIBeacon has nothing to parse). Every EYE Beacon in the
+  // fleet is registered in the truck's zero-UUID form (that is what the
+  // auto-registered "Tagged machine …B4CD" rows are, and what the Add-trackers
+  // flow writes), and the separator-insensitive fallback compares WHOLE
+  // strings — "7cd9f408b553" is not "000000000000000000000000" + it — so a
+  // phone standing beside the tag matched nothing (Brian, Sep 19, the New
+  // Holland's tag: "Not working even with my phone right beside it"). The
+  // zero-UUID form is a candidate for every bare MAC now, both ways round.
+  const bareMac = id.match(/^([0-9a-fA-F]{2})[:-]?([0-9a-fA-F]{2})[:-]?([0-9a-fA-F]{2})[:-]?([0-9a-fA-F]{2})[:-]?([0-9a-fA-F]{2})[:-]?([0-9a-fA-F]{2})$/)
+  if (bareMac) {
+    const mac = bareMac.slice(1).join('').toUpperCase()
+    out.push(mac, `00000000-0000-0000-0000-${mac}`)
+  }
   // iBeacon identity = <uuid>:<major>:<minor>. A MAC ("DC:0D:04:BB:00:3A")
   // also ends in two colon-separated pairs — only a UUID-length prefix counts.
   const parts = id.match(/^(.{20,}):([0-9a-zA-Z]{1,5}):([0-9a-zA-Z]{1,5})$/)
