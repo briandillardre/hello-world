@@ -1,5 +1,6 @@
 import type { LiveStatus } from '@/lib/live-status'
 import { shortDuration } from '@/lib/live-status'
+import { POWERED_MIN_V, PLUG_HINT, externalVolts } from '@/lib/power-loss'
 
 /**
  * Current-status badge — the "what's it doing now" line. Shows the derived
@@ -40,5 +41,25 @@ export function LiveStatusBadge({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * "No truck power" — under the status when the newest fix's power pin read
+ * below POWERED_MIN_V: the unit is on its own little battery and about to go
+ * dark. This is the line that was missing while Truck 4 sat at "No signal ·
+ * 26h · Battery 41%" (Brian, Sep 18). Renders nothing for units that never
+ * report a power pin — battery TAT141s, phones, tags.
+ */
+export function TruckPowerNote({ raw, battery, compact = false }: { raw: unknown; battery?: number | null; compact?: boolean }) {
+  const v = externalVolts(raw)
+  if (v == null || v >= POWERED_MIN_V) return null
+  return (
+    <p className={'flex items-start gap-1.5 text-amber leading-snug ' + (compact ? 'text-[11px]' : 'text-[12px]')}>
+      <span aria-hidden className="flex-none">⚡</span>
+      <span>
+        <b>No truck power</b> at the last fix — running on its own battery{battery != null ? ` (${Math.round(battery)}%)` : ''}. {PLUG_HINT}
+      </span>
+    </p>
   )
 }

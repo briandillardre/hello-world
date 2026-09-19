@@ -180,6 +180,12 @@ export const GUIDES: HelpGuide[] = [
               last four digits of the IMEI.
             </P>
             <P>
+              <B>Plug came out?</B> The unit runs on a small battery of its own for a while, then goes
+              dark. Once it has been off truck power for a minute you get an alert that says so, and the
+              truck&apos;s page reads <B>No truck power</B>. Push the plug back in; the alert clears itself
+              when power returns. If it keeps happening, zip-tie the plug or move the unit to a 12V pigtail.
+            </P>
+            <P>
               <B>Swapped it into another truck?</B> Do not edit the Tracker ID on the truck&apos;s page.
               Use <B>Reassign tracker</B> on the truck, or the drawer, so each truck keeps its own history.
               See <B>Swapping &amp; moving trackers</B>.

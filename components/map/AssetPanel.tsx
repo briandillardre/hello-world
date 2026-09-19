@@ -12,7 +12,8 @@ import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { shortTracker } from '@/lib/devices'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
-import { LiveStatusBadge } from '@/components/assets/LiveStatus'
+import { LiveStatusBadge, TruckPowerNote } from '@/components/assets/LiveStatus'
+import { POWERED_MIN_V } from '@/lib/power-loss'
 import { Badge } from '@/components/ui/badge'
 import { MapSheet } from './MapSheet'
 
@@ -491,6 +492,7 @@ function AssetDetails({
             {showStatus && (
               <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} compact />
             )}
+            {showStatus && <TruckPowerNote raw={loc?.raw} battery={loc?.battery} compact />}
             {(place || poi) && (
               <div className="flex items-start gap-1.5">
                 <MapPin className="h-4 w-4 text-teal flex-none mt-0.5" />
@@ -511,8 +513,9 @@ function AssetDetails({
       )}
       {/* No photo: still lead with the live status for vehicles/equipment. */}
       {!asset.photo_url && showStatus && (
-        <div className="bg-navy-800 rounded-lg px-3 py-2.5">
+        <div className="bg-navy-800 rounded-lg px-3 py-2.5 space-y-1.5">
           <LiveStatusBadge status={liveStatus} idleTodayMin={idleTodayMin} lastSeenMs={loc?.timestamp ? Date.parse(loc.timestamp) : null} />
+          <TruckPowerNote raw={loc?.raw} battery={loc?.battery} />
         </div>
       )}
       {asset.type === 'tool' && gateway && (
@@ -932,7 +935,10 @@ function EngineWidget({ asset }: { asset: AssetWithLocation }) {
   if (p.engineOn != null) cells.push({ label: 'Engine', value: p.engineOn ? 'RUNNING' : 'OFF', accent: p.engineOn ? 'text-[#34d399]' : 'text-faint' })
   if (rpm != null) cells.push({ label: 'RPM', value: rpm.toLocaleString() })
   if (fuelPct != null) cells.push({ label: 'Fuel', value: `${Math.round(fuelPct)}%`, accent: fuelPct < 15 ? 'text-alert' : undefined })
-  if (p.volts != null) cells.push({ label: '12V batt', value: `${p.volts.toFixed(1)} V`, accent: p.health === 'low' ? 'text-alert' : p.health === 'weak' ? 'text-amber' : undefined })
+  // Under POWERED_MIN_V the pin is not reading a weak battery, it is reading
+  // NO truck — the plug is out (lib/power-loss). Say that, not "0.0 V".
+  if (p.volts != null && p.volts < POWERED_MIN_V) cells.push({ label: 'Truck power', value: 'NONE', accent: 'text-alert' })
+  else if (p.volts != null) cells.push({ label: '12V batt', value: `${p.volts.toFixed(1)} V`, accent: p.health === 'low' ? 'text-alert' : p.health === 'weak' ? 'text-amber' : undefined })
   if (odoM != null) cells.push({ label: 'Odo (tracker)', value: `${Math.round(odoM / 1609.34).toLocaleString()} mi` })
   if (altM != null) cells.push({ label: 'Altitude', value: `${Math.round(altM * 3.28084).toLocaleString()} ft` })
 

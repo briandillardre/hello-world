@@ -134,7 +134,7 @@ export async function createAssetAction(input: CreateAssetInput, photoForm?: For
   const photoUrl = orNull(input.photo_url) ?? uploaded[0]?.url ?? null
 
   const { asset, error } = await createAsset(companyId, {
-    name: input.name.trim(),
+    name: input.name.trim().slice(0, 120),
     type: input.type,
     tracker_id: orNull(input.tracker_id),
     category: orNull(input.category),
@@ -438,7 +438,7 @@ export async function updateAssetAction(
   }
 
   const { asset, error } = await updateAsset(id, {
-    ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+    ...(input.name !== undefined ? { name: input.name.trim().slice(0, 120) } : {}),
     ...(input.type !== undefined ? { type: input.type } : {}),
     ...(input.tracker_id !== undefined ? { tracker_id: orNull(input.tracker_id) } : {}),
     ...metaPatch,

@@ -193,6 +193,18 @@ It **fails closed** — an unresolvable owner, an unset allow-list, or any error
 means no webhook. A wrong `true` ships a customer's day to someone else's
 phone; a wrong `false` costs the founder a duplicate they already get by push.
 
+The health cron (`/api/cron/health`) posts to the same topic through
+`notifySystem` (`lib/monitor.ts`). Its per-unit "tracker silent" line used to
+repeat every four hours with the same two dead units, because a lambda has no
+memory between runs. Since Sep 19 it keeps the silent set in `system_state`
+(migration 112, `lib/system-state.ts`) and speaks only on **change**: a unit
+that goes dark is announced once, with its diagnosis (`silenceDiagnosis` in
+`lib/power-loss.ts` — lost truck power at T · already on its own battery at
+its last fix · had truck power and stopped checking in, so coverage or SIM ·
+battery unit), and a unit that comes back is announced once. The check runs
+hourly; a database without the table falls back to the old four-a-day cadence
+rather than go quiet about a dead unit.
+
 ## The link in every email and text
 
 `lib/notify-token.ts`. Same idea as share links: the token **is** the grant, so
@@ -247,6 +259,13 @@ bug and are fixed the same way:
   are gated on `isPlatformOwnerCompany()` and both fail closed.
 * `mirrorOwnerWebhook()` is the one call for any non-summary path that wants the
   founder mirror.
+* `power_lost` (Sep 19, `lib/power-loss.ts`) is a telemetry alert like
+  `fuel_low`: the OBD unit's power pin fell under 6 V and stayed there for a
+  minute of device time — the plug is out, or the port has no power. One push
+  per episode at `warning` severity (push + in-app + the founder mirror, never
+  SMS), debounced past a flicker, at most one push per asset per 24 h (later
+  episodes write the event without paging), and power returning acknowledges
+  it by itself.
 
 ## Known gaps
 
