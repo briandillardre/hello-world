@@ -52,9 +52,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.redirect(new URL(to, req.nextUrl.origin), 302)
   }
 
-  const p = (row.payload ?? {}) as { path?: unknown; filename?: unknown }
-  if (typeof p.path !== 'string' || !/^[0-9a-f-]{36}\/exports\/[a-z0-9]{12}\.(gif|png|pdf)$/i.test(p.path)) return gone()
-  const filename = typeof p.filename === 'string' && p.filename ? p.filename : p.path.slice(p.path.lastIndexOf('/') + 1)
+  // A pending row (minted, never finalized) has no file behind it yet: 410.
+  const p = (row.payload ?? {}) as { path?: unknown; filename?: unknown; pending?: unknown }
+  if (p.pending || typeof p.path !== 'string' || !/^[0-9a-f]{16}\/exports\/[23456789abcdefghjkmnpqrstuvwxyz]{12}\.(gif|png|pdf)$/.test(p.path)) return gone()
+  // Only finalize writes the filename, already sanitized — re-checked here so
+  // the header never carries anything but letters, digits, dot and dash.
+  const filename = typeof p.filename === 'string' && /^[A-Za-z0-9._-]{1,84}$/.test(p.filename) ? p.filename : p.path.slice(p.path.lastIndexOf('/') + 1)
   const { data: signed, error } = await svc.storage.from('exports').createSignedUrl(p.path, 600, { download: filename })
   if (error || !signed?.signedUrl) return gone()
   return NextResponse.redirect(signed.signedUrl, 302)

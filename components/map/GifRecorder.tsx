@@ -65,11 +65,15 @@ export function GifRecorder({
   const rangeLabel = ranges.find((r) => r.key === range)?.label ?? 'Live'
   const cancelRef = useRef(false)
   const urlRef = useRef<string | null>(null)
+  /** Which recording an in-flight upload belongs to — "Record again" bumps
+   *  it, so the first GIF's link can never land on the second GIF's sheet. */
+  const linkSeqRef = useRef(0)
 
   // A blob URL outlives the component unless it is revoked — and a handful of
   // un-revoked GIFs is real memory on a phone.
   const clearOut = useCallback(() => {
     if (urlRef.current) { URL.revokeObjectURL(urlRef.current); urlRef.current = null }
+    linkSeqRef.current++
     setOut(null)
     setLink({ state: 'off', link: null, error: null })
   }, [])
@@ -84,9 +88,10 @@ export function GifRecorder({
    *  while the person is already looking at the preview. */
   const linkIt = async (blob: Blob, filename: string) => {
     if (!exportLinksAvailable) { setLink({ state: 'off', link: null, error: null }); return }
+    const seq = ++linkSeqRef.current
     setLink({ state: 'pending', link: null, error: null })
     const r = await publishExport(blob, filename, 'gif', `${companyName ?? 'HammerTrack'} — ${rangeLabel} replay`)
-    if (cancelRef.current) return
+    if (cancelRef.current || seq !== linkSeqRef.current) return
     setLink(r.ok ? { state: 'ready', link: r.link, error: null } : { state: 'failed', link: null, error: r.error })
   }
 

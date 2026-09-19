@@ -15,7 +15,7 @@ import { normalizeRole, type Role } from './permissions'
  * company, which is exactly the grain we need.
  */
 
-export const PUSH_KINDS = ['alerts', 'evening', 'monday', 'nag', 'receipts'] as const
+export const PUSH_KINDS = ['alerts', 'evening', 'monday', 'nag', 'receipts', 'shares'] as const
 export type PushKind = (typeof PUSH_KINDS)[number]
 
 export type PersonNotifyPrefs = Record<PushKind, boolean>
@@ -34,6 +34,10 @@ export const PUSH_KIND_META: PushKindMeta[] = [
   { key: 'evening', label: 'Evening digest', blurb: 'The end-of-day wrap for the whole company.' },
   { key: 'monday', label: 'Monday agenda', blurb: 'Last week’s problems as this week’s list.' },
   { key: 'nag', label: 'Still on the clock', blurb: 'Who never clocked out.' },
+  // A teammate choosing to send you their map screen (113). Person to
+  // person, never a broadcast — on for everyone by default, and still a
+  // switch, because every push in this app answers to one (106/107).
+  { key: 'shares', label: 'Shared map views', blurb: 'A teammate sends you the map set up the way they see it.' },
 ]
 
 /**
@@ -51,6 +55,7 @@ export function defaultPersonNotify(role: Role): PersonNotifyPrefs {
     evening: runsTheCompany,
     monday: runsTheCompany,
     nag: role === 'admin' || role === 'manager',
+    shares: true,
   }
 }
 

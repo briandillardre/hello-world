@@ -338,7 +338,10 @@ export function MapPageClient({ assets, geofences: initialGeofences, places: ini
         measurements={measurements}
         sharedView={sharedView}
         divisionFilter={divFilter}
-        onDivisionFilter={setDivFilter}
+        // A shared view's filter is applied only when it names one of THIS
+        // company's divisions (or the "unassigned" pick); anything else reads
+        // as "no filter" — a stale or crafted id must never blank the map.
+        onDivisionFilter={(v) => setDivFilter(v === 'none' || (v != null && divisions.some((d) => d.id === v)) ? v : null)}
       />
       {/* TODAY — the morning exceptions card, once per day on the map
           (Brian, Aug 22: Today pops up on the map, not a full page). */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Share2, X, Link2, Send, Check, Smartphone } from 'lucide-react'
 import { createViewLinkAction, listTeammatesAction, sendViewLinkAction, type Teammate } from '@/lib/actions/share-links'
 import { deliverLink, copyText } from '@/lib/map-export'
@@ -35,7 +35,10 @@ export function ShareViewSheet({ open, onClose, snapshot, summary, defaultTitle 
   defaultTitle: string
 }) {
   const [title, setTitle] = useState(defaultTitle)
-  const [link, setLink] = useState<{ id: string; url: string; path: string; title: string } | null>(null)
+  /** The link plus the title it was minted FROM (as typed) — the server
+   *  normalises whitespace, so comparing against its answer re-minted on
+   *  every tap (ship-check). */
+  const [link, setLink] = useState<{ id: string; url: string; path: string; title: string; typed: string } | null>(null)
   const [linking, setLinking] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [team, setTeam] = useState<Teammate[] | null>(null)
@@ -52,24 +55,46 @@ export function ShareViewSheet({ open, onClose, snapshot, summary, defaultTitle 
     return () => { gone = true }
   }, [open])
 
-  const ensureLink = async () => {
-    const t = title.trim().slice(0, 80) || defaultTitle
-    if (link && link.title === t) return link
+  const linkRef = useRef(link)
+  linkRef.current = link
+  const mintSeq = useRef(0)
+  const mint = async (typed: string) => {
+    const seq = ++mintSeq.current
     setLinking(true)
     setErr(null)
     try {
-      const r = await createViewLinkAction({ title: t, view: snapshot })
+      const r = await createViewLinkAction({ title: typed, view: snapshot })
+      if (seq !== mintSeq.current) return null // a newer title won
       if (!r.ok) { setErr(r.error); return null }
-      const l = { id: r.id, url: r.url, path: r.path, title: r.title }
+      const l = { id: r.id, url: r.url, path: r.path, title: r.title, typed }
       setLink(l)
       return l
     } catch {
-      setErr('Could not make the link — try again.')
+      if (seq === mintSeq.current) setErr('Could not make the link — try again.')
       return null
     } finally {
-      setLinking(false)
+      if (seq === mintSeq.current) setLinking(false)
     }
   }
+  const typedTitle = () => title.trim().slice(0, 80) || defaultTitle
+  const ensureLink = async () => {
+    const t = typedTitle()
+    if (linkRef.current && linkRef.current.typed === t) return linkRef.current
+    return mint(t)
+  }
+  // Minted as the sheet opens, so the first Copy / Send happens inside the
+  // tap (clipboard and share sheets need the gesture; an awaited server
+  // round trip first loses it on Safari and Chrome alike). Retitling
+  // re-mints after a short pause for the same reason — by the time the
+  // thumb reaches a button, the link with the new title already exists.
+  useEffect(() => {
+    if (!open) return
+    const t = typedTitle()
+    if (linkRef.current?.typed === t) return
+    const h = setTimeout(() => { void mint(t) }, linkRef.current ? 600 : 0)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, title])
 
   const copy = async () => {
     const l = await ensureLink()

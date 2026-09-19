@@ -886,8 +886,9 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current)
       const url = URL.createObjectURL(blob)
       exportUrlRef.current = url
+      const seq = ++exportSeqRef.current
       setExportRes({ title: 'PDF', how, filename: file, blobUrl: url, linkState: exportLinksAvailable ? 'pending' : 'off' })
-      void linkExport(blob, file, 'pdf', 'PDF')
+      void linkExport(seq, blob, file, 'pdf', 'PDF')
     } catch (e) {
       setExportRes({ title: 'PDF', error: e instanceof Error ? e.message : 'Could not build the PDF.' })
     }
@@ -896,10 +897,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   /** Park a finished export in storage and hand the result sheet its link —
    *  the door that works inside the app, where <a download> is a no-op
    *  (Brian, Sep 19: "GIF won't save to phone"; lib/export-upload.ts). */
-  const linkExport = async (blob: Blob, file: string, kind: 'gif' | 'png' | 'pdf', title: string) => {
+  const exportSeqRef = useRef(0)
+  const linkExport = async (seq: number, blob: Blob, file: string, kind: 'gif' | 'png' | 'pdf', title: string) => {
     if (!exportLinksAvailable) return
     const r = await publishExport(blob, file, kind, `${brand?.companyName ?? 'HammerTrack'} — ${title}`)
-    setExportRes((cur) => (cur && cur.filename === file
+    // Only the export the sheet is still showing takes the answer: two PNGs
+    // in the same second share a filename, and a sheet closed and reopened
+    // on a new export must not wear the old one's link (ship-check P2).
+    if (seq !== exportSeqRef.current) return
+    setExportRes((cur) => (cur
       ? { ...cur, link: r.ok ? r.link : null, linkState: r.ok ? 'ready' : 'failed', linkError: r.ok ? null : r.error }
       : cur))
   }
@@ -918,8 +924,9 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current)
       const url = URL.createObjectURL(blob)
       exportUrlRef.current = url
+      const seq = ++exportSeqRef.current
       setExportRes({ title: 'PNG', imageUrl: url, how, filename: file, blobUrl: url, linkState: exportLinksAvailable ? 'pending' : 'off' })
-      void linkExport(blob, file, 'png', 'PNG')
+      void linkExport(seq, blob, file, 'png', 'PNG')
     } catch (e) {
       setExportRes({ title: 'PNG', error: e instanceof Error ? e.message : 'Could not take the picture.' })
     }
@@ -1151,6 +1158,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   }, [historyRows, range, customFrom, customTo, earliestMs, tz, assets, geofences, fetchedRows, pairingEpisodes])
 
   const tracksEff = dayData?.tracks ?? tracks
+  // Ref for effects that must read the CURRENT tracks without re-running on
+  // every track update (the shared-view opener polls for its follow target).
+  const tracksEffRef = useRef(tracksEff)
+  tracksEffRef.current = tracksEff
   const realWindowEff = dayData?.window ?? null
   // Daylight shading follows the replay clock only where a day still reads
   // as a day: Today · Yesterday · 7d · 30d (Brian, Sep 4). YTD / All would
@@ -6111,6 +6122,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // offsetWidth is layout-based, so the hide transform can't skew the
   // measurement.
   const [railTabOffset, setRailTabOffset] = useState<number | null>(null)
+  /** The MAP TOOLS tab itself — the radar chip measures against it so the
+   *  two never print on top of each other (Brian, Sep 19). */
+  const railTabEl = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     if (!mapReady) return
     const el = mapContainer.current?.querySelector('.maplibregl-ctrl-top-right') as HTMLElement | null
@@ -6274,6 +6288,22 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   }, [mapReady, range, pbPlaying, terrain3d])
 
   // Chip position: measured off the radar button so it hugs the rail.
+  //
+  // Brian, Sep 19 ("Right side radar buttons and features need to be
+  // addressed" + "Radar movement thing is weird out in space when right tray
+  // is minimized", screenshots): the RADAR chip printed straight across the
+  // MAP TOOLS tab, and with the button column tucked the chip — or its lone
+  // orange chevron — hung in the middle of the map where the button USED to
+  // be (the spot was measured once and never again). Rules now:
+  //   • rail out: the handle sits FLUSH against the radar button (2 px, not
+  //     8), so it reads as a tab growing out of that button; if its row would
+  //     cross the MAP TOOLS tab (top: 44%, so it lands wherever the column
+  //     happens to put the radar button) the slide-out moves LEFT of the tab;
+  //   • rail tucked: the slide-out DOCKS to the right edge at that same
+  //     height, an edge tab exactly like MAP TOOLS — still there to pause or
+  //     scrub, never floating; if it would cross the MAP TOOLS tab it sits
+  //     just above it instead;
+  //   • re-measured whenever the column tucks, slides back or resizes.
   const [radarChipPos, setRadarChipPos] = useState<{ top: number; right: number } | null>(null)
   useEffect(() => {
     // Measured whenever radar is ON (not just while the chip is open): the
@@ -6284,12 +6314,27 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const wrap = mapContainer.current, b = radarBtnEl.current
       if (!wrap || !b) return
       const wr = wrap.getBoundingClientRect(), br = b.getBoundingClientRect()
-      setRadarChipPos({ top: br.top - wr.top, right: wr.right - br.left + 8 })
+      if (br.height === 0) return // not laid out yet: keep the last good spot
+      let top = br.top - wr.top
+      let right = railHidden ? 0 : wr.right - br.left + 2
+      const tab = railTabEl.current
+      if (tab) {
+        const tr = tab.getBoundingClientRect()
+        const crosses = tr.height > 0 && br.bottom > tr.top - 4 && br.top < tr.bottom + 4
+        if (crosses) {
+          if (railHidden) top = Math.max(0, tr.top - wr.top - br.height - 6)
+          else right = Math.max(right, wr.right - tr.left + 6)
+        }
+      }
+      setRadarChipPos({ top, right })
     }
     measure()
+    // The tab and the column both slide over .25 s — measure again once
+    // they have landed.
+    const settle = window.setTimeout(measure, 320)
     window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [radarOn, mapReady])
+    return () => { window.clearTimeout(settle); window.removeEventListener('resize', measure) }
+  }, [radarOn, mapReady, railHidden, railTabOffset])
   // Hand-scrub of the radar loop (Brian, Aug 22): dragging the chip's bar
   // moves the frame directly; a manual scrub pauses the loop (manual wins).
   const radarScrubbing = useRef(false)
@@ -7236,7 +7281,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const layer = q.get('layer')
     if (!hasSpot && !layer) return
     spotAppliedRef.current = true
-    if (hasSpot) map.current?.jumpTo({ center: [plng, plat], zoom: Math.min(20, Math.max(3, Number(q.get('z')) || 17)) })
+    if (hasSpot) {
+      camRestoredRef.current = true // the deep link owns the frame; the boot fit stands down
+      map.current?.jumpTo({ center: [plng, plat], zoom: Math.min(20, Math.max(3, Number(q.get('z')) || 17)) })
+    }
     if (layer && /^[a-z0-9_-]{1,32}$/.test(layer)) setOverlaysOn((o) => ({ ...o, [layer]: true }))
   }, [mapReady])
 
@@ -7288,6 +7336,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     setShowLabels(v.labels !== false)
     setSunMode(!!v.sun)
     if (v.opacity) setOverlayOpacity((prev) => ({ ...prev, ...v.opacity }))
+    // The shared camera OWNS the opening frame: the shell-first boot fit
+    // (fitAll when the fleet streams in) must stand down exactly as it does
+    // for a restored last-camera (ship-check P1 — on a cold boot the fleet
+    // landed a second later and yanked the map off the shared spot).
+    camRestoredRef.current = true
     map.current?.jumpTo({ center: [v.cam.lng, v.cam.lat], zoom: v.cam.zoom, bearing: v.cam.bearing ?? 0, pitch: v.cam.pitch ?? 0 })
     if (v.range !== 'live') {
       if (v.range === 'custom' && v.from && v.to) { setCustomFrom(v.from); setCustomTo(v.to) }
@@ -7296,31 +7349,44 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     // The sender's filter is part of the picture — including "no filter".
     onDivisionFilter?.(v.division ?? null)
-    if (v.follow) {
-      // Pin the camera without auto-playing (handleFollow would start playback).
-      bearingRef.current = v.cam.bearing ?? 0
-      pitchRef.current = v.cam.pitch ?? 0
-      entranceRef.current = 0
-      camRef.current = null
-      setFollowId(v.follow)
-    }
     // Shell-first boot streams assets and zones in after mount: look for the
-    // open sheet's subject briefly, then let it go quietly — it may simply be
-    // hidden from this person (111), which is the right outcome.
+    // open sheet's subject AND the follow target briefly, then let them go
+    // quietly — either may simply be hidden from this person (111), which is
+    // the right outcome. Follow in particular must WAIT for its target: the
+    // release effect drops a followId whose track is not in tracksEff, so
+    // setting it before the fleet arrives released it on the next render.
     const started = Date.now()
     let timer: ReturnType<typeof setTimeout> | null = null
     let gone = false
+    let followPending = !!v.follow
+    let subjectPending = !!(v.asset || v.zone)
     const attempt = () => {
       if (gone) return
-      if (v.asset) {
-        const a = assetsRef.current.find((x) => x.id === v.asset)
-        if (a) { setSelectedAsset(a); return }
-      } else if (v.zone) {
-        const g = geofencesRef.current.find((x) => x.id === v.zone)
-        if (g) { setSelectedZone(g); return }
-      } else {
-        return
+      if (subjectPending) {
+        if (v.asset) {
+          const a = assetsRef.current.find((x) => x.id === v.asset)
+          if (a) { setSelectedAsset(a); subjectPending = false }
+        } else if (v.zone) {
+          const g = geofencesRef.current.find((x) => x.id === v.zone)
+          if (g) { setSelectedZone(g); subjectPending = false }
+        }
       }
+      if (followPending && v.follow) {
+        const f = v.follow
+        const present = f.startsWith('zone:')
+          ? geofencesRef.current.some((g) => `zone:${g.id}` === f)
+          : tracksEffRef.current.some((tr) => tr.assetId === f)
+        if (present) {
+          // Pin the camera without auto-playing (handleFollow would start playback).
+          bearingRef.current = v.cam.bearing ?? 0
+          pitchRef.current = v.cam.pitch ?? 0
+          entranceRef.current = 0
+          camRef.current = null
+          setFollowId(f)
+          followPending = false
+        }
+      }
+      if (!subjectPending && !followPending) return
       if (Date.now() - started < 8000) timer = setTimeout(attempt, 400)
     }
     attempt()
@@ -7587,7 +7653,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             onClick={() => setChipOpen(!radarChipOpen)}
             aria-label={radarChipOpen ? 'Tuck the radar timeline away' : 'Pull out the radar timeline'}
             aria-expanded={radarChipOpen}
-            className="grid place-items-center w-5 h-[29px] rounded-md border border-amber/40 bg-navy-950/90 backdrop-blur text-amber shadow-panel flex-none"
+            className="grid place-items-center w-5 h-[29px] rounded-l-md border border-r-0 border-amber/40 bg-navy-950/90 backdrop-blur text-amber shadow-panel flex-none"
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={'transition-transform duration-300 ' + (radarChipOpen ? 'rotate-180' : '')}>
               <path d="m15 18-6-6 6-6" />
@@ -7618,6 +7684,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           setRailHidden((h) => !h)
         }}
         aria-label={railHidden ? 'Show map tools' : 'Hide map tools'}
+        ref={railTabEl}
         // Straight across from the LAYERS tab; slides with the pullout so
         // the name travels with the tools it opens (Brian, Aug 24). Hidden
         // until the column is measured — at right:0 pre-measure it would sit
@@ -8033,6 +8100,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         open={!!exportRes}
         onClose={() => {
           if (exportUrlRef.current) { URL.revokeObjectURL(exportUrlRef.current); exportUrlRef.current = null }
+          exportSeqRef.current++ // an upload still in flight belongs to a sheet that is gone
           setExportRes(null)
         }}
         title={exportRes?.title ?? ''}

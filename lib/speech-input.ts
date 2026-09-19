@@ -150,6 +150,7 @@ function startNative(h: SpeechHandlers, lang: string): SpeechSession | null {
   const p = nativePlugin()
   if (!p) return null
   let ended = false
+  let stopped = false
   let last = ''
   const handles: { remove: () => Promise<void> }[] = []
   let finalTimer: ReturnType<typeof setTimeout> | null = null
@@ -165,14 +166,27 @@ function startNative(h: SpeechHandlers, lang: string): SpeechSession | null {
     if (ended) return
     ended = true
     cleanup()
+    // The recognizer may still be recording (a watchdog end, a long silence
+    // Android has not called yet) — never leave a live microphone behind.
+    void p.stop().catch(() => undefined)
     if (last) h.onFinal(last)
     h.onEnd()
   }
-  // After the recognizer says it stopped, give the final result a moment to
-  // land; a fresh partial while still listening just resets the safety net.
+  // Once the recognizer has said it stopped, the FINAL result is one event
+  // away (~½ s) — so a partial that arrives after the stop is that result,
+  // and the session ends right behind it. Before the stop, a partial only
+  // resets the safety net. (Ship-check: the first cut re-armed 8 s on the
+  // final partial too, so every hands-free ask fired eight seconds late.)
   const armFinal = (afterStop: boolean) => {
     if (finalTimer) clearTimeout(finalTimer)
-    finalTimer = setTimeout(finish, afterStop ? 1500 : 8000)
+    finalTimer = setTimeout(finish, afterStop ? 400 : 8000)
+  }
+  // Nothing heard at all: the recognizer's own silence timeout rejects a
+  // call we no longer hold, so this is what ends the session. Pushed back by
+  // every partial — a long question is not a timeout.
+  const armWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog)
+    watchdog = setTimeout(finish, 12_000)
   }
 
   ;(async () => {
@@ -192,15 +206,14 @@ function startNative(h: SpeechHandlers, lang: string): SpeechSession | null {
         if (!t || ended) return
         last = t
         h.onPartial(t)
-        armFinal(false)
+        if (stopped) armFinal(true)
+        else { armFinal(false); armWatchdog() }
       }))
       handles.push(await p.addListener('listeningState', (d) => {
-        if (d?.status === 'stopped') armFinal(true)
+        if (d?.status === 'stopped') { stopped = true; armFinal(true) }
       }))
       await p.start({ language: lang, maxResults: 3, partialResults: true, popup: false })
-      // Nothing heard at all (the recognizer's own silence timeout rejects a
-      // call we no longer hold): end quietly.
-      watchdog = setTimeout(finish, 12_000)
+      armWatchdog()
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err ?? '')
       if (/permission/i.test(m)) h.onError('The microphone is off for HammerTrack — allow it in Settings → Apps → HammerTrack → Permissions.')
@@ -213,6 +226,7 @@ function startNative(h: SpeechHandlers, lang: string): SpeechSession | null {
 
   return {
     stop: () => {
+      stopped = true
       void p.stop().catch(() => undefined)
       armFinal(true)
     },
