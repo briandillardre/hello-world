@@ -20,6 +20,8 @@ export const maxDuration = 60
  *  2b. Per-unit silence — hourly, but announced on CHANGE only (a unit went
  *     dark → once, with why; it came back → once), remembered across runs
  *     in system_state (112).
+ *  0.  CRON_SECRET itself: unset means nine other crons are refusing to run.
+ *     Announced once a day until fixed.
  *  3. Once a day (11 UTC ≈ 7 AM ET): /diag layer probes — any red feed rows
  *     land in one summary push.
  *
@@ -34,6 +36,8 @@ const REMIND_HOURS_UTC = [11, 15, 19, 23]
 const DIAG_HOUR_UTC = 11
 /** Where the silent-unit set lives between runs (system_state, 112). */
 const STATE_KEY = 'health.silent_units'
+/** When the founder was last told the cron secret is missing (once a day). */
+const WARN_KEY = 'health.cron_secret_warned'
 /** The founder feed is one person's phone; clock labels read in his zone. */
 const FOUNDER_TZ = process.env.FOUNDER_TZ || 'America/New_York'
 
@@ -58,16 +62,42 @@ function sanitizeSilent(v: unknown): Record<string, SilentUnit> {
 }
 
 export async function GET(req: NextRequest) {
-  // Fails closed like the other crons that write state or page a human: an
-  // unset secret is a misconfiguration, not an invitation (sec-check).
+  // OPEN when the secret is unset, on purpose. This is the watchdog: with
+  // CRON_SECRET missing, every cron that fails closed (usage/ledger, digests,
+  // receipt chase, flight-log banking…) silently stops, and the one job that
+  // could say so must still run. Sep 19: a fail-closed edit here went out
+  // while the secret was in fact unset — the health feed went dark for an
+  // hour and the outage below stayed unreported. Reverted; the unset secret
+  // is now itself a finding (see cronSecret below).
   const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (secret && req.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
   if (isMock) return NextResponse.json({ ok: true, skipped: 'demo mode' })
 
   const hour = new Date().getUTCHours()
   const out: Record<string, unknown> = {}
+
+  // 0 — the cron system itself. Nine crons refuse to run without CRON_SECRET
+  // (Vercel only sends the Authorization header once the variable exists),
+  // and nothing else notices: the map still moves, the ledger and trails just
+  // quietly stop growing. Say so once a day until it is fixed.
+  if (!secret) {
+    out.cronSecret = 'missing'
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const db = createServiceClient()
+      const last = await readState<{ at?: string }>(db, WARN_KEY)
+      const lastAt = last?.at ? Date.parse(last.at) : NaN
+      if (!Number.isFinite(lastAt) || Date.now() - lastAt > 23 * 3_600_000) {
+        await notifySystem(
+          'CRON_SECRET missing',
+          'Vercel is not sending a cron secret, so the hours ledger, map trails, evening digests, receipt chase and flight-log banking have all stopped running (they refuse to run without it). Fix: Vercel → hello-world → Settings → Environment Variables → add CRON_SECRET (any long random string) for Production and Preview, then redeploy. Everything catches up by itself.'
+        )
+        await writeState(db, WARN_KEY, { at: new Date().toISOString() })
+      }
+    } catch { /* the notice is best-effort; the rest of the watchdog still runs */ }
+  }
 
   // 1 + 2 — DB reachable, ingest fresh. Freshness is judged by COUNTING rows
   // inside the window, never by "fetch the newest row": an order-by-desc
