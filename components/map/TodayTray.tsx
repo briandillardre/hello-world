@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { X, Siren, WifiOff, Wrench, DollarSign, Sun, Sparkles } from 'lucide-react'
-import { DEAD_MS } from '@/lib/glance'
+import { DEAD_MS, DEAD_H } from '@/lib/glance'
 import type { AlertEvent, AssetWithLocation } from '@/lib/types'
+
+/** Plain words for the dark threshold — "a day or more" at 24 h, "2+ days" at 48 h. */
+const DARK_WORDS = DEAD_H >= 48 ? `${Math.round(DEAD_H / 24)}+ days` : DEAD_H >= 24 ? 'a day or more' : `${DEAD_H}+ hours`
 
 interface TrayInsight {
   id: string
@@ -118,8 +121,8 @@ export function TodayTray({ assets, alerts, canViewCosts = false }: {
         key: 'silent',
         icon: <WifiOff className="h-4 w-4 text-amber" />,
         text: silent.length === 1
-          ? (silent[0].location ? `${silent[0].name} hasn't reported in 2+ days` : `${silent[0].name}'s tracker has never reported`)
-          : `${silent.length} trackers silent 2+ days (${silent.slice(0, 2).map((a) => a.name).join(', ')}${silent.length > 2 ? '…' : ''})`,
+          ? (silent[0].location ? `${silent[0].name} hasn't reported in ${DARK_WORDS}` : `${silent[0].name}'s tracker has never reported`)
+          : `${silent.length} trackers silent ${DARK_WORDS} (${silent.slice(0, 2).map((a) => a.name).join(', ')}${silent.length > 2 ? '…' : ''})`,
         href: silent.length === 1 ? `/assets/${silent[0].id}` : '/assets',
       })
     }
