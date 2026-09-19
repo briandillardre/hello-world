@@ -415,21 +415,39 @@ function placesGeoJSON(places: Place[]): GeoJSON.FeatureCollection {
   }
 }
 
-function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>, iconOf?: Map<string, string>): GeoJSON.FeatureCollection {
+/**
+ * Trail / heat / 3D heads — the puck at each track's playhead position.
+ * `ageOf` (ms since the asset's last fix) is passed ONLY on the Live range,
+ * where the head IS the current position and must speak the same glance
+ * language as the live dot: the color fades from FADE_FROM_H and a device
+ * silent past DEAD_MS is gray (Brian, Sep 19: the Charleston RAM, "No signal
+ * · 24h ago", sat under a bright blue dot — his map runs with trails ON, so
+ * the dot he sees is THIS layer, and it never had the aging the live-dot
+ * layer got on Sep 4). In a replay the head is yesterday's position — a
+ * wall-clock age means nothing there, so it wears its full color.
+ */
+function headsGeoJSON(tracks: AssetTrack[], filter: Set<AssetType>, t: number, selId?: string | null, toolCounts?: Record<string, number>, iconOf?: Map<string, string>, ageOf?: (assetId: string) => number | null): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: tracks
       // Empty track = no position knowledge at all — never draw a head for it
       // (positionAt's fallback is the demo center: a phantom pin in Nashville).
       .filter((tr) => filter.has(tr.type) && tr.points.length > 0)
-      .map((tr) => ({
+      .map((tr) => {
+        const age = ageOf?.(tr.assetId) ?? null
+        return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: positionAt(tr, t) },
         // toolCount is the CURRENT ride, drawn on replay heads too — the
         // badge answers "what's in the truck NOW", whatever moment the
         // scrubber is showing (Brian asked for it on all trail modes).
-        properties: { id: tr.assetId, name: tr.name, color: tr.color, type: tr.type, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0, icon: iconOf?.get(tr.assetId) ?? TYPE_DEFAULT_ICON[tr.type] },
-      })),
+        properties: {
+          id: tr.assetId, name: tr.name, color: tr.color, type: tr.type, sel: selId === tr.assetId ? 1 : 0, toolCount: toolCounts?.[tr.assetId] ?? 0, icon: iconOf?.get(tr.assetId) ?? TYPE_DEFAULT_ICON[tr.type],
+          state: age == null ? 'replay' : age > DEAD_MS ? 'dead' : 'live',
+          ageH: age == null ? 0 : age / 3_600_000,
+        },
+      } as GeoJSON.Feature
+      }),
   }
 }
 
@@ -1221,6 +1239,17 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // Click handlers are bound once in the init effect; read assets via ref so
   // they see live data instead of the first render's array.
   const assetsRef = useRef(assets)
+  /** Live range only: how long ago each asset last reported, for the trail
+   *  heads' glance state (headsGeoJSON). Undefined in a replay — a head there
+   *  is a past position and wears its full color. */
+  const liveAgeOf = useCallback((): ((assetId: string) => number | null) | undefined => {
+    if (rangeRef.current !== 'live') return undefined
+    const byId = new Map(assetsRef.current.map((a) => [a.id, a] as const))
+    return (assetId: string) => {
+      const a = byId.get(assetId)
+      return a?.location ? Date.now() - new Date(a.location.timestamp).getTime() : null
+    }
+  }, [])
   const geofencesRef = useRef(geofences)
   // gateway id → # tools riding (fed to buildGeoJSON for the corner badge)
   const toolCounts = useMemo(() => {
@@ -2310,7 +2339,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           m.addImage('tool-badge', ctx.getImageData(0, 0, 48, 48), { pixelRatio: 3 })
         }
       }
-      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current, iconByIdRef.current) })
+      m.addSource('trail-heads', { type: 'geojson', data: headsGeoJSON(tracksRef.current, filterRef.current, 0, null, toolCountsRef.current, iconByIdRef.current, liveAgeOf()) })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads',
         layout: { visibility: 'none' },
@@ -2319,10 +2348,14 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // screen?") — replay heads used to be smaller plain circles, so any
         // view/mode with trails on silently switched the asset language.
         paint: {
-          'circle-color': ['get', 'color'],
+          // AGED_COLOR, exactly like the live dot: on the Live range a head
+          // carries state/ageH (headsGeoJSON), so a day-silent device is gray
+          // here too; replay heads carry state 'replay' and keep their color.
+          'circle-color': AGED_COLOR,
           'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12, 10],
           'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
           'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
+          'circle-opacity': ['match', ['get', 'state'], 'dead', 0.55, 1],
         },
       })
       m.addLayer({
@@ -2339,7 +2372,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           'text-justify': 'auto',
           visibility: 'none',
         },
-        paint: { 'text-color': '#e8f0f7', 'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5 },
+        paint: {
+          'text-color': ['case', ['==', ['get', 'state'], 'dead'], '#8fa2b3', '#e8f0f7'],
+          'text-opacity': ['match', ['get', 'state'], 'dead', 0.7, 1],
+          'text-halo-color': '#001523', 'text-halo-width': 2, 'text-halo-blur': 0.5,
+        },
       })
       // Tools-aboard badge on trail heads — same projection-safe symbol badge
       // as the live dots, so Trails / Heatmap / 3D keep the count attached.
@@ -2626,7 +2663,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
           visibility: 'none',
         },
-        paint: { 'icon-color': '#04121d' },
+        paint: { 'icon-color': '#04121d', 'icon-opacity': ['match', ['get', 'state'], 'dead', 0.55, 1] },
       }, 'trail-head-labels')
       // Direction arrows — the alternate marker style: a ground-aligned puck
       // in the asset's color, nose pointing the travel heading. Drawn as an
@@ -3303,7 +3340,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         }
       }
     }
-    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts, iconByIdRef.current))
+    ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(trs, filterRef.current, t, sel, counts, iconByIdRef.current, liveAgeOf()))
     // Heat mode draws the route as its green thread off the SAME trails
     // source, so it refreshes there too (scrub, selection dim, filters).
     if (mode === 'trails' || mode === 'heatmap') {
