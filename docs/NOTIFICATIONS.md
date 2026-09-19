@@ -269,6 +269,13 @@ bug and are fixed the same way:
 
 ## Known gaps
 
+* **`CRON_SECRET` was found unset in production on Sep 19.** Every cron that
+  fails closed on it — usage (ledger + trails), digest, agenda, nag,
+  receipt-chase, aircraft-log, airport-board, memo, simulator — had been
+  answering 401 to Vercel since the day each went fail-closed (the ledger
+  since Aug 24). The health cron deliberately stays open when the secret is
+  unset and now posts a once-a-day "CRON_SECRET missing" line to the founder
+  feed until it is set. Nothing else in the app notices; the map keeps moving.
 * **Money is still stripped from every push**, even though the audience is now
   resolved per person and their role is right there. Restoring it would mean
   composing two variants of the same digest (one with dollars, one without) and
