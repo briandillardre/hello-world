@@ -64,6 +64,9 @@ export interface Plane3D {
    *  Drawn flat, inert and only close in; never dead-reckoned. */
   onGround?: boolean
   mph: number | null
+  /** Barometric vertical rate, ft/min (+ climb, − descent); null when the
+   *  aircraft did not send one. Read on the popup as "↑ climbing 1,200 ft/min". */
+  vsFpm: number | null
   track: number | null
   /** Estimated bank angle (rad, + = right turn) inferred from turn rate. */
   bankRad: number
