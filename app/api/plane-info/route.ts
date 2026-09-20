@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { findAirport } from '@/lib/airports'
 import { ipRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +35,8 @@ interface PlanePhoto {
 interface PlaneRoute {
   from: string
   to: string
+  fromName?: string | null
+  toName?: string | null
 }
 
 interface PlaneInfo {
@@ -48,14 +51,36 @@ interface SpotterPhoto {
   link?: string
 }
 
-// adsbdb: flightroute carries full airport objects; we keep just the codes.
+// adsbdb: flightroute carries full airport objects; we keep the codes and
+// the plain-words place (query-and-display only — never bulk-imported).
+interface AdsbdbAirport { iata_code?: string; icao_code?: string; name?: string; municipality?: string }
 interface AdsbdbRoute {
   response?: {
     flightroute?: {
-      origin?: { iata_code?: string; icao_code?: string }
-      destination?: { iata_code?: string; icao_code?: string }
+      origin?: AdsbdbAirport
+      destination?: AdsbdbAirport
     }
   }
+}
+
+/**
+ * The words a person recognises for a field: the town first ("Fort Myers",
+ * "Frankfurt"), the airport's own name only when there is no town, trimmed
+ * of the "International Airport" tail that would wrap the popup. adsbdb's
+ * record first, OurAirports (lib/airports) when adsbdb sent bare codes.
+ */
+function placeWords(a: AdsbdbAirport | undefined, code: string): string | null {
+  const town = typeof a?.municipality === 'string' ? a.municipality.trim() : ''
+  const own = typeof a?.name === 'string' ? a.name.trim() : ''
+  let words = town || own
+  if (!words) {
+    const known = findAirport(code)
+    words = (known?.municipality || known?.name || '').trim()
+  }
+  if (!words) return null
+  words = words.replace(/\s+(International|Intl\.?|Regional|Municipal|Metropolitan)?\s*Airport$/i, (m, kind) => (kind ? ` ${kind.replace(/\.$/, '')}` : ''))
+  words = words.replace(/\s+International$/i, ' Intl').trim()
+  return words.length > 32 ? words.slice(0, 31).trimEnd() + '…' : words
 }
 
 // Keyed by identity, not position — a flight keeps the same route and photo
@@ -99,7 +124,7 @@ async function fetchRoute(callsign: string): Promise<PlaneRoute | null> {
   const from = fr?.origin?.iata_code || fr?.origin?.icao_code
   const to = fr?.destination?.iata_code || fr?.destination?.icao_code
   if (!from || !to || !/^[A-Z0-9]{3,4}$/.test(from) || !/^[A-Z0-9]{3,4}$/.test(to)) return null
-  return { from, to }
+  return { from, to, fromName: placeWords(fr?.origin, from), toName: placeWords(fr?.destination, to) }
 }
 
 export async function GET(req: NextRequest) {

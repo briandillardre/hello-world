@@ -19,6 +19,11 @@ export interface PlanePhoto {
 export interface PlaneRoute {
   from: string
   to: string
+  /** Plain-words ends — "Fort Myers", "Frankfurt" — resolved server-side
+   *  (adsbdb's own airport record, else OurAirports). Optional: an older
+   *  cached answer or an unknown field still shows the code alone. */
+  fromName?: string | null
+  toName?: string | null
 }
 
 export interface PlaneInfo {
@@ -66,10 +71,20 @@ export async function fetchPlaneInfoRaw(
   return p
 }
 
-/** `route CLT → ATL` line in the popup's grammar, or '' when nothing filed. */
+/** One end of the route: `Fort Myers (RSW)` when the field is known, else
+ *  the bare code. Exported for the harness. */
+export function routeEnd(code: string, name?: string | null): string {
+  const n = (name ?? '').trim()
+  return n && n.toUpperCase() !== code.toUpperCase() ? `${n} (${code})` : code
+}
+
+/** `filed route Fort Myers (RSW) → Frankfurt (FRA)` in the popup's grammar,
+ *  or '' when nothing filed (Brian, Sep 19: "Add names of airports here"). */
 export function buildRouteHtml(route: PlaneRoute | null): string {
   if (!route?.from || !route?.to) return ''
-  return `<div style="margin-top:3px">filed route <b style="color:#2dd4bf">${esc(route.from)} → ${esc(route.to)}</b></div>`
+  const from = esc(routeEnd(route.from, route.fromName))
+  const to = esc(routeEnd(route.to, route.toName))
+  return `<div style="margin-top:3px">filed route <b style="color:#2dd4bf">${from} → ${to}</b></div>`
 }
 
 /** Thumbnail + required credit line, or '' when the airframe has no photo. */

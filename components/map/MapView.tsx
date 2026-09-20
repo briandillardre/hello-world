@@ -4662,9 +4662,20 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const headHtml = `<div style="font-weight:700;color:#ffd94f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✈ ${escHtml(title)}</div>`
         // "altitude 0 ft" is a wrong-sounding way to say parked — and for a
         // taxiing aircraft the speed is the only interesting number.
+        // Vertical speed with an arrow (Brian, Sep 19): climbing / descending
+        // / level, in the same diverging pair the Climb trail ramp uses.
+        // Under 64 ft/min is "level" — barometric rate wobbles that much in
+        // cruise, and FR24 rounds it away too.
+        const vsHtml = !hit.onGround && hit.vsFpm != null
+          ? (Math.abs(hit.vsFpm) < 64
+            ? `<div><span style="color:#9fb6cc">→ level</span></div>`
+            : hit.vsFpm > 0
+              ? `<div><b style="color:#2dd4bf">↑ climbing</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`
+              : `<div><b style="color:#f5a623">↓ descending</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`)
+          : ''
         const stateHtml = hit.onGround
           ? `<div style="margin-top:3px"><b style="color:#9fb6cc">on the ground</b>${hit.mph && hit.mph > 3 ? ` · taxiing ${hit.mph.toLocaleString()} mph` : ' · parked'}</div>`
-          : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}`
+          : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${vsHtml}`
         const baseHtml = `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateHtml}${logHtml}<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>`
         popup(e.lngLat, baseHtml, locatePlane, headHtml)
         // FlightAware-lite (Brian, Aug 29): the route this flight is flying
@@ -5009,6 +5020,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             fixAt: nowMs - snapshotAge - (typeof p.seenPos === 'number' ? Math.min(p.seenPos, 30) * 1000 : 0),
             altFt: p.altFt,
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
+            vsFpm: typeof p.vsFpm === 'number' && Number.isFinite(p.vsFpm) ? Math.round(p.vsFpm) : null,
             track: p.track, bankRad, onGround: !!p.onGround,
             sx: 0, sy: 0, visible: false,
           }
