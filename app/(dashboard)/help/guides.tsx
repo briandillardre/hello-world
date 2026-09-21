@@ -864,6 +864,12 @@ export const GUIDES: HelpGuide[] = [
             <P>
               So: if a plane matters to you, save it now rather than the day you need the history.
             </P>
+            <P>
+              A saved plane also stands out on the <B>map</B>: with the Aircraft layer on it is
+              drawn red and blinking whenever it is in the air — wherever it is, not only near
+              your view — and a red chip at the top-left of the map names it and jumps to it.
+              You can save straight from a plane&apos;s card on the map, too.
+            </P>
           </>
         ),
       },

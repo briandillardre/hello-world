@@ -352,6 +352,38 @@ the geographic test: an endpoint over a known field, within ~1,500 ft of that
 field's own elevation, is a takeoff or a landing. Anything still unconfirmed
 is written "near X", never stated.
 
+## Saved planes on the map (Sep 21)
+
+Brian: "save planes as a user then those planes be red or blinking or
+something when active."
+
+* **Save from the map.** The aircraft card (tap a plane) carries the same Save
+  button as this page — `saveAircraftAction` — and says what it does: red and
+  blinking on the map whenever it is in the air, flights kept from tonight.
+  Once saved the card's title wears a ★ and the plane's label, if it has one.
+* **Red, breathing, with a halo.** `lib/sat-3d.ts` draws saved aircraft in
+  their own batch, last, in the app's alert red pulsing on the asset-pulse
+  tempo (~1.4 s), with a soft red disc behind the body so it is findable from
+  state zoom. On the ground it is dark red and still — "active" means in the
+  air. `prefers-reduced-motion` gets a steady red.
+* **Wherever it is.** The map's own feed only covers 250 nm around the view.
+  `/api/aircraft/saved?live=1` asks adsb.lol for the whole watchlist by hex
+  in ONE call (`lib/aircraft-live.ts`: `/v2/hex/<a>,<b>,…`, verified with two
+  live airframes; cached per company, stale-served for 90 s, the same 429
+  cooldown as `/api/planes`). MapView polls it every 15 s while an aircraft
+  layer is on and the range is live, marks the saved ones in the local
+  snapshot, and ADDS any saved plane flying beyond the feed's reach
+  (`Plane3D.injected`) so it dead-reckons and draws like the rest. A red
+  chip per airborne saved plane sits in the top-left legend stack; tapping
+  it flies there.
+* **This page says it too.** Watchlist rows read "in the air now · 35,000 ft
+  · 460 mph" (or "on the ground, transmitting") with a Map link that opens
+  the map on the aircraft with the layer on. A plane whose avionics are off
+  sends nothing, so nothing is said — never "on the ground".
+* **Privacy shape.** `/api/planes` is public (the /live page renders it
+  signed out) and knows nothing about who saved what; the watchlist join
+  happens in `/api/aircraft/saved` under RLS and on the signed-in client.
+
 ## Known gaps
 * **Banked flights are keyed by airframe, not company.** Two companies
   watching the same jet share one copy — it is public ADS-B, and fetching it
