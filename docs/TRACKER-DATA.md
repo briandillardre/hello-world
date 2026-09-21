@@ -32,6 +32,23 @@ where raw->>'source' = 'flespi' order by "timestamp" desc limit 3;
 > through the MCP door). `node scripts/telemetry-test.mjs` asserts it against
 > the real bags below — run it after ANY change to the catalog.
 >
+> **Hardening the same night (reviewer pass, migration 117):** the fold refuses
+> prototype keys (`__proto__`, `constructor`, `prototype` — a direct-OBD body
+> carrying one used to pollute `Object.prototype` on the serving instance),
+> keys that are not parameter-shaped (`^[A-Za-z0-9_.-]{1,64}$`), reports whose
+> timestamp is not a time (a garbage `t` stored once broke every later merge
+> for that key — `telemetry_merge` now also drops such an entry on the next
+> merge, self-healing rows written before the gate), strings past 200 chars,
+> and more than 300 keys per batch (known readings fold first). `telemetry_merge`
+> takes a per-asset advisory lock (two first batches for a new asset used to
+> overwrite each other) and ignores a batch of more than 500 keys. The direct
+> OBD and location routes enforce the flespi plausibility window on `timestamp`
+> (422 otherwise) and strip prototype keys before `raw` is stored. A tracker
+> change (attach / detach / move / swap / undo / delete) forgets the asset's
+> stored map so a machine never keeps describing the unit it no longer wears.
+> `telemetry_daily` is signed-in only (anon revoked); `/api/telemetry` caps the
+> trend at 7 days and throttles it.
+>
 > **What the pilot trucks actually send (Sep 21 2026, last 3 days):**
 >
 > | Truck | OBD engine data over the port | Always |

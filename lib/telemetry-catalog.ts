@@ -639,14 +639,47 @@ export type Readings = Record<string, Reading>
 /** Keys that never belong in the readings map: lifted columns, arrays, bags. */
 const SKIP_KEYS = new Set(['ident', 'device.id', 'device.name', 'device.type.id', 'timestamp', 'position.latitude', 'position.longitude', 'position.speed', 'position.direction', 'position.altitude', 'ble.beacons'])
 const LIST_KEYS = new Set(['can.dtc', 'can.dtc.codes', 'can.dtc.list', 'obd.dtc.codes', 'dtc.codes', 'faults.codes'])
+/** A parameter name as a tracker spells one — the same shape `telemetry_daily`
+ *  accepts. Anything else is not a reading, it is somebody's payload: the
+ *  direct-OBD route spreads the whole JSON body in here, and a body-supplied
+ *  `__proto__` key used to reach `out[k]` as Object.prototype (sec-check,
+ *  Sep 21 — one POST polluted the prototype for every tenant the warm
+ *  instance served next). */
+const KEY_SHAPE = /^[A-Za-z0-9_.-]{1,64}$/
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+/** Own-property test without `Object.hasOwn` (ES2022 — missing on the older
+ *  Android WebViews that took /map down on Sep 4). */
+const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key)
+/** The most keys one batch may add. A tracker sends a few dozen; a body with
+ *  thousands of unique keys would sit in the asset's row for good and tax
+ *  every later merge. Catalog-known keys are folded first so the cap only
+ *  ever drops the unknown tail. */
+const MAX_KEYS = 300
+const MAX_STRING = 200
 
 function usable(key: string, v: unknown): boolean {
-  if (SKIP_KEYS.has(key)) return false
+  if (FORBIDDEN_KEYS.has(key) || !KEY_SHAPE.test(key) || SKIP_KEYS.has(key)) return false
   if (v === null || v === undefined || v === '') return false
   if (typeof v === 'number') return Number.isFinite(v)
   if (typeof v === 'string' || typeof v === 'boolean') return true
-  if (Array.isArray(v)) return LIST_KEYS.has(key) && v.length <= 40
+  if (Array.isArray(v)) return LIST_KEYS.has(key) && v.length <= 40 && v.every((x) => typeof x === 'string' || typeof x === 'number')
   return false
+}
+
+/** A reading's value, bounded: long strings are cut, list items too. */
+function boundValue(v: unknown): unknown {
+  if (typeof v === 'string') return v.length > MAX_STRING ? v.slice(0, MAX_STRING) : v
+  if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' && x.length > 40 ? x.slice(0, 40) : x))
+  return v
+}
+
+/** An instant in ISO form, or null when the string is not a time at all. A
+ *  garbage `t` stored once poisons `telemetry_merge`'s timestamptz casts for
+ *  that key forever, so nothing that is not a date gets in. */
+function isoInstant(t: unknown): string | null {
+  if (typeof t !== 'string') return null
+  const ms = Date.parse(t)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null
 }
 
 /**
@@ -656,17 +689,28 @@ function usable(key: string, v: unknown): boolean {
  */
 export function foldReadings(rows: { timestamp: string; params: Record<string, unknown> }[]): Readings {
   const out: Readings = {}
+  let keys = 0
   for (const r of rows) {
-    const t = r.timestamp
-    for (const [k, v] of Object.entries(r.params ?? {})) {
-      if (!usable(k, v)) continue
-      const cur = out[k]
-      if (!cur) { out[k] = { v, t, n: 1, since: t }; continue }
+    const t = isoInstant(r.timestamp)
+    if (!t) continue // a report with no usable time cannot say when a value held
+    const tMs = Date.parse(t)
+    const entries = Object.entries(r.params ?? {}).filter(([k, v]) => usable(k, v))
+    // Known readings first: if the cap ever bites, it bites the unknown tail.
+    entries.sort((a, b) => Number(!!resolveKey(b[0])) - Number(!!resolveKey(a[0])))
+    for (const [k, raw] of entries) {
+      const v = boundValue(raw)
+      const cur = hasOwn(out, k) ? out[k] : undefined
+      if (!cur) {
+        if (keys >= MAX_KEYS) continue
+        keys++
+        out[k] = { v, t, n: 1, since: t }
+        continue
+      }
       cur.n = (cur.n ?? 1) + 1
       // Compare as instants: the stored map may carry "+00:00" where the
       // fresh fix carries "Z" — never let a string compare decide time.
-      if (Date.parse(t) > Date.parse(cur.t)) { cur.v = v; cur.t = t }
-      if (cur.since && Date.parse(t) < Date.parse(cur.since)) cur.since = t
+      if (tMs > Date.parse(cur.t)) { cur.v = v; cur.t = t }
+      if (cur.since && tMs < Date.parse(cur.since)) cur.since = t
     }
   }
   return out
@@ -680,9 +724,13 @@ export function readingsFromRaw(raw: unknown, timestamp: string | null | undefin
 
 /** Overlay `fresh` (a newer fix) on `base` (the stored map): newer time wins, counts kept. */
 export function mergeReadings(base: Readings, fresh: Readings): Readings {
-  const out: Readings = { ...base }
+  const out: Readings = {}
+  // Own keys only, and never a prototype key: the stored map is JSON from the
+  // database and a row written before the key filter existed could carry one.
+  for (const [k, r] of Object.entries(base)) if (!FORBIDDEN_KEYS.has(k) && r && typeof r === 'object') out[k] = r
   for (const [k, r] of Object.entries(fresh)) {
-    const cur = out[k]
+    if (FORBIDDEN_KEYS.has(k) || !r || typeof r !== 'object') continue
+    const cur = hasOwn(out, k) ? out[k] : undefined
     if (!cur) { out[k] = r; continue }
     out[k] = Date.parse(r.t) > Date.parse(cur.t) ? { ...cur, v: r.v, t: r.t } : cur
   }
@@ -786,6 +834,10 @@ export const GROUP_ORDER: ReadingGroup[] = ['check-engine', 'engine', 'fuel', 'e
 /** Every reading described, grouped, plumbing last. */
 export function describeAll(readings: Readings, ctx: AssessCtx = {}): Described[] {
   return Object.entries(readings)
+    // A stored map can hold what the ingest filter would refuse today — the
+    // 115/116 seeds kept `device.name`, and a pre-filter row could carry a
+    // prototype key — so the reading side applies the same rule.
+    .filter(([k, r]) => !FORBIDDEN_KEYS.has(k) && !SKIP_KEYS.has(k) && KEY_SHAPE.test(k) && !!r && typeof r === 'object')
     .map(([k, r]) => describeReading(k, r, ctx))
     .sort((a, b) => {
       if (a.internal !== b.internal) return a.internal ? 1 : -1

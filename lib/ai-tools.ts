@@ -429,8 +429,11 @@ async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string })
   const family = trackerKind(asset.tracker_id).key
   let stored: Record<string, { v: unknown; t: string; n?: number; since?: string }> = {}
   try {
-    const { createServiceClient } = await import('./supabase-server')
-    const { data } = await createServiceClient().from('asset_telemetry_latest').select('readings').eq('asset_id', asset.id).maybeSingle()
+    // The caller's own client: the asset came from the RLS-filtered fleet
+    // list, and reading its row the same way lets the 111 ladder decide in
+    // one place (ship-check, Sep 21).
+    const { createClient } = await import('./supabase-server')
+    const { data } = await createClient().from('asset_telemetry_latest').select('readings').eq('asset_id', asset.id).maybeSingle()
     if (data?.readings && typeof data.readings === 'object') stored = data.readings as typeof stored
   } catch { /* the newest fix still answers */ }
   const readings = mergeReadings(stored, readingsFromRaw(loc.raw, loc.timestamp))

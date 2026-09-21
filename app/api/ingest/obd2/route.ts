@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyIngestKey } from '@/lib/ingest-auth'
-import { recordTelemetry } from '@/lib/telemetry-ingest'
+import { recordTelemetry, safeBag, plausibleTimestamp } from '@/lib/telemetry-ingest'
 import type { IngestObd2Payload } from '@/lib/types'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -29,6 +29,16 @@ export async function POST(request: NextRequest) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return NextResponse.json({ error: 'Invalid coordinates' }, { status: 422 })
   }
+  // Same plausibility window as the flespi webhook (sec-check, Sep 21): a
+  // fix dated in the future sits as the asset's latest forever, and a
+  // timestamp that is not a time at all used to reach the readings row and
+  // break every later merge for that key.
+  const ts = plausibleTimestamp(timestamp)
+  if (ts === false) {
+    return NextResponse.json({ error: 'timestamp must be an ISO 8601 date within the last 30 days' }, { status: 422 })
+  }
+  const at = ts ?? new Date().toISOString()
+  const bag = safeBag(body)
 
   if (isMock) {
     return NextResponse.json({ ok: true, mode: 'demo', message: 'Demo mode: OBD2 data logged (not persisted)' })
@@ -53,7 +63,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No asset found with that tracker_id' }, { status: 404 })
   }
 
-  await supabase.from('asset_locations').insert({
+  const { error: insertError } = await supabase.from('asset_locations').insert({
     asset_id: asset.id,
     company_id: asset.company_id,
     lat,
@@ -66,15 +76,21 @@ export async function POST(request: NextRequest) {
     // ignition; it was landing only in raw/metadata, so direct-OBD assets
     // read as "phantom idle" all day (code review, Jul 21).
     ignition: typeof engine_on === 'boolean' ? engine_on : null,
-    timestamp: timestamp ?? new Date().toISOString(),
-    raw: { speed, odometer, engine_on, ...body },
+    timestamp: at,
+    raw: { speed, odometer, engine_on, ...bag },
   })
+  if (insertError) {
+    console.error(`obd2 ingest: insert failed for ${asset.id}: ${insertError.code} ${insertError.message}`)
+    return NextResponse.json({ error: 'Could not store the fix' }, { status: 500 })
+  }
   // Truck readings (115): everything but the position columns, folded into
-  // the asset's stored map so the panel and the AI see it in words.
+  // the asset's stored map so the panel and the AI see it in words. Only for
+  // a fix that was actually stored — the readings row must never say more
+  // than the history does.
   {
-    const { tracker_id: _t, lat: _la, lng: _ln, accuracy: _ac, battery: _b, timestamp: _ts, ...rest } = body as unknown as Record<string, unknown>
+    const { tracker_id: _t, lat: _la, lng: _ln, accuracy: _ac, battery: _b, timestamp: _ts, ...rest } = bag
     void _t; void _la; void _ln; void _ac; void _b; void _ts
-    await recordTelemetry(supabase, asset.id, asset.company_id, [{ timestamp: timestamp ?? new Date().toISOString(), params: { speed, odometer, engine_on, ...rest } }])
+    await recordTelemetry(supabase, asset.id, asset.company_id, [{ timestamp: at, params: { speed, odometer, engine_on, ...rest } }])
   }
 
   // Merge telemetry into metadata — never replace the whole jsonb blob,

@@ -160,5 +160,45 @@ ok('no key claimed twice', [...keys.values()].every((n) => n === 1), [...keys.en
 ok('every entry explains itself', cat.TELEMETRY_CATALOG.every((d) => d.explain && d.explain.length > 10))
 ok('gauge bands ascend', cat.TELEMETRY_CATALOG.filter((d) => d.gauge).every((d) => d.gauge.bands.every((b, i, a) => i === 0 || b.to > a[i - 1].to)))
 
+// ── Hostile bodies (sec-check, Sep 21) ──────────────────────────────────────
+// The direct-OBD route spreads a JSON body into the fold. A body-supplied
+// `__proto__` key used to reach Object.prototype through `out[k]`.
+{
+  const longKey = 'a' + 'b'.repeat(80)
+  const hostile = JSON.parse(`{"tracker_id":"x","lat":1,"lng":2,"__proto__":"x","constructor":{"v":1},"prototype":2,"can.engine.rpm":900,"weird key!":1,"${longKey}":1}`)
+  const before = Object.prototype.n
+  const F = cat.foldReadings([{ timestamp: T, params: hostile }])
+  ok('proto key never pollutes Object.prototype', Object.prototype.n === undefined && before === undefined && !('n' in {}))
+  ok('forbidden keys refused', !Object.keys(F).some((k) => k === '__proto__' || k === 'constructor' || k === 'prototype'))
+  ok('key shape enforced', !Object.keys(F).some((k) => k.includes(' ') || k.length > 64) && 'can.engine.rpm' in F)
+  ok('fold works twice on the same bag', Object.keys(cat.foldReadings([{ timestamp: T, params: hostile }])).length === Object.keys(F).length && Object.prototype.n === undefined)
+  const M = cat.mergeReadings(JSON.parse('{"__proto__":{"v":1,"t":"2026-09-21T10:00:00Z"},"can.fuel.level":{"v":1,"t":"2026-09-21T10:00:00Z"}}'), F)
+  ok('merge drops a stored proto key', !Object.keys(M).includes('__proto__') && Object.prototype.n === undefined && 'can.fuel.level' in M && 'can.engine.rpm' in M)
+  ok('describeAll skips seed-only keys', !cat.describeAll({ 'device.name': { v: 'FMM00A', t: T }, 'can.engine.rpm': { v: 900, t: T } }).some((d) => d.key === 'device.name'))
+}
+// A report with a timestamp that is not a time cannot say when a value held.
+{
+  const F = cat.foldReadings([
+    { timestamp: 'not-a-date', params: { 'can.engine.rpm': 800 } },
+    { timestamp: T, params: { 'can.engine.rpm': 900 } },
+  ])
+  ok('non-time report dropped', F['can.engine.rpm'].v === 900 && F['can.engine.rpm'].n === 1)
+  ok('t and since are ISO instants', /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(F['can.engine.rpm'].t) && F['can.engine.rpm'].since === F['can.engine.rpm'].t)
+  const G = cat.foldReadings([{ timestamp: '2026-09-21T10:00:00+00:00', params: { 'can.fuel.level': 40 } }, { timestamp: '2026-09-21T11:00:00Z', params: { 'can.fuel.level': 52 } }])
+  ok('offset and Z forms compare as instants', G['can.fuel.level'].v === 52 && G['can.fuel.level'].n === 2 && G['can.fuel.level'].since === '2026-09-21T10:00:00.000Z')
+}
+// Bounded: a flood of unknown keys stops at the cap, known keys fold first.
+{
+  const flood = {}
+  for (let i = 0; i < 1000; i++) flood[`junk.${i}`] = i
+  flood['can.engine.rpm'] = 1200
+  flood['vehicle.vin'] = 'X'.repeat(500)
+  const F = cat.foldReadings([{ timestamp: T, params: flood }])
+  ok('key cap holds', Object.keys(F).length === 300, String(Object.keys(F).length))
+  ok('known keys survive the cap', 'can.engine.rpm' in F && 'vehicle.vin' in F)
+  ok('long strings are cut', F['vehicle.vin'].v.length === 200)
+  ok('list values stay typed', cat.foldReadings([{ timestamp: T, params: { 'can.dtc.codes': ['P0301', { evil: 1 }] } }])['can.dtc.codes'] === undefined)
+}
+
 console.log(`telemetry-test: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

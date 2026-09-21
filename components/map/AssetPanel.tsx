@@ -623,6 +623,7 @@ function AssetDetails({
 
       {asset.type !== 'tool' && asset.type !== 'personnel' && (
         <TruckData
+          key={asset.id}
           assetId={asset.id}
           family={trackerKind(asset.tracker_id).key}
           raw={asset.location?.raw}

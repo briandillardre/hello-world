@@ -61,14 +61,14 @@ export function ReadingsList({ described, missing, family, full = false }: {
       ))}
 
       {hidden > 0 && (
-        <button type="button" onClick={() => setPlumbing((v) => !v)} className="font-mono text-[10px] uppercase tracking-wide text-faint hover:text-muted">
+        <button type="button" onClick={() => setPlumbing((v) => !v)} className="flex min-h-[40px] items-center py-2 font-mono text-[10px] uppercase tracking-wide text-faint hover:text-muted">
           {plumbing ? 'Hide' : 'Show'} device plumbing ({hidden})
         </button>
       )}
 
       {missing.length > 0 && (
         <div className="rounded-lg border border-dashed border-navy-700 px-2.5 py-2">
-          <button type="button" onClick={() => setShowMissing((v) => !v)} className="flex w-full items-center gap-1.5 text-left">
+          <button type="button" onClick={() => setShowMissing((v) => !v)} className="flex min-h-[40px] w-full items-center gap-1.5 py-1 text-left">
             <ChevronDown className={'h-3.5 w-3.5 flex-none text-faint transition-transform ' + (showMissing || full ? '' : '-rotate-90')} />
             <span className="text-[12px] font-semibold text-muted">Not reported by this {family === 'obd' || family === 'wired' ? 'truck' : 'tracker'} ({missing.length})</span>
           </button>

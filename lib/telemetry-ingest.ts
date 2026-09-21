@@ -10,6 +10,38 @@ import { foldReadings } from './telemetry-catalog'
  * stored. Before 115 lands (or on a DB without it) the RPC is missing and we
  * stay quiet: the map still works, the readings just wait for the migration.
  */
+/** Keys a JSON body may carry that must never become object properties on
+ *  our side — `JSON.parse` keeps an own `__proto__`, and object spread copies
+ *  it into `raw` and the readings fold (sec-check, Sep 21). */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** A shallow copy of `body` without the prototype keys, safe to spread and to
+ *  store as `asset_locations.raw`. Non-objects come back as an empty bag. */
+export function safeBag(body: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return out
+  for (const k of Object.keys(body as object)) {
+    if (UNSAFE_KEYS.has(k)) continue
+    out[k] = (body as Record<string, unknown>)[k]
+  }
+  return out
+}
+
+/**
+ * The direct ingest routes' timestamp gate — the same window the flespi
+ * webhook enforces: a string that parses, no more than five minutes in the
+ * future and no older than 30 days. Returns the ISO form to store, `null`
+ * when the caller sent none (use now), or `false` when it is not a time —
+ * a garbage `t` stored once poisons `telemetry_merge`'s casts for that key.
+ */
+export function plausibleTimestamp(v: unknown, nowMs = Date.now()): string | null | false {
+  if (v === undefined || v === null) return null
+  if (typeof v !== 'string') return false
+  const ms = Date.parse(v)
+  if (!Number.isFinite(ms) || ms > nowMs + 5 * 60_000 || ms < nowMs - 30 * 86_400_000) return false
+  return new Date(ms).toISOString()
+}
+
 export async function recordTelemetry(
   db: SupabaseClient,
   assetId: string,

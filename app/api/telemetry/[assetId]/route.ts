@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getTruckReadings, getTruckTrend, pickTrendKeys } from '@/lib/db/telemetry'
 import { safeTz } from '@/lib/dates'
+import { ipRateLimited } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,12 +23,20 @@ export async function GET(req: NextRequest, { params }: { params: { assetId: str
   const { data: auth } = await createClient().auth.getUser()
   if (!auth?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const latest = await getTruckReadings(id)
   const wantTrend = req.nextUrl.searchParams.get('trend') === '1'
-  const days = Number(req.nextUrl.searchParams.get('days') ?? 7)
+  // The trend is a SQL aggregate over every raw fix in the window — a truck
+  // that reports every few seconds while driving is tens of thousands of
+  // rows a day — so it is capped at the week the page shows and throttled
+  // per caller (sec-check, Sep 21). The readings map itself is one row.
+  if (wantTrend && ipRateLimited(req, 'telemetry-trend', 30)) {
+    return NextResponse.json({ error: 'Slow down a moment.' }, { status: 429 })
+  }
+  const latest = await getTruckReadings(id)
+  const daysIn = Number(req.nextUrl.searchParams.get('days') ?? 7)
+  const days = Number.isFinite(daysIn) ? Math.min(7, Math.max(1, Math.round(daysIn))) : 7
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const trend = wantTrend && latest
-    ? await getTruckTrend(id, pickTrendKeys(latest.readings), Number.isFinite(days) ? days : 7, tz)
+    ? await getTruckTrend(id, pickTrendKeys(latest.readings), days, tz)
     : undefined
 
   return NextResponse.json(
