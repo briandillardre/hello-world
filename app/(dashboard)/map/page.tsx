@@ -29,6 +29,11 @@ const isRealMode = !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
 
 export default async function MapPage({ searchParams }: { searchParams?: { m?: string; v?: string } }) {
   const mapPerms = await requireFeature('map')
+  // "View as…" in the map's account menu for the REAL Master/Admin (not
+  // while already previewing — the amber bar owns that).
+  const { getRealPermissions } = await import('@/lib/permissions-server')
+  const realPerms = isRealMode ? await getRealPermissions() : null
+  const canViewAs = !!realPerms && !mapPerms.viewingAs && (realPerms.isMaster || realPerms.role === 'admin')
   // ── Real mode: SHELL FIRST. The app icon opens straight into the map —
   // this render awaits only the top-bar basics (company + weather prefs),
   // so the document streams in well under a second and the map engine +
@@ -49,7 +54,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
     const tz = safeTz(cookies().get('ht_tz')?.value)
     return (
       <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
-        <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} />
+        <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} canViewAs={canViewAs} />
         <div className="flex-1 relative min-h-0">
           <MapPageClient
             bootstrap
@@ -136,7 +141,7 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
   const aboard = toolsAboard(rawAssets, toolAssociations)
   return (
     <div className="h-full flex flex-col pb-[54px] md:pb-0 relative ht-map-edge">
-      <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} />
+      <MapTopBar companyName={company.name} logoUrl={company.logoUrl} logoBg={company.logoBg} weatherPlace={prefs.weatherPlace} weatherCoords={prefs.weatherCoords} canSetWeatherDefault={prefs.isAdmin} features={mapPerms.features} canViewAs={canViewAs} />
       <div className="flex-1 relative min-h-0">
         <MapPageClient
           assets={assets}

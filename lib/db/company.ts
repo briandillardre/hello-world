@@ -215,7 +215,7 @@ export async function getCompanySettings(): Promise<{
 
 /** The caller's role — ONE resolver (lib/permissions-server), so a view-as
  *  preview and the view-levels table apply here too. */
-export async function getMyRole(): Promise<'admin' | 'manager' | 'foreman' | 'associate'> {
+export async function getMyRole(): Promise<import('../permissions').Role> {
   const { getMyPermissions } = await import('../permissions-server')
   return (await getMyPermissions()).role
 }

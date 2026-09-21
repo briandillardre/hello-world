@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
+import { ViewAsPicker } from './ViewAsPicker'
 
 // Grouped by the job being done, not by when features shipped: Watch (live
 // awareness), Field (the crew's day), Office (money + people), Setup.
@@ -66,9 +67,11 @@ interface SidebarProps {
   features?: string[] | null
   /** Ask AI view level — false hides every launcher (the widget is unmounted too). */
   askAi?: boolean
+  /** Master/Admin, not already previewing: shows "View as…" under the company name. */
+  canViewAs?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null, askAi = true }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null, askAi = true, canViewAs = false }: SidebarProps) {
   // Pages outside the caller's view levels don't exist for them — not
   // greyed, not there. (The page itself 404s too; this keeps the two honest.)
   const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
@@ -117,6 +120,7 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
               <Sparkles className="h-4 w-4" />
             </button>
             )}
+            {canViewAs && <ViewAsPicker variant="sidebar-icon" />}
           </div>
         ) : (
           <div className="min-w-0 w-full">
@@ -132,6 +136,9 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
             )}
             <p className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint truncate max-w-[160px] mt-1.5">{companyName}</p>
             {userName && <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint/70 truncate max-w-[160px]">{userName}</p>}
+            {/* "View as" at the top (Brian, Sep 21) — check what a teammate
+                sees without a trip to /team. */}
+            {canViewAs && <ViewAsPicker variant="sidebar" />}
             {/* Ask AI lives up here in the chrome now — the desktop floater
                 kept covering page content (Brian, Aug 28). */}
             {askAi && (

@@ -48,6 +48,8 @@ export const PUSH_KIND_META: PushKindMeta[] = [
  * and the clock, not the digest.
  */
 export function defaultPersonNotify(role: Role): PersonNotifyPrefs {
+  // A Prospective Client is looking, not working: nothing reaches their phone.
+  if (role === 'prospect') return { alerts: false, receipts: false, evening: false, monday: false, nag: false, shares: false }
   const runsTheCompany = role === 'admin' || role === 'manager' || role === 'foreman'
   return {
     alerts: true,

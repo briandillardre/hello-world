@@ -34,8 +34,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
-  const { getMyPermissions } = await import('@/lib/permissions-server')
-  const [company, perms] = await Promise.all([getCurrentCompany(), getMyPermissions()])
+  const { getMyPermissions, getRealPermissions } = await import('@/lib/permissions-server')
+  const [company, perms, real] = await Promise.all([getCurrentCompany(), getMyPermissions(), getRealPermissions()])
+  // "View as" at the top of the app: the REAL caller is a Master/Admin and is
+  // not already inside a preview (the amber bar owns that state).
+  const canViewAs = !isMock && !perms.viewingAs && (real.isMaster || real.role === 'admin')
 
   return (
     // h-[100dvh]: dynamic viewport height — plain 100vh over-measures on iPad/
@@ -52,7 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Suspense fallback={null}>
         <AlertBadgeFeed companyId={company.id} />
       </Suspense>
-      <DashboardShell alertCount={0} latestAlertAt={null} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role} features={perms.features} viewingAs={perms.viewingAs ? { name: perms.viewingAs.name, roleLabel: ROLE_LABEL[perms.viewingAs.role] } : null}>
+      <DashboardShell alertCount={0} latestAlertAt={null} companyName={company.name} userName={company.userName} logoUrl={company.logoUrl} logoBg={company.logoBg} navOrder={company.navOrder} role={perms.role} features={perms.features} viewingAs={perms.viewingAs ? { name: perms.viewingAs.name, roleLabel: ROLE_LABEL[perms.viewingAs.role] } : null} canViewAs={canViewAs}>
         {children}
       </DashboardShell>
     </div>

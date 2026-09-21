@@ -1,6 +1,6 @@
 import { MOCK_COMPANY } from '../mock-data'
 import {
-  ROLES, RANK, normalizeRole, outranks, rankOf, rolesEditableBy,
+  ROLES, RANK, MASTER_ONLY_ROLES, normalizeRole, outranks, rankOf, rolesEditableBy,
   type Role, type RolePolicy, type Permissions,
 } from '../permissions'
 import { getRealPermissions, getMyPermissions } from '../permissions-server'
@@ -125,10 +125,11 @@ export async function getTeam(): Promise<TeamData> {
 }
 
 /** Roles a manager-of-people may hand out: strictly below their own rank,
- *  except the Master, who may make Admins. */
+ *  except the Master, who may make Admins — and who alone may make a
+ *  Prospective Client (118). */
 export function assignableRolesFor(me: Pick<Permissions, 'role' | 'isMaster' | 'canManageTeam'>): Role[] {
   if (me.isMaster) return ROLES
-  if (me.role === 'admin' || me.canManageTeam) return ROLES.filter((r) => RANK[r] < rankOf(me))
+  if (me.role === 'admin' || me.canManageTeam) return ROLES.filter((r) => RANK[r] < rankOf(me) && !MASTER_ONLY_ROLES.includes(r))
   return []
 }
 

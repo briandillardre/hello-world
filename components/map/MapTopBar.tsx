@@ -8,6 +8,7 @@ import { TopBarWeather } from './TopBarWeather'
 import { TopBarSearch } from './TopBarSearch'
 import { signOutAction } from '@/lib/actions/auth'
 import { featureForPath } from '@/lib/permissions'
+import { ViewAsPicker } from '@/components/layout/ViewAsPicker'
 
 /** Zoom to the whole fleet — the same action as the ⤢ map button. */
 const fitFleet = () => document.querySelector<HTMLButtonElement>('.ht-fitall')?.click()
@@ -15,7 +16,7 @@ const fitFleet = () => document.querySelector<HTMLButtonElement>('.ht-fitall')?.
 /** The company mark is the account door (Brian, Sep 4: "the company icon
  *  needs to do something"): one tap opens Company settings, Team, Trackers
  *  and Sign out — the avatar-slot menu every big app trains thumbs on. */
-function CompanyMenu({ companyName, features, children }: { companyName: string; features?: string[] | null; children: React.ReactNode }) {
+function CompanyMenu({ companyName, features, canViewAs = false, children }: { companyName: string; features?: string[] | null; canViewAs?: boolean; children: React.ReactNode }) {
   // Roles v2 nav rule: a page outside your view levels is absent from every
   // nav (sec-check, Sep 5) — same gate Sidebar/BottomNav use.
   const canSee = (href: string) => { const f = featureForPath(href); return !f || !features || features.includes(f) }
@@ -43,6 +44,9 @@ function CompanyMenu({ companyName, features, children }: { companyName: string;
           {/* Quieting your own phone needs no view level — the card lives
               inside Company settings for anyone who can open that. */}
           {!canSee('/settings') && <Link href="/settings/phone" className={item} onClick={() => setOpen(false)}><BellRing className="h-4 w-4 text-teal" /> My phone</Link>}
+          {/* "View as" at the top (Brian, Sep 21): the owner checks what a
+              teammate sees from the map itself. */}
+          {canViewAs && <ViewAsPicker variant="menu" onDone={() => setOpen(false)} />}
           <div className="my-1 border-t border-navy-800" />
           <button type="button" onClick={() => signOutAction()} className={item + ' w-full text-left text-faint hover:text-alert'}><LogOut className="h-4 w-4" /> Sign out</button>
         </div>
@@ -54,10 +58,12 @@ function CompanyMenu({ companyName, features, children }: { companyName: string;
 /** Slim banner above the Live Map: brand + company on the left, current
  *  conditions on the right (weather moved up out of the layers menu — owner
  *  ask, Jul 21). The AskAI button floats over the map beside the layers pill. */
-export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherPlace = null, weatherCoords = null, canSetWeatherDefault = false, features = null }: {
+export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherPlace = null, weatherCoords = null, canSetWeatherDefault = false, features = null, canViewAs = false }: {
   companyName: string
   /** The viewer's view levels — the account menu hides pages outside them. */
   features?: string[] | null
+  /** The REAL caller may preview the app as a teammate — "View as…" in the account menu. */
+  canViewAs?: boolean
   logoUrl?: string | null
   logoBg?: string | null
   weatherPlace?: string | null
@@ -85,7 +91,7 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
           logo has to do something) — the same zoom-to-all as the ⤢ button. */}
       <button type="button" onClick={fitFleet} title="Zoom to your whole fleet" aria-label="Zoom to all assets" className="md:hidden flex items-center"><Logo size={20} href={null} /></button>
       <span className="hidden md:flex items-center">
-        <CompanyMenu companyName={companyName} features={features}>
+        <CompanyMenu companyName={companyName} features={features} canViewAs={canViewAs}>
           <span className="font-mono text-[11px] uppercase tracking-[0.12em] leading-none text-faint hover:text-ink truncate px-1 py-1">{companyName}</span>
         </CompanyMenu>
       </span>
@@ -99,7 +105,7 @@ export function MapTopBar({ companyName, logoUrl = null, logoBg = null, weatherP
         </span>
         <span className="md:hidden flex items-center gap-2.5">
           <span className="h-4 w-px bg-navy-700 flex-none" />
-          <CompanyMenu companyName={companyName} features={features}>
+          <CompanyMenu companyName={companyName} features={features} canViewAs={canViewAs}>
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img

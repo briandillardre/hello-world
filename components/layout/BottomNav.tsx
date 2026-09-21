@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane } from 'lucide-react'
+import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
 import { featureForPath } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
@@ -91,7 +92,7 @@ function sanitizeOrder(saved: unknown, canon: string[]): string[] | null {
   return next
 }
 
-export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, features = null, askAi = true, onSignOut }: {
+export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, userName, navOrder = null, role = null, features = null, askAi = true, onSignOut, canViewAs = false }: {
   alertCount?: number
   latestAlertAt?: string | null
   companyName?: string
@@ -105,6 +106,8 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   /** Ask AI view level — false turns the center seat into a plain spacer. */
   askAi?: boolean
   onSignOut?: () => void
+  /** Master/Admin, not already previewing: a "View as" button in the drawer's account block. */
+  canViewAs?: boolean
 }) {
   const pathname = usePathname()
   const unseen = useUnseenAlertCount(alertCount, latestAlertAt)
@@ -326,6 +329,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                     <LogOut className="h-4 w-4" /> Sign out
                   </button>
                 )}
+                {canViewAs && <ViewAsPicker variant="drawer" onDone={closeDrawer} />}
               </div>
             </div>
           </div>
