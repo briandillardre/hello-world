@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyIngestKey } from '@/lib/ingest-auth'
 import type { IngestLocationPayload } from '@/lib/types'
+import { safeBag, plausibleTimestamp } from '@/lib/telemetry-ingest'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -27,6 +28,11 @@ export async function POST(request: NextRequest) {
 
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return NextResponse.json({ error: 'Invalid coordinates' }, { status: 422 })
+  }
+  // Same plausibility window as the flespi webhook and the OBD route.
+  const ts = plausibleTimestamp(timestamp)
+  if (ts === false) {
+    return NextResponse.json({ error: 'timestamp must be an ISO 8601 date within the last 30 days' }, { status: 422 })
   }
 
   if (isMock) {
@@ -60,8 +66,9 @@ export async function POST(request: NextRequest) {
     battery: battery ?? null,
     speed: null,
     heading: null,
-    timestamp: timestamp ?? new Date().toISOString(),
-    raw: body,
+    timestamp: ts ?? new Date().toISOString(),
+    // Without the prototype keys a JSON body may carry (sec-check, Sep 21).
+    raw: safeBag(body),
   })
 
   return NextResponse.json({ ok: true })

@@ -321,6 +321,23 @@ async function deleteByIds(db: Db, table: 'asset_locations' | 'unassigned_locati
 }
 
 /**
+ * Drop the stored truck-readings map (115) for these assets. The map is
+ * "every key this asset's tracker has ever sent" — after a swap it would
+ * keep describing the OLD unit (RPM dials "as of 12 days ago" on a machine
+ * that now wears a battery unit, two spellings of one key from two units).
+ * The next batch from the unit it wears now re-seeds it. Before 115 the
+ * table is missing and the error is ignored (ship-check, Sep 21).
+ */
+async function forgetReadings(db: Db, assetIds: (string | null | undefined)[]): Promise<void> {
+  const ids = Array.from(new Set(assetIds.filter((x): x is string => typeof x === 'string' && x.length > 0)))
+  if (!ids.length) return
+  try {
+    const { error } = await db.from('asset_telemetry_latest').delete().in('asset_id', ids)
+    if (error && error.code !== '42P01') console.error('asset_telemetry_latest forget failed:', error.message)
+  } catch { /* additive: a tracker change never fails on the readings row */ }
+}
+
+/**
  * Pull buffered drawer pings for `imei` since `sinceIso` onto `assetId`.
  * Page by page: copy a page, delete exactly those ids, repeat — so a truck
  * that ran for a week "in the drawer" lands whole, and a failed page stops
@@ -446,6 +463,7 @@ async function takeOff(db: Db, companyId: string, actorId: string | null, asset:
   Promise<{ ok: true; toId: string | null; moved: number } | { ok: false; error: string }> {
   if (dest.mode === 'drawer') {
     await db.from('assets').update({ tracker_id: null }).eq('id', asset.id).eq('company_id', companyId)
+    await forgetReadings(db, [asset.id])
     await ensureRegistered(db, companyId, imei)
     await db.from('device_onboarding').update({ unassigned_since: sinceIso, updated_at: new Date().toISOString() })
       .eq('company_id', companyId).eq('imei', imei)
@@ -456,6 +474,7 @@ async function takeOff(db: Db, companyId: string, actorId: string | null, asset:
   if ('error' in r) return { ok: false, error: r.error }
   await db.from('assets').update({ tracker_id: null }).eq('id', asset.id).eq('company_id', companyId)
   await db.from('assets').update({ tracker_id: imei }).eq('id', r.id).eq('company_id', companyId)
+  await forgetReadings(db, [asset.id, r.id])
   const moved = await movePings(db, companyId, asset.id, r.id, sinceIso, 'gte')
   await ensureRegistered(db, companyId, imei)
   await db.from('device_onboarding').update({ unassigned_since: null, updated_at: new Date().toISOString() })
@@ -489,6 +508,8 @@ async function putOn(db: Db, companyId: string, actorId: string | null, asset: {
     // 23505 = a company we can't see already owns this IMEI (084).
     return { ok: false, error: error.code === '23505' ? `Tracker …${imei.slice(-4)} is registered to another account. Check the IMEI.` : 'Could not save the tracker.' }
   }
+  // Both machines now describe a different unit than a minute ago.
+  await forgetReadings(db, [asset.id, holder?.id])
   if (holder) moved = await movePings(db, companyId, holder.id, asset.id, sinceIso, 'gte')
   // From the drawer: the box's pings from `sinceIso` up to the moment it was
   // pulled still sit on the machine it came off. They are this tracker's —
@@ -669,6 +690,7 @@ export async function undoMove(companyId: string, moveId: string): Promise<{ ok:
         break
       }
     }
+    if (m.kind !== 'split_history') await forgetReadings(db, [from?.id, to?.id])
     await db.from('tracker_moves').update({ undone_at: new Date().toISOString() }).eq('id', m.id)
     undone++
   }
@@ -702,6 +724,7 @@ export async function softDeleteAsset(companyId: string, assetId: string): Promi
   }
   const { error } = await db.from('assets').update({ active: false, deleted_at: now, tracker_id: null, metadata: meta }).eq('id', assetId).eq('company_id', companyId)
   if (error) return { ok: false, error: 'Could not delete the asset.' }
+  await forgetReadings(db, [assetId])
   return { ok: true }
 }
 

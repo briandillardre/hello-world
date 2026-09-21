@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   assessCtx, describeAll, mergeReadings, notReported, pickGauges, readingsFromRaw, truckHealth,
   type DeviceFamily, type Readings,
@@ -35,6 +35,19 @@ export function TruckData({ assetId, family, raw, rawTimestamp, initialReadings,
   const live = useMemo(() => readingsFromRaw(raw, rawTimestamp), [raw, rawTimestamp])
   const [stored, setStored] = useState<Readings>(initialReadings ?? {})
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
+
+  // A new asset in the same mounted panel (tapping a truck in the
+  // "Traveling together" card, or another dot while the sheet is up) must
+  // not wear the previous truck's stored map while its own is fetched — the
+  // F350's check-engine line was reading as Truck 4's for a second or two,
+  // and for good if that fetch failed (ship-check, Sep 21).
+  const shownFor = useRef(assetId)
+  useEffect(() => {
+    if (shownFor.current === assetId) return
+    shownFor.current = assetId
+    setStored(initialReadings ?? {})
+    setUpdatedAt(null)
+  }, [assetId, initialReadings])
 
   useEffect(() => {
     let alive = true
@@ -106,7 +119,7 @@ export function TruckData({ assetId, family, raw, rawTimestamp, initialReadings,
 
       {compact ? (
         <details className="group">
-          <summary className="cursor-pointer list-none font-mono text-[10px] uppercase tracking-wide text-faint hover:text-muted">
+          <summary className="flex min-h-[40px] cursor-pointer list-none items-center py-2 font-mono text-[10px] uppercase tracking-wide text-faint hover:text-muted">
             <span className="group-open:hidden">All readings ({count}) ▸</span>
             <span className="hidden group-open:inline">All readings ({count}) ▾</span>
           </summary>
