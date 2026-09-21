@@ -102,6 +102,35 @@ export function FlightLog({
     await loadFlights(a.hex, span)
   }, [archiveDays, loadFlights])
 
+  /** What /api/aircraft/search hands back — one of three kinds, or a reason. */
+  interface SearchAnswer {
+    kind?: 'aircraft' | 'airport' | 'route'
+    aircraft?: Ident | null
+    field?: { ident?: string }
+    from?: { ident?: string }
+    to?: { ident?: string }
+    note?: string
+    error?: string
+  }
+
+  /**
+   * ONE reading of a search answer for all three doors — the form's own
+   * Search, a board's tail tap, and the /aircraft?tail= deep link. The deep
+   * link used to know only aircraft, so a field code arriving from the map's
+   * search box (KGMU) landed here on "No aircraft found with that tail
+   * number" with the code sitting in the box — while pressing Search on that
+   * same box opened the board (ship-check, Sep 21). An airfield or a route
+   * belongs on the board, not in the aircraft view.
+   */
+  const applyAnswer = useCallback(async (j: SearchAnswer | null | undefined, fallback: string) => {
+    if (j?.kind === 'airport' && j.field?.ident) { setJumpTo({ ident: j.field.ident }); setTab('airports'); return }
+    if (j?.kind === 'route' && j.from?.ident && j.to?.ident) {
+      setJumpTo({ ident: j.from.ident, to: j.to.ident }); setTab('airports'); return
+    }
+    if (j?.aircraft) { await open(j.aircraft); return }
+    setNote(j?.note ?? j?.error ?? fallback)
+  }, [open])
+
   const search = async (e?: React.FormEvent) => {
     e?.preventDefault()
     const term = q.trim()
@@ -109,15 +138,9 @@ export function FlightLog({
     setBusy(true); setNote(null); setFlights(null); setIdent(null); setOpenFlight(null)
     try {
       const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(term)}`)
-      const j = await r.json()
+      const j = (await r.json()) as SearchAnswer
       if (!r.ok) { setNote(j?.error ?? 'Search failed.'); return }
-      // An airfield or a route belongs on the board, not in the aircraft view.
-      if (j.kind === 'airport' && j.field?.ident) { setJumpTo({ ident: j.field.ident }); setTab('airports'); return }
-      if (j.kind === 'route' && j.from?.ident && j.to?.ident) {
-        setJumpTo({ ident: j.from.ident, to: j.to.ident }); setTab('airports'); return
-      }
-      if (!j.aircraft) { setNote(j?.note ?? 'Nothing found with that name.'); return }
-      await open(j.aircraft as Ident)
+      await applyAnswer(j, 'Nothing found with that name.')
     } catch {
       setNote('Could not reach the aircraft registry.')
     } finally {
@@ -153,17 +176,17 @@ export function FlightLog({
     void (async () => {
       try {
         const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(t)}`)
-        const j = await r.json()
-        if (j?.aircraft) { await open(j.aircraft as Ident); return }
+        const j = (await r.json()) as SearchAnswer
         // Arriving from the map popup for an airframe the registry has never
         // heard of (military, a fresh registration) used to land on a page
-        // with the tail in the box and no explanation at all (ship-check).
-        setNote(j?.note ?? j?.error ?? 'No aircraft found with that tail number.')
+        // with the tail in the box and no explanation at all (ship-check);
+        // a field code or a route from the map's search box opens the board.
+        await applyAnswer(j, 'No aircraft found with that tail number.')
       } catch {
         setNote('Could not reach the aircraft registry.')
       }
     })()
-  }, [open])
+  }, [applyAnswer])
 
   const title = ident ? (ident.reg || ident.hex.toUpperCase()) : ''
 
@@ -175,12 +198,11 @@ export function FlightLog({
       setBusy(true)
       try {
         const r = await fetch(`/api/aircraft/search?q=${encodeURIComponent(tail)}`)
-        const j = await r.json()
-        if (j?.aircraft) await open(j.aircraft as Ident)
-        else setNote(j?.note ?? 'No aircraft found with that tail number.')
+        const j = (await r.json()) as SearchAnswer
+        await applyAnswer(j, 'No aircraft found with that tail number.')
       } catch { setNote('Could not reach the aircraft registry.') } finally { setBusy(false) }
     })()
-  }, [open])
+  }, [applyAnswer])
 
   return (
     <div className="max-w-3xl space-y-4 p-4">

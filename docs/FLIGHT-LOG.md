@@ -274,6 +274,17 @@ answer — open it for N575LD" and takes you to the log, which reports the
 outage in its own words. A real "nothing found" stays silent, so typing an
 address like "123 Main" never grows a flight-log row.
 
+The reviewer pass on that commit caught that the field half of the row had
+never worked either: `/aircraft?tail=KGMU` (what the map's airfield row and
+the new fallback row open) only knew aircraft, so a field code landed on
+"No aircraft found with that tail number" while pressing Search on the same
+box opened the board. The page now reads every search answer through ONE
+function for its three doors (Search, a board's tail tap, the deep link), so
+they cannot disagree again. Same pass: Enter takes the fallback row when it
+is the only row (Android's Go key), and tapping the backdrop closes like the
+X does — clearing the text aborts the lookups in flight, so a late outage
+answer cannot park itself on the next open.
+
 ## Airport boards
 
 `/aircraft` → **By airfield**. Migration 110.
