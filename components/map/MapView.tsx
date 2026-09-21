@@ -22,6 +22,7 @@ import {
 } from '@/lib/weather'
 import { measureSummary, measureColor, MEASURE_COLORS } from '@/lib/measure'
 import { updateMeasurementAction, deleteMeasurementAction, saveMeasurementAction } from '@/lib/actions/measurements'
+import { saveAircraftAction, removeAircraftAction } from '@/lib/actions/aircraft'
 import { toast, confirmSheet } from '@/components/ui/feedback'
 import { buildActivityCurve, firstMovementT, deltas } from '@/lib/activity'
 import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
@@ -199,6 +200,16 @@ function lerpAngle(from: number, to: number, f: number): number {
 /** Escape untrusted text before it enters popup setHTML — module-wide so
  *  every popup shares one rule (sec-check, Aug 12). */
 const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+/** One saved aircraft as /api/aircraft/saved?live=1 reports it; `live` is
+ *  null when it is not transmitting (parked with the avionics off, or out of
+ *  every receiver's reach). `fixAt` is derived on arrival the way the feed's
+ *  fixes are (snapshot age + seen_pos). */
+interface SavedPlane {
+  reg: string | null
+  label: string | null
+  live: { flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; onGround: boolean; gsKt: number | null; vsFpm: number | null; track: number | null; fixAt: number } | null
+}
 
 function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>, selId?: string | null): GeoJSON.FeatureCollection {
   return {
@@ -4407,6 +4418,43 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // "Aircraft on the ground" — off by default, and never below airport zoom.
   const groundPlanesRef = useRef(false)
   const skyPlanesRef = useRef(false)
+  // The company's SAVED planes (the flight log's watchlist) by hex, with
+  // where each one is right now from /api/aircraft/saved?live=1. A saved
+  // plane in the local feed is marked and drawn red; one flying outside the
+  // feed's 250 nm is ADDED to the list from this lookup, so it is on the map
+  // wherever it is (Brian, Sep 21). `/api/planes` is public and knows nothing
+  // about who saved what — the join lives here.
+  const savedPlanesRef = useRef<Map<string, SavedPlane>>(new Map())
+  const [savedAirborne, setSavedAirborne] = useState<{ hex: string; name: string; lat: number; lon: number; altFt: number }[]>([])
+  const mergeSavedPlanes = () => {
+    const saved = savedPlanesRef.current
+    const list = planesRef.current
+    if (!list) return
+    // A plane that only got here from the watchlist leaves with it.
+    const out = list.filter((pl) => !pl.injected || saved.has(pl.hex))
+    const have = new Set<string>()
+    for (const pl of out) { pl.saved = saved.has(pl.hex); have.add(pl.hex) }
+    if (skyPlanesRef.current) {
+      for (const [hex, sp] of Array.from(saved.entries())) {
+        const lv = sp.live
+        if (!lv || lv.onGround || have.has(hex)) continue
+        const info = typeInfo(lv.type)
+        const shown = planeShownRef.current.get(hex)
+        out.push({
+          hex, flight: lv.flight, reg: lv.reg, typeCode: lv.type,
+          typeLabel: info.label, shape: info.cls, spanM: info.spanM,
+          lon: shown?.lon ?? lv.lon, lat: shown?.lat ?? lv.lat,
+          fixLon: lv.lon, fixLat: lv.lat, fixAt: lv.fixAt,
+          altFt: lv.altFt, mph: lv.gsKt != null ? Math.round(lv.gsKt * 1.15078) : null,
+          vsFpm: lv.vsFpm, track: lv.track, bankRad: 0, onGround: false,
+          saved: true, injected: true, sx: 0, sy: 0, visible: false,
+        })
+      }
+    }
+    planesRef.current = out
+  }
+  const mergeSavedRef = useRef(mergeSavedPlanes)
+  mergeSavedRef.current = mergeSavedPlanes
   // The trail's own control strip: which measurement paints it, and the ramp
   // with real numbers on it. Lives OUTSIDE the popup on purpose — minimising
   // the aircraft card must not take the legend with it, because the whole
@@ -4495,6 +4543,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     let skyMin = false
     let skyFull = ''
     let skyTitle = ''
+    // Any card button other than — and ✕ (today: the plane card's Save) is
+    // handled by the card that painted it.
+    let skyAction: ((act: string) => void) | null = null
     const paintPopup = () => {
       if (!skyPopup) return
       // Roomy enough for a thumb: the destructive ✕ sits next to the
@@ -4516,8 +4567,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           ev.stopPropagation()
           const act = (b as HTMLElement).dataset.sky
           if (act === 'close') { skyPopup?.remove(); return }
-          skyMin = !skyMin
-          paintPopup()
+          if (act === 'min') { skyMin = !skyMin; paintPopup(); return }
+          skyAction?.(act ?? '')
         })
       })
     }
@@ -4530,6 +4581,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       skyPopup?.remove()
       locateSky = locate ?? null
       skyMin = false
+      skyAction = null
       skyFull = html
       skyTitle = title ?? ''
       const sp = new maplibregl.Popup({ closeButton: false, maxWidth: '250px' })
@@ -4543,6 +4595,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     /** Replace the BODY of the open card, keeping it collapsed if it is. */
     const repaintPopupBody = (html: string) => { skyFull = html; paintPopup() }
+    /** Replace the title bar of the open card (the ★ when a plane is saved). */
+    const retitlePopup = (title: string) => { skyTitle = title; paintPopup() }
     const followSky = () => {
       if (!skyPopup || !locateSky) return
       const p = locateSky()
@@ -4641,25 +4695,42 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           popup(e.lngLat, `<div style="font-weight:700;color:#cdd5df">Moon</div><div style="margin-top:3px">${hit.distLabel}</div>${hit.illum != null ? `<div>${Math.round(hit.illum * 100)}% illuminated</div>` : ''}`, locateBody)
         }
       } else if ('hex' in hit) {
-        const title = hit.flight ?? hit.reg ?? hit.hex.toUpperCase()
-        const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== title ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
+        const hex = hit.hex
+        // A saved plane wears its label ("the boss's plane") as its title.
+        const titleFor = () => savedPlanesRef.current.get(hex)?.label || hit.flight || hit.reg || hex.toUpperCase()
+        const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== (hit.flight ?? hit.reg) ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
         // Draw this aircraft's 3D flight trail: whatever we've watched so far,
         // backfilled with its real recent track from adsb.lol.
-        selPlaneRef.current = hit.hex
+        selPlaneRef.current = hex
         rebuildPlaneTrail()
-        backfillTrace(hit.hex)
-        const hex = hit.hex
+        backfillTrace(hex)
         const locatePlane = () => {
           const pl = planesRef.current?.find((x) => x.hex === hex)
           return pl ? { sx: pl.sx, sy: pl.sy } : null
         }
         // Where this aircraft has BEEN, not just where it is (Brian, Sep 12).
         // The tail number is the friendly key; the hex always resolves.
-        const logHref = `/aircraft?tail=${encodeURIComponent(hit.reg || hit.hex)}`
+        const logHref = `/aircraft?tail=${encodeURIComponent(hit.reg || hex)}`
         const logHtml = canFlightLog
           ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
           : ''
-        const headHtml = `<div style="font-weight:700;color:#ffd94f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✈ ${escHtml(title)}</div>`
+        // Save / unsave from the card (Brian, Sep 21: "save planes … then
+        // those planes be red or blinking or something when active"). The
+        // same save as the flight log's — it is what starts banking the
+        // plane's flights nightly — and on the map a saved plane flies red,
+        // blinking, with a halo, wherever it is.
+        const saveHtml = () => {
+          if (!canFlightLog || isMock) return ''
+          const on = savedPlanesRef.current.has(hex)
+          const btn = 'display:block;width:100%;margin-top:7px;padding:8px 10px;border-radius:8px;font:600 12px/1.25 system-ui;cursor:pointer;text-align:left;'
+          return on
+            ? `<button data-sky="save" style="${btn}background:rgba(251,93,93,.14);border:1px solid rgba(251,93,93,.55);color:#ffb3b3">★ Saved — red on the map while it flies<br><span style="font-weight:400;color:#9fb6cc">tap to remove</span></button>`
+            : `<button data-sky="save" style="${btn}background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.4);color:#2dd4bf">☆ Save this plane<br><span style="font-weight:400;color:#9fb6cc">red and blinking on the map whenever it is in the air · its flights are kept from tonight</span></button>`
+        }
+        const headFor = () => {
+          const on = savedPlanesRef.current.has(hex)
+          return `<div style="font-weight:700;color:${on ? '#ff8a8a' : '#ffd94f'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${on ? '★' : '✈'} ${escHtml(titleFor())}</div>`
+        }
         // "altitude 0 ft" is a wrong-sounding way to say parked — and for a
         // taxiing aircraft the speed is the only interesting number.
         // Vertical speed with an arrow (Brian, Sep 19): climbing / descending
@@ -4676,19 +4747,46 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const stateHtml = hit.onGround
           ? `<div style="margin-top:3px"><b style="color:#9fb6cc">on the ground</b>${hit.mph && hit.mph > 3 ? ` · taxiing ${hit.mph.toLocaleString()} mph` : ' · parked'}</div>`
           : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${vsHtml}`
-        const baseHtml = `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateHtml}${logHtml}<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>`
-        popup(e.lngLat, baseHtml, locatePlane, headHtml)
-        // FlightAware-lite (Brian, Aug 29): the route this flight is flying
-        // and a photo of the ACTUAL airframe stream in a beat later. Guard on
-        // the popup INSTANCE, not just the selected hex — tapping a satellite
-        // while this fetch is in flight rebinds skyPopup, and isOpen() alone
-        // would let a plane card overwrite the satellite's box (ship-check).
+        const foot = `<div style="color:#9fb6cc;margin-top:4px">— to minimise · the trail stays</div>`
+        // The route + photo stream in a beat later; the body is rebuilt from
+        // its parts whenever the save state or the enrichment changes.
+        let extraHtml = ''
+        const bodyFor = () => `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateHtml}${logHtml}${saveHtml()}${extraHtml}${foot}`
+        popup(e.lngLat, bodyFor(), locatePlane, headFor())
+        // Guard on the popup INSTANCE, not just the selected hex — tapping a
+        // satellite while a fetch is in flight rebinds skyPopup, and isOpen()
+        // alone would let a plane card overwrite the satellite's box.
         const ownPopup = skyPopup
-        void fetchPlaneInfo(hit.hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
-          if ((photoHtml || routeHtml) && selPlaneRef.current === hit.hex && ownPopup && skyPopup === ownPopup && ownPopup.isOpen()) {
+        const stillMine = () => !!ownPopup && skyPopup === ownPopup && ownPopup.isOpen()
+        let busy = false
+        skyAction = (act) => {
+          if (act !== 'save' || busy) return
+          busy = true
+          const was = savedPlanesRef.current.has(hex)
+          void (was ? removeAircraftAction(hex) : saveAircraftAction({ hex })).then((r) => {
+            if (!r.ok) { toast(r.error ?? 'Could not save that plane.', { variant: 'error' }); return }
+            const next = new Map(savedPlanesRef.current)
+            if (was) next.delete(hex)
+            else next.set(hex, { reg: hit.reg, label: null, live: null })
+            savedPlanesRef.current = next
+            mergeSavedRef.current()
+            m.triggerRepaint()
+            toast(was
+              ? `${titleFor()} removed from your saved planes.`
+              : `${titleFor()} saved — red on the map whenever it is in the air, and its flights are kept from tonight.`, { variant: 'success', ttl: 5000 })
+            if (stillMine()) { retitlePopup(headFor()); repaintPopupBody(bodyFor()) }
+          }).catch(() => {
+            toast('Could not reach the flight log. Try again.', { variant: 'error' })
+          }).finally(() => { busy = false })
+        }
+        // FlightAware-lite (Brian, Aug 29): the route this flight is flying
+        // and a photo of the ACTUAL airframe stream in a beat later.
+        void fetchPlaneInfo(hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
+          if ((photoHtml || routeHtml) && selPlaneRef.current === hex && stillMine()) {
+            extraHtml = `${routeHtml}${photoHtml}`
             // Through repaintPopupBody, so a card the person has already
             // minimised does not spring back open when the photo lands.
-            repaintPopupBody(`${baseHtml.replace('<div style="color:#9fb6cc;margin-top:3px">— to minimise · the trail stays</div>', '')}${routeHtml}${photoHtml}<div style="color:#9fb6cc;margin-top:4px">— to minimise · the trail stays</div>`)
+            repaintPopupBody(bodyFor())
           }
         })
       } else {
@@ -4927,6 +5025,62 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     skyPlanesRef.current = !!overlaysOn.planes
   }, [overlaysOn])
 
+  // The watchlist, and where each saved plane is right now — polled beside
+  // the feed while an aircraft layer is on (15 s: one call per company per
+  // poll on our side, the feed's own cache behind it). Live only, like the
+  // feed: a saved plane over LAST WEEK's map would be a lie.
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !canFlightLog || isMock) return
+    if (!overlaysOn.planes && !overlaysOn['planes-ground']) {
+      savedPlanesRef.current = new Map()
+      setSavedAirborne([])
+      return
+    }
+    let cancelled = false
+    let inflight = false
+    const load = async () => {
+      if (inflight || cancelled || rangeRef.current !== 'live') return
+      inflight = true
+      try {
+        const r = await fetch('/api/aircraft/saved?live=1', { credentials: 'include' })
+        if (!r.ok) return
+        const j = (await r.json()) as {
+          saved?: { hex: string; reg: string | null; label: string | null; live: { flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; onGround: boolean; gsKt: number | null; vsFpm: number | null; track: number | null; seenPos: number | null } | null }[]
+          ageMs?: number | null
+          liveOk?: boolean
+        }
+        if (cancelled) return
+        const nowMs = Date.now()
+        const age = typeof j.ageMs === 'number' && j.ageMs > 0 ? Math.min(j.ageMs, 60_000) : 0
+        const prev = savedPlanesRef.current
+        const next = new Map<string, SavedPlane>()
+        for (const sp of j.saved ?? []) {
+          const lv = sp.live
+          // The feed did not answer: keep the last known state rather than
+          // reading silence as "landed".
+          const live = lv
+            ? { ...lv, fixAt: nowMs - age - (typeof lv.seenPos === 'number' ? Math.min(lv.seenPos, 30) * 1000 : 0) }
+            : j.liveOk === false ? (prev.get(sp.hex)?.live ?? null) : null
+          next.set(sp.hex, { reg: sp.reg, label: sp.label, live })
+        }
+        savedPlanesRef.current = next
+        mergeSavedRef.current()
+        m.triggerRepaint()
+        const chips = Array.from(next.entries())
+          .filter(([, sp]) => sp.live && !sp.live.onGround)
+          .map(([hex, sp]) => ({ hex, name: sp.label || sp.reg || sp.live!.flight || hex.toUpperCase(), lat: sp.live!.lat, lon: sp.live!.lon, altFt: Math.round(sp.live!.altFt / 100) * 100 }))
+        // Only re-render the map chrome when a chip actually changes — this
+        // runs every 15 s and MapView is not a cheap render.
+        setSavedAirborne((cur) => (cur.length === chips.length && cur.every((c, i) => c.hex === chips[i].hex && c.name === chips[i].name && c.altFt === chips[i].altFt) ? cur : chips))
+      } catch { /* the watchlist is a bonus over the feed — never a badge */ }
+      finally { inflight = false }
+    }
+    void load()
+    const t = setInterval(load, 15_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [mapReady, overlaysOn.planes, overlaysOn['planes-ground'], canFlightLog])
+
   // Live aircraft data — ADS-B within 250 nm of the map center, ~6s cadence.
   useEffect(() => {
     const m = map.current
@@ -5026,6 +5180,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           }
         })
         if (planePrevRef.current.size > 2000) planePrevRef.current.clear()
+        // Mark the saved ones and add any saved plane flying beyond this
+        // snapshot's reach (from the watchlist lookup).
+        mergeSavedRef.current()
         // Accumulate each aircraft's path (cap ~200 samples/plane) so a
         // clicked plane draws a live-growing 3D trail. Prune to what's in view.
         const seen = new Set<string>()
@@ -5045,7 +5202,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // hex that leaves and returns must start at its fresh fix, not
         // streak in from a minutes-old position (ship-check).
         for (const k of Array.from(planeShownRef.current.keys())) {
-          if (!seen.has(k)) planeShownRef.current.delete(k)
+          // A saved plane drawn from the watchlist lookup is not in this
+          // snapshot; dropping its shown position would make it jump to its
+          // fix every six seconds.
+          if (!seen.has(k) && !savedPlanesRef.current.has(k)) planeShownRef.current.delete(k)
         }
         if (planeHistRef.current.size > 400) {
           for (const k of Array.from(planeHistRef.current.keys())) {
@@ -7850,8 +8010,24 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       {/* Numeric scales for shaded layers — a wash of color with no numbers
           is a vibe, not data (owner ask, Jul 14). Temp/feels/wind use the WMS
           server's own legend so colors match the tiles exactly. */}
-      {!kiosk && (overlaysOn.temp || overlaysOn.feels || overlaysOn.wind || overlaysOn.lightning || precipOn || trailMode === 'heatmap' || trailMode === '3d') && (
+      {!kiosk && (overlaysOn.temp || overlaysOn.feels || overlaysOn.wind || overlaysOn.lightning || precipOn || trailMode === 'heatmap' || trailMode === '3d' || (savedAirborne.length > 0 && range === 'live' && !!overlaysOn.planes)) && (
         <div className="absolute left-3 top-[60px] z-10 flex flex-col gap-1.5 max-w-[190px] pointer-events-none">
+          {/* Saved planes in the air right now — the red ones. A tap flies
+              to the aircraft, which may be well outside the feed's reach. */}
+          {range === 'live' && !!overlaysOn.planes && savedAirborne.map((sp) => (
+            <button
+              key={sp.hex}
+              type="button"
+              onClick={() => { map.current?.flyTo({ center: [sp.lon, sp.lat], zoom: Math.max(map.current.getZoom(), 8), duration: 1200 }) }}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-alert/50 bg-navy-950/85 px-2 py-1.5 text-left backdrop-blur hover:border-alert"
+              title="Saved plane in the air — tap to fly to it"
+            >
+              <span className="h-2 w-2 flex-none rounded-full bg-alert animate-pulse motion-reduce:animate-none" />
+              <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-wide text-ink">
+                {sp.name} <span className="text-faint normal-case tracking-normal">· in the air · {sp.altFt.toLocaleString()} ft</span>
+              </span>
+            </button>
+          ))}
           {(['temp', 'feels', 'wind', 'lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
             const name = rtmaNames?.[k] ?? (k === 'temp' ? 'air_temperature' : k === 'feels' ? 'apparent_air_temperature' : k === 'wind' ? 'wind_speed' : null)
             if (!name) return null

@@ -64,6 +64,9 @@ export function FlightLog({
   archiveDays: number
 }) {
   const [saved, setSaved] = useState(initialSaved)
+  // Which saved planes are transmitting right now (the same lookup the map
+  // uses to draw them red). Polled only while the watchlist is on screen.
+  const [liveByHex, setLiveByHex] = useState<Record<string, { lat: number; lon: number; altFt: number; onGround: boolean; gsKt: number | null }>>({})
   const [q, setQ] = useState('')
   const [ident, setIdent] = useState<Ident | null>(null)
   const [note, setNote] = useState<string | null>(null)
@@ -79,6 +82,26 @@ export function FlightLog({
   const [, startSave] = useTransition()
 
   const isSaved = !!ident && saved.some((s) => s.hex === ident.hex)
+
+  useEffect(() => {
+    if (!saved.length || ident) return
+    let alive = true
+    const load = async () => {
+      try {
+        const r = await fetch('/api/aircraft/saved?live=1', { credentials: 'include' })
+        if (!r.ok) return
+        const j = (await r.json()) as { saved?: { hex: string; live: { lat: number; lon: number; altFt: number; onGround: boolean; gsKt: number | null } | null }[]; liveOk?: boolean }
+        if (!alive || j.liveOk === false) return
+        const next: typeof liveByHex = {}
+        for (const s of j.saved ?? []) if (s.live) next[s.hex] = s.live
+        setLiveByHex(next)
+      } catch { /* the list still reads; "in the air" is a bonus */ }
+    }
+    void load()
+    const t = setInterval(load, 30_000)
+    return () => { alive = false; clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved.length, ident])
 
   const loadFlights = useCallback(async (hex: string, span: number) => {
     setLoadingFlights(true)
@@ -257,25 +280,50 @@ export function FlightLog({
         <section>
           <h2 className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Saved planes</h2>
           <div className="space-y-1.5">
-            {saved.map((s) => (
-              <button
-                key={s.hex}
-                onClick={() => open({ hex: s.hex, reg: s.reg, typeCode: s.typeCode, desc: s.descr, owner: s.owner })}
-                className="flex w-full items-center gap-3 rounded-xl border border-navy-800 bg-navy-900 px-3 py-2.5 text-left hover:border-navy-700"
-              >
-                <Plane className="h-4 w-4 flex-none text-amber" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold text-ink">
-                    {s.label || s.reg || s.hex.toUpperCase()}
-                  </span>
-                  <span className="block truncate text-[11px] text-faint">
-                    {[s.descr, s.label && s.reg ? s.reg : null].filter(Boolean).join(' · ') || 'aircraft'}
-                    {s.lastFlightAt ? ` · last flew ${dayLabel(new Date(s.lastFlightAt).getTime() / 1000)}` : ''}
-                  </span>
-                </span>
-                <ChevronRight className="h-4 w-4 flex-none text-faint" />
-              </button>
-            ))}
+            {saved.map((s) => {
+              const lv = liveByHex[s.hex]
+              const airborne = !!lv && !lv.onGround
+              return (
+                <div key={s.hex} className="flex items-stretch gap-1.5">
+                  <button
+                    onClick={() => open({ hex: s.hex, reg: s.reg, typeCode: s.typeCode, desc: s.descr, owner: s.owner })}
+                    className={'flex min-w-0 flex-1 items-center gap-3 rounded-xl border bg-navy-900 px-3 py-2.5 text-left hover:border-navy-700 ' + (airborne ? 'border-alert/50' : 'border-navy-800')}
+                  >
+                    <Plane className={'h-4 w-4 flex-none ' + (airborne ? 'text-alert' : 'text-amber')} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold text-ink">
+                        {s.label || s.reg || s.hex.toUpperCase()}
+                      </span>
+                      <span className="block truncate text-[11px] text-faint">
+                        {[s.descr, s.label && s.reg ? s.reg : null].filter(Boolean).join(' · ') || 'aircraft'}
+                        {s.lastFlightAt ? ` · last flew ${dayLabel(new Date(s.lastFlightAt).getTime() / 1000)}` : ''}
+                      </span>
+                      {/* The same "active" the map paints red: transmitting
+                          right now. Parked with the avionics off sends
+                          nothing, so nothing is said — not "on the ground". */}
+                      {lv && (
+                        <span className={'mt-0.5 flex items-center gap-1.5 text-[11px] font-semibold ' + (airborne ? 'text-alert' : 'text-faint')}>
+                          <span className={'h-1.5 w-1.5 flex-none rounded-full ' + (airborne ? 'bg-alert animate-pulse motion-reduce:animate-none' : 'bg-navy-600')} />
+                          {airborne
+                            ? `in the air now · ${lv.altFt.toLocaleString()} ft${lv.gsKt ? ` · ${Math.round(lv.gsKt * 1.15078).toLocaleString()} mph` : ''}`
+                            : 'on the ground, transmitting'}
+                        </span>
+                      )}
+                    </span>
+                    <ChevronRight className="h-4 w-4 flex-none text-faint" />
+                  </button>
+                  {lv && (
+                    <a
+                      href={`/map?lat=${lv.lat.toFixed(4)}&lng=${lv.lon.toFixed(4)}&z=${airborne ? 8 : 12}&layer=${airborne ? 'planes' : 'planes-ground'}`}
+                      className="flex flex-none items-center rounded-xl border border-navy-800 bg-navy-900 px-2.5 text-[11px] font-semibold text-teal hover:border-navy-700"
+                      title="See it on the map"
+                    >
+                      Map
+                    </a>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}

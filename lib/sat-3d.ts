@@ -70,6 +70,14 @@ export interface Plane3D {
   track: number | null
   /** Estimated bank angle (rad, + = right turn) inferred from turn rate. */
   bankRad: number
+  /** On the company's watchlist (the flight log's saved planes). Drawn RED,
+   *  blinking while in the air, with a halo — Brian, Sep 21: "save planes …
+   *  then those planes be red or blinking or something when active". */
+  saved?: boolean
+  /** Put in the list from the watchlist lookup, not the local feed — a saved
+   *  plane flying outside the 250 nm the feed covers. Dropped the moment it
+   *  is no longer saved. */
+  injected?: boolean
   sx: number
   sy: number
   visible: boolean
@@ -193,6 +201,16 @@ const PLANE_COLOR: [number, number, number] = [1.0, 0.85, 0.35] // amber dart (t
  *  — and colouring it like flying traffic is how a ramp full of Cessnas ends
  *  up looking like rush hour. */
 const PLANE_GROUND_COLOR: [number, number, number] = [0.62, 0.68, 0.74]
+/** A SAVED aircraft in the air breathes between these two — the app's alert
+ *  red (#fb5d5d) and a deep ember — on a ~1.4 s cycle, the same tempo as the
+ *  map's moving-asset pulse. Steady at the bright end under
+ *  prefers-reduced-motion. */
+const PLANE_SAVED_BRIGHT: [number, number, number] = [0.984, 0.365, 0.365]
+const PLANE_SAVED_DEEP: [number, number, number] = [0.58, 0.09, 0.11]
+/** A saved aircraft parked on a ramp: still findable (dark red), never
+ *  blinking — "active" means in the air. */
+const PLANE_SAVED_GROUND: [number, number, number] = [0.55, 0.25, 0.27]
+const SAVED_PULSE_MS = 220
 /** Below this zoom, aircraft parked at a field are specks piled on each other.
  *  The poll stops ASKING for them here, and the draw stops showing them —
  *  both, so zooming out drops them on the next frame instead of the next
@@ -509,6 +527,11 @@ export function createSat3DLayer(
   getSwarm?: () => SwarmState | null,
   getPlaneTrail?: () => PlaneTrail | null,
 ): CustomLayerInterface {
+  // The saved-plane blink is the one thing in this layer that animates on
+  // its own clock; a person who asked the OS for less motion gets a steady
+  // red instead (same rule as the map's asset-pulse ring).
+  const reducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let prog: WebGLProgram | null = null
   let starProg: WebGLProgram | null = null
   let buf: WebGLBuffer | null = null
@@ -1149,12 +1172,22 @@ export function createSat3DLayer(
           // reads as a flying one. They also cast no shadow — they are ON the
           // shadow's surface.
           const groundV: number[] = []
+          // Saved aircraft get their own batches: red and breathing in the
+          // air, dark red on the ground, plus a halo drawn after the bodies.
+          const savedV: number[] = []
+          const savedGroundV: number[] = []
           for (const { pl } of glowables) {
-            if (pl.onGround) { emitMesh(groundV, pl, 0); continue }
+            if (pl.onGround) { emitMesh(pl.saved ? savedGroundV : groundV, pl, 0); continue }
             const altM = Math.min(pl.altFt * 0.3048, altCapM)
             if (shadowsOn) emit(shadowV, pl, 0, 0.92)
-            emitMesh(classV[pl.shape], pl, altM)
+            emitMesh(pl.saved ? savedV : classV[pl.shape], pl, altM)
           }
+          const pulse = reducedMotion ? 1 : 0.5 + 0.5 * Math.sin(performance.now() / SAVED_PULSE_MS)
+          const savedRgb: [number, number, number] = [
+            PLANE_SAVED_DEEP[0] + (PLANE_SAVED_BRIGHT[0] - PLANE_SAVED_DEEP[0]) * pulse,
+            PLANE_SAVED_DEEP[1] + (PLANE_SAVED_BRIGHT[1] - PLANE_SAVED_DEEP[1]) * pulse,
+            PLANE_SAVED_DEEP[2] + (PLANE_SAVED_BRIGHT[2] - PLANE_SAVED_DEEP[2]) * pulse,
+          ]
 
           // Ground shadows first (atlas silhouettes, quad program)…
           if (shadowV.length) {
@@ -1197,6 +1230,22 @@ export function createSat3DLayer(
               gl.uniform4f(mColor, PLANE_GROUND_COLOR[0], PLANE_GROUND_COLOR[1], PLANE_GROUND_COLOR[2], 1)
               gl.drawArrays(gl.TRIANGLES, 0, groundV.length / 4)
             }
+            if (savedGroundV.length) {
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(savedGroundV), gl.DYNAMIC_DRAW)
+              gl.vertexAttribPointer(mPos, 3, gl.FLOAT, false, 16, 0)
+              gl.vertexAttribPointer(mShade, 1, gl.FLOAT, false, 16, 12)
+              gl.uniform4f(mColor, PLANE_SAVED_GROUND[0], PLANE_SAVED_GROUND[1], PLANE_SAVED_GROUND[2], 1)
+              gl.drawArrays(gl.TRIANGLES, 0, savedGroundV.length / 4)
+            }
+            // Saved bodies LAST, so a watched plane is never hidden under a
+            // stranger flying the same corridor.
+            if (savedV.length) {
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(savedV), gl.DYNAMIC_DRAW)
+              gl.vertexAttribPointer(mPos, 3, gl.FLOAT, false, 16, 0)
+              gl.vertexAttribPointer(mShade, 1, gl.FLOAT, false, 16, 12)
+              gl.uniform4f(mColor, savedRgb[0], savedRgb[1], savedRgb[2], 1)
+              gl.drawArrays(gl.TRIANGLES, 0, savedV.length / 4)
+            }
             gl.disableVertexAttribArray(mShade)
           }
           // Restore the point program state for the satellite pass below.
@@ -1205,6 +1254,14 @@ export function createSat3DLayer(
           if (aPos >= 0) {
             gl.enableVertexAttribArray(aPos)
             gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0)
+          }
+          // The halo: a soft red disc breathing around every saved aircraft
+          // in the air. At state zoom the body itself is a few pixels — the
+          // halo is what makes a watched plane findable from across the map.
+          for (const g of glowables) {
+            if (!g.pl.saved || g.pl.onGround) continue
+            const px = Math.max(24, g.spanPx * 1.7) + 10 * pulse
+            drawPoint(g.clip, px, 0, PLANE_SAVED_BRIGHT[0], PLANE_SAVED_BRIGHT[1], PLANE_SAVED_BRIGHT[2], 0.16 + 0.2 * pulse)
           }
         }
       }
