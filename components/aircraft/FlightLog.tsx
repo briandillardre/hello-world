@@ -79,7 +79,7 @@ export function FlightLog({
   const [jumpTo, setJumpTo] = useState<{ ident: string; to?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [loadingFlights, setLoadingFlights] = useState(false)
-  const [, startSave] = useTransition()
+  const [savePending, startSave] = useTransition()
 
   const isSaved = !!ident && saved.some((s) => s.hex === ident.hex)
 
@@ -171,8 +171,18 @@ export function FlightLog({
     }
   }
 
+  /**
+   * Save / un-save the aircraft on screen.
+   *
+   * The list is keyed by airframe, so the optimistic row REPLACES any row for
+   * the same hex instead of sitting beside it. Two taps on Save used to put
+   * the same plane in the watchlist twice (Brian, Sep 21: two N575LDs) — the
+   * server deduped it to one row and the screen did not, so the list lied
+   * until the next reload. The button is also disabled while the save is in
+   * flight, which is the other half of the same fix.
+   */
   const toggleSave = () => {
-    if (!ident) return
+    if (!ident || savePending) return
     startSave(async () => {
       if (isSaved) {
         const r = await removeAircraftAction(ident.hex)
@@ -185,7 +195,7 @@ export function FlightLog({
             id: ident.hex, hex: ident.hex, reg: ident.reg, typeCode: ident.typeCode,
             descr: ident.desc, owner: ident.owner, label: null, notes: null,
             lastSyncedAt: null, lastFlightAt: null, createdAt: new Date().toISOString(),
-          }, ...s])
+          }, ...s.filter((x) => x.hex !== ident.hex)])
         } else setNote(r.error ?? 'Could not save that plane.')
       }
     })
@@ -360,11 +370,14 @@ export function FlightLog({
               {canEdit && (
                 <button
                   onClick={toggleSave}
-                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold ${
+                  disabled={savePending}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] font-semibold disabled:opacity-60 ${
                     isSaved ? 'border-teal/40 bg-teal/10 text-teal' : 'border-navy-700 bg-navy-950 text-muted hover:text-ink'
                   }`}
                 >
-                  {isSaved ? <><Star className="h-3.5 w-3.5" /> Saved</> : <><StarOff className="h-3.5 w-3.5" /> Save</>}
+                  {savePending
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {isSaved ? 'Removing' : 'Saving'}</>
+                    : isSaved ? <><Star className="h-3.5 w-3.5" /> Saved</> : <><StarOff className="h-3.5 w-3.5" /> Save</>}
                 </button>
               )}
             </div>

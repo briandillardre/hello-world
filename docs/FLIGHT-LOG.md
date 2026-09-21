@@ -384,6 +384,30 @@ something when active."
   signed out) and knows nothing about who saved what; the watchlist join
   happens in `/api/aircraft/saved` under RLS and on the signed-in client.
 
+## One row per airframe (Sep 21)
+
+Brian, of his own watchlist: "should not have duplicate saved planes."
+
+Two bugs with one symptom, and they were on opposite sides of the wire.
+
+* **The screen.** Save ran inside a `useTransition` whose pending flag was
+  discarded, so the button never disabled — two taps on a phone fired two
+  `saveAircraftAction` calls, and each success PREPENDED an optimistic row.
+  The server deduped to one row; the list showed two until the next reload,
+  which is the worst kind of wrong (it corrects itself, so nobody believes
+  the bug report). The optimistic row now replaces any row for the same hex,
+  and the button is disabled while the save is in flight.
+* **The table.** 108's unique index is `(company_id, hex) WHERE active` —
+  partial, because a removed plane keeps its row so re-saving picks the log
+  back up. But the save path looked for an existing row with `active = true`,
+  found nothing, and INSERTED a second row beside the dead one. Save → remove
+  → save left two rows for one airframe (seen in production: two N99ZZ rows
+  two seconds apart). It now reads every row for that hex, active first and
+  newest first, revives that one, and deletes the strays. Nothing is lost
+  with them: banked flights live in `aircraft_flights`, keyed by hex.
+* **Belt.** `getSavedAircraft` collapses by hex on the way out, so a second
+  row for one airframe can never reach the watchlist even if it exists.
+
 ## Known gaps
 * **Banked flights are keyed by airframe, not company.** Two companies
   watching the same jet share one copy — it is public ADS-B, and fetching it

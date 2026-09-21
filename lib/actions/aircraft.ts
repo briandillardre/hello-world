@@ -69,9 +69,19 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
   const db = createServiceClient()
 
   // Re-saving something already on the list is an edit, not a duplicate, and
-  // un-deleting a previously removed one keeps its banked history attached.
-  const { data: existing } = await db.from('aircraft_saved')
-    .select('id').eq('company_id', companyId).eq('hex', hex).eq('active', true).maybeSingle()
+  // un-deleting a previously removed one REVIVES THAT ROW.
+  //
+  // The unique index only covers active rows (108), so a soft-deleted row is
+  // invisible to it and the old lookup — which filtered active — inserted a
+  // second row beside the dead one every time a plane was removed and saved
+  // again. Two saves of N99ZZ two seconds apart left two rows (Brian,
+  // Sep 21). Newest first, active first: that row is the one we keep.
+  const { data: priorRows } = await db.from('aircraft_saved')
+    .select('id, active').eq('company_id', companyId).eq('hex', hex)
+    .order('active', { ascending: false }).order('created_at', { ascending: false })
+  const prior = (priorRows ?? []) as { id: string; active: boolean }[]
+  const keep = prior[0] ?? null
+  const existing = keep?.active ? keep : null
 
   if (!existing) {
     const { count } = await db.from('aircraft_saved')
@@ -97,8 +107,8 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
     active: true,
   }
 
-  const q = existing
-    ? db.from('aircraft_saved').update(row).eq('id', (existing as { id: string }).id)
+  const q = keep
+    ? db.from('aircraft_saved').update(row).eq('id', keep.id)
     : db.from('aircraft_saved').insert({ ...row, created_by: user?.id ?? null })
   const { error } = await q
   if (error) {
@@ -109,6 +119,13 @@ export async function saveAircraftAction(input: { hex: string; label?: string; n
         ? 'The flight log is still deploying — try again in a minute.'
         : 'Could not save that plane.',
     }
+  }
+  // Any older dead rows for the same airframe are now noise — the banked
+  // flights live in aircraft_flights keyed by hex, so nothing is lost with
+  // them.
+  if (prior.length > 1 && keep) {
+    await db.from('aircraft_saved')
+      .delete().eq('company_id', companyId).eq('hex', hex).neq('id', keep.id)
   }
   revalidatePath('/aircraft')
   return { ok: true }
