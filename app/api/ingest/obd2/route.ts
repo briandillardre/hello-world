@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyIngestKey } from '@/lib/ingest-auth'
+import { recordTelemetry } from '@/lib/telemetry-ingest'
 import type { IngestObd2Payload } from '@/lib/types'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -68,6 +69,13 @@ export async function POST(request: NextRequest) {
     timestamp: timestamp ?? new Date().toISOString(),
     raw: { speed, odometer, engine_on, ...body },
   })
+  // Truck readings (115): everything but the position columns, folded into
+  // the asset's stored map so the panel and the AI see it in words.
+  {
+    const { tracker_id: _t, lat: _la, lng: _ln, accuracy: _ac, battery: _b, timestamp: _ts, ...rest } = body as unknown as Record<string, unknown>
+    void _t; void _la; void _ln; void _ac; void _b; void _ts
+    await recordTelemetry(supabase, asset.id, asset.company_id, [{ timestamp: timestamp ?? new Date().toISOString(), params: { speed, odometer, engine_on, ...rest } }])
+  }
 
   // Merge telemetry into metadata — never replace the whole jsonb blob,
   // and skip the write entirely when the payload carries neither field.

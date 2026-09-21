@@ -32,6 +32,9 @@ import { LiveStatusBadge, TruckPowerNote } from '@/components/assets/LiveStatus'
 import { POWERED_MIN_V } from '@/lib/power-loss'
 import { FolderLink } from '@/components/ui/FolderLink'
 import { SectionLoading, SweepBar } from '@/components/ui/loading'
+import { TruckData } from '@/components/telemetry/TruckData'
+import { getTruckReadings, getTruckTrend, pickTrendKeys } from '@/lib/db/telemetry'
+import { mergeReadings, readingsFromRaw } from '@/lib/telemetry-catalog'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -179,6 +182,14 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <Suspense fallback={<StatusSkeleton showDriveStats={showDriveStats} isVehicle={asset.type === 'vehicle'} loc={loc ?? null} />}>
           <StatusAndTripsSection asset={asset} companyId={companyId} tz={tz} showDriveStats={showDriveStats} />
         </Suspense>
+
+        {/* what the truck's computer is saying — dials, a health line, every
+            reading in words, the week's trend (Brian, Sep 21) */}
+        {asset.type !== 'tool' && asset.type !== 'personnel' && (
+          <Suspense fallback={<SectionLoading label="Truck readings" />}>
+            <TruckDataSection asset={asset} tz={tz} />
+          </Suspense>
+        )}
 
         {/* who can see this (111) — Admins and the owner only */}
         {rankOf(perms) >= RANK.admin && (
@@ -399,6 +410,30 @@ async function StatusAndTripsSection({ asset, companyId, tz, showDriveStats }: {
       {/* drive history (real cellular assets only) */}
       {trips !== null && <TripLog trips={trips} days={TRIP_DAYS} tz={tz} />}
     </>
+  )
+}
+
+/** Truck readings (115): the stored map of every parameter this tracker has
+ *  ever sent (newest value + when), the newest fix on top, and the week's
+ *  daily low/high/avg for the readings that earn a chart. RLS scopes both
+ *  reads to the caller. Battery units get their own health (signal, cell,
+ *  modem); tools and people never reach here. */
+async function TruckDataSection({ asset, tz }: { asset: AssetWithLocation; tz: string }) {
+  const family = trackerKind(asset.tracker_id).key
+  const loc = asset.location
+  const latest = isMockEnv ? null : await getTruckReadings(asset.id)
+  const readings = mergeReadings(latest?.readings ?? {}, readingsFromRaw(loc?.raw, loc?.timestamp))
+  const isTruck = family === 'obd' || family === 'wired'
+  if (!Object.keys(readings).length && !isTruck) return null
+  const keys = pickTrendKeys(readings)
+  const trend = keys.length && !isMockEnv ? await getTruckTrend(asset.id, keys, 7, tz) : []
+  return (
+    <section>
+      <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">{isTruck ? 'Truck readings' : 'Tracker readings'}</h2>
+      <div className="rounded-xl border border-navy-800 bg-navy-900 p-3.5">
+        <TruckData assetId={asset.id} family={family} raw={loc?.raw} rawTimestamp={loc?.timestamp} initialReadings={readings} trend={trend} tz={tz} />
+      </div>
+    </section>
   )
 }
 

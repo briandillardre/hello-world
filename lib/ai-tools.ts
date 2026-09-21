@@ -9,6 +9,7 @@
  */
 import type { AssetWithLocation, Geofence, AlertEvent } from './types'
 import { MCP_TOOLS, runMcpTool } from './mcp-tools'
+import { readingsFromRaw, readingsSummary } from './telemetry-catalog'
 import { pointInPolygon } from './alerts-engine'
 import { computeRangeStats, estMpgForSpecs, type StatPoint } from './asset-stats'
 import { segmentVisits, type VisitPoint } from './visits'
@@ -102,7 +103,7 @@ export const AI_TOOLS = [
   {
     name: 'asset_telemetry',
     description:
-      'EVERY live telemetry parameter from ONE asset\'s latest report: fuel tank level %, engine RPM, ignition, battery/12V voltages, odometer, coolant temp, trouble codes — the full OBD parameter bag. Use for "how much fuel does X have", odometer, engine-health, and any question about a specific reading.',
+      'Truck readings for ONE asset, in plain words with US units: engine RPM, coolant °F, engine load, fuel level %, fuel rate, the truck\'s 12 V battery, check-engine code count and miles driven with the light on, odometer, VIN, tracker battery, cell signal and carrier — every parameter the tracker has EVER sent (newest value + when), a health line for anything wrong, and the list of readings this truck\'s computer does NOT answer for. Use for "how much fuel does X have", "is anything wrong with X", odometer, engine-health, check-engine, battery, and any question about a specific reading.',
     input_schema: {
       type: 'object' as const,
       properties: { asset_name: { type: 'string', description: 'Asset name, may be partial' } },
@@ -194,6 +195,21 @@ async function currentDwell(assetId: string): Promise<{ minutes: number; lat: nu
   } catch { return null }
 }
 
+/** The catalog's compact facts off one fix — shared by the snapshot rows. */
+function summarizeRaw(raw: unknown, timestamp: string | null | undefined) {
+  const readings = readingsFromRaw(raw, timestamp)
+  const s = readingsSummary(readings)
+  return {
+    engineOn: s.engineOn,
+    rpm: s.rpm != null ? Math.round(s.rpm) : null,
+    fuelPct: s.fuelPct != null ? Math.round(s.fuelPct) : null,
+    coolantF: s.coolantF != null ? Math.round(s.coolantF) : null,
+    truckBatteryV: s.truckBatteryV,
+    checkEngineCodes: s.checkEngineCodes,
+    health: s.health,
+  }
+}
+
 async function runFleetSnapshot(ctx: AiToolCtx) {
   const { assets, geofences } = ctx
   const rings = geofences
@@ -204,9 +220,12 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
     const site = loc
       ? rings.find((r) => r.ring.length >= 3 && pointInPolygon([loc.lng, loc.lat], r.ring))?.name ?? null
       : null
-    const raw = (loc?.raw ?? {}) as Record<string, unknown>
-    const fuelPct = typeof raw['fuel.level'] === 'number' ? Math.round(raw['fuel.level'] as number) : null
-    const rpm = typeof raw['engine.rpm'] === 'number' ? (raw['engine.rpm'] as number) : null
+    // Catalog-read facts off the newest fix (the keys are `can.fuel.level` /
+    // `can.engine.rpm` on the real trucks — the bare names here were never
+    // present, so fuel had read null in every snapshot since Aug).
+    const facts = summarizeRaw(loc?.raw, loc?.timestamp)
+    const fuelPct = facts.fuelPct
+    const rpm = facts.rpm
     const ageMin = loc ? Math.max(0, Math.round((Date.now() - new Date(loc.timestamp).getTime()) / 60_000)) : null
     // Live dwell check for powered assets that aren't clearly mid-drive on a
     // FRESH fix — catches "parked 3 minutes ago, tracker's last packet was
@@ -235,7 +254,14 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
       stoppedAt,
       batteryPct: loc?.battery ?? null,
       fuelPct,
-      engineOn: rpm != null ? rpm > 300 : typeof raw['engine.ignition.status'] === 'boolean' ? raw['engine.ignition.status'] : null,
+      rpm,
+      engineOn: facts.engineOn,
+      coolantF: facts.coolantF,
+      truckBatteryV: facts.truckBatteryV,
+      checkEngineCodes: facts.checkEngineCodes,
+      // Plain-words problems from the readings ("Check engine: 5 codes",
+      // "Battery getting weak") — empty when nothing is wrong.
+      health: facts.health,
       lastSeen: loc ? fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz) : null,
       lastReportAgeMinutes: ageMin,
       // Owner-written notes ("V6 engine", "spare key in office") — ground truth.
@@ -396,21 +422,38 @@ async function runAssetTelemetry(ctx: AiToolCtx, input: { asset_name?: string })
   if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
   const loc = asset.location
   if (!loc) return { asset: asset.name, error: 'No telemetry yet — the tracker has never reported.' }
-  // The full parameter bag from the latest fix. Keys are generic telemetry
-  // names; scalars only, and BLE noise trimmed to keep the payload tight.
-  const params: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries((loc.raw ?? {}) as Record<string, unknown>)) {
-    if (k.startsWith('ble.') || k === 'source') continue
-    if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') params[k] = v
-  }
+  // Stored map first (every key the tracker has EVER sent — 115), the newest
+  // fix's bag on top so nothing the panel shows is missing here.
+  const { readingsFromRaw, mergeReadings, describeAll, truckHealth, assessCtx, notReported, readingsSummary } = await import('./telemetry-catalog')
+  const { trackerKind } = await import('./devices')
+  const family = trackerKind(asset.tracker_id).key
+  let stored: Record<string, { v: unknown; t: string; n?: number; since?: string }> = {}
+  try {
+    const { createServiceClient } = await import('./supabase-server')
+    const { data } = await createServiceClient().from('asset_telemetry_latest').select('readings').eq('asset_id', asset.id).maybeSingle()
+    if (data?.readings && typeof data.readings === 'object') stored = data.readings as typeof stored
+  } catch { /* the newest fix still answers */ }
+  const readings = mergeReadings(stored, readingsFromRaw(loc.raw, loc.timestamp))
+  const actx = assessCtx(readings, family)
+  const described = describeAll(readings, actx).filter((d) => !d.internal)
   return {
     asset: asset.name,
     notes: typeof asset.metadata?.notes === 'string' && asset.metadata.notes ? String(asset.metadata.notes).slice(0, 400) : undefined,
     reportedAt: fmtDateTime(new Date(loc.timestamp).getTime(), ctx.tz),
     speedMph: loc.speed,
-    batteryPct: loc.battery,
-    params,
-    note: 'Odometer values are meters; fuel.level is percent of tank; battery.voltage is the 12V system.',
+    trackerKind: family,
+    engineOn: actx.engineOn,
+    health: truckHealth(readings, actx).map((h) => h.text),
+    summary: readingsSummary(readings, family),
+    readings: described.map((d) => ({
+      what: d.label,
+      value: d.text,
+      state: d.words ?? undefined,
+      asOf: fmtDateTime(Date.parse(d.t), ctx.tz),
+      reports: d.n,
+    })),
+    notReported: notReported(readings, family).map((d) => d.label),
+    note: 'Values are already converted to US units (°F, mph, mi, gal, V). "notReported" are readings the tracker can ask for but this vehicle\'s computer has not answered — do not assume they are zero. Fuel rate on the pilot trucks reads too low to trust.',
   }
 }
 

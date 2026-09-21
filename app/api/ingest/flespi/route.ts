@@ -6,6 +6,7 @@ import { vehiclePower } from '@/lib/vehicle-power'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 import { recordBeaconSightings } from '@/lib/ble-sightings'
 import { checkTruckPower } from '@/lib/power-loss-check'
+import { recordTelemetry } from '@/lib/telemetry-ingest'
 import { POWERED_MIN_V, externalVolts } from '@/lib/power-loss'
 import { safeTz } from '@/lib/dates'
 
@@ -85,6 +86,9 @@ export async function POST(request: NextRequest) {
   // rows each asset gained — the detector reads only what those say it must.
   const lowInBatch = new Set<string>()
   const insertedRows = new Map<string, number>()
+  // Every stored fix's parameter bag, per asset — folded once per batch into
+  // asset_telemetry_latest (115), the "what does this truck report" row.
+  const telemetryRows = new Map<string, { companyId: string; rows: { timestamp: string; params: Record<string, unknown> }[] }>()
   for (const r of normalized) {
     // Plausibility gate (sec-check, Sep 1): a fix dated in the future would sit
     // as the asset's 'latest' position forever (every read orders by
@@ -190,6 +194,10 @@ export async function POST(request: NextRequest) {
     } else {
       persisted++
       insertedRows.set(asset.id, (insertedRows.get(asset.id) ?? 0) + 1)
+      const tr: { companyId: string; rows: { timestamp: string; params: Record<string, unknown> }[] } =
+        telemetryRows.get(asset.id) ?? { companyId: asset.company_id, rows: [] }
+      tr.rows.push({ timestamp: r.timestamp, params: locRow.raw })
+      telemetryRows.set(asset.id, tr)
       if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
       updated.get(asset.company_id)!.set(asset.id, r)
     }
@@ -282,6 +290,12 @@ export async function POST(request: NextRequest) {
     }
   } catch (err) {
     console.error('vehicle health checks failed', err) // pre-022 DB or notify down — never break ingestion
+  }
+
+  // ── Truck readings (115): newest value of every parameter, per asset ──────
+  // One RPC per asset per batch; additive — never breaks ingestion.
+  for (const [assetId, tr] of Array.from(telemetryRows.entries())) {
+    await recordTelemetry(supabase, assetId, tr.companyId, tr.rows)
   }
 
   // ── Alert rules: evaluate against the fresh readings ──────────────────────

@@ -10,10 +10,10 @@ import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
 import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
-import { shortTracker } from '@/lib/devices'
+import { shortTracker, trackerKind } from '@/lib/devices'
+import { TruckData } from '@/components/telemetry/TruckData'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
 import { LiveStatusBadge, TruckPowerNote } from '@/components/assets/LiveStatus'
-import { POWERED_MIN_V } from '@/lib/power-loss'
 import { Badge } from '@/components/ui/badge'
 import { MapSheet } from './MapSheet'
 
@@ -621,7 +621,15 @@ function AssetDetails({
 
       {stats && <ActivityCard stats={stats.ranges} mpg={stats.mpg} lastMovedIso={stats.lastMovedIso} movingNow={stats.movingNow} />}
 
-      <EngineWidget asset={asset} />
+      {asset.type !== 'tool' && asset.type !== 'personnel' && (
+        <TruckData
+          assetId={asset.id}
+          family={trackerKind(asset.tracker_id).key}
+          raw={asset.location?.raw}
+          rawTimestamp={asset.location?.timestamp}
+          compact
+        />
+      )}
 
       <SpecSheet meta={meta} mpg={stats?.mpg} />
 
@@ -910,52 +918,6 @@ function ActivityCard({ stats, mpg, lastMovedIso, movingNow }: {
         {parkedLabel && <span className={'block mb-1 font-mono text-[11px] tracking-wide ' + (movingNow ? 'text-teal' : 'text-muted')}>{parkedLabel}</span>}
         *fuel estimated at {mpg} mpg + idle burn until OBD fuel data is wired
       </p>
-    </div>
-  )
-}
-
-/** Cockpit strip: engine + tracker vitals off the latest ping's raw
- *  telemetry — RPM, fuel, 12V, tracker odometer, altitude. Renders only
- *  when the device actually served something (real OBD units). */
-function EngineWidget({ asset }: { asset: AssetWithLocation }) {
-  const raw = (asset.location?.raw ?? null) as Record<string, unknown> | null
-  if (!raw || asset.type === 'tool' || asset.type === 'personnel') return null
-  const num = (k: string) => (typeof raw[k] === 'number' && Number.isFinite(raw[k] as number) ? (raw[k] as number) : null)
-
-  const p = vehiclePower(raw)
-  const rpm = num('obd.rpm') ?? num('can.engine.rpm')
-  const fuelPct = num('fuel.level')
-  const altM = num('position.altitude')
-  // Teltonika total odometer arrives in meters — distance the TRACKER has
-  // seen, not the dash odometer.
-  const odoM = num('vehicle.mileage') ?? num('can.vehicle.mileage')
-  if (rpm == null && fuelPct == null && altM == null && odoM == null && p.volts == null && p.engineOn == null) return null
-
-  const cells: { label: string; value: string; accent?: string }[] = []
-  if (p.engineOn != null) cells.push({ label: 'Engine', value: p.engineOn ? 'RUNNING' : 'OFF', accent: p.engineOn ? 'text-[#34d399]' : 'text-faint' })
-  if (rpm != null) cells.push({ label: 'RPM', value: rpm.toLocaleString() })
-  if (fuelPct != null) cells.push({ label: 'Fuel', value: `${Math.round(fuelPct)}%`, accent: fuelPct < 15 ? 'text-alert' : undefined })
-  // Under POWERED_MIN_V the pin is not reading a weak battery, it is reading
-  // NO truck — the plug is out (lib/power-loss). Say that, not "0.0 V".
-  if (p.volts != null && p.volts < POWERED_MIN_V) cells.push({ label: 'Truck power', value: 'NONE', accent: 'text-alert' })
-  else if (p.volts != null) cells.push({ label: '12V batt', value: `${p.volts.toFixed(1)} V`, accent: p.health === 'low' ? 'text-alert' : p.health === 'weak' ? 'text-amber' : undefined })
-  if (odoM != null) cells.push({ label: 'Odo (tracker)', value: `${Math.round(odoM / 1609.34).toLocaleString()} mi` })
-  if (altM != null) cells.push({ label: 'Altitude', value: `${Math.round(altM * 3.28084).toLocaleString()} ft` })
-
-  return (
-    <div className="rounded-xl border border-navy-700 bg-gradient-to-b from-navy-800 to-navy-900 p-3">
-      <div className="flex items-center gap-1.5 mb-2">
-        {p.engineOn && <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-blink" />}
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">Engine · live</p>
-      </div>
-      <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
-        {cells.map((c) => (
-          <div key={c.label}>
-            <p className={'font-display font-bold text-[15px] tabular-nums ' + (c.accent ?? 'text-ink')}>{c.value}</p>
-            <p className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-faint mt-0.5">{c.label}</p>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

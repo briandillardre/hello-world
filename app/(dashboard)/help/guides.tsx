@@ -186,6 +186,16 @@ export const GUIDES: HelpGuide[] = [
               when power returns. If it keeps happening, zip-tie the plug or move the unit to a 12V pigtail.
             </P>
             <P>
+              <B>What your truck reports.</B> Tap the truck on the map, or open its page, for <B>Truck
+              readings</B>: dials for RPM, speed, coolant temperature, fuel level, the 12-volt battery and
+              engine load, a line in plain words when something is wrong (check-engine codes, a battery that
+              will not start tomorrow, running hot), then every other reading the unit has ever sent. Under
+              that, <B>Not reported by this truck</B> lists what the unit can ask for that this truck&apos;s
+              computer does not answer — newer pickups answer for most of it, older trucks for less, and
+              medium-duty trucks (F650, F750) speak a different language on the port and need the wired CAN
+              unit for engine data. Ask AI knows the same readings.
+            </P>
+            <P>
               <B>Swapped it into another truck?</B> Do not edit the Tracker ID on the truck&apos;s page.
               Use <B>Reassign tracker</B> on the truck, or the drawer, so each truck keeps its own history.
               See <B>Swapping &amp; moving trackers</B>.
