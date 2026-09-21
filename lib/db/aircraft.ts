@@ -72,7 +72,15 @@ export async function getSavedAircraft(companyId: string): Promise<SavedAircraft
       .eq('active', true)
       .order('created_at', { ascending: false })
     if (error) return [] // 108 not applied yet — the page shows its empty state
-    return ((data ?? []) as SavedRow[]).map(toSaved)
+    // One row per airframe, whatever the table holds: the unique index is
+    // partial (active only), so a second row for one hex is possible in
+    // principle and must never reach the watchlist twice.
+    const byHex = new Map<string, SavedAircraft>()
+    for (const r of (data ?? []) as SavedRow[]) {
+      const a = toSaved(r)
+      if (!byHex.has(a.hex)) byHex.set(a.hex, a)
+    }
+    return Array.from(byHex.values())
   } catch {
     return []
   }
