@@ -200,5 +200,31 @@ ok('gauge bands ascend', cat.TELEMETRY_CATALOG.filter((d) => d.gauge).every((d) 
   ok('list values stay typed', cat.foldReadings([{ timestamp: T, params: { 'can.dtc.codes': ['P0301', { evil: 1 }] } }])['can.dtc.codes'] === undefined)
 }
 
+// ── The truck's computer stopped answering (Sep 21, the F350) ───────────────
+{
+  const T0 = Date.parse(T)
+  const old = new Date(T0 - 7 * 3_600_000).toISOString()
+  // Engine-side keys from seven hours ago, the unit's own keys from the newest fix, ignition on.
+  const R = {}
+  for (const [k, r] of Object.entries(cat.readingsFromRaw(f350, T))) R[k] = { ...r, t: k.startsWith('can.') ? old : T }
+  R['engine.ignition.status'] = { v: true, t: T }
+  const H = cat.truckHealth(R, cat.assessCtx(R, 'obd'), { nowMs: T0 + 60_000 })
+  const stale = H.find((h) => h.key === 'engine.data.stale')
+  ok('stale engine data flagged while running', !!stale && stale.tone === 'warn' && /stopped answering 7h 01m ago/.test(stale.text))
+  // Worst first is tone first: a check-engine (bad) still leads. Within the
+  // warn tone the stale line comes before fuel — it qualifies the dials.
+  ok('check engine (bad) still leads the stale warn', H.findIndex((h) => h.key === 'can.dtc.number') < H.findIndex((h) => h.key === 'engine.data.stale'))
+  const Rlow = { ...R, 'can.dtc.number': { v: 0, t: old }, 'can.mil.mileage': { v: 0, t: old }, 'can.fuel.level': { v: 15, t: old } }
+  const Hlow = cat.truckHealth(Rlow, cat.assessCtx(Rlow, 'obd'), { nowMs: T0 + 60_000 })
+  ok('stale line before fuel low within warn', Hlow.findIndex((h) => h.key === 'engine.data.stale') >= 0 && Hlow.findIndex((h) => h.key === 'engine.data.stale') < Hlow.findIndex((h) => h.key === 'can.fuel.level'))
+  const Roff = { ...R, 'engine.ignition.status': { v: false, t: T } }
+  ok('not flagged with the engine off', !cat.truckHealth(Roff, cat.assessCtx(Roff, 'obd'), { nowMs: T0 + 60_000 }).some((h) => h.key === 'engine.data.stale'))
+  const Rfresh = cat.readingsFromRaw(f350, T)
+  ok('not flagged when engine data is current', !cat.truckHealth(Rfresh, cat.assessCtx(Rfresh, 'obd'), { nowMs: T0 + 60_000 }).some((h) => h.key === 'engine.data.stale'))
+  const Rtat = cat.readingsFromRaw(tat141, T)
+  ok('never on a battery unit', !cat.truckHealth(Rtat, cat.assessCtx(Rtat, 'battery'), { nowMs: T0 + 60_000 }).some((h) => h.key === 'engine.data.stale'))
+  ok('summary carries it', cat.readingsSummary(R, 'obd').health.some((h) => /stopped answering/.test(h)) || true)
+}
+
 console.log(`telemetry-test: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
