@@ -20,6 +20,38 @@ where raw->>'source' = 'flespi' order by "timestamp" desc limit 3;
 
 ## 1. Full data catalog
 
+> **Sep 21 2026 — the catalog is now CODE.** `lib/telemetry-catalog.ts` is the
+> master list (every flespi name the units send, the Teltonika AVL id, a label
+> in contractor words, the display unit, the gauge bands, the health verdict
+> and a one-line explanation), and `asset_telemetry_latest` (migration 115)
+> is the per-truck answer to "what does THIS one report" — newest value of
+> every key the tracker has ever sent, how many reports carried it, since
+> when. The map panel and the asset page render both (`components/telemetry/`),
+> `/api/telemetry/<asset>` serves them, and the AI reads the same facts
+> (`asset_telemetry` in Ask AI, `truck_readings` + `list_assets.readings`
+> through the MCP door). `node scripts/telemetry-test.mjs` asserts it against
+> the real bags below — run it after ANY change to the catalog.
+>
+> **What the pilot trucks actually send (Sep 21 2026, last 3 days):**
+>
+> | Truck | OBD engine data over the port | Always |
+> |---|---|---|
+> | 2016 Ford F350 (FMM00A) | `can.engine.rpm`, `can.engine.coolant.temperature`, `can.engine.load.level`, `can.fuel.level`, `can.fuel.consumption`, `can.vehicle.speed`, `can.dtc.number` (**5 codes**), `can.mil.mileage` (37,903 km with the light on), `vehicle.vin` | `external.powersource.voltage`, `battery.voltage/.current`, `engine.ignition.status`, `movement.status`, `vehicle.mileage` (km, tracker odometer), `gsm.signal.level`, `gsm.operator.code`, `gnss.*`, `sleep.mode.enum`, `event.enum`, `position.satellites/hdop/pdop/valid` |
+> | 2016 RAM 3500 (FMM00A) | same set plus `can.vehicle.mileage` (the truck's own odometer, km) | same |
+> | 2017 RAM 2500 (FMM00A) | `can.fuel.level`, `can.fuel.consumption`, `can.mil.mileage`, `vehicle.vin` only — no RPM, no coolant | same |
+> | F650 Dump, F750 Tool Truck, Truck 3 (FMM00A) | **nothing** — medium-duty trucks speak J1939 on the port; the OBD-II PIDs go unanswered (the wired CAN unit is the fix) | same |
+> | TAT141 battery units | n/a (no engine) | `battery.voltage` (~7 V, two cells), `custom.param.25015` modem uptime, `25016` LTE RSRP, `25017` LTE RSRQ (Teltonika's TAT141 list), `gsm.*`, `gnss.*`, `movement.status` |
+>
+> flespi is METRIC throughout: °C, km, km/h, L, L/h. `vehicle.mileage` is
+> **kilometres** (the map panel had divided it by 1,609 as if it were metres
+> and showed 0 mi — fixed with this build). `can.fuel.consumption` reads
+> 0.02 L/h at idle on the F350 — far too low for a diesel; the catalog shows
+> it but says not to trust it until checked against the dash.
+>
+> The tables that follow are the original Jul 2026 reference; where a name
+> differs, the catalog's `key`/`aliases` are authoritative.
+
+
 Field names are flespi's normalized names (what you'll see in `raw`).
 OBD-II values depend on what the vehicle's ECU serves — verify per truck in
 Teltonika Configurator → Status → OBD (the Chevy 1500 list may differ from a
@@ -126,7 +158,7 @@ main reason reporting profiles matter.
 values (4 profiles × 6 numbers + sleep modes) are a support burden and a
 foot-gun (a 1-second period = 10× the data bill). Expose named profiles.
 
-### Phase 0 — read-only telemetry (build next)
+### Phase 0 — read-only telemetry ✅ BUILT Sep 21 2026 (truck readings: gauges + every reading + not-reported list + 7-day trend; see the Sep 21 note above)
 On `/assets/[id]`, a **Live telemetry** card reading the newest
 `asset_locations.raw`: ignition, vehicle battery voltage, RPM, coolant temp,
 fuel level, DTC count (red if >0), GSM signal, last report age, plus reporting

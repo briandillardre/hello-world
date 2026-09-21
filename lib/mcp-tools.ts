@@ -20,6 +20,8 @@ import { usageFromLedger } from './costs'
 import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ } from './dates'
 import { getTimeCards, weekOf } from './db/timecards'
 import { FLAG_LABEL, categoryLabel } from './timecards'
+import { assessCtx, describeAll, mergeReadings, notReported, readingsFromRaw, readingsSummary, truckHealth, type Readings } from './telemetry-catalog'
+import { trackerKind } from './devices'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -61,6 +63,16 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       'Every asset in the fleet: name, type (vehicle/equipment/personnel/tool), active flag, last known position (lat/lng + minutes since the last report), current speed and whether it is moving right now, and the name of the zone/site it is currently inside (if any) — plus `siteStacks`: per site, how many trucks / machines / people are there right now, how many are moving, and their names (a property boundary is a perimeter, not a site). Use for "where is…", "what is at…", "what is on the Creekside site", "what is moving" questions.',
     inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'truck_readings',
+    description:
+      'Every reading ONE truck\'s tracker has ever sent, in plain words with US units: engine RPM, coolant °F, engine load, fuel level %, fuel rate, the truck\'s 12 V battery, check-engine code count and miles driven with the light on, odometer, VIN, tracker battery, cell signal and carrier — newest value and when it was reported, a health line for anything wrong, and the list of readings this truck\'s computer does NOT answer for. Use for "is anything wrong with…", fuel, odometer, check-engine and battery questions about a specific truck or machine.',
+    inputSchema: {
+      type: 'object',
+      properties: { asset: { type: 'string', description: 'Asset name, may be partial' } },
+      required: ['asset'],
+    },
   },
   {
     name: 'get_zone_costs',
@@ -212,7 +224,8 @@ interface AssetRow {
   hourly_rate: number | null
   mileage_rate: number | null
   daily_cost: number | null
-  location: { lat: number; lng: number; speed: number | null; battery: number | null; timestamp: string } | null
+  tracker_id?: string | null
+  location: { lat: number; lng: number; speed: number | null; battery: number | null; timestamp: string; raw?: Record<string, unknown> | null } | null
 }
 
 async function getCompanyAssets(companyId: string): Promise<AssetRow[]> {
@@ -221,8 +234,9 @@ async function getCompanyAssets(companyId: string): Promise<AssetRow[]> {
     return MOCK_ASSETS.slice(0, ASSET_ROW_CAP).map((a) => ({
       id: a.id, name: a.name, type: a.type, active: a.active,
       hourly_rate: a.hourly_rate ?? null, mileage_rate: a.mileage_rate ?? null, daily_cost: a.daily_cost ?? null,
+      tracker_id: a.tracker_id ?? null,
       location: a.location
-        ? { lat: a.location.lat, lng: a.location.lng, speed: a.location.speed, battery: a.location.battery, timestamp: a.location.timestamp }
+        ? { lat: a.location.lat, lng: a.location.lng, speed: a.location.speed, battery: a.location.battery, timestamp: a.location.timestamp, raw: a.location.raw ?? null }
         : null,
     }))
   }
@@ -230,8 +244,8 @@ async function getCompanyAssets(companyId: string): Promise<AssetRow[]> {
   const { data, error } = await sb
     .from('assets')
     .select(`
-      id, name, type, active, hourly_rate, mileage_rate, daily_cost,
-      location:asset_locations(lat, lng, speed, battery, timestamp)
+      id, name, type, active, hourly_rate, mileage_rate, daily_cost, tracker_id,
+      location:asset_locations(lat, lng, speed, battery, timestamp, raw)
     `)
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
@@ -249,6 +263,38 @@ async function getCompanyAssets(companyId: string): Promise<AssetRow[]> {
 }
 
 // ── Executors ────────────────────────────────────────────────────────────────
+
+async function runTruckReadings(companyId: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  const assets = await getCompanyAssets(companyId)
+  const q = String(args.asset ?? args.asset_name ?? '')
+  const asset = matchByName(q, assets)
+  if (!asset) return fail(`No asset matching "${q}". Known assets: ${assets.map((a) => a.name).join(', ')}`)
+  // The stored map (115) — every key ever sent — with the newest fix on top.
+  let stored: Readings = {}
+  if (!isMock) {
+    const sb = await service()
+    const { data } = await sb.from('asset_telemetry_latest').select('readings').eq('asset_id', asset.id).eq('company_id', companyId).maybeSingle()
+    if (data?.readings && typeof data.readings === 'object') stored = data.readings as Readings
+  }
+  const family = trackerKind(asset.tracker_id).key
+  const readings = mergeReadings(stored, readingsFromRaw(asset.location?.raw, asset.location?.timestamp))
+  const ctx = assessCtx(readings, family)
+  return ok({
+    asset: asset.name,
+    type: asset.type,
+    trackerKind: family,
+    engineOn: ctx.engineOn,
+    lastReport: asset.location ? fmtDateTime(Date.parse(asset.location.timestamp), DEFAULT_TZ) : null,
+    health: truckHealth(readings, ctx).map((h) => h.text),
+    summary: readingsSummary(readings, family),
+    readings: describeAll(readings, ctx).filter((d) => !d.internal).map((d) => ({
+      what: d.label, value: d.text, state: d.words ?? undefined, asOf: fmtDateTime(Date.parse(d.t), DEFAULT_TZ), reports: d.n,
+    })),
+    notReported: notReported(readings, family).map((d) => d.label),
+    note: 'US units already applied (°F, mph, mi, gal, V). "notReported" are readings the tracker can ask for but this vehicle\'s computer has not answered — never read them as zero. Fuel rate on the pilot trucks reads too low to trust.',
+    timezone: DEFAULT_TZ,
+  })
+}
 
 async function runListAssets(companyId: string): Promise<McpToolResult> {
   const [assets, geofences] = await Promise.all([
@@ -279,6 +325,11 @@ async function runListAssets(companyId: string): Promise<McpToolResult> {
       batteryPct: loc?.battery ?? null,
       zone: zone ?? (loc ? 'off-site' : 'no signal'),
       zoneKind,
+      // Truck readings off the newest fix, in US units, plus a plain-words
+      // health line ("Check engine: 5 codes") — trucks and machines only.
+      readings: (a.type === 'vehicle' || a.type === 'equipment') && loc?.raw
+        ? readingsSummary(readingsFromRaw(loc.raw, loc.timestamp), trackerKind(a.tracker_id).key)
+        : undefined,
     }
   })
   // Stacks (Sep 9 — Brian: "multiple items in one general area"): what is
@@ -713,6 +764,7 @@ export async function runMcpTool(
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
       case 'list_assets': return runListAssets(companyId)
+      case 'truck_readings': return runTruckReadings(companyId, args)
       case 'get_zone_costs': return runGetZoneCosts(companyId, args)
       case 'list_alerts': return runListAlerts(companyId, args)
       case 'maintenance_status': return runMaintenanceStatus(companyId)

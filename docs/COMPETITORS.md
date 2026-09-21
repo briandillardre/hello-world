@@ -1,6 +1,6 @@
 # HammerTrack Competitive Brief
 
-**Last updated: August 2026.** Written for sales conversations and positioning decisions. Everything here is from public sources (review sites, vendor pages, press releases) — sources listed per section. Claims from unverified estimates are marked. Our position on every surface: **about half the price of Tenna, $0 setup.**
+**Last updated: September 21, 2026 (Azuga added).** Written for sales conversations and positioning decisions. Everything here is from public sources (review sites, vendor pages, press releases) — sources listed per section. Claims from unverified estimates are marked. Our position on every surface: **about half the price of Tenna, $0 setup.**
 
 ---
 
@@ -18,6 +18,7 @@
 | **HCSS Telematics** (Nemetschek, Jul 2026) | Heavy-civil contractors already on HeavyBid/HeavyJob | Quote-only; ~$11–20/asset/mo reported + upfront hardware; expensive as a suite | High if you run their suite; an attach product, not standalone | Useless without HeavyJob; base equipment plan pings as slowly as every 4 hours |
 | **Linxup** | 1–50 vehicle small businesses, self-serve | ~$23–25/vehicle/mo published; free hardware = 2–3 yr lock-in | Low — dots on a map, last-seen tool trackers | Shallow reporting; cancellation-refusal complaints; no job-site or money story |
 | **Motive** | Trucking fleets needing ELD + AI cams | Quote-only; $25–50/vehicle/mo reported; 12–36 mo contracts | Low-medium — construction is a marketing vertical | D- BBB / 1.7 Trustpilot; renewal and billing complaints; overkill for a non-CDL GC |
+| **Azuga** (Bridgestone) | 5–500 vehicle SMB fleets; plug-in OBD + optional dashcam | Published: $25 / $30 / $35 per vehicle/mo (Basic / Safe / Complete); AI dashcam +$49.99/vehicle/mo; 36-month contract when a camera is in | Low — vehicle-first; a battery asset tracker for trailers, no small-tool tags we can find, no job costing | The dashcam upsell drags the bill to ~$75–85/vehicle/mo on a 3-year term; driver gamification is the pitch, not the job site |
 
 **The pattern:** eight of ten are quote-only. Most demand multi-year contracts. Almost none have a small-tool answer, and none of them close the loop from the machine to QuickBooks job cost. That's the field we play on.
 
@@ -164,6 +165,40 @@
 **Where we beat them.** Construction is their marketing vertical, not their product core: no small-tool tracking, no receipt capture, no per-zone cost ledger; QuickBooks is accounting sync, not job costing. Overkill and overpriced for a 10-truck GC with no ELD requirement. Their own review pages are our ad copy.
 
 **Counter-line:** *"Motive is a trucking compliance platform with a construction brochure. If you don't need ELD, you're paying camera-fleet prices for a map — check their BBB page before you sign the three-year deal."*
+
+---
+
+### Azuga — the Facebook-ad SMB fleet tracker (added Sep 21 2026)
+
+**Why it's here.** Brian's feed, Sep 21: a Tech.co-placed Azuga ad — *"Meet Your Entire Fleet. One Screen. Right Now."* — with four tiles (Real-time GPS Tracking · Auto Maintenance Alerts · Driver Behaviour Scores · Geofence Theft Alerts) and a dashcam in the hero shot. Brian: "make sure we can destroy these guys and swallow them whole." This section is the answer, sourced.
+
+**What they are.** Bridgestone-owned (2021) SMB fleet tracking: an OBD plug-in per vehicle, a web/mobile console, optional dual-facing AI dashcams (SafetyCam Pro / Plus, refreshed 2025), driver scoring with a gamification/rewards layer, maintenance reminders, geofences, fuel-card and ELD options, and a battery asset tracker for trailers and equipment. Vehicle-first: it is a truck product that also does trailers.
+
+**Pricing reality (public, 2026).** Unusually for this market they publish tiers: **BasicFleet $25, SafeFleet $30, CompleteFleet $35 per vehicle per month**; the **AI SafetyCam adds from $49.99 per vehicle per month**; and reviewers report a **36-month contract whenever a dashcam is in the deal** — most buyers take the camera, so the realistic bill is ~$75–85/vehicle/mo locked for three years. Hardware is bundled into the term. Sources: [Business.com review](https://www.business.com/reviews/azuga-fleet/), [Business News Daily review](https://www.businessnewsdaily.com/azuga.html), [Tech.co review](https://tech.co/fleet-management/azuga-vehicle-tracking-review), [azuga.com pricing](https://www.azuga.com/azuga-gps-pricing).
+
+**The four ad claims, against what is live here today.**
+
+| Azuga's tile | HammerTrack today | Verdict |
+|---|---|---|
+| Real-time GPS tracking | Live map with clustering, 20 s refresh, trails/replay/heat, stacks, convoys, turn-by-turn, places — on trucks, machines, people AND small tools | Ours, and wider (they have no tool tags we can find) |
+| Auto maintenance alerts | Service schedules by engine hours / miles / days, auto-opened work orders with the machine's live reading, **and (Sep 21) truck readings off the OBD port: check-engine code count, miles driven with the light on, coolant/oil temperature, a plain-words health line** on the map panel, the asset page and in the AI | Ours; the one piece they still say better is *code text* — see build list #1 |
+| Driver behaviour scores | A–F driver safety grades on /reports from the speed stream (sustained 70+/80+, spikes, night driving), zone speeding alerts | Ours for speed; theirs for harsh accel/brake **until Green Driving is switched on in the units** (build list #2). Their rewards/gamification layer we do not have and do not want as a headline — see gaps |
+| Geofence theft alerts | After-hours movement (THEFT ALERT), left-site, towing-event and lost-truck-power alerts, Night Watch on the map, per-person push | Ours, and with the money story they lack (zone hours → job cost) |
+| The dashcam in the picture | None | Theirs — deliberately. It is the $49.99/mo, 36-month half of their bill |
+
+**Where they beat us.** Video (dual-facing AI cams with coaching clips), fuel-card integration, ELD/DVIR compliance for CDL fleets, a mature driver-rewards program, and a consumer-grade self-serve funnel with published prices and a big ad budget. A 40-van HVAC company that wants cameras and driver gamification is theirs.
+
+**Where we beat them.** Everything past the truck: heavy equipment, trailers, small tools (BLE tags through trucks AND phones), job-site zones that turn into tracked hours and dollars, receipts, time cards, QuickBooks. Price without the camera anchor — our position on every surface stays **about half the price of Tenna, $0 setup** (no new percentages; their $25–35 + $49.99 stays an internal comparison). No 36-month term. And a construction owner's questions answered in words — the readings, the health line, Ask AI — rather than a driver leaderboard.
+
+**Honest gaps and what to do about them (ranked):**
+1. **Check-engine codes in English + auto work order.** We now show the count and the miles on the light; the codes themselves (`can.dtc`, P0xxx) arrive when the ECU serves them — add the plain-English description table and open a work order from a new code. This is their "Auto Maintenance Alerts" tile, beaten.
+2. **Turn on Green Driving on the FMM00As** (Teltonika IO 253/254 via FOTA) so harsh acceleration / braking / cornering events arrive — the catalog already labels them and the safety grade can weigh them. Config, not code.
+3. **Fuel-card import** (WEX / Fuelman / Comdata CSV) into the receipt chase, so fuel spend lands on the job without a card-alert email. Medium; the receipts pipeline exists.
+4. **Driver scorecard, sent to the driver** — a weekly text with their own grade and one line to fix. Gamification-lite without the trophy store.
+5. **Video: decide, don't drift.** Either a BYO-dashcam story (clips by link when an alert fires) or a written "no cameras" position for the splash. Not a build until a Founding-25 customer asks with a budget.
+6. ELD/DVIR: stay out, as with Motive — non-CDL GC crews are the wedge.
+
+**Counter-line:** *"Azuga's $25 a month is the truck. The camera is another fifty, on a three-year contract, and none of it knows what the excavator did or what the job cost. We track the whole site for about half of Tenna's price, no setup fee, no three-year term."*
 
 ---
 
