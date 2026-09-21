@@ -78,6 +78,15 @@ export interface Plane3D {
    *  plane flying outside the 250 nm the feed covers. Dropped the moment it
    *  is no longer saved. */
   injected?: boolean
+  /** Asked for BY NAME from the map's search bar (Brian, Sep 21): never
+   *  zoom-culled or decluttered away, and wears a steady teal halo so the one
+   *  aircraft the person typed is findable from any zoom. */
+  searched?: boolean
+  /** A REMEMBERED position, not a live one — the last fix of an aircraft that
+   *  is not transmitting now, or a replayed fix while the timeline sits
+   *  between its flights. Drawn in the inert grey at its altitude, never in a
+   *  class colour, so it cannot be mistaken for traffic in the air. */
+  ghost?: boolean
   sx: number
   sy: number
   visible: boolean
@@ -985,7 +994,9 @@ export function createSat3DLayer(
         const glowables: { pl: Plane3D; clip: V4; spanPx: number }[] = []
         const groundOk = zoom >= GROUND_PLANE_MIN_ZOOM
         for (const pl of planes) {
-          if (pl.onGround && !groundOk) { pl.visible = false; continue }
+          // The searched aircraft is the one thing on the map the person
+          // asked for by name — it is never hidden by a zoom rule.
+          if (pl.onGround && !groundOk && !pl.searched) { pl.visible = false; continue }
           const P = toWorld(pl.lon, pl.lat, Math.min(pl.altFt * 0.3048, altCapM))
           if (occluded(P)) { pl.visible = false; continue }
           const p = project(P)
@@ -1004,8 +1015,8 @@ export function createSat3DLayer(
               // the rule is the one we'd want the moment either bound moves,
               // and a ramp is deliberately NOT decluttered at airport zoom —
               // seeing every aircraft parked on it is the whole point.
-              const prevRank = prev.pl.onGround ? -1 : prev.pl.altFt
-              const rank = pl.onGround ? -1 : pl.altFt
+              const prevRank = prev.pl.searched ? Infinity : prev.pl.onGround ? -1 : prev.pl.altFt
+              const rank = pl.searched ? Infinity : pl.onGround ? -1 : pl.altFt
               if (prevRank >= rank) { pl.visible = false; continue }
               prev.pl.visible = false
             }
@@ -1176,7 +1187,17 @@ export function createSat3DLayer(
           // air, dark red on the ground, plus a halo drawn after the bodies.
           const savedV: number[] = []
           const savedGroundV: number[] = []
+          // A remembered position (the searched aircraft's last fix, or its
+          // replayed position between flights): the inert grey wherever it
+          // is, at its altitude, with a shadow if it was in the air.
+          const ghostV: number[] = []
           for (const { pl } of glowables) {
+            if (pl.ghost) {
+              const altM = pl.onGround ? 0 : Math.min(pl.altFt * 0.3048, altCapM)
+              if (altM > 0 && shadowsOn) emit(shadowV, pl, 0, 0.92)
+              emitMesh(ghostV, pl, altM)
+              continue
+            }
             if (pl.onGround) { emitMesh(pl.saved ? savedGroundV : groundV, pl, 0); continue }
             const altM = Math.min(pl.altFt * 0.3048, altCapM)
             if (shadowsOn) emit(shadowV, pl, 0, 0.92)
@@ -1246,6 +1267,13 @@ export function createSat3DLayer(
               gl.uniform4f(mColor, savedRgb[0], savedRgb[1], savedRgb[2], 1)
               gl.drawArrays(gl.TRIANGLES, 0, savedV.length / 4)
             }
+            if (ghostV.length) {
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ghostV), gl.DYNAMIC_DRAW)
+              gl.vertexAttribPointer(mPos, 3, gl.FLOAT, false, 16, 0)
+              gl.vertexAttribPointer(mShade, 1, gl.FLOAT, false, 16, 12)
+              gl.uniform4f(mColor, PLANE_GROUND_COLOR[0], PLANE_GROUND_COLOR[1], PLANE_GROUND_COLOR[2], 1)
+              gl.drawArrays(gl.TRIANGLES, 0, ghostV.length / 4)
+            }
             gl.disableVertexAttribArray(mShade)
           }
           // Restore the point program state for the satellite pass below.
@@ -1262,6 +1290,15 @@ export function createSat3DLayer(
             if (!g.pl.saved || g.pl.onGround) continue
             const px = Math.max(24, g.spanPx * 1.7) + 10 * pulse
             drawPoint(g.clip, px, 0, PLANE_SAVED_BRIGHT[0], PLANE_SAVED_BRIGHT[1], PLANE_SAVED_BRIGHT[2], 0.16 + 0.2 * pulse)
+          }
+          // The searched aircraft: a steady teal disc (the app's find colour),
+          // so the one plane the person typed into the box reads as "this
+          // one" at any zoom — including a grey ghost on a busy ramp.
+          for (const g of glowables) {
+            if (!g.pl.searched) continue
+            const px = Math.max(30, g.spanPx * 2)
+            drawPoint(g.clip, px, 0, PLANE_CLASS_COLOR.prop[0], PLANE_CLASS_COLOR.prop[1], PLANE_CLASS_COLOR.prop[2], 0.24)
+            drawPoint(g.clip, px * 0.55, 0, 1, 1, 1, 0.12)
           }
         }
       }
