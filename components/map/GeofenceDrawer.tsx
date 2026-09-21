@@ -224,7 +224,7 @@ export function GeofenceDrawer({
                   onClick={() => setKind('site')}
                   className={'rounded-lg border p-2.5 text-left transition-colors ' + (kind === 'site' ? 'border-amber bg-amber/10' : 'border-navy-700 hover:border-navy-600')}
                 >
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Hexagon className="h-3.5 w-3.5 text-amber" /> Job site</span>
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-ink"><Hexagon className="h-3.5 w-3.5 text-amber" /> Site</span>
                   <span className="block mt-0.5 text-[10.5px] text-faint leading-snug">Site log, usage hours, invoicing</span>
                 </button>
                 <button

@@ -57,7 +57,7 @@ export default async function AccountingPage() {
             </div>
             <h2 className="font-display font-bold text-ink text-lg">Connect QuickBooks</h2>
             <p className="text-sm text-muted mt-2 leading-relaxed">
-              Bill tracked equipment &amp; labor hours per job site as draft invoices, and send
+              Bill tracked equipment &amp; labor hours per site as draft invoices, and send
               maintenance costs straight to your books as expenses.
             </p>
             {isQboConfigured ? (

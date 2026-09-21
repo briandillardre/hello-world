@@ -9,7 +9,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>HammerTrack uses the camera to capture asset photos, VIN plates, and receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>HammerTrack lets you attach photos of assets, job sites, and receipts from your library.</string>
+	<string>HammerTrack lets you attach photos of assets, sites, and receipts from your library.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>HammerTrack can save exported maps and reports to your photo library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

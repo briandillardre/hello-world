@@ -298,7 +298,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
             {/* Hours by job site */}
             {zones.length > 0 && (
               <section className="rounded-2xl border border-navy-800 bg-navy-900 p-4">
-                <h2 className="text-sm font-semibold text-faint uppercase tracking-wider mb-2">Hours by job site</h2>
+                <h2 className="text-sm font-semibold text-faint uppercase tracking-wider mb-2">Hours by site</h2>
                 <div className="space-y-2.5">
                   {zones.map((z) => (
                     <div key={z.name}>

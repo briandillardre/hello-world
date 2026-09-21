@@ -34,6 +34,17 @@ script leans on that — peer-to-peer, not sales-to-prospect.
 > anything moves after hours. $6/machine. hammertrack.ai/demo. First beer's
 > on me if you don't want it after seeing my fleet live on it.
 
+## 2b. Text / DM — landscaper / lawn-care owner you know
+
+> Built something you'll want to see. Live map of every truck, trailer, and
+> mower — plus a $20 tag on the blowers and saws so you know which truck they
+> rode off in — and an alert on your phone within minutes when a trailer
+> moves after hours. Runs on my own fleet today.
+>
+> Letting 25 companies in at founder pricing — $6/machine a month, $3 a tool
+> tag, price locked a year, cancel anytime. hammertrack.ai/demo — poke the
+> demo, then call me and I'll show you my real fleet on it.
+
 ## 3. Equipment dealer / rental counter referral ask
 
 > Quick one — when a customer gets a machine stolen or asks you about GPS
@@ -89,7 +100,7 @@ Subject: **Your fleet on a live map — founder pricing (25 spots)**
 
 ## 7. The weekly cadence (until the 25 is full)
 
-- **Monday:** 5 texts to contractors you know (script 1 or 2)
+- **Monday:** 5 texts to contractors or landscapers you know (script 1, 2 or 2b)
 - **Wednesday:** 2 dealer/rental counter conversations (script 3)
 - **Any theft post in a group:** script 4 within the hour — that window is
   when the whole group is feeling it

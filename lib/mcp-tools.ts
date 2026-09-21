@@ -77,7 +77,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'get_zone_costs',
     description:
-      'Tracked machine hours and machine cost per job-site zone from the exact-hours usage ledger, plus the project budget when one is set, and the top assets by cost. Costs are dollars — the company API key is admin-grade, so this returns real money figures. Omit "zone" for all site zones.',
+      'Tracked machine hours and machine cost per site zone from the exact-hours usage ledger, plus the project budget when one is set, and the top assets by cost. Costs are dollars — the company API key is admin-grade, so this returns real money figures. Omit "zone" for all site zones.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -141,7 +141,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'time_cards',
     description:
-      'Crew time cards (migration 103): per person, paid hours split regular / overtime (over 40 h in the window — pass `week` for a payroll read), hours by job site, whether they are clocked in right now, and how GPS-verified the hours are (the phone\'s fixes during each shift and the share that fell inside the clocked job site). Each day lists its entries: clock-in / clock-out times, where those happened, unpaid break, and plain flags (Still clocked in, No GPS, Mostly off-site, Long shift, Edited, No job site). Use for "who worked where this week", "how many hours did X put in", "is anyone still clocked in", "were the hours actually on site", payroll and overtime questions.',
+      'Crew time cards (migration 103): per person, paid hours split regular / overtime (over 40 h in the window — pass `week` for a payroll read), hours by site, whether they are clocked in right now, and how GPS-verified the hours are (the phone\'s fixes during each shift and the share that fell inside the clocked site). Each day lists its entries: clock-in / clock-out times, where those happened, unpaid break, and plain flags (Still clocked in, No GPS, Mostly off-site, Long shift, Edited, No site). Use for "who worked where this week", "how many hours did X put in", "is anyone still clocked in", "were the hours actually on site", payroll and overtime questions.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -748,7 +748,7 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
   return ok({
     window: { label: win.label, from: fmtDateTime(win.fromMs, tz), to: fmtDateTime(win.toMs, tz), timezone: tz },
     overtimeRule: 'hours over 40 in the window; a pay week when `week` is passed',
-    gpsVerification: verified ? 'each shift: the person\'s phone fixes between clock-in and clock-out, and the share inside the clocked job site' : 'not available yet (migration 103 pending)',
+    gpsVerification: verified ? 'each shift: the person\'s phone fixes between clock-in and clock-out, and the share inside the clocked site' : 'not available yet (migration 103 pending)',
     people,
     ...(people.length ? {} : { note: 'No time entries in this window.' }),
   })

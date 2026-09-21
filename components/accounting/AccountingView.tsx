@@ -208,16 +208,16 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
 
         {/* Job sites → invoices */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Job Sites → Equipment Billing</h2>
+          <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Sites → Equipment Billing</h2>
           {geofences.length > 3 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <SearchInput value={siteQuery} onChange={setSiteQuery} placeholder="Search job sites…" />
+              <SearchInput value={siteQuery} onChange={setSiteQuery} placeholder="Search sites…" />
               <SortPills<SiteSort> options={[['name', 'A → Z'], ['newest', 'Newest']]} value={siteSort} onChange={setSiteSort} />
             </div>
           )}
           <div className="bg-navy-900 rounded-xl border border-navy-800 divide-y divide-navy-800">
             {geofences.length === 0 && (
-              <p className="p-4 text-sm text-faint">Draw a zone around a job site on the map first — invoices bill the usage tracked inside it.</p>
+              <p className="p-4 text-sm text-faint">Draw a zone around a site on the map first — invoices bill the usage tracked inside it.</p>
             )}
             {geofences.length > 0 && sites.length === 0 && (
               <p className="p-4 text-sm text-faint">Nothing matches that search.</p>

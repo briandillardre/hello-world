@@ -23,7 +23,7 @@ export const FLAG_LABEL: Record<TimeCardFlag, string> = {
   off_site: 'Mostly off-site',
   long: 'Long shift',
   edited: 'Edited',
-  no_site: 'No job site',
+  no_site: 'No site',
 }
 
 export interface TimeCardEntry {
@@ -164,7 +164,7 @@ export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; now
       for (const f of r.flags) flags[f]++
       if (r.gps && r.zoneId && r.gps.fixes > 0) { fixes += r.gps.fixes; onSite += r.gps.onSite }
       const key = r.category === 'project' ? (r.zoneId ?? 'none') : `cat:${r.category}`
-      const label = r.category === 'project' ? (r.zoneName ?? 'No job site') : categoryLabel(r.category)
+      const label = r.category === 'project' ? (r.zoneName ?? 'No site') : categoryLabel(r.category)
       const s = siteMap.get(key) ?? { zoneId: r.category === 'project' ? r.zoneId : null, label, hours: 0 }
       s.hours = round2(s.hours + r.hours)
       siteMap.set(key, s)
@@ -233,7 +233,7 @@ const csvCell = (v: unknown): string => {
 
 /** One row per entry, hours to 2 decimals, times in the company's tz. */
 export function timeCardsCsv(cards: PersonCard[], tz: string): string {
-  const head = ['Person', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Paid hours', 'Category', 'Job site',
+  const head = ['Person', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Paid hours', 'Category', 'Site',
     'Clocked in at', 'Clocked out at', 'GPS fixes', 'On-site %', 'Flags', 'Edited by', 'Edit note', 'Week regular hours', 'Week overtime hours', 'Entry id']
   const lines = [head.map(csvCell).join(',')]
   for (const c of cards) {

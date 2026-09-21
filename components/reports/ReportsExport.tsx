@@ -7,7 +7,7 @@ import type { AssetUtilization } from '@/lib/types'
  *  bookkeeper. Pure client-side; no dependency. */
 export function ReportsExport({ util, rates }: { util: AssetUtilization[]; rates: number[] }) {
   const download = () => {
-    const header = ['Asset', 'Type', 'Active hours', 'Idle hours', 'Miles', 'Hourly rate', 'Billable value', 'Job sites']
+    const header = ['Asset', 'Type', 'Active hours', 'Idle hours', 'Miles', 'Hourly rate', 'Billable value', 'Sites']
     const rows = util.map((u, i) => {
       const rate = rates[i] ?? 0
       const sites = u.job_site_hours.map((s) => `${s.geofence_name} (${s.hours}h)`).join('; ')

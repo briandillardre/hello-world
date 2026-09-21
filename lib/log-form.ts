@@ -57,7 +57,7 @@ export const LOG_FORM_DEFAULTS: LogFormItem[] = [
   // Standard sections a GC can flip on — off by default so existing crews
   // see zero change until the admin opts in.
   { id: 'materials', type: 'longtext', enabled: false, required: false, label: 'Materials & deliveries', hint: 'Supplier, ticket #, what came in' },
-  { id: 'subs', type: 'longtext', enabled: false, required: false, label: 'Subcontractors on site', hint: 'Who, headcount, hours' },
+  { id: 'subs', type: 'longtext', enabled: false, required: false, label: 'Subs & partner crews on site', hint: 'Who, headcount, hours' },
   { id: 'visitors', type: 'longtext', enabled: false, required: false, label: 'Visitors & inspections', hint: 'Inspector, agency, result' },
   { id: 'delays', type: 'choice', enabled: false, required: false, label: 'Any delays?', options: ['None', 'Weather', 'Materials', 'Labor', 'Equipment', 'Other'] },
   { id: 'toolbox', type: 'text', enabled: false, required: false, label: 'Toolbox talk topic' },

@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   // public page declared one, and Vercel serves the same HTML on the
   // *.vercel.app hostname, so search engines saw duplicates.
   alternates: { canonical: './' },
-  title: `${BRAND_NAME} — Asset tracking for contractors & field fleets`,
+  title: `${BRAND_NAME} — Asset tracking for construction, landscaping & field fleets`,
   description:
     'Every truck, machine, crew, and Bluetooth-tagged tool on one live map. Your phone knows within minutes when something moves that shouldn\'t. About half the price of Tenna.',
   manifest: '/manifest.json',

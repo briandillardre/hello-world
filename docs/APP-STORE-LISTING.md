@@ -22,7 +22,7 @@ first submission.*
 
 - **App name:** HammerTrack
 - **Subtitle (App Store, 30 char):** `Fleet & tool GPS tracking`
-- **Short description (Play, 80 char):** `Live GPS tracking for construction trucks, equipment, and Bluetooth tools.`
+- **Short description (Play, 80 char):** `Live GPS for work trucks, equipment, crews and Bluetooth tools.`
 - **Bundle / package id:** `com.hammertrack.app`
 - **Primary category:** Business (secondary: Productivity)
 - **Support URL:** https://hammertrack.ai
@@ -31,19 +31,19 @@ first submission.*
 
 ## Keywords (App Store, 100 char, comma-sep, no spaces)
 ```
-gps,fleet,tracker,construction,equipment,tools,geofence,telematics,theft,obd2,job cost,contractor
+gps,fleet,tracker,landscaping,equipment,tools,geofence,telematics,theft,obd2,job cost,lawncare
 ```
 
 ## Full description (both stores)
 
 > **Know where every truck, machine, and tool is — right now.**
 >
-> HammerTrack is GPS tracking built for construction crews, not enterprise
+> HammerTrack is GPS tracking built for field crews, not enterprise
 > fleets. One live map for your vehicles (OBD-II), heavy equipment (GPS), and
 > even your small tools (Bluetooth tags that ride along with whatever truck is
 > carrying them).
 >
-> **Stop losing iron to theft.** Get a push within minutes of a machine leaving a job
+> **Stop losing iron to theft.** Get a push within minutes of a machine leaving a
 > site after hours — "Your excavator just left at 2 AM." Draw a geofence around
 > any yard or site and know within minutes when something crosses it.
 >
@@ -51,7 +51,7 @@ gps,fleet,tracker,construction,equipment,tools,geofence,telematics,theft,obd2,jo
 > • Live map of your whole fleet — trucks, equipment, trailers, tools
 > • After-hours theft & left-site alerts to your phone's lock screen
 > • Bluetooth tool tags — see which truck your laser level is in
-> • Job-site hours & cost tracking — turn location into job costs
+> • On-site hours & cost tracking — turn location into job costs
 > • Replay any day: speed-coloured trails, every stop, every site
 > • Maintenance reminders by engine hours, mileage, or date
 > • Trip history, daily site logs, and a time clock that knows the job
@@ -60,10 +60,10 @@ gps,fleet,tracker,construction,equipment,tools,geofence,telematics,theft,obd2,jo
 >   fleet in from a spreadsheet
 > • Ask it anything about your operation, in plain English
 >
-> **Priced for contractors, not corporations** — a fraction of what the big
+> **Priced for field crews, not corporations** — a fraction of what the big
 > enterprise platforms charge, with no per-site setup fees.
 >
-> Built by a construction company, for construction companies.
+> Built by a working field-ops company — for construction, landscaping, paving and every crew that runs trucks and machines.
 
 ## What's New
 
@@ -103,7 +103,7 @@ Data collected and **linked to the user**, used only for **App Functionality**
 
 ## App Review notes (paste into Apple's "Notes")
 ```
-HammerTrack is a B2B fleet-tracking app for construction companies. It wraps
+HammerTrack is a B2B fleet-tracking app for construction, landscaping and other field-service companies. It wraps
 our live web app and adds native capabilities: push notifications for theft
 alerts; location for the live crew map and for GPS-verified time cards (while
 an employee is clocked in the app records the phone's location in the

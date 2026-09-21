@@ -182,7 +182,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
           <>
             <p className="font-display font-bold text-ink mb-1">The crew&apos;s day, in one card.</p>
             <p className="text-sm text-muted">
-              Workers clock in to a job site with a plan for the day — and the only way off the
+              Workers clock in to a site with a plan for the day — and the only way off the
               clock is a daily log: what got done, photos, receipts, safety issues, fuel status.
               Sign in to a live account to use it.
             </p>
@@ -351,7 +351,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
               {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
           ) : (
-            <p className="text-[12px] text-faint">No job-site zones yet — pick Shop, or draw a zone on the map first.</p>
+            <p className="text-[12px] text-faint">No site zones yet — pick Shop, or draw a zone on the map first.</p>
           )
         )}
 

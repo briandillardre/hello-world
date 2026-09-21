@@ -121,7 +121,7 @@ export function DayStrip({ days, windowFrom, windowTo, tz, workStart, workEnd, m
         })}
       </svg>
       <p className="text-[10px] text-faint mt-0.5">
-        <span className="inline-block w-2 h-2 rounded-full bg-ink border border-navy-900 align-middle mr-1" />first time on a job site
+        <span className="inline-block w-2 h-2 rounded-full bg-ink border border-navy-900 align-middle mr-1" />first time on a site
         · shaded band = work hours{clipped ? ` · last ${rows.length} days shown` : ''}
       </p>
     </div>

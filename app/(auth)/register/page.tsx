@@ -160,7 +160,7 @@ function RegisterInner() {
               name="organization"
               autoComplete="organization"
               className="h-11 sm:h-10"
-              placeholder="Acme Construction Co."
+              placeholder="Acme Landscaping & Grading"
               value={companyName}
               onChange={e => setCompanyName(e.target.value)}
               required

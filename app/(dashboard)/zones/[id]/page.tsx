@@ -313,7 +313,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {isVendor && (
           <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
             This is a <span className="text-[#c4b5fd] font-semibold">vendor</span> — a supply house.
-            Every stop here is named in logs and reports, and the time never counts as job-site
+            Every stop here is named in logs and reports, and the time never counts as on-site
             hours or billing. Receipts swiped while a truck is here auto-suggest the job it was
             buying for.
           </p>
@@ -322,7 +322,7 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {isBoundary && (
           <p className="text-sm text-faint rounded-xl border border-navy-800 bg-navy-900 p-4">
             This is a <span className="text-teal font-semibold">boundary</span> — an outline-only perimeter for
-            exit and after-hours alerts. Usage hours, invoicing, and the site log are tracked on job-site zones.
+            exit and after-hours alerts. Usage hours, invoicing, and the site log are tracked on site zones.
           </p>
         )}
 

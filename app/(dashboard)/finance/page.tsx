@@ -47,7 +47,7 @@ export default async function FinancePage() {
     teamCount = count ?? 0
     autoFleetValue = (assets ?? []).reduce((s, a) => s + (Number(a.purchase_price) || 0), 0)
   } else {
-    profile = { industry: 'sitework', industryLabel: 'Grading & sitework contractor', description: 'Residential and light-commercial grading, pads, driveways, and utility trenching.', lastYearRevenue: 2_400_000, ytdRevenue: 1_460_000, lastYearProfit: 168_000, ownerComp: 110_000, employees: 9 }
+    profile = { industry: 'sitework', industryLabel: 'Landscaping & sitework company', description: 'Residential and commercial landscaping, grading, driveways and drainage.', lastYearRevenue: 2_400_000, ytdRevenue: 1_460_000, lastYearProfit: 168_000, ownerComp: 110_000, employees: 9 }
     teamCount = 9
     autoFleetValue = 610_000
   }

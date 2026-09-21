@@ -178,7 +178,7 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
           </div>
           <div className="p-4 space-y-3">
             <p className="text-xs text-muted">
-              Sync assets as fixed assets, push equipment-usage invoices per job site, and record
+              Sync assets as fixed assets, push equipment-usage invoices per site, and record
               service costs as expenses — automatically, once the QuickBooks connection is live.
             </p>
             <div className="flex gap-2">

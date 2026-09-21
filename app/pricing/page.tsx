@@ -12,7 +12,7 @@ const SALES_MAILTO = `mailto:${BRAND_EMAIL_SALES}?subject=${encodeURIComponent('
 export const metadata: Metadata = {
   title: 'HammerTrack — Pricing',
   description:
-    'Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price, with theft alerts and job costing built in.',
+    'Everything most field fleets use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price, with theft alerts and job costing built in.',
   // Next replaces the root layout's openGraph wholesale (no deep merge) —
   // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
@@ -43,7 +43,7 @@ const TIERS = [
     features: [
       'Live map — trucks, equipment, Bluetooth tools',
       'After-hours theft & left-site alerts',
-      'Job-site & yard zones',
+      'Site & yard zones',
       'Site log, trips & utilization reports',
       'Unlimited users — never per-seat',
     ],
@@ -96,7 +96,7 @@ const FAQ = [
   },
   {
     q: 'What counts as an asset?',
-    a: 'Anything with a tracker or tag on it — a truck, an excavator, a trailer, or a Bluetooth-tagged tool kit. You only pay for what you track. Crew logins are free — unlimited users.',
+    a: 'Anything with a tracker or tag on it — a truck, an excavator or a mower, a trailer, or a Bluetooth-tagged tool kit. You only pay for what you track. Crew logins are free — unlimited users.',
   },
   {
     q: 'Who installs the hardware?',
@@ -127,8 +127,11 @@ export default function PricingPage() {
             Asset tracking that pays for itself
           </h1>
           <p className="text-muted mt-4 max-w-xl mx-auto text-lg">
-            Everything most contractors use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price,
+            Everything most field fleets use Tenna for — vehicles, equipment, Bluetooth tools — at about half the price,
             with theft alerts and job costing built in.
+          </p>
+          <p className="text-muted mt-2 max-w-xl mx-auto text-[15px]">
+            Built for construction, landscaping, paving and other field operations.
           </p>
         </div>
 
@@ -226,7 +229,7 @@ export default function PricingPage() {
         </section>
 
         <section className="mt-12 bg-navy-900 border border-navy-800 rounded-2xl p-7">
-          <h3 className="font-display font-bold text-lg mb-5 text-center">Why contractors switch from Tenna</h3>
+          <h3 className="font-display font-bold text-lg mb-5 text-center">Why field fleets switch from Tenna</h3>
           <div className="grid sm:grid-cols-2 gap-3.5 max-w-2xl mx-auto">
             {VS_TENNA.map(([us, them]) => (
               <div key={us} className="flex items-start gap-2.5">
@@ -307,7 +310,7 @@ export default function PricingPage() {
                 </tr>
                 <tr className="bg-navy-950/60">
                   <td className="text-faint">Built for</td>
-                  <td className="text-ink font-semibold">contractors, by a contractor</td>
+                  <td className="text-ink font-semibold">field fleets, by an owner-operator</td>
                   <td className="text-muted">enterprise construction</td>
                   <td className="text-muted">trucking &amp; logistics fleets</td>
                   <td className="text-muted">general fleets</td>

@@ -20,7 +20,7 @@ export type PoiKind =
   | 'other'
 
 export const POI_KIND_META: Record<PoiKind, { label: string; cls: string }> = {
-  site:       { label: 'Job site',   cls: 'bg-amber/15 text-amber border-amber/40' },
+  site:       { label: 'Site',       cls: 'bg-amber/15 text-amber border-amber/40' },
   supplier:   { label: 'Supplier',   cls: 'bg-teal/15 text-teal border-teal/40' },
   fuel:       { label: 'Fuel',       cls: 'bg-[#60a5fa]/15 text-[#60a5fa] border-[#60a5fa]/40' },
   food:       { label: 'Food',       cls: 'bg-orange-400/15 text-orange-300 border-orange-400/40' },

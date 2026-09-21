@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       model: process.env.AI_MODEL || 'claude-opus-4-8',
       max_tokens: 300,
       system:
-        'You estimate US used-market value ranges for construction vehicles and equipment. Reply with ONLY a JSON object: {"range":"$X–$Y","note":"one short sentence on the main value driver"}. Round to sensible increments. If the item is too ambiguous to price, use {"range":null,"note":"why"}.',
+        'You estimate US used-market value ranges for work vehicles and equipment (construction, landscaping, agriculture, hauling). Reply with ONLY a JSON object: {"range":"$X–$Y","note":"one short sentence on the main value driver"}. Round to sensible increments. If the item is too ambiguous to price, use {"range":null,"note":"why"}.',
       messages: [{
         role: 'user',
         content: `Item: ${name}\nKnown specs: ${JSON.stringify(body?.specs ?? {})}\nAssume average condition for its age unless specs say otherwise.`,

@@ -203,7 +203,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // ── Weather ───────────────────────────────────────────────────────────────
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation (NOAA MRMS, cleaned of birds, bugs and ground clutter) · loops on Live, scrubs with replays · ⚡ real satellite-detected strikes ride on top (live only, ~8km precision)' },
   { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'CURRENT warnings solid (tornado red · t-storm orange · flood green) · watch boxes dashed · ONLY LIVE — hides during replays' },
-  { id: 'pourcast', label: 'Pour planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad concrete/crane day — rain ≥60%, gusts ≥25, or ≤35°F' },
+  { id: 'pourcast', label: 'Work-window planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad weather day — rain ≥60%, gusts ≥25 mph or ≤35°F: bad for pours, lifts, spraying and seeding' },
   { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'surface temp shading · hourly · replays show the scrubbed hour (~1 day back)' },
   { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
   { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
