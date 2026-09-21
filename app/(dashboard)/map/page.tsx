@@ -67,7 +67,11 @@ export default async function MapPage({ searchParams }: { searchParams?: { m?: s
             defaultWeatherPlace={prefs.weatherPlace}
             defaultWeatherCoords={prefs.weatherCoords}
             canViewCosts={false}
-            canFlightLog={false}
+            // Real permissions, not the demo branch's placeholder: from Sep 12
+            // to Sep 21 this said `false`, so the live map's search never asked
+            // the flight log and the plane popup never showed its link (Brian,
+            // typing N575LD: four addresses, no aircraft).
+            canFlightLog={mapPerms.features.includes('aircraft')}
             savedMapViews={null}
             alerts={[]}
             focusMeasurement={focusMeasurement}

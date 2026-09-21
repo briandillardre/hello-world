@@ -160,16 +160,27 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   // address never touches this, and the answer is ranked above the geocoder's
   // — "N575LD" is a Cirrus, not a London postcode.
   const [aero, setAero] = useState<AeroHit[]>([])
+  // The flight log was asked and did not answer (rate limit, registry
+  // outage). That is never silence: the box offers the log itself instead
+  // of leaving a tail number to read as a London postcode.
+  const [aeroDown, setAeroDown] = useState(false)
   useEffect(() => {
     if (!flightLog) return
     const s = q.trim()
-    if (!looksAeronautical(s)) { setAero([]); return }
+    if (!looksAeronautical(s)) { setAero([]); setAeroDown(false); return }
     const ctrl = new AbortController()
     const t = setTimeout(() => {
       fetch(`/api/aircraft/search?q=${encodeURIComponent(s)}`, { signal: ctrl.signal })
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (r.ok) return r.json()
+          // 429 / 5xx = the log is there but did not answer this time. Any
+          // other refusal is a real "no" and stays quiet.
+          setAeroDown(r.status === 429 || r.status >= 500)
+          return null
+        })
         .then((j) => {
           if (!j) { setAero([]); return }
+          setAeroDown(false)
           if (j.kind === 'aircraft' && j.aircraft?.hex) {
             const a = j.aircraft
             setAero([{
@@ -184,11 +195,15 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
             setAero([{ kind: 'airfield', q: `${j.from.ident}-${j.to.ident}`, name: `${j.from.ident} → ${j.to.ident}`, sub: 'flights on this route' }])
           } else setAero([])
         })
-        .catch(() => { /* flight log unreachable — the rest of search is fine */ })
+        .catch(() => {
+          // Unreachable — the rest of search is fine, but say so. A cleanup
+          // abort (the next keystroke) is not an outage.
+          if (!ctrl.signal.aborted) { setAero([]); setAeroDown(true) }
+        })
     }, 350)
     return () => { clearTimeout(t); ctrl.abort() }
   }, [q, flightLog])
-  useEffect(() => { if (!open) setAero([]) }, [open])
+  useEffect(() => { if (!open) { setAero([]); setAeroDown(false) } }, [open])
 
   const pickAero = (h: AeroHit) => {
     setQ('')
@@ -300,7 +315,7 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
           Listening… say an asset or zone name
         </p>
       )}
-      {(matches.length > 0 || aero.length > 0 || places.length > 0) && (
+      {(matches.length > 0 || aero.length > 0 || places.length > 0 || aeroDown) && (
         <ul className="mt-1.5 rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           {matches.map((it, i) => (
             <li key={`${it.kind}-${it.id}`}>
@@ -344,6 +359,23 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
               </button>
             </li>
           ))}
+          {/* The log did not answer: still a door, never a dead end. Outside
+              the arrow-key ladder on purpose — it is a fallback, not a hit. */}
+          {aero.length === 0 && aeroDown && (
+            <li key="aero-down">
+              <button
+                onMouseDown={(e) => { e.preventDefault(); pickAero({ kind: 'aircraft', q: q.trim().toUpperCase(), name: '', sub: '' }) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors"
+              >
+                <Plane className="h-4 w-4 flex-none text-faint" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] text-ink truncate">Flight log didn’t answer — open it for {q.trim().toUpperCase()}</span>
+                  <span className="block font-mono text-[10px] text-faint truncate">searches the log directly</span>
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wide text-faint flex-none">flight log</span>
+              </button>
+            </li>
+          )}
           {onPickPlace && places.map((p, i) => (
             <li key={`place-${i}-${p.lat}-${p.lng}`}>
               <button

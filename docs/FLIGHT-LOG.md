@@ -255,6 +255,25 @@ verified that "Greenville", "Woodruff Road" and "Chevy" make zero calls to
 our API. Picking the row opens that aircraft's log or that field's board.
 Hidden entirely for a role without the `aircraft` view level.
 
+**Sep 21 — it had never worked on the live site.** Brian typed N575LD into
+the box again and sent the screenshot: four addresses, no aircraft. The
+browser check above had run the demo render. The production map boots
+"shell first" (`app/(dashboard)/map/page.tsx`), and that branch handed the
+flight-log flag to the map as a hard `false` — so on hammertrack.ai the box
+never asked the flight log, and the aircraft popup never showed its
+"flight log & charts" link either. Reproduced first on the live site at
+phone size (one geocoder call, zero `/api/aircraft/search` calls), then
+fixed by passing the real permission, the same one that puts the Flight log
+tile in More. Two lessons kept: verify on the LIVE site with a signed-in
+account, and a flag that is hard-coded in one render branch and computed in
+the other is a bug waiting for the branch nobody tests.
+
+And when the log IS asked but does not answer (rate limit, registry outage,
+unreachable), the box no longer goes quiet: a row reads "Flight log didn't
+answer — open it for N575LD" and takes you to the log, which reports the
+outage in its own words. A real "nothing found" stays silent, so typing an
+address like "123 Main" never grows a flight-log row.
+
 ## Airport boards
 
 `/aircraft` → **By airfield**. Migration 110.
