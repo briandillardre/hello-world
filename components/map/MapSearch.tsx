@@ -258,6 +258,9 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
       if (hi < matches.length && matches[hi]) pick(matches[hi])
       else if (aero[hi - matches.length]) pickAero(aero[hi - matches.length])
       else if (places[hi - matches.length - aero.length]) pickPlace(places[hi - matches.length - aero.length])
+      // The "didn't answer" row is the only row: Enter (Android's Go key)
+      // takes it too — one row on screen and a dead key is a dead end.
+      else if (aeroDown && aero.length === 0 && totalRows === 0) pickAero({ kind: 'aircraft', q: q.trim().toUpperCase(), name: '', sub: '' })
     }
     else if (e.key === 'Escape') { setOpen(false); setQ('') }
   }
@@ -402,7 +405,10 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   if (overlay) {
     return (
       <>
-        <button aria-label="Close search" onClick={() => setOpen(false)} className="absolute inset-0 z-40 w-full h-full bg-black/30 cursor-default" />
+        {/* Same close as the X: clearing the text aborts the lookups in
+            flight, so a late "didn't answer" can't park itself on the next
+            open (ship-check). */}
+        <button aria-label="Close search" onClick={() => { setOpen(false); setQ(''); recRef.current?.stop() }} className="absolute inset-0 z-40 w-full h-full bg-black/30 cursor-default" />
         {/* Phones: below the floating top bar (which now sits under the
             status bar, edge-to-edge) — not on top of the clock. */}
         <div className="absolute left-1/2 -translate-x-1/2 top-[var(--ht-map-top,12px)] md:top-3 z-50 w-[min(340px,92vw)]">{body}</div>
