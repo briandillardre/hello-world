@@ -27,6 +27,7 @@ export function DashboardShell({
   role = null,
   features = null,
   viewingAs = null,
+  canViewAs = false,
   children,
 }: {
   alertCount: number
@@ -41,6 +42,9 @@ export function DashboardShell({
   features?: string[] | null
   /** Set while an admin previews the app as a teammate (read-only). */
   viewingAs?: { name: string; roleLabel: string } | null
+  /** The REAL caller may preview the app as a teammate (Master/Admin, not
+   *  already previewing) — puts "View as…" at the top of the app. */
+  canViewAs?: boolean
   children: React.ReactNode
 }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -61,7 +65,7 @@ export function DashboardShell({
   const edge = pathname?.startsWith('/map')
   return (
     <>
-      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} askAi={askAi} />
+      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} askAi={askAi} canViewAs={canViewAs} />
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200 flex flex-col' + (edge ? '' : ' ht-page-inset')}>
         {viewingAs && <ViewAsBanner name={viewingAs.name} roleLabel={viewingAs.roleLabel} />}
         {/* The receipt chase follows the cardholder onto every screen while a
@@ -69,7 +73,7 @@ export function DashboardShell({
         <ReceiptNagBar edge={!!edge} />
         <div className="flex-1 min-h-0 overflow-hidden ht-nav-inset">{children}</div>
       </main>
-      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} features={features} askAi={askAi} onSignOut={signOutAction} />
+      <BottomNav alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} navOrder={navOrder} role={role} features={features} askAi={askAi} onSignOut={signOutAction} canViewAs={canViewAs} />
       {askAi && <AssistantWidget />}
       {/* Native app only: the phone reports the BLE tags it hears. On by
           default; the Tag scanner switch turns it off on one phone. A role

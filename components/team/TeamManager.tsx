@@ -4,7 +4,7 @@ import { busy as trackBusy } from '@/lib/busy'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, SlidersHorizontal, DollarSign, Receipt, Users, Mail, Crown, Sparkles, RotateCcw } from 'lucide-react'
+import { UserPlus, Copy, Check, Trash2, Shield, HardHat, Eye, Briefcase, SlidersHorizontal, DollarSign, Receipt, Users, Mail, Crown, Sparkles, RotateCcw, Handshake } from 'lucide-react'
 import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction, updateRolePolicyAction } from '@/lib/actions/team'
 import { PushPrefs } from '@/components/settings/PushPrefs'
@@ -20,6 +20,7 @@ const ROLE_META: Record<Role, { icon: typeof Shield; cls: string }> = {
   manager:   { icon: Briefcase, cls: 'text-[#60a5fa]' },
   foreman:   { icon: HardHat,   cls: 'text-teal' },
   associate: { icon: Eye,       cls: 'text-muted' },
+  prospect:  { icon: Handshake, cls: 'text-[#c4b5fd]' },
 }
 
 // The three sensitive-info toggles an admin can override per person.
@@ -228,6 +229,10 @@ function MemberRow({
             {m.isMaster && isMaster && <span title="Master admin — the owner login" className="inline-flex items-center gap-0.5 ml-1.5 text-[10px] font-bold text-amber align-middle"><Crown className="h-3 w-3" /> owner</span>}
           </p>
           {m.email && <p className="text-xs text-faint truncate">{m.email}</p>}
+          {m.role === 'prospect' && (
+            // Only the Master ever sees this row (118) — say what the role means here.
+            <p className="text-[11px] text-[#c4b5fd] leading-snug mt-0.5">Prospective Client · only you can see this person · they see the map and the machines, never the team, and can change nothing</p>
+          )}
         </div>
         {m.manageable ? (
           <>

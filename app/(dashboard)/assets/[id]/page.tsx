@@ -82,7 +82,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   if (!asset) notFound()
   // Per-asset visibility (111): RLS hides it from the real viewer already;
   // this keeps a "view app as" preview honest. Hidden means hidden — 404.
-  if (!canSeeAsset(perms, asset.metadata)) notFound()
+  if (!canSeeAsset(perms, asset.metadata, asset.type)) notFound()
   // What the Tracker sheet can offer: the drawer, boxes on other machines,
   // machines without one. Cheap (two small queries) and only for editors.
   const trackerChoices = canEdit ? await getTrackerChoices(companyId, asset.id) : null

@@ -22,15 +22,21 @@
  * Pure module: safe to import from client components.
  */
 
-export type Role = 'admin' | 'manager' | 'foreman' | 'associate'
-export const ROLES: Role[] = ['admin', 'manager', 'foreman', 'associate']
+export type Role = 'admin' | 'manager' | 'foreman' | 'associate' | 'prospect'
+export const ROLES: Role[] = ['admin', 'manager', 'foreman', 'associate', 'prospect']
 
-/** Rank on the ladder. Master is 4 (derived, never stored). */
-export const RANK: Record<Role, number> = { associate: 0, foreman: 1, manager: 2, admin: 3 }
+/** Rank on the ladder. Master is 4 (derived, never stored). A Prospective
+ *  Client shares the Associate's rank for what they may SEE on the map
+ *  (everyone-visible machines), but is otherwise outside the ladder: only
+ *  the Master can create, see, manage or preview one (migration 118). */
+export const RANK: Record<Role, number> = { prospect: 0, associate: 0, foreman: 1, manager: 2, admin: 3 }
 export const MASTER_RANK = 4
 
+/** Roles only the company owner may hand out, see on /team, or preview. */
+export const MASTER_ONLY_ROLES: Role[] = ['prospect']
+
 export const ROLE_LABEL: Record<Role, string> = {
-  admin: 'Admin', manager: 'Manager', foreman: 'Foreman', associate: 'Associate',
+  admin: 'Admin', manager: 'Manager', foreman: 'Foreman', associate: 'Associate', prospect: 'Prospective Client',
 }
 
 export const ROLE_BLURB: Record<Role, string> = {
@@ -38,6 +44,7 @@ export const ROLE_BLURB: Record<Role, string> = {
   manager: 'Runs operations; sees job costs, not the books',
   foreman: 'Runs the day — no dollar figures',
   associate: 'Crew login — clock in, logs, maintenance, the map',
+  prospect: 'Looking around — sees the map and the machines, never the team; invisible to everyone but you; can change nothing',
 }
 
 /**
@@ -128,6 +135,11 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
     'receipts',
     'ask_ai',
   ),
+  // A prospect looks: the map, the machines, the zones. No clock or share-
+  // location (either would put THEIR phone on the map as a person), no Ask
+  // AI (it reads the company's data and costs per call), no dollars. The
+  // Master widens this per company in the view-levels table.
+  prospect: on('map', 'assets', 'zones'),
 }
 
 /** Company-wide override on the defaults: role → feature → on/off. Sparse. */
@@ -219,16 +231,31 @@ export function rankOf(p: Pick<Permissions, 'role' | 'isMaster'>): number {
 }
 
 /** May `actor` manage / preview / read the AI chats of `target`? Strictly
- *  DOWN the ladder; the Master over everyone; nobody over the Master. */
+ *  DOWN the ladder; the Master over everyone; nobody over the Master. A
+ *  Prospective Client answers to the Master alone (118). */
 export function outranks(actor: Pick<Permissions, 'role' | 'isMaster'>, target: { role: Role; isMaster: boolean }): boolean {
   if (target.isMaster) return false
+  if (MASTER_ONLY_ROLES.includes(target.role)) return actor.isMaster
   return rankOf(actor) > RANK[target.role]
+}
+
+/** May `actor` know `target` exists at all — on /team, in a roster, in a
+ *  view-as list? Everyone sees the ladder; a prospect is seen by the Master
+ *  and by themselves, and sees nobody but themselves. Mirrors 118's RLS. */
+export function canSeeMember(
+  actor: Pick<Permissions, 'role' | 'isMaster'> & { id?: string | null },
+  target: { id?: string | null; role: Role },
+): boolean {
+  if (actor.id && target.id && actor.id === target.id) return true
+  if (!actor.isMaster && actor.role === 'prospect') return false
+  if (MASTER_ONLY_ROLES.includes(target.role)) return actor.isMaster
+  return true
 }
 
 /** Roles whose view-levels row this actor may edit. */
 export function rolesEditableBy(actor: Pick<Permissions, 'role' | 'isMaster' | 'canManageTeam'>): Role[] {
   if (actor.isMaster) return ROLES
-  if (actor.role === 'admin' || actor.canManageTeam) return ROLES.filter((r) => RANK[r] < rankOf(actor))
+  if (actor.role === 'admin' || actor.canManageTeam) return ROLES.filter((r) => RANK[r] < rankOf(actor) && !MASTER_ONLY_ROLES.includes(r))
   return []
 }
 
@@ -282,11 +309,13 @@ export function visibilityRank(v: AssetVisibility): number {
 export function visibilityLabel(v: AssetVisibility): string {
   return ASSET_VISIBILITY.find((d) => d.key === v)?.label ?? 'Everyone'
 }
-/** May this viewer see an asset with this metadata? */
-export function canSeeAsset(p: Pick<Permissions, 'role' | 'isMaster'>, meta: unknown): boolean {
+/** May this viewer see an asset with this metadata (and type)? A Prospective
+ *  Client never sees a person — crew phones are `personnel` assets (118). */
+export function canSeeAsset(p: Pick<Permissions, 'role' | 'isMaster'>, meta: unknown, type?: string | null): boolean {
+  if (!p.isMaster && p.role === 'prospect' && type === 'personnel') return false
   return rankOf(p) >= visibilityRank(assetVisibility(meta))
 }
 /** The subset of `list` this viewer may see. */
-export function visibleAssets<T extends { metadata?: unknown }>(list: T[], p: Pick<Permissions, 'role' | 'isMaster'>): T[] {
-  return list.filter((a) => canSeeAsset(p, a.metadata))
+export function visibleAssets<T extends { metadata?: unknown; type?: string | null }>(list: T[], p: Pick<Permissions, 'role' | 'isMaster'>): T[] {
+  return list.filter((a) => canSeeAsset(p, a.metadata, a.type))
 }
