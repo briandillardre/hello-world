@@ -32,10 +32,10 @@ export default function SmsPage() {
           <section>
             <h2>What this program is</h2>
             <p className="mt-2">
-              {BRAND_NAME} is equipment-tracking software for construction companies. Account
+              {BRAND_NAME} is equipment-tracking software for construction, landscaping and other field-service companies. Account
               owners can choose to receive <strong className="text-ink">security and equipment
               alerts by text message</strong> — for example, when a tracked vehicle or machine
-              moves outside the company&apos;s working hours, or leaves a job site unexpectedly.
+              moves outside the company&apos;s working hours, or leaves a site unexpectedly.
             </p>
             <p className="mt-2">
               This is a notification program for existing customers about their own equipment. It
@@ -82,9 +82,13 @@ export default function SmsPage() {
                 </span>
               </li>
               <li>
-                <strong className="text-ink">Left a job site:</strong>{' '}
+                <strong className="text-ink">Left a site:</strong>{' '}
                 <span className="font-mono text-[12.5px]">
                   HammerTrack: CAT 336 Excavator left Riverfront Tower
+                </span>
+                <br />
+                <span className="font-mono text-[12.5px]">
+                  HammerTrack: Exmark Mower left Northgate Commons
                 </span>
               </li>
             </ul>

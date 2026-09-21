@@ -1,7 +1,7 @@
 {
   "name": "HammerTrack",
   "short_name": "HammerTrack",
-  "description": "Real-time asset tracking for construction companies",
+  "description": "Real-time asset tracking for field fleets and crews",
   "start_url": "/map",
   "display": "standalone",
   "background_color": "#002946",

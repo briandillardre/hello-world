@@ -137,7 +137,7 @@ async function resizePhoto(file: File, maxDim = 1600, quality = 0.82): Promise<B
   }
 }
 
-// Common truck makes + the equipment brands a GC actually owns. Free text
+// Common truck makes + the equipment brands a GC or a landscaper actually owns. Free text
 // still works — these just save the typing.
 const MAKE_SUGGESTIONS = [
   'Ford', 'Chevrolet', 'GMC', 'Ram', 'Toyota', 'Nissan', 'Honda', 'Jeep', 'Dodge', 'Volkswagen',
@@ -145,6 +145,7 @@ const MAKE_SUGGESTIONS = [
   'Caterpillar', 'John Deere', 'Bobcat', 'Kubota', 'Case', 'Komatsu', 'Volvo', 'JCB',
   'New Holland', 'Takeuchi', 'Yanmar', 'Doosan', 'Develon', 'Hitachi', 'Link-Belt',
   'Genie', 'JLG', 'Skyjack', 'Vermeer', 'Ditch Witch', 'Wacker Neuson', 'Multiquip', 'Toro',
+  'Exmark', 'Scag', 'Ferris', 'Stihl', 'Husqvarna', 'Bandit', 'Morbark',
 ]
 
 /** What each type MEANS to the system — the four change how an asset is
@@ -522,7 +523,7 @@ export function AssetForm({ onClose, onSubmit, saving = false, error = null, ini
             <Label htmlFor="asset-name">Asset name *</Label>
             <Input
               id="asset-name"
-              placeholder="e.g. Ram 3500 Dump, CAT 320 Excavator"
+              placeholder="e.g. Ram 3500 Dump, CAT 320 Excavator, Exmark 60in Mower"
               value={name}
               onChange={e => setName(e.target.value)}
               autoFocus

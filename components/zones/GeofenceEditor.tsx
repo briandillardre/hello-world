@@ -332,7 +332,7 @@ export function GeofenceEditor({ id, name: initialName, color: initialColor, par
             <div className="flex gap-1.5">
               <button type="button" onClick={() => { setKind('site'); setDirty(true) }}
                 className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (kind === 'site' ? 'border-amber bg-amber/10 text-amber' : 'border-navy-700 text-faint hover:text-ink')}>
-                Job site
+                Site
               </button>
               <button type="button" onClick={() => { setKind('boundary'); setDirty(true) }}
                 className={'flex-1 px-2 py-1.5 rounded-lg border text-[12px] font-semibold transition-colors ' + (kind === 'boundary' ? 'border-teal bg-teal/10 text-teal' : 'border-navy-700 text-faint hover:text-ink')}>

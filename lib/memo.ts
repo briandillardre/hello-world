@@ -185,7 +185,7 @@ function plainMemo(f: MemoFacts): string {
   return lines.join('\n')
 }
 
-const MEMO_SYSTEM = `You write a construction company owner's monthly memo — the "what lever next" read. Voice: a sharp dispatcher who also reads the books. Plain sentences, no markdown, no headers, no preamble, no sign-off. 3 short paragraphs, under 220 words total:
+const MEMO_SYSTEM = `You write a field-operations company owner's monthly memo — the "what lever next" read. Voice: a sharp dispatcher who also reads the books. Plain sentences, no markdown, no headers, no preamble, no sign-off. 3 short paragraphs, under 220 words total:
 1) Where the money and the hours actually went this period, in their numbers.
 2) What is dragging — idle iron, receipts, alerts, service debt — the one or two that matter most, with the dollar figures given.
 3) ONE lever to pull next month, chosen from the facts, phrased as a concrete action. If the finance profile has benchmark or valuation figures, tie the lever to them; if key inputs are missing, say plainly what filling them in on the Financials page would unlock — never estimate them yourself.

@@ -1,14 +1,15 @@
 # HammerTrack — Ad Variants for A/B Testing
 
 All variants drive to **hammertrack.ai/demo** (the funnel landing page).
-Brand voice: blunt, contractor-to-contractor, theft/loss as the hook, price as the closer.
+Brand voice: blunt, owner-to-owner, theft/loss as the hook, price as the closer.
 
 ---
 
 ## 1. Google Search Ads (high-intent capture)
 
 Target keywords: `tenna alternative`, `equipment gps tracking`, `construction asset tracking`,
-`tool tracking app`, `heavy equipment theft prevention`, `fleet tracking for contractors`.
+`tool tracking app`, `heavy equipment theft prevention`, `fleet tracking for contractors`,
+`gps tracking for landscaping companies`, `lawn care fleet tracking`, `tree service equipment tracking`.
 
 ### Variant A — "Tenna alternative" intent
 - **Headline 1:** Tenna Costs Too Much
@@ -21,15 +22,15 @@ Target keywords: `tenna alternative`, `equipment gps tracking`, `construction as
 - **Headline 1:** Stop Equipment Theft Tonight
 - **Headline 2:** After-Hours Movement Alerts
 - **Headline 3:** GPS + Bluetooth Tool Tracking
-- **Description 1:** Know within minutes when a machine leaves the jobsite. Recover gear before it's gone.
-- **Description 2:** Built for construction. Job costing built in. Free 30-day pilot, we ship the trackers.
+- **Description 1:** Know within minutes when a machine leaves the site. Recover gear before it's gone.
+- **Description 2:** Built for field crews. Job costing built in. Free 30-day pilot, we ship the trackers.
 
 ### Variant C — "tool tracking" intent
 - **Headline 1:** Which Truck Is Your Tool In?
 - **Headline 2:** Bluetooth Tool Tracking Built In
 - **Headline 3:** About Half Tenna’s Price · No Contracts
 - **Description 1:** Tag expensive tools, see which truck or machine they're riding in. Live map.
-- **Description 2:** Everything most contractors use Tenna for, at about half the price. Try it free for 30 days.
+- **Description 2:** Everything most field fleets use Tenna for, at about half the price. Try it free for 30 days.
 
 **Sitelinks:** Pricing (/pricing) · Live Demo (/demo) · How It Works (/#features) · vs Tenna (/pricing)
 
@@ -48,8 +49,8 @@ Co-branded; revenue-share per activation.
 > You trusted us with [Dealer Name] for your [equipment]. Now protect it.
 >
 > We've partnered with **HammerTrack** — GPS + Bluetooth tracking built for
-> construction crews. Put every machine, truck, and tool on one map, and get
-> an alert on your phone within minutes if anything moves after hours or leaves the jobsite.
+> field crews. Put every machine, truck, and tool on one map, and get
+> an alert on your phone within minutes if anything moves after hours or leaves the site.
 >
 > - About half the price of Tenna — $8/machine, $3/tool tag, zero setup fees
 > - Tracks heavy equipment, trucks, AND small tools (Bluetooth)
@@ -69,16 +70,19 @@ Co-branded; revenue-share per activation.
 
 ---
 
-## 3. Cold Email (outbound to local GCs / fleet owners)
+## 3. Cold Email (outbound to local GCs, landscapers / fleet owners)
 
 Scrape from the state contractor license registry. Keep it short, one ask.
+Parallel targeting list for landscapers: the state landscaping-contractor and
+pesticide-applicator license rosters — public records, same scrape, same scripts
+with a mower and trailer in place of the skid steer.
 
 ### Variant A — the 2 AM hook
 **Subject:** your skid steer at 2 AM
 
 > [First Name] — quick one.
 >
-> If a machine left your jobsite at 2 AM tonight, would you know before
+> If a machine left your site at 2 AM tonight, would you know before
 > the crew showed up at 7?
 >
 > HammerTrack puts your whole fleet — trucks, equipment, even Bluetooth-tagged
@@ -121,7 +125,8 @@ Scrape from the state contractor license registry. Keep it short, one ask.
 
 ## 4. Facebook / Instagram (already built — see lead-funnel-infographic.html)
 
-**Primary text:** Your $80K excavator just left the jobsite at 2 AM. Did you know?
+### Variant A — construction (excavator hook)
+**Primary text:** Your $80K excavator just left the site at 2 AM. Did you know?
 HammerTrack puts every truck, machine, and power tool on one map — and alerts
 your phone within minutes when something moves when it shouldn't. About half the price of Tenna.
 Setup in a day, no install crew.
@@ -129,6 +134,16 @@ Setup in a day, no install crew.
 **CTA button:** Learn More → hammertrack.ai/demo
 **Audience:** Construction owners/fleet managers, 50mi radius, interests: heavy
 equipment, construction management, QuickBooks.
+
+### Variant B — landscaping / lawn care (mower + trailer hook)
+**Primary text:** Your $60K zero-turn and trailer left the shop at 2 AM. Did you know?
+HammerTrack puts every truck, trailer, mower, and power tool on one map — and alerts
+your phone within minutes when something moves when it shouldn't. About half the price of Tenna.
+Setup in a day, no install crew.
+**Headline:** Start a Free 30-Day Pilot
+**CTA button:** Learn More → hammertrack.ai/demo
+**Audience:** Landscaping / lawn-care / tree-service owners and ops managers, 50mi
+radius, interests: commercial mowers, landscape business, QuickBooks.
 
 ---
 

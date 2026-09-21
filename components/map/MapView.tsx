@@ -1956,7 +1956,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
           div.className = 'maplibregl-ctrl maplibregl-ctrl-group'
           const btn = document.createElement('button')
           btn.type = 'button'
-          btn.title = 'New zone — draw a job site, yard or boundary'
+          btn.title = 'New zone — draw a site, yard or boundary'
           btn.setAttribute('aria-label', 'New zone')
           btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#9fb6cc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin:auto"><path d="M21 16.05V7.95a2 2 0 0 0-1-1.73l-7-4.05a2 2 0 0 0-2 0l-7 4.05a2 2 0 0 0-1 1.73v8.1a2 2 0 0 0 1 1.73l7 4.05a2 2 0 0 0 2 0l7-4.05a2 2 0 0 0 1-1.73z"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>'
           btn.onclick = () => { drawZoneRef.current?.() }

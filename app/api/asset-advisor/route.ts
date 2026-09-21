@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       max_tokens: 2000,
       thinking: { type: 'adaptive' },
       system:
-        'You advise a US construction fleet owner on ONE asset. Be a careful estimator: derive every cost from a consistent method so two similar vehicles get similar numbers. Return ONLY a JSON object:\n' +
+        'You advise a US field-fleet owner (construction, landscaping, paving, hauling) on ONE asset. Be a careful estimator: derive every cost from a consistent method so two similar vehicles get similar numbers. Return ONLY a JSON object:\n' +
         '{"service":{"oil":"","oil_capacity":"","oil_filter":"","air_filter":"","fuel_filter":"","hydraulic_oil":"","hydraulic_filter":"","coolant":"","tires":""},' +
         '"costs":{"hourly_rate":0,"mileage_rate":0,"daily_cost":0,"purchase_value":0},' +
         '"value_range":"$X–$Y","note":"assumptions in one or two sentences"}\n' +

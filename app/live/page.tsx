@@ -9,7 +9,7 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, maxi
 export const metadata: Metadata = {
   title: 'HammerTrack — Live demo map',
   description:
-    'Explore the real HammerTrack map with a simulated construction fleet — trucks, equipment, crews, and Bluetooth-tagged tools. No signup required.',
+    'Explore the real HammerTrack map with a simulated field fleet — trucks, equipment, crews, and Bluetooth-tagged tools. No signup required.',
   robots: { index: true },
 }
 

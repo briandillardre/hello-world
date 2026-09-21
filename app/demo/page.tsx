@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   // Next replaces the root layout's openGraph wholesale (no deep merge) —
   // siteName/type/url must be restated or shared-link previews lose them.
   openGraph: {
-    title: 'Your $80K excavator just left the jobsite at 2 AM. Would you know?',
+    title: 'Your $80K excavator just left the site at 2 AM. Would you know?',
     description: 'Free 30-day pilot — we ship the trackers. Live in a day, no install crew.',
     siteName: 'HammerTrack',
     type: 'website',
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live on one map, on your phone.' },
-  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves outside work hours or leaves the jobsite.' },
+  { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves outside work hours or leaves the site.' },
   { icon: Wrench, title: 'Maintenance built in', body: 'Service schedules by engine hours, mileage, or days. Never miss an oil change again.' },
   { icon: Calculator, title: 'Job cost, ready for your books', body: 'Every hour and dollar lands on the right job automatically. QuickBooks sync is next.' },
 ]
@@ -61,7 +61,7 @@ export default function DemoLandingPage() {
               <span className="w-[7px] h-[7px] rounded-full bg-alert animate-pulse-ring" /> REAL ALERT, OUR OWN TRUCK — after-hours movement, 6:33 AM
             </span>
             <h1 className="font-display font-black text-[2.4rem] md:text-5xl leading-[1.04] mt-5 text-balance">
-              Your $80K excavator just left the jobsite at 2 AM.
+              Your $80K excavator just left the site at 2 AM.
               <span className="text-amber"> Would you know?</span>
             </h1>
             <p className="text-muted mt-5 text-lg">
@@ -137,7 +137,7 @@ export default function DemoLandingPage() {
         {/* vs Tenna */}
         <section className="max-w-3xl mx-auto px-6 py-8">
           <Reveal>
-            <h2 className="font-display font-bold text-2xl text-center mb-6">Why contractors switch from Tenna</h2>
+            <h2 className="font-display font-bold text-2xl text-center mb-6">Why field fleets switch from Tenna</h2>
           </Reveal>
           <div className="grid sm:grid-cols-2 gap-3">
             {VS_TENNA.map(([us, them], i) => (

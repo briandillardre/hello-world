@@ -431,12 +431,12 @@ export const GUIDES: HelpGuide[] = [
               <B>Project, Shop, Office / other, or Maintenance</B>.
             </P>
             <P>
-              On <B>Project</B>, the phone&apos;s GPS suggests the nearest job site automatically.
+              On <B>Project</B>, the phone&apos;s GPS suggests the nearest site automatically.
               If it guessed wrong, just pick the right one — a manual pick is never overridden.
               Type a one-line plan for the day, hit the big <B>Clock in</B> button, done.
             </P>
             <P>
-              No job sites in the list yet? Someone needs to draw a zone first — see{' '}
+              No sites in the list yet? Someone needs to draw a zone first — see{' '}
               <B>Zones 101</B>. Until then, Shop works.
             </P>
           </>
@@ -478,8 +478,8 @@ export const GUIDES: HelpGuide[] = [
           <>
             <P>
               <B>Time cards</B> (Field group) shows the week: paid hours split regular / overtime at 40,
-              hours by job site, each entry&apos;s clock-in and clock-out with <B>where</B> they happened, and
-              a <B>GPS-verified %</B> — how much of the clocked time the phone actually placed on that job
+              hours by site, each entry&apos;s clock-in and clock-out with <B>where</B> they happened, and
+              a <B>GPS-verified %</B> — how much of the clocked time the phone actually placed on that
               site. Flags say what to look at: <B>Still clocked in · No GPS · Mostly off-site · Long shift · Edited</B>.
             </P>
             <P>
@@ -496,7 +496,7 @@ export const GUIDES: HelpGuide[] = [
           <L
             items={[
               <><B>Daily logs</B> — the office&apos;s morning read: last 7 days, who was where, what got done, plus the hours table.</>,
-              <>Each job-site zone&apos;s page — tracked hours and cost against the budget.</>,
+              <>Each site zone&apos;s page — tracked hours and cost against the budget.</>,
               <>The Friday wrap-up digest and the morning site briefing, if your company has them on (<B>Settings → Weekly summaries</B>).</>,
             ]}
           />
@@ -525,7 +525,7 @@ export const GUIDES: HelpGuide[] = [
         body: (
           <L
             items={[
-              <><B>Job site</B> — where the work is. Clock-ins pick from these, and they carry the hours, usage, invoicing, the site log, and the budget.</>,
+              <><B>Site</B> — where the work is: a job site, a customer property, a route stop. Clock-ins pick from these, and they carry the hours, usage, invoicing, the site log, and the budget.</>,
               <><B>Boundary</B> — an outline-only theft perimeter (your property line, a laydown lot). Exit and after-hours alerts fire, but it never counts hours or billing.</>,
               <><B>Yard</B> — home base. A machine sleeping in a yard shows a calm teal lock on the map at night instead of an amber &quot;out in the open&quot; warning.</>,
               <><B>Vendor</B> — supply houses. Stops there get named (&quot;Lowe&apos;s — 22 min&quot;), never count as job time, and a card swiped during the visit auto-suggests which job the receipt belongs to.</>,
@@ -537,7 +537,7 @@ export const GUIDES: HelpGuide[] = [
         heading: 'Budgets and the rest',
         body: (
           <P>
-            Open a job-site zone&apos;s page for the <B>Project Hub</B> — punch list, milestones, and
+            Open a site zone&apos;s page for the <B>Project Hub</B> — punch list, milestones, and
             budget vs. tracked actuals. Set a budget and the map&apos;s Burn Map layer shades the site
             green→red as tracked cost eats it. Zone notes (&quot;gate code 4188&quot;) live there too.
           </P>
@@ -664,7 +664,7 @@ export const GUIDES: HelpGuide[] = [
               Every summary email and text we send ends with a link that says
               <B> Stop/change these</B>. Tap it. It opens one page with a switch for each
               summary and a <B>Turn everything off</B> button. No login, so it works from a
-              text on the job site.
+              text in the field.
             </P>
             <P>
               Signed in, the same page is <B>Settings → Summaries</B>. Changes save as you

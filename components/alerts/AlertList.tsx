@@ -14,7 +14,7 @@ const TRIGGER_LABELS: Record<AlertRule['trigger'], string> = {
   exit: 'Exited zone',
   idle: 'Idle too long',
   after_hours_movement: 'THEFT ALERT',
-  left_site: 'Left job site',
+  left_site: 'Left site',
   speeding: 'Speeding',
 }
 
@@ -256,7 +256,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
                 </div>
                 <p className="text-ink font-display font-bold">All clear. That&rsquo;s the goal.</p>
                 <p className="text-sm text-faint mt-1.5 leading-relaxed">
-                  The second a machine moves after hours or leaves a job-site zone, it lands here —
+                  The second a machine moves after hours or leaves a site zone, it lands here —
                   and texts your phone if SMS is set up.
                 </p>
                 <a href="/map" className="inline-block mt-4 text-sm font-semibold text-amber hover:underline">

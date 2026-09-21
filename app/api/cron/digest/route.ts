@@ -64,7 +64,7 @@ async function composeWithAi(f: DayFacts): Promise<string | null> {
       model: process.env.AI_MODEL || 'claude-opus-4-8',
       max_tokens: 400,
       system:
-        'You write a construction company owner\'s evening fleet digest. Plain sentences, sharp dispatcher voice, under 110 words, no markdown, no preamble. Lead with what needs action (still on the clock, safety notes, alerts, overdue checks); end with the routine. Use ONLY the facts given — never invent names or numbers. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — weave the most important one in naturally.',
+        'You write a field-operations company owner\'s evening fleet digest. Plain sentences, sharp dispatcher voice, under 110 words, no markdown, no preamble. Lead with what needs action (still on the clock, safety notes, alerts, overdue checks); end with the routine. Use ONLY the facts given — never invent names or numbers. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — weave the most important one in naturally.',
       messages: [{ role: 'user', content: `FACTS: ${JSON.stringify(f)}` }],
       // The SDK defaults to a 10-minute timeout with 2 retries; one hung
       // call would burn the whole 60 s budget and strand the batch.

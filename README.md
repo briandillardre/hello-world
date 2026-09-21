@@ -1,6 +1,6 @@
 # HammerTrack
 
-Mobile-first asset tracking SaaS for construction companies. Competes with Tenna at a lower price point.
+Mobile-first asset tracking SaaS for field fleets — construction, landscaping, paving and more. Competes with Tenna at a lower price point.
 
 Track vehicles (OBD2), heavy equipment (GPS), personnel, and small tools (Bluetooth) on a live map.
 

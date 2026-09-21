@@ -14,7 +14,7 @@ export default function NotFound() {
         <Logo size={34} href="/" />
       </div>
       <h1 className="font-display font-black text-2xl sm:text-3xl text-ink text-balance">
-        This page wandered off the jobsite.
+        This page wandered off the map.
       </h1>
       <p className="text-sm text-muted mt-2">
         The link is broken or the page moved — your fleet is still right where you left it.

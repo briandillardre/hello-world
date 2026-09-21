@@ -75,7 +75,7 @@ export function GeofencesManager({ geofences, counts, editable, divisions = [] }
           <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/10 border border-amber/25 grid place-items-center mb-3 text-2xl">⬡</div>
           <p className="text-ink font-display font-bold">Zones are your tripwires</p>
           <p className="text-sm text-faint mt-1.5 leading-relaxed">
-            Outline your yard or a jobsite on the map. Anything that leaves after hours fires a theft
+            Outline your yard, a job site or a customer property on the map. Anything that leaves after hours fires a theft
             alert, and every hour inside gets job-costed to that site automatically.
           </p>
           <Link
@@ -248,7 +248,7 @@ function GeofenceRow({
     ? <span className="text-[#c4b5fd] font-mono text-[10px] uppercase tracking-[0.08em]">Vendor</span>
     : fence.kind === 'yard'
     ? <span className="text-[#60a5fa] font-mono text-[10px] uppercase tracking-[0.08em]">Yard</span>
-    : <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Job site</span>
+    : <span className="text-amber/80 font-mono text-[10px] uppercase tracking-[0.08em]">Site</span>
 
   const actions = editable && (
     <>

@@ -5,7 +5,7 @@ import { Logo } from '@/components/brand/Logo'
 
 export const metadata: Metadata = {
   title: 'HammerTrack — Talk to us',
-  description: 'Fleet pricing, multi-site rollouts, and hardware for large contractors.',
+  description: 'Fleet pricing, multi-site rollouts, and hardware for large field fleets.',
 }
 
 // No personal contact info on the public site (owner ask, Jul 23).
