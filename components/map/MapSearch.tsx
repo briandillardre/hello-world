@@ -41,6 +41,12 @@ export interface AeroHit {
   q: string
   name: string
   sub: string
+  /** The airframe's icao24 — set when the log resolved an aircraft, so the
+   *  map can show it in place instead of leaving for the flight log. */
+  hex?: string
+  reg?: string | null
+  /** ICAO type code (C172, GLF6) — the map draws the right silhouette. */
+  typeCode?: string | null
 }
 
 /**
@@ -67,9 +73,14 @@ export interface PlaceHit {
 }
 
 
-export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false, flightLog = false }: {
+export function MapSearch({ items, onPick, onPickPlace, onPickAircraft, bias = null, top = 58, inline = false, anchor = 'top-left', overlay = false, flightLog = false }: {
   items: SearchItem[]
   onPick: (item: SearchItem) => void
+  /** An aircraft hit chosen — show it ON THE MAP (Brian, Sep 21: "when I
+   *  click a plane from search bar it should match trails with timeline
+   *  slider selection or show last known location with a popup"). Omitted =
+   *  the row opens the flight log page as before. */
+  onPickAircraft?: (a: { hex: string; reg: string | null; typeCode: string | null; name: string }) => void
   /** Address hit chosen — fly the camera there (Brian, Aug 22: search finds
    *  assets, zones AND addresses). Omitting it hides address results. */
   onPickPlace?: (p: PlaceHit) => void
@@ -127,6 +138,8 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
   const [places, setPlaces] = useState<PlaceHit[]>([])
   const onPickPlaceRef = useRef(onPickPlace)
   onPickPlaceRef.current = onPickPlace
+  const onPickAircraftRef = useRef(onPickAircraft)
+  onPickAircraftRef.current = onPickAircraft
   const placesOn = !!onPickPlace
   const biasLat = bias?.lat
   const biasLng = bias?.lng
@@ -186,6 +199,9 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
             setAero([{
               kind: 'aircraft',
               q: a.reg || a.hex,
+              hex: String(a.hex).toLowerCase(),
+              reg: a.reg ?? null,
+              typeCode: a.typeCode ?? null,
               name: a.reg || String(a.hex).toUpperCase(),
               sub: [a.desc, a.owner].filter(Boolean).join(' · ') || 'aircraft',
             }])
@@ -209,6 +225,12 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
     setQ('')
     setOpen(false)
     recRef.current?.stop()
+    // A resolved aircraft stays on the map when the map can show it; a field,
+    // a route, or the log-didn't-answer row still opens the flight log.
+    if (h.kind === 'aircraft' && h.hex && onPickAircraftRef.current) {
+      onPickAircraftRef.current({ hex: h.hex, reg: h.reg ?? null, typeCode: h.typeCode ?? null, name: h.name })
+      return
+    }
     router.push(`/aircraft?tail=${encodeURIComponent(h.q)}`)
   }
 
@@ -357,7 +379,7 @@ export function MapSearch({ items, onPick, onPickPlace, bias = null, top = 58, i
                   <span className="block font-mono text-[10px] text-faint truncate">{h.sub}</span>
                 </span>
                 <span className="font-mono text-[9px] uppercase tracking-wide text-faint flex-none">
-                  {h.kind === 'aircraft' ? 'flight log' : 'airfield'}
+                  {h.kind === 'aircraft' ? (h.hex && onPickAircraft ? 'on the map' : 'flight log') : 'airfield'}
                 </span>
               </button>
             </li>

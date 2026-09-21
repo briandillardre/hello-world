@@ -408,6 +408,57 @@ Two bugs with one symptom, and they were on opposite sides of the wire.
 * **Belt.** `getSavedAircraft` collapses by hex on the way out, so a second
   row for one airframe can never reach the watchlist even if it exists.
 
+## A plane from the search bar stays on the map (Sep 21)
+
+Brian: "when I click a plane from search bar it should match trails with
+timeline slider selection or show last known location with a popup."
+
+Picking an aircraft row in the map's search box used to leave the map for
+this page. Now the map answers in place, and the answer depends on where the
+timeline sits (`MapSearch` → `onPickAircraft` → `loadSearchedPlane` in
+`MapView`):
+
+* **Live.** If the aircraft is in the feed (or on the watchlist beyond the
+  feed's reach) the map flies to it and opens its card, trail and all. If it
+  is not transmitting, `/api/plane-track` now serves the epoch second of
+  every trace point and the trace's LAST fix (`lastSeen`, with the feed's
+  own on-ground flag — never an altitude threshold): the map flies there,
+  draws today's track, and puts a grey **ghost** at the last fix with a card
+  that says *last seen 3 h ago (2:14 PM) · on the ground · not transmitting
+  now — this is its last known position*. If it has not flown today, the
+  newest logged flight (last ~30 days) is drawn and the ghost sits where it
+  landed, the card saying so. Nothing at all in 30 days = a toast that says
+  exactly that. The ghost is a placeholder, not a claim: the moment the
+  re-centred feed carries the real aircraft, the ghost stands down and the
+  live plane takes the card.
+* **Any replay range** (Today · Yesterday · 7d · 30d · YTD · All · Custom).
+  `/api/plane-track?hex&from&to` (signed in + the aircraft view level — the
+  archive reads are spent on our behalf) returns every flight the log has
+  inside the window, with times. `lib/plane-replay.ts` joins them into ONE
+  timed trail, the map frames it, and the aircraft becomes a **replay head
+  on the slider**: the trail is cut at the playhead exactly as the trucks'
+  trails are, the head is interpolated between the two fixes around that
+  moment (position, altitude, speed, vertical speed, heading), and the card
+  reads the moment in plain words — *2:14 PM · altitude 3,500 ft · speed
+  128 mph · ↑ 700 ft/min · flight 2 of 3 in this range · Greenville Downtown
+  (GMU) → Charlotte (CLT) · 1:52–2:40 PM*. Between two flights the head is
+  a grey ghost parked where the earlier one landed ("landed at Anderson
+  (AND) 2:40 PM · next flight 4:10 PM"); before the first fix it waits where
+  the first flight begins; after the last it stays where it landed. A colour
+  ramp (speed / climb / altitude) is fixed over the WHOLE window's trail, so
+  scrubbing never re-normalises the colours under the person's eyes.
+* **It rides the timeline.** Changing the range re-asks the question for
+  the new window (Live included); the head follows every drag and every
+  playback tick; a tap on empty sky lets the plane go; turning the aircraft
+  layer off clears it. The searched aircraft wears a steady teal halo and is
+  never zoom-culled or decluttered away (`Plane3D.searched`); a remembered
+  position is always drawn in the inert grey (`Plane3D.ghost`) — never in a
+  class colour, so it cannot pass for traffic in the air.
+* **Harness.** `node scripts/plane-replay-test.mjs` (31 assertions) — run
+  it after ANY change to `lib/plane-replay.ts`. The awkward moments are the
+  ones asserted: before the first fix, in the gap between flights, past the
+  last, a value only one end of a leg sent, a fix running backwards in time.
+
 ## Known gaps
 * **Banked flights are keyed by airframe, not company.** Two companies
   watching the same jet share one copy — it is public ADS-B, and fetching it

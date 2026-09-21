@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gunzipSync } from 'zlib'
 import { ipRateLimited } from '@/lib/rate-limit'
-import { safeHex } from '@/app/api/aircraft/_guard'
+import { safeHex, guard, isMock } from '@/app/api/aircraft/_guard'
+import { ARCHIVE_DAYS } from '@/lib/aircraft-source'
+import type { Fix } from '@/lib/aircraft-log'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 20
@@ -19,21 +21,27 @@ export const maxDuration = 20
 /** Each point: lon, lat, altitude m, ground speed kt, vertical speed fpm.
  *  The last two exist so the trail can be COLOURED by them (Brian, Sep 13);
  *  NaN where the aircraft sent no such value — never 0, which would paint a
- *  measurement nobody took. JSON has no NaN, so the wire carries null. */
+ *  measurement nobody took. JSON has no NaN, so the wire carries null.
+ *  Internally each point also carries its epoch second, served as a parallel
+ *  `ts` array so a searched plane can ride the timeline (Sep 21). */
 type TrackPt = [number, number, number, number | null, number | null]
-interface Cached { at: number; pts: TrackPt[] }
+interface Cached { at: number; pts: TrackPt[]; ts: number[]; lastGround: boolean }
+/** Where the aircraft was last heard, from the trace itself. `onGround` is
+ *  the feed's own flag on that fix — never an altitude threshold. */
+interface LastSeen { t: number; lat: number; lon: number; altFt: number; gsKt: number | null; onGround: boolean }
 const cache = new Map<string, Cached>()
 /** One download in flight per hex. A trace_full file runs to megabytes, so
  *  fifty taps on the same aircraft used to be fifty full downloads. */
-const inflight = new Map<string, Promise<TrackPt[]>>()
+interface Trace { pts: TrackPt[]; ts: number[]; lastGround: boolean }
+const inflight = new Map<string, Promise<Trace>>()
 const TTL_MS = 30_000
 
 // readsb trace fix:
 //   [dt, lat, lon, altFt|"ground"|null, gs, track, flags, vert_rate, …]
 // Index 7 is the vertical rate in feet per minute; it is frequently absent.
-type Fix = [number, number, number, number | string | null, ...unknown[]]
+type TraceFix = [number, number, number, number | string | null, ...unknown[]]
 
-async function fetchTrack(hex: string): Promise<TrackPt[]> {
+async function fetchTrack(hex: string): Promise<Trace> {
   const url = `https://adsb.lol/data/traces/${hex.slice(-2)}/trace_full_${hex}.json`
   const r = await fetch(url, {
     signal: AbortSignal.timeout(12_000),
@@ -52,27 +60,77 @@ async function fetchTrack(hex: string): Promise<TrackPt[]> {
   } catch {
     text = raw.toString('utf8')
   }
-  const j: { trace?: Fix[] } = JSON.parse(text)
+  const j: { trace?: TraceFix[]; timestamp?: number } = JSON.parse(text)
   const fixes = j.trace ?? []
+  // readsb dates each fix as seconds AFTER the file's own timestamp.
+  const t0 = typeof j.timestamp === 'number' ? j.timestamp : 0
   const all: TrackPt[] = []
+  const allTs: number[] = []
+  let lastGround = false
   for (const f of fixes) {
     const lat = f[1]
     const lon = f[2]
     const alt = f[3]
     if (typeof lat !== 'number' || typeof lon !== 'number') continue
+    lastGround = alt === 'ground'
     const altM = typeof alt === 'number' ? alt * 0.3048 : 0 // "ground"/null → 0
     const gs = typeof f[4] === 'number' ? Math.round(f[4] as number) : null
     const vs = typeof f[7] === 'number' ? Math.round(f[7] as number) : null
     all.push([lon, lat, altM, gs, vs])
+    allTs.push(Math.round(t0 + (typeof f[0] === 'number' ? f[0] : 0)))
   }
   // Downsample to ~220 points, keeping the newest (end of the array).
   const MAX = 220
-  if (all.length <= MAX) return all
+  if (all.length <= MAX) return { pts: all, ts: allTs, lastGround }
   const step = all.length / MAX
   const pts: TrackPt[] = []
-  for (let i = 0; i < MAX; i++) pts.push(all[Math.floor(i * step)])
-  pts.push(all[all.length - 1])
-  return pts
+  const ts: number[] = []
+  for (let i = 0; i < MAX; i++) { const k = Math.floor(i * step); pts.push(all[k]); ts.push(allTs[k]) }
+  pts.push(all[all.length - 1]); ts.push(allTs[allTs.length - 1])
+  return { pts, ts, lastGround }
+}
+
+const lastSeenOf = (tr: Trace): LastSeen | null => {
+  const { pts, ts } = tr
+  if (!pts.length) return null
+  const p = pts[pts.length - 1]
+  return { t: ts[ts.length - 1] ?? 0, lat: p[1], lon: p[0], altFt: Math.round(p[2] / 0.3048), gsKt: p[3], onGround: tr.lastGround }
+}
+
+/** A logged flight's fixes in the trail's shape (lon, lat, altM, gs, vs) + times. */
+const flightPoints = (track: Fix[]): { pts: TrackPt[]; ts: number[] } => {
+  const pts: TrackPt[] = []
+  const ts: number[] = []
+  for (const f of track) {
+    if (!Number.isFinite(f.lat) || !Number.isFinite(f.lon)) continue
+    pts.push([f.lon, f.lat, (f.altFt ?? 0) * 0.3048, f.gsKt ?? null, f.vsFpm ?? null])
+    ts.push(f.t)
+  }
+  return { pts, ts }
+}
+
+/**
+ * The timeline branch (Brian, Sep 21: a plane picked from the search bar
+ * "should match trails with timeline slider selection"): every flight this
+ * airframe flew inside [from, to], with times, from the flight log — banked
+ * rows first, the public archive (≈30 days) behind them. Signed in + the
+ * aircraft view level, because the archive reads are spent on our behalf.
+ */
+async function windowFlights(hex: string, fromMs: number, toMs: number) {
+  if (isMock) {
+    const { demoFlights } = await import('@/lib/aircraft-demo')
+    const flights = demoFlights().filter((f) => f.endedAt * 1000 >= fromMs && f.startedAt * 1000 <= toMs)
+    return { flights: flights.map((f) => ({ id: f.id, startedAt: f.startedAt, endedAt: f.endedAt, fromLabel: null, toLabel: null, ...flightPoints(f.track) })), archiveDays: ARCHIVE_DAYS, beyondArchive: false, truncated: false }
+  }
+  const { getFlights } = await import('@/lib/db/aircraft')
+  const { createServiceClient } = await import('@/lib/supabase-server')
+  const days = Math.max(1, Math.min(400, Math.ceil((Date.now() - fromMs) / 86_400_000) + 1))
+  const res = await getFlights(createServiceClient(), hex, days, { withTrack: true })
+  const flights = res.flights
+    .filter((f) => f.endedAt * 1000 >= fromMs && f.startedAt * 1000 <= toMs)
+    .sort((a, b) => a.startedAt - b.startedAt)
+    .map((f) => ({ id: f.id, startedAt: f.startedAt, endedAt: f.endedAt, fromLabel: f.fromLabel, toLabel: f.toLabel, ...flightPoints(f.track) }))
+  return { flights, archiveDays: ARCHIVE_DAYS, beyondArchive: res.beyondArchive, truncated: res.truncated }
 }
 
 export async function GET(req: NextRequest) {
@@ -88,8 +146,27 @@ export async function GET(req: NextRequest) {
   const hex = safeHex(req.nextUrl.searchParams.get('hex'))
   if (!hex) return NextResponse.json({ error: 'hex required' }, { status: 400 })
 
+  // A timeline window: the flight log's flights inside it, with times.
+  const fromRaw = req.nextUrl.searchParams.get('from')
+  const toRaw = req.nextUrl.searchParams.get('to')
+  if (fromRaw != null || toRaw != null) {
+    const blocked = await guard(req, 'plane-track-window', 20)
+    if (blocked) return blocked
+    const fromMs = Number(fromRaw)
+    const toMs = Number(toRaw)
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs || toMs - fromMs > 400 * 86_400_000) {
+      return NextResponse.json({ error: 'from/to (epoch ms) required' }, { status: 400 })
+    }
+    try {
+      return NextResponse.json(await windowFlights(hex, fromMs, toMs), { headers: { 'Cache-Control': 'private, no-store' } })
+    } catch (e) {
+      console.warn('[plane-track] window failed:', e instanceof Error ? e.message : e)
+      return NextResponse.json({ flights: [], note: 'flight log unavailable' }, { status: 503 })
+    }
+  }
+
   const hit = cache.get(hex)
-  if (hit && Date.now() - hit.at < TTL_MS) return NextResponse.json({ pts: hit.pts })
+  if (hit && Date.now() - hit.at < TTL_MS) return NextResponse.json({ pts: hit.pts, ts: hit.ts, lastSeen: lastSeenOf(hit) })
 
   try {
     let job = inflight.get(hex)
@@ -99,14 +176,14 @@ export async function GET(req: NextRequest) {
       inflight.set(hex, tracked)
       tracked.catch(() => {}).finally(() => { if (inflight.get(hex) === tracked) inflight.delete(hex) })
     }
-    const pts = await job
+    const tr = await job
     if (cache.size > 300) cache.clear()
-    cache.set(hex, { at: Date.now(), pts })
-    return NextResponse.json({ pts })
+    cache.set(hex, { at: Date.now(), ...tr })
+    return NextResponse.json({ pts: tr.pts, ts: tr.ts, lastSeen: lastSeenOf(tr) })
   } catch (e) {
     // The upstream status stays in OUR logs — it is not the caller's business
     // and relaying it hands an abuser a success signal.
     console.warn('[plane-track] upstream failed:', e instanceof Error ? e.message : e)
-    return NextResponse.json({ pts: [], note: 'trace unavailable' })
+    return NextResponse.json({ pts: [], ts: [], lastSeen: null, note: 'trace unavailable' })
   }
 }

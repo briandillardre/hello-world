@@ -39,6 +39,7 @@ import { PLANE_TRAIL_MODES, trailColor, trailScale, legendStops, type PlaneTrail
 
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
+import { buildReplayTrail, replayPositionAt, bearingDeg, agoWords, type ReplayTrail, type ReplayPosition, type WindowFlight } from '@/lib/plane-replay'
 import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { synthesizeToolRows, TOOL_FRESH_MS } from '@/lib/tools-resolve'
@@ -200,6 +201,78 @@ function lerpAngle(from: number, to: number, f: number): number {
 /** Escape untrusted text before it enters popup setHTML — module-wide so
  *  every popup shares one rule (sec-check, Aug 12). */
 const escHtml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// ── A plane from the search bar (Brian, Sep 21: "when I click a plane from
+// search bar it should match trails with timeline slider selection or show
+// last known location with a popup") ─────────────────────────────────────
+/** The aircraft the search bar handed the map. */
+interface SearchedPlane { hex: string; reg: string | null; typeCode: string | null; name: string }
+type ClockFn = (ms: number, withDay?: boolean) => string
+const MPH_PER_KT = 1.15078
+
+/** The one synthetic aircraft drawn for a searched plane — its replay head on
+ *  the slider, or its last-known ghost. Created once per answer and mutated
+ *  in place as the slider moves, so the sky layer's list cache and the card's
+ *  locate() keep seeing the same object. */
+function makeSearchedPlane(a: SearchedPlane, lon: number, lat: number, altFt: number, opts: { ghost: boolean; onGround: boolean; mph?: number | null; vsFpm?: number | null; track?: number | null }, saved: boolean): Plane3D {
+  const info = typeInfo(a.typeCode)
+  return {
+    hex: a.hex, flight: null, reg: a.reg, typeCode: a.typeCode, typeLabel: info.label, shape: info.cls, spanM: info.spanM,
+    lon, lat, fixLon: lon, fixLat: lat, fixAt: Date.now(), altFt, onGround: opts.onGround,
+    mph: opts.mph ?? null, vsFpm: opts.vsFpm ?? null, track: opts.track ?? null, bankRad: 0,
+    saved, searched: true, ghost: opts.ghost, sx: 0, sy: 0, visible: false,
+  }
+}
+const ftWords = (altFt: number) => `<b style="color:#ff9e16">${Math.round(altFt).toLocaleString()} ft</b>`
+const mphWords = (gsKt: number) => `${Math.round(gsKt * MPH_PER_KT).toLocaleString()} mph`
+/** The card's state block for a searched plane that is NOT transmitting now:
+ *  its last fix from today's trace. */
+function noteLastSeen(clock: ClockFn, seenMs: number, altFt: number, gsKt: number | null, onGround: boolean): string {
+  const where = onGround
+    ? `<b style="color:#9fb6cc">on the ground</b>${gsKt != null && gsKt > 3 ? ` · ${mphWords(gsKt)}` : ''}`
+    : `altitude ${ftWords(altFt)}${gsKt != null ? ` · ${mphWords(gsKt)}` : ''}`
+  return `<div style="margin-top:3px">last seen <b style="color:#2dd4bf">${escHtml(agoWords(seenMs))}</b> <span style="color:#9fb6cc">(${escHtml(clock(seenMs, true))})</span></div>`
+    + `<div>${where}</div>`
+    + `<div style="color:#f5a623;margin-top:2px">not transmitting now — this is its last known position</div>`
+}
+/** …and for one that has not flown today: where its newest logged flight ended. */
+function noteLastFlight(clock: ClockFn, f: { startedAt: number; endedAt: number; fromLabel: string | null; toLabel: string | null }): string {
+  const route = f.fromLabel || f.toLabel ? `${escHtml(f.fromLabel ?? '?')} → ${escHtml(f.toLabel ?? '?')} · ` : ''
+  return `<div style="margin-top:3px">last flight <b style="color:#2dd4bf">${escHtml(agoWords(f.endedAt * 1000))}</b> <span style="color:#9fb6cc">(${escHtml(clock(f.endedAt * 1000, true))})</span></div>`
+    + `<div style="color:#9fb6cc">${route}landed ${escHtml(clock(f.endedAt * 1000))}</div>`
+    + `<div style="color:#f5a623;margin-top:2px">not transmitting now — this is where it landed</div>`
+}
+/** …and for the replay head: the moment on the slider, in plain words. */
+function noteReplay(clock: ClockFn, pos: ReplayPosition, rt: ReplayTrail, simMs: number, multiDay: boolean): string {
+  const f = rt.flights[pos.flight]
+  const n = rt.flights.length
+  const when = `<b style="color:#2dd4bf">${escHtml(clock(simMs, multiDay))}</b>`
+  const route = f.fromLabel || f.toLabel ? `${escHtml(f.fromLabel ?? '?')} → ${escHtml(f.toLabel ?? '?')}` : ''
+  const muted = (t: string) => `<div style="color:#9fb6cc">${t}</div>`
+  if (pos.state === 'flying') {
+    const vs = pos.vsFpm == null ? ''
+      : Math.abs(pos.vsFpm) < 64 ? `<span style="color:#9fb6cc">→ level</span>`
+      : pos.vsFpm > 0 ? `<b style="color:#2dd4bf">↑</b> ${Math.round(Math.abs(pos.vsFpm)).toLocaleString()} ft/min`
+      : `<b style="color:#f5a623">↓</b> ${Math.round(Math.abs(pos.vsFpm)).toLocaleString()} ft/min`
+    const motion = [pos.gsKt != null ? `speed ${mphWords(pos.gsKt)}` : '', vs].filter(Boolean).join(' · ')
+    const which = n === 1 ? 'the only flight in this range' : `flight ${pos.flight + 1} of ${n} in this range`
+    return `<div style="margin-top:3px">${when} · altitude ${ftWords(pos.altFt)}</div>`
+      + (motion ? `<div>${motion}</div>` : '')
+      + muted(`${which}${route ? ' · ' + route : ''} · ${escHtml(clock(f.startedAt * 1000, multiDay))}–${escHtml(clock(f.endedAt * 1000))}`)
+  }
+  if (pos.state === 'before') {
+    return `<div style="margin-top:3px">${when} · <b style="color:#9fb6cc">before its first flight of this range</b></div>`
+      + muted(`first flight ${escHtml(clock(f.startedAt * 1000, multiDay))}${f.fromLabel ? ' from ' + escHtml(f.fromLabel) : ''} · ${n} ${n === 1 ? 'flight' : 'flights'} in this range`)
+  }
+  const landed = `landed${f.toLabel ? ' at ' + escHtml(f.toLabel) : ''} ${escHtml(clock(f.endedAt * 1000, multiDay))}`
+  if (pos.state === 'between') {
+    const next = rt.flights[pos.flight + 1]
+    return `<div style="margin-top:3px">${when} · <b style="color:#9fb6cc">on the ground</b></div>`
+      + muted(`${landed}${next ? ` · next flight ${escHtml(clock(next.startedAt * 1000, multiDay))}` : ''}`)
+  }
+  return `<div style="margin-top:3px">${when} · <b style="color:#9fb6cc">on the ground</b></div>`
+    + muted(`${landed} · ${n === 1 ? 'its only flight in this range' : `last of ${n} flights in this range`}`)
+}
 
 /** One saved aircraft as /api/aircraft/saved?live=1 reports it; `live` is
  *  null when it is not transmitting (parked with the avionics off, or out of
@@ -4415,6 +4488,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const planeHistRef = useRef<Map<string, number[]>>(new Map())
   const selPlaneRef = useRef<string | null>(null)
   const planeTrailRef = useRef<PlaneTrail | null>(null)
+  // The aircraft the person typed into the search bar (Sep 21). It stays on
+  // the map across range changes until a tap on empty sky lets it go.
+  const searchedPlaneRef = useRef<SearchedPlane | null>(null)
   // "Aircraft on the ground" — off by default, and never below airport zoom.
   const groundPlanesRef = useRef(false)
   const skyPlanesRef = useRef(false)
@@ -4447,7 +4523,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           fixLon: lv.lon, fixLat: lv.lat, fixAt: lv.fixAt,
           altFt: lv.altFt, mph: lv.gsKt != null ? Math.round(lv.gsKt * 1.15078) : null,
           vsFpm: lv.vsFpm, track: lv.track, bankRad: 0, onGround: false,
-          saved: true, injected: true, sx: 0, sy: 0, visible: false,
+          saved: true, injected: true, searched: searchedPlaneRef.current?.hex === hex || undefined,
+          sx: 0, sy: 0, visible: false,
         })
       }
     }
@@ -4486,6 +4563,236 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const swarmRef = useRef<SwarmState | null>(null)
   const swarmWorkerRef = useRef<Worker | null>(null)
 
+  // ── A plane from the search bar (Sep 21) ──────────────────────────────────
+  // Its timed trail for a replay range: every flight inside the window, in
+  // time order, five numbers a point + the epoch second of each.
+  const replayTrailRef = useRef<ReplayTrail | null>(null)
+  // How much of that trail the playhead has flown (the trail is cut there).
+  const replayCutRef = useRef(0)
+  // The one synthetic aircraft the sky layer draws for it: the replay head on
+  // the slider, or the last-known ghost while it is not transmitting. Lives
+  // OUTSIDE planesRef, so the feed's poll and the smoothing loop never touch
+  // it and a replay (which empties the feed) still shows it.
+  const replayPlaneRef = useRef<Plane3D | null>(null)
+  // Set while the live-range ghost waits for the re-centred feed to find the
+  // real aircraft; the poll then swaps the ghost for the live plane + card.
+  const pendingLiveRef = useRef<string | null>(null)
+  // The card's state block for the head/ghost, rebuilt as the slider moves.
+  const searchedNoteRef = useRef('')
+  // A replay's colour ramp is fixed over the WHOLE window's trail, so the
+  // colours do not re-normalise as the playhead reveals more of it.
+  const replayScaleRef = useRef<Map<string, PlaneTrailScale>>(new Map())
+  const legendKeyRef = useRef('')
+  // Doors into the sky-layer effect (which owns the card): open the card for
+  // a plane, and repaint the searched plane's card body.
+  const openPlaneCardRef = useRef<((pl: Plane3D, lngLat: [number, number]) => void) | null>(null)
+  const refreshCardRef = useRef<(() => void) | null>(null)
+  // The window the searched plane is asked about: the replay window, or null
+  // on Live. Demo mode has no history dataset, so the range's own window
+  // stands in there.
+  const planeWin = range !== 'live' ? (realWindowEff ?? rangeWindow(tz, range, { earliestMs, customFrom, customTo })) : null
+  const planeWinRef = useRef(planeWin)
+  planeWinRef.current = planeWin
+  const displayTRef = useRef(displayT)
+  displayTRef.current = displayT
+  const skyListCache = useRef<{ list: Plane3D[] | null; extra: Plane3D | null; out: Plane3D[] | null }>({ list: null, extra: null, out: null })
+  // ONE list for the sky layer and the tap picker: the feed plus the searched
+  // plane's head/ghost. Rebuilt only when either side is replaced — the
+  // layer calls this every frame.
+  const skyPlanes = useCallback((): Plane3D[] | null => {
+    const list = planesRef.current
+    const extra = replayPlaneRef.current
+    if (!extra) return list
+    const c = skyListCache.current
+    if (c.list !== list || c.extra !== extra) {
+      c.list = list
+      c.extra = extra
+      c.out = (list ? list.filter((p) => p.hex !== extra.hex) : []).concat(extra)
+    }
+    return c.out
+  }, [])
+  const fmtClock = useCallback((ms: number, withDay = false) =>
+    new Intl.DateTimeFormat('en-US', withDay
+      ? { timeZone: tzRef.current, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+      : { timeZone: tzRef.current, hour: 'numeric', minute: '2-digit' }).format(new Date(ms)), [])
+  const clearSearchedPlane = useCallback(() => {
+    searchedPlaneRef.current = null
+    replayTrailRef.current = null
+    replayPlaneRef.current = null
+    pendingLiveRef.current = null
+    searchedNoteRef.current = ''
+    replayScaleRef.current.clear()
+    refreshCardRef.current = null
+  }, [])
+  // Put the head where the slider says (on every playhead change).
+  const updateSearchedHead = useCallback((t: number) => {
+    const head = replayPlaneRef.current
+    const rt = replayTrailRef.current
+    const w = planeWinRef.current
+    if (!head || !rt || !w || head.hex !== rt.hex) return
+    const simMs = w.from + t * (w.to - w.from)
+    const pos = replayPositionAt(rt, simMs / 1000)
+    if (!pos) return
+    const flying = pos.state === 'flying'
+    head.lon = pos.lon; head.lat = pos.lat; head.fixLon = pos.lon; head.fixLat = pos.lat
+    head.altFt = flying ? pos.altFt : 0
+    head.onGround = !flying
+    head.ghost = !flying
+    head.mph = pos.gsKt != null ? Math.round(pos.gsKt * MPH_PER_KT) : null
+    head.vsFpm = pos.vsFpm != null ? Math.round(pos.vsFpm) : null
+    head.track = pos.track
+    head.saved = savedPlanesRef.current.has(head.hex)
+    replayCutRef.current = pos.cut
+    searchedNoteRef.current = noteReplay(fmtClock, pos, rt, simMs, w.to - w.from > 86_400_000 * 1.01)
+    rebuildTrailRef.current?.()
+    refreshCardRef.current?.()
+    map.current?.triggerRepaint()
+  }, [fmtClock])
+  const loadSeqRef = useRef(0)
+  /**
+   * Answer the search pick for the CURRENT range. Live: the plane from the
+   * feed if it is in it; else its last fix from today's trace as a grey
+   * ghost with "last seen"; else where its newest logged flight landed. A
+   * replay range: every flight inside the window as a trail cut at the
+   * playhead, with the head on the slider. Re-run on every range change
+   * while a searched plane is set.
+   */
+  const loadSearchedPlane = useCallback(async (a: SearchedPlane) => {
+    const m = map.current
+    if (!m) return
+    const seq = ++loadSeqRef.current
+    const stale = () => seq !== loadSeqRef.current || searchedPlaneRef.current?.hex !== a.hex
+    const hex = a.hex
+    const w = planeWinRef.current
+    selPlaneRef.current = hex
+    pendingLiveRef.current = null
+    replayPlaneRef.current = null
+    replayTrailRef.current = null
+    replayScaleRef.current.clear()
+    // Whatever was painted for the last answer goes now, not when the fetch
+    // lands — a stale trail must not sit on a range it does not belong to.
+    rebuildTrailRef.current?.()
+    const zoomTo = (lon: number, lat: number) => m.flyTo({ center: [lon, lat], zoom: Math.max(m.getZoom(), 9), duration: 1200 })
+    const openCard = async (pl: Plane3D) => {
+      // The sky layer's effect (which owns the card) may still be mounting
+      // when this pick is what switched the layer on.
+      for (let i = 0; i < 20 && !openPlaneCardRef.current; i++) await new Promise((r) => setTimeout(r, 50))
+      if (stale()) return
+      openPlaneCardRef.current?.(pl, [pl.lon, pl.lat])
+    }
+    const pull = async <T,>(url: string): Promise<T | null> => {
+      const r = await fetch(url)
+      if (!r.ok) throw new Error(String(r.status))
+      return (await r.json()) as T
+    }
+    type WindowAnswer = { flights?: WindowFlight[]; beyondArchive?: boolean; archiveDays?: number }
+    if (w) {
+      let j: WindowAnswer | null = null
+      try {
+        j = await pull<WindowAnswer>(`/api/plane-track?hex=${hex}&from=${Math.round(w.from)}&to=${Math.round(w.to)}`)
+      } catch {
+        if (!stale()) toast('The flight log did not answer. Try again in a moment.', { variant: 'error' })
+        return
+      }
+      if (stale()) return
+      const rt = buildReplayTrail(hex, j?.flights ?? [])
+      if (rt.ts.length < 2) {
+        toast(`No flights for ${a.name} in this range${j?.beyondArchive ? ` — the public archive keeps about ${j.archiveDays ?? 30} days (a saved plane keeps its flights from the night it is saved)` : ''}.`, { ttl: 7000 })
+        rebuildTrailRef.current?.()
+        return
+      }
+      replayTrailRef.current = rt
+      const head = makeSearchedPlane(a, rt.flat[0], rt.flat[1], 0, { ghost: true, onGround: true }, savedPlanesRef.current.has(hex))
+      replayPlaneRef.current = head
+      updateSearchedHead(displayTRef.current)
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      for (let i = 0; i < rt.ts.length; i++) {
+        const lng = rt.flat[i * 5], lat = rt.flat[i * 5 + 1]
+        if (lng < minLng) minLng = lng
+        if (lng > maxLng) maxLng = lng
+        if (lat < minLat) minLat = lat
+        if (lat > maxLat) maxLat = lat
+      }
+      m.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 80, maxZoom: 11, duration: 1200 })
+      void openCard(head)
+      return
+    }
+    // Live: in the feed already (or added from the watchlist)?
+    const live = planesRef.current?.find((p) => p.hex === hex)
+    if (live) {
+      live.searched = true
+      zoomTo(live.lon, live.lat)
+      void openCard(live)
+      return
+    }
+    type TraceAnswer = { pts?: (number | null)[][]; lastSeen?: { t: number; lat: number; lon: number; altFt: number; gsKt: number | null; onGround?: boolean } | null }
+    let tr: TraceAnswer | null = null
+    try {
+      tr = await pull<TraceAnswer>(`/api/plane-track?hex=${hex}`)
+    } catch {
+      if (!stale()) toast('Could not reach the aircraft feed. Try again in a moment.', { variant: 'error' })
+      return
+    }
+    if (stale()) return
+    const seen = tr?.lastSeen
+    if (seen && tr?.pts?.length) {
+      // Today's trace: the trail, and a ghost at its last fix.
+      traceRef.current.set(hex, tr.pts.flat().map((v) => (v == null ? NaN : v)))
+      const prev = tr.pts.length >= 2 ? tr.pts[tr.pts.length - 2] : null
+      const track = prev && typeof prev[0] === 'number' && typeof prev[1] === 'number' ? bearingDeg(prev[0], prev[1], seen.lon, seen.lat) : null
+      const onGround = !!seen.onGround
+      const ghost = makeSearchedPlane(a, seen.lon, seen.lat, onGround ? 0 : seen.altFt, { ghost: true, onGround, mph: seen.gsKt != null ? Math.round(seen.gsKt * MPH_PER_KT) : null, track }, savedPlanesRef.current.has(hex))
+      replayPlaneRef.current = ghost
+      pendingLiveRef.current = hex
+      searchedNoteRef.current = noteLastSeen(fmtClock, seen.t * 1000, seen.altFt, seen.gsKt, onGround)
+      rebuildTrailRef.current?.()
+      zoomTo(seen.lon, seen.lat)
+      void openCard(ghost)
+      return
+    }
+    // Nothing today: where its newest logged flight (last ~30 days) ended.
+    const now = Date.now()
+    let jl: WindowAnswer | null = null
+    try {
+      jl = await pull<WindowAnswer>(`/api/plane-track?hex=${hex}&from=${now - 30 * 86_400_000}&to=${now}`)
+    } catch { /* the honest toast below */ }
+    if (stale()) return
+    const rt = buildReplayTrail(hex, jl?.flights ?? [])
+    if (rt.ts.length < 2) {
+      toast(`${a.name} has not been heard from in the last 30 days — nothing to put on the map.`, { ttl: 7000 })
+      return
+    }
+    const last = rt.flights[rt.flights.length - 1]
+    const k = last.i1 - 1
+    traceRef.current.set(hex, rt.flat.slice(last.i0 * 5, last.i1 * 5))
+    const track = k > last.i0 ? bearingDeg(rt.flat[(k - 1) * 5], rt.flat[(k - 1) * 5 + 1], rt.flat[k * 5], rt.flat[k * 5 + 1]) : null
+    const ghost = makeSearchedPlane(a, rt.flat[k * 5], rt.flat[k * 5 + 1], 0, { ghost: true, onGround: true, track }, savedPlanesRef.current.has(hex))
+    replayPlaneRef.current = ghost
+    pendingLiveRef.current = hex
+    searchedNoteRef.current = noteLastFlight(fmtClock, last)
+    rebuildTrailRef.current?.()
+    zoomTo(ghost.lon, ghost.lat)
+    void openCard(ghost)
+  }, [fmtClock, updateSearchedHead])
+  const pickAircraftFromSearch = useCallback((a: SearchedPlane) => {
+    searchedPlaneRef.current = a
+    // The plane has to be ON the map — the aircraft layer comes on with it.
+    setOverlaysOn((o) => (o.planes ? o : { ...o, planes: true }))
+    void loadSearchedPlane(a)
+  }, [loadSearchedPlane])
+  // The head follows the slider — a drag and playback both land in displayT.
+  useEffect(() => {
+    if (!replayPlaneRef.current || !replayTrailRef.current) return
+    updateSearchedHead(displayT)
+  }, [displayT, updateSearchedHead])
+  // A new range re-answers the question for its window (Live included).
+  const planeWinKey = planeWin ? `${planeWin.from}-${planeWin.to}` : 'live'
+  useEffect(() => {
+    const a = searchedPlaneRef.current
+    if (!a) return
+    void loadSearchedPlane(a)
+  }, [planeWinKey, loadSearchedPlane])
+
   // Sky playback: satellites/sun/moon/stars obey the timeline. Replaying a
   // range renders the sky AS IT WAS at the scrubbed moment (SGP4 + ephemeris
   // run at any time); paused means frozen — the scrubber rule applies to
@@ -4521,7 +4828,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     if (!m.getLayer(SKY_LAYER_ID)) {
       try {
-        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, () => planesRef.current, () => swarmRef.current, () => planeTrailRef.current))
+        m.addLayer(createSat3DLayer(() => satsRef.current, () => celestialRef.current, skyPlanes, () => swarmRef.current, () => planeTrailRef.current))
       } catch { /* WebGL edge case — layer stays off */ }
     }
     const kindLabel = (g: string) =>
@@ -4610,20 +4917,56 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const bodies = [cel?.sun, cel?.moon].filter(Boolean) as CelestialBody[]
       return (
         pickSat(satsRef.current, x, y) ??
-        (pickSat(planesRef.current, x, y) as Sat3D | Plane3D | CelestialBody | null) ??
+        (pickSat(skyPlanes(), x, y) as Sat3D | Plane3D | CelestialBody | null) ??
         pickSat(bodies, x, y, 20)
       )
     }
     // Selected aircraft's trail = its real recent track (backfilled once)
     // followed by everything we've watched live since, newest last.
+    const setLegend = (next: { mode: PlaneTrailMode; stops: { label: string; hex: string }[] } | null) => {
+      // Only through React when it actually changed — the replay head
+      // rebuilds the trail on every playhead move.
+      const key = next ? `${next.mode}|${next.stops.map((st) => st.label + st.hex).join(',')}` : ''
+      if (key === legendKeyRef.current) return
+      legendKeyRef.current = key
+      setTrailLegend(next)
+    }
+    const clearTrail = () => { planeTrailRef.current = null; setTrailOn(false); setLegend(null); m.triggerRepaint() }
     const rebuildPlaneTrail = () => {
       const hex = selPlaneRef.current
-      if (!hex) { planeTrailRef.current = null; setTrailOn(false); setTrailLegend(null); m.triggerRepaint(); return }
-      const trace = traceRef.current.get(hex) ?? []
-      const hist = planeHistRef.current.get(hex) ?? []
-      const flat = trace.concat(hist)
+      if (!hex) { clearTrail(); return }
+      // A searched plane in a replay (Sep 21): the window's flights, cut at
+      // the playhead — the same rule the trucks' trails follow — with the
+      // interpolated head as the last point so the line reaches the aircraft.
+      const rtAll = replayTrailRef.current
+      const rep = rtAll && rtAll.hex === hex && rangeRef.current !== 'live' ? rtAll : null
+      const head = replayPlaneRef.current
+      let flat: number[]
+      if (rangeRef.current !== 'live') {
+        // A replay shows ONLY the window's trail — a live trace painted
+        // across last week's map would be a lie (and the range change
+        // re-asks for the window a beat later).
+        if (!rep) { clearTrail(); return }
+        const cut = Math.max(0, Math.min(rep.ts.length, replayCutRef.current))
+        flat = rep.flat.slice(0, cut * 5)
+        if (head && !head.ghost && cut > 0 && cut < rep.ts.length) {
+          flat.push(head.lon, head.lat, head.altFt * 0.3048, head.mph != null ? head.mph / MPH_PER_KT : NaN, head.vsFpm ?? NaN)
+        }
+      } else {
+        const trace = traceRef.current.get(hex) ?? []
+        const hist = planeHistRef.current.get(hex) ?? []
+        flat = trace.concat(hist)
+      }
       const n = Math.floor(flat.length / 5)
-      if (n < 2) { planeTrailRef.current = null; setTrailOn(false); setTrailLegend(null); m.triggerRepaint(); return }
+      if (n < 2) {
+        // In a replay the strip stays: the line is empty only because the
+        // playhead sits before the first fix.
+        planeTrailRef.current = null
+        setTrailOn(!!rep && rep.ts.length >= 2)
+        setLegend(null)
+        m.triggerRepaint()
+        return
+      }
       setTrailOn(true)
       // The renderer wants bare lon/lat/alt; the metrics stay here.
       const pts = new Float32Array(n * 3)
@@ -4641,7 +4984,23 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       let rgb: Float32Array | undefined
       let scale: PlaneTrailScale | null = null
       if (mode !== 'plain') {
-        scale = trailScale(mode, metric)
+        if (rep) {
+          // Fixed over the whole window's trail, so scrubbing never
+          // re-normalises the colours under the person's eyes.
+          const key = `${hex}:${mode}`
+          let sc = replayScaleRef.current.get(key)
+          if (!sc) {
+            const all = new Float64Array(rep.ts.length)
+            for (let i = 0; i < rep.ts.length; i++) {
+              all[i] = mode === 'speed' ? rep.flat[i * 5 + 3] : mode === 'climb' ? rep.flat[i * 5 + 4] : rep.flat[i * 5 + 2] / 0.3048
+            }
+            sc = trailScale(mode, all)
+            replayScaleRef.current.set(key, sc)
+          }
+          scale = sc
+        } else {
+          scale = trailScale(mode, metric)
+        }
         rgb = new Float32Array(n * 3)
         for (let i = 0; i < n; i++) {
           const c = trailColor(mode, metric[i], scale)
@@ -4651,7 +5010,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // A coloured trail barely fades: the age fade and the ramp would
       // otherwise both be speaking through brightness.
       planeTrailRef.current = { pts, n, rgb, fade: mode === 'plain' ? 0.88 : 0.25 }
-      setTrailLegend(scale && mode !== 'plain' ? { mode, stops: legendStops(mode, scale) } : null)
+      setLegend(scale && mode !== 'plain' ? { mode, stops: legendStops(mode, scale) } : null)
       m.triggerRepaint()
     }
     rebuildTrailRef.current = rebuildPlaneTrail
@@ -4672,13 +5031,123 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         })
         .catch(() => { traceRef.current.set(hex, []) })
     }
+    // The aircraft card — for a live plane from the feed AND for the searched
+    // plane's replay head / last-known ghost (Sep 21): one card, so Save, the
+    // photo and the log link behave the same everywhere.
+    const openPlaneCard = (hit: Plane3D, lngLat: [number, number]) => {
+      const hex = hit.hex
+      // The searched plane's replay head or ghost — its card reads the moment
+      // on the slider / the last fix instead of live numbers.
+      const remembered = () => hit === replayPlaneRef.current
+      // A saved plane wears its label ("the boss's plane") as its title.
+      const titleFor = () => savedPlanesRef.current.get(hex)?.label || hit.flight || hit.reg || hex.toUpperCase()
+      const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== (hit.flight ?? hit.reg) ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
+      // Draw this aircraft's 3D flight trail: whatever we've watched so far,
+      // backfilled with its real recent track from adsb.lol.
+      selPlaneRef.current = hex
+      rebuildPlaneTrail()
+      if (!remembered()) backfillTrace(hex)
+      const locatePlane = () => {
+        const pl = skyPlanes()?.find((x) => x.hex === hex)
+        return pl ? { sx: pl.sx, sy: pl.sy } : null
+      }
+      // Where this aircraft has BEEN, not just where it is (Brian, Sep 12).
+      // The tail number is the friendly key; the hex always resolves.
+      const logHref = `/aircraft?tail=${encodeURIComponent(hit.reg || hex)}`
+      const logHtml = canFlightLog
+        ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
+        : ''
+      // Save / unsave from the card (Brian, Sep 21: "save planes … then
+      // those planes be red or blinking or something when active"). The
+      // same save as the flight log's — it is what starts banking the
+      // plane's flights nightly — and on the map a saved plane flies red,
+      // blinking, with a halo, wherever it is.
+      const saveHtml = () => {
+        if (!canFlightLog || isMock) return ''
+        const on = savedPlanesRef.current.has(hex)
+        const btn = 'display:block;width:100%;margin-top:7px;padding:8px 10px;border-radius:8px;font:600 12px/1.25 system-ui;cursor:pointer;text-align:left;'
+        return on
+          ? `<button data-sky="save" style="${btn}background:rgba(251,93,93,.14);border:1px solid rgba(251,93,93,.55);color:#ffb3b3">★ Saved — red on the map while it flies<br><span style="font-weight:400;color:#9fb6cc">tap to remove</span></button>`
+          : `<button data-sky="save" style="${btn}background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.4);color:#2dd4bf">☆ Save this plane<br><span style="font-weight:400;color:#9fb6cc">red and blinking on the map whenever it is in the air · its flights are kept from tonight</span></button>`
+      }
+      const headFor = () => {
+        const on = savedPlanesRef.current.has(hex)
+        return `<div style="font-weight:700;color:${on ? '#ff8a8a' : '#ffd94f'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${on ? '★' : '✈'} ${escHtml(titleFor())}</div>`
+      }
+      // "altitude 0 ft" is a wrong-sounding way to say parked — and for a
+      // taxiing aircraft the speed is the only interesting number.
+      // Vertical speed with an arrow (Brian, Sep 19): climbing / descending
+      // / level, in the same diverging pair the Climb trail ramp uses.
+      // Under 64 ft/min is "level" — barometric rate wobbles that much in
+      // cruise, and FR24 rounds it away too.
+      const vsHtml = !hit.onGround && hit.vsFpm != null
+        ? (Math.abs(hit.vsFpm) < 64
+          ? `<div><span style="color:#9fb6cc">→ level</span></div>`
+          : hit.vsFpm > 0
+            ? `<div><b style="color:#2dd4bf">↑ climbing</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`
+            : `<div><b style="color:#f5a623">↓ descending</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`)
+        : ''
+      const liveStateHtml = hit.onGround
+        ? `<div style="margin-top:3px"><b style="color:#9fb6cc">on the ground</b>${hit.mph && hit.mph > 3 ? ` · taxiing ${hit.mph.toLocaleString()} mph` : ' · parked'}</div>`
+        : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${vsHtml}`
+      const stateFor = () => (remembered() ? searchedNoteRef.current : liveStateHtml)
+      const foot = remembered()
+        ? `<div style="color:#9fb6cc;margin-top:4px">— to minimise · tap empty sky to let it go</div>`
+        : `<div style="color:#9fb6cc;margin-top:4px">— to minimise · the trail stays</div>`
+      // The route + photo stream in a beat later; the body is rebuilt from
+      // its parts whenever the save state or the enrichment changes.
+      let extraHtml = ''
+      const bodyFor = () => `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateFor()}${logHtml}${saveHtml()}${extraHtml}${foot}`
+      popup(lngLat, bodyFor(), locatePlane, headFor())
+      // Guard on the popup INSTANCE, not just the selected hex — tapping a
+      // satellite while a fetch is in flight rebinds skyPopup, and isOpen()
+      // alone would let a plane card overwrite the satellite's box.
+      const ownPopup = skyPopup
+      const stillMine = () => !!ownPopup && skyPopup === ownPopup && ownPopup.isOpen()
+      // The searched plane's card follows the slider: the head updater asks
+      // for a repaint whenever the moment changes.
+      refreshCardRef.current = remembered() ? () => { if (stillMine()) repaintPopupBody(bodyFor()) } : null
+      let busy = false
+      skyAction = (act) => {
+        if (act !== 'save' || busy) return
+        busy = true
+        const was = savedPlanesRef.current.has(hex)
+        void (was ? removeAircraftAction(hex) : saveAircraftAction({ hex })).then((r) => {
+          if (!r.ok) { toast(r.error ?? 'Could not save that plane.', { variant: 'error' }); return }
+          const next = new Map(savedPlanesRef.current)
+          if (was) next.delete(hex)
+          else next.set(hex, { reg: hit.reg, label: null, live: null })
+          savedPlanesRef.current = next
+          mergeSavedRef.current()
+          m.triggerRepaint()
+          toast(was
+            ? `${titleFor()} removed from your saved planes.`
+            : `${titleFor()} saved — red on the map whenever it is in the air, and its flights are kept from tonight.`, { variant: 'success', ttl: 5000 })
+          if (stillMine()) { retitlePopup(headFor()); repaintPopupBody(bodyFor()) }
+        }).catch(() => {
+          toast('Could not reach the flight log. Try again.', { variant: 'error' })
+        }).finally(() => { busy = false })
+      }
+      // FlightAware-lite (Brian, Aug 29): the route this flight is flying
+      // and a photo of the ACTUAL airframe stream in a beat later.
+      void fetchPlaneInfo(hex, hit.flight, hit.lat, hit.lon).then(({ photoHtml, routeHtml }) => {
+        if ((photoHtml || routeHtml) && selPlaneRef.current === hex && stillMine()) {
+          extraHtml = `${routeHtml}${photoHtml}`
+          // Through repaintPopupBody, so a card the person has already
+          // minimised does not spring back open when the photo lands.
+          repaintPopupBody(bodyFor())
+        }
+      })
+    }
+    openPlaneCardRef.current = openPlaneCard
     const onClick = (e: maplibregl.MapMouseEvent) => {
       const hit = pickAll(e.point.x, e.point.y)
       if (!hit) {
-        // Tap on empty sky clears the trail.
-        if (selPlaneRef.current) {
-          selPlaneRef.current = null; planeTrailRef.current = null
-          setTrailOn(false); setTrailLegend(null); m.triggerRepaint()
+        // Tap on empty sky clears the trail — and lets a searched plane go.
+        if (selPlaneRef.current || searchedPlaneRef.current) {
+          clearSearchedPlane()
+          selPlaneRef.current = null
+          clearTrail()
         }
         return
       }
@@ -4695,100 +5164,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           popup(e.lngLat, `<div style="font-weight:700;color:#cdd5df">Moon</div><div style="margin-top:3px">${hit.distLabel}</div>${hit.illum != null ? `<div>${Math.round(hit.illum * 100)}% illuminated</div>` : ''}`, locateBody)
         }
       } else if ('hex' in hit) {
-        const hex = hit.hex
-        // A saved plane wears its label ("the boss's plane") as its title.
-        const titleFor = () => savedPlanesRef.current.get(hex)?.label || hit.flight || hit.reg || hex.toUpperCase()
-        const kindLine = [hit.typeLabel ?? hit.typeCode, hit.reg && hit.reg !== (hit.flight ?? hit.reg) ? hit.reg : null].filter(Boolean).join(' · ') || 'aircraft'
-        // Draw this aircraft's 3D flight trail: whatever we've watched so far,
-        // backfilled with its real recent track from adsb.lol.
-        selPlaneRef.current = hex
-        rebuildPlaneTrail()
-        backfillTrace(hex)
-        const locatePlane = () => {
-          const pl = planesRef.current?.find((x) => x.hex === hex)
-          return pl ? { sx: pl.sx, sy: pl.sy } : null
-        }
-        // Where this aircraft has BEEN, not just where it is (Brian, Sep 12).
-        // The tail number is the friendly key; the hex always resolves.
-        const logHref = `/aircraft?tail=${encodeURIComponent(hit.reg || hex)}`
-        const logHtml = canFlightLog
-          ? `<div style="margin-top:5px"><a href="${escHtml(logHref)}" style="color:#2dd4bf;font-weight:600;text-decoration:none">flight log &amp; charts →</a></div>`
-          : ''
-        // Save / unsave from the card (Brian, Sep 21: "save planes … then
-        // those planes be red or blinking or something when active"). The
-        // same save as the flight log's — it is what starts banking the
-        // plane's flights nightly — and on the map a saved plane flies red,
-        // blinking, with a halo, wherever it is.
-        const saveHtml = () => {
-          if (!canFlightLog || isMock) return ''
-          const on = savedPlanesRef.current.has(hex)
-          const btn = 'display:block;width:100%;margin-top:7px;padding:8px 10px;border-radius:8px;font:600 12px/1.25 system-ui;cursor:pointer;text-align:left;'
-          return on
-            ? `<button data-sky="save" style="${btn}background:rgba(251,93,93,.14);border:1px solid rgba(251,93,93,.55);color:#ffb3b3">★ Saved — red on the map while it flies<br><span style="font-weight:400;color:#9fb6cc">tap to remove</span></button>`
-            : `<button data-sky="save" style="${btn}background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.4);color:#2dd4bf">☆ Save this plane<br><span style="font-weight:400;color:#9fb6cc">red and blinking on the map whenever it is in the air · its flights are kept from tonight</span></button>`
-        }
-        const headFor = () => {
-          const on = savedPlanesRef.current.has(hex)
-          return `<div style="font-weight:700;color:${on ? '#ff8a8a' : '#ffd94f'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${on ? '★' : '✈'} ${escHtml(titleFor())}</div>`
-        }
-        // "altitude 0 ft" is a wrong-sounding way to say parked — and for a
-        // taxiing aircraft the speed is the only interesting number.
-        // Vertical speed with an arrow (Brian, Sep 19): climbing / descending
-        // / level, in the same diverging pair the Climb trail ramp uses.
-        // Under 64 ft/min is "level" — barometric rate wobbles that much in
-        // cruise, and FR24 rounds it away too.
-        const vsHtml = !hit.onGround && hit.vsFpm != null
-          ? (Math.abs(hit.vsFpm) < 64
-            ? `<div><span style="color:#9fb6cc">→ level</span></div>`
-            : hit.vsFpm > 0
-              ? `<div><b style="color:#2dd4bf">↑ climbing</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`
-              : `<div><b style="color:#f5a623">↓ descending</b> ${Math.abs(hit.vsFpm).toLocaleString()} ft/min</div>`)
-          : ''
-        const stateHtml = hit.onGround
-          ? `<div style="margin-top:3px"><b style="color:#9fb6cc">on the ground</b>${hit.mph && hit.mph > 3 ? ` · taxiing ${hit.mph.toLocaleString()} mph` : ' · parked'}</div>`
-          : `<div style="margin-top:3px">altitude <b style="color:#ff9e16">${hit.altFt.toLocaleString()} ft</b></div>${hit.mph ? `<div>speed ${hit.mph.toLocaleString()} mph <span style="color:#9fb6cc">· ${Math.round(hit.mph / 1.15078).toLocaleString()} kt</span></div>` : ''}${vsHtml}`
-        const foot = `<div style="color:#9fb6cc;margin-top:4px">— to minimise · the trail stays</div>`
-        // The route + photo stream in a beat later; the body is rebuilt from
-        // its parts whenever the save state or the enrichment changes.
-        let extraHtml = ''
-        const bodyFor = () => `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateHtml}${logHtml}${saveHtml()}${extraHtml}${foot}`
-        popup(e.lngLat, bodyFor(), locatePlane, headFor())
-        // Guard on the popup INSTANCE, not just the selected hex — tapping a
-        // satellite while a fetch is in flight rebinds skyPopup, and isOpen()
-        // alone would let a plane card overwrite the satellite's box.
-        const ownPopup = skyPopup
-        const stillMine = () => !!ownPopup && skyPopup === ownPopup && ownPopup.isOpen()
-        let busy = false
-        skyAction = (act) => {
-          if (act !== 'save' || busy) return
-          busy = true
-          const was = savedPlanesRef.current.has(hex)
-          void (was ? removeAircraftAction(hex) : saveAircraftAction({ hex })).then((r) => {
-            if (!r.ok) { toast(r.error ?? 'Could not save that plane.', { variant: 'error' }); return }
-            const next = new Map(savedPlanesRef.current)
-            if (was) next.delete(hex)
-            else next.set(hex, { reg: hit.reg, label: null, live: null })
-            savedPlanesRef.current = next
-            mergeSavedRef.current()
-            m.triggerRepaint()
-            toast(was
-              ? `${titleFor()} removed from your saved planes.`
-              : `${titleFor()} saved — red on the map whenever it is in the air, and its flights are kept from tonight.`, { variant: 'success', ttl: 5000 })
-            if (stillMine()) { retitlePopup(headFor()); repaintPopupBody(bodyFor()) }
-          }).catch(() => {
-            toast('Could not reach the flight log. Try again.', { variant: 'error' })
-          }).finally(() => { busy = false })
-        }
-        // FlightAware-lite (Brian, Aug 29): the route this flight is flying
-        // and a photo of the ACTUAL airframe stream in a beat later.
-        void fetchPlaneInfo(hex, hit.flight, e.lngLat.lat, e.lngLat.lng).then(({ photoHtml, routeHtml }) => {
-          if ((photoHtml || routeHtml) && selPlaneRef.current === hex && stillMine()) {
-            extraHtml = `${routeHtml}${photoHtml}`
-            // Through repaintPopupBody, so a card the person has already
-            // minimised does not spring back open when the photo lands.
-            repaintPopupBody(bodyFor())
-          }
-        })
+        openPlaneCard(hit, [e.lngLat.lng, e.lngLat.lat])
       } else {
         const facts: string[] = []
         if (hit.periodMin) facts.push(`orbits Earth every ${hit.periodMin >= 90 * 12 ? (hit.periodMin / 60).toFixed(1) + ' h' : Math.round(hit.periodMin) + ' min'}`)
@@ -4819,9 +5195,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       clearInterval(followTimer)
       skyPopup?.remove()
       rebuildTrailRef.current = null
+      openPlaneCardRef.current = null
+      refreshCardRef.current = null
       if (skyHover) m.getCanvas().style.cursor = ''
     }
-  }, [mapReady, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground']])
+  }, [mapReady, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground'], skyPlanes, clearSearchedPlane])
 
   // Satellites + celestial data (the Satellites toggle owns the whole sky look).
   useEffect(() => {
@@ -5176,6 +5554,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             mph: p.gsKt != null ? Math.round(p.gsKt * 1.15078) : null,
             vsFpm: typeof p.vsFpm === 'number' && Number.isFinite(p.vsFpm) ? Math.round(p.vsFpm) : null,
             track: p.track, bankRad, onGround: !!p.onGround,
+            searched: searchedPlaneRef.current?.hex === p.hex || undefined,
             sx: 0, sy: 0, visible: false,
           }
         })
@@ -5183,6 +5562,18 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // Mark the saved ones and add any saved plane flying beyond this
         // snapshot's reach (from the watchlist lookup).
         mergeSavedRef.current()
+        // The searched plane's ghost stands down the moment the feed carries
+        // the real aircraft (it was just outside the last poll's reach, or it
+        // has started transmitting again): the live plane takes the card.
+        const pend = pendingLiveRef.current
+        if (pend) {
+          const live = (planesRef.current ?? []).find((x) => x.hex === pend)
+          if (live) {
+            pendingLiveRef.current = null
+            replayPlaneRef.current = null
+            openPlaneCardRef.current?.(live, [live.lon, live.lat])
+          }
+        }
         // Accumulate each aircraft's path (cap ~200 samples/plane) so a
         // clicked plane draws a live-growing 3D trail. Prune to what's in view.
         const seen = new Set<string>()
@@ -5256,13 +5647,18 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   useEffect(() => {
     const sky = !!overlaysOn.satellites || !!overlaysOn.planes || !!overlaysOn['planes-ground']
     if (range === 'live' && sky) return
-    if (!selPlaneRef.current && !planeTrailRef.current) return
+    // A searched plane rides the timeline: the range effect re-answers it for
+    // the new window instead of throwing it away.
+    if (sky && searchedPlaneRef.current) return
+    if (!selPlaneRef.current && !planeTrailRef.current && !searchedPlaneRef.current) return
+    clearSearchedPlane()
     selPlaneRef.current = null
     planeTrailRef.current = null
+    legendKeyRef.current = ''
     setTrailOn(false)
     setTrailLegend(null)
     map.current?.triggerRepaint()
-  }, [range, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground']])
+  }, [range, overlaysOn.satellites, overlaysOn.planes, overlaysOn['planes-ground'], clearSearchedPlane])
 
   // ── Public webcams (Windy network via our proxy — key stays server-side) ──
   useEffect(() => {
@@ -7967,6 +8363,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           flightLog={canFlightLog}
           items={searchItems}
           onPick={pickSearchItem}
+          onPickAircraft={canFlightLog ? pickAircraftFromSearch : undefined}
           bias={assets.find((a) => a.location)?.location ?? null}
           onPickPlace={(p) => {
             map.current?.flyTo({ center: [p.lng, p.lat], zoom: 16, duration: 1400 })
