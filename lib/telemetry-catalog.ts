@@ -884,6 +884,9 @@ export function pickGauges(readings: Readings, ctx: AssessCtx, limit = 6): Gauge
 
 // ── Health: the words that matter ───────────────────────────────────────────
 export interface HealthFlag { key: string; tone: Tone; text: string }
+/** Engine readings this much older than the newest fix, with the truck
+ *  running, mean the port stopped answering — not a slow poll. */
+const ENGINE_STALE_MS = 10 * 60_000
 
 /**
  * Plain-English problems from the readings, worst first — the line under the
@@ -909,9 +912,36 @@ export function truckHealth(readings: Readings, ctx: AssessCtx, opts: { nowMs?: 
   const codes = flags.find((f) => f.key === 'can.dtc.number')
   const mil = flags.findIndex((f) => f.key === 'can.mil.mileage')
   if (codes && mil >= 0) { codes.text = `${codes.text} · ${flags[mil].text.replace(/^Driven /, 'driven ')}`; flags.splice(mil, 1) }
+  // The truck's computer stopped answering (Sep 21, the Charleston F350: CAN
+  // readings until 7:36 AM, then a whole day of driving without one — the
+  // dials read "as of 7h ago" and nothing said why). Engine-side readings
+  // older than the newest fix by more than ENGINE_STALE_MS while the truck
+  // is running means the OBD session died under a live unit; a key-off/on
+  // usually restarts it. A truck whose computer never answered (F650/F750)
+  // has no engine reading to go stale and is covered by "Not reported".
+  if ((ctx.family === 'obd' || ctx.family === 'wired') && ctx.engineOn === true) {
+    let newestAny = -Infinity
+    let newestEngine = -Infinity
+    for (const [k, r] of Object.entries(readings)) {
+      const t = Date.parse(r.t)
+      if (!Number.isFinite(t)) continue
+      if (t > newestAny) newestAny = t
+      // Live engine numbers only: the VIN is identity, sent at key-on and
+      // then not again, so it can neither go stale nor prove the port alive.
+      const def = resolveKey(k)?.def
+      if (def?.source === 'obd' && def.kind !== 'text' && t > newestEngine) newestEngine = t
+    }
+    if (Number.isFinite(newestEngine) && newestAny - newestEngine > ENGINE_STALE_MS && now - newestAny <= stale) {
+      flags.push({
+        key: 'engine.data.stale',
+        tone: 'warn',
+        text: `Truck's computer stopped answering ${fmtDuration((now - newestEngine) / 1000)} ago — the engine readings are from then, though the unit is powered and the truck is running. A key-off/on usually restarts it.`,
+      })
+    }
+  }
   // Same tone: what ends the tracking (plug out, towed, crash, jamming) is
   // said before what ends the truck (check engine, overheating), then fuel.
-  const URGENCY = ['external.powersource.voltage', 'towing.event', 'crash.event', 'gnss.jamming.state', 'battery.unplug.event', 'can.dtc.number', 'can.mil.status', 'can.engine.coolant.temperature', 'can.engine.oil.temperature', 'can.fuel.level']
+  const URGENCY = ['external.powersource.voltage', 'towing.event', 'crash.event', 'gnss.jamming.state', 'battery.unplug.event', 'engine.data.stale', 'can.dtc.number', 'can.mil.status', 'can.engine.coolant.temperature', 'can.engine.oil.temperature', 'can.fuel.level']
   const urgency = (k: string) => { const i = URGENCY.indexOf(k); return i < 0 ? URGENCY.length : i }
   return flags.sort((a, b) => (rank[a.tone] - rank[b.tone]) || (urgency(a.key) - urgency(b.key))).slice(0, 6)
 }

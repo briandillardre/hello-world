@@ -49,6 +49,17 @@ where raw->>'source' = 'flespi' order by "timestamp" desc limit 3;
 > `telemetry_daily` is signed-in only (anon revoked); `/api/telemetry` caps the
 > trend at 7 days and throttles it.
 >
+> **When the truck's computer stops answering:** the F350 sent CAN readings
+> until 7:36 AM on Sep 21 and then drove all day without one — the unit kept
+> reporting position, ignition and 14 V, so nothing looked broken except the
+> dials' "as of 7h ago". `truckHealth` now flags it (`engine.data.stale`):
+> live engine numbers (the VIN is identity, not proof of life) older than the
+> newest fix by more than 10 minutes while the truck is running reads
+> "Truck's computer stopped answering 7h ago — the engine readings are from
+> then, though the unit is powered and the truck is running. A key-off/on
+> usually restarts it." Never on a battery unit, never with the engine off,
+> never on a truck whose computer has never answered (that is "Not reported").
+>
 > **What the pilot trucks actually send (Sep 21 2026, last 3 days):**
 >
 > | Truck | OBD engine data over the port | Always |
