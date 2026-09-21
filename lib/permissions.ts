@@ -104,6 +104,11 @@ export const FEATURES: FeatureDef[] = [
 export const FEATURE_KEYS = FEATURES.map((f) => f.key)
 /** Owner-seat features — see FeatureDef.masterOnly. */
 export const MASTER_ONLY: FeatureKey[] = FEATURES.filter((f) => f.masterOnly).map((f) => f.key)
+/** What a Prospective Client can never be given, whatever the view-levels
+ *  table says: every write ability, every people page, every money page,
+ *  the wall and the AI (its tools name people). The Master may still show
+ *  them MORE of the product — reports, maintenance, alerts, the flight log. */
+export const PROSPECT_NEVER: FeatureKey[] = ['edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'command', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'finance', 'settings', 'trackers', 'hardware']
 /** What the view-levels table is allowed to show and store. */
 export const GRANTABLE_FEATURES: FeatureDef[] = FEATURES.filter((f) => !f.masterOnly)
 
@@ -218,6 +223,11 @@ export function resolvePermissions(
   // Master-only features are stripped LAST: not the defaults, not a stored
   // policy row, not an admin editing the table can hand one out.
   for (const k of MASTER_ONLY) f[k] = false
+  // A Prospective Client can be shown MORE of the product by the Master, but
+  // never handed a door to people, money or writes: 118 keeps their JWT
+  // read-only, and these are the service-role doors the view-levels table
+  // could otherwise open (sec-check, Sep 21).
+  if (MASTER_ONLY_ROLES.includes(role)) for (const k of PROSPECT_NEVER) f[k] = false
   return {
     role, isMaster: false,
     features: FEATURE_KEYS.filter((k) => f[k]),

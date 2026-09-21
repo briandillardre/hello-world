@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase-server'
-import { generateApiKey } from '@/lib/utils'
 
 /**
  * OAuth redirect target. Supabase sends the user back here with a `code`; we
@@ -33,7 +32,9 @@ export async function GET(request: Request) {
       const { data: profile } = await svc.from('profiles').select('id').eq('id', user.id).maybeSingle()
       if (!profile) {
         const name = (user.user_metadata?.name as string) || (user.email?.split('@')[0]) || 'My Company'
-        await svc.from('companies').insert({ id: user.id, name, api_key: generateApiKey(), plan: 'starter' })
+        // The ingest/MCP key is seeded by the companies_seed_key trigger into
+        // company_api_keys (119) — never on the readable company row.
+        await svc.from('companies').insert({ id: user.id, name, plan: 'starter' })
         await svc.from('profiles').insert({ id: user.id, company_id: user.id, role: 'admin', name, email: user.email })
         if (next === '/map') next = '/welcome' // first-timers → onboarding
       }

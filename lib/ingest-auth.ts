@@ -68,12 +68,13 @@ export async function lookupCompanyByKey(key: string): Promise<string | null> {
   if (!key) return null
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
+    // The key lives in company_api_keys (119) — a table no session can read.
     const { data } = await createServiceClient()
-      .from('companies')
-      .select('id')
+      .from('company_api_keys')
+      .select('company_id')
       .eq('api_key', key)
       .maybeSingle()
-    if (data?.id) return data.id as string
+    if (data?.company_id) return data.company_id as string
   } catch {
     // DB unavailable → fail closed
   }

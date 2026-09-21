@@ -4581,7 +4581,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   const searchedNoteRef = useRef('')
   // A replay's colour ramp is fixed over the WHOLE window's trail, so the
   // colours do not re-normalise as the playhead reveals more of it.
-  const replayScaleRef = useRef<Map<string, PlaneTrailScale>>(new Map())
+  const replayRgbRef = useRef<Map<string, { scale: PlaneTrailScale; rgb: Float32Array }>>(new Map())
   const legendKeyRef = useRef('')
   // Doors into the sky-layer effect (which owns the card): open the card for
   // a plane, and repaint the searched plane's card body.
@@ -4621,7 +4621,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     replayPlaneRef.current = null
     pendingLiveRef.current = null
     searchedNoteRef.current = ''
-    replayScaleRef.current.clear()
+    replayRgbRef.current.clear()
     refreshCardRef.current = null
   }, [])
   // Put the head where the slider says (on every playhead change).
@@ -4668,7 +4668,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     pendingLiveRef.current = null
     replayPlaneRef.current = null
     replayTrailRef.current = null
-    replayScaleRef.current.clear()
+    replayRgbRef.current.clear()
     // Whatever was painted for the last answer goes now, not when the fetch
     // lands — a stale trail must not sit on a range it does not belong to.
     rebuildTrailRef.current?.()
@@ -4725,7 +4725,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       void openCard(live)
       return
     }
-    type TraceAnswer = { pts?: (number | null)[][]; lastSeen?: { t: number; lat: number; lon: number; altFt: number; gsKt: number | null; onGround?: boolean } | null }
+    type TraceAnswer = { pts?: (number | null)[][]; lastSeen?: { t: number; lat: number; lon: number; altFt: number; gsKt: number | null; onGround?: boolean } | null; note?: string }
     let tr: TraceAnswer | null = null
     try {
       tr = await pull<TraceAnswer>(`/api/plane-track?hex=${hex}`)
@@ -4734,6 +4734,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       return
     }
     if (stale()) return
+    // An upstream outage answers 200 with an empty trace and a note — that is
+    // not "nothing today" (ship-check, Sep 21).
+    if (tr?.note && !tr.pts?.length) { toast('Could not reach the aircraft feed. Try again in a moment.', { variant: 'error' }); return }
     const seen = tr?.lastSeen
     if (seen && tr?.pts?.length) {
       // Today's trace: the trail, and a ghost at its last fix.
@@ -4753,13 +4756,17 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // Nothing today: where its newest logged flight (last ~30 days) ended.
     const now = Date.now()
     let jl: WindowAnswer | null = null
+    let logDown = false
     try {
       jl = await pull<WindowAnswer>(`/api/plane-track?hex=${hex}&from=${now - 30 * 86_400_000}&to=${now}`)
-    } catch { /* the honest toast below */ }
+    } catch { logDown = true }
     if (stale()) return
     const rt = buildReplayTrail(hex, jl?.flights ?? [])
     if (rt.ts.length < 2) {
-      toast(`${a.name} has not been heard from in the last 30 days — nothing to put on the map.`, { ttl: 7000 })
+      // Only an ANSWER of no flights earns the 30-day claim; a failed lookup
+      // says so instead (ship-check, Sep 21).
+      if (logDown) toast('The flight log did not answer. Try again in a moment.', { variant: 'error' })
+      else toast(`${a.name} has not been heard from in the last 30 days — nothing to put on the map.`, { ttl: 7000 })
       return
     }
     const last = rt.flights[rt.flights.length - 1]
@@ -4902,6 +4909,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     /** Replace the BODY of the open card, keeping it collapsed if it is. */
     const repaintPopupBody = (html: string) => { skyFull = html; paintPopup() }
+    /** Remember a new body WITHOUT repainting — the searched plane's card
+     *  patches its state block in place and only needs the next expand to
+     *  be current. */
+    const storePopupBody = (html: string) => { skyFull = html }
     /** Replace the title bar of the open card (the ★ when a plane is saved). */
     const retitlePopup = (title: string) => { skyTitle = title; paintPopup() }
     const followSky = () => {
@@ -4986,25 +4997,41 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       if (mode !== 'plain') {
         if (rep) {
           // Fixed over the whole window's trail, so scrubbing never
-          // re-normalises the colours under the person's eyes.
+          // re-normalises the colours under the person's eyes — and coloured
+          // ONCE per window: the OKLab ramp over every fix of every flight is
+          // not per-playhead-move work (ship-check, Sep 21). The cut copies
+          // the front of that; only the head's own point is coloured fresh.
           const key = `${hex}:${mode}`
-          let sc = replayScaleRef.current.get(key)
-          if (!sc) {
+          let cached = replayRgbRef.current.get(key)
+          if (!cached) {
             const all = new Float64Array(rep.ts.length)
             for (let i = 0; i < rep.ts.length; i++) {
               all[i] = mode === 'speed' ? rep.flat[i * 5 + 3] : mode === 'climb' ? rep.flat[i * 5 + 4] : rep.flat[i * 5 + 2] / 0.3048
             }
-            sc = trailScale(mode, all)
-            replayScaleRef.current.set(key, sc)
+            const sc = trailScale(mode, all)
+            const full = new Float32Array(rep.ts.length * 3)
+            for (let i = 0; i < rep.ts.length; i++) {
+              const c = trailColor(mode, all[i], sc)
+              full[i * 3] = c[0]; full[i * 3 + 1] = c[1]; full[i * 3 + 2] = c[2]
+            }
+            cached = { scale: sc, rgb: full }
+            replayRgbRef.current.set(key, cached)
           }
-          scale = sc
+          scale = cached.scale
+          rgb = new Float32Array(n * 3)
+          const keep = Math.min(n, rep.ts.length) * 3
+          rgb.set(cached.rgb.subarray(0, keep))
+          for (let i = keep / 3; i < n; i++) {
+            const c = trailColor(mode, metric[i], scale)
+            rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2]
+          }
         } else {
           scale = trailScale(mode, metric)
-        }
-        rgb = new Float32Array(n * 3)
-        for (let i = 0; i < n; i++) {
-          const c = trailColor(mode, metric[i], scale)
-          rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2]
+          rgb = new Float32Array(n * 3)
+          for (let i = 0; i < n; i++) {
+            const c = trailColor(mode, metric[i], scale)
+            rgb[i * 3] = c[0]; rgb[i * 3 + 1] = c[1]; rgb[i * 3 + 2] = c[2]
+          }
         }
       }
       // A coloured trail barely fades: the age fade and the ramp would
@@ -5097,7 +5124,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // The route + photo stream in a beat later; the body is rebuilt from
       // its parts whenever the save state or the enrichment changes.
       let extraHtml = ''
-      const bodyFor = () => `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div>${stateFor()}${logHtml}${saveHtml()}${extraHtml}${foot}`
+      const bodyFor = () => `<div style="color:#9fb6cc;font-size:10.5px">${escHtml(kindLine)}</div><div data-sky-state>${stateFor()}</div>${logHtml}${saveHtml()}${extraHtml}${foot}`
       popup(lngLat, bodyFor(), locatePlane, headFor())
       // Guard on the popup INSTANCE, not just the selected hex — tapping a
       // satellite while a fetch is in flight rebinds skyPopup, and isOpen()
@@ -5106,7 +5133,16 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       const stillMine = () => !!ownPopup && skyPopup === ownPopup && ownPopup.isOpen()
       // The searched plane's card follows the slider: the head updater asks
       // for a repaint whenever the moment changes.
-      refreshCardRef.current = remembered() ? () => { if (stillMine()) repaintPopupBody(bodyFor()) } : null
+      // …by patching the state block IN PLACE: a full setHTML on every
+      // playhead commit replaced the buttons under a finger mid-tap
+      // (ship-check, Sep 21). The stored body is refreshed too, so a card
+      // re-expanded after a minimise paints the current moment.
+      refreshCardRef.current = remembered() ? () => {
+        if (!stillMine()) return
+        storePopupBody(bodyFor())
+        const el = ownPopup?.getElement()?.querySelector('[data-sky-state]')
+        if (el) el.innerHTML = stateFor()
+      } : null
       let busy = false
       skyAction = (act) => {
         if (act !== 'save' || busy) return
@@ -5571,6 +5607,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           if (live) {
             pendingLiveRef.current = null
             replayPlaneRef.current = null
+            // The ghost's trail may be a weeks-old logged flight; the live
+            // card backfills today's real trace instead (ship-check, Sep 21).
+            traceRef.current.delete(pend)
             openPlaneCardRef.current?.(live, [live.lon, live.lat])
           }
         }
@@ -5645,11 +5684,15 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // stranded on screen with dead chips, since its only off switch lives in an
   // effect that had already torn down.
   useEffect(() => {
-    const sky = !!overlaysOn.satellites || !!overlaysOn.planes || !!overlaysOn['planes-ground']
-    if (range === 'live' && sky) return
+    const planesOn = !!overlaysOn.planes || !!overlaysOn['planes-ground']
+    const sky = !!overlaysOn.satellites || planesOn
+    // The searched plane rides the AIRCRAFT layer: with both plane layers off
+    // its ghost must not stay on a satellites-only sky (ship-check, Sep 21).
+    const dropSearched = !planesOn && !!searchedPlaneRef.current
+    if (range === 'live' && sky && !dropSearched) return
     // A searched plane rides the timeline: the range effect re-answers it for
     // the new window instead of throwing it away.
-    if (sky && searchedPlaneRef.current) return
+    if (sky && searchedPlaneRef.current && !dropSearched) return
     if (!selPlaneRef.current && !planeTrailRef.current && !searchedPlaneRef.current) return
     clearSearchedPlane()
     selPlaneRef.current = null
@@ -8415,7 +8458,15 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             <button
               key={sp.hex}
               type="button"
-              onClick={() => { map.current?.flyTo({ center: [sp.lon, sp.lat], zoom: Math.max(map.current.getZoom(), 8), duration: 1200 }) }}
+              onClick={() => {
+                // The chip's own lat/lon are from when it first appeared (the
+                // list only re-renders on a name/altitude change) — fly to
+                // where the plane is NOW (ship-check, Sep 21).
+                const shown = planeShownRef.current.get(sp.hex)
+                const lv = savedPlanesRef.current.get(sp.hex)?.live
+                const center: [number, number] = shown ? [shown.lon, shown.lat] : lv ? [lv.lon, lv.lat] : [sp.lon, sp.lat]
+                map.current?.flyTo({ center, zoom: Math.max(map.current.getZoom(), 8), duration: 1200 })
+              }}
               className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-alert/50 bg-navy-950/85 px-2 py-1.5 text-left backdrop-blur hover:border-alert"
               title="Saved plane in the air — tap to fly to it"
             >

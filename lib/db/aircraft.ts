@@ -265,7 +265,7 @@ export async function getFlights(
   db: SupabaseClient,
   hex: string,
   days: number,
-  opts: { withTrack?: boolean; now?: Date } = {},
+  opts: { withTrack?: boolean; now?: Date; window?: { fromMs: number; toMs: number } } = {},
 ): Promise<FlightLogResult> {
   const now = opts.now ?? new Date()
   const span = Math.max(1, Math.min(days, 400))
@@ -279,7 +279,16 @@ export async function getFlights(
   // and a flight banked from this morning's cron run must not hide this
   // afternoon's for the rest of the day (ship-check, Sep 12).
   haveDay.delete(utcDay(now))
-  const wanted = availableDays(now, Math.min(span, ARCHIVE_DAYS)).filter((d) => !haveDay.has(d))
+  // A caller asking about ONE window (the map's replay) spends its upstream
+  // reads on the days that window touches, not on the newest days of the
+  // archive (ship-check, Sep 21).
+  const w = opts.window
+  const inWindow = (d: string) => {
+    if (!w) return true
+    const dayStart = Date.parse(`${d}T00:00:00Z`)
+    return dayStart <= w.toMs && dayStart + 86_400_000 > w.fromMs
+  }
+  const wanted = availableDays(now, Math.min(span, ARCHIVE_DAYS)).filter((d) => !haveDay.has(d) && inWindow(d))
   const live = wanted.slice(0, MAX_LIVE_DAYS_PER_REQUEST)
   const truncated = wanted.length > live.length
 

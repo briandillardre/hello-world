@@ -2,7 +2,7 @@
 
 import { createHmac } from 'crypto'
 import { getRealPermissions, getMyPermissions } from '@/lib/permissions-server'
-import { normalizeRole } from '@/lib/permissions'
+import { normalizeRole, canSeeMember, MASTER_ONLY_ROLES, type Role } from '@/lib/permissions'
 import { BRAND_DOMAIN } from '@/lib/brand'
 import {
   cleanSharedView, cleanTitle, mintLinkId, shortLinkUrl,
@@ -37,11 +37,15 @@ const SENDS_PER_SENDER_DAY = 100
  *  later, the object) is swept. */
 const PENDING_HOURS = 2
 
-async function caller(): Promise<{ userId: string; companyId: string; features: string[] } | null> {
+async function caller(): Promise<{ userId: string; companyId: string; features: string[]; role: Role; isMaster: boolean } | null> {
   const p = await getRealPermissions()
   if (!p.userId || !p.companyId) return null
-  return { userId: p.userId, companyId: p.companyId, features: p.features }
+  return { userId: p.userId, companyId: p.companyId, features: p.features, role: p.role, isMaster: p.isMaster }
 }
+/** A Prospective Client (118) sees the product and never the people, and
+ *  writes nothing — through these service-role doors too (sec-check +
+ *  ship-check, Sep 21). */
+const isProspect = (me: { role: Role; isMaster: boolean }) => !me.isMaster && MASTER_ONLY_ROLES.includes(me.role)
 
 /** "View as" is a read-only preview of somebody else's app — nothing it does
  *  may write a row, mint a link or push a phone (Roles v2). */
@@ -81,6 +85,7 @@ export async function mintExportUploadAction(kind: string, size: number): Promis
   const me = await caller()
   if (!me) return { ok: false, error: 'Sign in first.' }
   if (!me.features.includes('map')) return { ok: false, error: 'Your role has no map export.' }
+  if (isProspect(me)) return { ok: false, error: 'Exports are not available on this account.' }
   if (await previewing()) return { ok: false, error: 'Leave “View as” first — nothing is exported from a preview.' }
   if (!isExportKind(kind)) return { ok: false, error: 'Not a file we export.' }
   if (!Number.isFinite(size) || size <= 0 || size > MAX_EXPORT_BYTES) return { ok: false, error: 'That file is too big to link (25 MB max).' }
@@ -187,6 +192,7 @@ export async function createViewLinkAction(input: { title: string; view: unknown
   const me = await caller()
   if (!me) return { ok: false, error: 'Sign in first.' }
   if (!me.features.includes('map')) return { ok: false, error: 'Your role has no map to share.' }
+  if (isProspect(me)) return { ok: false, error: 'Sharing is not available on this account.' }
   if (await previewing()) return { ok: false, error: 'Leave “View as” first — nothing is shared from a preview.' }
   const view = cleanSharedView(input?.view)
   if (!view) return { ok: false, error: 'This screen could not be captured — move the map a little and try again.' }
@@ -239,10 +245,11 @@ export async function listTeammatesAction(): Promise<Teammate[]> {
     ]
   }
   const me = await caller()
-  if (!me || !me.features.includes('map')) return []
+  if (!me || !me.features.includes('map') || isProspect(me)) return []
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
     const svc = createServiceClient()
+    const actor = { ...me, id: me.userId }
     const [{ data: people }, { data: phones }] = await Promise.all([
       svc.from('profiles').select('id, name, role').eq('company_id', me.companyId).limit(300),
       svc.from('device_tokens').select('user_id').eq('company_id', me.companyId).limit(2000),
@@ -250,6 +257,9 @@ export async function listTeammatesAction(): Promise<Teammate[]> {
     const withPhone = new Set((phones ?? []).map((r) => r.user_id as string | null).filter(Boolean))
     return ((people ?? []) as { id: string; name: string | null; role: string | null }[])
       .filter((p) => p.id !== me.userId)
+      // The same ladder the Team page and RLS apply: a prospect is on the
+      // Master's list alone (118).
+      .filter((p) => canSeeMember(actor, { id: p.id, role: normalizeRole(p.role, 'associate') }))
       .map((p) => ({
         id: p.id,
         name: (p.name ?? '').trim() || 'Teammate',
@@ -276,6 +286,7 @@ export async function sendViewLinkAction(id: string, userIds: string[], note: st
   const me = await caller()
   if (!me) return { ok: false, error: 'Sign in first.' }
   if (!me.features.includes('map')) return { ok: false, error: 'Your role has no map to share.' }
+  if (isProspect(me)) return { ok: false, error: 'Sharing is not available on this account.' }
   if (await previewing()) return { ok: false, error: 'Leave “View as” first.' }
   if (!LINK_ID_RE.test(id)) return { ok: false, error: 'That link is not ours.' }
   const ids = Array.from(new Set((userIds ?? []).filter((u) => typeof u === 'string' && /^[0-9a-f-]{36}$/i.test(u)))).slice(0, MAX_RECIPIENTS)
@@ -286,13 +297,17 @@ export async function sendViewLinkAction(id: string, userIds: string[], note: st
   const dayAgo = new Date(Date.now() - 86_400_000).toISOString()
   const [{ data: link }, { data: people }, { data: sender }, perLink, perSender] = await Promise.all([
     svc.from('share_links').select('id, title, kind, company_id').eq('id', id).eq('company_id', me.companyId).eq('kind', 'view').maybeSingle(),
-    svc.from('profiles').select('id, name').eq('company_id', me.companyId).in('id', ids),
+    svc.from('profiles').select('id, name, role').eq('company_id', me.companyId).in('id', ids),
     svc.from('profiles').select('name').eq('id', me.userId).maybeSingle(),
     svc.from('share_link_sends').select('id', { count: 'exact', head: true }).eq('link_id', id),
     svc.from('share_link_sends').select('id', { count: 'exact', head: true }).eq('sender', me.userId).gte('created_at', dayAgo),
   ])
   if (!link) return { ok: false, error: 'That view link is not yours to send.' }
-  const roster = (people ?? []) as { id: string; name: string | null }[]
+  // Recipients the sender may not even see (a prospect, 118) are not theirs
+  // to push to.
+  const actor = { ...me, id: me.userId }
+  const roster = ((people ?? []) as { id: string; name: string | null; role: string | null }[])
+    .filter((p) => canSeeMember(actor, { id: p.id, role: normalizeRole(p.role, 'associate') }))
   if (!roster.length) return { ok: false, error: 'None of those people are on your team.' }
   if ((perLink.count ?? 0) + roster.length > SENDS_PER_LINK) {
     return { ok: false, error: `This link has gone to as many people as it can (${SENDS_PER_LINK}) — share a fresh one.` }
