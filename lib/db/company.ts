@@ -135,6 +135,16 @@ export async function getCompanyPrefs(): Promise<{ weatherPlace: string | null; 
  * Full company settings for the Settings page: name, plan, working hours, and
  * whether the caller may edit. Demo mode returns the mock company (read-only).
  */
+/** The company's ingest/MCP key from company_api_keys (119) — read with the
+ *  service role, so the caller must have gated the request to admins. */
+async function readCompanyKey(companyId: string): Promise<string | null> {
+  try {
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    const { data } = await createServiceClient().from('company_api_keys').select('api_key').eq('company_id', companyId).maybeSingle()
+    return (data?.api_key as string | null) ?? null
+  } catch { return null }
+}
+
 export async function getCompanySettings(): Promise<{
   name: string; plan: string; work_start: string; work_end: string; work_days: number[];
   alert_phone: string; alert_email: string;
@@ -202,10 +212,10 @@ export async function getCompanySettings(): Promise<{
       // undefined until migration 059 — resolver applies defaults over null.
       log_form: c.log_form ?? null,
       // Only admins get the real ingest key — everyone else sees null and the
-      // Settings page hides the card's secret accordingly.
-      api_key: (profile?.role === 'admin' || user.id === companyId)
-        ? ((c.api_key as string | null) ?? null)
-        : null,
+      // Settings page hides the card's secret accordingly. It lives in
+      // company_api_keys (119), which no session can read, so the admin path
+      // fetches it with the service client.
+      api_key: (profile?.role === 'admin' || user.id === companyId) ? await readCompanyKey(companyId) : null,
       isAdmin: profile?.role === 'admin' || user.id === companyId,
     }
   } catch {

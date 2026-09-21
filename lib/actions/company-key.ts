@@ -40,10 +40,10 @@ export async function rotateApiKeyAction(): Promise<
   const key = generateApiKey()
   try {
     const { createServiceClient } = await import('@/lib/supabase-server')
+    // company_api_keys (119): the key never sits on the readable company row.
     const { error } = await createServiceClient()
-      .from('companies')
-      .update({ api_key: key })
-      .eq('id', c.companyId)
+      .from('company_api_keys')
+      .upsert({ company_id: c.companyId, api_key: key, rotated_at: new Date().toISOString() }, { onConflict: 'company_id' })
     if (error) return { ok: false, error: 'Could not rotate the key. Try again.' }
     revalidatePath('/settings')
     return { ok: true, masked: `${key.slice(0, 3)}…${key.slice(-4)}` }

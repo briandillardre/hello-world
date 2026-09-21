@@ -9,7 +9,7 @@ import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction, updateRolePolicyAction } from '@/lib/actions/team'
 import { PushPrefs } from '@/components/settings/PushPrefs'
 import { viewAsAction } from '@/lib/actions/viewas'
-import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, GRANTABLE_FEATURES, ROLE_FEATURE_DEFAULTS, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
+import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, GRANTABLE_FEATURES, ROLE_FEATURE_DEFAULTS, PROSPECT_NEVER, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
 import { formatRelativeTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -362,6 +362,11 @@ function GroupRows({ group, editableRoles, policy, busy, onFlip }: {
             <span className="block text-[10.5px] text-faint leading-tight">{f.hint}</span>
           </td>
           {editableRoles.map((r) => {
+            // A Prospective Client can never be handed these (119): the
+            // server strips them last, so the switch would lie.
+            if (r === 'prospect' && PROSPECT_NEVER.includes(f.key)) {
+              return <td key={r} className="px-2 py-1.5 text-center"><span className="text-faint" title="Never for a Prospective Client">—</span></td>
+            }
             const eff = featuresForRole(r, policy)[f.key]
             const def = ROLE_FEATURE_DEFAULTS[r][f.key]
             const changed = typeof policy[r]?.[f.key] === 'boolean'

@@ -458,6 +458,24 @@ timeline sits (`MapSearch` → `onPickAircraft` → `loadSearchedPlane` in
   it after ANY change to `lib/plane-replay.ts`. The awkward moments are the
   ones asserted: before the first fix, in the gap between flights, past the
   last, a value only one end of a leg sent, a fix running backwards in time.
+* **Reviewer pass (same night).** The window branch of `/api/plane-track`
+  had reopened the watchlist oracle the flights route closed on Sep 12 —
+  banked flights older than the public month exist only because SOME
+  company saved that airframe, so answering them to anyone says who watches
+  what; only the company that saved a plane now reads past `ARCHIVE_DAYS`,
+  and `beyondArchive` is masked for everyone else. `getFlights` takes the
+  asked window and spends its archive reads on the days that window touches
+  (it used to fetch the newest eight days whatever was asked). On the map:
+  the saved-plane chip flies to where the plane is NOW, not where it was
+  when the chip appeared; a saved plane outranks strangers in the declutter
+  cell so its halo never vanishes under an airliner at state zoom; the
+  ghost's borrowed (weeks-old) trail is dropped when the live plane takes
+  over; the searched card patches its state block in place instead of
+  re-setting the whole popup on every playhead commit (buttons stayed under
+  the finger; the colour ramp is computed once per window and sliced at the
+  cut); switching both aircraft layers off clears the searched plane; and an
+  upstream outage says "could not reach the feed" instead of "not heard from
+  in 30 days".
 
 ## Known gaps
 * **Banked flights are keyed by airframe, not company.** Two companies

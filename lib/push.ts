@@ -176,7 +176,9 @@ async function audienceTokens(
   const rosterKnown = !pErr && Array.isArray(people)
   const wants = new Map<string, boolean>()
   for (const p of (people ?? []) as { id: string; role: string | null; notify_prefs: unknown }[]) {
-    wants.set(p.id, resolvePersonNotify(p.notify_prefs, notifyRole(p.id, companyId, p.role))[kind])
+    const role = notifyRole(p.id, companyId, p.role)
+    // A Prospective Client is never an audience, for any kind (118).
+    wants.set(p.id, role !== 'prospect' && resolvePersonNotify(p.notify_prefs, role)[kind])
   }
   return audienceFilter((rows ?? []) as { token: string; user_id: string | null }[], wants, { rosterKnown, kind })
 }
@@ -202,7 +204,8 @@ export async function sendPushToUser(
       if (opts.kind) {
         const { data: me } = await db.from('profiles').select('role, notify_prefs').eq('id', userId).eq('company_id', companyId).maybeSingle()
         const row = me as { role: string | null; notify_prefs: unknown } | null
-        if (row && !resolvePersonNotify(row.notify_prefs, notifyRole(userId, companyId, row.role))[opts.kind]) return 0
+        const role = row ? notifyRole(userId, companyId, row.role) : null
+        if (row && (role === 'prospect' || !resolvePersonNotify(row.notify_prefs, role!)[opts.kind])) return 0
       }
       const { data } = await db.from('device_tokens').select('token').eq('company_id', companyId).eq('user_id', userId)
       tokens = (data ?? []).map((r) => r.token as string).filter(Boolean)

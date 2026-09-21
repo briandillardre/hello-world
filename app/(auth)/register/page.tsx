@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SocialAuth } from '@/components/auth/SocialAuth'
-import { generateApiKey } from '@/lib/utils'
 import { mapAuthError } from '../auth-error'
 
 // Slugs appended by the /live demo's locked rows (?from=…) → display names.
@@ -92,13 +91,12 @@ function RegisterInner() {
       return
     }
 
-    const apiKey = generateApiKey()
+    // The ingest/MCP key is seeded server-side (companies_seed_key, 119).
     // upsert + ignoreDuplicates: a retry after a partial failure (company
     // landed, profile didn't) must not die on the duplicate PK forever.
     const { error: companyError } = await supabase.from('companies').upsert({
       id: authData.user.id,
       name: companyName,
-      api_key: apiKey,
       plan: 'starter',
     }, { onConflict: 'id', ignoreDuplicates: true })
 

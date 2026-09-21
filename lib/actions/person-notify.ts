@@ -51,6 +51,10 @@ export async function savePersonNotifyAction(
   if (!target) return { ok: false, error: 'That person is not on this team.' }
 
   const role = notifyRole(targetUserId, companyId, (target as { role: string | null }).role)
+  // A Prospective Client gets no notifications at all (118): a push names
+  // machines and people, and their own switch must not opt them in
+  // (sec-check, Sep 21).
+  if (role === 'prospect') return { ok: false, error: 'A Prospective Client does not receive notifications.' }
   const isSelf = targetUserId === user.id
   if (!isSelf) {
     if (!me.canManageTeam || !outranks(me, { role, isMaster: targetUserId === companyId })) {

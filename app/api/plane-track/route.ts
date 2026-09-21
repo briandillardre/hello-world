@@ -124,13 +124,27 @@ async function windowFlights(hex: string, fromMs: number, toMs: number) {
   }
   const { getFlights } = await import('@/lib/db/aircraft')
   const { createServiceClient } = await import('@/lib/supabase-server')
-  const days = Math.max(1, Math.min(400, Math.ceil((Date.now() - fromMs) / 86_400_000) + 1))
-  const res = await getFlights(createServiceClient(), hex, days, { withTrack: true })
+  const { getCurrentCompanyId } = await import('@/lib/db/company')
+  const db = createServiceClient()
+  // Banked rows older than the public archive exist ONLY because some
+  // company saved that airframe — answering them to anybody would turn this
+  // branch into an oracle for other people's watchlists, the hole the
+  // flights route closed on Sep 12 (sec-check, Sep 21). Only the company
+  // that saved a plane reads past the public window.
+  const companyId = await getCurrentCompanyId()
+  const { data: mine } = companyId
+    ? await db.from('aircraft_saved').select('id').eq('company_id', companyId).eq('hex', hex).eq('active', true).maybeSingle()
+    : { data: null }
+  const ours = !!mine
+  const asked = Math.max(1, Math.min(400, Math.ceil((Date.now() - fromMs) / 86_400_000) + 1))
+  const days = ours ? asked : Math.min(asked, ARCHIVE_DAYS)
+  const floorMs = ours ? 0 : Date.now() - ARCHIVE_DAYS * 86_400_000
+  const res = await getFlights(db, hex, days, { withTrack: true, window: { fromMs, toMs } })
   const flights = res.flights
-    .filter((f) => f.endedAt * 1000 >= fromMs && f.startedAt * 1000 <= toMs)
+    .filter((f) => f.endedAt * 1000 >= fromMs && f.startedAt * 1000 <= toMs && f.startedAt * 1000 >= floorMs)
     .sort((a, b) => a.startedAt - b.startedAt)
     .map((f) => ({ id: f.id, startedAt: f.startedAt, endedAt: f.endedAt, fromLabel: f.fromLabel, toLabel: f.toLabel, ...flightPoints(f.track) }))
-  return { flights, archiveDays: ARCHIVE_DAYS, beyondArchive: res.beyondArchive, truncated: res.truncated }
+  return { flights, archiveDays: ARCHIVE_DAYS, beyondArchive: ours && res.beyondArchive, truncated: res.truncated }
 }
 
 export async function GET(req: NextRequest) {

@@ -1015,8 +1015,11 @@ export function createSat3DLayer(
               // the rule is the one we'd want the moment either bound moves,
               // and a ramp is deliberately NOT decluttered at airport zoom —
               // seeing every aircraft parked on it is the whole point.
-              const prevRank = prev.pl.searched ? Infinity : prev.pl.onGround ? -1 : prev.pl.altFt
-              const rank = pl.searched ? Infinity : pl.onGround ? -1 : pl.altFt
+              // A SAVED plane outranks every stranger too — the halo is what
+              // makes it findable, and a cell lost to an airliner overhead
+              // would take the halo with it (ship-check, Sep 21).
+              const prevRank = prev.pl.searched ? Infinity : prev.pl.saved ? 1e9 + prev.pl.altFt : prev.pl.onGround ? -1 : prev.pl.altFt
+              const rank = pl.searched ? Infinity : pl.saved ? 1e9 + pl.altFt : pl.onGround ? -1 : pl.altFt
               if (prevRank >= rank) { pl.visible = false; continue }
               prev.pl.visible = false
             }

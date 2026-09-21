@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
-import { ROLES, RANK, FEATURE_KEYS, normalizeRole, outranks, rolesEditableBy, type Role, type FeatureKey, type RolePolicy } from '@/lib/permissions'
+import { ROLES, RANK, FEATURE_KEYS, normalizeRole, outranks, rolesEditableBy, type Role, type FeatureKey, type RolePolicy, MASTER_ONLY_ROLES } from '@/lib/permissions'
 import { getRealPermissions } from '@/lib/permissions-server'
 import { assignableRolesFor } from '@/lib/db/team'
 
@@ -162,7 +162,7 @@ export async function acceptInviteAction(token: string): Promise<{ ok: boolean; 
   if (!user) return { ok: false, error: 'Sign in first, then open the invite link again.' }
 
   const svc = createServiceClient()
-  const { data: inv } = await svc.from('invites').select('id, company_id, role, accepted_at, expires_at').eq('token', token).maybeSingle()
+  const { data: inv } = await svc.from('invites').select('id, company_id, role, accepted_at, expires_at, created_by').eq('token', token).maybeSingle()
   if (!inv) return { ok: false, error: 'Invalid invite.' }
   if (inv.accepted_at) return { ok: false, error: 'This invite was already used.' }
   if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, error: 'This invite has expired.' }
@@ -177,6 +177,13 @@ export async function acceptInviteAction(token: string): Promise<{ ok: boolean; 
   if (existing && existing.company_id === inv.company_id) {
     if (user.id === inv.company_id) return { ok: true }
     const mine = normalizeRole(existing.role, 'associate')
+    // A Prospective Client answers to the Master alone (118): an invite an
+    // Admin or Manager minted — people who cannot even see the prospect —
+    // must not lift them out of the sandbox (sec-check, Sep 21). The
+    // Master's own invite still moves them.
+    if (MASTER_ONLY_ROLES.includes(mine) && inv.created_by !== inv.company_id) {
+      return { ok: false, error: 'Only the owner can change a Prospective Client — ask them for an invite.' }
+    }
     if (RANK[mine] >= RANK[role]) role = mine
   }
 

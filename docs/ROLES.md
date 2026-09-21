@@ -65,3 +65,54 @@ The view-levels table says which PAGES a role may open. This says who may see ON
 - **What RLS cannot see:** "View app as" (RLS sees the real uid). `canSeeAsset` / `visibleAssets` in `lib/permissions.ts` mirror the ladder and are applied to the effective permissions in `/api/map-data`, the assets list and the asset page (404).
 - **UI:** the *Who can see this* card on the asset page (Admins and the owner; levels above your own rank are shown disabled), a 🔒 chip on list rows and the asset header. `setAssetVisibilityAction` is the only writer; the edit form carries the stored level across a save.
 - **Defaults:** an owner's phone asset is created `master`, an Admin's `admins`. Crew phones stay visible — that is what clock-in tracking is for.
+
+## The reviewer follow-up on 118 (migration 119, Sep 21)
+
+The same-night sec-check and ship-check passes on the Prospective Client
+found that the sandbox was enforced in RLS while three service-role doors
+handed the same data straight to the sandboxed login. All fixed in 119 + the
+matching code:
+
+* **The company API key left the company row.** `companies.api_key` was
+  readable by EVERY member's session through PostgREST (the public anon key
+  plus their own JWT), and it is the only credential `/api/mcp` takes — so
+  any login, prospect included, could read the key and then read the whole
+  company (people, hours, dollars, owner-only machines) through the
+  service-role tools behind it. Pre-existing for every sub-Master role; 118
+  made it a three-request exploit by an outsider. The key now lives in
+  `company_api_keys` — RLS on, no policies, no session grants (a JWT gets
+  "permission denied", never an empty set to keep probing); the service role
+  alone reads and writes it (`lookupCompanyByKey`, the rotate action, the
+  Settings card for admins). `companies_seed_key` (AFTER INSERT) seeds a key
+  for every new company whichever signup path made the row, and
+  `companies_scrub_key` nulls the old column on every write so an older
+  build can never put a plaintext key back where a session can see it.
+* **Deny by default.** 118 listed eight people-shaped tables; everything
+  else stayed readable company-wide — QuickBooks/OEM/Plaid credentials, the
+  hours and dollars ledgers, the owner memos, the company row's phone, email
+  and billing ids. A prospect now reads ONLY an allow-list: their own profile
+  row, assets / locations / trails / photos / telemetry, tool pairings,
+  maintenance / service / work orders, alerts, zones / imagery / places /
+  divisions / measurements / site weather / geocode cache, the flight log.
+  Not the company row (the app falls back to plain defaults without it).
+* **One call per table.** `ht_prospect_lockdown(tbl, allow_read)` applies
+  the whole lockdown — 118's read-only policies plus the SELECT deny unless
+  allowed. 119 runs it over every RLS table; **a new table must call it in
+  its own migration** (`SELECT ht_prospect_lockdown('my_table', false);`),
+  because a policy set at migration time is a snapshot.
+* **The service-role doors.** `listTeammatesAction` / `sendViewLinkAction`
+  (the share-view roster) read profiles with the service role and gated on
+  the `map` view level alone — a prospect got the whole roster and every
+  teammate saw the prospect. Both now refuse prospects and filter with
+  `canSeeMember`; minting an export link or a view link refuses prospects
+  too. `acceptInviteAction` no longer lets an invite minted below the Master
+  lift a prospect out of the sandbox. Pushes skip a prospect for every kind,
+  and their own notification switches cannot be turned on.
+* **The view-levels table cannot widen a prospect past the sandbox.**
+  `PROSPECT_NEVER` (edit · $ figures · billing · manage team · Ask AI · team ·
+  activity · Command Center · clock · logs · share location · tags ·
+  receipts · accounting · finance · settings · trackers · hardware) is
+  stripped LAST in `resolvePermissions`, like the master-only keys; the
+  table shows those cells as "—". The Master may still show a prospect more
+  of the product: reports, maintenance, alerts, the flight log.
+
