@@ -51,13 +51,79 @@ function resolveGeofence(ql: string, geofences: Geofence[]): Geofence | null {
   return null
 }
 
-function resolveAsset(ql: string, assets: AssetWithLocation[]): AssetWithLocation | null {
-  // longest name match wins (avoids "truck" matching every truck)
+/** Words a question carries that never name a machine. */
+const ASK_STOP = new Set(['where', 'wheres', 'where\'s', 'is', 'are', 'was', 'the', 'my', 'our', 'a', 'an', 'at', 'to', 'of', 'on', 'in',
+  'locate', 'find', 'show', 'me', 'what', 'whats', 'right', 'now', 'currently', 'it', 'this', 'that', 'and', 'for', 'do', 'does', 'did',
+  'today', 'tonight', 'please', 'hey', 'yo', 'can', 'you', 'tell', 'about', 'with', 'go', 'went', 'go'])
+const tokens = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+
+export interface AssetPick { asset: AssetWithLocation | null; ambiguous: AssetWithLocation[] }
+
+/**
+ * Which machine is the question about? The whole name in the question wins
+ * (longest first, so "truck 4" never matches every truck). Failing that,
+ * the WORDS: "chevy 1500" finds "Chevy 1500 - Brian", "vw" finds the VW —
+ * people never type the full name the office gave a truck (Brian, Sep 23:
+ * "Where is chevy 1500" answered with a fleet summary while the AI service
+ * was down). A tie ("where is the truck") is returned as ambiguous so the
+ * answer can ask which one instead of guessing.
+ */
+export function resolveAssetPick(ql: string, assets: AssetWithLocation[]): AssetPick {
   let best: AssetWithLocation | null = null
   for (const a of assets) {
     if (ql.includes(a.name.toLowerCase()) && (!best || a.name.length > best.name.length)) best = a
   }
-  return best
+  if (best) return { asset: best, ambiguous: [] }
+  const q = tokens(ql).filter((t) => !ASK_STOP.has(t))
+  if (!q.length) return { asset: null, ambiguous: [] }
+  let top = 0
+  let picks: AssetWithLocation[] = []
+  for (const a of assets) {
+    const n = tokens(a.name)
+    const score = q.filter((t) => n.some((w) => w === t || (t.length >= 3 && w.startsWith(t)))).length
+    if (!score) continue
+    if (score > top) { top = score; picks = [a] }
+    else if (score === top) picks.push(a)
+  }
+  if (picks.length === 1) return { asset: picks[0], ambiguous: [] }
+  return { asset: null, ambiguous: picks }
+}
+
+/** "4 min ago" / "3 h ago" / "2 d ago" for a fix timestamp. */
+function agoWords(iso: string | undefined, nowMs = Date.now()): string | null {
+  if (!iso) return null
+  const ms = nowMs - Date.parse(iso)
+  if (!Number.isFinite(ms) || ms < 0) return null
+  const m = Math.round(ms / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m} min ago`
+  const h = Math.round(m / 60)
+  if (h < 48) return `${h} h ago`
+  return `${Math.round(h / 24)} d ago`
+}
+
+/** One sentence on where a machine is, from its newest fix. */
+function whereIs(asset: AssetWithLocation, geofences: Geofence[]): AssistantAnswer {
+  const site = siteOf(asset, geofences)
+  if (!asset.location) {
+    return { answer: `${asset.name} has never reported a location.`, facts: { asset: asset.name, site: null } }
+  }
+  const speed = Math.round(asset.location.speed ?? 0)
+  const moving = speed > 0
+  const place = site ? `at ${site.name}` : 'off-site'
+  const ago = agoWords(asset.location.timestamp)
+  const state = moving ? `moving at ${speed} mph` : 'parked'
+  return {
+    answer: `${asset.name} is ${place}, ${state}${ago ? ` — last reported ${ago}` : ''}.`,
+    facts: { asset: asset.name, site: site?.name ?? null, moving, speedMph: speed, lastReport: asset.location.timestamp, lat: asset.location.lat, lng: asset.location.lng },
+  }
+}
+
+function whichOne(list: AssetWithLocation[]): AssistantAnswer {
+  return {
+    answer: `Which one do you mean — ${names(list)}?`,
+    facts: { candidates: list.slice(0, 8).map((a) => a.name) },
+  }
 }
 
 function inside(g: Geofence, assets: AssetWithLocation[]): AssetWithLocation[] {
@@ -129,14 +195,10 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
   }
 
   // ── Where is <asset> ──
-  if (/(where('?s| is)|locate|find)/.test(ql)) {
-    const asset = resolveAsset(ql, assets)
-    if (asset) {
-      const site = siteOf(asset, geofences)
-      const moving = (asset.location?.speed ?? 0) > 0
-      const place = site ? `at ${site.name}` : 'off-site / in transit'
-      return { answer: `${asset.name} is ${place}${moving ? `, moving at ${asset.location?.speed} mph` : ', parked'}.`, facts: { asset: asset.name, site: site?.name ?? null } }
-    }
+  if (/(where('?s| is|s\b)|locate|find)/.test(ql)) {
+    const pick = resolveAssetPick(ql, assets)
+    if (pick.asset) return whereIs(pick.asset, geofences)
+    if (pick.ambiguous.length) return whichOne(pick.ambiguous)
   }
 
   // ── Labor hours at a site ──
@@ -189,11 +251,12 @@ export function answerQuestion(question: string, ctx: AssistantContext): Assista
   }
 
   // ── Asset fallback ──
-  const asset = resolveAsset(ql, assets)
-  if (asset) {
-    const site = siteOf(asset, geofences)
-    return { answer: `${asset.name} (${TYPE_LABEL[asset.type]}) is ${site ? `at ${site.name}` : 'off-site'}.`, facts: { asset: asset.name } }
+  const pick = resolveAssetPick(ql, assets)
+  if (pick.asset) {
+    const w = whereIs(pick.asset, geofences)
+    return { ...w, answer: `${pick.asset.name} (${TYPE_LABEL[pick.asset.type]}): ${w.answer.slice(pick.asset.name.length + 1)}` }
   }
+  if (pick.ambiguous.length) return whichOne(pick.ambiguous)
 
   // ── Fleet summary ──
   const online = assets.filter((a) => a.location).length
