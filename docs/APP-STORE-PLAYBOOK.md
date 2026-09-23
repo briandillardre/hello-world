@@ -120,6 +120,15 @@ wrapper as-is.
    inbox; an identity-verification email first is normal. Sign in to App
    Store Connect with the DCG Apple ID; invite brian@hammertrack.ai as a
    user afterwards. Then: **Approval day** below.
+   **Sep 15 (support case 102959014701):** the DCG attempt ended in "ID
+   Verification Rejected" and Apple answered: *the Apple Developer app
+   already verified your identity using a different Apple Account — use
+   the Apple Account you verified with.* That is the account the Developer
+   app on the iPhone is signed into (brian@hammertrack.ai, the one carrying
+   the denied-but-"In Review" org enrollment). **Next move:** reply on the
+   case — ask Apple to close N37H75H2FX and let that verified account
+   enroll as an Individual; if the app already offers Enroll → Individual
+   there, take it. Do not start a third Apple ID.
 3. **Google Play Console** — ✅ DONE. Organization account; identity +
    website ownership verified Aug 9; `com.hammertrack.app` live in
    Production since Aug 21 (update Aug 27; v1.2 built Sep 1, upload
