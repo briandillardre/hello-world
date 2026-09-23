@@ -22,15 +22,16 @@ export default async function Page({ searchParams }: { searchParams: { week?: st
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const { monday, fromMs, toMs } = weekOf(searchParams.week, tz)
   const scope = timecardScope(perms, perms.viewingAs?.id ?? real.userId) // a view-as preview shows the TARGET's card
-  let cards: Awaited<ReturnType<typeof getTimeCards>> = { cards: [], verified: false }
+  let cards: Awaited<ReturnType<typeof getTimeCards>> = { cards: [], verified: false, integrity: false }
   if (!isMock) {
     const { createClient } = await import('@/lib/supabase-server')
-    cards = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds })
+    cards = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds, withPhotos: true })
   }
   return (
     <TimeCardsView
       cards={cards.cards}
       verified={cards.verified}
+      integrity={cards.integrity}
       week={monday}
       tz={tz}
       canEdit={scope.canEdit}

@@ -1,9 +1,10 @@
-import { getMyClockState, getLogFormRaw } from '@/lib/db/fieldops'
+import { getMyClockState, getLogFormRaw, getClockPolicyRaw } from '@/lib/db/fieldops'
 import { requireFeature } from '@/lib/permissions-server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { ClockCard } from '@/components/field/ClockCard'
 import { resolveLogForm } from '@/lib/log-form'
+import { resolveClockPolicy } from '@/lib/clock-policy'
 
 export const metadata = { title: 'HammerTrack — Time clock' }
 
@@ -22,7 +23,7 @@ export default async function ClockPage() {
     getMyClockState(),
     getCurrentCompanyId(),
   ])
-  const [geofences, logFormRaw] = await Promise.all([getGeofences(companyId), getLogFormRaw(companyId)])
+  const [geofences, logFormRaw, policyRaw] = await Promise.all([getGeofences(companyId), getLogFormRaw(companyId), getClockPolicyRaw(companyId)])
   // Job sites only — boundary outlines aren't chargeable places.
   const zones = geofences
     .filter((g) => g.kind !== 'boundary')
@@ -43,7 +44,7 @@ export default async function ClockPage() {
         <p className="text-[12.5px] text-faint">Clock in to where the day&apos;s going. The daily log is the way out.</p>
       </div>
       <ClockCard openEntry={openEntry} zones={zones} available={available} personName={personName} demo={isMock}
-        form={resolveLogForm(logFormRaw).filter((it) => it.enabled)} />
+        form={resolveLogForm(logFormRaw).filter((it) => it.enabled)} policy={resolveClockPolicy(policyRaw)} />
     </div></div>
   )
 }

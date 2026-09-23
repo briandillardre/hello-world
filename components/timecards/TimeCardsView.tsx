@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { isNativeApp } from '@/lib/native'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, MapPin, Pencil, Satellite, Upload } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, MapPin, Pencil, Satellite, Upload } from 'lucide-react'
 import { toast } from '@/components/ui/feedback'
 import { fmtDay } from '@/lib/dates'
 import { addDaysKey } from '@/lib/dates'
-import { FLAG_LABEL, categoryLabel, clockTime, summarizeCards, weekLabel, type PersonCard, type TimeCardFlag, type TimeCardRow } from '@/lib/timecards'
+import { FLAG_LABEL, categoryLabel, clockTime, reviewItems, summarizeCards, weekLabel, type PersonCard, type TimeCardFlag, type TimeCardRow } from '@/lib/timecards'
 import { adjustTimeEntryAction } from '@/lib/actions/timecards'
 import { pushQboDayAction } from '@/lib/actions/qbo-time'
 
@@ -28,12 +28,23 @@ const FLAG_TONE: Record<TimeCardFlag, string> = {
   long: 'border-amber/40 text-amber bg-amber/10',
   edited: 'border-navy-600 text-muted bg-navy-900',
   no_site: 'border-navy-600 text-muted bg-navy-900',
+  // Integrity (120): red = the shift's record contradicts the clock; amber = worth a look.
+  never_on_site: 'border-red-400/40 text-red-300 bg-red-400/10',
+  shared_device: 'border-red-400/40 text-red-300 bg-red-400/10',
+  in_away: 'border-amber/40 text-amber bg-amber/10',
+  out_away: 'border-amber/40 text-amber bg-amber/10',
+  arrived_late: 'border-amber/40 text-amber bg-amber/10',
+  left_early: 'border-amber/40 text-amber bg-amber/10',
+  phone_still: 'border-amber/40 text-amber bg-amber/10',
+  no_photo: 'border-amber/40 text-amber bg-amber/10',
 }
 const h1 = (n: number) => (Math.round(n * 10) / 10).toFixed(1)
 
-export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, seesAll, myId, demo = false }: {
+export function TimeCardsView({ cards, verified, integrity = verified, week, tz, canEdit, canPushQbo, seesAll, myId, demo = false }: {
   cards: PersonCard[]
   verified: boolean
+  /** The 120 reads (arrived late, left early, away, phone still) are available. */
+  integrity?: boolean
   /** Monday day key of the week shown. */
   week: string
   tz: string
@@ -45,6 +56,8 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
 }) {
   const router = useRouter()
   const totals = useMemo(() => summarizeCards(cards), [cards])
+  const review = useMemo(() => reviewItems(cards), [cards])
+  const [allReview, setAllReview] = useState(false)
   const defaultOpen = () => new Set(cards.length <= 3 ? cards.map((c) => c.userId) : cards.filter((c) => c.userId === myId).map((c) => c.userId))
   const [openIds, setOpenIds] = useState<Set<string>>(defaultOpen)
   // A new week is a new set of people — start it from the default expansion.
@@ -54,6 +67,11 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
   const [editing, setEditing] = useState<TimeCardRow | null>(null)
   const [pushing, setPushing] = useState<string | null>(null)
   const toggle = (id: string) => setOpenIds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  // A "Needs a look" row opens that person's card and scrolls to the entry.
+  const jumpTo = (userId: string, entryId: string) => {
+    setOpenIds((s) => new Set(s).add(userId))
+    setTimeout(() => document.getElementById(`tc-entry-${entryId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
+  }
   const go = (k: string) => router.push(`/timecards?week=${k}`)
   const thisWeek = useMemo(() => {
     const now = new Date()
@@ -113,7 +131,7 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
               ['Hours', h1(totals.hours)],
               ['Overtime', h1(totals.overtime)],
               ['On-site', totals.verifiedPct == null ? '—' : `${totals.verifiedPct}%`],
-              ['Flags', String(totals.flagged)],
+              ['Needs a look', String(totals.flagged)],
               ['On the clock', String(totals.openNow)],
             ].map(([k, v]) => (
               <div key={k} className="rounded-lg border border-navy-800 bg-navy-950 px-2.5 py-2">
@@ -126,6 +144,41 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
 
         {!verified && cards.length > 0 && (
           <p className="text-[12px] text-faint rounded-lg border border-navy-800 bg-navy-950 px-3 py-2">GPS verification appears once the latest build&apos;s database update (migration 103) has run.</p>
+        )}
+        {verified && !integrity && cards.length > 0 && (
+          <p className="text-[12px] text-faint rounded-lg border border-navy-800 bg-navy-950 px-3 py-2">Arrived-late, left-early and clocked-in-away reads appear once the latest database update (migration 120) has run.</p>
+        )}
+
+        {/* Needs a look (120): every entry whose phone record contradicts the
+            clock, worst first, one sentence each — what the office used to
+            find by scrubbing camera footage. Managers only. */}
+        {seesAll && review.length > 0 && (
+          <section className="rounded-xl border border-amber/30 bg-amber/[0.06] overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-amber/20">
+              <AlertTriangle className="h-4 w-4 text-amber flex-none" />
+              <p className="font-display font-bold text-ink text-sm flex-1">Needs a look</p>
+              <span className="rounded-full border border-amber/40 bg-amber/10 px-2 py-0.5 font-mono text-[10.5px] text-amber tabular-nums">{review.length}</span>
+            </div>
+            <ul className="divide-y divide-amber/10">
+              {(allReview ? review : review.slice(0, 8)).map(({ row, personName, worst }) => (
+                <li key={row.id}>
+                  <button type="button" onClick={() => jumpTo(row.userId, row.id)} className="w-full text-left px-4 py-2.5 hover:bg-amber/[0.08]">
+                    <p className="text-[12.5px] text-ink flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-semibold">{personName}</span>
+                      <span className="text-faint tabular-nums">{fmtDay(Date.parse(row.dayKey + 'T12:00:00Z'), 'UTC')} · {clockTime(row.inAt, tz)} → {row.outAt ? clockTime(row.outAt, tz) : 'now'} · {h1(row.hours)} h</span>
+                      <span className={`rounded-full border px-1.5 py-px font-mono text-[9.5px] uppercase tracking-[0.1em] ${FLAG_TONE[worst]}`}>{FLAG_LABEL[worst]}</span>
+                    </p>
+                    <p className="text-[12px] text-amber leading-snug">{row.findings.join(' · ')}</p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {review.length > 8 && (
+              <button type="button" onClick={() => setAllReview((v) => !v)} className="w-full px-4 py-2 text-[11.5px] text-teal underline-offset-2 hover:underline border-t border-amber/10">
+                {allReview ? 'Show fewer' : `Show all ${review.length}`}
+              </button>
+            )}
+          </section>
         )}
 
         {cards.length === 0 && (
@@ -179,7 +232,7 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
                         </div>
                         <ul className="mt-1.5 space-y-1.5">
                           {d.entries.map((e) => (
-                            <li key={e.id} className="rounded-lg border border-navy-800/80 bg-navy-900/50 px-3 py-2">
+                            <li key={e.id} id={`tc-entry-${e.id}`} className={`rounded-lg border px-3 py-2 ${e.review ? 'border-amber/30 bg-amber/[0.05]' : 'border-navy-800/80 bg-navy-900/50'}`}>
                               <div className="flex items-start gap-2">
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[13px] text-ink tabular-nums">
@@ -196,6 +249,29 @@ export function TimeCardsView({ cards, verified, week, tz, canEdit, canPushQbo, 
                                       <Satellite className="h-3 w-3 text-faint flex-none" />
                                       {e.gps.fixes === 0 ? 'No phone fixes during the shift' : <>{e.gps.fixes} fixes{e.onSitePct != null ? <> · <span className={e.onSitePct >= 80 ? 'text-teal' : e.onSitePct >= 50 ? 'text-amber' : 'text-red-300'}>{e.onSitePct}% on {e.zoneName}</span></> : null}</>}
                                     </p>
+                                  )}
+                                  {e.findings.length > 0 && (
+                                    <ul className="mt-0.5 space-y-px">
+                                      {e.findings.map((f) => (
+                                        <li key={f} className="text-[11.5px] text-amber flex items-start gap-1"><AlertTriangle className="h-3 w-3 mt-[3px] flex-none" />{f}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  {(e.inPhotoUrl || e.outPhotoUrl) && (
+                                    <div className="mt-1 flex gap-1.5">
+                                      {e.inPhotoUrl && (
+                                        <a href={e.inPhotoUrl} target="_blank" rel="noreferrer" title="Clock-in photo" className="block">
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={e.inPhotoUrl} alt="Clock-in photo" className="h-11 w-11 object-cover rounded-md border border-navy-700" />
+                                        </a>
+                                      )}
+                                      {e.outPhotoUrl && (
+                                        <a href={e.outPhotoUrl} target="_blank" rel="noreferrer" title="Clock-out photo" className="block">
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={e.outPhotoUrl} alt="Clock-out photo" className="h-11 w-11 object-cover rounded-md border border-navy-700" />
+                                        </a>
+                                      )}
+                                    </div>
                                   )}
                                   {e.plan && <p className="text-[11.5px] text-faint truncate">Plan: {e.plan}</p>}
                                   {e.edited && (

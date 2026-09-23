@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import type { ClockCategory } from '@/lib/field-types'
+import { clockInPlaceCheck, resolveClockPolicy, type ClockPolicy } from '@/lib/clock-policy'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -75,6 +76,78 @@ async function localLogDate(iso: string): Promise<string> {
   }).format(new Date(iso))
 }
 
+/** Device id from the app (lib/device-id.ts) — shape-checked, else absent. */
+const validDevice = (v: unknown): string | null =>
+  typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null
+
+/** The company's clock policy (120). Tolerant: no column / no row = all off. */
+async function loadClockPolicy(supabase: { from: (t: string) => any }, companyId: string): Promise<ClockPolicy> { // eslint-disable-line @typescript-eslint/no-explicit-any
+  try {
+    const { data } = await supabase.from('companies').select('clock_policy').eq('id', companyId).maybeSingle()
+    return resolveClockPolicy(data?.clock_policy ?? null)
+  } catch {
+    return resolveClockPolicy(null)
+  }
+}
+
+/**
+ * "You have to be at the site to clock in" (policy `atSite`, 120): the fix
+ * must be inside the chosen zone or within the radius of it, or inside any
+ * yard the company has drawn. Reads the rings with the caller's own client
+ * (RLS = their company). A site the caller cannot see refuses honestly.
+ */
+async function checkClockInPlace(
+  supabase: { from: (t: string) => any }, // eslint-disable-line @typescript-eslint/no-explicit-any
+  companyId: string, policy: ClockPolicy, zoneId: string | null, fix: { lat: number; lng: number },
+): Promise<string | null> {
+  if (!policy.atSite || !zoneId) return null
+  type Z = { id: string; name: string; kind: string | null; geometry: { coordinates?: number[][][] } | null }
+  let zones: Z[] = []
+  try {
+    const { data } = await supabase.from('geofences_json').select('id, name, kind, geometry')
+      .eq('company_id', companyId).or(`id.eq.${zoneId},kind.eq.yard`).limit(50)
+    zones = (data ?? []) as Z[]
+  } catch { /* fall through: an unreadable site refuses below */ }
+  const ringOf = (z: Z) => ((z.geometry?.coordinates?.[0] ?? []) as [number, number][])
+  const site = zones.find((z) => z.id === zoneId)
+  const yards = zones.filter((z) => z.kind === 'yard' && z.id !== zoneId).map(ringOf).filter((r) => r.length >= 3)
+  const verdict = clockInPlaceCheck(policy, fix, { name: site?.name ?? 'the site', ring: site ? ringOf(site) : [] }, yards)
+  return verdict.ok ? null : verdict.reason
+}
+
+const CLOCK_PHOTO_MAX = 400 * 1024
+
+/**
+ * A clock-in / clock-out photo (policy `photoIn` / `photoOut`, 120) into the
+ * PRIVATE clock-photos bucket, under this company/person's own folder — the
+ * shape the 120 CHECK constraint insists on. Bytes are checked (JPEG magic,
+ * ≤ 400 KB — the app shrinks to 720 px first) before anything is stored.
+ * Never throws; null = no photo stored.
+ */
+async function storeClockPhoto(companyId: string, userId: string, bytes: Uint8Array | null): Promise<string | null> {
+  if (!bytes || bytes.length < 4 || bytes.length > CLOCK_PHOTO_MAX) return null
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return null
+  try {
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    const path = `${companyId}/${userId}/${crypto.randomUUID()}.jpg`
+    const { error } = await createServiceClient().storage.from('clock-photos')
+      .upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
+    if (error) { console.error('Clock photo upload failed', error.message); return null }
+    return path
+  } catch (err) {
+    console.error('Clock photo upload failed', err)
+    return null
+  }
+}
+
+/** `data:image/jpeg;base64,…` (what the clock card sends) → bytes, or null. */
+function decodePhotoDataUrl(v: unknown): Uint8Array | null {
+  if (typeof v !== 'string' || !v.startsWith('data:image/jpeg;base64,')) return null
+  const b64 = v.slice('data:image/jpeg;base64,'.length)
+  if (b64.length > CLOCK_PHOTO_MAX * 1.4) return null
+  try { return new Uint8Array(Buffer.from(b64, 'base64')) } catch { return null }
+}
+
 export async function clockInAction(input: {
   category: ClockCategory
   projectGeofenceId?: string | null
@@ -85,6 +158,10 @@ export async function clockInAction(input: {
   idempotencyKey?: string | null
   /** Offline replays only: when the tap actually happened. */
   at?: string | null
+  /** The phone (lib/device-id.ts) — "same phone as a teammate" on the time card (120). */
+  deviceId?: string | null
+  /** The clock-in photo as a JPEG data URL when the company requires one (120). */
+  inPhoto?: string | null
 }): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Demo mode — sign in on the live app to clock in.' }
   try {
@@ -120,15 +197,27 @@ export async function clockInAction(input: {
     // Location is REQUIRED to clock in (Sep 9) — the clock card enforces it
     // first; this makes the rule real for a direct call too.
     if (!hasPos) return { ok: false, error: 'Location is required to clock in. Allow location for HammerTrack, then try again.' }
+    // The company's clock policy (120): at the site, and/or a photo. Both
+    // are checked here, not only on the card, so a direct call obeys them
+    // too — and an offline replay is judged on the fix it was tapped with.
+    const policy = await loadClockPolicy(supabase, companyId)
+    const away = await checkClockInPlace(supabase, companyId, policy, base.project_geofence_id, { lat: input.lat as number, lng: input.lng as number })
+    if (away) return { ok: false, error: away }
+    const photoBytes = decodePhotoDataUrl(input.inPhoto)
+    if (policy.photoIn && !photoBytes) return { ok: false, error: 'Your company needs a clock-in photo — tap Clock in and take the picture.' }
+    const inPhotoPath = photoBytes ? await storeClockPhoto(companyId, userId, photoBytes) : null
+    if (policy.photoIn && !inPhotoPath) return { ok: false, error: 'The clock-in photo didn’t save — try again.' }
     const full = {
       ...base,
       ...(hasPos ? { in_lat: input.lat, in_lng: input.lng } : {}),
       ...(idem ? { idempotency_key: idem } : {}),
+      ...(validDevice(input.deviceId) ? { device_id: validDevice(input.deviceId) } : {}),
+      ...(inPhotoPath ? { in_photo_path: inPhotoPath } : {}),
     }
     let { error } = await supabase.from('time_entries').insert(full)
     if (isDuplicateKey(error)) return { ok: true } // replay — the first attempt won
-    // Lagging schema (059 pos columns or 066 idempotency_key) → plain insert.
-    if (missingColumn(error) && (hasPos || idem)) ({ error } = await supabase.from('time_entries').insert(base))
+    // Lagging schema (059 pos columns, 066 idempotency_key, 120 device/photo) → plain insert.
+    if (missingColumn(error) && (hasPos || idem || full.device_id || inPhotoPath)) ({ error } = await supabase.from('time_entries').insert(base))
     if (error) return { ok: false, error: error.message }
     revalidatePath('/clock')
     return { ok: true }
@@ -204,8 +293,9 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     // The company's form drives validation + which answers exist. Tolerant:
     // any read failure falls back to the default form (pre-059 behavior).
     const { resolveLogForm } = await import('@/lib/log-form')
-    const { data: co } = await supabase.from('companies').select('log_form').eq('id', companyId).single()
+    const { data: co } = await supabase.from('companies').select('log_form, clock_policy').eq('id', companyId).single()
     const items = resolveLogForm(co?.log_form ?? null).filter((it) => it.enabled)
+    const policy = resolveClockPolicy((co as { clock_policy?: unknown } | null)?.clock_policy ?? null)
 
     const writeupItem = items.find((it) => it.std === 'writeup')
     const writeup = String(form.get('writeup') ?? '').trim().slice(0, 4000)
@@ -272,6 +362,23 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     const safety = String(form.get('safety') ?? '').trim().slice(0, 2000)
     const lat = Number(form.get('lat')), lng = Number(form.get('lng'))
     const hasPos = Number.isFinite(lat) && Number.isFinite(lng) && form.get('lat') !== null
+
+    // The clock-out photo (policy `photoOut`, 120): the app shrinks it to
+    // 720 px and sends the JPEG as a file. Required when the policy says so
+    // — except on a replay that lost its Files with the app close, which is
+    // waived like the log photos are (the card then reads "No clock-out
+    // photo"; the office sees it was an offline day).
+    const outPhotoFile = form.get('outPhoto')
+    let outPhotoBytes: Uint8Array | null = null
+    if (outPhotoFile instanceof File && outPhotoFile.size > 0 && outPhotoFile.size <= CLOCK_PHOTO_MAX) {
+      outPhotoBytes = new Uint8Array(await outPhotoFile.arrayBuffer())
+    }
+    if (policy.photoOut && !outPhotoBytes && !offlineReplay) {
+      return { ok: false, error: 'Your company needs a clock-out photo — take it, then log out.' }
+    }
+    const outPhotoPath = outPhotoBytes ? await storeClockPhoto(companyId, userId, outPhotoBytes) : null
+    if (policy.photoOut && outPhotoBytes && !outPhotoPath) return { ok: false, error: 'The clock-out photo didn’t save — try again.' }
+    const outDevice = validDevice(form.get('outDeviceId'))
 
     const baseRow = {
       // The day it was WRITTEN (replay = queue time), on the crew's clock —
@@ -347,15 +454,18 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     }
 
     const outAt = backAt ?? new Date().toISOString()
-    const outPatch = hasPos
-      ? { clock_out_at: outAt, out_lat: lat, out_lng: lng }
-      : { clock_out_at: outAt }
+    const outPatch = {
+      clock_out_at: outAt,
+      ...(hasPos ? { out_lat: lat, out_lng: lng } : {}),
+      ...(outDevice ? { out_device_id: outDevice } : {}),
+      ...(outPhotoPath ? { out_photo_path: outPhotoPath } : {}),
+    }
     let { error: outErr } = await supabase
       .from('time_entries')
       .update(outPatch)
       .eq('id', entryId)
       .eq('user_id', userId)
-    if (missingColumn(outErr) && hasPos) {
+    if (missingColumn(outErr) && (hasPos || outDevice || outPhotoPath)) {
       ({ error: outErr } = await supabase
         .from('time_entries')
         .update({ clock_out_at: outAt })

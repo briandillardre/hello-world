@@ -117,6 +117,25 @@ export async function saveLogoBgAction(bg: string | null): Promise<{ ok: boolean
 
 /** Daily-log form builder (Settings card) — replaces companies.log_form
  *  wholesale with a server-sanitized copy. Never trusts the client blob. */
+/** Settings → Time clock (120): photo at clock-in / clock-out, clock-in only
+ *  at the site. Admin-gated; the blob is cleaned to exactly the four keys
+ *  (`resolveClockPolicy`), so nothing else ever lands in the column. */
+export async function saveClockPolicyAction(policy: unknown): Promise<{ ok: boolean; error?: string }> {
+  const companyId = await requireAdminCompany()
+  if (!companyId) return { ok: false, error: 'Admins only.' }
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  if ((await getMyPermissions()).viewingAs) return { ok: false, error: 'Read-only preview — exit View as to make changes.' }
+  const { resolveClockPolicy } = await import('@/lib/clock-policy')
+  const clean = resolveClockPolicy(policy)
+  const { createClient } = await import('@/lib/supabase-server')
+  const { error } = await createClient().from('companies').update({ clock_policy: clean }).eq('id', companyId)
+  if (error) return { ok: false, error: 'Save failed — the latest database update (migration 120) has not run yet.' }
+  revalidatePath('/settings')
+  revalidatePath('/clock')
+  revalidatePath('/timecards')
+  return { ok: true }
+}
+
 export async function saveLogFormAction(items: unknown): Promise<{ ok: boolean; error?: string }> {
   const companyId = await requireAdminCompany()
   if (!companyId) return { ok: false, error: 'Admins only.' }

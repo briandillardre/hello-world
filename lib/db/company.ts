@@ -155,6 +155,8 @@ export async function getCompanySettings(): Promise<{
   logo_bg: string | null;
   digest_prefs: Record<string, unknown> | null;
   log_form: unknown;
+  /** Time clock policy blob (120) — resolveClockPolicy() reads it. */
+  clock_policy: unknown;
   /** Tracker ingest key — real value only for admins of a live company. */
   api_key: string | null;
   isAdmin: boolean
@@ -166,7 +168,7 @@ export async function getCompanySettings(): Promise<{
     sms_consent_phone: null, sms_consent_at: null,
     stripe_customer_id: null, subscription_status: null,
     current_period_end: null, cancel_at_period_end: false,
-    logo_url: null, logo_bg: null, digest_prefs: null, log_form: null,
+    logo_url: null, logo_bg: null, digest_prefs: null, log_form: null, clock_policy: null,
     api_key: null, isAdmin: false,
   }
   if (isMock) return fallback
@@ -211,6 +213,7 @@ export async function getCompanySettings(): Promise<{
       digest_prefs: (c.digest_prefs as Record<string, unknown> | null) ?? null,
       // undefined until migration 059 — resolver applies defaults over null.
       log_form: c.log_form ?? null,
+      clock_policy: (c.clock_policy as unknown) ?? null,
       // Only admins get the real ingest key — everyone else sees null and the
       // Settings page hides the card's secret accordingly. It lives in
       // company_api_keys (119), which no session can read, so the admin path

@@ -56,6 +56,20 @@ export async function getLogFormRaw(companyId: string): Promise<unknown> {
   }
 }
 
+/** The company's clock policy blob (120) — photo at clock-in / clock-out,
+ *  clock-in only at the site. Null on an older database or in demo mode;
+ *  resolveClockPolicy() turns null into all-off. */
+export async function getClockPolicyRaw(companyId: string): Promise<unknown> {
+  if (isMock) return null
+  try {
+    const { createClient } = await import('../supabase-server')
+    const { data } = await createClient().from('companies').select('clock_policy').eq('id', companyId).single()
+    return data?.clock_policy ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Recent entries + logs for the office view, newest day first. */
 export async function getRecentFieldDays(companyId: string, days = 7): Promise<{
   entries: TimeEntry[]

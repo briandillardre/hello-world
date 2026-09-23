@@ -117,3 +117,76 @@ the `time_cards` MCP/Ask AI tool, so every surface agrees.
   every other column (hours, break, the edit trail) is server-side.
   `daily_logs` got the same treatment in **migration 105** (read
   company-wide, insert your own, no client update/delete).
+
+## Integrity — buddy punching and ghost shifts (Sep 22 2026, migration 120)
+A landscaping prospect forwarded what his office found by reviewing security
+footage against the timecards: one crew member clocking another in at 5:20 AM
+who arrived at 5:39; a person clocked in 5:17 AM–7:15 PM and 6:11 AM–1:22 PM
+on days his car was never on the property; and the cameras had stopped
+recording after 5 PM. "These are the issues I'm dealing with that with the
+right technology can be fixed." The phone already records every shift (above);
+this is the READING of that record against the clock, so the office finds
+these on /timecards instead of on a camera.
+
+**Reads (no switch needed, `lib/timecards.ts`, `timecard_gps_stats_v2`):**
+- **Never on site** — ≥ 5 fixes, none inside the clocked site (replaces
+  Mostly off-site). "Never on Maple Ridge: 200 phone fixes during the shift,
+  none inside the site."
+- **Shared phone** — the same device id (a random id the app keeps per
+  phone, `lib/device-id.ts`, stored as `device_id` / `out_device_id`) on
+  entries of two different people in the window. "Same phone as <teammate>"
+  — names, never ids. The buddy-punch tell for "logged in as my buddy on my
+  phone". A shared crew tablet trips it on purpose; the photo policy is the
+  answer there.
+- **Clocked in away / Clocked out away** — the tap's fix ≥ 400 m (¼ mi) from
+  the site's edge and not inside a yard. "Clocked in 1.9 mi from Maple Ridge."
+- **Arrived after clock-in** — the first fix INSIDE the site is ≥ 10 min after
+  clock-in, the phone was somewhere else first (the first fix of the shift is
+  ≥ 10 min before the first on-site one), the tap was > 100 m off the site,
+  and not a yard start. "On site 19 min after clocking in."
+- **Left before clock-out** — fixes CONTINUED off the site ≥ 10 min after the
+  last on-site fix (a phone that went dark is a different story), the
+  clock-out tap was > 100 m off the site, not a yard finish. "Left the site
+  45 min before clocking out."
+- **Phone never moved** — closed shift ≥ 2 h, ≥ 10 fixes, all within 50 m
+  corner to corner (a phone left in a parked truck).
+- **No GPS** now says the hours: "14.0 h clocked with no phone fixes at all."
+- **No photo** — only when the company policy requires one.
+
+Every read is a `finding` sentence on the entry; `review` marks the entry
+for the **Needs a look** list at the top of /timecards (managers, worst
+first per `INTEGRITY_FLAGS`, one row per entry, tap → the entry). The
+sentences ride the CSV (`Findings` column) and the `time_cards` tool
+(`findings` per entry, `needsALook` at the top). False positives were
+designed out and are asserted: a yard start is not "away" or "late", a slow
+first fix is not an arrival, a tap at the fence line is at the site, a phone
+that went dark is not "left early".
+
+**Policies (Settings → Time clock, `companies.clock_policy`, all OFF by
+default, `lib/clock-policy.ts`):**
+- **Photo at clock-in / clock-out** — the front camera opens on the Clock in
+  tap (the button becomes the camera) / inside the daily log. Shrunk on the
+  phone to 720 px JPEG (~100 KB, `lib/image-shrink.ts`), sent inside the
+  action (clock-in: a data URL in the JSON; clock-out: a file in the
+  FormData), checked (JPEG magic, ≤ 400 KB) and stored by the service role in
+  the PRIVATE `clock-photos` bucket under `<company>/<user>/<uuid>.jpg` — a
+  CHECK constraint refuses any other path on the row. /timecards mints 1-hour
+  signed URLs for the rows the caller could read. Nobody recognises faces; a
+  human looks. Required server-side too; an offline clock-out replay that
+  lost its Files is waived (the card then reads "No clock-out photo").
+- **Clock in only at the site** — refused unless the fix is inside the
+  chosen zone or within the radius (default 500 ft / 150 m; 150 ft – 1 mi)
+  of its edge, or inside any yard the company has drawn. "You're 980 ft from
+  Maple Ridge — clock in when you get there, or from the yard." Enforced in
+  `clockInAction` (`clockInPlaceCheck`), so a direct call and an offline
+  replay (judged on the fix it was tapped with) obey it too. Shop / office
+  clock-ins are not guarded.
+
+The 104 column guard learned the new columns: a session may set the
+clock-out device and photo only while closing its own open entry; the
+clock-in pair never changes from a session. **Harness:
+`node scripts/timecards-test.mjs` (66 assertions) — run it after ANY change
+to `lib/timecards.ts` or `lib/clock-policy.ts`.**
+
+Next: a "needs a look" line in the Friday wrap-up, a push to the manager the
+moment a shift closes with a red finding, and daily-OT states.

@@ -10,6 +10,8 @@ import { loadMyPushPrefs } from '@/lib/db/person-notify'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 import { DailyLogBuilder } from '@/components/settings/DailyLogBuilder'
 import { resolveLogForm } from '@/lib/log-form'
+import { ClockPolicyCard } from '@/components/settings/ClockPolicyCard'
+import { resolveClockPolicy } from '@/lib/clock-policy'
 import { MapPrefs } from '@/components/settings/MapPrefs'
 import { TestAlertButton } from '@/components/settings/TestAlertButton'
 import { isQboConfigured } from '@/lib/qbo'
@@ -70,6 +72,9 @@ export default async function SettingsPage({ searchParams }: { searchParams?: { 
 
         {/* Daily log builder — the crew's clock-out form, admin-composed (Aug 9) */}
         <DailyLogBuilder initial={resolveLogForm(co.log_form)} editable={co.isAdmin} />
+
+        {/* Time clock policy — photo at clock-in/out, clock-in only at the site (Sep 22, migration 120) */}
+        <ClockPolicyCard initial={resolveClockPolicy(co.clock_policy)} editable={co.isAdmin} />
 
         <DivisionsCard initial={divisions} counts={divisionCounts} canEdit={perms.canEdit} />
 
