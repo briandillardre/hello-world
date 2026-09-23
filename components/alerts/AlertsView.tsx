@@ -62,8 +62,12 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
         <Tab active={tab === 'rules'} onClick={() => setTab('rules')}>Rules {rules.length > 0 && <span className="ml-1 text-faint">({rules.length})</span>}</Tab>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {/* No ack buttons where an ack cannot persist (a role without edit,
+            a Prospective Client, a view-as preview): the optimistic paint
+            used to show theft as handled until the next reload (ship-check,
+            Sep 23). */}
         {tab === 'activity' ? (
-          <AlertList alerts={alerts} onAcknowledge={acknowledge} onAcknowledgeMany={acknowledgeMany} />
+          <AlertList alerts={alerts} onAcknowledge={editable ? acknowledge : undefined} onAcknowledgeMany={editable ? acknowledgeMany : undefined} />
         ) : (
           <AlertRulesManager rules={rules} geofences={geofences} assets={assets} editable={editable} />
         )}

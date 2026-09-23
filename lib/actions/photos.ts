@@ -7,6 +7,13 @@ import { isProspect } from '@/lib/permissions'
 // A Prospective Client changes nothing (118). These actions write with the
 // service role, so the rule has to live here too, not only in RLS.
 const LOOK_ONLY = { ok: false as const, error: 'A Prospective Client login can look, not add — ask the owner who invited you for a full account.' }
+// A view-as preview is read-only by rule (096) — getRealPermissions ignores
+// the cookie on purpose, so every writer asks explicitly (ship-check, Sep 23).
+const PREVIEW_NO = { ok: false as const, error: 'Read-only preview — exit View as to make changes.' }
+async function inPreview(): Promise<boolean> {
+  const { getMyPermissions } = await import('@/lib/permissions-server')
+  return !!(await getMyPermissions()).viewingAs
+}
 import type { FieldPhoto } from '@/lib/db/photos'
 
 /**
@@ -29,6 +36,7 @@ export async function createPhotoUploadAction(contentType: string, size: number)
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
   if (isProspect(perms)) return LOOK_ONLY
+  if (await inPreview()) return PREVIEW_NO
   if (!EXT[contentType]) return { ok: false, error: 'That file isn’t a photo we can take (JPEG, PNG, WebP or HEIC).' }
   if (!size || size > MAX_BYTES) return { ok: false, error: 'Photo too large (25 MB max).' }
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -245,6 +253,7 @@ export async function finalizePhotoAction(input: {
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
   if (isProspect(perms)) return LOOK_ONLY
+  if (await inPreview()) return PREVIEW_NO
   const { lat, lng } = input
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
     return { ok: false, error: 'No location on this photo — allow location or pick a photo that has one.' }
@@ -367,6 +376,7 @@ export async function deletePhotoAction(id: string): Promise<{ ok: boolean; erro
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
   if (isProspect(perms)) return LOOK_ONLY
+  if (await inPreview()) return PREVIEW_NO
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'Bad id' }
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()

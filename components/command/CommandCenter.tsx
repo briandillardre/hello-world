@@ -78,6 +78,10 @@ interface CommandCenterProps {
   userName?: string | null
   navOrder?: string[] | null
   role?: string | null
+  /** The caller's view levels (094) — the wall's own navs obey them like
+   *  the dashboard shell's do (a Prospective Client saw Team / Financials
+   *  as open tiles here — ship-check P1, Sep 23). null = everything. */
+  features?: string[] | null
 }
 
 interface CommandData {
@@ -104,7 +108,7 @@ const TRIGGER_LABEL: Record<string, string> = {
  *  collapsing here removes it entirely: a wall display wants nothing on it
  *  but the expand arrow (owner ask, Jul 21). Starts collapsed, remembered
  *  per device. */
-function KioskNav({ company, alerts }: { company: string; alerts: AlertEvent[] }) {
+function KioskNav({ company, alerts, features, role, askAi }: { company: string; alerts: AlertEvent[]; features: string[] | null; role: string | null; askAi: boolean }) {
   const [collapsed, setCollapsed] = useState(true)
   useEffect(() => { setCollapsed(localStorage.getItem('ht-cc-nav') !== '0') }, [])
   // The expanded kiosk sidebar overlays the wall — publish its width so the
@@ -131,6 +135,9 @@ function KioskNav({ company, alerts }: { company: string; alerts: AlertEvent[] }
       onToggle={toggle}
       onSignOut={signOutAction}
       fullCollapse
+      features={features}
+      role={role}
+      askAi={askAi}
     />
   )
 }
@@ -241,7 +248,10 @@ function ScreenMenu({ panels, onPanel, tourOn, onTour, onClear, onShowAll }: {
   )
 }
 
-export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false, userName = null, navOrder = null, role = null }: CommandCenterProps) {
+export function CommandCenter({ assets, geofences, tracks, historyRows = null, earliestMs = null, tz, kpis, company, alerts = [], aboard, pairingEpisodes, brand = null, deferLoad = false, userName = null, navOrder = null, role = null, features = null }: CommandCenterProps) {
+  // Same rule as DashboardShell: the launcher shows for every role with the
+  // level, and for a Prospective Client (the panel says it is locked).
+  const askAi = !features || features.includes('ask_ai') || role === 'prospect'
   const [now, setNow] = useState<Date | null>(null)
 
   // Deferred heavy cargo — fetched once after the shell/basemap are up.
@@ -464,7 +474,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           bottom bar as /map instead (Brian, Aug 22) — the overlay sidebar
           ate the whole screen there. */}
       <div className="hidden md:block">
-        <KioskNav company={company} alerts={liveAlerts} />
+        <KioskNav company={company} alerts={liveAlerts} features={features} role={role} askAi={askAi} />
       </div>
       <BottomNav
         alertCount={unreadActionableCount(liveAlerts)}
@@ -473,6 +483,8 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         userName={userName}
         navOrder={navOrder}
         role={role}
+        features={features}
+        askAi={askAi}
         onSignOut={signOutAction}
       />
 
@@ -610,12 +622,14 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           {/* On-site weather moved up here from the left rail (owner ask,
               Aug 6) — same chip + dropdown as the main map's top bar. */}
           <span className="hidden xl:block"><TopBarWeather /></span>
+          {askAi && (
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('ht:ask'))}
             className="hidden md:inline-flex items-center gap-1.5 rounded-full bg-amber text-[#1a1100] font-display font-bold text-[13px] px-2.5 md:px-3 py-1.5 hover:brightness-110 transition"
           >
             <Sparkles className="h-4 w-4" /> Ask AI
           </button>
+          )}
           <ScreenMenu
             panels={panels}
             onPanel={onPanel}
@@ -680,7 +694,7 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         </div>
       )}
 
-      <AssistantWidget />
+      {askAi && <AssistantWidget />}
     </div>
   )
 }

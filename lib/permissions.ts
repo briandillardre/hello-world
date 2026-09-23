@@ -333,13 +333,23 @@ export function navStateFor(pathname: string, features: string[] | null | undefi
   if (role === 'prospect' && !PROSPECT_HIDDEN.includes(k)) return 'locked'
   return 'hidden'
 }
+/** Pages whose nav label is not their feature's label — the locked page
+ *  names what you tapped ("Time cards", not "Time clock"). */
+export const PATH_LABELS: Record<string, string> = { '/timecards': 'Time cards', '/photos': 'Photos' }
 /** Where a locked nav entry goes: the page that says what is locked and why. */
 export function lockedHref(pathname: string): string {
-  return `/locked?f=${featureForPath(pathname) ?? ''}`
+  const p = pathname in PATH_LABELS ? `&p=${encodeURIComponent(pathname)}` : ''
+  return `/locked?f=${featureForPath(pathname) ?? ''}${p}`
 }
 /** The view-levels label for a feature key (the /locked page's headline). */
 export function featureLabel(key: string | null | undefined): string | null {
   return FEATURES.find((f) => f.key === key)?.label ?? null
+}
+/** The first page these view levels open — the "home" door when the map
+ *  itself is switched off (the locked page must never send you back to a
+ *  lock). null = nothing is open at all. */
+export function firstOpenHref(features: string[]): string | null {
+  return FEATURES.find((f) => f.href && features.includes(f.key))?.href ?? null
 }
 
 // ── Per-asset visibility (111) ──────────────────────────────────────────────
