@@ -80,15 +80,20 @@ async function localLogDate(iso: string): Promise<string> {
 const validDevice = (v: unknown): string | null =>
   typeof v === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null
 
-/** The company's clock policy (120). Tolerant: no column / no row = all off. */
+/** The company's clock policy (120). A database that has not caught up
+ *  (no column) reads as all-off; any OTHER failure throws — a policy must
+ *  never fail open because a read hiccupped (sec-check P3). */
 async function loadClockPolicy(supabase: { from: (t: string) => any }, companyId: string): Promise<ClockPolicy> { // eslint-disable-line @typescript-eslint/no-explicit-any
-  try {
-    const { data } = await supabase.from('companies').select('clock_policy').eq('id', companyId).maybeSingle()
-    return resolveClockPolicy(data?.clock_policy ?? null)
-  } catch {
-    return resolveClockPolicy(null)
+  const { data, error } = await supabase.from('companies').select('clock_policy').eq('id', companyId).maybeSingle()
+  if (error) {
+    if (missingColumn(error)) return resolveClockPolicy(null)
+    throw new Error('Couldn’t read your company’s clock settings — try again.')
   }
+  return resolveClockPolicy(data?.clock_policy ?? null)
 }
+
+const CATEGORIES = new Set<string>(['project', 'shop', 'overhead', 'maintenance'])
+const isUuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 
 /**
  * "You have to be at the site to clock in" (policy `atSite`, 120): the fix
@@ -184,13 +189,19 @@ export async function clockInAction(input: {
     if (idem && input.at && !at) {
       return { ok: false, error: 'This queued clock-in is too old to record accurately — add the shift manually.' }
     }
+    // Shape first, before anything is stored (sec-check P2): a category the
+    // 015 CHECK would refuse or a non-UUID site id used to fail the insert
+    // AFTER a photo had already been uploaded — an unbounded, row-less store.
+    if (!CATEGORIES.has(input.category)) return { ok: false, error: 'Pick where the day is going first.' }
+    const zoneId = input.category === 'project' ? (input.projectGeofenceId ?? null) : null
+    if (zoneId != null && !isUuid(zoneId)) return { ok: false, error: 'Pick a site from the list.' }
     const base = {
       ...(at ? { clock_in_at: at } : {}), // column exists since 015 — safe in the fallback too
       company_id: companyId,
       user_id: userId,
       person_name: personName,
       category: input.category,
-      project_geofence_id: input.category === 'project' ? (input.projectGeofenceId ?? null) : null,
+      project_geofence_id: zoneId,
       plan: (input.plan ?? '').slice(0, 500),
     }
     const hasPos = validCoord(input.lat) && validCoord(input.lng)
@@ -201,24 +212,36 @@ export async function clockInAction(input: {
     // are checked here, not only on the card, so a direct call obeys them
     // too — and an offline replay is judged on the fix it was tapped with.
     const policy = await loadClockPolicy(supabase, companyId)
-    const away = await checkClockInPlace(supabase, companyId, policy, base.project_geofence_id, { lat: input.lat as number, lng: input.lng as number })
+    const away = await checkClockInPlace(supabase, companyId, policy, zoneId, { lat: input.lat as number, lng: input.lng as number })
     if (away) return { ok: false, error: away }
-    const photoBytes = decodePhotoDataUrl(input.inPhoto)
+    // A photo is only decoded — and only ever stored — when the company
+    // asked for one; the store happens AFTER the row exists (121: a session
+    // cannot insert a photo path, the server sets it on the row it opened).
+    const photoBytes = policy.photoIn ? decodePhotoDataUrl(input.inPhoto) : null
     if (policy.photoIn && !photoBytes) return { ok: false, error: 'Your company needs a clock-in photo — tap Clock in and take the picture.' }
-    const inPhotoPath = photoBytes ? await storeClockPhoto(companyId, userId, photoBytes) : null
-    if (policy.photoIn && !inPhotoPath) return { ok: false, error: 'The clock-in photo didn’t save — try again.' }
     const full = {
       ...base,
       ...(hasPos ? { in_lat: input.lat, in_lng: input.lng } : {}),
       ...(idem ? { idempotency_key: idem } : {}),
       ...(validDevice(input.deviceId) ? { device_id: validDevice(input.deviceId) } : {}),
-      ...(inPhotoPath ? { in_photo_path: inPhotoPath } : {}),
     }
-    let { error } = await supabase.from('time_entries').insert(full)
+    let { data: row, error } = await supabase.from('time_entries').insert(full).select('id').single()
     if (isDuplicateKey(error)) return { ok: true } // replay — the first attempt won
-    // Lagging schema (059 pos columns, 066 idempotency_key, 120 device/photo) → plain insert.
-    if (missingColumn(error) && (hasPos || idem || full.device_id || inPhotoPath)) ({ error } = await supabase.from('time_entries').insert(base))
+    // Lagging schema (059 pos columns, 066 idempotency_key, 120 device) → plain insert.
+    if (missingColumn(error) && (hasPos || idem || full.device_id)) ({ data: row, error } = await supabase.from('time_entries').insert(base).select('id').single())
     if (error) return { ok: false, error: error.message }
+    if (photoBytes && row?.id) {
+      const inPhotoPath = await storeClockPhoto(companyId, userId, photoBytes)
+      if (inPhotoPath) {
+        try {
+          const { createServiceClient } = await import('@/lib/supabase-server')
+          await createServiceClient().from('time_entries').update({ in_photo_path: inPhotoPath })
+            .eq('id', row.id).eq('user_id', userId).eq('company_id', companyId)
+        } catch (err) { console.error('Clock-in photo path not recorded', err) }
+      }
+      // A photo that did not land is a finding on the card ("No clock-in
+      // photo"), never a lost clock-in — the shift is open and recording.
+    }
     revalidatePath('/clock')
     return { ok: true }
   } catch (err) {
@@ -370,7 +393,8 @@ export async function clockOutAction(form: FormData): Promise<{ ok: boolean; err
     // photo"; the office sees it was an offline day).
     const outPhotoFile = form.get('outPhoto')
     let outPhotoBytes: Uint8Array | null = null
-    if (outPhotoFile instanceof File && outPhotoFile.size > 0 && outPhotoFile.size <= CLOCK_PHOTO_MAX) {
+    // Read — and later store — only when the company asked for one (sec-check P2).
+    if (policy.photoOut && outPhotoFile instanceof File && outPhotoFile.size > 0 && outPhotoFile.size <= CLOCK_PHOTO_MAX) {
       outPhotoBytes = new Uint8Array(await outPhotoFile.arrayBuffer())
     }
     if (policy.photoOut && !outPhotoBytes && !offlineReplay) {

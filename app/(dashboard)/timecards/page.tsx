@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { requireFeature, getRealPermissions } from '@/lib/permissions-server'
+import { rankOf } from '@/lib/permissions'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getTimeCards, timecardScope, weekOf } from '@/lib/db/timecards'
 import { safeTz } from '@/lib/dates'
@@ -25,7 +26,7 @@ export default async function Page({ searchParams }: { searchParams: { week?: st
   let cards: Awaited<ReturnType<typeof getTimeCards>> = { cards: [], verified: false, integrity: false }
   if (!isMock) {
     const { createClient } = await import('@/lib/supabase-server')
-    cards = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds, withPhotos: true })
+    cards = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds, withPhotos: true, viewerRank: rankOf(perms) })
   }
   return (
     <TimeCardsView

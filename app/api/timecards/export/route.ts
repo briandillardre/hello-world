@@ -5,6 +5,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { getTimeCards, timecardScope, weekOf } from '@/lib/db/timecards'
 import { safeTz } from '@/lib/dates'
 import { timeCardsCsv } from '@/lib/timecards'
+import { rankOf } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   const { monday, fromMs, toMs } = weekOf(new URL(req.url).searchParams.get('week'), tz)
   const scope = timecardScope(perms, perms.viewingAs?.id ?? real.userId) // a view-as preview shows the TARGET's card
   const { createClient } = await import('@/lib/supabase-server')
-  const { cards } = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds })
+  const { cards } = await getTimeCards(createClient(), { companyId, fromMs, toMs, tz, userIds: scope.userIds, viewerRank: rankOf(perms) })
   const csv = timeCardsCsv(cards, tz)
   return new NextResponse(csv, {
     headers: {

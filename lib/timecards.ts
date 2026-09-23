@@ -102,6 +102,8 @@ export interface TimeCardEntry {
   outPhoto?: boolean
   inPhotoUrl?: string | null
   outPhotoUrl?: string | null
+  /** This person outranks the viewer: hours only, no reads, no findings. */
+  aboveViewer?: boolean
 }
 
 export interface TimeCardRow extends TimeCardEntry {
@@ -184,7 +186,20 @@ const minutesBetween = (a: string | null | undefined, b: string | null | undefin
   return Math.round((y - x) / 60_000)
 }
 
-export interface FlagPolicy { photoIn: boolean; photoOut: boolean }
+export interface FlagPolicy {
+  photoIn: boolean
+  photoOut: boolean
+  /** A photo is only "missing" on a shift clocked in at or after the switch went on. */
+  photoInSince?: string | null
+  photoOutSince?: string | null
+}
+
+/** "45 min" / "2 h 30 min" / "3 h". */
+export const fmtMinutes = (m: number): string => {
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60), r = m % 60
+  return r ? `${h} h ${r} min` : `${h} h`
+}
 
 /**
  * The flags and their sentences for one entry. `sharedWith` = teammates whose
@@ -201,6 +216,12 @@ export function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | 
   if (!e.outAt) flags.push('open')
   if (e.edited) flags.push('edited')
   if (e.category === 'project' && !e.zoneId) flags.push('no_site')
+  // A person above the viewer on the ladder gets hours only — no reads, no
+  // findings (a Foreman does not audit the owner). Long is a state, not a doubt.
+  if (e.aboveViewer) {
+    if (elapsed > LONG_SHIFT_HOURS) flags.push('long')
+    return { flags, findings }
+  }
 
   if (sharedWith.length) say('shared_device', `Same phone as ${sharedWith.join(' and ')}`)
 
@@ -214,7 +235,12 @@ export function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | 
     }
     // A zone the viewer cannot see (someone's personal zone) counts nothing
     // as on-site — that is not a flag, so it needs the zone to be visible.
-    if (onSitePct != null && site && g.fixes >= NEVER_ON_SITE_FIXES) {
+    // An OPEN shift gets an hour before either is said (ship-check: five
+    // fixes exist 2½ min after clock-in, so every crew driving in from the
+    // yard was "never on site" at 6:05 AM), and a yard start says nothing
+    // until the shift is closed.
+    const placed = closed || (elapsed >= 1 && !g.inAtYard)
+    if (onSitePct != null && site && g.fixes >= NEVER_ON_SITE_FIXES && placed) {
       if (g.onSite === 0) say('never_on_site', `Never on ${site}: ${g.fixes} phone fixes during the shift, none inside the site`)
       else if (onSitePct < OFF_SITE_BELOW_PCT) say('off_site', `Only ${onSitePct}% of the shift's fixes on ${site}`)
     }
@@ -229,7 +255,7 @@ export function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | 
     if (site && g.firstOnSite && g.firstFix && !g.inAtYard && (g.inDistM == null || g.inDistM > NEAR_M)) {
       const travel = minutesBetween(g.firstFix, g.firstOnSite)
       const late = minutesBetween(e.inAt, g.firstOnSite)
-      if (travel != null && travel >= LATE_ARRIVAL_MIN && late != null && late >= LATE_ARRIVAL_MIN) say('arrived_late', `On site ${late} min after clocking in`)
+      if (travel != null && travel >= LATE_ARRIVAL_MIN && late != null && late >= LATE_ARRIVAL_MIN) say('arrived_late', `On site ${fmtMinutes(late)} after clocking in`)
     }
     // Left N minutes before clocking out: fixes CONTINUED off the site after
     // the last on-site one (a phone that went dark is a different story),
@@ -237,16 +263,23 @@ export function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | 
     if (site && closed && g.lastOnSite && g.lastFix && !g.outAtYard && (g.outDistM == null || g.outDistM > NEAR_M)) {
       const after = minutesBetween(g.lastOnSite, g.lastFix)
       const early = minutesBetween(g.lastOnSite, e.outAt)
-      if (after != null && after >= EARLY_LEAVE_MIN && early != null && early >= EARLY_LEAVE_MIN) say('left_early', `Left the site ${early} min before clocking out`)
+      if (after != null && after >= EARLY_LEAVE_MIN && early != null && early >= EARLY_LEAVE_MIN) say('left_early', `Left the site ${fmtMinutes(early)} before clocking out`)
     }
     // A phone that sat still all shift — in a parked truck, in a locker.
-    if (closed && elapsed >= STILL_HOURS && g.fixes >= STILL_FIXES && g.spreadM != null && g.spreadM < STILL_M) {
+    // Site shifts only: a mechanic's shop day and an office clock-in are
+    // meant to stand still (ship-check).
+    if (site && closed && elapsed >= STILL_HOURS && g.fixes >= STILL_FIXES && g.spreadM != null && g.spreadM < STILL_M) {
       say('phone_still', `Phone didn't move all shift (${fmtDistanceM(g.spreadM)} across ${h1(elapsed)} h)`)
     }
   }
   if (policy) {
-    const missIn = policy.photoIn && !e.inPhoto
-    const missOut = policy.photoOut && closed && !e.outPhoto
+    // Only a shift clocked in AFTER the switch went on ever needed a photo.
+    // A switch that is on with no date is treated as "from now", so nothing
+    // historical is ever accused.
+    const inMs = Date.parse(e.inAt)
+    const due = (since: string | null | undefined) => !!since && Number.isFinite(Date.parse(since)) && inMs >= Date.parse(since)
+    const missIn = policy.photoIn && due(policy.photoInSince) && !e.inPhoto
+    const missOut = policy.photoOut && due(policy.photoOutSince) && closed && !e.outPhoto
     if (missIn && missOut) say('no_photo', 'No clock-in or clock-out photo')
     else if (missIn) say('no_photo', 'No clock-in photo')
     else if (missOut) say('no_photo', 'No clock-out photo')
@@ -303,7 +336,8 @@ export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; now
       onSitePct,
       flags,
       findings,
-      review: flags.some((f) => INTEGRITY_FLAGS.includes(f)),
+      // Nobody above the viewer is ever on the viewer's list.
+      review: !e.aboveViewer && flags.some((f) => INTEGRITY_FLAGS.includes(f)),
       sharedWith: shared,
     }
     const p = byPerson.get(e.userId) ?? { name: e.personName || 'Crew', rows: [] }

@@ -362,6 +362,54 @@ export async function GET(req: NextRequest) {
       out.shareLinksPurged = (dead ?? []).length
       out.exportOrphansSwept = orphans
     } catch (err) { out.shareLinkSweep = err instanceof Error ? err.message : 'failed' }
+
+    // 7 — clock-in / clock-out photos (120; sec-check on it): a face with a
+    // time and a place is PII with a shelf life. Ninety days covers a pay
+    // dispute; after that the object goes and the row keeps its path (the
+    // card's "no photo" finding stays honest, the thumbnail simply ends).
+    // An object no row ever pointed at (an upload whose insert failed) goes
+    // after a day. Bounded: 150 person folders per run, 1000 objects each,
+    // only paths of our own shape are ever handed to remove().
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const svc = createServiceClient()
+      const PHOTO_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/i
+      const RETAIN_MS = 90 * 86_400_000
+      let expired = 0, orphaned = 0, folders = 0
+      const { data: cos, error: coErr } = await svc.storage.from('clock-photos').list('', { limit: 200 })
+      if (coErr) throw new Error(`clock-photos list: ${coErr.message}`)
+      for (const co of cos ?? []) {
+        if (!co.name || co.id || !/^[0-9a-f-]{36}$/i.test(co.name)) continue // company folders only
+        const { data: people } = await svc.storage.from('clock-photos').list(co.name, { limit: 200 })
+        for (const person of people ?? []) {
+          if (!person.name || person.id || !/^[0-9a-f-]{36}$/i.test(person.name)) continue
+          if (++folders > 150) break
+          const prefix = `${co.name}/${person.name}`
+          const { data: objects } = await svc.storage.from('clock-photos').list(prefix, { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } })
+          const aged = (objects ?? []).filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - RETAIN_MS).map((o) => `${prefix}/${o.name}`)
+          const dayOld = (objects ?? []).filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - 86_400_000 && Date.parse(o.created_at ?? '') >= Date.now() - RETAIN_MS)
+          let orphans: string[] = []
+          if (dayOld.length) {
+            // Every path a row of this person points at; a failed read keeps everything.
+            const { data: rows, error } = await svc.from('time_entries').select('in_photo_path, out_photo_path')
+              .eq('company_id', co.name).eq('user_id', person.name).or('in_photo_path.not.is.null,out_photo_path.not.is.null').limit(5000)
+            if (!error) {
+              const keep = new Set<string>()
+              for (const r of rows ?? []) for (const v of [r.in_photo_path, r.out_photo_path]) if (typeof v === 'string') keep.add(v)
+              orphans = dayOld.map((o) => `${prefix}/${o.name}`).filter((path) => !keep.has(path))
+            }
+          }
+          const gone = Array.from(new Set([...aged, ...orphans])).filter((path) => PHOTO_PATH.test(path)).slice(0, 200)
+          if (gone.length) {
+            const { error } = await svc.storage.from('clock-photos').remove(gone)
+            if (!error) { expired += aged.filter((a) => gone.includes(a)).length; orphaned += gone.length - aged.filter((a) => gone.includes(a)).length }
+          }
+        }
+        if (folders > 150) break
+      }
+      out.clockPhotosExpired = expired
+      out.clockPhotoOrphansSwept = orphaned
+    } catch (err) { out.clockPhotoSweep = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

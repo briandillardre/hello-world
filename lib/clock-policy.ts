@@ -22,9 +22,14 @@ export interface ClockPolicy {
   atSite: boolean
   /** Metres from the site's edge that still counts as "at the site". */
   siteRadiusM: number
+  /** When each photo switch was turned ON (ISO) — a shift clocked before
+   *  that never "needed" a photo, so it is never flagged for one (a switch
+   *  flipped on Wednesday used to accuse the whole crew for Monday). */
+  photoInSince: string | null
+  photoOutSince: string | null
 }
 
-export const CLOCK_POLICY_DEFAULTS: ClockPolicy = { photoIn: false, photoOut: false, atSite: false, siteRadiusM: 150 }
+export const CLOCK_POLICY_DEFAULTS: ClockPolicy = { photoIn: false, photoOut: false, atSite: false, siteRadiusM: 150, photoInSince: null, photoOutSince: null }
 export const SITE_RADIUS_MIN_M = 50
 export const SITE_RADIUS_MAX_M = 2000
 
@@ -43,6 +48,24 @@ export function resolveClockPolicy(raw: unknown): ClockPolicy {
     const n = Number(o.siteRadiusM)
     if (Number.isFinite(n)) out.siteRadiusM = Math.round(Math.min(SITE_RADIUS_MAX_M, Math.max(SITE_RADIUS_MIN_M, n)))
   }
+  for (const k of ['photoInSince', 'photoOutSince'] as const) {
+    const v = hasOwn(o, k) ? o[k] : null
+    out[k] = typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : null
+  }
+  // A switch that is off carries no date; one that is on and undated is
+  // treated as "on from now" by the writer, never as "always".
+  if (!out.photoIn) out.photoInSince = null
+  if (!out.photoOut) out.photoOutSince = null
+  return out
+}
+
+/** The stored blob after a change from the Settings card: a photo switch
+ *  turning ON is stamped with now (kept if it was already on), turning OFF
+ *  drops its stamp. `nowIso` is injectable for the harness. */
+export function nextClockPolicy(prev: ClockPolicy, next: ClockPolicy, nowIso = new Date().toISOString()): ClockPolicy {
+  const out = { ...next }
+  out.photoInSince = next.photoIn ? (prev.photoIn && prev.photoInSince ? prev.photoInSince : nowIso) : null
+  out.photoOutSince = next.photoOut ? (prev.photoOut && prev.photoOutSince ? prev.photoOutSince : nowIso) : null
   return out
 }
 

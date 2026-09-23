@@ -76,11 +76,16 @@ export function resolveAssetPick(ql: string, assets: AssetWithLocation[]): Asset
   if (best) return { asset: best, ambiguous: [] }
   const q = tokens(ql).filter((t) => !ASK_STOP.has(t))
   if (!q.length) return { asset: null, ambiguous: [] }
+  // A bare number is never a pick on its own — "what happened at 3" is not
+  // Truck 3, "spend in 2017" is not the 2017 RAM (ship-check). Digits only
+  // count beside a word that matched the same name ("truck 4").
+  const strong = (t: string) => !/^\d+$/.test(t)
   let top = 0
   let picks: AssetWithLocation[] = []
   for (const a of assets) {
     const n = tokens(a.name)
-    const score = q.filter((t) => n.some((w) => w === t || (t.length >= 3 && w.startsWith(t)))).length
+    const hit = q.filter((t) => n.some((w) => w === t || (t.length >= 3 && w.startsWith(t))))
+    const score = hit.some(strong) ? hit.length : 0
     if (!score) continue
     if (score > top) { top = score; picks = [a] }
     else if (score === top) picks.push(a)

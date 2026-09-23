@@ -5,7 +5,7 @@ import { formatPlace, placeKey, type PlaceParts } from '@/lib/place-label'
 import { buildTimeCards, weekStartKey, type FlagPolicy, type PersonCard, type TimeCardEntry, type TimeCardGps } from '@/lib/timecards'
 import { addDaysKey, isDayKey, zonedMidnightMs } from '@/lib/dates'
 import { resolveClockPolicy } from '@/lib/clock-policy'
-import type { Permissions } from '@/lib/permissions'
+import { MASTER_RANK, RANK, type Permissions, type Role } from '@/lib/permissions'
 
 /**
  * Time cards — the loader. Reads time_entries for a window, joins the job
@@ -56,9 +56,16 @@ export async function getTimeCards(db: SupabaseClient, opts: {
   nowMs?: number
   /** Skip minting signed photo URLs (the CSV, the AI tool). */
   withPhotos?: boolean
+  /** The viewer's rank on the ladder (lib/permissions RANK / MASTER_RANK).
+   *  A person who OUTRANKS the viewer gets hours only: no GPS reads, no
+   *  photos, no findings — a Foreman does not audit the owner, and the
+   *  owner's phone is hidden from lower ranks anyway (111), which used to
+   *  read as "no phone fixes at all" on the Manager's list. Default: sees all. */
+  viewerRank?: number
 }): Promise<TimeCardsResult> {
   if (isMock) return { cards: [], verified: false, integrity: false }
   const nowMs = opts.nowMs ?? Date.now()
+  const viewerRank = opts.viewerRank ?? MASTER_RANK
 
   let q = db.from('time_entries').select('*')
     .eq('company_id', opts.companyId)
@@ -89,17 +96,41 @@ export async function getTimeCards(db: SupabaseClient, opts: {
     .filter((z) => z.kind !== 'boundary' && z.geometry?.type === 'Polygon' && Array.isArray(z.geometry.coordinates?.[0]))
     .map((z) => ({ name: z.name, ring: z.geometry!.coordinates[0] as [number, number][] }))
 
+  // Who outranks the viewer: their entries carry hours only (see viewerRank).
+  const above = new Set<string>()
+  if (viewerRank < MASTER_RANK) {
+    const userIds = Array.from(new Set(rows.map((r) => r.user_id)))
+    const { data: people } = await db.from('profiles').select('id, role').in('id', userIds.slice(0, 1000))
+    const roleOf = new Map((people ?? []).map((p) => [p.id as string, (p.role as Role | null) ?? 'associate']))
+    for (const uid of userIds) {
+      const rank = uid === opts.companyId ? MASTER_RANK : (RANK[roleOf.get(uid) ?? 'associate'] ?? 0)
+      if (rank > viewerRank) above.add(uid)
+    }
+  }
+
   // Phone-fix stats per entry: 120's function first (arrive / leave / away /
   // still), 103's when the database has not caught up, neither = unverified.
+  // Run as the SERVICE ROLE: the ids were read under the caller's own RLS, so
+  // nothing is learned about rows they cannot see — but the phone assets of
+  // people above them ARE hidden by 111, and a hidden phone used to count as
+  // "no phone fixes at all" (ship-check P2). The rank rule above decides
+  // whose numbers the viewer is shown at all.
   const gps = new Map<string, TimeCardGps>()
   let verified = true
   let integrity = true
+  let rpcDb: SupabaseClient = db
+  try {
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    rpcDb = createServiceClient()
+  } catch { /* the caller's client, RLS and all */ }
   for (let i = 0; i < rows.length; i += 200) {
     const ids = rows.slice(i, i + 200).map((r) => r.id)
-    let { data: stats, error: rpcErr } = await db.rpc('timecard_gps_stats_v2', { p_entry_ids: ids })
+    let { data: stats, error: rpcErr } = integrity
+      ? await rpcDb.rpc('timecard_gps_stats_v2', { p_entry_ids: ids })
+      : { data: null, error: { message: 'v2 unavailable' } }
     if (rpcErr) {
       integrity = false
-      ;({ data: stats, error: rpcErr } = await db.rpc('timecard_gps_stats', { p_entry_ids: ids }))
+      ;({ data: stats, error: rpcErr } = await rpcDb.rpc('timecard_gps_stats', { p_entry_ids: ids }))
     }
     if (rpcErr) { verified = false; break }
     for (const s of (stats ?? []) as StatsV2[]) {
@@ -147,7 +178,7 @@ export async function getTimeCards(db: SupabaseClient, opts: {
   // read (RLS already filtered them). One batched call per page.
   const photoUrl = new Map<string, string>()
   if (opts.withPhotos) {
-    const paths = Array.from(new Set(rows.flatMap((r) => [r.in_photo_path, r.out_photo_path]).filter((p): p is string => !!p)))
+    const paths = Array.from(new Set(rows.filter((r) => !above.has(r.user_id)).flatMap((r) => [r.in_photo_path, r.out_photo_path]).filter((p): p is string => !!p)))
     if (paths.length) {
       try {
         const { createServiceClient } = await import('@/lib/supabase-server')
@@ -178,13 +209,14 @@ export async function getTimeCards(db: SupabaseClient, opts: {
       originalIn: r.original_in_at ?? null,
       originalOut: r.original_out_at ?? null,
     } : null,
-    gps: verified ? (gps.get(r.id) ?? { fixes: 0, onSite: 0, firstFix: null, lastFix: null }) : null,
+    gps: verified && !above.has(r.user_id) ? (gps.get(r.id) ?? { fixes: 0, onSite: 0, firstFix: null, lastFix: null }) : null,
     deviceId: r.device_id ?? null,
     outDeviceId: r.out_device_id ?? null,
     inPhoto: !!r.in_photo_path,
     outPhoto: !!r.out_photo_path,
     inPhotoUrl: r.in_photo_path ? photoUrl.get(r.in_photo_path) ?? null : null,
     outPhotoUrl: r.out_photo_path ? photoUrl.get(r.out_photo_path) ?? null : null,
+    aboveViewer: above.has(r.user_id),
   }))
 
   return { cards: buildTimeCards(entries, { tz: opts.tz, nowMs, policy }), verified, integrity }

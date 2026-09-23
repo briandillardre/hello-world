@@ -29,13 +29,16 @@ export function ClockPolicyCard({ initial, editable }: { initial: ClockPolicy; e
   const [, start] = useTransition()
 
   function save(next: ClockPolicy) {
+    const prev = pol
     setPol(next)
     if (!editable) return
     setSaved('saving')
     start(async () => {
       const r = await saveClockPolicyAction(next).catch(() => ({ ok: false as const, error: 'Save failed' }))
-      if (r.ok) { setSaved('saved'); setError(null) }
-      else { setSaved('error'); setError(r.error ?? 'Save failed') }
+      if (r.ok) { setSaved('saved'); setError(null); if (r.policy) setPol(r.policy) }
+      // A switch that did not save must not stay flipped — this card gates
+      // a payroll control (ship-check).
+      else { setPol(prev); setSaved('error'); setError(r.error ?? 'Save failed') }
     })
   }
   const radiusChoice = RADIUS.reduce((best, r) => (Math.abs(r.m - pol.siteRadiusM) < Math.abs(best.m - pol.siteRadiusM) ? r : best), RADIUS[1])

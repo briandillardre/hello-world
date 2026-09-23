@@ -705,14 +705,14 @@ async function runRecentPhotos(companyId: string, args: { zone?: unknown; days?:
   return ok({ photos, countBySite: Object.fromEntries(perZone), days, timezone: DEFAULT_TZ })
 }
 
-async function runTimeCards(companyId: string, args: { week?: unknown; days?: unknown; person?: unknown }, userIds: string[] | null = null): Promise<McpToolResult> {
+async function runTimeCards(companyId: string, args: { week?: unknown; days?: unknown; person?: unknown }, userIds: string[] | null = null, viewerRank: number | null = null): Promise<McpToolResult> {
   const tz = DEFAULT_TZ
   const days = Math.min(62, Math.max(1, Math.round(Number(args.days) || 7)))
   const win = isDayKey(args.week)
     ? (() => { const w = weekOf(args.week, tz); return { fromMs: w.fromMs, toMs: w.toMs, label: `pay week of ${w.monday}` } })()
     : { fromMs: Date.now() - days * 86_400_000, toMs: Date.now(), label: `last ${days} day(s)` }
   const db = await service()
-  const { cards, verified } = await getTimeCards(db, { companyId, fromMs: win.fromMs, toMs: win.toMs, tz, userIds })
+  const { cards, verified } = await getTimeCards(db, { companyId, fromMs: win.fromMs, toMs: win.toMs, tz, userIds, ...(viewerRank != null ? { viewerRank } : {}) })
   const person = typeof args.person === 'string' ? args.person.trim().toLowerCase() : ''
   const picked = person ? cards.filter((c) => c.personName.toLowerCase().includes(person)) : cards
   if (person && !picked.length && cards.length) return ok({ people: [], note: `No time card matches "${args.person}". People with hours: ${cards.map((c) => c.personName).join(', ')}.` })
@@ -766,7 +766,7 @@ export async function runMcpTool(
   args: Record<string, unknown>,
   companyId: string,
   /** Session-door narrowing (Ask AI): whose time cards the caller may read. */
-  opts?: { userIds?: string[] | null },
+  opts?: { userIds?: string[] | null; viewerRank?: number | null },
 ): Promise<McpToolResult> {
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
@@ -778,7 +778,7 @@ export async function runMcpTool(
       case 'find_tool': return runFindTool(companyId, args)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
-      case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null)
+      case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

@@ -124,7 +124,12 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const pickOutPhoto = async (picked: FileList | null) => {
     const f = picked?.[0]
     if (!f) return
-    const blob = (await shrinkPhoto(f)) ?? f
+    // No raw-file fallback: the server takes ≤ 400 KB, so a camera original
+    // would show a thumbnail here and be refused there — a clock-out nobody
+    // could finish (ship-check). Same honest answer as clock-in.
+    const blob = await shrinkPhoto(f)
+    if (!blob) { setError('That photo couldn’t be read — try taking it again.'); return }
+    setError(null)
     setOutPhoto((p) => { if (p) URL.revokeObjectURL(p.url); return { blob, url: URL.createObjectURL(blob) } })
   }
   // Required photo fields with nothing picked yet — the clock-out button

@@ -24,8 +24,8 @@ const datesUrl = transpile('../lib/dates.ts')
 const policyUrl = transpile('../lib/clock-policy.ts')
 const policy = await import(policyUrl)
 const tc = await import(transpile('../lib/timecards.ts', { './dates': datesUrl, './clock-policy': policyUrl }))
-const { buildTimeCards, summarizeCards, reviewItems, timeCardsCsv, INTEGRITY_FLAGS, FLAG_LABEL } = tc
-const { resolveClockPolicy, distanceToRingM, pointInRing, clockInPlaceCheck, fmtDistanceM, CLOCK_POLICY_DEFAULTS } = policy
+const { buildTimeCards, summarizeCards, reviewItems, timeCardsCsv, INTEGRITY_FLAGS, FLAG_LABEL, fmtMinutes } = tc
+const { resolveClockPolicy, nextClockPolicy, distanceToRingM, pointInRing, clockInPlaceCheck, fmtDistanceM, CLOCK_POLICY_DEFAULTS } = policy
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {
@@ -167,7 +167,7 @@ const flagsOf = (r) => r.flags.filter((f) => INTEGRITY_FLAGS.includes(f))
 
 // ── Photo policy ──────────────────────────────────────────────────────────
 {
-  const pol = { photoIn: true, photoOut: true }
+  const pol = { photoIn: true, photoOut: true, photoInSince: '2020-01-01T00:00:00Z', photoOutSince: '2020-01-01T00:00:00Z' }
   const e = entry({}); e.gps = cleanGps(e)
   ok('both photos missing: one sentence', rows(build([e], { policy: pol }))[0].findings.includes('No clock-in or clock-out photo'))
   const i = entry({ inPhoto: true }); i.gps = cleanGps(i)
@@ -177,6 +177,71 @@ const flagsOf = (r) => r.flags.filter((f) => INTEGRITY_FLAGS.includes(f))
   const both = entry({ inPhoto: true, outPhoto: true }); both.gps = cleanGps(both)
   ok('both present: nothing', rows(build([both], { policy: pol }))[0].review === false)
   ok('policy off: nothing', rows(build([e], { policy: { photoIn: false, photoOut: false } }))[0].review === false && rows(build([e]))[0].review === false)
+  // The switch went on AFTER the shift: nobody asked for a photo then (ship-check P1).
+  const later = { photoIn: true, photoOut: true, photoInSince: plus(e.outAt, 60), photoOutSince: plus(e.outAt, 60) }
+  ok('a switch flipped after the shift accuses nobody', rows(build([e], { policy: later }))[0].review === false, rows(build([e], { policy: later }))[0].findings)
+  const undated = { photoIn: true, photoOut: true }
+  ok('a switch on with no date accuses nobody', rows(build([e], { policy: undated }))[0].review === false)
+  const mid = { photoIn: true, photoOut: false, photoInSince: plus(e.inAt, -1) }
+  ok('a switch on a minute before clock-in applies', rows(build([e], { policy: mid }))[0].findings.includes('No clock-in photo'))
+}
+
+// ── The stored policy stamps its switches (ship-check P1) ─────────────────
+{
+  const off = CLOCK_POLICY_DEFAULTS
+  const on = nextClockPolicy(off, { ...off, photoIn: true }, '2026-09-23T12:00:00.000Z')
+  ok('off → on stamps now', on.photoInSince === '2026-09-23T12:00:00.000Z' && on.photoOutSince === null, on)
+  const still = nextClockPolicy(on, { ...on, atSite: true }, '2026-09-24T12:00:00.000Z')
+  ok('on → on keeps the original stamp', still.photoInSince === '2026-09-23T12:00:00.000Z', still)
+  const back = nextClockPolicy(still, { ...still, photoIn: false }, '2026-09-25T12:00:00.000Z')
+  ok('on → off drops the stamp', back.photoInSince === null && back.photoIn === false, back)
+  ok('resolve keeps a stamp only with its switch', resolveClockPolicy({ photoIn: false, photoInSince: '2026-01-01T00:00:00Z' }).photoInSince === null && resolveClockPolicy({ photoIn: true, photoInSince: '2026-01-01T00:00:00Z' }).photoInSince === '2026-01-01T00:00:00.000Z')
+  ok('resolve drops a garbage stamp', resolveClockPolicy({ photoIn: true, photoInSince: 'yesterday' }).photoInSince === null)
+}
+
+// ── An open shift gets an hour before "never on site" (ship-check P1) ─────
+{
+  const drivingIn = entry({ inAt: plus(new Date(NOW).toISOString(), -4), outAt: null })
+  drivingIn.gps = cleanGps(drivingIn, { fixes: 8, onSite: 0, firstOnSite: null, lastOnSite: null, inDistM: 6_000, lastFix: new Date(NOW).toISOString() })
+  const r1 = rows(build([drivingIn]))[0]
+  ok('4 min into a shift, driving in: not "never on site", not "mostly off-site"', !r1.flags.includes('never_on_site') && !r1.flags.includes('off_site'), r1.findings)
+  ok('… the tap itself 3.7 mi away is still noted', r1.flags.includes('in_away'))
+  const twoHours = entry({ inAt: plus(new Date(NOW).toISOString(), -120), outAt: null })
+  twoHours.gps = cleanGps(twoHours, { fixes: 200, onSite: 0, firstOnSite: null, lastOnSite: null, inDistM: 6_000 })
+  ok('two hours in with no on-site fix: never on site', rows(build([twoHours]))[0].flags.includes('never_on_site'))
+  const yardOpen = entry({ inAt: plus(new Date(NOW).toISOString(), -120), outAt: null })
+  yardOpen.gps = cleanGps(yardOpen, { fixes: 200, onSite: 0, firstOnSite: null, lastOnSite: null, inDistM: 6_000, inAtYard: true })
+  ok('an open yard start says nothing yet', rows(build([yardOpen]))[0].review === false, rows(build([yardOpen]))[0].findings)
+  const yardClosed = entry({}); yardClosed.gps = cleanGps(yardClosed, { fixes: 200, onSite: 0, firstOnSite: null, lastOnSite: null, inDistM: 6_000, inAtYard: true })
+  ok('a closed yard-start shift that never reached the site is called', rows(build([yardClosed]))[0].flags.includes('never_on_site'))
+}
+
+// ── A shop day stands still on purpose (ship-check P2) ────────────────────
+{
+  const shop = entry({ category: 'shop', zoneId: null, zoneName: null, inAt: at('07:00'), outAt: at('16:00') })
+  shop.gps = { fixes: 1000, onSite: 0, firstFix: shop.inAt, lastFix: shop.outAt, spreadM: 22, inDistM: null, outDistM: null, inAtYard: false, outAtYard: false }
+  ok('shop day: no "phone never moved"', !rows(build([shop]))[0].flags.includes('phone_still') && rows(build([shop]))[0].review === false, rows(build([shop]))[0].findings)
+}
+
+// ── Minutes read as hours past sixty ──────────────────────────────────────
+{
+  ok('fmtMinutes', fmtMinutes(45) === '45 min' && fmtMinutes(60) === '1 h' && fmtMinutes(2490) === '41 h 30 min', [fmtMinutes(45), fmtMinutes(60), fmtMinutes(2490)])
+  const e = entry({ inAt: at('06:00'), outAt: at('15:00') })
+  e.gps = cleanGps(e, { lastOnSite: at('12:30'), lastFix: e.outAt, outDistM: 5_000 })
+  ok('left 2 h 30 min before clocking out', rows(build([e]))[0].findings.includes('Left the site 2 h 30 min before clocking out'), rows(build([e]))[0].findings)
+}
+
+// ── Above the viewer: hours only ──────────────────────────────────────────
+{
+  const boss = entry({ userId: 'owner', personName: 'Owner', aboveViewer: true, inAt: at('06:00'), outAt: at('15:00') })
+  boss.gps = { fixes: 0, onSite: 0, firstFix: null, lastFix: null }
+  const r = rows(build([boss]))[0]
+  ok('no reads for a person above the viewer', r.review === false && r.findings.length === 0 && !r.flags.includes('no_gps'), r.flags)
+  const bossLong = entry({ userId: 'owner', personName: 'Owner', aboveViewer: true, inAt: at('05:00'), outAt: at('20:00'), deviceId: 'd-x' })
+  const peer = entry({ userId: 'u2', personName: 'Crew Two', deviceId: 'd-x' }); peer.gps = cleanGps(peer)
+  const rs = rows(build([bossLong, peer]))
+  ok('… a long shift still reads as a state, never as a doubt', rs.find((x) => x.userId === 'owner').flags.join(',') === 'long' && rs.find((x) => x.userId === 'owner').review === false)
+  ok('… and the peer still hears about the shared phone', rs.find((x) => x.userId === 'u2').flags.includes('shared_device'))
 }
 
 // ── A pre-120 database (the 103 shape) still works ────────────────────────
@@ -217,7 +282,7 @@ const flagsOf = (r) => r.flags.filter((f) => INTEGRITY_FLAGS.includes(f))
   const p = resolveClockPolicy({ photoIn: true, atSite: 'yes', siteRadiusM: '9000', junk: 1 })
   ok('booleans only, radius clamped high, unknown keys dropped', p.photoIn === true && p.atSite === false && p.siteRadiusM === 2000 && !('junk' in p), p)
   ok('radius clamped low', resolveClockPolicy({ siteRadiusM: 5 }).siteRadiusM === 50)
-  ok('a stored policy round-trips', JSON.stringify(resolveClockPolicy({ photoIn: true, photoOut: true, atSite: true, siteRadiusM: 300 })) === JSON.stringify({ photoIn: true, photoOut: true, atSite: true, siteRadiusM: 300 }))
+  ok('a stored policy round-trips', JSON.stringify(resolveClockPolicy({ photoIn: true, photoOut: true, atSite: true, siteRadiusM: 300, photoInSince: '2026-09-23T12:00:00.000Z', photoOutSince: '2026-09-23T12:00:00.000Z' })) === JSON.stringify({ photoIn: true, photoOut: true, atSite: true, siteRadiusM: 300, photoInSince: '2026-09-23T12:00:00.000Z', photoOutSince: '2026-09-23T12:00:00.000Z' }))
 }
 
 // ── Clock policy: geometry ────────────────────────────────────────────────

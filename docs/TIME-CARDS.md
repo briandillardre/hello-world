@@ -49,8 +49,8 @@ company off this data.
   closed.
 - **CSV** (`/api/timecards/export?week=`): one row per entry — person, date,
   in, out, break, paid hours, category, site, clocked-in-at, clocked-out-at,
-  GPS fixes, on-site %, flags, edited by, edit note, week regular, week OT,
-  entry id. Payroll-ready.
+  GPS fixes, on-site %, flags, findings (120), edited by, edit note, week
+  regular, week OT, entry id. Payroll-ready.
 - **Push to QuickBooks** per day: the existing `pushQboDayAction`
   (TimeActivity rows, 065) — needs the crew ↔ QBO employee mapping on
   /accounting and a live QBO connection.
@@ -185,8 +185,43 @@ default, `lib/clock-policy.ts`):**
 The 104 column guard learned the new columns: a session may set the
 clock-out device and photo only while closing its own open entry; the
 clock-in pair never changes from a session. **Harness:
-`node scripts/timecards-test.mjs` (66 assertions) — run it after ANY change
+`node scripts/timecards-test.mjs` (85 assertions) — run it after ANY change
 to `lib/timecards.ts` or `lib/clock-policy.ts`.**
+
+**The reviewer pass on 120 (same day, migration 121):**
+- **A session may only OPEN an entry** (121 `guard_time_entry_insert`): a
+  member's own JWT could insert a row already closed, with a photo path that
+  pointed at nothing, a break, an edit trail — and the photo policy read the
+  fake path as "photo present". Clock-in fields only on INSERT; the server
+  sets `in_photo_path` with the service role right after the insert; the
+  close is still the guarded UPDATE.
+- **Photos are stored only when the policy asks** (a photo in the payload of
+  a company with the switch off is ignored), only after the row exists, and
+  the shape (category, site UUID) is checked before anything is uploaded —
+  the first cut uploaded first and could be made to fail the insert after.
+- **Retention: 90 days.** The health cron removes clock photos older than 90
+  days (the row keeps its path, so the finding stays honest and the
+  thumbnail simply ends) and any object no row points at after a day.
+- **A switch has a date.** Turning a photo switch ON stamps `photoInSince` /
+  `photoOutSince`; a shift clocked in before the stamp is never accused of a
+  missing photo (a switch flipped on Wednesday used to flag Monday).
+- **An open shift gets an hour** before "Never on site" / "Mostly off-site"
+  is said (five fixes exist 2½ min after clock-in; every crew driving in
+  from the yard was on the list at 6:05), and an open yard start says nothing
+  until it closes. **Phone never moved** is site shifts only (a mechanic's
+  shop day stands still on purpose).
+- **Above your role, hours only.** A person who outranks the viewer gets no
+  GPS reads, no photos and no findings on that viewer's page/CSV/Ask AI
+  (`viewerRank`); a Foreman does not audit the owner — and the owner's phone
+  is hidden from lower ranks by 111, which used to read as "no phone fixes
+  at all" on the Manager's list. The stats RPC runs under the service role
+  for the entry ids the caller could read.
+- **Ask AI:** a bare number never picks a machine ("what happened at 3" is
+  not Truck 3); digits count only beside a word that matched the same name.
+- Known and documented: the shared-phone read is a heuristic for a human —
+  a device id is readable company-wide and a teammate could copy it into
+  their own phone to make someone else wear the flag; the photo policy is
+  the answer where that matters. Minutes ≥ 60 read as "2 h 30 min".
 
 Next: a "needs a look" line in the Friday wrap-up, a push to the manager the
 moment a shift closes with a red finding, and daily-OT states.
