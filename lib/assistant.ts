@@ -56,6 +56,17 @@ const ASK_STOP = new Set(['where', 'wheres', 'where\'s', 'is', 'are', 'was', 'th
   'locate', 'find', 'show', 'me', 'what', 'whats', 'right', 'now', 'currently', 'it', 'this', 'that', 'and', 'for', 'do', 'does', 'did',
   'today', 'tonight', 'please', 'hey', 'yo', 'can', 'you', 'tell', 'about', 'with', 'go', 'went', 'go'])
 const tokens = (s: string): string[] => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+/** What people call a make vs what the office typed on the asset — both
+ *  directions ("chevy" finds the Chevrolet, "volkswagen" finds the VW). */
+const MAKE_ALIASES: Record<string, string[]> = {
+  chevy: ['chevrolet'], chevrolet: ['chevy'],
+  vw: ['volkswagen'], volkswagen: ['vw'],
+  cat: ['caterpillar'], caterpillar: ['cat'],
+  deere: ['johndeere'], intl: ['international'], international: ['intl'],
+  freightliner: ['fl'], merc: ['mercedes'], mercedes: ['merc'],
+}
+const sameWord = (t: string, w: string): boolean =>
+  w === t || (t.length >= 3 && w.startsWith(t)) || (MAKE_ALIASES[t]?.some((a) => w === a || w.startsWith(a)) ?? false)
 
 export interface AssetPick { asset: AssetWithLocation | null; ambiguous: AssetWithLocation[] }
 
@@ -84,7 +95,7 @@ export function resolveAssetPick(ql: string, assets: AssetWithLocation[]): Asset
   let picks: AssetWithLocation[] = []
   for (const a of assets) {
     const n = tokens(a.name)
-    const hit = q.filter((t) => n.some((w) => w === t || (t.length >= 3 && w.startsWith(t))))
+    const hit = q.filter((t) => n.some((w) => sameWord(t, w)))
     const score = hit.some(strong) ? hit.length : 0
     if (!score) continue
     if (score > top) { top = score; picks = [a] }
