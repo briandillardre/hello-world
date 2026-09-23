@@ -58,14 +58,16 @@ export function DashboardShell({
       return next
     })
 
-  const askAi = !features || features.includes('ask_ai')
+  // A Prospective Client keeps the Ask AI button (Brian, Sep 23: "all
+  // buttons") — the panel answers that it is locked; the API refuses.
+  const askAi = !features || features.includes('ask_ai') || role === 'prospect'
   // The map runs edge-to-edge under the (overlaid) status bar; every other
   // page pads for it so its header is not under the clock.
   const pathname = usePathname()
   const edge = pathname?.startsWith('/map')
   return (
     <>
-      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} askAi={askAi} canViewAs={canViewAs} />
+      <Sidebar alertCount={alertCount} latestAlertAt={latestAlertAt} companyName={companyName} userName={userName} logoUrl={logoUrl} logoBg={logoBg} collapsed={collapsed} onToggle={toggle} onSignOut={signOutAction} features={features} role={role} askAi={askAi} canViewAs={canViewAs} />
       <main className={(collapsed ? 'md:ml-16' : 'md:ml-56') + ' flex-1 overflow-hidden transition-[margin] duration-200 flex flex-col' + (edge ? '' : ' ht-page-inset')}>
         {viewingAs && <ViewAsBanner name={viewingAs.name} roleLabel={viewingAs.roleLabel} />}
         {/* The receipt chase follows the cardholder onto every screen while a

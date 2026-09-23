@@ -2,6 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { getRealPermissions } from '@/lib/permissions-server'
+import { isProspect } from '@/lib/permissions'
+
+// A Prospective Client changes nothing (118). These actions write with the
+// service role, so the rule has to live here too, not only in RLS.
+const LOOK_ONLY = { ok: false as const, error: 'A Prospective Client login can look, not add — ask the owner who invited you for a full account.' }
 import type { FieldPhoto } from '@/lib/db/photos'
 
 /**
@@ -23,6 +28,7 @@ export async function createPhotoUploadAction(contentType: string, size: number)
   if (isMock) return { ok: false, error: 'Demo mode' }
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
+  if (isProspect(perms)) return LOOK_ONLY
   if (!EXT[contentType]) return { ok: false, error: 'That file isn’t a photo we can take (JPEG, PNG, WebP or HEIC).' }
   if (!size || size > MAX_BYTES) return { ok: false, error: 'Photo too large (25 MB max).' }
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -238,6 +244,7 @@ export async function finalizePhotoAction(input: {
   if (isMock) return { ok: false, error: 'Demo mode' }
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
+  if (isProspect(perms)) return LOOK_ONLY
   const { lat, lng } = input
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
     return { ok: false, error: 'No location on this photo — allow location or pick a photo that has one.' }
@@ -321,6 +328,7 @@ export async function movePhotoAction(id: string, geofenceId: string): Promise<{
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'That photo is gone.' }
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
+  if (isProspect(perms)) return LOOK_ONLY
   // A view-as preview is read-only by rule (096) — and getRealPermissions
   // deliberately ignores the cookie, so the check has to be explicit.
   const { getMyPermissions } = await import('@/lib/permissions-server')
@@ -358,6 +366,7 @@ export async function deletePhotoAction(id: string): Promise<{ ok: boolean; erro
   if (isMock) return { ok: false, error: 'Demo mode' }
   const perms = await getRealPermissions()
   if (!perms.userId || !perms.companyId) return { ok: false, error: 'Sign in first.' }
+  if (isProspect(perms)) return LOOK_ONLY
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, error: 'Bad id' }
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()

@@ -11,7 +11,15 @@ import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai
 import { timecardScope } from '@/lib/db/timecards'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
-import { rankOf } from '@/lib/permissions'
+import { rankOf, isProspect, type Permissions } from '@/lib/permissions'
+
+/** The 403 when the view-levels table says no. A Prospective Client keeps
+ *  the button (Brian, Sep 23) and gets the reason instead of a run. */
+const askAiLocked = (p: Pick<Permissions, 'role' | 'isMaster'>) => NextResponse.json({
+  error: isProspect(p)
+    ? 'Ask AI isn’t part of a Prospective Client login — it reads the whole company. Ask the owner who invited you for a full account if you’d like to try it.'
+    : 'Ask AI is not enabled for your role.',
+}, { status: 403 })
 
 export const dynamic = 'force-dynamic'
 
@@ -132,7 +140,7 @@ async function saveTurn(userId: string | null, companyId: string | null, questio
  *  search across the full history with ?q=. */
 export async function GET(request: NextRequest) {
   const perms = await getMyPermissions()
-  if (!perms.features.includes('ask_ai')) return NextResponse.json({ error: 'Ask AI is not enabled for your role.' }, { status: 403 })
+  if (!perms.features.includes('ask_ai')) return askAiLocked(perms)
   // A view-as preview shows an empty thread: the history is the admin's own.
   if (perms.viewingAs) return NextResponse.json({ messages: [], results: [] })
   const q = request.nextUrl.searchParams.get('q')?.trim()
@@ -168,7 +176,7 @@ export async function POST(request: NextRequest) {
     getMyPermissions(),
   ])
   // The view-levels table can switch Ask AI off for a role (094).
-  if (!perms.features.includes('ask_ai')) return NextResponse.json({ error: 'Ask AI is not enabled for your role.' }, { status: 403 })
+  if (!perms.features.includes('ask_ai')) return askAiLocked(perms)
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = safeTz(request.cookies.get('ht_tz')?.value)
 
@@ -214,7 +222,10 @@ export async function POST(request: NextRequest) {
   let degradedReason: string | null = null
   try {
     const client = new Anthropic({ apiKey })
-    const model = process.env.AI_MODEL || 'claude-opus-5'
+    // Sonnet 5 for the everyday assistant (Brian, Sep 23: "run a cheaper
+    // model for this purpose — Sonnet 5 should be fine for now"); AI_MODEL
+    // overrides. The monthly owner memo keeps Opus (AI_MODEL_DEEP, lib/memo.ts).
+    const model = process.env.AI_MODEL || 'claude-sonnet-5'
     const messages: Anthropic.MessageParam[] = [
       ...history.map((h) => ({ role: h.role, content: h.content })),
       { role: 'user' as const, content: question },
@@ -278,7 +289,12 @@ export async function POST(request: NextRequest) {
   const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
   const grounded = answerQuestion(question, ctx)
   if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, grounded.answer)
-  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason })
+  // Admins (and the owner) get the reason in the panel itself — "credit
+  // balance too low" or "invalid api key" read next to the answer beats a
+  // founder push nobody opens (Sep 23: credits were reloaded and nobody
+  // could tell from the app whether it had taken). Crew get the flag only.
+  const showReason = perms.isMaster || perms.role === 'admin'
+  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason, degradedReason: showReason && degradedReason ? degradedReason.slice(0, 300) : undefined })
 }
 
 /** One push per half hour, whatever the traffic — a broken key would

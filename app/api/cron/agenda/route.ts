@@ -62,7 +62,7 @@ async function composeWithAi(f: WeekFacts): Promise<string | null> {
     const { default: Anthropic } = await import('@anthropic-ai/sdk')
     const client = new Anthropic({ apiKey })
     const res = await client.messages.create({
-      model: process.env.AI_MODEL || 'claude-opus-4-8',
+      model: process.env.AI_MODEL || 'claude-sonnet-5',
       max_tokens: 500,
       system:
         'You write a field-operations company owner\'s MONDAY MORNING agenda from last week\'s fleet facts. Sharp dispatcher voice, plain sentences, under 140 words, no markdown. Order: 1) anything unsafe or alerting, 2) overdue maintenance/checks, 3) equipment problems (dark units, weak batteries), 4) money observations (machines that sat unused all week), 5) one-line crew hours recap. Use ONLY the facts given — never invent. Never mention tracker hardware brands. The noticed list is the trend engine\'s findings — open with the most important one.',

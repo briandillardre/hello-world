@@ -6,7 +6,7 @@ import { speechDoor, startSpeech, SPEECH_UPDATE_HINT, type SpeechDoor, type Spee
 import { toast } from '@/components/ui/feedback'
 import { SUGGESTED_QUESTIONS } from '@/lib/assistant'
 
-interface Msg { role: 'user' | 'assistant'; text: string; at?: string; degraded?: boolean }
+interface Msg { role: 'user' | 'assistant'; text: string; at?: string; degraded?: boolean; degradedReason?: string | null }
 
 // A "meaningful chat" = the latest burst of conversation. A gap this long
 // between turns starts a new session; older turns hide behind "Show earlier"
@@ -157,12 +157,15 @@ export function AssistantWidget() {
         body: JSON.stringify({ question, sinceTs: cutoffRef.current || undefined }),
       })
       const data = await res.json()
-      const answer = data.answer ?? "I couldn't work that one out."
+      // A 403 is the view-levels table talking — Ask AI off for the role, or
+      // a Prospective Client (the button shows, the tools never run) — so
+      // say what it said rather than "couldn't work that one out".
+      const answer = data.answer ?? (!res.ok && typeof data.error === 'string' ? data.error : "I couldn't work that one out.")
       // `degraded` = the AI service itself failed and this is the built-in
       // fallback engine talking. Without the label its one catch-all summary
       // comes back for every question and reads as "it repeated itself"
       // (Brian, Sep 11). Say so instead of pretending.
-      setMsgs((m) => [...m, { role: 'assistant', text: answer, degraded: !!data.degraded }])
+      setMsgs((m) => [...m, { role: 'assistant', text: answer, degraded: !!data.degraded, degradedReason: typeof data.degradedReason === 'string' ? data.degradedReason : null }])
       if (voiceModeRef.current) speak(answer)
     } catch {
       setMsgs((m) => [...m, { role: 'assistant', text: "I couldn't reach the fleet just now — try again in a sec." }])
@@ -331,7 +334,7 @@ export function AssistantWidget() {
                         {m.text}
                         {m.degraded && (
                           <span className="mt-1.5 block text-[10.5px] text-faint">
-                            Offline answer — the AI service didn&apos;t respond, so this is read straight from your data.
+                            Offline answer — the AI service didn&apos;t respond{m.degradedReason ? ` (${m.degradedReason})` : ''}, so this is read straight from your data.
                           </span>
                         )}
                       </div>

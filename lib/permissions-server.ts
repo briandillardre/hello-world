@@ -1,8 +1,8 @@
 import { cache } from 'react'
 import { cookies } from 'next/headers'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import {
-  resolvePermissions, outranks, normalizeRole,
+  resolvePermissions, outranks, normalizeRole, isProspect, PROSPECT_HIDDEN,
   type Permissions, type RolePolicy, type FeatureKey, type Role,
 } from './permissions'
 
@@ -123,10 +123,17 @@ export async function requireEditOrThrow(): Promise<Permissions> {
 }
 
 /** Page gate: 404 (never a hint that the page exists) when the caller's view
- *  levels don't include the feature. Use at the top of a page component. */
+ *  levels don't include the feature. Use at the top of a page component.
+ *  A Prospective Client (or the Master previewing one) lands on /locked
+ *  instead, where the page says what is locked and why — every page is in
+ *  their navs on purpose (Brian, Sep 23); the people and money pages stay
+ *  a 404 for them, as for everyone else. */
 export async function requireFeature(key: FeatureKey): Promise<Permissions> {
   const perms = await getMyPermissions()
-  if (!perms.features.includes(key)) notFound()
+  if (!perms.features.includes(key)) {
+    if (isProspect(perms) && !PROSPECT_HIDDEN.includes(key)) redirect(`/locked?f=${key}`)
+    notFound()
+  }
   return perms
 }
 

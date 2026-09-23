@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing, Plane } from 'lucide-react'
+import { Map, Package, Bell, Settings, Hexagon, LogOut, Wrench, BarChart3, Calculator, MonitorPlay, ChevronLeft, ChevronRight, Users, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Activity, HelpCircle, Sparkles, Cpu, Satellite, Camera, CalendarClock, BellRing, Plane, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { featureForPath } from '@/lib/permissions'
+import { navStateFor, lockedHref } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
 import { Logo } from '@/components/brand/Logo'
 import { ViewAsPicker } from './ViewAsPicker'
@@ -65,16 +65,22 @@ interface SidebarProps {
   fullCollapse?: boolean
   /** The caller's view levels (094). null = show everything (demo / pre-094). */
   features?: string[] | null
+  /** The EFFECTIVE role — a Prospective Client sees locked entries, not gaps. */
+  role?: string | null
   /** Ask AI view level — false hides every launcher (the widget is unmounted too). */
   askAi?: boolean
   /** Master/Admin, not already previewing: shows "View as…" under the company name. */
   canViewAs?: boolean
 }
 
-export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null, askAi = true, canViewAs = false }: SidebarProps) {
+export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = null, logoBg = null, alertCount = 0, latestAlertAt = null, onSignOut, collapsed = false, onToggle, fullCollapse = false, features = null, role = null, askAi = true, canViewAs = false }: SidebarProps) {
   // Pages outside the caller's view levels don't exist for them — not
   // greyed, not there. (The page itself 404s too; this keeps the two honest.)
-  const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
+  // The one exception is a Prospective Client (Brian, Sep 23): their nav
+  // shows every page, LOCKED where it is off for them, so the preview looks
+  // like the owner's own app and the lock says why.
+  const state = (href: string) => navStateFor(href, features, role)
+  const allowed = (href: string) => state(href) !== 'hidden'
   // "My phone" is the notification card for people who cannot open Settings
   // at all (it lives inside that page for everyone else) — one row, not two.
   const show = (href: string) => allowed(href) && !(href === '/settings/phone' && allowed('/settings'))
@@ -176,24 +182,28 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         {section.title && collapsed && <div className="mx-3 my-1.5 border-t border-navy-800" />}
         <div className="space-y-0.5">
         {section.items.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
+          const locked = state(href) === 'locked'
+          const active = !locked && pathname.startsWith(href)
           const isAlerts = href === '/alerts'
           return (
             <Link
               key={href}
-              href={href}
-              title={collapsed ? label : undefined}
+              href={locked ? lockedHref(href) : href}
+              title={locked ? `${label} — not in your preview` : collapsed ? label : undefined}
               className={cn(
                 'relative flex items-center rounded-lg text-[13px] font-medium transition-colors',
                 collapsed ? 'justify-center py-2' : 'gap-2.5 px-3 py-[6px]',
                 active
                   ? 'bg-amber/15 text-amber border border-amber/30'
-                  : 'text-muted hover:text-ink hover:bg-navy-900'
+                  : locked ? 'text-faint/70 hover:text-faint hover:bg-navy-900' : 'text-muted hover:text-ink hover:bg-navy-900'
               )}
             >
               <Icon className="h-4 w-4 flex-shrink-0" />
               {!collapsed && <span>{label}</span>}
-              {isAlerts && unseen > 0 && (
+              {locked && (collapsed
+                ? <Lock className="absolute top-0.5 right-1.5 h-2.5 w-2.5 text-faint/70" />
+                : <Lock className="ml-auto h-3 w-3 text-faint/70" />)}
+              {isAlerts && !locked && unseen > 0 && (
                 collapsed ? (
                   <span className="absolute top-0.5 right-1.5 bg-alert text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
                     {unseen > 9 ? '9+' : unseen}

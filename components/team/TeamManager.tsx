@@ -231,7 +231,7 @@ function MemberRow({
           {m.email && <p className="text-xs text-faint truncate">{m.email}</p>}
           {m.role === 'prospect' && (
             // Only the Master ever sees this row (118) — say what the role means here.
-            <p className="text-[11px] text-[#c4b5fd] leading-snug mt-0.5">Prospective Client · only you can see this person · they see the map and the machines, never the team, and can change nothing</p>
+            <p className="text-[11px] text-[#c4b5fd] leading-snug mt-0.5">Prospective Client · only you can see this person · they see the product the way you do (locked pages say so) — never the team, the money or the crew’s side — and can change nothing</p>
           )}
         </div>
         {m.manageable ? (
@@ -342,7 +342,7 @@ function ViewLevels({ policy, editableRoles, isMaster }: { policy: RolePolicy; e
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-faint">Defaults: Manager sees job costs and receipts but not the books; Foreman sees no dollar figures; Associate gets the map, clock, logs, maintenance and tags.</p>
+      <p className="text-[11px] text-faint">Defaults: Manager sees job costs and receipts but not the books; Foreman sees no dollar figures; Associate gets the map, clock, logs, maintenance and tags; a Prospective Client gets the map, Command Center, alerts, assets, zones, measurements, maintenance and reports — everything else shows locked for them.</p>
     </section>
   )
 }
@@ -365,7 +365,7 @@ function GroupRows({ group, editableRoles, policy, busy, onFlip }: {
             // A Prospective Client can never be handed these (119): the
             // server strips them last, so the switch would lie.
             if (r === 'prospect' && PROSPECT_NEVER.includes(f.key)) {
-              return <td key={r} className="px-2 py-1.5 text-center"><span className="text-faint" title="Never for a Prospective Client">—</span></td>
+              return <td key={r} className="px-2 py-1.5 text-center"><span className="text-faint" title="Never for a Prospective Client — shows locked in their navs">—</span></td>
             }
             const eff = featuresForRole(r, policy)[f.key]
             const def = ROLE_FEATURE_DEFAULTS[r][f.key]

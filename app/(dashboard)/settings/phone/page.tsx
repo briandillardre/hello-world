@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { PushPrefs } from '@/components/settings/PushPrefs'
 import { loadMyPushPrefs } from '@/lib/db/person-notify'
 import { getMyPermissions } from '@/lib/permissions-server'
+import { isProspect } from '@/lib/permissions'
 
 export const metadata = { title: 'HammerTrack — My phone' }
 export const dynamic = 'force-dynamic'
@@ -25,7 +26,11 @@ export default async function MyPhonePage() {
         <h1 className="text-xl font-bold text-ink">My phone</h1>
       </div>
       <div className="p-4 space-y-4 max-w-xl">
-        {mine ? (
+        {isProspect(perms) ? (
+          <p className="rounded-xl border border-navy-800 bg-navy-900 p-4 text-sm text-faint">
+            Notifications aren’t part of a Prospective Client login — nothing is sent to your phone.
+          </p>
+        ) : mine ? (
           // The page heading already says "My phone" — compact drops the
           // card's own duplicate title, keeps everything else identical.
           <section className="rounded-xl border border-navy-800 bg-navy-900 p-4">

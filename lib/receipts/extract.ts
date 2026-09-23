@@ -43,7 +43,7 @@ export async function extractReceiptFields(
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: opts.apiKey })
   const res = await client.messages.create({
-    model: opts.model || process.env.AI_MODEL || 'claude-opus-4-8',
+    model: opts.model || process.env.AI_MODEL || 'claude-sonnet-5',
     max_tokens: 400,
     system:
       'You read receipt/invoice photos for a business\'s books. Reply with ONLY JSON:\n' +
