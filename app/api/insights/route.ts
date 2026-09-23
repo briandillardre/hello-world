@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
+import { isProspect } from '@/lib/permissions'
 import { DEMO_INSIGHTS, getActiveInsights, insightQuestion, runInsightsEngine } from '@/lib/insights'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
 
@@ -42,6 +43,10 @@ export async function GET() {
   if (!(await requireUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
+  // The insights table is outside a Prospective Client's allow-list (119);
+  // this route reads with the service role, so the rule lives here too —
+  // the Command Center and the Ask AI chips ask for it now (ship-check P2).
+  if (isProspect(perms)) return NextResponse.json({ insights: [], questions: [] }, NO_STORE)
   const { createServiceClient } = await import('@/lib/supabase-server')
   const db = createServiceClient()
 
@@ -90,6 +95,9 @@ export async function POST(req: NextRequest) {
   }
 
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
+  // Dismissal is company-wide state: never from a read-only preview, never
+  // by a Prospective Client (ship-check, Sep 23).
+  if (perms.viewingAs || isProspect(perms)) return NextResponse.json({ error: 'read-only' }, { status: 403 })
   const { createServiceClient } = await import('@/lib/supabase-server')
   let q = createServiceClient()
     .from('insights')

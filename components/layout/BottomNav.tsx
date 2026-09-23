@@ -321,6 +321,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 {/* Settings is an Admin view level, so for everyone else this
                     goes to the one page nobody needs permission for: their own
                     phone's notification switches (ship-check, Sep 12). */}
+                {(isOpen('/settings') || role !== 'prospect') && (
                 <Link
                   href={isOpen('/settings') ? '/settings' : '/settings/phone'}
                   onClick={closeDrawer}
@@ -330,6 +331,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                     ? <><Settings className="h-4 w-4" /> Account</>
                     : <><BellRing className="h-4 w-4" /> My phone</>}
                 </Link>
+                )}
                 {onSignOut && (
                   <button
                     onClick={() => { closeDrawer(); onSignOut() }}

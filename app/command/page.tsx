@@ -109,6 +109,7 @@ export default async function CommandPage() {
       userName={company.userName}
       navOrder={company.navOrder}
       role={perms.role}
+      features={perms.features}
       brand={{ companyName: company.name, logoUrl: company.logoUrl }}
     />
   )

@@ -1,6 +1,14 @@
 'use server'
 
-import { requireEditOrThrow } from '@/lib/permissions-server'
+import { requireEditOrThrow, getMyPermissions } from '@/lib/permissions-server'
+import { isProspect } from '@/lib/permissions'
+
+/** A read-only preview (view-as) or a Prospective Client never acknowledges
+ *  a real alert — the UI hides the buttons, this refuses a direct call. */
+async function canAck(): Promise<boolean> {
+  const p = await getMyPermissions()
+  return !p.viewingAs && !isProspect(p)
+}
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { acknowledgeAlert, acknowledgeAlerts, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
@@ -9,6 +17,7 @@ import type { AlertRule, AlertRuleParams, AlertTrigger } from '@/lib/types'
 export async function acknowledgeAlertAction(id: string): Promise<{ ok: boolean }> {
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (typeof id !== 'string' || !UUID.test(id)) return { ok: false }
+  if (!(await canAck())) return { ok: false }
   try {
     await acknowledgeAlert(id)
   } catch {
@@ -25,6 +34,7 @@ export async function acknowledgeManyAlertsAction(ids: string[]): Promise<{ ok: 
   // UPDATE silently while the UI painted everything acked (sec-check P2).
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const clean = (Array.isArray(ids) ? ids : []).filter((v): v is string => typeof v === 'string' && UUID.test(v)).slice(0, 500)
+  if (!(await canAck())) return { ok: false }
   try {
     await acknowledgeAlerts(clean)
   } catch {
