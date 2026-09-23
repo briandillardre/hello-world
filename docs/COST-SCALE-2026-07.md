@@ -20,7 +20,7 @@ Hiring/P&L curve: OPERATING-MODEL.md — this doc is COGS + opex only.*
 | ntfy / CARTO / Photon / open-meteo / GIBS | $0 | free tiers doing real work |
 | **Fixed total** | **~$130/mo** | pre-revenue burn, software side |
 
-Stripe (2.9% + 30¢) and AI usage (Haiku dispatcher + the monthly Opus memo)
+Stripe (2.9% + 30¢) and AI usage (the Sonnet 5 assistant + digests, Haiku for classification, the monthly Opus memo)
 are usage-priced — near zero until customers exist, then they scale with
 revenue below.
 
@@ -30,7 +30,7 @@ revenue below.
 |---|---|---|
 | SIM-carrying machine (OBD / TAT / CAN) | ~$2.50 SIM + $0 flespi | well under $2/mo (confidential KORE quote) SIM + ~$0.50 flespi |
 | Bluetooth tool tag | $0 | $0 |
-| AI (Run tier only) | — | ~$0.50–2/customer (Haiku tokens) |
+| AI (Run tier only) | — | ~$0.50–2/customer (Sonnet 5 for Ask AI + digests since Sep 23; Haiku for classification) |
 | AI owner memo (all tiers, Aug 27) | — | pennies/customer (one deep-model compose per company per month + on-demand refresh, 30-min floor) |
 
 Hardware is a **pass-through at cost** (OBD ~$86, equipment GPS ~$85, tag
@@ -50,7 +50,7 @@ List blend (60% Operate) → ~$113/customer.
 | SIM + flespi COGS | ~$20² | ~$400 | ~$1,360 | ~$6,000 |
 | Fixed infra | $130 | $130 | ~$300¹ | ~$900¹ |
 | Stripe fees | $0 | ~$70 | ~$330 | ~$1,650 |
-| AI usage (Haiku dispatcher + monthly Opus memo) | $0 | ~$30 | ~$150 | ~$700 |
+| AI usage (Sonnet 5 assistant + digests, monthly Opus memo) | $0 | ~$30 | ~$150 | ~$700 |
 | **Total cost** | **~$150** | **~$630** | **~$2,140** | **~$9,250** |
 | **Gross margin** | — | **70%** | **81%** | **83%** |
 
