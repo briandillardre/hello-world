@@ -44,7 +44,7 @@ export const ROLE_BLURB: Record<Role, string> = {
   manager: 'Runs operations; sees job costs, not the books',
   foreman: 'Runs the day — no dollar figures',
   associate: 'Crew login — clock in, logs, maintenance, the map',
-  prospect: 'Looking around — sees the map and the machines, never the team; invisible to everyone but you; can change nothing',
+  prospect: 'Looks around the live account — the map, Command Center, the machines and sites; the crew, office and money pages show locked; invisible to everyone but you; changes nothing',
 }
 
 /**
@@ -106,9 +106,20 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key)
 export const MASTER_ONLY: FeatureKey[] = FEATURES.filter((f) => f.masterOnly).map((f) => f.key)
 /** What a Prospective Client can never be given, whatever the view-levels
  *  table says: every write ability, every people page, every money page,
- *  the wall and the AI (its tools name people). The Master may still show
- *  them MORE of the product — reports, maintenance, alerts, the flight log. */
-export const PROSPECT_NEVER: FeatureKey[] = ['edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'command', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'finance', 'settings', 'trackers', 'hardware']
+ *  the crew's own side (clock, logs, tags, share location — each would put
+ *  THEIR phone or their words into the company's records) and the office
+ *  side (receipts, accounting, settings, trackers, hardware — the tables
+ *  behind them are unreadable for the role, 119), plus the AI (its tools
+ *  read the whole company with the service role). Since Sep 23 these show
+ *  in the navs as LOCKED (see navStateFor) instead of not existing —
+ *  except PROSPECT_HIDDEN. Everything else — the map, Command Center,
+ *  alerts, the flight log, assets, zones, measurements, maintenance,
+ *  reports — the Master switches per company in the view-levels table. */
+export const PROSPECT_NEVER: FeatureKey[] = ['edit', 'costs', 'billing', 'manage_team', 'ask_ai', 'team', 'activity', 'finance', 'clock', 'logs', 'track', 'tags', 'receipts', 'accounting', 'settings', 'trackers', 'hardware']
+/** The pages a Prospective Client must not even see in a nav (Brian, Sep
+ *  23: "they should not see team or financials or be seen by anyone else on
+ *  the team except for me"). Absent from every nav, 404 on a typed URL. */
+export const PROSPECT_HIDDEN: FeatureKey[] = ['team', 'activity', 'finance']
 /** What the view-levels table is allowed to show and store. */
 export const GRANTABLE_FEATURES: FeatureDef[] = FEATURES.filter((f) => !f.masterOnly)
 
@@ -140,11 +151,12 @@ export const ROLE_FEATURE_DEFAULTS: Record<Role, Record<FeatureKey, boolean>> = 
     'receipts',
     'ask_ai',
   ),
-  // A prospect looks: the map, the machines, the zones. No clock or share-
-  // location (either would put THEIR phone on the map as a person), no Ask
-  // AI (it reads the company's data and costs per call), no dollars. The
-  // Master widens this per company in the view-levels table.
-  prospect: on('map', 'assets', 'zones'),
+  // A prospect looks at the product the way the owner does (Brian, Sep 23:
+  // "they should see what I see — command center, all buttons"): every page
+  // the role CAN hold is on by default; the Master narrows per company in
+  // the view-levels table. The crew's side, the office side, people and
+  // money are PROSPECT_NEVER — locked in the navs, never switchable.
+  prospect: on('map', 'command', 'alerts', 'aircraft', 'assets', 'zones', 'measurements', 'maintenance', 'reports'),
 }
 
 /** Company-wide override on the defaults: role → feature → on/off. Sparse. */
@@ -240,6 +252,12 @@ export function rankOf(p: Pick<Permissions, 'role' | 'isMaster'>): number {
   return p.isMaster ? MASTER_RANK : RANK[p.role]
 }
 
+/** A Prospective Client login — never the Master; a Master's view-as preview
+ *  of one counts, so the preview shows exactly what the prospect gets. */
+export function isProspect(p: Pick<Permissions, 'role' | 'isMaster'>): boolean {
+  return !p.isMaster && p.role === 'prospect'
+}
+
 /** May `actor` manage / preview / read the AI chats of `target`? Strictly
  *  DOWN the ladder; the Master over everyone; nobody over the Master. A
  *  Prospective Client answers to the Master alone (118). */
@@ -294,6 +312,34 @@ export function featureForPath(pathname: string): FeatureKey | null {
   let best: [string, FeatureKey] | null = null
   for (const m of map) if (pathname === m[0] || pathname.startsWith(m[0] + '/')) if (!best || m[0].length > best[0].length) best = m
   return best?.[1] ?? null
+}
+
+// ── How a nav entry shows ───────────────────────────────────────────────────
+export type NavState = 'open' | 'locked' | 'hidden'
+/**
+ * Everyone: a page outside your view levels does not exist for you — absent
+ * from the navs, 404 on a typed URL (Brian, Sep 11). A Prospective Client is
+ * the one exception (Brian, Sep 23: "they should see what I see — command
+ * center, all buttons, but the ones they don't have access to should show
+ * some 'sorry, you do not have access to this'"): every page shows, LOCKED
+ * when it is off for them, and the lock opens /locked, which says so —
+ * except the people and money pages (PROSPECT_HIDDEN), which stay hidden.
+ * `role` is the EFFECTIVE role (a Master previewing a prospect passes
+ * 'prospect'), so the preview is the prospect's own screen.
+ */
+export function navStateFor(pathname: string, features: string[] | null | undefined, role?: string | null): NavState {
+  const k = featureForPath(pathname)
+  if (!features || !k || features.includes(k)) return 'open'
+  if (role === 'prospect' && !PROSPECT_HIDDEN.includes(k)) return 'locked'
+  return 'hidden'
+}
+/** Where a locked nav entry goes: the page that says what is locked and why. */
+export function lockedHref(pathname: string): string {
+  return `/locked?f=${featureForPath(pathname) ?? ''}`
+}
+/** The view-levels label for a feature key (the /locked page's headline). */
+export function featureLabel(key: string | null | undefined): string | null {
+  return FEATURES.find((f) => f.key === key)?.label ?? null
 }
 
 // ── Per-asset visibility (111) ──────────────────────────────────────────────

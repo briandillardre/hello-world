@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     // Stream to the final message — adaptive thinking + a 2k budget can run long
     // enough to trip a non-streaming request timeout.
     const res = await client.messages.stream({
-      model: process.env.AI_MODEL || 'claude-opus-4-8',
+      model: process.env.AI_MODEL || 'claude-sonnet-5',
       max_tokens: 2000,
       thinking: { type: 'adaptive' },
       system:

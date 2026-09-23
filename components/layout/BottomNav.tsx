@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane } from 'lucide-react'
+import { Map, Package, Bell, MoreHorizontal, Sparkles, Wrench, BarChart3, Calculator, Settings, Hexagon, X, MonitorPlay, Users, LogOut, UserCircle, Rocket, Clock, ClipboardList, Receipt, Ruler, Bluetooth, Scale, Radio, HelpCircle, Pencil, Check, Cpu, Satellite, Activity, Camera, CalendarClock, BellRing, Plane, Lock } from 'lucide-react'
 import { ViewAsPicker } from './ViewAsPicker'
 import { cn } from '@/lib/utils'
-import { featureForPath } from '@/lib/permissions'
+import { navStateFor, lockedHref } from '@/lib/permissions'
 import { useUnseenAlertCount } from './unseen-alerts'
 
 // ONE ordered list of every phone destination. The first 4 fill the bottom
@@ -60,6 +60,9 @@ const ROLE_BARS: Record<string, string[]> = {
   manager: ['/map', '/assets', '/alerts', '/clock', '/reports'],
   foreman: ['/map', '/clock', '/alerts', '/logs', '/track'],
   associate: ['/map', '/clock', '/alerts', '/logs', '/maintenance'],
+  // A Prospective Client's bar seats only pages that are OPEN for them —
+  // the locked ones live in the drawer (Brian, Sep 23).
+  prospect: ['/map', '/command', '/alerts', '/assets', '/zones'],
 }
 const canonOrder = (role?: string | null): string[] => {
   const bar = ROLE_BARS[role ?? ''] ?? ROLE_BARS.admin
@@ -119,7 +122,11 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   const [order, setOrder] = useState<string[]>(() => sanitizeOrder(navOrder, canon) ?? canon)
   // View levels: pages outside them are not in the bar, the drawer, or the
   // edit grid. The saved order keeps them (a role change brings them back).
-  const allowed = (href: string) => { const k = featureForPath(href); return !features || !k || features.includes(k) }
+  // A Prospective Client (Brian, Sep 23) sees every page in the DRAWER,
+  // locked where it is off for them; the bar itself seats open pages only.
+  const state = (href: string) => navStateFor(href, features, role)
+  const allowed = (href: string) => state(href) !== 'hidden'
+  const isOpen = (href: string) => state(href) === 'open'
   const [editing, setEditing] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
 
@@ -159,8 +166,9 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
   // center of the 7 cells (Brian, Aug 22: "update this to five and center
   // the ask AI").
   const ordered = order.filter(allowed).map((h) => byHref[h]).filter(Boolean)
-  const barItems = ordered.slice(0, BAR_COUNT)
-  const moreActive = ordered.slice(BAR_COUNT).some((i) => pathname.startsWith(i.href))
+  const openItems = ordered.filter((i) => isOpen(i.href))
+  const barItems = openItems.slice(0, BAR_COUNT)
+  const moreActive = openItems.filter((i) => !barItems.includes(i)).some((i) => pathname.startsWith(i.href))
 
   const swap = (a: string, b: string) => {
     const ia = order.indexOf(a), ib = order.indexOf(b)
@@ -227,24 +235,25 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
             {(() => {
               const renderTile = (item: (typeof allItems)[number]) => {
                 const { href, label, icon: Icon } = item
-                const idx = ordered.indexOf(item)
-                const inBar = idx < BAR_COUNT
-                const active = pathname.startsWith(href)
+                const locked = !isOpen(href)
+                const inBar = barItems.includes(item)
+                const active = !locked && pathname.startsWith(href)
                 const tile = (
                   <>
                     <span className="relative">
                       <Icon className="h-5 w-5" />
-                      {alertBadge(href)}
+                      {!locked && alertBadge(href)}
                     </span>
                     {label}
                     {inBar && <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-amber" />}
+                    {locked && <Lock className="absolute top-1.5 right-1.5 h-3 w-3 text-faint/70" />}
                   </>
                 )
                 const base = cn(
                   'relative flex flex-col items-center gap-1.5 py-3 rounded-xl text-xs font-medium',
                   active && !editing ? 'bg-amber/15 text-amber'
                     : inBar ? 'bg-amber/[0.07] border border-amber/25 text-muted'
-                    : 'text-muted',
+                    : locked ? 'text-faint/70' : 'text-muted',
                   !editing && 'hover:bg-navy-900'
                 )
                 return editing ? (
@@ -261,7 +270,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                     {tile}
                   </button>
                 ) : (
-                  <Link key={href} href={href} onClick={closeDrawer} className={base}>
+                  <Link key={href} href={locked ? lockedHref(href) : href} onClick={closeDrawer} className={base}>
                     {tile}
                   </Link>
                 )
@@ -270,7 +279,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
               // editing). Browsing: grouped by job, same architecture as the
               // desktop sidebar (Grok-doc consensus).
               return editing ? (
-                <div className="grid grid-cols-3 gap-3">{ordered.map(renderTile)}</div>
+                <div className="grid grid-cols-3 gap-3">{openItems.map(renderTile)}</div>
               ) : (
                 <div className="space-y-4">
                   {(() => {
@@ -313,11 +322,11 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                     goes to the one page nobody needs permission for: their own
                     phone's notification switches (ship-check, Sep 12). */}
                 <Link
-                  href={allowed('/settings') ? '/settings' : '/settings/phone'}
+                  href={isOpen('/settings') ? '/settings' : '/settings/phone'}
                   onClick={closeDrawer}
                   className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium text-muted bg-navy-900 hover:text-ink"
                 >
-                  {allowed('/settings')
+                  {isOpen('/settings')
                     ? <><Settings className="h-4 w-4" /> Account</>
                     : <><BellRing className="h-4 w-4" /> My phone</>}
                 </Link>
@@ -406,7 +415,7 @@ export function BottomNav({ alertCount = 0, latestAlertAt = null, companyName, u
                 the More button — a theft alert must never be invisible. */}
             <span className="relative">
               <MoreHorizontal className="h-5 w-5" />
-              {ordered.findIndex((i) => i.href === '/alerts') >= BAR_COUNT && alertBadge('/alerts')}
+              {!barItems.some((i) => i.href === '/alerts') && isOpen('/alerts') && alertBadge('/alerts')}
             </span>
             <span>More</span>
           </button>

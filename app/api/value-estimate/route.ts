@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const { default: Anthropic } = await import('@anthropic-ai/sdk')
     const client = new Anthropic({ apiKey })
     const res = await client.messages.create({
-      model: process.env.AI_MODEL || 'claude-opus-4-8',
+      model: process.env.AI_MODEL || 'claude-sonnet-5',
       max_tokens: 300,
       system:
         'You estimate US used-market value ranges for work vehicles and equipment (construction, landscaping, agriculture, hauling). Reply with ONLY a JSON object: {"range":"$X–$Y","note":"one short sentence on the main value driver"}. Round to sensible increments. If the item is too ambiguous to price, use {"range":null,"note":"why"}.',
