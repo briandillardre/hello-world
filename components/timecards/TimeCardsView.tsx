@@ -209,7 +209,10 @@ export function TimeCardsView({ cards, verified, integrity = verified, week, tz,
                   <p className="font-display font-bold text-ink text-lg tabular-nums">{h1(c.hours)} <span className="text-[11px] text-faint font-mono">h</span></p>
                   <p className="text-[11px] text-faint tabular-nums">
                     {c.overtime > 0 ? <><span className="text-amber">{h1(c.overtime)} OT</span> · </> : null}
-                    {c.verifiedPct == null ? (verified ? <span className="text-red-300">no GPS</span> : '—') : <span className={c.verifiedPct >= 80 ? 'text-teal' : c.verifiedPct >= 50 ? 'text-amber' : 'text-red-300'}>{c.verifiedPct}% on-site</span>}
+                    {c.verifiedPct == null
+                      // A person above the viewer is hours only (no reads), never "no GPS".
+                      ? (verified && !c.days.some((d) => d.entries.some((e) => e.aboveViewer)) ? <span className="text-red-300">no GPS</span> : '—')
+                      : <span className={c.verifiedPct >= 80 ? 'text-teal' : c.verifiedPct >= 50 ? 'text-amber' : 'text-red-300'}>{c.verifiedPct}% on-site</span>}
                   </p>
                 </div>
                 {isOpen ? <ChevronUp className="h-4 w-4 text-faint flex-none" /> : <ChevronDown className="h-4 w-4 text-faint flex-none" />}
