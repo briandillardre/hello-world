@@ -11,6 +11,7 @@ import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai
 import { timecardScope } from '@/lib/db/timecards'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
+import { rankOf } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -203,6 +204,7 @@ export async function POST(request: NextRequest) {
     // Foreman+ the crew's, and the `clock` view level gates the tool at all.
     features: perms.features,
     timecardUserIds: timecardScope(perms, userId).userIds,
+    timecardViewerRank: rankOf(perms),
   }
   // One brain, three doors (task #28): the in-app assistant serves the shared
   // MCP registry too — zone costs (cost-permission gated), maintenance, tool

@@ -439,6 +439,12 @@ export const GUIDES: HelpGuide[] = [
               No sites in the list yet? Someone needs to draw a zone first — see{' '}
               <B>Zones 101</B>. Until then, Shop works.
             </P>
+            <P>
+              Your office can also ask for a quick <B>photo at clock-in</B> (the front camera opens when you
+              tap — the picture sits on your time card) and set clock-in to work <B>only at the site or the
+              yard</B>; from the road it tells you how far you are and waits. Admins turn those on in{' '}
+              <B>Settings → Time clock</B>.
+            </P>
           </>
         ),
       },
@@ -480,7 +486,11 @@ export const GUIDES: HelpGuide[] = [
               <B>Time cards</B> (Field group) shows the week: paid hours split regular / overtime at 40,
               hours by site, each entry&apos;s clock-in and clock-out with <B>where</B> they happened, and
               a <B>GPS-verified %</B> — how much of the clocked time the phone actually placed on that
-              site. Flags say what to look at: <B>Still clocked in · No GPS · Mostly off-site · Long shift · Edited</B>.
+              site. Flags say what to look at: <B>Still clocked in · No GPS · Mostly off-site · Long shift · Edited</B> —
+              and, read off the phone&apos;s own record of the shift, <B>Never on site · Shared phone · Clocked in
+              away · Arrived after clock-in · Left before clock-out · Phone never moved</B>, each with its reason in
+              a line (“On site 19 min after clocking in”, “Same phone as a teammate”). Managers get a{' '}
+              <B>Needs a look</B> list at the top of the page, worst first; the same lines ride the CSV.
             </P>
             <P>
               Crew see their own card; Foreman and up see the crew&apos;s. The office exports the week as

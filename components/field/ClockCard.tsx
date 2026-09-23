@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, HardHat, Camera, Receipt, LogIn, LogOut, ShieldAlert, Fuel, Check, Images, CloudOff, WifiOff } from 'lucide-react'
 import { clockInAction, clockOutAction } from '@/lib/actions/fieldops'
+import { getDeviceId } from '@/lib/device-id'
+import { shrinkPhoto, blobToDataUrl } from '@/lib/image-shrink'
+import { CLOCK_POLICY_DEFAULTS, type ClockPolicy } from '@/lib/clock-policy'
 import { enqueue, pending, stashFormData, newIdempotencyKey, type QueueFlushDetail } from '@/lib/offline-queue'
 import { toast } from '@/components/ui/feedback'
 import { busy as trackBusy } from '@/lib/busy'
@@ -45,7 +48,7 @@ function elapsedLabel(sinceIso: string, now: number): string {
   return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`
 }
 
-export function ClockCard({ openEntry, zones, available, personName, demo = false, form = [] }: {
+export function ClockCard({ openEntry, zones, available, personName, demo = false, form = [], policy = CLOCK_POLICY_DEFAULTS }: {
   openEntry: TimeEntry | null
   zones: { id: string; name: string; center?: [number, number] | null }[]
   available: boolean
@@ -54,6 +57,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   demo?: boolean
   /** The admin-built daily-log form (enabled items only, in order). */
   form?: LogFormItem[]
+  /** The company's clock policy (120): photo at clock-in / clock-out, clock-in at the site. */
+  policy?: ClockPolicy
 }) {
   const router = useRouter()
   const [category, setCategory] = useState<ClockCategory>('project')
@@ -111,6 +116,22 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const [photoFiles, setPhotoFiles] = useState<Record<string, { file: File; url: string }[]>>({})
   const photoFilesRef = useRef(photoFiles)
   photoFilesRef.current = photoFiles
+  // The clock-out photo (policy photoOut, 120): the front camera, shrunk on
+  // the phone, one thumbnail; the clock-out button waits for it.
+  const [outPhoto, setOutPhoto] = useState<{ blob: Blob; url: string } | null>(null)
+  const outPhotoRef = useRef(outPhoto)
+  outPhotoRef.current = outPhoto
+  const pickOutPhoto = async (picked: FileList | null) => {
+    const f = picked?.[0]
+    if (!f) return
+    // No raw-file fallback: the server takes ≤ 400 KB, so a camera original
+    // would show a thumbnail here and be refused there — a clock-out nobody
+    // could finish (ship-check). Same honest answer as clock-in.
+    const blob = await shrinkPhoto(f)
+    if (!blob) { setError('That photo couldn’t be read — try taking it again.'); return }
+    setError(null)
+    setOutPhoto((p) => { if (p) URL.revokeObjectURL(p.url); return { blob, url: URL.createObjectURL(blob) } })
+  }
   // Required photo fields with nothing picked yet — the clock-out button
   // waits for them (Brian, Sep 9: "daily reports … should require photos").
   const missingPhotos = form
@@ -158,6 +179,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     for (const list of Object.values(photoFilesRef.current)) {
       for (const f of list) URL.revokeObjectURL(f.url)
     }
+    if (outPhotoRef.current) URL.revokeObjectURL(outPhotoRef.current.url)
   }, [])
 
   const addPhotos = (name: string, picked: FileList | null) => {
@@ -203,10 +225,24 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     )
   }
 
-  const clockIn = async () => {
+  /** `photo` = the clock-in selfie when the company requires one (policy
+   *  photoIn) — the camera input's pick calls this; otherwise the button. */
+  const clockIn = async (photo: File | null = null) => {
     if (busy) return
     setBusy(true)
     setError(null)
+    // Shrink the selfie first (720 px JPEG, ~100 KB) so it can ride inside
+    // the action — and inside the offline queue if there is no signal.
+    let inPhoto: string | null = null
+    if (photo) {
+      const small = await shrinkPhoto(photo)
+      inPhoto = small ? await blobToDataUrl(small) : null
+      if (!inPhoto) {
+        setBusy(false)
+        setError('That photo couldn’t be read — try taking it again.')
+        return
+      }
+    }
     // Location is REQUIRED to clock in (Brian, Sep 9: "clock in also a must
     // and mandatory tracking thru app while clocked in") — the shift's
     // GPS record starts with this fix. Denied or no fix = no clock-in, with
@@ -232,6 +268,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
       plan,
       lat: pos?.lat ?? null,
       lng: pos?.lng ?? null,
+      deviceId: getDeviceId(),
+      ...(inPhoto ? { inPhoto } : {}),
     }
     const key = newIdempotencyKey()
     const saveOffline = () => {
@@ -254,6 +292,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
   const clearLogForm = () => {
     for (const list of Object.values(photoFiles)) for (const f of list) URL.revokeObjectURL(f.url)
     setPhotoFiles({})
+    if (outPhoto) URL.revokeObjectURL(outPhoto.url)
+    setOutPhoto(null)
     setLoggingOut(false)
   }
 
@@ -271,6 +311,9 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     for (const [name, list] of Object.entries(photoFiles)) {
       for (const { file } of list) fd.append(name, file)
     }
+    if (outPhoto) fd.set('outPhoto', new File([outPhoto.blob], 'clock-out.jpg', { type: 'image/jpeg' }))
+    const dev = getDeviceId()
+    if (dev) fd.set('outDeviceId', dev)
     const pos = await getPos()
     if (pos) { fd.set('lat', String(pos.lat)); fd.set('lng', String(pos.lng)) }
     const key = newIdempotencyKey()
@@ -375,14 +418,32 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
               Your clock-in will sync when you&apos;re back in coverage — nothing else to do.
             </p>
           </div>
+        ) : policy.photoIn && !demo ? (
+          // Policy photoIn (120): the button IS the camera — one tap opens the
+          // front camera, the picture clocks you in. Cancelling the camera
+          // does nothing, which is the honest outcome.
+          <label className={`w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 transition ${busy ? 'opacity-50 pointer-events-none' : 'cursor-pointer hover:brightness-110'}`}>
+            <Camera className="h-5 w-5" /> {busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in with a photo'}
+            <input type="file" accept="image/*" capture="user" hidden disabled={busy}
+              onChange={(e) => { const f = e.target.files?.[0] ?? null; e.target.value = ''; if (f) void clockIn(f) }} />
+          </label>
         ) : (
           <button
-            onClick={clockIn}
+            onClick={() => clockIn()}
             disabled={busy}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold text-lg py-4 disabled:opacity-50 hover:brightness-110 transition"
           >
             <LogIn className="h-5 w-5" /> {busy ? (waitingFix ? 'Waiting for location…' : 'Clocking in…') : 'Clock in'}
           </button>
+        )}
+        {(policy.photoIn || policy.atSite) && !demo && (
+          <p className="text-[11.5px] text-faint leading-snug">
+            {policy.photoIn && policy.atSite
+              ? 'Your company asks for a quick photo of you at clock-in, and clocking in only works at the site or the yard.'
+              : policy.photoIn
+                ? 'Your company asks for a quick photo of you at clock-in — the front camera opens when you tap.'
+                : 'Your company has clock-in set to work only at the site or the yard.'}
+          </p>
         )}
       </div>
     )
@@ -596,6 +657,25 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
             )
           })}
 
+          {policy.photoOut && !demo && (
+            <div className="rounded-lg border border-dashed border-navy-600 bg-navy-900 p-3 space-y-2">
+              <p className="flex items-center gap-2 text-[13px] text-muted">
+                <Camera className="h-4 w-4 text-teal" /> Clock-out photo{!outPhoto && <span className="text-amber">*</span>}
+              </p>
+              <div className="flex items-center gap-3">
+                {outPhoto && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={outPhoto.url} alt="Your clock-out photo" className="h-14 w-14 object-cover rounded-md border border-navy-700" />
+                )}
+                <label className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-navy-700 bg-navy-950 py-2.5 text-[12.5px] font-semibold text-muted cursor-pointer hover:text-ink hover:border-teal/50 transition">
+                  <Camera className="h-4 w-4 text-teal" /> {outPhoto ? 'Retake' : 'Take your photo'}
+                  <input type="file" accept="image/*" capture="user" hidden
+                    onChange={(e) => { void pickOutPhoto(e.target.files); e.target.value = '' }} />
+                </label>
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-[12.5px] text-alert">{error}</p>}
           {missingPhotos.length > 0 && (
             <p className="text-[12.5px] text-amber">📷 {missingPhotos.length === 1 ? `“${missingPhotos[0]}” needs at least one photo before you clock out.` : `${missingPhotos.map((l) => `“${l}”`).join(' and ')} need at least one photo before you clock out.`}</p>
@@ -606,7 +686,7 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
               className="flex-1 rounded-xl border border-navy-700 text-muted py-3.5 text-sm font-semibold hover:text-ink transition">
               Back
             </button>
-            <button type="submit" disabled={busy || missingPhotos.length > 0}
+            <button type="submit" disabled={busy || missingPhotos.length > 0 || (policy.photoOut && !demo && !outPhoto)}
               className="flex-[2] flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 disabled:opacity-50 hover:brightness-110 transition">
               <LogOut className="h-5 w-5" /> {busy ? 'Saving…' : 'Log it & clock out'}
             </button>

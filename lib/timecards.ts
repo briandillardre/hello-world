@@ -4,18 +4,32 @@
  * tracking thru app while clocked in"; the bar is Workyard's "GPS-verified
  * time cards straight to payroll").
  *
- * Inputs are time_entries rows (015/059/103) plus, per entry, what the
- * person's phone reported between clock-in and clock-out (migration 103's
- * timecard_gps_stats). Outputs are per-person cards: days → entries with
+ * Inputs are time_entries rows (015/059/103/120) plus, per entry, what the
+ * person's phone reported between clock-in and clock-out (migration 120's
+ * timecard_gps_stats_v2). Outputs are per-person cards: days → entries with
  * paid hours, an on-site share and plain-word flags, weekly regular / OT
  * split at 40 h (FLSA; SC has no daily overtime), hours by site.
  *
+ * INTEGRITY (Sep 22 2026): a landscaping prospect's office found, by
+ * reviewing camera footage against the timecards, one crew member clocking
+ * another in nineteen minutes before he arrived, and whole shifts clocked on
+ * days the person's car was never on the property. The phone's own record
+ * of the shift answers both without a camera — this file reads it against
+ * the clock and says, in one sentence per entry, what a manager should look
+ * at: never on site, the same phone clocking two people, clocked in away
+ * from the site, on site N minutes after clocking in, left N minutes before
+ * clocking out, a phone that never moved all shift, a missing clock-in photo.
+ *
  * No I/O here — lib/db/timecards.ts loads, this file computes, and the same
- * numbers reach the page, the export and the assistant.
+ * numbers reach the page, the export and the assistant. Harness:
+ * scripts/timecards-test.mjs — run it after ANY change here.
  */
 import { dayKey, fmtDateTime, fmtTime, addDaysKey } from './dates'
+import { fmtDistanceM } from './clock-policy'
 
-export type TimeCardFlag = 'open' | 'no_gps' | 'off_site' | 'long' | 'edited' | 'no_site'
+export type TimeCardFlag =
+  | 'open' | 'no_gps' | 'off_site' | 'long' | 'edited' | 'no_site'
+  | 'never_on_site' | 'shared_device' | 'in_away' | 'out_away' | 'arrived_late' | 'left_early' | 'phone_still' | 'no_photo'
 
 export const FLAG_LABEL: Record<TimeCardFlag, string> = {
   open: 'Still clocked in',
@@ -24,6 +38,39 @@ export const FLAG_LABEL: Record<TimeCardFlag, string> = {
   long: 'Long shift',
   edited: 'Edited',
   no_site: 'No site',
+  never_on_site: 'Never on site',
+  shared_device: 'Shared phone',
+  in_away: 'Clocked in away',
+  out_away: 'Clocked out away',
+  arrived_late: 'Arrived after clock-in',
+  left_early: 'Left before clock-out',
+  phone_still: 'Phone never moved',
+  no_photo: 'No photo',
+}
+
+/** The flags that put an entry on the manager's "Needs a look" list, worst
+ *  first — the order the list sorts by. Open / Edited / No site are states,
+ *  not doubts. */
+export const INTEGRITY_FLAGS: TimeCardFlag[] = [
+  'never_on_site', 'shared_device', 'no_gps', 'in_away', 'out_away', 'arrived_late', 'left_early', 'phone_still', 'off_site', 'no_photo', 'long',
+]
+
+export interface TimeCardGps {
+  fixes: number
+  onSite: number
+  firstFix: string | null
+  lastFix: string | null
+  /** 120 (timecard_gps_stats_v2) — absent on a pre-120 database. */
+  firstOnSite?: string | null
+  lastOnSite?: string | null
+  /** Corner to corner of the shift's fixes, metres. */
+  spreadM?: number | null
+  /** Clock-in / clock-out fix to the site's edge, metres (0 inside; null without a site or a fix). */
+  inDistM?: number | null
+  outDistM?: number | null
+  /** That fix inside one of the company's yards. */
+  inAtYard?: boolean | null
+  outAtYard?: boolean | null
 }
 
 export interface TimeCardEntry {
@@ -45,8 +92,18 @@ export interface TimeCardEntry {
   inPlace: string | null
   outPlace: string | null
   edited: { by: string | null; at: string | null; note: string | null; originalIn: string | null; originalOut: string | null } | null
-  /** Phone fixes during the shift (103 RPC); null when the database cannot say yet. */
-  gps: { fixes: number; onSite: number; firstFix: string | null; lastFix: string | null } | null
+  /** Phone fixes during the shift (103/120 RPC); null when the database cannot say yet. */
+  gps: TimeCardGps | null
+  /** The phone that clocked in / out (120) — a random id the app keeps per device. */
+  deviceId?: string | null
+  outDeviceId?: string | null
+  /** A clock-in / clock-out photo exists (120); the URL is signed and short-lived. */
+  inPhoto?: boolean
+  outPhoto?: boolean
+  inPhotoUrl?: string | null
+  outPhotoUrl?: string | null
+  /** This person outranks the viewer: hours only, no reads, no findings. */
+  aboveViewer?: boolean
 }
 
 export interface TimeCardRow extends TimeCardEntry {
@@ -58,6 +115,12 @@ export interface TimeCardRow extends TimeCardEntry {
   /** Share of the shift's fixes inside the clocked job site; null without fixes or a site. */
   onSitePct: number | null
   flags: TimeCardFlag[]
+  /** One plain sentence per integrity flag — what a manager reads. */
+  findings: string[]
+  /** True when any INTEGRITY flag is on: the entry belongs on "Needs a look". */
+  review: boolean
+  /** Teammates whose entries came from the same phone this window. */
+  sharedWith: string[]
 }
 
 export interface DayCard { dayKey: string; entries: TimeCardRow[]; hours: number }
@@ -74,6 +137,8 @@ export interface PersonCard {
   verifiedPct: number | null
   fixes: number
   flags: Record<TimeCardFlag, number>
+  /** Entries on the "Needs a look" list. */
+  review: number
   sites: SiteHours[]
 }
 
@@ -82,8 +147,22 @@ export const LONG_SHIFT_HOURS = 14
 export const OFF_SITE_BELOW_PCT = 50
 /** An entry nobody closed stops accruing here — the flag says "still clocked in". */
 export const MAX_SHIFT_HOURS = 24
+/** A clock-in / clock-out fix this far from the site (and not in a yard) is "away". A quarter mile. */
+export const AWAY_M = 400
+/** Nearer than this to the site's edge counts as at the site for the arrive/leave reads. */
+export const NEAR_M = 100
+/** On site this long after clocking in, or gone this long before clocking out, is worth a look. */
+export const LATE_ARRIVAL_MIN = 10
+export const EARLY_LEAVE_MIN = 10
+/** A closed shift of this many hours with this many fixes inside this many metres = the phone never moved. */
+export const STILL_HOURS = 2
+export const STILL_FIXES = 10
+export const STILL_M = 50
+/** Enough fixes to say "never on site" instead of "no signal yet". */
+export const NEVER_ON_SITE_FIXES = 5
 
 export const round2 = (n: number) => Math.round(n * 100) / 100
+const h1 = (n: number) => (Math.round(n * 10) / 10).toFixed(1)
 
 const CATEGORY_LABEL: Record<string, string> = {
   project: 'Project', shop: 'Shop', overhead: 'Office / other', maintenance: 'Maintenance',
@@ -100,45 +179,166 @@ export function shiftHours(inAt: string, outAt: string | null, breakMinutes: num
   return { elapsed: round2(elapsed), paid: round2(paid) }
 }
 
-function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | null): TimeCardFlag[] {
-  const out: TimeCardFlag[] = []
-  if (!e.outAt) out.push('open')
-  if (e.edited) out.push('edited')
-  if (e.category === 'project' && !e.zoneId) out.push('no_site')
-  if (elapsed > LONG_SHIFT_HOURS) out.push('long')
+const minutesBetween = (a: string | null | undefined, b: string | null | undefined): number | null => {
+  if (!a || !b) return null
+  const x = Date.parse(a), y = Date.parse(b)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return Math.round((y - x) / 60_000)
+}
+
+export interface FlagPolicy {
+  photoIn: boolean
+  photoOut: boolean
+  /** A photo is only "missing" on a shift clocked in at or after the switch went on. */
+  photoInSince?: string | null
+  photoOutSince?: string | null
+}
+
+/** "45 min" / "2 h 30 min" / "3 h". */
+export const fmtMinutes = (m: number): string => {
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60), r = m % 60
+  return r ? `${h} h ${r} min` : `${h} h`
+}
+
+/**
+ * The flags and their sentences for one entry. `sharedWith` = teammates whose
+ * entries in the window came from this entry's phone; `policy` = the
+ * company's photo switches (a missing photo is only a finding when one was
+ * required).
+ */
+export function flagsFor(e: TimeCardEntry, elapsed: number, onSitePct: number | null, sharedWith: string[] = [], policy: FlagPolicy | null = null): { flags: TimeCardFlag[]; findings: string[] } {
+  const flags: TimeCardFlag[] = []
+  const findings: string[] = []
+  const say = (f: TimeCardFlag, s: string) => { flags.push(f); findings.push(s) }
+  const closed = !!e.outAt
+  const site = e.zoneName
+  if (!e.outAt) flags.push('open')
+  if (e.edited) flags.push('edited')
+  if (e.category === 'project' && !e.zoneId) flags.push('no_site')
+  // A person above the viewer on the ladder gets hours only — no reads, no
+  // findings (a Foreman does not audit the owner). Long is a state, not a doubt.
+  if (e.aboveViewer) {
+    if (elapsed > LONG_SHIFT_HOURS) flags.push('long')
+    return { flags, findings }
+  }
+
+  if (sharedWith.length) say('shared_device', `Same phone as ${sharedWith.join(' and ')}`)
+
   if (e.gps) {
+    const g = e.gps
     // No shift fixes at all (the clock-in fix lives on the entry, not in the
     // trail). A shift that just started gets 15 minutes before it counts.
-    const settled = !!e.outAt || elapsed >= 0.25
-    if (e.gps.fixes === 0 && settled) out.push('no_gps')
+    const settled = closed || elapsed >= 0.25
+    if (g.fixes === 0 && settled) {
+      say('no_gps', elapsed >= 1 ? `${h1(elapsed)} h clocked with no phone fixes at all` : 'No phone fixes during the shift')
+    }
     // A zone the viewer cannot see (someone's personal zone) counts nothing
     // as on-site — that is not a flag, so it needs the zone to be visible.
-    if (onSitePct != null && e.zoneName && e.gps.fixes >= 5 && onSitePct < OFF_SITE_BELOW_PCT) out.push('off_site')
+    // An OPEN shift gets an hour before either is said (ship-check: five
+    // fixes exist 2½ min after clock-in, so every crew driving in from the
+    // yard was "never on site" at 6:05 AM), and a yard start says nothing
+    // until the shift is closed.
+    const placed = closed || (elapsed >= 1 && !g.inAtYard)
+    if (onSitePct != null && site && g.fixes >= NEVER_ON_SITE_FIXES && placed) {
+      if (g.onSite === 0) say('never_on_site', `Never on ${site}: ${g.fixes} phone fixes during the shift, none inside the site`)
+      else if (onSitePct < OFF_SITE_BELOW_PCT) say('off_site', `Only ${onSitePct}% of the shift's fixes on ${site}`)
+    }
+    // Where the clock-in / clock-out tap happened (120). A yard start or a
+    // yard finish is how crews work, not a doubt.
+    if (site && g.inDistM != null && g.inDistM >= AWAY_M && !g.inAtYard) say('in_away', `Clocked in ${fmtDistanceM(g.inDistM)} from ${site}`)
+    if (site && closed && g.outDistM != null && g.outDistM >= AWAY_M && !g.outAtYard) say('out_away', `Clocked out ${fmtDistanceM(g.outDistM)} from ${site}`)
+    // On site N minutes after clocking in: the phone was somewhere else
+    // first (a fix off the site before the first on-site fix), the tap was
+    // not on the site, and not a yard start. "The tracker's first fix took
+    // a minute" is not an arrival.
+    if (site && g.firstOnSite && g.firstFix && !g.inAtYard && (g.inDistM == null || g.inDistM > NEAR_M)) {
+      const travel = minutesBetween(g.firstFix, g.firstOnSite)
+      const late = minutesBetween(e.inAt, g.firstOnSite)
+      if (travel != null && travel >= LATE_ARRIVAL_MIN && late != null && late >= LATE_ARRIVAL_MIN) say('arrived_late', `On site ${fmtMinutes(late)} after clocking in`)
+    }
+    // Left N minutes before clocking out: fixes CONTINUED off the site after
+    // the last on-site one (a phone that went dark is a different story),
+    // the clock-out tap was not on the site, and not a yard finish.
+    if (site && closed && g.lastOnSite && g.lastFix && !g.outAtYard && (g.outDistM == null || g.outDistM > NEAR_M)) {
+      const after = minutesBetween(g.lastOnSite, g.lastFix)
+      const early = minutesBetween(g.lastOnSite, e.outAt)
+      if (after != null && after >= EARLY_LEAVE_MIN && early != null && early >= EARLY_LEAVE_MIN) say('left_early', `Left the site ${fmtMinutes(early)} before clocking out`)
+    }
+    // A phone that sat still all shift — in a parked truck, in a locker.
+    // Site shifts only: a mechanic's shop day and an office clock-in are
+    // meant to stand still (ship-check).
+    if (site && closed && elapsed >= STILL_HOURS && g.fixes >= STILL_FIXES && g.spreadM != null && g.spreadM < STILL_M) {
+      say('phone_still', `Phone didn't move all shift (${fmtDistanceM(g.spreadM)} across ${h1(elapsed)} h)`)
+    }
   }
-  return out
+  if (policy) {
+    // Only a shift clocked in AFTER the switch went on ever needed a photo.
+    // A switch that is on with no date is treated as "from now", so nothing
+    // historical is ever accused.
+    const inMs = Date.parse(e.inAt)
+    const due = (since: string | null | undefined) => !!since && Number.isFinite(Date.parse(since)) && inMs >= Date.parse(since)
+    const missIn = policy.photoIn && due(policy.photoInSince) && !e.inPhoto
+    const missOut = policy.photoOut && due(policy.photoOutSince) && closed && !e.outPhoto
+    if (missIn && missOut) say('no_photo', 'No clock-in or clock-out photo')
+    else if (missIn) say('no_photo', 'No clock-in photo')
+    else if (missOut) say('no_photo', 'No clock-out photo')
+  }
+  if (elapsed > LONG_SHIFT_HOURS) say('long', `${h1(elapsed)} h shift`)
+  return { flags, findings }
 }
 
 function emptyFlags(): Record<TimeCardFlag, number> {
-  return { open: 0, no_gps: 0, off_site: 0, long: 0, edited: 0, no_site: 0 }
+  const out = {} as Record<TimeCardFlag, number>
+  for (const k of Object.keys(FLAG_LABEL) as TimeCardFlag[]) out[k] = 0
+  return out
 }
 
 /** Per-person cards for a set of entries (one week, one month — the caller
  *  picks the window; OT is split against `otWeekly` over the whole set, so
  *  hand it exactly one pay week for a payroll read). */
-export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; nowMs?: number; otWeekly?: number }): PersonCard[] {
+export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; nowMs?: number; otWeekly?: number; policy?: FlagPolicy | null }): PersonCard[] {
   const nowMs = opts.nowMs ?? Date.now()
   const otWeekly = opts.otWeekly ?? OT_WEEKLY_HOURS
+  const policy = opts.policy ?? null
+
+  // Which people each phone clocked in this window (120). Two people on one
+  // device is the buddy-punch tell — a name per teammate, never a raw id.
+  const deviceUsers = new Map<string, Map<string, string>>()
+  for (const e of entries) {
+    for (const dev of [e.deviceId, e.outDeviceId]) {
+      if (!dev) continue
+      const m = deviceUsers.get(dev) ?? new Map<string, string>()
+      if (!m.has(e.userId)) m.set(e.userId, e.personName || 'Crew')
+      deviceUsers.set(dev, m)
+    }
+  }
+  const sharedWith = (e: TimeCardEntry): string[] => {
+    const names = new Map<string, string>()
+    for (const dev of [e.deviceId, e.outDeviceId]) {
+      if (!dev) continue
+      for (const [uid, name] of Array.from(deviceUsers.get(dev)?.entries() ?? [])) if (uid !== e.userId) names.set(uid, name)
+    }
+    return Array.from(names.values()).sort()
+  }
+
   const byPerson = new Map<string, { name: string; rows: TimeCardRow[] }>()
   for (const e of entries) {
     const { elapsed, paid } = shiftHours(e.inAt, e.outAt, e.breakMinutes, nowMs)
     const onSitePct = e.gps && e.gps.fixes > 0 && e.zoneId ? Math.round((e.gps.onSite / e.gps.fixes) * 100) : null
+    const shared = sharedWith(e)
+    const { flags, findings } = flagsFor(e, elapsed, onSitePct, shared, policy)
     const row: TimeCardRow = {
       ...e,
       dayKey: dayKey(Date.parse(e.inAt), opts.tz),
       elapsedHours: elapsed,
       hours: paid,
       onSitePct,
-      flags: flagsFor(e, elapsed, onSitePct),
+      flags,
+      findings,
+      // Nobody above the viewer is ever on the viewer's list.
+      review: !e.aboveViewer && flags.some((f) => INTEGRITY_FLAGS.includes(f)),
+      sharedWith: shared,
     }
     const p = byPerson.get(e.userId) ?? { name: e.personName || 'Crew', rows: [] }
     if (!p.name && e.personName) p.name = e.personName
@@ -178,6 +378,7 @@ export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; now
       verifiedPct: fixes > 0 ? Math.round((onSite / fixes) * 100) : null,
       fixes: p.rows.reduce((s, r) => s + (r.gps?.fixes ?? 0), 0),
       flags,
+      review: p.rows.filter((r) => r.review).length,
       sites: Array.from(siteMap.values()).sort((a, b) => b.hours - a.hours),
     })
   }
@@ -185,7 +386,7 @@ export function buildTimeCards(entries: TimeCardEntry[], opts: { tz: string; now
   return cards
 }
 
-/** Company-wide totals for the header strip. */
+/** Company-wide totals for the header strip. `flagged` = entries on the "Needs a look" list. */
 export function summarizeCards(cards: PersonCard[]): { people: number; hours: number; overtime: number; openNow: number; verifiedPct: number | null; flagged: number } {
   let fixes = 0, onSite = 0
   for (const c of cards) for (const d of c.days) for (const r of d.entries) if (r.gps && r.zoneId && r.gps.fixes > 0) { fixes += r.gps.fixes; onSite += r.gps.onSite }
@@ -195,8 +396,24 @@ export function summarizeCards(cards: PersonCard[]): { people: number; hours: nu
     overtime: round2(cards.reduce((s, c) => s + c.overtime, 0)),
     openNow: cards.filter((c) => c.openNow).length,
     verifiedPct: fixes > 0 ? Math.round((onSite / fixes) * 100) : null,
-    flagged: cards.reduce((s, c) => s + c.flags.no_gps + c.flags.off_site + c.flags.long + c.flags.no_site, 0),
+    flagged: cards.reduce((s, c) => s + c.review, 0),
   }
+}
+
+export interface ReviewItem { row: TimeCardRow; personName: string; worst: TimeCardFlag }
+
+/** The manager's list: every entry with an integrity flag, worst first, then
+ *  newest first. One row per entry — its findings carry the sentences. */
+export function reviewItems(cards: PersonCard[]): ReviewItem[] {
+  const rank = (f: TimeCardFlag) => { const i = INTEGRITY_FLAGS.indexOf(f); return i < 0 ? INTEGRITY_FLAGS.length : i }
+  const out: ReviewItem[] = []
+  for (const c of cards) for (const d of c.days) for (const r of d.entries) {
+    if (!r.review) continue
+    const worst = r.flags.filter((f) => INTEGRITY_FLAGS.includes(f)).sort((a, b) => rank(a) - rank(b))[0]
+    out.push({ row: r, personName: c.personName, worst })
+  }
+  out.sort((a, b) => rank(a.worst) - rank(b.worst) || Date.parse(b.row.inAt) - Date.parse(a.row.inAt))
+  return out
 }
 
 // ── Weeks ────────────────────────────────────────────────────────────────────
@@ -234,7 +451,7 @@ const csvCell = (v: unknown): string => {
 /** One row per entry, hours to 2 decimals, times in the company's tz. */
 export function timeCardsCsv(cards: PersonCard[], tz: string): string {
   const head = ['Person', 'Date', 'Clock in', 'Clock out', 'Break (min)', 'Paid hours', 'Category', 'Site',
-    'Clocked in at', 'Clocked out at', 'GPS fixes', 'On-site %', 'Flags', 'Edited by', 'Edit note', 'Week regular hours', 'Week overtime hours', 'Entry id']
+    'Clocked in at', 'Clocked out at', 'GPS fixes', 'On-site %', 'Flags', 'Findings', 'Edited by', 'Edit note', 'Week regular hours', 'Week overtime hours', 'Entry id']
   const lines = [head.map(csvCell).join(',')]
   for (const c of cards) {
     for (const d of c.days) {
@@ -253,6 +470,7 @@ export function timeCardsCsv(cards: PersonCard[], tz: string): string {
           r.gps ? r.gps.fixes : '',
           r.onSitePct ?? '',
           r.flags.map((f) => FLAG_LABEL[f]).join('; '),
+          r.findings.join('; '),
           r.edited?.by ?? '',
           r.edited?.note ?? '',
           c.regular.toFixed(2),

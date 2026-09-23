@@ -19,7 +19,7 @@ import { computeStatus, type MaintenanceStatus } from './db/maintenance'
 import { usageFromLedger } from './costs'
 import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ } from './dates'
 import { getTimeCards, weekOf } from './db/timecards'
-import { FLAG_LABEL, categoryLabel } from './timecards'
+import { FLAG_LABEL, categoryLabel, reviewItems } from './timecards'
 import { assessCtx, describeAll, mergeReadings, notReported, readingsFromRaw, readingsSummary, truckHealth, type Readings } from './telemetry-catalog'
 import { trackerKind } from './devices'
 
@@ -141,7 +141,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'time_cards',
     description:
-      'Crew time cards (migration 103): per person, paid hours split regular / overtime (over 40 h in the window — pass `week` for a payroll read), hours by site, whether they are clocked in right now, and how GPS-verified the hours are (the phone\'s fixes during each shift and the share that fell inside the clocked site). Each day lists its entries: clock-in / clock-out times, where those happened, unpaid break, and plain flags (Still clocked in, No GPS, Mostly off-site, Long shift, Edited, No site). Use for "who worked where this week", "how many hours did X put in", "is anyone still clocked in", "were the hours actually on site", payroll and overtime questions.',
+      'Crew time cards (migrations 103/120): per person, paid hours split regular / overtime (over 40 h in the window — pass `week` for a payroll read), hours by site, whether they are clocked in right now, and how GPS-verified the hours are (the phone\'s fixes during each shift and the share that fell inside the clocked site). Each day lists its entries: clock-in / clock-out times, where those happened, unpaid break, plain flags (Still clocked in, No GPS, Mostly off-site, Long shift, Edited, No site, Never on site, Shared phone, Clocked in away, Clocked out away, Arrived after clock-in, Left before clock-out, Phone never moved, No photo) and `findings` — one sentence per integrity flag ("On site 19 min after clocking in", "Same phone as <teammate>", "Never on <site>: 200 phone fixes, none inside"). `needsALook` lists the entries whose phone record contradicts the clock, worst first. Use for "who worked where this week", "how many hours did X put in", "is anyone still clocked in", "were the hours actually on site", "any time cards I should look at", buddy punching / ghost shift questions, payroll and overtime.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -705,14 +705,14 @@ async function runRecentPhotos(companyId: string, args: { zone?: unknown; days?:
   return ok({ photos, countBySite: Object.fromEntries(perZone), days, timezone: DEFAULT_TZ })
 }
 
-async function runTimeCards(companyId: string, args: { week?: unknown; days?: unknown; person?: unknown }, userIds: string[] | null = null): Promise<McpToolResult> {
+async function runTimeCards(companyId: string, args: { week?: unknown; days?: unknown; person?: unknown }, userIds: string[] | null = null, viewerRank: number | null = null): Promise<McpToolResult> {
   const tz = DEFAULT_TZ
   const days = Math.min(62, Math.max(1, Math.round(Number(args.days) || 7)))
   const win = isDayKey(args.week)
     ? (() => { const w = weekOf(args.week, tz); return { fromMs: w.fromMs, toMs: w.toMs, label: `pay week of ${w.monday}` } })()
     : { fromMs: Date.now() - days * 86_400_000, toMs: Date.now(), label: `last ${days} day(s)` }
   const db = await service()
-  const { cards, verified } = await getTimeCards(db, { companyId, fromMs: win.fromMs, toMs: win.toMs, tz, userIds })
+  const { cards, verified } = await getTimeCards(db, { companyId, fromMs: win.fromMs, toMs: win.toMs, tz, userIds, ...(viewerRank != null ? { viewerRank } : {}) })
   const person = typeof args.person === 'string' ? args.person.trim().toLowerCase() : ''
   const picked = person ? cards.filter((c) => c.personName.toLowerCase().includes(person)) : cards
   if (person && !picked.length && cards.length) return ok({ people: [], note: `No time card matches "${args.person}". People with hours: ${cards.map((c) => c.personName).join(', ')}.` })
@@ -723,6 +723,7 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
     overtime: c.overtime,
     onTheClockNow: c.openNow,
     gpsVerifiedPct: c.verifiedPct,
+    needsALook: c.review || undefined,
     flags: Object.fromEntries(Object.entries(c.flags).filter(([, n]) => n > 0).map(([k, n]) => [FLAG_LABEL[k as keyof typeof FLAG_LABEL], n])),
     bySite: c.sites.map((s) => ({ site: s.label, hours: s.hours })),
     days: c.days.map((d) => ({
@@ -740,6 +741,7 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
         gpsFixes: e.gps?.fixes ?? undefined,
         onSitePct: e.onSitePct ?? undefined,
         flags: e.flags.length ? e.flags.map((f) => FLAG_LABEL[f]) : undefined,
+        findings: e.findings.length ? e.findings : undefined,
         edited: e.edited ? { by: e.edited.by, note: e.edited.note } : undefined,
         plan: e.plan || undefined,
       })),
@@ -749,6 +751,11 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
     window: { label: win.label, from: fmtDateTime(win.fromMs, tz), to: fmtDateTime(win.toMs, tz), timezone: tz },
     overtimeRule: 'hours over 40 in the window; a pay week when `week` is passed',
     gpsVerification: verified ? 'each shift: the person\'s phone fixes between clock-in and clock-out, and the share inside the clocked site' : 'not available yet (migration 103 pending)',
+    needsALook: reviewItems(picked).slice(0, 25).map(({ row, personName, worst }) => ({
+      person: personName, day: row.dayKey,
+      in: fmtDateTime(Date.parse(row.inAt), tz), out: row.outAt ? fmtDateTime(Date.parse(row.outAt), tz) : 'still clocked in',
+      paidHours: row.hours, site: row.zoneName ?? undefined, worst: FLAG_LABEL[worst], findings: row.findings,
+    })),
     people,
     ...(people.length ? {} : { note: 'No time entries in this window.' }),
   })
@@ -759,7 +766,7 @@ export async function runMcpTool(
   args: Record<string, unknown>,
   companyId: string,
   /** Session-door narrowing (Ask AI): whose time cards the caller may read. */
-  opts?: { userIds?: string[] | null },
+  opts?: { userIds?: string[] | null; viewerRank?: number | null },
 ): Promise<McpToolResult> {
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
@@ -771,7 +778,7 @@ export async function runMcpTool(
       case 'find_tool': return runFindTool(companyId, args)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
-      case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null)
+      case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

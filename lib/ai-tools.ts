@@ -31,6 +31,8 @@ export interface AiToolCtx {
   /** Whose time cards this user may read: null = the crew's (Foreman+), a
    *  list = their own (timecardScope). Undefined = no restriction (MCP). */
   timecardUserIds?: string[] | null
+  /** The asker's rank on the ladder — people above them read as hours only (see getTimeCards). */
+  timecardViewerRank?: number | null
 }
 
 // ── Shared MCP registry (task #28: one brain, three doors) ──────────────────
@@ -572,7 +574,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       if (name === 'time_cards' && ctx.features && !ctx.features.includes('clock')) {
         return { error: 'This user does not have the Time clock view level — do not report time cards.' }
       }
-      const res = await runMcpTool(name, input, ctx.companyId, name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null } : undefined)
+      const res = await runMcpTool(name, input, ctx.companyId, name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null, viewerRank: ctx.timecardViewerRank ?? null } : undefined)
       const text = res.content[0]?.text ?? ''
       if (res.isError) return { error: text || 'tool failed' }
       try { return JSON.parse(text) } catch { return { result: text } }
