@@ -139,7 +139,7 @@ function JoinInner() {
             {signedIn ? (
               <Button className="w-full" onClick={joinAsCurrent} disabled={busy || !info?.valid}>{busy ? 'Joining…' : 'Join with my account'}</Button>
             ) : (
-              <form onSubmit={submit} className="space-y-3">
+              <form method="post" onSubmit={submit} className="space-y-3">
                 {mode === 'signup' && (
                   <div className="space-y-1.5">
                     <Label htmlFor="name">Your name</Label>

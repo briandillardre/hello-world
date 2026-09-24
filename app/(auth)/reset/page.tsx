@@ -99,7 +99,7 @@ export default function ResetPasswordPage() {
             <Link href="/forgot" className="inline-block text-amber font-medium hover:underline text-sm">Request a new link</Link>
           </div>
         ) : (
-          <form onSubmit={submit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
+          <form method="post" onSubmit={submit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
             <h1 className="text-lg font-semibold text-ink">Set a new password</h1>
             {error && <div role="alert" className="bg-alert/15 text-alert text-sm px-3 py-2 rounded-lg border border-alert/30">{error}</div>}
             <div className="space-y-2">

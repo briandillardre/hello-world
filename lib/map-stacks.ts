@@ -33,10 +33,11 @@
 
 /** Cluster radius for every marker source, in screen px (a puck is ~22 px). */
 export const STACK_RADIUS_PX = 40
-/** Things this close stay one count up to street level… */
-export const STACK_MAX_ZOOM = 21
+/** Things this close stay one count at every zoom — through the map's last
+ *  step (22, MapLibre's default maxZoom), where 40 px is about a metre… */
+export const STACK_MAX_ZOOM = 22
 /** …which needs the GeoJSON source to tile one step past it. */
-export const STACK_SOURCE_MAXZOOM = 22
+export const STACK_SOURCE_MAXZOOM = 23
 /** Members closer than this can't be told apart by zooming — fan them. */
 export const FAN_SPREAD_M = 40
 /** A stack bigger than this at one spot gets the list, not a fan (a column
@@ -172,13 +173,39 @@ export function nudgeInto(box: ScreenBox, safe: { left: number; right: number; t
   return [px(axis(box.minX, box.maxX, safe.left, safe.right)), px(axis(box.minY, box.maxY, safe.top, safe.bottom))]
 }
 
-/** Is a fanned-out stack still one stack? It folds back when its members
- *  have spread (a truck drove off) or someone new has joined it. */
-export function fanStillHolds(members: StackPoint[], others: StackPoint[]): boolean {
+/** How many metres the stack radius covers at a zoom and latitude: what
+ *  "close enough to be one count" means on screen right now (at z17 about
+ *  20 m, at z18 about 10 m). MapLibre tiles are 512 px. */
+export function stackRadiusMetres(zoom: number, lat: number): number {
+  const mPerPx = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoom)
+  return STACK_RADIUS_PX * mPerPx
+}
+
+/**
+ * Is a fanned-out stack still one stack at the zoom it opened at? It folds
+ * back when its members have spread past what counts as one stack there
+ * (`joinM`, from stackRadiusMetres — a truck that pulled 15 m off its trailer
+ * at z18 is its own puck again, and a fan still drawing it would draw it
+ * twice), or when someone new has come within that reach. `nearAtOpen`: ids
+ * that were already that close when it opened — a machine parked 25 m away
+ * at z17 never was in the count, so it never "joins" (ship-check, Sep 24:
+ * the fan snapped shut on the next live tick).
+ */
+export function fanStillHolds(members: StackPoint[], others: StackPoint[], joinM: number = FAN_SPREAD_M * 2, nearAtOpen?: Set<string>): boolean {
   const ok = members.filter(finite)
-  if (ok.length < 2 || spanMetres(ok) > FAN_SPREAD_M * 2) return false
+  if (ok.length < 2 || spanMetres(ok) > joinM) return false
   const c = centroidOf(ok)
   if (!c) return false
   const hub = { lng: c[0], lat: c[1] }
-  return !others.some((o) => finite(o) && metres(hub, o) <= FAN_SPREAD_M)
+  return !others.some((o) => finite(o) && !nearAtOpen?.has(o.id) && metres(hub, o) <= joinM)
+}
+
+/** The ids already within `joinM` of a stack's middle as it opens. */
+export function nearbyIds(members: StackPoint[], others: StackPoint[], joinM: number): Set<string> {
+  const c = centroidOf(members)
+  const out = new Set<string>()
+  if (!c) return out
+  const hub = { lng: c[0], lat: c[1] }
+  for (const o of others) if (finite(o) && metres(hub, o) <= joinM) out.add(o.id)
+  return out
 }

@@ -92,14 +92,28 @@ const at = (id, north, east = 0) => ({ id, lat: BASE.lat + north / 111_195, lng:
   }
   ok('nothing to fan', S.fanLayout(0).length === 0)
 }
-// 9) An open fan folds when the stack breaks: a member drives off, or a
-//    newcomer parks in it.
+// 9) An open fan folds when the stack breaks — measured at the zoom it
+//    opened at: a member that pulled off, or a newcomer that came within
+//    reach. A neighbour that was already parked nearby never "joins".
 {
-  const members = [at('f350', 0), at('trailer', 12, 9)]
+  const members = [at('f350', 0), at('trailer', 7)]
   ok('stack holds', S.fanStillHolds(members, [at('far', 5000)]))
   ok('member drove off → fold', !S.fanStillHolds([at('f350', 0), at('trailer', 400)], []))
   ok('newcomer parked in it → fold', !S.fanStillHolds(members, [at('newcomer', 8, 3)]))
   ok('one member left → fold', !S.fanStillHolds([at('f350', 0)], []))
+  // z17 at Charleston: one stack ≈ 20 m. The RAM parked 25 m off the pair.
+  const j17 = S.stackRadiusMetres(17, BASE.lat)
+  ok('z17 reach ≈ 20 m', j17 > 18 && j17 < 22, String(j17))
+  ok('z18 reach ≈ 10 m', Math.abs(S.stackRadiusMetres(18, BASE.lat) - j17 / 2) < 0.01)
+  const ram = at('ram', 25)
+  ok('neighbour 25 m off at z17 is not a newcomer', S.fanStillHolds(members, [ram], j17))
+  const near = S.nearbyIds(members, [at('ram', 15)], j17)
+  ok('a neighbour already within reach at open is remembered', near.has('ram'))
+  ok('…and never folds the fan', S.fanStillHolds(members, [at('ram', 15)], j17, near))
+  ok('someone new within reach still folds it', !S.fanStillHolds(members, [at('ram', 15), at('phone', 3, 2)], j17, near))
+  const j18 = S.stackRadiusMetres(18, BASE.lat)
+  ok('at z18 a truck 15 m off its trailer is its own puck → fold', !S.fanStillHolds([at('f350', 0), at('trailer', 15)], [], j18))
+  ok('at z18 a pair 6 m apart holds', S.fanStillHolds([at('f350', 0), at('trailer', 6)], [], j18))
 }
 // 10) It fits a phone, and slides fully into view.
 {
