@@ -84,7 +84,7 @@ const GRADE_CLS: Record<string, string> = {
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
-  await requireFeature('reports')
+  const perms = await requireFeature('reports')
   const companyId = await getCurrentCompanyId()
   const tz = safeTz(cookies().get('ht_tz')?.value)
   const keys = REPORT_RANGES.map((r) => r.key)
@@ -117,7 +117,10 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
   const totIdle = Math.round(scores.reduce((s, v) => s + v.idleHrs, 0) * 10) / 10
   const totAfter = scores.reduce((s, v) => s + v.afterHoursMiles, 0)
   const idlePct = totActive + totIdle > 0 ? Math.round((totIdle / (totActive + totIdle)) * 100) : 0
-  const billable = Math.round(scores.reduce((s, v) => s + v.activeHrs * rateFor(v.assetId), 0))
+  // Dollars only for the costs level (Roles v2: a Foreman sees no dollars,
+  // a Prospective Client never does) — the tile and the number both stay
+  // off the page, not just out of sight.
+  const billable = perms.canViewCosts ? Math.round(scores.reduce((s, v) => s + v.activeHrs * rateFor(v.assetId), 0)) : 0
 
   const wsMin = (() => { const [h, m] = work.work_start.split(':').map(Number); return (h || 0) * 60 + (m || 0) })()
   const allFlags = scores.flatMap((s) => flagsFor(s, wsMin)).sort((a, b) => a.severity - b.severity).slice(0, 4)
@@ -175,12 +178,14 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
         ) : (
           <>
             {/* Fleet pulse — money first */}
-            <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              <StatTile icon={<DollarSign className="h-4 w-4 text-amber" />} label="Billable value">
-                {billable > 0
-                  ? <CountUp value={billable} prefix="$" />
-                  : <Link href="/assets" className="text-faint text-sm font-normal underline decoration-dotted hover:text-amber transition-colors">set hourly rates</Link>}
-              </StatTile>
+            <section className={'grid grid-cols-2 sm:grid-cols-3 gap-3 ' + (perms.canViewCosts ? 'lg:grid-cols-5' : 'lg:grid-cols-4')}>
+              {perms.canViewCosts && (
+                <StatTile icon={<DollarSign className="h-4 w-4 text-amber" />} label="Billable value">
+                  {billable > 0
+                    ? <CountUp value={billable} prefix="$" />
+                    : <Link href="/assets" className="text-faint text-sm font-normal underline decoration-dotted hover:text-amber transition-colors">set hourly rates</Link>}
+                </StatTile>
+              )}
               <StatTile icon={<Gauge className="h-4 w-4 text-[#60a5fa]" />} label="Miles driven">
                 <CountUp value={totMiles} />
               </StatTile>

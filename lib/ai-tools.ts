@@ -574,7 +574,13 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       if (name === 'time_cards' && ctx.features && !ctx.features.includes('clock')) {
         return { error: 'This user does not have the Time clock view level — do not report time cards.' }
       }
-      const res = await runMcpTool(name, input, ctx.companyId, name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null, viewerRank: ctx.timecardViewerRank ?? null } : undefined)
+      // This door reads as the service role, so what the asker may see (111)
+      // rides along: ctx.assets is their own RLS-read (and view-as filtered)
+      // list — a tag, a truck or a service schedule outside it stays hidden.
+      const res = await runMcpTool(name, input, ctx.companyId, {
+        visibleAssetIds: ctx.assets.map((a) => a.id),
+        ...(name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null, viewerRank: ctx.timecardViewerRank ?? null } : {}),
+      })
       const text = res.content[0]?.text ?? ''
       if (res.isError) return { error: text || 'tool failed' }
       try { return JSON.parse(text) } catch { return { result: text } }

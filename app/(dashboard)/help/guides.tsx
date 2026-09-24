@@ -350,9 +350,10 @@ export const GUIDES: HelpGuide[] = [
             </P>
             <P>
               The tool&apos;s page keeps its <B>pairing history</B>. <B>Rode with</B> means that truck
-              drove at least half a mile while it kept hearing the tag, and the row says how far.
-              <B> Seen by</B> means a truck heard the tag nearby, parked beside it or driving past,
-              and the tool went nowhere with it.
+              heard the tag in places at least half a mile apart, so the tool travelled with it; the row
+              says how far. <B>Seen by</B> means a truck only heard the tag in one spot: parked beside
+              it, or coming and going from a site where the tool stayed put. A truck that parks beside
+              the same machine night after night shows as one row with a count.
             </P>
           </>
         ),

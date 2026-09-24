@@ -53,7 +53,7 @@ custom agents on the OpenAI/Anthropic SDKs) take the same URL + header pair.
 | `get_zone_costs` | "What did Riverside cost this week?" · "How are we tracking against the budget?" (args: `zone` optional, `days` 1–90, default 7) |
 | `list_alerts` | "Any theft alerts this week?" · "Did anything move after hours?" (args: `days` 1–30, `limit` up to 200) |
 | `maintenance_status` | "Anything overdue for service?" · "What work orders are open?" |
-| `find_tool` | "Where's the demo saw?" — which gateway last heard it, when, its last real ride (`lastRide`, with miles), and its recent history with each entry marked `together: rode with` (the gateway travelled ≥ ½ mile while hearing it) or `seen by` (heard nearby, went nowhere) (arg: `name`) |
+| `find_tool` | "Where's the demo saw?" — which gateway last heard it, when, its last real ride (`lastRide`, with miles), and its recent history with each entry marked `together: rode with` (the gateway heard it at places ≥ ½ mile apart — it travelled) or `seen by` (heard in one spot, went nowhere). Through Ask AI it answers only for what the asker may see (a tag aboard a hidden truck is hidden with it) (arg: `name`) |
 | `recent_photos` | Geotagged job photos, newest first — when, who, which site, caption, image URL, plus a per-site count (args: `zone`, `days`, `limit`). Camera shots from the map and daily-log photos (migration 101). |
 | `time_cards` | Crew time cards (migration 103): per person paid hours split regular / overtime, hours by job site, clocked-in-now, GPS-verified share (phone fixes per shift, share inside the clocked site), each day's entries with where the clock-in / clock-out happened and plain flags (args: `week`, `days`, `person`). |
 

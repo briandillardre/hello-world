@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { foldSighting, newEpisodePlaces, type EpisodePlaces } from './pairing-ride'
 
 /**
  * BLE tag sightings → tool custody. ONE matcher for every gateway kind — the
@@ -130,6 +131,12 @@ export async function recordBeaconSightings(
     const { data: cur } = await db
       .from('tool_associations').select('gateway_asset_id, rssi, last_seen')
       .eq('tool_asset_id', toolId).maybeSingle()
+    // A sighting no newer than the one custody already rests on — a webhook
+    // retry, a buffered batch replayed after a newer one — changes nothing.
+    // Folding it in walked last_seen BACKWARDS (and opened episodes that
+    // started before the one they closed).
+    const curMs = cur ? Date.parse(cur.last_seen) : NaN
+    if (cur && Number.isFinite(curMs) && seenMs <= curMs) continue
     if (cur && cur.gateway_asset_id !== gateway.id) {
       const holderFresh = seenMs - new Date(cur.last_seen).getTime() < 3 * 3_600_000
       const HYSTERESIS_DB = 6
@@ -155,21 +162,30 @@ export async function recordBeaconSightings(
     const { error: assocErr } = await db.from('tool_associations').upsert(assocRow, { onConflict: 'tool_asset_id' })
     if (assocErr) await db.from('tool_associations').upsert(legacyRow, { onConflict: 'tool_asset_id' })
 
-    // Pairing history (021): open/extend/close episodes as the tag moves.
+    // Pairing history (021): open/extend/close episodes as the tag moves —
+    // and WHERE each sighting happened (122), which is what tells "rode
+    // with" from "seen by" (lib/pairing-ride.ts).
     try {
       const { data: open } = await db
-        .from('pairing_log').select('id, carrier_asset_id, last_seen')
+        .from('pairing_log')
+        .select('id, carrier_asset_id, last_seen, first_lat, first_lng, anchor_lat, anchor_lng, span_m, moved_m, heard_n')
         .eq('member_asset_id', toolId).is('ended_at', null)
         .order('started_at', { ascending: false }).limit(1).maybeSingle()
       const GAP_MS = 6 * 3_600_000 // unseen for 6 h+ = that ride ended
-      const stale = open ? seenMs - new Date(open.last_seen).getTime() > GAP_MS : false
-      if (open && open.carrier_asset_id === gateway.id && !stale) {
-        await db.from('pairing_log').update({ last_seen: fix.timestamp }).eq('id', open.id)
+      const lastMs = open ? Date.parse(open.last_seen) : NaN
+      const stale = open ? seenMs - lastMs > GAP_MS : false
+      if (open && Number.isFinite(lastMs) && seenMs <= lastMs) {
+        // Already covered by a newer sighting of this episode.
+      } else if (open && open.carrier_asset_id === gateway.id && !stale) {
+        const places = foldSighting(open as EpisodePlaces, fix)
+        // `.lt` = compare-and-set: two deliveries racing never rewind it.
+        await db.from('pairing_log').update({ last_seen: fix.timestamp, ...(places ?? {}) })
+          .eq('id', open.id).lt('last_seen', fix.timestamp)
       } else {
         if (open) await db.from('pairing_log').update({ ended_at: open.last_seen }).eq('id', open.id)
         await db.from('pairing_log').insert({
           company_id: gateway.company_id, kind: 'tool', member_asset_id: toolId, carrier_asset_id: gateway.id,
-          started_at: fix.timestamp, last_seen: fix.timestamp,
+          started_at: fix.timestamp, last_seen: fix.timestamp, ...newEpisodePlaces(fix),
         })
       }
     } catch { /* additive */ }
