@@ -23,6 +23,9 @@ export interface StackPick {
   total: number
   /** Tools riding each gateway right now (asset id → count). */
   toolCounts: Record<string, number>
+  /** False on a replay: the members' LIVE state (moving · parked 3 h) would
+   *  describe now, not the moment on the scrubber — the rows say less. */
+  live?: boolean
 }
 
 const TYPE_COLOR: Record<AssetType, string> = { vehicle: '#ff9e16', equipment: '#60a5fa', personnel: '#34d399', tool: '#a78bfa' }
@@ -59,7 +62,7 @@ export function StackSheet({ stack, onPick, onZoom, onClose }: {
     .map((t) => ({ type: t, items: stack.members.filter((a) => a.type === t).sort((x, y) => x.name.localeCompare(y.name)) }))
     .filter((g) => g.items.length), [stack.members])
   const toolsAboard = stack.members.reduce((s, a) => s + (stack.toolCounts[a.id] ?? 0), 0)
-  const moving = stack.members.filter((a) => stateOf(a, now).word.startsWith('moving')).length
+  const moving = stack.live === false ? 0 : stack.members.filter((a) => stateOf(a, now).word.startsWith('moving')).length
   const summary = [
     ...groups.map((g) => `${g.items.length} ${GROUP_LABEL[g.type][g.items.length === 1 ? 0 : 1]}`),
     ...(toolsAboard ? [`${toolsAboard} ${toolsAboard === 1 ? 'tool' : 'tools'} aboard`] : []),
@@ -83,7 +86,7 @@ export function StackSheet({ stack, onPick, onZoom, onClose }: {
                     <span className="h-2.5 w-2.5 rounded-full flex-none ring-2 ring-navy-950" style={{ background: color }} />
                     <span className="flex-1 min-w-0">
                       <span className="block text-[13px] text-ink truncate">{a.name}</span>
-                      <span className={`block text-[11px] ${st.tone}`}>{st.word}</span>
+                      {stack.live !== false && <span className={`block text-[11px] ${st.tone}`}>{st.word}</span>}
                     </span>
                     {tools > 0 && (
                       <span className="flex-none inline-flex items-center gap-1 rounded-full border border-violet-400/40 bg-violet-400/10 px-2 py-0.5 font-mono text-[10px] text-violet-300" title={`${tools} tool${tools === 1 ? '' : 's'} aboard`}>

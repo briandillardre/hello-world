@@ -349,6 +349,10 @@ export const GUIDES: HelpGuide[] = [
               with <B>Reassign tracker</B>.
             </P>
             <P>
+              On the map, a tag riding a truck is the violet number on the truck&apos;s corner rather
+              than a dot of its own. Tap the truck to see which tools it is carrying.
+            </P>
+            <P>
               The tool&apos;s page keeps its <B>pairing history</B>. <B>Rode with</B> means that truck
               heard the tag in places at least half a mile apart, so the tool travelled with it; the row
               says how far. <B>Seen by</B> means a truck only heard the tag in one spot: parked beside
