@@ -109,7 +109,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'find_tool',
     description:
-      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway it last rode with, when it was last seen, its last known coordinates, and its recent carrier history. Tools have no GPS of their own — they inherit the location of whatever detected them.',
+      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway last detected it, when, its last known coordinates, its last real ride, and its recent history. Each history entry says whether the tool RODE WITH that gateway (the gateway travelled at least half a mile while hearing it — miles given) or was only SEEN BY it (heard nearby, went nowhere together). Only call something a ride when the entry says so. Tools have no GPS of their own — they inherit the location of whatever detected them.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -612,6 +612,13 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
   ])
   const assoc = assocRes.error ? null : assocRes.data
   const history = logRes.error ? [] : (logRes.data ?? [])
+  // Ride or sighting, measured on each carrier's own track (Brian, Sep 24:
+  // "rode with" only past half a mile) — the AI must not say a roller rode
+  // with a truck that merely parked beside it.
+  const { measureRides } = await import('./db/tools')
+  const { rideMiles } = await import('./pairing-ride')
+  const rides = await measureRides(sb as unknown as import('@supabase/supabase-js').SupabaseClient, history as { carrier_asset_id: string; started_at: string; last_seen: string | null; ended_at: string | null }[])
+  const lastRideAt = rides.findIndex((r) => r.kind === 'rode')
 
   return ok({
     tool: tool.name,
@@ -621,8 +628,18 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
     lastLng: (assoc?.last_lng as number | null) ?? null,
     ridingSince: assoc?.attached_since ? fmtDateTime(Date.parse(assoc.attached_since as string), DEFAULT_TZ) : null,
     tagBatteryPct: (assoc?.tag_battery as number | null) ?? null,
-    recentCarriers: history.map((h) => ({
+    lastRide: lastRideAt >= 0
+      ? {
+          carrier: nameOf(history[lastRideAt].carrier_asset_id as string),
+          from: fmtDateTime(Date.parse(history[lastRideAt].started_at as string), DEFAULT_TZ),
+          to: fmtDateTime(Date.parse((history[lastRideAt].ended_at ?? history[lastRideAt].last_seen) as string), DEFAULT_TZ),
+          miles: rideMiles(rides[lastRideAt].movedM, rides[lastRideAt].capped),
+        }
+      : null,
+    recentCarriers: history.map((h, i) => ({
       carrier: nameOf(h.carrier_asset_id as string),
+      together: rides[i]?.kind === 'rode' ? 'rode with' : 'seen by',
+      ...(rides[i]?.kind === 'rode' ? { miles: rideMiles(rides[i].movedM, rides[i].capped) } : {}),
       from: fmtDateTime(Date.parse(h.started_at as string), DEFAULT_TZ),
       // A silent tag stopped riding at its last sighting even if arbitration
       // never wrote ended_at (same clamp as the map's custody trail).

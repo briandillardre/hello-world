@@ -1,5 +1,7 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ToolAssociation } from '../types'
 import { MOCK_TOOL_ASSOCIATIONS } from '../mock-data'
+import { movingPathM, rideKind, rideWindow, MOVING_MPH, type CarrierFix, type RideKind } from '../pairing-ride'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -155,6 +157,70 @@ export async function getToolWindowRows(
   }
   out.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
   return out
+}
+
+/** What a pairing episode was: a ride (the carrier covered ≥ ½ mile while
+ *  it kept hearing the tag) or a sighting (it heard the tag nearby and went
+ *  nowhere with it) — lib/pairing-ride.ts has the rule and why. */
+export interface RideMeasure { movedM: number; capped: boolean; kind: RideKind }
+type EpisodeSpan = { carrier_asset_id: string; started_at: string; last_seen: string | null; ended_at: string | null }
+const RIDE_PAGE = 1000
+const RIDE_CAP = 4000
+const RIDE_CONCURRENCY = 6
+
+/**
+ * Measure each episode against the carrier's OWN track between its first and
+ * last sighting of the tag — results line up with `eps` by index. One
+ * sighting (an instant episode) is a sighting without a read. The read is
+ * the carrier's MOVING fixes only (speed > 2 mph, or none reported), so a
+ * truck parked beside the tag for a day and a half costs a handful of rows,
+ * not the 5,148 it logged. Reads run through the caller's client: a
+ * session client keeps RLS (a hidden carrier's track reads as nothing);
+ * the company-key door passes its service client.
+ */
+export async function measureRides(db: SupabaseClient, eps: EpisodeSpan[]): Promise<RideMeasure[]> {
+  const out: RideMeasure[] = eps.map(() => ({ movedM: 0, capped: false, kind: 'seen' as RideKind }))
+  if (isMock) return out
+  let next = 0
+  const worker = async () => {
+    while (next < eps.length) {
+      const i = next++
+      const w = rideWindow(eps[i])
+      if (w.instant) continue
+      const fixes: CarrierFix[] = []
+      let capped = false
+      try {
+        for (let off = 0; ; off += RIDE_PAGE) {
+          const { data, error } = await db
+            .from('asset_locations')
+            .select('lat, lng, speed, timestamp')
+            .eq('asset_id', eps[i].carrier_asset_id)
+            .gte('timestamp', w.from)
+            .lte('timestamp', w.to)
+            .or(`speed.gt.${MOVING_MPH},speed.is.null`)
+            .order('timestamp', { ascending: true })
+            .range(off, off + RIDE_PAGE - 1)
+          if (error || !data?.length) break
+          fixes.push(...(data as CarrierFix[]))
+          if (data.length < RIDE_PAGE) break
+          // A multi-day ride: past the cap the miles are a floor ("40+ mi")
+          // and the verdict is already settled.
+          if (fixes.length >= RIDE_CAP) { capped = true; break }
+        }
+      } catch { /* a failed read measures as a sighting — never an invented ride */ }
+      const movedM = movingPathM(fixes)
+      out[i] = { movedM, capped, kind: rideKind(movedM) }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(RIDE_CONCURRENCY, eps.length) }, worker))
+  return out
+}
+
+/** measureRides on the caller's own session (RLS). */
+export async function getPairingRides(eps: EpisodeSpan[]): Promise<RideMeasure[]> {
+  if (isMock || !eps.length) return eps.map(() => ({ movedM: 0, capped: false, kind: 'seen' as RideKind }))
+  const { createClient } = await import('../supabase-server')
+  return measureRides(createClient() as unknown as SupabaseClient, eps)
 }
 
 /** Pairing episodes involving an asset (as the tool OR the carrier), newest

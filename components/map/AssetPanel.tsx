@@ -935,17 +935,21 @@ function StatTile({ icon, label, value }: { icon: ReactNode; label: string; valu
   )
 }
 
+type CustodyEp = { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean; kind?: 'rode' | 'seen'; movedM?: number; capped?: boolean }
+
 /** Custody trail for a BLE tool — the pairing episodes from
- *  /api/tool-custody, newest first ("who had it last", Aug 12). Renders
- *  nothing until data lands, or when the tag has no history. */
+ *  /api/tool-custody, newest first ("who had it last", Aug 12). Each row
+ *  says whether the tool RODE with that truck (≥ ½ mile together, with the
+ *  miles) or was only SEEN by it (Brian, Sep 24). Renders nothing until data
+ *  lands, or when the tag has no history. */
 function ToolCustody({ assetId }: { assetId: string }) {
-  const [eps, setEps] = useState<{ carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean }[] | null>(null)
+  const [eps, setEps] = useState<CustodyEp[] | null>(null)
   useEffect(() => {
     let alive = true
     setEps(null)
     fetch(`/api/tool-custody?assetId=${assetId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { episodes?: { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean }[] } | null) => {
+      .then((j: { episodes?: CustodyEp[] } | null) => {
         if (alive) setEps(j?.episodes ?? [])
       })
       .catch(() => { if (alive) setEps([]) })
@@ -953,17 +957,30 @@ function ToolCustody({ assetId }: { assetId: string }) {
   }, [assetId])
   if (!eps || eps.length === 0) return null
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const span = (e: CustodyEp) => {
+    if (e.open) return `${fmt(e.startMs)} → now`
+    const a = fmt(e.startMs), b = e.endMs ? fmt(e.endMs) : null
+    return !b || a === b ? a : `${a}–${b}`
+  }
+  const miles = (m: number, capped?: boolean) => {
+    const mi = m / 1609.344
+    return `${mi >= 10 ? Math.round(mi) : mi.toFixed(1)}${capped ? '+' : ''} mi`
+  }
   return (
     <div className="bg-navy-800 rounded-lg px-3 py-2.5">
-      <p className="font-mono text-[9px] uppercase tracking-wider text-faint mb-1.5">Custody · last 30 days</p>
+      <p className="font-mono text-[9px] uppercase tracking-wider text-faint mb-1.5">Rides &amp; sightings · last 30 days</p>
       <div className="space-y-1">
-        {eps.slice(0, 6).map((e, i) => (
-          <div key={i} className="flex items-center gap-2 text-[12px]">
-            <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (e.open ? 'bg-teal' : 'bg-navy-600')} />
-            <span className="text-ink font-semibold truncate flex-1">{e.carrierName}</span>
-            <span className="text-faint font-mono text-[10.5px] flex-none">{e.open ? `${fmt(e.startMs)} → now` : `${fmt(e.startMs)}–${e.endMs ? fmt(e.endMs) : '?'}`}</span>
-          </div>
-        ))}
+        {eps.slice(0, 6).map((e, i) => {
+          const rode = e.kind === 'rode'
+          return (
+            <div key={i} className="flex items-center gap-2 text-[12px]">
+              <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (rode ? 'bg-teal' : 'border border-navy-600')} />
+              <span className={'truncate flex-1 ' + (rode ? 'text-ink font-semibold' : 'text-muted')}>{e.carrierName}</span>
+              <span className={'flex-none text-[10.5px] ' + (rode ? 'text-teal font-semibold' : 'text-faint')}>{rode ? `rode ${miles(e.movedM ?? 0, e.capped)}` : 'seen'}</span>
+              <span className="text-faint font-mono text-[10.5px] flex-none">{span(e)}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
