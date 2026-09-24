@@ -166,14 +166,14 @@ const STACK_LABEL: maplibregl.ExpressionSpecification = ['slice', ['concat',
   stackSeg('trucks', 'truck', 'trucks'),
   stackSeg('machines', 'machine', 'machines'),
   stackSeg('people', 'person', 'people'),
+  stackSeg('tools', 'tool', 'tools'),
   stackSeg('toolsAboard', 'tool aboard', 'tools aboard'),
 ], 3]
 const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge',
   // Stacks among the heads — trails are on by default, and the heads never
   // clustered, so the F350 sat on top of the trailer it tows as one puck
-  // with two names (Brian, Sep 24) — plus replay tool heads, which never
-  // join a stack (lib/map-stacks.ts).
-  'head-clusters', 'head-cluster-count', 'head-cluster-stack', 'tool-heads', 'tool-heads-glyph', 'tool-heads-name']
+  // with two names (Brian, Sep 24). Tools on their own are heads too.
+  'head-clusters', 'head-cluster-count', 'head-cluster-stack']
 
 /** What every count circle rolls up, for BOTH marker sources (live dots and
  *  trail heads): the stack label's kinds, the alert ring, and whether the
@@ -184,6 +184,9 @@ const STACK_CLUSTER_PROPS: Record<string, unknown> = {
   trucks: ['+', ['case', ['==', ['get', 'type'], 'vehicle'], 1, 0]],
   machines: ['+', ['case', ['==', ['get', 'type'], 'equipment'], 1, 0]],
   people: ['+', ['case', ['==', ['get', 'type'], 'personnel'], 1, 0]],
+  // A tag parked on its own (the roller at the yard) is a member like any
+  // other; one riding a drawn truck is that truck's badge (toolsAboard).
+  tools: ['+', ['case', ['==', ['get', 'type'], 'tool'], 1, 0]],
   toolsAboard: ['+', ['coalesce', ['get', 'toolCount'], 0]],
   moving: ['+', ['case', ['==', ['get', 'state'], 'moving'], 1, 0]],
   sel: ['max', ['coalesce', ['get', 'sel'], 0]],
@@ -355,14 +358,15 @@ interface SavedPlane {
   live: { flight: string | null; reg: string | null; type: string | null; lat: number; lon: number; altFt: number; onGround: boolean; gsKt: number | null; vsFpm: number | null; track: number | null; fixAt: number } | null
 }
 
-function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>, selId?: string | null): GeoJSON.FeatureCollection {
+function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolCounts?: Record<string, number>, alertIds?: Set<string>, selId?: string | null, ridesDrawn?: (toolId: string) => boolean): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
-    // Tools live in their own unclustered source (tools-live) so they stay
-    // visible in EVERY trail mode — they have no GPS history, so they never
-    // get a trail head, and hiding live dots in Trails mode made them vanish.
+    // Tools are members like any other asset — a tag parked at the yard
+    // joins the count there (Brian, Sep 24: "the entire upstate would be one
+    // circle") — except one riding a truck that is drawn: it is that truck's
+    // badge, not a second marker on top of it. The picked one always shows.
     features: assets
-      .filter((a) => a.type !== 'tool' && filter.has(a.type) && a.location)
+      .filter((a) => filter.has(a.type) && a.location && !(a.type === 'tool' && a.id !== selId && ridesDrawn?.(a.id)))
       .map((a) => {
         const age = Date.now() - new Date(a.location!.timestamp).getTime()
         return {
@@ -408,6 +412,32 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
       }
       }),
   }
+}
+
+/** Tools as trail heads on Live, at their last sighting (they have no track
+ *  on Live): the same properties headsGeoJSON gives a truck, so they stack
+ *  and draw with everything else. `ridesDrawn`: riding a truck that is drawn
+ *  — that truck's badge instead (the picked one still shows). */
+function toolHeadsLive(assets: AssetWithLocation[], filter: Set<AssetType>, selId: string | null, ridesDrawn: (toolId: string) => boolean, iconOf?: Map<string, string>, ageOf?: (assetId: string) => number | null, alertIds?: Set<string> | null): GeoJSON.Feature[] {
+  if (!filter.has('tool')) return []
+  return assets
+    .filter((a) => a.type === 'tool' && a.location && (a.id === selId || !ridesDrawn(a.id)))
+    .map((a) => {
+      const age = ageOf?.(a.id) ?? null
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [a.location!.lng, a.location!.lat] },
+        properties: {
+          id: a.id, name: a.name, type: 'tool',
+          color: /^#[0-9a-fA-F]{3,8}$/.test(String(a.metadata?.color ?? '')) ? String(a.metadata!.color) : ASSET_COLORS.tool,
+          sel: selId === a.id ? 1 : 0, toolCount: 0,
+          icon: iconOf?.get(a.id) ?? resolveAssetIcon('tool', a.metadata),
+          alert: alertIds?.has(a.id) ? 1 : 0,
+          state: age == null ? 'replay' : age > DEAD_MS ? 'dead' : 'live',
+          ageH: age == null ? 0 : age / 3_600_000,
+        },
+      }
+    })
 }
 
 /** Tools as standalone dots — no clustering, visible in every trail mode.
@@ -1464,6 +1494,14 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   }, [aboard])
   const ridingCarrierRef = useRef(ridingCarrier)
   ridingCarrierRef.current = ridingCarrier
+  /** For the live dots: is this tool riding a truck that is drawn here? A
+   *  truck filtered off (type, division, isolate) leaves its tools standing
+   *  on their own — they must never vanish with it. */
+  const liveRidesDrawn = (list: AssetWithLocation[], f: Set<AssetType>) => {
+    const drawn = new Set(list.filter((a) => a.type !== 'tool' && f.has(a.type) && a.location).map((a) => a.id))
+    const riding = ridingCarrierRef.current
+    return (id: string) => { const c = riding.get(id); return !!c && drawn.has(c) }
+  }
   // Assets wearing a LIVE unacknowledged alert — feeds the red ring + the
   // ⚠ attention slot (marker grammar). Routine enter/exit crossings are
   // activity, not alerts (same rule as the bell badge).
@@ -1649,7 +1687,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             [e.point.x - pad, e.point.y - pad],
             [e.point.x + pad, e.point.y + pad],
           ]
-          const aLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'trail-heads', 'tool-dots', 'tool-heads', 'device-bg', 'stack-fan-pucks', 'stack-fan-hub'].filter((l) => m.getLayer(l))
+          const aLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'trail-heads', 'tool-dots', 'device-bg', 'stack-fan-pucks', 'stack-fan-hub'].filter((l) => m.getLayer(l))
           if (aLayers.length && m.queryRenderedFeatures(abox, { layers: aLayers }).length) return
           const id = e.features?.[0]?.properties?.id
           const hit = measuresRef.current.find((x) => x.id === id)
@@ -2557,7 +2595,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           // carries state/ageH (headsGeoJSON), so a day-silent device is gray
           // here too; replay heads carry state 'replay' and keep their color.
           'circle-color': AGED_COLOR,
-          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12, 10],
+          // Tools stay the smallest puck (Aug 22) — now that they stack too.
+          'circle-radius': ['case', ['==', ['get', 'type'], 'tool'], ['case', ['==', ['get', 'sel'], 1], 10, 8], ['case', ['==', ['get', 'sel'], 1], 12, 10]],
           'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
           'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
           'circle-opacity': ['match', ['get', 'state'], 'dead', 0.55, 1],
@@ -2708,7 +2747,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.on('mouseleave', 'place-pins', () => { m.getCanvas().style.cursor = '' })
 
       m.addSource('assets', {
-        type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current, selectedIdRef.current),
+        type: 'geojson', data: buildGeoJSON(assets, filterRef.current, toolCountsRef.current, alertIdsRef.current, selectedIdRef.current, liveRidesDrawn(assets, filterRef.current)),
         // Roll the alert flag up into clusters so a theft alert can't hide
         // inside an amber blob at low zoom (ship-check, Aug 22). Stacks (Sep 9,
         // Brian: "multiple items in one general area … cleanly show this"):
@@ -2750,7 +2789,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.addLayer({
         id: 'state-ring', type: 'circle', source: 'assets', filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-radius': 14,
+          'circle-radius': ['case', ['==', ['get', 'type'], 'tool'], 11, 14],
           'circle-color': 'rgba(0,0,0,0)',
           // Precedence: live ALERT first (a ripped-out tracker is exactly
           // alert + dead — the red must survive), then 'dead' gray (which
@@ -2785,7 +2824,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           // is gone from the default look ("drop the icon on the live map in
           // favor of the colored dot", owner, Jul 31). Selected = same white
           // ring + size-up as the replay heads (one selection language).
-          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12, 10],
+          // Tools stay the smallest puck (Aug 22) — now that they stack too.
+          'circle-radius': ['case', ['==', ['get', 'type'], 'tool'], ['case', ['==', ['get', 'sel'], 1], 10, 8], ['case', ['==', ['get', 'sel'], 1], 12, 10]],
           'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
           'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
           // Parked is the NORMAL overnight state — read as calm, never absent.
@@ -2820,7 +2860,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           'icon-image': ['concat', 'glyph-', ['get', 'icon']],
           // Images register at 64px base (same as nav-arrow) — 0.19 ≈ 12px,
           // inside the 20px dot: identity without growing the marker.
-          'icon-size': 0.19,
+          'icon-size': ['case', ['==', ['get', 'type'], 'tool'], 0.15, 0.19],
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
         },
         paint: {
@@ -2835,7 +2875,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         id: 'trail-head-glyphs', type: 'symbol', source: 'trail-heads', filter: ['!', ['has', 'point_count']],
         layout: {
           'icon-image': ['concat', 'glyph-', ['get', 'icon']],
-          'icon-size': 0.19,
+          'icon-size': ['case', ['==', ['get', 'type'], 'tool'], 0.15, 0.19],
           'icon-allow-overlap': true, 'icon-ignore-placement': true,
           visibility: 'none',
         },
@@ -2860,7 +2900,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         }
       }
       m.addLayer({
-        id: 'asset-arrows', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        // Tools have no heading to point — they stay dots in the arrow style.
+        id: 'asset-arrows', type: 'symbol', source: 'assets', filter: ['all', ['!', ['has', 'point_count']], ['!=', ['get', 'type'], 'tool']],
         layout: {
           'icon-image': 'nav-arrow',
           'icon-size': ['interpolate', ['linear'], ['zoom'], 6, 0.32, 12, 0.46, 16, 0.6],
@@ -2879,7 +2920,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         },
       })
       m.addLayer({
-        id: 'unclustered-label', type: 'symbol', source: 'assets', filter: ['!', ['has', 'point_count']],
+        id: 'unclustered-label', type: 'symbol', source: 'assets', filter: ['all', ['!', ['has', 'point_count']], ['!=', ['get', 'type'], 'tool']],
         minzoom: 6, // plain dots past state scale — emoji become smudges
         layout: {
           'text-field': ['match', ['get', 'type'], 'vehicle', '🚛', 'equipment', '🏗️', 'personnel', '👷', 'tool', '🔧', '📍'],
@@ -2958,7 +2999,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // every trail mode (they have no GPS history → no trail head; the live
       // dots hide in Trails mode, which made tools vanish entirely, Jul 16).
       // A dropped tag sits dimmer at its true last-seen spot.
-      m.addSource('tools-live', { type: 'geojson', data: toolsGeoJSON(assets, filterRef.current) })
+      // Only a replay's "now" dots for tags with no track in the window —
+      // every other tool stacks with the rest (filled by the live effect).
+      m.addSource('tools-live', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
       // Tools wear the SAME ring grammar as every other asset (Brian, Aug 28:
       // "carry the same look throughout") — teal = tag sighted recently,
       // quiet gray = left somewhere. Scaled to the smaller tool dot.
@@ -3025,39 +3068,6 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         },
         paint: { 'text-color': '#c4b5fd', 'text-halo-color': '#001523', 'text-halo-width': 2 },
       })
-      // Replay tool heads: a tool's moving marker on a scrubbed day. Its own
-      // unclustered source — a tool never joins a stack (a tag riding a truck
-      // is that truck's badge, not a second marker on top of it) — drawn like
-      // the tool dots. Fed by updateMovementSources; empty on Live.
-      m.addSource('tool-heads', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      m.addLayer({
-        id: 'tool-heads', type: 'circle', source: 'tool-heads',
-        layout: { visibility: 'none' },
-        paint: {
-          'circle-color': ['get', 'color'],
-          'circle-radius': ['case', ['==', ['get', 'sel'], 1], 10, 8],
-          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 2.5, 2],
-          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
-        },
-      })
-      m.addLayer({
-        id: 'tool-heads-glyph', type: 'symbol', source: 'tool-heads', minzoom: 6,
-        layout: {
-          'icon-image': ['concat', 'glyph-', ['get', 'icon']], 'icon-size': 0.15,
-          'icon-allow-overlap': true, 'icon-ignore-placement': true, visibility: 'none',
-        },
-        paint: { 'icon-color': '#04121d' },
-      })
-      m.addLayer({
-        id: 'tool-heads-name', type: 'symbol', source: 'tool-heads', minzoom: 9,
-        layout: {
-          'text-field': ['get', 'name'], 'text-size': 10, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 1.3, 'text-justify': 'auto',
-          'text-optional': true, visibility: 'none',
-        },
-        paint: { 'text-color': '#c4b5fd', 'text-halo-color': '#001523', 'text-halo-width': 2 },
-      })
-
       // Tools-aboard badge: a small violet counter pinned to the dot's top-right
       // corner on any truck/machine currently carrying Bluetooth-tagged tools.
       // ONE symbol layer with icon-text-fit — circle-translate offsets warp on
@@ -3189,7 +3199,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // open stack outranks the soft 24 px glow of a truck beneath it — the
       // glow used to select that truck AND open the stack in one tap — and a
       // pin drawn over a circle keeps its own tap.
-      const TAP_MARKERS = ['clusters', 'head-clusters', ...FAN_LAYERS, 'unclustered-circle', 'asset-arrows', 'trail-heads', 'tool-dots', 'tool-heads', 'place-pins', 'device-bg',
+      const TAP_MARKERS = ['clusters', 'head-clusters', ...FAN_LAYERS, 'unclustered-circle', 'asset-arrows', 'trail-heads', 'tool-dots', 'place-pins', 'device-bg',
         // Overlay pins sit above the circles and have their own sheets.
         'photos-thumb', 'photos-pin', 'photos-cluster', 'receipts-dot', 'alert-pins', 'webcam-dots', 'fieldops-dots', 'closures-icon', 'gauge-dots', 'pws-dots']
       const STACK_TAP = new Set(['clusters', 'head-clusters', ...FAN_LAYERS])
@@ -3325,7 +3335,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.on('click', 'stack-fan-names', pickFanMember)
       m.on('click', 'stack-fan-badge', pickFanMember)
       m.on('click', 'stack-fan-hub', () => { stackTapAtRef.current = Date.now(); closeFanRef.current?.() })
-      for (const layer of ['head-clusters', 'stack-fan-pucks', 'stack-fan-hub', 'tool-heads']) {
+      for (const layer of ['head-clusters', 'stack-fan-pucks', 'stack-fan-hub']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
         m.on('mouseleave', layer, () => { m.getCanvas().style.cursor = '' })
       }
@@ -3357,7 +3367,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         ]
         // tool-dots + trail-heads INCLUDED: tools "left here" inside a zone
         // were unreachable — the zone sheet stole every tap (Brian, Aug 23).
-        const pinLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'device-bg', 'tool-dots', 'tool-heads', 'trail-heads', 'place-pins', ...FAN_LAYERS].filter((l) => m.getLayer(l))
+        const pinLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'device-bg', 'tool-dots', 'trail-heads', 'place-pins', ...FAN_LAYERS].filter((l) => m.getLayer(l))
         if (m.queryRenderedFeatures(box, { layers: pinLayers }).length) return
         // An open stack: a tap on the zone around it only folds it (the
         // fallback below sees the stamp and stands down too).
@@ -3408,8 +3418,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // sits at each asset's NOW position (on a replay, anywhere) and must
         // not pick a machine from under a head or a count circle.
         const layers = (trailModeRef.current === 'off'
-          ? ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads', 'tool-dots', 'tool-heads']
-          : ['trail-heads', 'tool-dots', 'tool-heads']).filter((l) => m.getLayer(l))
+          ? ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads', 'tool-dots']
+          : ['trail-heads', 'tool-dots']).filter((l) => m.getLayer(l))
         const hits = m.queryRenderedFeatures(box, { layers })
         // Direct hits already handled by the layer handlers — this only fires
         // usefully when the tap landed NEAR a pin but on none. A direct hit in
@@ -3530,30 +3540,22 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     if (!mapReady) return
     const source = map.current?.getSource('assets') as maplibregl.GeoJSONSource | undefined
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
-    const liveFc = buildGeoJSON(visible, filter, toolCounts, alertAssetIds, selectedAsset?.id ?? null)
+    const pickId = selectedAsset?.id ?? null
+    // Tools stack with everything else; one riding a truck drawn here is
+    // that truck's badge (and its stack's "tools aboard") instead.
+    const liveFc = buildGeoJSON(visible, filter, toolCounts, alertAssetIds, pickId, liveRidesDrawn(visible, filter))
     source?.setData(liveFc)
     stackFeaturesRef.current.assets = liveFc.features
     if (fanRef.current?.source === 'assets') syncFanRef.current?.(liveFc.features)
     const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
-    // Replaying with trails on: a tool that has a synthesized track gets a
-    // moving trail head like any other asset — drop its static "now" dot so
-    // the same tag isn't on the map twice. Tools with no episodes in the
-    // window keep the dot (their only truthful position).
-    const replayToolIds = range !== 'live' && trailMode !== 'off'
-      ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
-      : null
-    // A tool riding a truck is that truck's badge (and its stack's "tools
-    // aboard"), never a dot on top of it — but only on Live (a replay draws
-    // the truck where it WAS and this dot where the tool IS), only while that
-    // truck is itself drawn (a type or division filter can hide it, and the
-    // tool must not vanish with it — ship-check), and never the one picked.
-    const pickId = selectedAsset?.id ?? null
-    const drawnIds = range !== 'live' ? null : new Set<string>(trailMode === 'off'
-      ? liveFc.features.map((f) => String(f.properties?.id))
-      : tracksEff.filter((tr) => tr.type !== 'tool' && tr.points.length > 0 && filter.has(tr.type) && (!isolateId || tr.assetId === isolateId)).map((tr) => tr.assetId))
-    const ridesDrawn = (id: string) => { const c = ridingCarrier.get(id); return !!c && !!drawnIds?.has(c) }
-    tools?.setData(toolsGeoJSON((replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible)
-      .filter((a) => !ridesDrawn(a.id) || a.id === pickId), filter, pickId))
+    // Tools stack with everything else now (the live dots above; the trail
+    // heads in updateMovementSources). This source keeps only a replay's
+    // static "now" dots for tags with no track in the window — their one
+    // truthful position, which must not mix into the scrubbed moment's stacks.
+    const replayNow = range !== 'live' && trailMode !== 'off'
+      ? visible.filter((a) => a.type === 'tool' && !tracksEff.some((tr) => tr.assetId === a.id && tr.points.length > 0))
+      : []
+    tools?.setData(toolsGeoJSON(replayNow, filter, pickId))
     // Convoy lassos ride the same tick — live view only (a replay shows
     // history; drawing NOW's groupings over it would lie).
     const convoySrc = map.current?.getSource('convoys') as maplibregl.GeoJSONSource | undefined
@@ -3606,9 +3608,16 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     LIVE_LAYERS.forEach((l) => set(l, live))
     // Marker style splits the live view: dots (clean, matches replay heads)
     // or direction arrows with the type emoji riding on top.
-    set('unclustered-circle', live && markerStyle === 'dot')
-    set('asset-type-glyph', live && markerStyle === 'dot') // silhouettes ride the dots only
-    set('state-ring', live && markerStyle === 'dot') // ring is sized to the dot — clips ugly behind arrows
+    // Silhouettes and the state ring ride the dots only (the ring is sized
+    // to the dot and clips ugly behind arrows). Tools have no heading, so in
+    // the arrow style the dot layers narrow to tools and they stay dots.
+    const dotFilter: maplibregl.FilterSpecification = markerStyle === 'dot'
+      ? ['!', ['has', 'point_count']]
+      : ['all', ['!', ['has', 'point_count']], ['==', ['get', 'type'], 'tool']]
+    for (const l of ['unclustered-circle', 'asset-type-glyph', 'state-ring']) {
+      if (m.getLayer(l)) m.setFilter(l, dotFilter)
+      set(l, live)
+    }
     set('asset-arrows', live && markerStyle === 'arrow')
     set('unclustered-label', live && markerStyle === 'arrow')
     set('trails-line', trailMode === 'trails')
@@ -3626,7 +3635,6 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     set('speed-callout', live)
     set('trail-head-labels', trailMode !== 'off' && showLabels)
     set('tool-dots-name', showLabels)
-    set('tool-heads-name', trailMode !== 'off' && showLabels)
     // The terrain reads flat from straight overhead — tilt in on entry.
     if (trailMode === '3d' && m.getPitch() < 25 && !followIdRef.current) {
       m.easeTo({ pitch: 55, duration: 800 })
@@ -3684,14 +3692,21 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         }
       }
     }
-    // The heads stack (clustered source); tool heads ride their own.
-    const heads = headsGeoJSON(trs.filter((tr) => tr.type !== 'tool'), filterRef.current, t, sel, counts, iconByIdRef.current, liveAgeOf(), rangeRef.current === 'live' ? alertIdsRef.current : null)
+    // The heads stack (one clustered source). Trucks, machines and people
+    // first; then tools — on Live at their last sighting (no track there),
+    // on a replay along their own tracks — except a tool riding a truck
+    // whose head is drawn: it is that truck's badge.
+    const live = rangeRef.current === 'live'
+    const ageOf = liveAgeOf()
+    const core = headsGeoJSON(trs.filter((tr) => tr.type !== 'tool'), filterRef.current, t, sel, counts, iconByIdRef.current, ageOf, live ? alertIdsRef.current : null)
+    const headIds = new Set(core.features.map((f) => String(f.properties?.id)))
+    const ridesDrawn = (id: string) => headIds.has(aboardNow.get(id) ?? '')
+    const toolHeads = live
+      ? toolHeadsLive(iso ? assetsRef.current.filter((a) => a.id === iso) : assetsRef.current, filterRef.current, sel0, ridesDrawn, iconByIdRef.current, ageOf, alertIdsRef.current)
+      : headsGeoJSON(trs.filter((tr) => tr.type === 'tool' && (!ridesDrawn(tr.assetId) || tr.assetId === sel0)), filterRef.current, t, sel0, undefined, iconByIdRef.current, ageOf).features
+    const heads: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [...core.features, ...toolHeads] }
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(heads)
     stackFeaturesRef.current['trail-heads'] = heads.features
-    const headIds = new Set(heads.features.map((f) => String(f.properties?.id)))
-    ;(m.getSource('tool-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(
-      trs.filter((tr) => tr.type === 'tool' && (!headIds.has(aboardNow.get(tr.assetId) ?? '') || tr.assetId === sel0)),
-      filterRef.current, t, sel0, undefined, iconByIdRef.current, liveAgeOf()))
     // An open stack follows its members (playback moves them every frame).
     if (fanRef.current?.source === 'trail-heads') syncFanRef.current?.(heads.features)
     // Heat mode draws the route as its green thread off the SAME trails
