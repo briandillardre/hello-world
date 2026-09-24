@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase-server'
+import { measureRides } from '@/lib/db/tools'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +24,13 @@ interface Episode {
   startMs: number
   endMs: number | null
   open: boolean
+  /** 'rode' = the carrier covered ≥ ½ mile while it kept hearing the tag;
+   *  'seen' = heard nearby, went nowhere together (lib/pairing-ride.ts). */
+  kind: 'rode' | 'seen'
+  /** Metres the carrier moved between the first and last sighting. */
+  movedM: number
+  /** The read hit its cap: movedM is a floor. */
+  capped: boolean
 }
 
 const WINDOW_MS = 30 * 86_400_000
@@ -70,8 +79,13 @@ export async function GET(req: NextRequest) {
       for (const c of carriers ?? []) carrierName.set(c.id as string, (c.name as string) || 'Unknown')
     }
 
+    // Ride or sighting — measured on the carrier's own track, under this
+    // session's RLS (Brian, Sep 24: "rode with" only past half a mile).
+    const rides = await measureRides(supabase as unknown as SupabaseClient, (rows ?? []) as { carrier_asset_id: string; started_at: string; last_seen: string | null; ended_at: string | null }[])
     const episodes: Episode[] = []
-    for (const r of rows ?? []) {
+    const list = rows ?? []
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i]
       const startMs = Date.parse(r.started_at as string)
       if (!Number.isFinite(startMs)) continue
       const endMs = r.ended_at ? Date.parse(r.ended_at as string) : NaN
@@ -81,6 +95,9 @@ export async function GET(req: NextRequest) {
         startMs,
         endMs: Number.isFinite(endMs) ? endMs : null,
         open: r.ended_at == null,
+        kind: rides[i]?.kind ?? 'seen',
+        movedM: Math.round(rides[i]?.movedM ?? 0),
+        capped: !!rides[i]?.capped,
       })
     }
 

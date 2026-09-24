@@ -348,6 +348,12 @@ export const GUIDES: HelpGuide[] = [
               while the truck next to it keeps reporting; swap the tag and put the new code on the tool
               with <B>Reassign tracker</B>.
             </P>
+            <P>
+              The tool&apos;s page keeps its <B>pairing history</B>. <B>Rode with</B> means that truck
+              drove at least half a mile while it kept hearing the tag, and the row says how far.
+              <B> Seen by</B> means a truck heard the tag nearby, parked beside it or driving past,
+              and the tool went nowhere with it.
+            </P>
           </>
         ),
       },

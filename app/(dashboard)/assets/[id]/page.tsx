@@ -1,9 +1,10 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag, MoreVertical, Truck, Radio } from 'lucide-react'
 import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
-import { getToolAssociations, resolveToolLocations, getPairingLog } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, getPairingLog, getPairingRides } from '@/lib/db/tools'
+import { rideMiles, rideVerb, rideWindow } from '@/lib/pairing-ride'
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
@@ -485,16 +486,30 @@ async function PairingSection({ companyId, assetId, tz, names }: {
 }) {
   const rows = await getPairingLog(companyId, assetId)
   if (!rows.length) return null
+  // "Rode with" only when the carrier covered half a mile while it kept
+  // hearing the tag; everything else is "seen by" (Brian, Sep 24 — every
+  // row on the 85A roller said "rode with", and none of them went
+  // anywhere). lib/pairing-ride.ts has the rule.
+  const rides = await getPairingRides(rows)
   const nameOf = (id: string) => names.find((a) => a.id === id)?.name ?? 'removed asset'
   const dayFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' })
   const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+  const toolSide = rows.some((p) => p.member_asset_id === assetId)
   return (
     <section>
-      <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">Pairing history</h2>
+      <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-1">Pairing history</h2>
+      <p className="text-[11px] text-faint leading-snug mb-2">
+        {toolSide
+          ? <><span className="text-muted">Rode with</span> = travelled at least half a mile together. <span className="text-muted">Seen by</span> = heard nearby, went nowhere together.</>
+          : <><span className="text-muted">Carried</span> = took the tag at least half a mile. <span className="text-muted">Saw</span> = heard it nearby, didn&apos;t take it anywhere.</>}
+      </p>
       <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
-        {rows.map((p) => {
-          const partnerId = p.member_asset_id === assetId ? p.carrier_asset_id : p.member_asset_id
-          const verb = p.member_asset_id === assetId ? 'rode with' : 'carried'
+        {rows.map((p, i) => {
+          const side = p.member_asset_id === assetId ? 'tool' : 'carrier'
+          const partnerId = side === 'tool' ? p.carrier_asset_id : p.member_asset_id
+          const ride = rides[i]
+          const rode = ride.kind === 'rode'
+          const verb = rideVerb(ride.kind, side)
           const start = new Date(p.started_at)
           // An open episode (no ended_at) is only "together" while the
           // sighting is fresh. Arbitration never closes an episode when
@@ -505,16 +520,20 @@ async function PairingSection({ companyId, assetId, tz, names }: {
           // in Easley, Aug 9).
           const live = !p.ended_at && toolIsFresh(p.last_seen)
           const end = p.ended_at ? new Date(p.ended_at) : live ? null : new Date(p.last_seen)
+          // One passing sighting reads as one moment, not "7:43 → 7:43".
+          const single = rideWindow(p).instant && !live
+          const Icon = rode ? Truck : live ? Wifi : Radio
           return (
             <div key={p.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
-              <Wifi className={'h-4 w-4 flex-none ' + (live ? 'text-[#34d399]' : 'text-faint')} />
+              <Icon className={'h-4 w-4 flex-none ' + (live ? 'text-[#34d399]' : rode ? 'text-teal' : 'text-faint/70')} />
               <span className="flex-1 min-w-0">
-                <span className="text-ink font-medium">{verb} </span>
-                <Link href={`/assets/${partnerId}`} className="text-teal hover:underline font-medium">{nameOf(partnerId)}</Link>
+                <span className={rode ? 'text-ink font-medium' : 'text-muted'}>{verb} </span>
+                <Link href={`/assets/${partnerId}`} className={(rode ? 'text-teal font-medium' : 'text-teal/70') + ' hover:underline'}>{nameOf(partnerId)}</Link>
                 <span className="block text-xs text-faint">
                   {dayFmt.format(start)} {timeFmt.format(start)}
-                  {' → '}
-                  {end ? `${dayFmt.format(end)} ${timeFmt.format(end)}` : 'still together'}
+                  {!single && ' → '}
+                  {!single && (end ? `${dayFmt.format(end)} ${timeFmt.format(end)}` : rode ? 'still together' : 'still nearby')}
+                  {rode && <span className="text-teal/90"> · {rideMiles(ride.movedM, ride.capped)} together</span>}
                   {!p.ended_at && !live && ' · signal lost'}
                 </span>
               </span>
