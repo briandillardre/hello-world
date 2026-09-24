@@ -137,7 +137,7 @@ function RegisterInner() {
           </p>
         )}
 
-        <form onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
+        <form method="post" onSubmit={handleSubmit} className="bg-navy-900 border border-navy-800 rounded-2xl p-6 space-y-4">
           <h1 className="text-lg font-semibold text-ink">Create your account</h1>
 
           {error && (

@@ -115,7 +115,9 @@ export function MapSheet({
           100dvh — the sheet lives below the app header, so a viewport-height
           box shoved its title under the browser chrome ("can't read the
           top", Aug 6). */}
+      {/* data-map-overlay: the map's stack glide/fan keep clear of it (MapView stackSafeArea). */}
       <div
+        data-map-overlay="bottom"
         className={'absolute left-0 right-0 z-[71] md:hidden ' + (expanded ? 'top-[var(--ht-safe-top,0px)]' : '')}
         style={{ bottom: expanded ? '0px' : 'calc(54px + var(--ht-sheet-lift, 0px))', transition: 'bottom .2s ease' }}
       >

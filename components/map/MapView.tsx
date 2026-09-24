@@ -56,7 +56,7 @@ import { detectConvoys, convoyRingGeoJSON } from '@/lib/convoy'
 import { pointInPolygon } from '@/lib/alerts-engine'
 import { StackSheet, type StackPick } from '@/components/map/StackSheet'
 import { Layers as StackIcon } from 'lucide-react'
-import { STACK_RADIUS_PX, STACK_MAX_ZOOM, STACK_SOURCE_MAXZOOM, FAN_MAX, stackMove, fanLayout, fanExtent, nudgeInto, centroidOf, fanStillHolds, type StackPoint } from '@/lib/map-stacks'
+import { STACK_RADIUS_PX, STACK_MAX_ZOOM, STACK_SOURCE_MAXZOOM, FAN_MAX, stackMove, fanLayout, fanExtent, nudgeInto, centroidOf, fanStillHolds, nearbyIds, stackRadiusMetres, type StackPoint } from '@/lib/map-stacks'
 import { DirectionsSheet } from './DirectionsSheet'
 import { NavGuidance, type NavRoute } from './NavGuidance'
 import { GifRecorder } from './GifRecorder'
@@ -760,8 +760,13 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // The open fan: which source its members came from, each member's feature
   // properties (the same look the puck had) and current position.
   // `side`: which side a column of three or more opens toward (the roomier
-  // one, fixed when it opens so it never flips under a finger).
-  type FanState = { source: 'assets' | 'trail-heads'; ids: string[]; props: Map<string, Record<string, unknown>>; pos: Map<string, [number, number]>; side: 1 | -1 }
+  // one, fixed when it opens so it never flips under a finger). `openZ`: the
+  // whole zoom it opened at — clusters are cut per whole zoom, so a pinch
+  // past it folds the fan (the members split into their own pucks, or merge
+  // into a bigger count, and a fan left open would draw them twice).
+  // `joinM`: what counts as one stack at that zoom; `near`: what was already
+  // that close when it opened (a neighbour never "joins").
+  type FanState = { source: 'assets' | 'trail-heads'; ids: string[]; props: Map<string, Record<string, unknown>>; pos: Map<string, [number, number]>; side: 1 | -1; openZ: number; joinM: number; near: Set<string> }
   const fanRef = useRef<FanState | null>(null)
   const [fanOpen, setFanOpen] = useState(false)
   // A stack/fan layer handled this tap — the map-level fat-finger fallback
@@ -770,7 +775,15 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   const openStackRef = useRef<((source: 'assets' | 'trail-heads', at: [number, number], leaves: GeoJSON.Feature[], total: number, expansionZoom: number) => void) | null>(null)
   const closeFanRef = useRef<(() => void) | null>(null)
   const drawFanRef = useRef<(() => void) | null>(null)
-  const fanMoveRef = useRef(() => drawFanRef.current?.())
+  const fanMoveRef = useRef(() => {
+    const f = fanRef.current
+    const m = map.current
+    if (f && m && Math.floor(m.getZoom()) !== f.openZ) { closeFanRef.current?.(); return }
+    drawFanRef.current?.()
+  })
+  // The last features each stacking source was fed, so an opening fan knows
+  // what is already parked around it.
+  const stackFeaturesRef = useRef<{ assets: GeoJSON.Feature[]; 'trail-heads': GeoJSON.Feature[] }>({ assets: [], 'trail-heads': [] })
   // Mirrors the layers drawer (WeatherControl owns it) so the LAYERS tab can
   // flip its chevron and read as the close handle while it is open.
   const [layersOpen, setLayersOpen] = useState(false)
@@ -1441,15 +1454,16 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   }, [aboard])
   const toolCountsRef = useRef(toolCounts)
   toolCountsRef.current = toolCounts
-  // The tools those badges count — riding, so drawn as the badge, never as a
-  // dot of their own on top of the truck (and never a stack member).
-  const ridingToolIds = useMemo(() => {
-    const out = new Set<string>()
-    for (const list of Object.values(aboard ?? {})) for (const t of list) if (t.settled) out.add(t.id)
+  // The tools those badges count, and the carrier each rides — drawn as the
+  // carrier's badge, never as a dot of their own on top of it (and never a
+  // stack member), whenever that carrier is itself on the map.
+  const ridingCarrier = useMemo(() => {
+    const out = new Map<string, string>()
+    for (const [carrier, list] of Object.entries(aboard ?? {})) for (const t of list) if (t.settled) out.set(t.id, carrier)
     return out
   }, [aboard])
-  const ridingToolIdsRef = useRef(ridingToolIds)
-  ridingToolIdsRef.current = ridingToolIds
+  const ridingCarrierRef = useRef(ridingCarrier)
+  ridingCarrierRef.current = ridingCarrier
   // Assets wearing a LIVE unacknowledged alert — feeds the red ring + the
   // ⚠ attention slot (marker grammar). Routine enter/exit crossings are
   // activity, not alerts (same rule as the bell badge).
@@ -1635,7 +1649,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
             [e.point.x - pad, e.point.y - pad],
             [e.point.x + pad, e.point.y + pad],
           ]
-          const aLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'trail-heads', 'device-bg', 'stack-fan-pucks', 'stack-fan-hub'].filter((l) => m.getLayer(l))
+          const aLayers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'clusters', 'head-clusters', 'trail-heads', 'tool-dots', 'tool-heads', 'device-bg', 'stack-fan-pucks', 'stack-fan-hub'].filter((l) => m.getLayer(l))
           if (aLayers.length && m.queryRenderedFeatures(abox, { layers: aLayers }).length) return
           const id = e.features?.[0]?.properties?.id
           const hit = measuresRef.current.find((x) => x.id === id)
@@ -2678,6 +2692,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         },
       })
       m.on('click', 'place-pins', (e) => {
+        // A count circle or an open stack drawn over the pin takes the tap.
+        if (STACK_TAP.has(topMarkerAt(e.point) ?? '')) return
         const id = e.features?.[0]?.properties?.id as string | undefined
         const hit = id ? placesRef.current.find((pl) => pl.id === id) : null
         if (hit) {
@@ -3173,7 +3189,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // open stack outranks the soft 24 px glow of a truck beneath it — the
       // glow used to select that truck AND open the stack in one tap — and a
       // pin drawn over a circle keeps its own tap.
-      const TAP_MARKERS = ['clusters', 'head-clusters', ...FAN_LAYERS, 'unclustered-circle', 'asset-arrows', 'trail-heads', 'tool-dots', 'tool-heads', 'place-pins', 'device-bg']
+      const TAP_MARKERS = ['clusters', 'head-clusters', ...FAN_LAYERS, 'unclustered-circle', 'asset-arrows', 'trail-heads', 'tool-dots', 'tool-heads', 'place-pins', 'device-bg',
+        // Overlay pins sit above the circles and have their own sheets.
+        'photos-thumb', 'photos-pin', 'photos-cluster', 'receipts-dot', 'alert-pins', 'webcam-dots', 'fieldops-dots', 'closures-icon', 'gauge-dots', 'pws-dots']
       const STACK_TAP = new Set(['clusters', 'head-clusters', ...FAN_LAYERS])
       const topMarkerAt = (pt: maplibregl.PointLike): string | undefined => {
         const layers = TAP_MARKERS.filter((l) => m.getLayer(l))
@@ -3222,9 +3240,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // Up to 500 members (the sheet says "showing N of total" past that).
         const total = Number(f.properties?.point_count) || 0
         Promise.all([src.getClusterLeaves(clusterId, Math.min(Math.max(total, 1), 500), 0), src.getClusterExpansionZoom(clusterId)])
-          .then(([leaves, zoom]) => openStackRef.current?.(source, at, (leaves ?? []) as GeoJSON.Feature[], total, zoom ?? m.getZoom() + 2))
-          // A cluster from a frame ago (playback re-clusters every frame).
-          .catch(() => m.easeTo({ center: at, zoom: m.getZoom() + 2, duration: 600 }))
+          .then(
+            ([leaves, zoom]) => openStackRef.current?.(source, at, (leaves ?? []) as GeoJSON.Feature[], total, zoom ?? m.getZoom() + 2),
+            // A cluster from a frame ago (playback re-clusters every frame).
+            () => m.easeTo({ center: at, zoom: m.getZoom() + 2, duration: 600 }))
       }
       m.on('click', 'clusters', onStackTap('clusters', 'assets'))
       m.on('click', 'head-clusters', onStackTap('head-clusters', 'trail-heads'))
@@ -3244,21 +3263,22 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // One px bigger than the count circle it sits on, so it covers it.
         paint: {
           'circle-color': '#001523', 'circle-radius': ['step', ['get', 'n'], 21, 5, 27, 20, 33],
-          'circle-stroke-width': 2, 'circle-stroke-color': '#ff9e16',
+          // Red when a member wears a live alert — opening the stack must not hide it.
+          'circle-stroke-width': 2, 'circle-stroke-color': ['case', ['==', ['get', 'alert'], 1], '#fb5d5d', '#ff9e16'],
         },
       })
       m.addLayer({
         id: 'stack-fan-x', type: 'symbol', source: 'stack-fan', filter: ['==', ['get', 'kind'], 'hub'],
         layout: { 'text-field': '×', 'text-size': 22, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': true, 'text-ignore-placement': true },
-        paint: { 'text-color': '#ff9e16' },
+        paint: { 'text-color': ['case', ['==', ['get', 'alert'], 1], '#fb5d5d', '#ff9e16'] },
       })
       m.addLayer({
         id: 'stack-fan-pucks', type: 'circle', source: 'stack-fan', filter: ['==', ['get', 'kind'], 'member'],
         paint: {
           'circle-color': AGED_COLOR,
           'circle-radius': ['case', ['==', ['get', 'sel'], 1], 12.5, 11],
-          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, 2.5],
-          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', '#04121d'],
+          'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 3, ['==', ['coalesce', ['get', 'alert'], 0], 1], 3, 2.5],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', ['==', ['coalesce', ['get', 'alert'], 0], 1], '#fb5d5d', '#04121d'],
         },
       })
       m.addLayer({
@@ -3303,6 +3323,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.on('click', 'stack-fan-pucks', pickFanMember)
       m.on('click', 'stack-fan-glyphs', pickFanMember)
       m.on('click', 'stack-fan-names', pickFanMember)
+      m.on('click', 'stack-fan-badge', pickFanMember)
       m.on('click', 'stack-fan-hub', () => { stackTapAtRef.current = Date.now(); closeFanRef.current?.() })
       for (const layer of ['head-clusters', 'stack-fan-pucks', 'stack-fan-hub', 'tool-heads']) {
         m.on('mouseenter', layer, () => { m.getCanvas().style.cursor = 'pointer' })
@@ -3383,7 +3404,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // map only folds — and stamps, so no later handler acts on it either.
         const folding = !!fanRef.current
         if (folding) closeFanRef.current?.()
-        const layers = ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads', 'tool-dots', 'tool-heads'].filter((l) => m.getLayer(l))
+        // With trails on the heads are the markers; the live dots' glow still
+        // sits at each asset's NOW position (on a replay, anywhere) and must
+        // not pick a machine from under a head or a count circle.
+        const layers = (trailModeRef.current === 'off'
+          ? ['unclustered-circle', 'asset-arrows', 'asset-glow', 'trail-heads', 'tool-dots', 'tool-heads']
+          : ['trail-heads', 'tool-dots', 'tool-heads']).filter((l) => m.getLayer(l))
         const hits = m.queryRenderedFeatures(box, { layers })
         // Direct hits already handled by the layer handlers — this only fires
         // usefully when the tap landed NEAR a pin but on none. A direct hit in
@@ -3506,6 +3532,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const visible = isolateId ? assets.filter((a) => a.id === isolateId) : assets
     const liveFc = buildGeoJSON(visible, filter, toolCounts, alertAssetIds, selectedAsset?.id ?? null)
     source?.setData(liveFc)
+    stackFeaturesRef.current.assets = liveFc.features
     if (fanRef.current?.source === 'assets') syncFanRef.current?.(liveFc.features)
     const tools = map.current?.getSource('tools-live') as maplibregl.GeoJSONSource | undefined
     // Replaying with trails on: a tool that has a synthesized track gets a
@@ -3516,10 +3543,17 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       ? new Set(tracksEff.filter((tr) => tr.type === 'tool' && tr.points.length > 0).map((tr) => tr.assetId))
       : null
     // A tool riding a truck is that truck's badge (and its stack's "tools
-    // aboard"), never a dot on top of it — unless it is the one picked.
+    // aboard"), never a dot on top of it — but only on Live (a replay draws
+    // the truck where it WAS and this dot where the tool IS), only while that
+    // truck is itself drawn (a type or division filter can hide it, and the
+    // tool must not vanish with it — ship-check), and never the one picked.
     const pickId = selectedAsset?.id ?? null
+    const drawnIds = range !== 'live' ? null : new Set<string>(trailMode === 'off'
+      ? liveFc.features.map((f) => String(f.properties?.id))
+      : tracksEff.filter((tr) => tr.type !== 'tool' && tr.points.length > 0 && filter.has(tr.type) && (!isolateId || tr.assetId === isolateId)).map((tr) => tr.assetId))
+    const ridesDrawn = (id: string) => { const c = ridingCarrier.get(id); return !!c && !!drawnIds?.has(c) }
     tools?.setData(toolsGeoJSON((replayToolIds ? visible.filter((a) => !replayToolIds.has(a.id)) : visible)
-      .filter((a) => !ridingToolIds.has(a.id) || a.id === pickId), filter, pickId))
+      .filter((a) => !ridesDrawn(a.id) || a.id === pickId), filter, pickId))
     // Convoy lassos ride the same tick — live view only (a replay shows
     // history; drawing NOW's groupings over it would lie).
     const convoySrc = map.current?.getSource('convoys') as maplibregl.GeoJSONSource | undefined
@@ -3534,7 +3568,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       convoysRef.current = []
       convoySrc?.setData({ type: 'FeatureCollection', features: [] })
     }
-  }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff, selectedAsset, ridingToolIds])
+  }, [mapReady, assets, filter, isolateId, toolCounts, alertAssetIds, range, trailMode, tracksEff, selectedAsset, ridingCarrier])
 
   // Re-render geofences when the prop changes (e.g. a newly saved zone)
   useEffect(() => {
@@ -3592,6 +3626,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     set('speed-callout', live)
     set('trail-head-labels', trailMode !== 'off' && showLabels)
     set('tool-dots-name', showLabels)
+    set('tool-heads-name', trailMode !== 'off' && showLabels)
     // The terrain reads flat from straight overhead — tilt in on entry.
     if (trailMode === '3d' && m.getPitch() < 25 && !followIdRef.current) {
       m.easeTo({ pitch: 55, duration: 800 })
@@ -3627,12 +3662,13 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // demo, which has no log) uses the current associations. No episodes for
     // that moment = no badge; honest blank beats a plausible wrong number.
     let counts = toolCountsRef.current
-    // Tools riding a carrier at this moment are that carrier's badge — never
-    // a second marker on top of it, and never a member of a stack.
-    let aboardNow: Set<string> = ridingToolIdsRef.current
+    // Tools riding a carrier at this moment (tool → carrier) are that
+    // carrier's badge — never a second marker on top of it, never a stack
+    // member — as long as the carrier's own head is drawn.
+    let aboardNow: Map<string, string> = ridingCarrierRef.current
     if (rangeRef.current !== 'live' && !isMock) {
       counts = {}
-      aboardNow = new Set()
+      aboardNow = new Map()
       const win = realWindowRef.current
       if (win) {
         const ts = win.from + t * (win.to - win.from)
@@ -3643,7 +3679,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           const end = ep.endMs == null ? null : ep.open ? ep.endMs + TOOL_FRESH_MS : ep.endMs
           if (ep.startMs <= ts && (end == null || end >= ts)) {
             counts[ep.carrier] = (counts[ep.carrier] ?? 0) + 1
-            aboardNow.add(ep.member)
+            aboardNow.set(ep.member, ep.carrier)
           }
         }
       }
@@ -3651,8 +3687,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // The heads stack (clustered source); tool heads ride their own.
     const heads = headsGeoJSON(trs.filter((tr) => tr.type !== 'tool'), filterRef.current, t, sel, counts, iconByIdRef.current, liveAgeOf(), rangeRef.current === 'live' ? alertIdsRef.current : null)
     ;(m.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setData(heads)
+    stackFeaturesRef.current['trail-heads'] = heads.features
+    const headIds = new Set(heads.features.map((f) => String(f.properties?.id)))
     ;(m.getSource('tool-heads') as maplibregl.GeoJSONSource | undefined)?.setData(headsGeoJSON(
-      trs.filter((tr) => tr.type === 'tool' && (!aboardNow.has(tr.assetId) || tr.assetId === sel0)),
+      trs.filter((tr) => tr.type === 'tool' && (!headIds.has(aboardNow.get(tr.assetId) ?? '') || tr.assetId === sel0)),
       filterRef.current, t, sel0, undefined, iconByIdRef.current, liveAgeOf()))
     // An open stack follows its members (playback moves them every frame).
     if (fanRef.current?.source === 'trail-heads') syncFanRef.current?.(heads.features)
@@ -3701,7 +3739,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [c, at] }, properties: { kind: 'leg' } })
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: at }, properties: { ...(f.props.get(id) ?? {}), id, kind: 'member', sel: sel === id ? 1 : 0, anchor, toff } })
     })
-    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: { kind: 'hub', n: f.ids.length } })
+    const alert = f.ids.some((id) => Number(f.props.get(id)?.alert) === 1) ? 1 : 0
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties: { kind: 'hub', n: f.ids.length, alert } })
     src.setData({ type: 'FeatureCollection', features })
   }
   closeFanRef.current = () => {
@@ -3729,6 +3768,20 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       : kiosk
         ? { top: 90, bottom: 130 + lift, left: 250, right: 320 }
         : { top: 90, bottom: 110 + lift, left: 80, right: 150 }
+    // A card pinned over the top of the map (the Today tray — a quarter of a
+    // phone screen) pushes the clear area down while it is open; a sheet up
+    // from the bottom (an asset's panel on a phone) pushes it up.
+    try {
+      const box = el.getBoundingClientRect()
+      document.querySelectorAll<HTMLElement>('[data-map-overlay="top"]').forEach((o) => {
+        const r = o.getBoundingClientRect()
+        if (r.height > 0 && r.bottom > box.top && r.top < box.top + h / 2) pad.top = Math.max(pad.top, Math.round(r.bottom - box.top) + 12)
+      })
+      document.querySelectorAll<HTMLElement>('[data-map-overlay="bottom"]').forEach((o) => {
+        const r = o.getBoundingClientRect()
+        if (r.height > 0 && r.top < box.bottom && r.bottom > box.top + h / 2) pad.bottom = Math.max(pad.bottom, Math.round(box.bottom - r.top) + 12)
+      })
+    } catch { /* keep the default */ }
     if (pad.top + pad.bottom > h - 80) { pad.top = 40; pad.bottom = 40 }
     if (pad.left + pad.right > w - 80) { pad.left = 20; pad.right = 20 }
     return { pad, w, h }
@@ -3770,9 +3823,19 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     closeFanRef.current?.()
     setStackPeek(null)
     // A column opens toward the roomier side of the screen.
-    const mid = centroidOf(ids.map((id) => ({ id, lng: pos.get(id)![0], lat: pos.get(id)![1] })))
+    const memberPts = ids.map((id) => ({ id, lng: pos.get(id)![0], lat: pos.get(id)![1] }))
+    const mid = centroidOf(memberPts)
     const side: 1 | -1 = mid && m.project(mid).x > m.getContainer().clientWidth / 2 ? -1 : 1
-    fanRef.current = { source, ids, props, pos, side }
+    const openZ = Math.floor(m.getZoom())
+    const joinM = stackRadiusMetres(openZ, mid?.[1] ?? 0)
+    const others: StackPoint[] = []
+    for (const ft of stackFeaturesRef.current[source]) {
+      const fid = ft.properties?.id
+      const c = (ft.geometry as GeoJSON.Point | undefined)?.coordinates
+      if (fid == null || !c || pos.has(String(fid))) continue
+      others.push({ id: String(fid), lng: c[0], lat: c[1] })
+    }
+    fanRef.current = { source, ids, props, pos, side, openZ, joinM, near: nearbyIds(memberPts, others, joinM) }
     // On top of every layer added since the map was built.
     for (const l of FAN_LAYERS) if (m.getLayer(l)) m.moveLayer(l)
     m.on('move', fanMoveRef.current)
@@ -3809,11 +3872,18 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     }
     closeFanRef.current?.()
     setStackPeek(null)
+    // A circle took this tap: a zone, place or device sheet it sat over goes.
+    setSelectedZone(null)
+    setSelectedDevice(null)
+    setSelectedPlace(null)
     if (pts.length < 2) { m.easeTo({ center: at, zoom: expansionZoom, duration: 600 }); return }
     const live = rangeRef.current === 'live'
     const move = stackMove(pts)
     if (move.kind === 'fan') { openFan(source, leaves); return }
-    if (move.kind === 'list') { showStackList(pts.map((p) => p.id), total, at, expansionZoom, live, counts); return }
+    // A big stack at one spot — or a spread one while the camera follows
+    // (it would cancel the glide on its next frame) — gets the list.
+    if (move.kind === 'list' || followIdRef.current) { showStackList(pts.map((p) => p.id), total, at, expansionZoom, live, counts); return }
+    setSelectedAsset(null)
     // Spread out: glide to fit exactly these members — they split into
     // their own pucks or smaller counts — clear of the chrome.
     m.fitBounds(move.bounds, { padding: stackSafeArea(m).pad, maxZoom: 19.5, bearing: m.getBearing(), duration: 700 })
@@ -3840,7 +3910,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         f.props.set(p.id, { ...(f.props.get(p.id) ?? {}), ...(ft.properties ?? {}) })
       } else others.push(p)
     }
-    if (members.length !== f.ids.length || !fanStillHolds(members, others)) { closeFanRef.current?.(); return }
+    if (members.length !== f.ids.length || !fanStillHolds(members, others, f.joinM, f.near)) { closeFanRef.current?.(); return }
     drawFanRef.current?.()
   }
   // The pick moved: the open fan redraws its white ring. A pick hidden inside
@@ -3892,9 +3962,23 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         return
       }
     }
-    m.once('idle', reveal)
-    const t = window.setTimeout(reveal, 1500) // if the map was already idle
-    return () => { cancelled = true; m.off('idle', reveal); window.clearTimeout(t) }
+    // Once, when the camera has settled and the new zoom's circles are drawn:
+    // on idle, or a timer that keeps checking (the map may already be idle —
+    // or never idle, with the pulse animating). Only once: a fan you closed
+    // must not pop back open on a later idle.
+    let done = false
+    let t = 0
+    const run = () => {
+      if (done || cancelled) return
+      window.clearTimeout(t)
+      if (m.isMoving() || !m.areTilesLoaded()) { t = window.setTimeout(run, 400); return }
+      done = true
+      m.off('idle', run)
+      void reveal()
+    }
+    m.on('idle', run)
+    t = window.setTimeout(run, 1500)
+    return () => { cancelled = true; m.off('idle', run); window.clearTimeout(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, selectedAsset?.id])
   // A new range, mode, filter or isolate is a different picture: fold.
@@ -9171,7 +9255,15 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             setStack(null)
             setSelectedAsset(a)
             const m = map.current
-            if (m && a.location) m.easeTo({ center: [a.location.lng, a.location.lat], zoom: Math.max(m.getZoom(), 15), duration: 700 })
+            if (!m) return
+            // On a replay the pick is where its head is on the scrubber — not
+            // where it is today (possibly another town). No track, no move.
+            let at: [number, number] | null = null
+            if (stack.live === false) {
+              const tr = tracksRef.current.find((x) => x.assetId === a.id)
+              if (tr?.points.length) at = positionAt(tr, displayTRef.current) as [number, number]
+            } else if (a.location) at = [a.location.lng, a.location.lat]
+            if (at) m.easeTo({ center: at, zoom: Math.max(m.getZoom(), 15), duration: 700 })
           }}
           onZoom={() => {
             const m = map.current
