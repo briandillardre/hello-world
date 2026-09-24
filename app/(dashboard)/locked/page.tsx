@@ -27,7 +27,11 @@ export default async function LockedPage({ searchParams }: { searchParams: { f?:
   if (!isProspect(perms) || !key || perms.features.includes(key) || PROSPECT_HIDDEN.includes(key)) redirect(home)
   // `p` names the page that was tapped when its label differs from the
   // feature's (Time cards → clock, Photos → logs); validated by allow-list.
-  const label = (searchParams.p && PATH_LABELS[searchParams.p]) || featureLabel(key) || 'This page'
+  // Own keys only: ?p=constructor used to hand React a function to render.
+  const pathLabel = typeof searchParams.p === 'string' && Object.prototype.hasOwnProperty.call(PATH_LABELS, searchParams.p)
+    ? PATH_LABELS[searchParams.p]
+    : null
+  const label = pathLabel || featureLabel(key) || 'This page'
   const never = PROSPECT_NEVER.includes(key)
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">

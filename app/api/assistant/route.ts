@@ -11,7 +11,8 @@ import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai
 import { timecardScope } from '@/lib/db/timecards'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
-import { rankOf, isProspect, type Permissions } from '@/lib/permissions'
+import { rankOf, isProspect, scopeFleet, type Permissions } from '@/lib/permissions'
+import { ipRateLimited } from '@/lib/rate-limit'
 
 /** The 403 when the view-levels table says no. A Prospective Client keeps
  *  the button (Brian, Sep 23) and gets the reason instead of a run. */
@@ -22,6 +23,37 @@ const askAiLocked = (p: Pick<Permissions, 'role' | 'isMaster'>) => NextResponse.
 }, { status: 403 })
 
 export const dynamic = 'force-dynamic'
+
+/** Signed in? Both doors answer only a session: the POST spends model
+ *  credits on every call, and the GET reads a thread (sec-check, Sep 24 —
+ *  the permission resolver alone let a signed-out caller through). */
+async function signedIn(): Promise<boolean> {
+  if (isMock) return true
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data: { user } } = await createClient().auth.getUser()
+    return !!user
+  } catch { return false }
+}
+const signInFirst = () => NextResponse.json({ error: 'Sign in to use Ask AI.' }, { status: 401 })
+
+/** Why the model path failed, in words an owner can act on — never the
+ *  provider's raw text (request ids, org and key details stay in the
+ *  founder feed). Admins see this beside the offline answer. */
+function degradedCategory(err: unknown): string {
+  if (err instanceof Anthropic.APIConnectionError) return 'couldn’t reach the AI service'
+  if (err instanceof Anthropic.APIError) {
+    const msg = String(err.message || '').toLowerCase()
+    if (msg.includes('credit balance')) return 'the AI account is out of credits'
+    if (err.status === 401) return 'the AI key was refused'
+    if (err.status === 403) return 'the AI key isn’t allowed to do this'
+    if (err.status === 404 || msg.includes('model')) return 'the AI model name wasn’t recognized'
+    if (err.status === 429) return 'the AI service is rate-limiting us'
+    if (err.status === 529 || msg.includes('overloaded')) return 'the AI service is overloaded'
+    if (typeof err.status === 'number' && err.status >= 500) return 'the AI service had an outage'
+  }
+  return 'the AI service returned an error'
+}
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -139,6 +171,7 @@ async function saveTurn(userId: string | null, companyId: string | null, questio
 /** GET — the widget's thread on open (?since= honors New chat), or keyword
  *  search across the full history with ?q=. */
 export async function GET(request: NextRequest) {
+  if (!(await signedIn())) return signInFirst()
   const perms = await getMyPermissions()
   if (!perms.features.includes('ask_ai')) return askAiLocked(perms)
   // A view-as preview shows an empty thread: the history is the admin's own.
@@ -154,6 +187,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await signedIn())) return signInFirst()
+  // Every question can mean up to seven model calls — a runaway client (or a
+  // script on a stolen session) must not be able to drain the account.
+  if (ipRateLimited(request, 'ask', 20)) {
+    return NextResponse.json({ error: 'That’s a lot of questions in a minute — give it a moment and ask again.' }, { status: 429 })
+  }
   let question = ''
   let sinceTs: string | null = null
   try {
@@ -168,7 +207,7 @@ export async function POST(request: NextRequest) {
   // The bug that made this bot useless on live accounts: it queried with the
   // demo company id, so RLS returned zero rows ("0 of 0 assets").
   const companyId = await getCurrentCompanyId()
-  const [rawAssets, geofences, alerts, toolAssociations, perms] = await Promise.all([
+  const [rawAssetsAll, geofences, alertsAll, toolAssociationsAll, perms] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getAlertEvents(companyId),
@@ -177,6 +216,9 @@ export async function POST(request: NextRequest) {
   ])
   // The view-levels table can switch Ask AI off for a role (094).
   if (!perms.features.includes('ask_ai')) return askAiLocked(perms)
+  // The asker's slice of the fleet (111 + no money without the costs level)
+  // — the shared tools read as the service role and are narrowed to it too.
+  const { assets: rawAssets, pairings: toolAssociations, alerts } = scopeFleet(perms, rawAssetsAll, toolAssociationsAll, alertsAll)
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = safeTz(request.cookies.get('ht_tz')?.value)
 
@@ -220,6 +262,7 @@ export async function POST(request: NextRequest) {
   const tools = [...AI_TOOLS, ...sharedMcpToolDefs(perms.canViewCosts, perms.features)] as Anthropic.Tool[]
 
   let degradedReason: string | null = null
+  let degradedWhy: string | null = null
   try {
     const client = new Anthropic({ apiKey })
     // Sonnet 5 for the everyday assistant (Brian, Sep 23: "run a cheaper
@@ -273,8 +316,10 @@ export async function POST(request: NextRequest) {
     // A text-less response (a refusal, or a tool loop that ran out of turns)
     // is a failure too — fall through to the grounded engine, flagged.
     degradedReason = 'the model returned no answer'
+    degradedWhy = degradedReason
   } catch (err) {
     degradedReason = err instanceof Error ? err.message : 'unknown error'
+    degradedWhy = degradedCategory(err)
     console.error('Assistant agent error', err)
   }
 
@@ -289,12 +334,13 @@ export async function POST(request: NextRequest) {
   const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
   const grounded = answerQuestion(question, ctx)
   if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, grounded.answer)
-  // Admins (and the owner) get the reason in the panel itself — "credit
-  // balance too low" or "invalid api key" read next to the answer beats a
-  // founder push nobody opens (Sep 23: credits were reloaded and nobody
-  // could tell from the app whether it had taken). Crew get the flag only.
+  // Admins (and the owner) get the reason in the panel itself — "out of
+  // credits" or "key refused" read next to the answer beats a founder push
+  // nobody opens (Sep 23: credits were reloaded and nobody could tell from
+  // the app whether it had taken). A category, never the provider's raw
+  // text; crew get the flag only.
   const showReason = perms.isMaster || perms.role === 'admin'
-  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason, degradedReason: showReason && degradedReason ? degradedReason.slice(0, 300) : undefined })
+  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason, degradedReason: showReason && degradedWhy ? degradedWhy : undefined })
 }
 
 /** One push per half hour, whatever the traffic — a broken key would

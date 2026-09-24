@@ -16,9 +16,12 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const ts = require('typescript')
-const src = readFileSync(new URL('../lib/ble-sightings.ts', import.meta.url), 'utf8')
-const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
-const { beaconCandidates } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'))
+const toJs = (file) => ts.transpileModule(readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
+const asUrl = (code) => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
+// The matcher imports the pure ride fold (lib/pairing-ride.ts); a data: URL
+// module cannot resolve a relative path, so hand it the fold inline.
+const js = toJs('../lib/ble-sightings.ts').replace(/from '\.\/pairing-ride'/, `from '${asUrl(toJs('../lib/pairing-ride.ts'))}'`)
+const { beaconCandidates } = await import(asUrl(js))
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {

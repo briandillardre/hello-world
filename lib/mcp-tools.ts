@@ -500,9 +500,13 @@ async function runListAlerts(companyId: string, args: { days?: unknown; limit?: 
   return ok({ days, alerts: rows, truncated: rows.length >= limit, timezone: DEFAULT_TZ })
 }
 
-async function runMaintenanceStatus(companyId: string): Promise<McpToolResult> {
+async function runMaintenanceStatus(companyId: string, visibleIds: string[] | null = null): Promise<McpToolResult> {
   const assets = await getCompanyAssets(companyId)
   const nameOf = (id: string) => assets.find((a) => a.id === id)?.name ?? 'Unknown asset'
+  // Ask AI passes what the asker may see (111); a hidden machine's service
+  // schedule and work orders are the machine's, hidden with it.
+  const vis = visibleIds ? new Set(visibleIds) : null
+  const canSee = (id: string | null) => !vis || id == null || vis.has(id)
 
   // Schedules — same computeStatus math (and reading fallback) as the
   // maintenance page and the map's wrench badges.
@@ -521,7 +525,7 @@ async function runMaintenanceStatus(companyId: string): Promise<McpToolResult> {
       .limit(ASSET_ROW_CAP)
     if (!error) schedules = (data ?? []) as typeof schedules
   }
-  const statuses = schedules.map((s) => ({
+  const statuses = schedules.filter((s) => canSee(s.asset_id)).map((s) => ({
     ...computeStatus(s as Parameters<typeof computeStatus>[0], readings[s.asset_id] ?? s.last_service_value),
     asset: nameOf(s.asset_id),
   })) as (MaintenanceStatus & { asset: string })[]
@@ -551,7 +555,7 @@ async function runMaintenanceStatus(companyId: string): Promise<McpToolResult> {
       .order('created_at', { ascending: false })
       .limit(100)
     if (error) woAvailable = false
-    else workOrders = (data ?? []) as WoRow[]
+    else workOrders = ((data ?? []) as WoRow[]).filter((w) => canSee(w.asset_id))
   }
 
   return ok({
@@ -572,9 +576,14 @@ async function runMaintenanceStatus(companyId: string): Promise<McpToolResult> {
   })
 }
 
-async function runFindTool(companyId: string, args: { name?: unknown }): Promise<McpToolResult> {
+async function runFindTool(companyId: string, args: { name?: unknown }, visibleIds: string[] | null = null): Promise<McpToolResult> {
   const q = typeof args.name === 'string' ? args.name : ''
-  const assets = await getCompanyAssets(companyId)
+  // The session door (Ask AI) passes what the asker may see (111's ladder —
+  // this door reads with the service role, so RLS cannot do it here). A tag
+  // aboard a truck they cannot see is hidden with it, exactly like the map.
+  const vis = visibleIds ? new Set(visibleIds) : null
+  const canSee = (id: string) => !vis || vis.has(id)
+  const assets = (await getCompanyAssets(companyId)).filter((a) => canSee(a.id))
   const tools = assets.filter((a) => a.type === 'tool')
   const tool = matchByName(q, tools)
   if (!tool) {
@@ -603,22 +612,23 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
       .limit(1)
       .maybeSingle(),
     sb.from('pairing_log')
-      .select('carrier_asset_id, started_at, last_seen, ended_at')
+      .select('carrier_asset_id, started_at, last_seen, ended_at, span_m, moved_m')
       .eq('company_id', companyId)
       .eq('kind', 'tool')
       .eq('member_asset_id', tool.id)
       .order('started_at', { ascending: false })
       .limit(10),
   ])
-  const assoc = assocRes.error ? null : assocRes.data
-  const history = logRes.error ? [] : (logRes.data ?? [])
-  // Ride or sighting, measured on each carrier's own track (Brian, Sep 24:
-  // "rode with" only past half a mile) — the AI must not say a roller rode
-  // with a truck that merely parked beside it.
-  const { measureRides } = await import('./db/tools')
-  const { rideMiles } = await import('./pairing-ride')
-  const rides = await measureRides(sb as unknown as import('@supabase/supabase-js').SupabaseClient, history as { carrier_asset_id: string; started_at: string; last_seen: string | null; ended_at: string | null }[])
-  const lastRideAt = rides.findIndex((r) => r.kind === 'rode')
+  const rawAssoc = assocRes.error ? null : assocRes.data
+  const assoc = rawAssoc && canSee(rawAssoc.gateway_asset_id as string) ? rawAssoc : null
+  const history = (logRes.error ? [] : (logRes.data ?? [])).filter((h) => canSee(h.carrier_asset_id as string))
+  // Ride or sighting — where the carrier was each time it heard the tag
+  // (Brian, Sep 24: "rode with" only past half a mile). The AI must never
+  // say a roller rode with a truck that merely parked beside it.
+  const { rideKind, rideMetres, rideMiles } = await import('./pairing-ride')
+  const kinds = history.map((h) => rideKind(h.span_m as number | null))
+  const milesOf = (h: (typeof history)[number]) => rideMiles(rideMetres({ span_m: h.span_m as number | null, moved_m: h.moved_m as number | null }))
+  const lastRideAt = kinds.indexOf('rode')
 
   return ok({
     tool: tool.name,
@@ -633,13 +643,13 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
           carrier: nameOf(history[lastRideAt].carrier_asset_id as string),
           from: fmtDateTime(Date.parse(history[lastRideAt].started_at as string), DEFAULT_TZ),
           to: fmtDateTime(Date.parse((history[lastRideAt].ended_at ?? history[lastRideAt].last_seen) as string), DEFAULT_TZ),
-          miles: rideMiles(rides[lastRideAt].movedM, rides[lastRideAt].capped),
+          miles: milesOf(history[lastRideAt]),
         }
       : null,
     recentCarriers: history.map((h, i) => ({
       carrier: nameOf(h.carrier_asset_id as string),
-      together: rides[i]?.kind === 'rode' ? 'rode with' : 'seen by',
-      ...(rides[i]?.kind === 'rode' ? { miles: rideMiles(rides[i].movedM, rides[i].capped) } : {}),
+      together: kinds[i] === 'rode' ? 'rode with' : 'seen by',
+      ...(kinds[i] === 'rode' ? { miles: milesOf(h) } : {}),
       from: fmtDateTime(Date.parse(h.started_at as string), DEFAULT_TZ),
       // A silent tag stopped riding at its last sighting even if arbitration
       // never wrote ended_at (same clamp as the map's custody trail).
@@ -647,8 +657,10 @@ async function runFindTool(companyId: string, args: { name?: unknown }): Promise
       ongoing: h.ended_at == null,
     })),
     note: assoc
-      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting.'
-      : 'This tool\'s tag has never been detected by a gateway yet.',
+      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.'
+      : rawAssoc
+        ? 'No sighting of this tool that this user can see.'
+        : 'This tool\'s tag has never been detected by a gateway yet.',
   })
 }
 
@@ -782,8 +794,10 @@ export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
   companyId: string,
-  /** Session-door narrowing (Ask AI): whose time cards the caller may read. */
-  opts?: { userIds?: string[] | null; viewerRank?: number | null },
+  /** Session-door narrowing (Ask AI): whose time cards the caller may read,
+   *  and which assets they may see (111 — this door reads as the service
+   *  role, so the ladder is applied here). Absent = the company-key door. */
+  opts?: { userIds?: string[] | null; viewerRank?: number | null; visibleAssetIds?: string[] | null },
 ): Promise<McpToolResult> {
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
@@ -791,8 +805,8 @@ export async function runMcpTool(
       case 'truck_readings': return runTruckReadings(companyId, args)
       case 'get_zone_costs': return runGetZoneCosts(companyId, args)
       case 'list_alerts': return runListAlerts(companyId, args)
-      case 'maintenance_status': return runMaintenanceStatus(companyId)
-      case 'find_tool': return runFindTool(companyId, args)
+      case 'maintenance_status': return runMaintenanceStatus(companyId, opts?.visibleAssetIds ?? null)
+      case 'find_tool': return runFindTool(companyId, args, opts?.visibleAssetIds ?? null)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)

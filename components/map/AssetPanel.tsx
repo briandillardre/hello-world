@@ -935,13 +935,13 @@ function StatTile({ icon, label, value }: { icon: ReactNode; label: string; valu
   )
 }
 
-type CustodyEp = { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean; kind?: 'rode' | 'seen'; movedM?: number; capped?: boolean }
+type CustodyEp = { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean; lastMs?: number; live?: boolean; kind?: 'rode' | 'seen'; movedM?: number }
 
 /** Custody trail for a BLE tool — the pairing episodes from
  *  /api/tool-custody, newest first ("who had it last", Aug 12). Each row
- *  says whether the tool RODE with that truck (≥ ½ mile together, with the
- *  miles) or was only SEEN by it (Brian, Sep 24). Renders nothing until data
- *  lands, or when the tag has no history. */
+ *  says whether the tool RODE with that truck (heard at places ≥ ½ mile
+ *  apart, with the miles) or was only SEEN by it (Brian, Sep 24). Renders
+ *  nothing until data lands, or when the tag has no history. */
 function ToolCustody({ assetId }: { assetId: string }) {
   const [eps, setEps] = useState<CustodyEp[] | null>(null)
   useEffect(() => {
@@ -958,13 +958,16 @@ function ToolCustody({ assetId }: { assetId: string }) {
   if (!eps || eps.length === 0) return null
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
   const span = (e: CustodyEp) => {
-    if (e.open) return `${fmt(e.startMs)} → now`
-    const a = fmt(e.startMs), b = e.endMs ? fmt(e.endMs) : null
+    // "→ now" only while the tag is still being heard — an open episode
+    // whose tag went silent days ago ends at its last sighting.
+    if (e.open && e.live !== false) return `${fmt(e.startMs)} → now`
+    const endMs = e.endMs ?? e.lastMs ?? null
+    const a = fmt(e.startMs), b = endMs ? fmt(endMs) : null
     return !b || a === b ? a : `${a}–${b}`
   }
-  const miles = (m: number, capped?: boolean) => {
+  const miles = (m: number) => {
     const mi = m / 1609.344
-    return `${mi >= 10 ? Math.round(mi) : mi.toFixed(1)}${capped ? '+' : ''} mi`
+    return `${mi >= 10 ? Math.round(mi) : mi.toFixed(1)} mi`
   }
   return (
     <div className="bg-navy-800 rounded-lg px-3 py-2.5">
@@ -976,7 +979,7 @@ function ToolCustody({ assetId }: { assetId: string }) {
             <div key={i} className="flex items-center gap-2 text-[12px]">
               <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (rode ? 'bg-teal' : 'border border-navy-600')} />
               <span className={'truncate flex-1 ' + (rode ? 'text-ink font-semibold' : 'text-muted')}>{e.carrierName}</span>
-              <span className={'flex-none text-[10.5px] ' + (rode ? 'text-teal font-semibold' : 'text-faint')}>{rode ? `rode ${miles(e.movedM ?? 0, e.capped)}` : 'seen'}</span>
+              <span className={'flex-none text-[10.5px] ' + (rode ? 'text-teal font-semibold' : 'text-faint')}>{rode ? `rode ${miles(e.movedM ?? 0)}` : 'seen'}</span>
               <span className="text-faint font-mono text-[10.5px] flex-none">{span(e)}</span>
             </div>
           )

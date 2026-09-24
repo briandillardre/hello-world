@@ -119,16 +119,21 @@ export async function getTrackersOverview(companyId: string): Promise<TrackersOv
   // Factory-mode tags report as a zero UUID + MAC (see the ingest).
   const heardByMac = new Map<string, { timestamp: string; name: string | null }>()
   if (drawer.some((r) => r.model === 'EYE_BEACON')) {
+    // The ingest stores the list FLAT under the key "ble.beacons" (flespi's
+    // own parameter name) — this used to filter on a nested raw.ble.beacons
+    // that no row has ever had, so "heard by" never showed. Containment of
+    // an empty array = "has that key, holding a list".
     const { data: rows } = await db.from('asset_locations')
       .select('timestamp, raw, asset:assets(name)')
       .eq('company_id', companyId).gte('timestamp', dayAgo)
-      .not('raw->ble->beacons', 'is', null)
+      .contains('raw', { 'ble.beacons': [] })
       .order('timestamp', { ascending: false }).limit(1000)
-    type Row = { timestamp: string; raw: { ble?: { beacons?: { id?: string }[] } } | null; asset: { name: string } | { name: string }[] | null }
+    type Row = { timestamp: string; raw: Record<string, unknown> | null; asset: { name: string } | { name: string }[] | null }
     for (const row of (rows ?? []) as Row[]) {
       const name = (Array.isArray(row.asset) ? row.asset[0]?.name : row.asset?.name) ?? null
-      for (const b of row.raw?.ble?.beacons ?? []) {
-        const mac = String(b.id ?? '').replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(-12)
+      const list = row.raw?.['ble.beacons']
+      for (const b of (Array.isArray(list) ? list : []) as { id?: string }[]) {
+        const mac = String(b?.id ?? '').replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(-12)
         if (mac.length === 12 && !heardByMac.has(mac)) heardByMac.set(mac, { timestamp: row.timestamp, name })
       }
     }

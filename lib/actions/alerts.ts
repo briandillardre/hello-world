@@ -3,15 +3,17 @@
 import { requireEditOrThrow, getMyPermissions } from '@/lib/permissions-server'
 import { isProspect } from '@/lib/permissions'
 
-/** A read-only preview (view-as) or a Prospective Client never acknowledges
- *  a real alert — the UI hides the buttons, this refuses a direct call. */
+/** Acknowledging clears an alert for the whole company, so it takes the
+ *  edit level — the same rule that shows the buttons (/alerts passes
+ *  `editable`). A read-only preview (view-as) or a Prospective Client never
+ *  acknowledges a real alert; this refuses a direct call too. */
 async function canAck(): Promise<boolean> {
   const p = await getMyPermissions()
-  return !p.viewingAs && !isProspect(p)
+  return p.canEdit && !p.viewingAs && !isProspect(p)
 }
 import { revalidatePath } from 'next/cache'
 import { getCurrentCompanyId } from '@/lib/db/company'
-import { acknowledgeAlert, acknowledgeAlerts, acknowledgeAllAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
+import { acknowledgeAlert, acknowledgeAlerts, createAlertRule, updateAlertRule, deleteAlertRule, bulkSetZoneRules } from '@/lib/db/alerts'
 import type { AlertRule, AlertRuleParams, AlertTrigger } from '@/lib/types'
 
 export async function acknowledgeAlertAction(id: string): Promise<{ ok: boolean }> {
@@ -42,12 +44,6 @@ export async function acknowledgeManyAlertsAction(ids: string[]): Promise<{ ok: 
   }
   revalidatePath('/alerts')
   return { ok: true }
-}
-
-export async function acknowledgeAllAlertsAction() {
-  const companyId = await getCurrentCompanyId()
-  await acknowledgeAllAlerts(companyId)
-  revalidatePath('/alerts')
 }
 
 export async function createAlertRuleAction(input: {

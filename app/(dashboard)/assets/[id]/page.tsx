@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Wifi, MapPin, Wrench, Hash, Tag, MoreVertical, Truck, Radio } from 'lucide-react'
 import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/lib/db/assets'
-import { getToolAssociations, resolveToolLocations, getPairingLog, getPairingRides } from '@/lib/db/tools'
-import { rideMiles, rideVerb, rideWindow } from '@/lib/pairing-ride'
+import { getToolAssociations, resolveToolLocations, getPairingLog, type PairingLogRow } from '@/lib/db/tools'
+import { groupSightings, isInstant, rideKind, rideMetres, rideMiles, rideVerb } from '@/lib/pairing-ride'
 import { toolIsFresh } from '@/lib/tools-resolve'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
@@ -486,31 +486,39 @@ async function PairingSection({ companyId, assetId, tz, names }: {
 }) {
   const rows = await getPairingLog(companyId, assetId)
   if (!rows.length) return null
-  // "Rode with" only when the carrier covered half a mile while it kept
-  // hearing the tag; everything else is "seen by" (Brian, Sep 24 — every
-  // row on the 85A roller said "rode with", and none of them went
-  // anywhere). lib/pairing-ride.ts has the rule.
-  const rides = await getPairingRides(rows)
+  // "Rode with" only when the tag was heard at places half a mile apart —
+  // where the truck was each time it HEARD it, never how far the truck drove
+  // in between (Brian, Sep 24: every row on the 85A roller said "rode with",
+  // and none of them went anywhere). lib/pairing-ride.ts has the rule; the
+  // ingest stores each episode's places (122), so this page reads no tracks.
   const nameOf = (id: string) => names.find((a) => a.id === id)?.name ?? 'removed asset'
   const dayFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' })
   const timeFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
+  const when = (d: Date) => `${dayFmt.format(d)} ${timeFmt.format(d)}`
   const toolSide = rows.some((p) => p.member_asset_id === assetId)
+  const partnerOf = (p: PairingLogRow) => (p.member_asset_id === assetId ? p.carrier_asset_id : p.member_asset_id)
+  // Back-to-back sightings by the same partner are one fact — a truck that
+  // parks beside a roller every night is "seen by F650 × 6", not six rows
+  // pushing the rides off the page.
+  const groups = groupSightings(rows, partnerOf, (p) => rideKind(p.span_m))
   return (
     <section>
       <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-1">Pairing history</h2>
       <p className="text-[11px] text-faint leading-snug mb-2">
         {toolSide
-          ? <><span className="text-muted">Rode with</span> = travelled at least half a mile together. <span className="text-muted">Seen by</span> = heard nearby, went nowhere together.</>
-          : <><span className="text-muted">Carried</span> = took the tag at least half a mile. <span className="text-muted">Saw</span> = heard it nearby, didn&apos;t take it anywhere.</>}
+          ? <><span className="text-muted">Rode with</span> = heard at places at least half a mile apart. <span className="text-muted">Seen by</span> = heard in one spot, went nowhere together.</>
+          : <><span className="text-muted">Carried</span> = took the tag at least half a mile. <span className="text-muted">Saw</span> = heard it in one spot, didn&apos;t take it anywhere.</>}
       </p>
       <div className="rounded-xl border border-navy-800 bg-navy-900 divide-y divide-navy-800">
-        {rows.map((p, i) => {
+        {groups.map((g) => {
+          const p = g[0] // newest in the group
+          const oldest = g[g.length - 1]
           const side = p.member_asset_id === assetId ? 'tool' : 'carrier'
-          const partnerId = side === 'tool' ? p.carrier_asset_id : p.member_asset_id
-          const ride = rides[i]
-          const rode = ride.kind === 'rode'
-          const verb = rideVerb(ride.kind, side)
-          const start = new Date(p.started_at)
+          const partnerId = partnerOf(p)
+          const kind = rideKind(p.span_m)
+          const rode = kind === 'rode'
+          const verb = rideVerb(kind, side)
+          const start = new Date(oldest.started_at)
           // An open episode (no ended_at) is only "together" while the
           // sighting is fresh. Arbitration never closes an episode when
           // a tag simply goes silent (dropped on site, carrier drove
@@ -521,7 +529,7 @@ async function PairingSection({ companyId, assetId, tz, names }: {
           const live = !p.ended_at && toolIsFresh(p.last_seen)
           const end = p.ended_at ? new Date(p.ended_at) : live ? null : new Date(p.last_seen)
           // One passing sighting reads as one moment, not "7:43 → 7:43".
-          const single = rideWindow(p).instant && !live
+          const single = g.length === 1 && isInstant(p) && !live
           const Icon = rode ? Truck : live ? Wifi : Radio
           return (
             <div key={p.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
@@ -529,11 +537,12 @@ async function PairingSection({ companyId, assetId, tz, names }: {
               <span className="flex-1 min-w-0">
                 <span className={rode ? 'text-ink font-medium' : 'text-muted'}>{verb} </span>
                 <Link href={`/assets/${partnerId}`} className={(rode ? 'text-teal font-medium' : 'text-teal/70') + ' hover:underline'}>{nameOf(partnerId)}</Link>
+                {g.length > 1 && <span className="text-faint"> · {g.length} times</span>}
                 <span className="block text-xs text-faint">
-                  {dayFmt.format(start)} {timeFmt.format(start)}
+                  {when(start)}
                   {!single && ' → '}
-                  {!single && (end ? `${dayFmt.format(end)} ${timeFmt.format(end)}` : rode ? 'still together' : 'still nearby')}
-                  {rode && <span className="text-teal/90"> · {rideMiles(ride.movedM, ride.capped)} together</span>}
+                  {!single && (end ? when(end) : rode ? 'still together' : 'still nearby')}
+                  {rode && <span className="text-teal/90"> · {rideMiles(rideMetres(p))} together</span>}
                   {!p.ended_at && !live && ' · signal lost'}
                 </span>
               </span>

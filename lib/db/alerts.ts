@@ -52,18 +52,6 @@ export async function acknowledgeAlerts(ids: string[]): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-export async function acknowledgeAllAlerts(companyId: string): Promise<void> {
-  if (isMock) return
-
-  const { createClient } = await import('../supabase-server')
-  const supabase = createClient()
-  await supabase
-    .from('alert_events')
-    .update({ acknowledged_at: new Date().toISOString() })
-    .eq('company_id', companyId)
-    .is('acknowledged_at', null)
-}
-
 export async function getAlertRules(companyId: string): Promise<AlertRule[]> {
   if (isMock) return MOCK_ALERT_RULES
 

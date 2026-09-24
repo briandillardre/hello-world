@@ -338,7 +338,7 @@ export function navStateFor(pathname: string, features: string[] | null | undefi
 export const PATH_LABELS: Record<string, string> = { '/timecards': 'Time cards', '/photos': 'Photos' }
 /** Where a locked nav entry goes: the page that says what is locked and why. */
 export function lockedHref(pathname: string): string {
-  const p = pathname in PATH_LABELS ? `&p=${encodeURIComponent(pathname)}` : ''
+  const p = Object.prototype.hasOwnProperty.call(PATH_LABELS, pathname) ? `&p=${encodeURIComponent(pathname)}` : ''
   return `/locked?f=${featureForPath(pathname) ?? ''}${p}`
 }
 /** The view-levels label for a feature key (the /locked page's headline). */
@@ -384,4 +384,35 @@ export function canSeeAsset(p: Pick<Permissions, 'role' | 'isMaster'>, meta: unk
 /** The subset of `list` this viewer may see. */
 export function visibleAssets<T extends { metadata?: unknown; type?: string | null }>(list: T[], p: Pick<Permissions, 'role' | 'isMaster'>): T[] {
   return list.filter((a) => canSeeAsset(p, a.metadata, a.type))
+}
+
+/** An asset's money — ownership $/day, rates, what was paid, what it is
+ *  worth. Blanked for a viewer without the costs level before an asset
+ *  reaches the browser, even where no screen draws it (sec-check P1, Aug 12:
+ *  the map's idle rings made the leak visible; the Command Center's page
+ *  payload carried it until Sep 24). */
+export function withoutCosts<T extends object>(a: T, p: Pick<Permissions, 'canViewCosts'>): T {
+  if (p.canViewCosts) return a
+  return { ...a, daily_cost: null, hourly_rate: null, mileage_rate: null, purchase_price: null, purchase_value: null }
+}
+
+/**
+ * One viewer's slice of the fleet, the way /api/map-data cuts it: the assets
+ * they may see (RLS already trims for the REAL viewer — this keeps a "view
+ * app as" preview honest), the tag pairings whose BOTH ends they may see (a
+ * tag's location IS its truck's), the alerts about machines they may see,
+ * and no money fields without the costs level.
+ */
+export function scopeFleet<
+  A extends { id: string; metadata?: unknown; type?: string | null },
+  T extends { tool_asset_id: string; gateway_asset_id: string },
+  E extends { asset_id?: string | null },
+>(p: Pick<Permissions, 'role' | 'isMaster' | 'canViewCosts'>, assets: A[], pairings: T[], alerts: E[]): { assets: A[]; pairings: T[]; alerts: E[] } {
+  const seen = visibleAssets(assets, p)
+  const ids = new Set(seen.map((a) => a.id))
+  return {
+    assets: seen.map((a) => withoutCosts(a, p)),
+    pairings: pairings.filter((t) => ids.has(t.tool_asset_id) && ids.has(t.gateway_asset_id)),
+    alerts: alerts.filter((e) => !e.asset_id || ids.has(e.asset_id)),
+  }
 }

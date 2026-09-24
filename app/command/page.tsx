@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { requireFeature } from '@/lib/permissions-server'
+import { scopeFleet } from '@/lib/permissions'
 import { redirect } from 'next/navigation'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { safeTz } from '@/lib/dates'
@@ -55,12 +56,16 @@ export default async function CommandPage() {
   const { getMyPermissions } = await import('@/lib/permissions-server')
   const [company, perms] = await Promise.all([getCurrentCompany(), getMyPermissions()])
   const companyId = company.id
-  const [rawAssets, geofences, alerts, toolAssociations] = await Promise.all([
+  const [rawAssetsAll, geofences, alertsAll, toolAssociationsAll] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getAlertEvents(companyId),
     getToolAssociations(companyId),
   ])
+  // The wall's props are the page payload: the viewer's slice only — a
+  // preview sees what that role would (111), and no $/day or rates reach a
+  // role without the costs level (same cut as /api/map-data).
+  const { assets: rawAssets, pairings: toolAssociations, alerts } = scopeFleet(perms, rawAssetsAll, toolAssociationsAll, alertsAll)
   const assets = resolveToolLocations(rawAssets, toolAssociations)
   const tz = safeTz(cookies().get('ht_tz')?.value)
 
