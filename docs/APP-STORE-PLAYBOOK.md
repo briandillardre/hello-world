@@ -315,7 +315,10 @@ coordinates. Play Console → **App content** → *Photo and Video Permissions*:
   person chooses to add, uses the coordinates and capture time stored inside
   them, and asks the person which job it was whenever a photo has no
   coordinates.
-- *Video:* a 30–60 s screen recording on the installed app: /photos → Take
+- *Video (only if the form asks — as of Sep 25 it is a text answer per
+  permission, "Read Media Images" / "Read Media Video", and this app declares
+  images only):* a 30–60 s screen recording on an install of the NEW build
+  (1.4.1 in the store has no gallery GPS): /photos → Take
   photos → **From gallery** → the OS permission prompt (choose **Select
   photos**) → pick two shots taken on a site → each tile shows *📍 from
   photo* → Save → the pictures on the map at the site they came from.
