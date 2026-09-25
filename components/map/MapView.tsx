@@ -3968,8 +3968,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const n = Number(c.properties?.point_count) || 0
         if (cid == null || n > FAN_MAX) continue
         let leaves: GeoJSON.Feature[] = []
-        try { leaves = (await src.getClusterLeaves(cid, n, 0)) as GeoJSON.Feature[] } catch { continue }
-        if (cancelled || selectedIdRef.current !== id) return
+        // An unclustered index answers null — the range flipped to a replay
+        // mid-lookup; stand down rather than fan out over a replay.
+        try { leaves = ((await src.getClusterLeaves(cid, n, 0)) ?? []) as GeoJSON.Feature[] } catch { continue }
+        if (cancelled || selectedIdRef.current !== id || (heads && rangeRef.current !== 'live')) return
         if (!leaves.some((l) => String(l.properties?.id) === id)) continue
         const pts: StackPoint[] = leaves.map((l) => {
           const cc = (l.geometry as GeoJSON.Point).coordinates
@@ -3999,10 +4001,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     return () => { cancelled = true; m.off('idle', run); window.clearTimeout(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, selectedAsset?.id])
-  // A new range, mode, filter or isolate is a different picture: fold.
+  // A new range, mode, filter or isolate is a different picture: fold — the
+  // fan, the chip and the list all belonged to the one they were opened on.
   useEffect(() => {
     closeFanRef.current?.()
     setStackPeek(null)
+    setStack(null)
   }, [range, trailMode, filter, isolateId])
   // Count circles are the LIVE picture (Brian, Sep 25: "when we are live … use
   // the combined bubbles. All other past or timeline views just split them up
@@ -4012,8 +4016,6 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     if (!mapReady) return
     ;(map.current?.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setClusterOptions({ cluster: range === 'live' })
   }, [mapReady, range])
-  // …and a stack's member list was about the picture it was opened on.
-  useEffect(() => { setStack(null) }, [range])
   // "1 truck · 1 machine" under a circle would sit inside an open fan's
   // ring — the labels step aside while one is open.
   useEffect(() => {
