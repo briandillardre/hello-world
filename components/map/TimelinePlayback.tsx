@@ -45,6 +45,10 @@ type Stage = (typeof STAGES)[number]
 
 // `short` = the phone label — full words on sm+ (labels stay, Brian Aug 22;
 // they just tighten so the one-line strip fits a 400px screen, Aug 23).
+/** How close to "now" the Today playhead counts as live: 0.003 of the day
+ *  ≈ 4 min (the scrubber's own step is 1/1000 ≈ 1.4 min). */
+const LIVE_EDGE_EPS = 0.003
+
 const RANGE_SHORT: Record<string, string> = {
   live: 'Live', today: 'Today', yesterday: 'Yest', '7d': '7d', '30d': '30d', ytd: 'YTD', all: 'All',
 }
@@ -352,13 +356,24 @@ export function TimelinePlayback({
   const uiRange: TimeRange = live ? 'today' : range
   const shownT = live ? liveT : t
   const UI_RANGES = RANGES.filter((r) => r.key !== 'live')
-  const seek = useCallback((v: number) => { if (live) onRange('today'); onSeek(v) }, [live, onRange, onSeek])
+  // Nothing exists past NOW on today's window, so a seek onto or beyond the
+  // live edge IS live (Brian, Sep 25: "when I pull timeline slider to end of
+  // time period and hold it, it shakes … It should just be the live time").
+  // It used to start a Today replay at the finger, the effect below snapped
+  // it back to live a render later, and every move of a held finger flipped
+  // it again — the thumb and the map shook between the finger and now. Past
+  // the edge the seek now never leaves live, so the thumb stays parked on now.
+  const seek = useCallback((v: number) => {
+    if ((live || range === 'today') && v >= liveT - LIVE_EDGE_EPS) { if (!live) onRange('live'); return }
+    if (live) onRange('today')
+    onSeek(v)
+  }, [live, range, liveT, onRange, onSeek])
   const playPress = useCallback(() => { if (live) onRange('today'); onPlayPause() }, [live, onRange, onPlayPause])
   const pickRange = useCallback((key: TimeRange) => onRange(key === 'today' ? 'live' : key), [onRange])
   useEffect(() => {
     // Parked on (or past) now while paused = live again. Also catches
     // Yesterday → Today, which lands at t=1 beyond the live edge.
-    if (range === 'today' && !playing && t >= liveT - 0.003) onRange('live')
+    if (range === 'today' && !playing && t >= liveT - LIVE_EDGE_EPS) onRange('live')
   }, [range, playing, t, liveT, onRange])
 
   const ticks = useMemo<{ f: number; label: string }[]>(
