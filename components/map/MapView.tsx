@@ -172,7 +172,8 @@ const STACK_LABEL: maplibregl.ExpressionSpecification = ['slice', ['concat',
 const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge',
   // Stacks among the heads — trails are on by default, and the heads never
   // clustered, so the F350 sat on top of the trailer it tows as one puck
-  // with two names (Brian, Sep 24). Tools on their own are heads too.
+  // with two names (Brian, Sep 24). Tools on their own are heads too. Only
+  // on Live — a replay splits them so each rides its own trail (Sep 25).
   'head-clusters', 'head-cluster-count', 'head-cluster-stack']
 
 /** What every count circle rolls up, for BOTH marker sources (live dots and
@@ -192,7 +193,8 @@ const STACK_CLUSTER_PROPS: Record<string, unknown> = {
   sel: ['max', ['coalesce', ['get', 'sel'], 0]],
 }
 /** Cluster options shared by the live dots and the trail heads: two things
- *  that would overlap are one count all the way to street zoom. */
+ *  that would overlap are one count all the way to street zoom. The heads
+ *  use them on the Live range only (see the range effect below). */
 const STACK_SOURCE_OPTS = {
   cluster: true, clusterRadius: STACK_RADIUS_PX, clusterMaxZoom: STACK_MAX_ZOOM, maxzoom: STACK_SOURCE_MAXZOOM,
   clusterProperties: STACK_CLUSTER_PROPS,
@@ -786,7 +788,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // ── Stacks (lib/map-stacks.ts; Brian, Sep 24) ─────────────────────────────
   // A tapped count circle glides to fit its members (and this chip offers
   // the list), fans a stacked pair out in place, or lists a big stack.
-  const [stackPeek, setStackPeek] = useState<{ ids: string[]; total: number; at: [number, number]; expansionZoom: number; live: boolean; counts: Record<string, number> } | null>(null)
+  const [stackPeek, setStackPeek] = useState<{ ids: string[]; total: number; at: [number, number]; expansionZoom: number; counts: Record<string, number> } | null>(null)
   // The open fan: which source its members came from, each member's feature
   // properties (the same look the puck had) and current position.
   // `side`: which side a column of three or more opens toward (the roomier
@@ -2580,8 +2582,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       m.addSource('trail-heads', {
         type: 'geojson', data: headsGeoJSON(tracksRef.current.filter((tr) => tr.type !== 'tool'), filterRef.current, 0, null, toolCountsRef.current, iconByIdRef.current, liveAgeOf()),
         // Heads stack like the live dots (lib/map-stacks.ts) — trails are on
-        // by default, so these are the markers most people actually see.
+        // by default, so these are the markers most people actually see — but
+        // on Live only: a replay's heads each ride their own trail.
         ...STACK_SOURCE_OPTS,
+        cluster: rangeRef.current === 'live',
       })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads', filter: ['!', ['has', 'point_count']],
@@ -3859,9 +3863,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     setFanOpen(true)
   }
   /** The member list for a stack (a big stack at one spot, or the chip).
-   *  `counts` = tools riding each member at the moment on the scrubber (the
-   *  leaves carry them), not now. */
-  const showStackList = (ids: string[], total: number, at: [number, number], expansionZoom: number, live: boolean, counts: Record<string, number>) => {
+   *  `counts` = tools riding each member (the leaves carry them). */
+  const showStackList = (ids: string[], total: number, at: [number, number], expansionZoom: number, counts: Record<string, number>) => {
     const want = new Set(ids)
     const members = assetsRef.current.filter((a) => want.has(a.id))
     if (!members.length) return
@@ -3870,7 +3873,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     setSelectedDevice(null)
     setSelectedPlace(null)
     setStackPeek(null)
-    setStack({ at, expansionZoom: Math.min(expansionZoom, 19.5), members, total: Math.max(total, members.length), toolCounts: counts, live })
+    setStack({ at, expansionZoom: Math.min(expansionZoom, 19.5), members, total: Math.max(total, members.length), toolCounts: counts })
   }
   openStackRef.current = (source, at, leaves, total, expansionZoom) => {
     const m = map.current
@@ -3892,18 +3895,17 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     setSelectedDevice(null)
     setSelectedPlace(null)
     if (pts.length < 2) { m.easeTo({ center: at, zoom: expansionZoom, duration: 600 }); return }
-    const live = rangeRef.current === 'live'
     const move = stackMove(pts)
     if (move.kind === 'fan') { openFan(source, leaves); return }
     // A big stack at one spot — or a spread one while the camera follows
     // (it would cancel the glide on its next frame) — gets the list.
-    if (move.kind === 'list' || followIdRef.current) { showStackList(pts.map((p) => p.id), total, at, expansionZoom, live, counts); return }
+    if (move.kind === 'list' || followIdRef.current) { showStackList(pts.map((p) => p.id), total, at, expansionZoom, counts); return }
     setSelectedAsset(null)
     // Spread out: glide to fit exactly these members — they split into
     // their own pucks or smaller counts — clear of the chrome.
     m.fitBounds(move.bounds, { padding: stackSafeArea(m).pad, maxZoom: 19.5, bearing: m.getBearing(), duration: 700 })
     // …and keep the list one tap away (the wall has no one to tap it).
-    if (!kiosk) setStackPeek({ ids: pts.map((p) => p.id), total: Math.max(total, pts.length), at, expansionZoom, live, counts })
+    if (!kiosk) setStackPeek({ ids: pts.map((p) => p.id), total: Math.max(total, pts.length), at, expansionZoom, counts })
   }
   /** Fresh positions for an open fan (live tick, or a playback frame); it
    *  folds when the stack breaks — a member drove off, someone new parked
@@ -3943,6 +3945,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const reveal = async () => {
       if (cancelled || selectedIdRef.current !== id || pbPlayingRef.current || fanRef.current?.ids.includes(id)) return
       const heads = trailModeRef.current !== 'off'
+      if (heads && rangeRef.current !== 'live') return // a replay's heads never stack
       const source = heads ? 'trail-heads' : 'assets'
       const clusterLayer = heads ? 'head-clusters' : 'clusters'
       if (!m.getLayer(clusterLayer) || m.getLayoutProperty(clusterLayer, 'visibility') === 'none') return
@@ -4001,6 +4004,16 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     closeFanRef.current?.()
     setStackPeek(null)
   }, [range, trailMode, filter, isolateId])
+  // Count circles are the LIVE picture (Brian, Sep 25: "when we are live … use
+  // the combined bubbles. All other past or timeline views just split them up
+  // like before so they still move to match the trail"). The heads cluster on
+  // Live only; every replay draws each head on its own, riding its trail.
+  useEffect(() => {
+    if (!mapReady) return
+    ;(map.current?.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setClusterOptions({ cluster: range === 'live' })
+  }, [mapReady, range])
+  // …and a stack's member list was about the picture it was opened on.
+  useEffect(() => { setStack(null) }, [range])
   // "1 truck · 1 machine" under a circle would sit inside an open fan's
   // ring — the labels step aside while one is open.
   useEffect(() => {
@@ -9271,14 +9284,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
             setSelectedAsset(a)
             const m = map.current
             if (!m) return
-            // On a replay the pick is where its head is on the scrubber — not
-            // where it is today (possibly another town). No track, no move.
-            let at: [number, number] | null = null
-            if (stack.live === false) {
-              const tr = tracksRef.current.find((x) => x.assetId === a.id)
-              if (tr?.points.length) at = positionAt(tr, displayTRef.current) as [number, number]
-            } else if (a.location) at = [a.location.lng, a.location.lat]
-            if (at) m.easeTo({ center: at, zoom: Math.max(m.getZoom(), 15), duration: 700 })
+            // A stack is always live truth (the heads only stack on Live,
+            // and the dots are always now), so the pick is where it is now.
+            if (a.location) m.easeTo({ center: [a.location.lng, a.location.lat], zoom: Math.max(m.getZoom(), 15), duration: 700 })
           }}
           onZoom={() => {
             const m = map.current
@@ -9297,7 +9305,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         <div className="absolute left-1/2 -translate-x-1/2 z-20" style={{ bottom: 'calc(62px + var(--ht-sheet-lift, 0px))' }}>
           <button
             type="button"
-            onClick={() => showStackList(stackPeek.ids, stackPeek.total, stackPeek.at, stackPeek.expansionZoom, stackPeek.live, stackPeek.counts)}
+            onClick={() => showStackList(stackPeek.ids, stackPeek.total, stackPeek.at, stackPeek.expansionZoom, stackPeek.counts)}
             className="inline-flex items-center gap-2 rounded-full bg-navy-950/95 backdrop-blur border border-amber/45 shadow-panel pl-3 pr-3.5 py-2 text-[12.5px] font-semibold text-ink active:scale-95 transition-transform"
           >
             <StackIcon className="h-4 w-4 text-amber" />
