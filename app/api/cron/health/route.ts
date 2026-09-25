@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
       if (!Number.isFinite(lastAt) || Date.now() - lastAt > 23 * 3_600_000) {
         await notifySystem(
           'CRON_SECRET missing',
-          'Vercel is not sending a cron secret, so the hours ledger, map trails, evening digests, receipt chase and flight-log banking have all stopped running (they refuse to run without it). Fix: Vercel → hello-world → Settings → Environment Variables → add CRON_SECRET (any long random string) for Production and Preview, then redeploy. Everything catches up by itself.'
+          'Vercel is not sending a cron secret, so the hours ledger, map trails, evening digests, receipt chase and flight-log banking have all stopped running (they refuse to run without it). Fix: Vercel → hammertrackjune28 (the project that serves hammertrack.ai — not either hello-world copy) → Settings → Environment Variables → add CRON_SECRET (any long random string) for Production and Preview, then redeploy. Everything catches up by itself.'
         )
         await writeState(db, WARN_KEY, { at: new Date().toISOString() })
       }
