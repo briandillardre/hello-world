@@ -172,8 +172,8 @@ const STACK_LABEL: maplibregl.ExpressionSpecification = ['slice', ['concat',
 const HEAD_LAYERS = ['trail-heads', 'trail-head-glyphs', 'trail-head-labels', 'trail-head-tools-badge',
   // Stacks among the heads — trails are on by default, and the heads never
   // clustered, so the F350 sat on top of the trailer it tows as one puck
-  // with two names (Brian, Sep 24). Tools on their own are heads too. Only
-  // on Live — a replay splits them so each rides its own trail (Sep 25).
+  // with two names (Brian, Sep 24). Dormant since the heads went back to
+  // dots (Sep 25): they draw nothing while the source does not cluster.
   'head-clusters', 'head-cluster-count', 'head-cluster-stack']
 
 /** What every count circle rolls up, for BOTH marker sources (live dots and
@@ -192,9 +192,8 @@ const STACK_CLUSTER_PROPS: Record<string, unknown> = {
   moving: ['+', ['case', ['==', ['get', 'state'], 'moving'], 1, 0]],
   sel: ['max', ['coalesce', ['get', 'sel'], 0]],
 }
-/** Cluster options shared by the live dots and the trail heads: two things
- *  that would overlap are one count all the way to street zoom. The heads
- *  use them on the Live range only (see the range effect below). */
+/** Cluster options for the live dots (and the dormant head circles): what a
+ *  circle rolls up and how far out it forms. */
 const STACK_SOURCE_OPTS = {
   cluster: true, clusterRadius: STACK_RADIUS_PX, clusterMaxZoom: STACK_MAX_ZOOM, maxzoom: STACK_SOURCE_MAXZOOM,
   clusterProperties: STACK_CLUSTER_PROPS,
@@ -2581,11 +2580,13 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       }
       m.addSource('trail-heads', {
         type: 'geojson', data: headsGeoJSON(tracksRef.current.filter((tr) => tr.type !== 'tool'), filterRef.current, 0, null, toolCountsRef.current, iconByIdRef.current, liveAgeOf()),
-        // Heads stack like the live dots (lib/map-stacks.ts) — trails are on
-        // by default, so these are the markers most people actually see — but
-        // on Live only: a replay's heads each ride their own trail.
+        // Dots at every range (Brian, Sep 25: "Revert to dots. I don't like
+        // this view at all", after a day of count circles on these heads —
+        // the markers most people see, trails being on by default). The
+        // circle layers, fan and list stay wired: `cluster: true` brings
+        // them back (Live-only was the last rule, 2057c54).
         ...STACK_SOURCE_OPTS,
-        cluster: rangeRef.current === 'live',
+        cluster: false,
       })
       m.addLayer({
         id: 'trail-heads', type: 'circle', source: 'trail-heads', filter: ['!', ['has', 'point_count']],
@@ -2758,9 +2759,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // the cluster also knows WHAT is in it — trucks / machines / people,
         // the tools riding them, how many are moving — so the blob can say
         // "2 trucks · 1 machine · 5 tools aboard" and a tap can list them.
-        // Sep 24: clustered to street zoom (was 15), so a truck and the
-        // trailer it tows are one count until they really come apart.
+        // Circles up to z15, dots from there in — as before Sep 24 (street-
+        // zoom circles went with the Sep 25 revert to dots).
         ...STACK_SOURCE_OPTS,
+        clusterMaxZoom: 15,
       })
       for (const spec of stackCircleLayers('assets', { circle: 'clusters', count: 'cluster-count', stack: 'cluster-stack' })) m.addLayer(spec)
       // Expanding pulse ring — MOVING assets, plus a RED pulse on anything
@@ -3945,7 +3947,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const reveal = async () => {
       if (cancelled || selectedIdRef.current !== id || pbPlayingRef.current || fanRef.current?.ids.includes(id)) return
       const heads = trailModeRef.current !== 'off'
-      if (heads && rangeRef.current !== 'live') return // a replay's heads never stack
+      if (heads) return // the heads are dots — they never stack (Sep 25)
       const source = heads ? 'trail-heads' : 'assets'
       const clusterLayer = heads ? 'head-clusters' : 'clusters'
       if (!m.getLayer(clusterLayer) || m.getLayoutProperty(clusterLayer, 'visibility') === 'none') return
@@ -3968,10 +3970,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         const n = Number(c.properties?.point_count) || 0
         if (cid == null || n > FAN_MAX) continue
         let leaves: GeoJSON.Feature[] = []
-        // An unclustered index answers null — the range flipped to a replay
-        // mid-lookup; stand down rather than fan out over a replay.
+        // An unclustered index answers null (the trail mode changed
+        // mid-lookup): nothing to open.
         try { leaves = ((await src.getClusterLeaves(cid, n, 0)) ?? []) as GeoJSON.Feature[] } catch { continue }
-        if (cancelled || selectedIdRef.current !== id || (heads && rangeRef.current !== 'live')) return
+        if (cancelled || selectedIdRef.current !== id || trailModeRef.current !== 'off') return
         if (!leaves.some((l) => String(l.properties?.id) === id)) continue
         const pts: StackPoint[] = leaves.map((l) => {
           const cc = (l.geometry as GeoJSON.Point).coordinates
@@ -4008,14 +4010,6 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     setStackPeek(null)
     setStack(null)
   }, [range, trailMode, filter, isolateId])
-  // Count circles are the LIVE picture (Brian, Sep 25: "when we are live … use
-  // the combined bubbles. All other past or timeline views just split them up
-  // like before so they still move to match the trail"). The heads cluster on
-  // Live only; every replay draws each head on its own, riding its trail.
-  useEffect(() => {
-    if (!mapReady) return
-    ;(map.current?.getSource('trail-heads') as maplibregl.GeoJSONSource | undefined)?.setClusterOptions({ cluster: range === 'live' })
-  }, [mapReady, range])
   // "1 truck · 1 machine" under a circle would sit inside an open fan's
   // ring — the labels step aside while one is open.
   useEffect(() => {

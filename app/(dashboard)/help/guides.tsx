@@ -351,7 +351,7 @@ export const GUIDES: HelpGuide[] = [
             <P>
               On the map, a tag riding a truck is the violet number on the truck&apos;s corner rather
               than a dot of its own. Tap the truck to see which tools it is carrying. A tool parked on
-              its own shows as a small dot and counts in the circles like any machine.
+              its own shows as a small dot of its own.
             </P>
             <P>
               The tool&apos;s page keeps its <B>pairing history</B>. <B>Rode with</B> means that truck
