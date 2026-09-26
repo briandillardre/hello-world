@@ -22,14 +22,19 @@ export const BRAND_EMAIL_SALES = `sales@${BRAND_DOMAIN}`
 export const BRAND_EMAIL_SUPPORT = `support@${BRAND_DOMAIN}`
 
 /**
- * The toll-free number alerts are sent from (Twilio, bought Jul 30 2026).
- * E.164 for APIs, formatted for humans. This is also the number that must be
- * set as TWILIO_FROM in the hosting env — they are the same number, and a
- * mismatch is Twilio error 21606.
+ * The toll-free number alerts are sent from — NULL while we do not have one.
  *
- * NOT yet published on the marketing pages: inbound minutes on a toll-free
- * number are billed to us, so it needs a voice greeting before it goes
- * anywhere a robocaller will find it.
+ * History, so nobody re-publishes a dead number: +1 888 373 9004 was bought
+ * Jul 30 2026, its toll-free verification was REJECTED Jul 31 (code 30510,
+ * "Opt-In Example Must Be Complete, Branded, and Legible" — the submission
+ * gave a URL where carriers want a legible screenshot of the actual consent
+ * box), and the number was gone from the account by Sep 26 (the trial lapsed
+ * after the rejection). /sms printed it on a public page the whole time.
+ *
+ * When a new number is bought: set both constants AND `TWILIO_FROM` in the
+ * hosting env to the same number — a mismatch is Twilio error 21606 — and
+ * give it a voice greeting before it goes anywhere a robocaller will find
+ * it, because inbound toll-free minutes are billed to us.
  */
-export const BRAND_SMS_NUMBER = '+18883739004'
-export const BRAND_SMS_NUMBER_DISPLAY = '(888) 373-9004'
+export const BRAND_SMS_NUMBER: string | null = null
+export const BRAND_SMS_NUMBER_DISPLAY: string | null = null

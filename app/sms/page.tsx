@@ -42,10 +42,12 @@ export default function SmsPage() {
               is not marketing, and we never text people who aren&apos;t {BRAND_NAME} account
               holders.
             </p>
-            <p className="mt-2">
-              Messages are sent from{' '}
-              <strong className="text-ink font-mono">{BRAND_SMS_NUMBER_DISPLAY}</strong>.
-            </p>
+            {BRAND_SMS_NUMBER_DISPLAY && (
+              <p className="mt-2">
+                Messages are sent from{' '}
+                <strong className="text-ink font-mono">{BRAND_SMS_NUMBER_DISPLAY}</strong>.
+              </p>
+            )}
           </section>
 
           <section>
