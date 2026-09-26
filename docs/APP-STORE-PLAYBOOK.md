@@ -133,10 +133,16 @@ wrapper as-is.
    website ownership verified Aug 9; `com.hammertrack.app` live in
    Production since Aug 21 (update Aug 27; v1.2 built Sep 1, upload
    pending). Org accounts skip the 12-tester/14-day closed-testing rule.
-   **Sep 30 2026 check:** Google requires every Play app to be registered
-   for Android developer verification by then — >99% were auto-registered;
-   confirm the package reads "registered" on the Play Console home page
-   rather than assuming.
+   **Sep 30 2026 check — ✅ DONE Sep 26 2026.** The Play Console home
+   banner reads "All of your Play apps have been successfully registered
+   to meet Android developer verification requirements"; Policy status
+   shows No issues found. Nothing to file. The remainder of that banner
+   covers package names/signing keys for apps distributed OUTSIDE Play
+   (sideloading, other stores) — not our case. Scope, in Google's own
+   words: an unregistered app "from participating stores" stops being
+   installable "on certified Android devices in select countries"
+   (Brazil, Indonesia, Singapore, Thailand from Sep 30; global 2027),
+   rather than being pulled from Play outright.
 4. **Firebase project** — ✅ DONE (project hammertrack-app, FCM v1 sender;
    `FCM_SERVICE_ACCOUNT` in Vercel; Android push end-to-end since Aug 9).
 
