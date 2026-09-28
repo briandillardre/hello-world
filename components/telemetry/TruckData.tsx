@@ -6,11 +6,10 @@ import {
   type DeviceFamily, type Readings,
 } from '@/lib/telemetry-catalog'
 import type { TrendRow } from '@/lib/db/telemetry'
-import { TruckGauges } from './TruckGauges'
+import { TruckGauges, agoWords } from './TruckGauges'
 import { ReadingsList } from './ReadingsList'
 import { TrendStrip } from './TrendStrip'
 import { TONE_HEX } from './Gauge'
-import { shortDuration } from '@/lib/live-status'
 
 /**
  * What the truck is telling us, for people who drive trucks: dials for the
@@ -88,13 +87,17 @@ export function TruckData({ assetId, family, raw, rawTimestamp, initialReadings,
 
   return (
     <div className={compact ? 'rounded-xl border border-navy-700 bg-gradient-to-b from-navy-800 to-navy-900 p-3 space-y-2.5' : 'space-y-3'}>
-      <div className="flex items-center gap-1.5">
-        {ctx.engineOn && <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-blink" />}
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-teal">
-          {title}{stateWords ? ` · ${stateWords}` : ''}
+      {/* The age stays on one line at the right; a title too long for the
+          width (the map panel in a phone or the desktop sidebar) breaks
+          between its two phrases, never inside one. */}
+      <div className="flex items-baseline gap-1.5">
+        {ctx.engineOn && <span className="w-1.5 h-1.5 flex-none rounded-full bg-[#34d399] animate-blink" />}
+        <p className="min-w-0 flex-1 font-mono text-[10px] uppercase tracking-[0.14em] text-teal">
+          <span className="whitespace-nowrap">{title}{stateWords ? ' ·' : ''}</span>
+          {stateWords && <> <span className="whitespace-nowrap">{stateWords}</span></>}
         </p>
         {newestMs != null && (
-          <span className="ml-auto font-mono text-[9.5px] text-faint">{shortDuration(Date.now() - newestMs)} ago</span>
+          <span className="flex-none whitespace-nowrap font-mono text-[9.5px] text-faint">{agoWords(Date.now() - newestMs)}</span>
         )}
       </div>
 
@@ -136,7 +139,7 @@ export function TruckData({ assetId, family, raw, rawTimestamp, initialReadings,
             </div>
           )}
           <ReadingsList described={described} missing={missing} family={family} full />
-          {updatedAt && <p className="font-mono text-[9.5px] text-faint">Stored readings updated {shortDuration(Date.now() - Date.parse(updatedAt))} ago.</p>}
+          {updatedAt && <p className="font-mono text-[9.5px] text-faint">Stored readings updated {agoWords(Date.now() - Date.parse(updatedAt))}.</p>}
         </>
       )}
     </div>
