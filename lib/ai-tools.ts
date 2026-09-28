@@ -7,11 +7,20 @@
  * (lib/asset-stats, lib/visits) so the assistant never disagrees with the
  * screens.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AssetWithLocation, Geofence, AlertEvent } from './types'
 import { MCP_TOOLS, runMcpTool } from './mcp-tools'
-import { readingsFromRaw, readingsSummary } from './telemetry-catalog'
+import { TELEMETRY_CATALOG, readingsFromRaw, readingsSummary } from './telemetry-catalog'
 import { pointInPolygon } from './alerts-engine'
-import { computeRangeStats, estMpgForSpecs, type StatPoint } from './asset-stats'
+import {
+  computeRangeStats, estMpgForSpecs, fuelFromLevels, gaugeSilentMiles, tankGallonsFrom, usableFuelSamples,
+  type FuelSample, type StatPoint,
+} from './asset-stats'
+import {
+  activityAnswer, activityIntent, activityToolResult, asksWholeFleet, clampWindow, fmtWhen, followOnIntent, normalizeAsk,
+  parseWhen, type ActivityFacts, type PhraseWindow,
+} from './ask-activity'
+import { resolveAssetPick } from './assistant'
 import { segmentVisits, type VisitPoint } from './visits'
 import { rangeWindow, fmtDateTime, type TimeRangeKey } from './dates'
 import { segmentStops } from './poi'
@@ -66,14 +75,16 @@ export const AI_TOOLS = [
   {
     name: 'asset_activity',
     description:
-      'Activity stats for ONE asset over a named range: miles driven, top speed, time moving / idling / parked, engine starts, estimated fuel. Use for "how far did X drive", "was X used last week", utilization questions.',
+      'Activity for ONE asset over ANY time window up to 31 days: miles driven, top speed, time moving / idling / parked, starts, and fuel used — read off the truck\'s own fuel gauge when it reports one (percent of the tank, with each refuel), otherwise an mpg estimate. Use for "how far did X drive since Friday morning", "how much diesel did X burn this week", "was X used last week", utilization questions. For any window that is not exactly one of the named ranges, pass `from` (and `to` unless it is now). The result\'s `window` says exactly what the numbers cover — repeat it in the answer.',
     input_schema: {
       type: 'object' as const,
       properties: {
         asset_name: { type: 'string', description: 'Asset name, may be partial ("chevy", "atlas")' },
-        range: { type: 'string', enum: ['today', 'yesterday', '7d', '30d', 'ytd', 'all'], description: 'Time range' },
+        from: { type: 'string', description: 'Window start. A local time in the company\'s timezone, e.g. 2026-09-25T06:00 (preferred), or ISO 8601 with an offset. A bare date = the start of that day.' },
+        to: { type: 'string', description: 'Window end, same format; omit for now. A bare date = the end of that day.' },
+        range: { type: 'string', enum: ['today', 'yesterday', '7d', '30d', 'ytd', 'all'], description: 'Named range, used only when `from` is not given: today, yesterday, 7d (12:00 AM seven days ago → now), 30d, ytd, all.' },
       },
-      required: ['asset_name', 'range'],
+      required: ['asset_name'],
     },
   },
   {
@@ -272,44 +283,259 @@ async function runFleetSnapshot(ctx: AiToolCtx) {
   }))
 }
 
-async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; range?: string }) {
-  const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
-  if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
-  const key = (['today', 'yesterday', '7d', '30d', 'ytd', 'all'].includes(String(input.range)) ? input.range : '7d') as TimeRangeKey
+// ── asset_activity: any window ──────────────────────────────────────────────
 
-  const { createClient } = await import('./supabase-server')
-  const supabase = createClient()
-  // Page past Supabase's Max-Rows cap, newest-first, then restore order.
-  const PAGE = 1000
-  const CAP = 40_000
-  const rows: { lat: number; lng: number; speed: number | null; timestamp: string; ignition?: boolean | null }[] = []
-  while (rows.length < CAP) {
-    const { data, error } = await supabase
-      .from('asset_locations')
-      .select('lat, lng, speed, timestamp, ignition')
-      .eq('asset_id', asset.id)
-      .order('timestamp', { ascending: false })
-      .range(rows.length, rows.length + PAGE - 1)
-    if (error) return { error: error.message }
-    rows.push(...(data ?? []))
-    if (!data || data.length < PAGE) break
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
+
+const RANGE_KEYS = ['today', 'yesterday', '7d', '30d', 'ytd', 'all']
+/** Most fixes one question reads — a busy truck writes 2–5k a day. */
+const WINDOW_ROW_CAP = 40_000
+const PAGE = 1000
+/** A follow-up ("how many gallons did it burn") borrows the machine and the
+ *  window from the question before it — if that was this recent. */
+const CARRY_MS = 12 * 3_600_000
+
+/** The catalog's fuel-level key and its other spellings — every key a gauge
+ *  reading can arrive under. Our own constants, shape-checked anyway because
+ *  they are spliced into the select. */
+const FUEL_LEVEL_KEYS: string[] = (() => {
+  const d = TELEMETRY_CATALOG.find((x) => x.key === 'can.fuel.level')
+  return [d?.key ?? 'can.fuel.level', ...(d?.aliases ?? [])].filter((k) => /^[a-z0-9_.]+$/i.test(k))
+})()
+
+interface WindowRow {
+  lat: number
+  lng: number
+  speed: number | null
+  timestamp: string
+  ignition?: boolean | null
+  /** f0, f1… — the fuel-level JSON paths, when asked for. */
+  [fuelCol: string]: unknown
+}
+
+const hasKey = (o: unknown, k: string): boolean =>
+  !!o && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k)
+
+/** The fuel-level keys this truck actually sends (the stored readings map,
+ *  115, plus the newest fix) — a truck whose computer never answers fuel
+ *  never pays for reads into the raw bag. */
+async function fuelKeysFor(db: SupabaseClient, asset: AssetWithLocation): Promise<string[]> {
+  if (asset.type !== 'vehicle' && asset.type !== 'equipment') return []
+  const seen = new Set(FUEL_LEVEL_KEYS.filter((k) => hasKey(asset.location?.raw, k)))
+  try {
+    const { data } = await db.from('asset_telemetry_latest').select('readings').eq('asset_id', asset.id).maybeSingle()
+    for (const k of FUEL_LEVEL_KEYS) if (hasKey(data?.readings, k)) seen.add(k)
+  } catch { /* the newest fix still answers */ }
+  return FUEL_LEVEL_KEYS.filter((k) => seen.has(k))
+}
+
+/** The tracker's first fix (bounds a window and its parked time): null =
+ *  none ever, undefined = the read failed. */
+async function firstFixMs(db: SupabaseClient, assetId: string): Promise<number | null | undefined> {
+  const { data, error } = await db.from('asset_locations').select('timestamp')
+    .eq('asset_id', assetId).order('timestamp', { ascending: true }).limit(1)
+  if (error) return undefined
+  const ms = data?.length ? Date.parse(String(data[0].timestamp)) : NaN
+  return Number.isFinite(ms) ? ms : null
+}
+
+/**
+ * One window of fixes, oldest first. Keyset pages down the (asset_id,
+ * timestamp) index, newest first, so a window over the cap keeps its recent
+ * end — offset paging re-walked every skipped row on every page, each one
+ * through the 111 policy. Fuel rides along as JSON paths into `raw`, never
+ * the whole bag.
+ */
+async function readWindow(db: SupabaseClient, assetId: string, fromMs: number, toMs: number, fuelKeys: string[]): Promise<{ rows: WindowRow[]; truncated: boolean } | null> {
+  const read = async (keys: string[]) => {
+    const cols = ['lat', 'lng', 'speed', 'timestamp', 'ignition', ...keys.map((k, i) => `f${i}:raw->"${k}"`)].join(', ')
+    const fromIso = new Date(fromMs).toISOString()
+    let before = new Date(toMs).toISOString()
+    const rows: WindowRow[] = []
+    while (rows.length < WINDOW_ROW_CAP) {
+      const { data, error } = await db.from('asset_locations').select(cols)
+        .eq('asset_id', assetId).gte('timestamp', fromIso).lt('timestamp', before)
+        .order('timestamp', { ascending: false }).limit(PAGE)
+      if (error) return null
+      const page = (data ?? []) as unknown as WindowRow[]
+      rows.push(...page)
+      if (page.length < PAGE) return { rows: rows.reverse(), truncated: false }
+      // The exact string back as the cursor — microseconds and all.
+      before = page[page.length - 1].timestamp
+    }
+    return { rows: rows.reverse(), truncated: true }
   }
+  // A select the database refuses still answers the miles, gauge-less.
+  return (fuelKeys.length ? await read(fuelKeys) : null) ?? read([])
+}
+
+/**
+ * An asset's activity over a window — the numbers behind asset_activity and
+ * the built-in engine's answer: the asset panel's math (computeRangeStats)
+ * over exactly the window's fixes, plus the truck's own fuel gauge. `when`
+ * is the tool's from/to (any window, bounded to 31 days), a phrase the
+ * built-in engine already read, or a named range. `withFuel: false` skips
+ * the gauge (and its reads into the raw bag) when nobody asked about fuel.
+ */
+export async function assetActivityFacts(
+  ctx: AiToolCtx,
+  asset: AssetWithLocation,
+  when: { from?: unknown; to?: unknown; range?: unknown; window?: PhraseWindow },
+  opts: { withFuel?: boolean } = {},
+): Promise<ActivityFacts | { error: string }> {
+  const nowMs = Date.now()
+  const unread = { error: `Couldn't read ${asset.name}'s history just now — try again in a minute.` }
+  const { createClient } = await import('./supabase-server')
+  const db = createClient() as unknown as SupabaseClient
+  const isTool = asset.type === 'tool'
+  const withFuel = opts.withFuel !== false && (asset.type === 'vehicle' || asset.type === 'equipment')
+  const [earliestMs, fuelKeys] = await Promise.all([
+    isTool ? null : firstFixMs(db, asset.id),
+    withFuel ? fuelKeysFor(db, asset) : [],
+  ])
+  if (earliestMs === undefined) return unread
+  if (!isTool && earliestMs == null) return { error: `${asset.name} has never reported a position.` }
+
+  const bound = { nowMs, tz: ctx.tz, earliestMs }
+  let win: ReturnType<typeof clampWindow>
+  if (when.window) {
+    win = clampWindow(when.window.from, when.window.to, bound)
+  } else if (when.from != null && String(when.from).trim()) {
+    const fromText = String(when.from)
+    const toText = when.to == null ? '' : String(when.to)
+    const from = parseWhen(fromText, 'start', nowMs, ctx.tz)
+    const to = toText.trim() ? parseWhen(toText, 'end', nowMs, ctx.tz) : nowMs
+    if (from == null) return { error: `Couldn't read from "${fromText.slice(0, 40)}" — pass a local time like 2026-09-25T06:00.` }
+    if (to == null) return { error: `Couldn't read to "${toText.slice(0, 40)}" — pass a local time like 2026-09-27T18:00, or leave it out for now.` }
+    win = clampWindow(from, to, bound)
+  } else {
+    // The named ranges keep their full reach (ytd, all); the row cap bounds them.
+    const key = (RANGE_KEYS.includes(String(when.range)) ? when.range : '7d') as TimeRangeKey
+    const w = rangeWindow(ctx.tz, key, { earliestMs })
+    win = clampWindow(w.from, w.to, { ...bound, maxDays: Infinity })
+  }
+  if ('error' in win) return win
+  let { from, to } = win
+  const { notes } = win
+
+  let rows: WindowRow[]
+  if (isTool) {
+    // A tool's miles are its carriers' while the tag rode along — the asset
+    // panel's numbers for a tool. Read oldest first, so a cut drops the end.
+    const { getToolWindowRows } = await import('./db/tools')
+    rows = (await getToolWindowRows(asset.id, new Date(from).toISOString(), new Date(to).toISOString(), WINDOW_ROW_CAP)) as WindowRow[]
+    if (rows.length >= WINDOW_ROW_CAP) {
+      to = Date.parse(rows[rows.length - 1].timestamp) + 1
+      notes.push(`Only the first ${WINDOW_ROW_CAP.toLocaleString('en-US')} fixes were read, so these numbers stop at ${fmtWhen(to, ctx.tz)}.`)
+    }
+  } else {
+    const read = await readWindow(db, asset.id, from, to, fuelKeys)
+    if (!read) return unread
+    rows = read.rows
+    if (read.truncated && rows.length) {
+      from = Date.parse(rows[0].timestamp)
+      notes.push(`Only the newest ${WINDOW_ROW_CAP.toLocaleString('en-US')} fixes were read, so these numbers start at ${fmtWhen(from, ctx.tz)}, not at the start of the window.`)
+    }
+  }
+
   const pts: StatPoint[] = rows
-    .reverse()
     .map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: Date.parse(r.timestamp), ign: r.ignition ?? null }))
     .filter((p) => Number.isFinite(p.ms))
-  const earliestMs = pts.length ? pts[0].ms : null
-  const w = rangeWindow(ctx.tz, key, { earliestMs })
   const md = (asset.metadata ?? {}) as Record<string, unknown>
   const estMpg = estMpgForSpecs((md.specs as Record<string, unknown> | undefined) ?? md, asset.name)
-  const stats = computeRangeStats(pts, w.from, w.to, earliestMs, Date.now(), estMpg)
+  const stats = computeRangeStats(pts, from, to, isTool ? from : earliestMs, nowMs, estMpg)
+
+  let fuel: ActivityFacts['fuel'] = null
+  if (withFuel) {
+    const samples: FuelSample[] = []
+    for (const r of fuelKeys.length ? rows : []) {
+      for (let i = 0; i < fuelKeys.length; i++) {
+        const v = r[`f${i}`]
+        const pct = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+        if (Number.isFinite(pct)) { samples.push({ ms: Date.parse(r.timestamp), pct, mph: r.speed }); break }
+      }
+    }
+    // A truck's level counts on the move only; a machine works standing still.
+    const movingOnly = asset.type === 'vehicle'
+    const gauge = fuelFromLevels(samples, { movingOnly })
+    const tank = tankGallonsFrom(md)
+    fuel = {
+      gauge,
+      reportsFuel: fuelKeys.length > 0,
+      silentMiles: gauge ? gaugeSilentMiles(pts, usableFuelSamples(samples, movingOnly).map((s) => s.ms), from, to) : null,
+      tankGallons: tank?.gallons ?? null,
+      tankSource: tank?.source ?? null,
+      estMpg,
+    }
+  }
+
   return {
     asset: asset.name,
-    range: key,
-    ...stats,
-    fuelNote: `fuelGalEst is an estimate (${estMpg} mpg driving + 0.6 gal/h idling)`,
-    dataTruncated: rows.length >= CAP,
+    fromMs: from,
+    toMs: to,
+    nowMs,
+    tz: ctx.tz,
+    notes,
+    fixes: pts.length,
+    truncated: rows.length >= WINDOW_ROW_CAP,
+    stats,
+    lastReportMs: asset.location ? Date.parse(asset.location.timestamp) : null,
+    fuel,
   }
+}
+
+async function runAssetActivity(ctx: AiToolCtx, input: { asset_name?: string; range?: string; from?: string; to?: string }) {
+  const asset = matchByName(String(input.asset_name ?? ''), ctx.assets)
+  if (!asset) return { error: `No asset matching "${input.asset_name}". Known assets: ${ctx.assets.map((a) => a.name).join(', ')}` }
+  const facts = await assetActivityFacts(ctx, asset, input)
+  return 'error' in facts ? facts : activityToolResult(facts)
+}
+
+/** The machine a question names: its whole name anywhere in it first, then
+ *  the words left once the window and the activity vocabulary are out. */
+function pickAsset(q: string, rest: string, assets: AssetWithLocation[]) {
+  let best: AssetWithLocation | null = null
+  for (const a of assets) {
+    const n = normalizeAsk(a.name)
+    if (n && q.includes(n) && (!best || a.name.length > best.name.length)) best = a
+  }
+  return best ? { asset: best, ambiguous: [] as AssetWithLocation[] } : resolveAssetPick(rest, assets)
+}
+
+/**
+ * The built-in engine's answer to an activity question — "how many miles
+ * from Friday morning until now did the ram 2500 drive", "how many gallons
+ * did it burn" — or null when the question is not one. Runs while the AI
+ * service is down, off the same numbers as the tool. A follow-up borrows
+ * the machine and the window from `prev`, the thread's last question.
+ */
+export async function answerActivityQuestion(
+  question: string,
+  ctx: AiToolCtx,
+  prev: { text: string; atMs: number } | null,
+): Promise<string | null> {
+  if (isMock) return null
+  const nowMs = Date.now()
+  const q = normalizeAsk(question)
+  const before = prev && nowMs - prev.atMs < CARRY_MS ? activityIntent(prev.text, nowMs, ctx.tz) : null
+  // "And the F350?" / "what about yesterday?" — the last question, changed.
+  const intent = activityIntent(q, nowMs, ctx.tz) ?? followOnIntent(q, before, nowMs, ctx.tz)
+  if (!intent) return null
+  let pick = pickAsset(q, intent.rest, ctx.assets)
+  if (!pick.asset && before && prev && !asksWholeFleet(q)) {
+    // "It", "the truck": the machine the last question was about.
+    const was = pickAsset(normalizeAsk(prev.text), before.rest, ctx.assets)
+    if (was.asset) pick = was
+  }
+  if (!pick.asset) {
+    return pick.ambiguous.length ? `Which one do you mean — ${pick.ambiguous.slice(0, 6).map((a) => a.name).join(', ')}?` : null
+  }
+  // No window named: the one the conversation is already on, else today.
+  const window = intent.window ?? before?.window ?? null
+  const withFuel = intent.focus === 'fuel' || intent.focus === 'summary'
+  const facts = await assetActivityFacts(ctx, pick.asset, window ? { window } : { range: 'today' }, { withFuel })
+  return 'error' in facts ? facts.error : activityAnswer(facts, intent.focus)
 }
 
 async function runSiteVisits(ctx: AiToolCtx, input: { zone_name?: string; days?: number }) {
@@ -587,7 +813,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
     }
     switch (name) {
       case 'fleet_snapshot': return await runFleetSnapshot(ctx)
-      case 'asset_activity': return await runAssetActivity(ctx, input as { asset_name?: string; range?: string })
+      case 'asset_activity': return await runAssetActivity(ctx, input as { asset_name?: string; range?: string; from?: string; to?: string })
       case 'asset_stops': return await runAssetStops(ctx, input as { asset_name?: string; range?: string })
       case 'asset_telemetry': return await runAssetTelemetry(ctx, input as { asset_name?: string })
       case 'site_visits': return await runSiteVisits(ctx, input as { zone_name?: string; days?: number })

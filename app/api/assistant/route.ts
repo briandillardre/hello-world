@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { getAssetsWithLocations, getLocationHistory } from '@/lib/db/assets'
+import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getToolAssociations, resolveToolLocations } from '@/lib/db/tools'
 import { PROJECTS } from '@/lib/projects'
 import { answerQuestion, type AssistantContext } from '@/lib/assistant'
-import { AI_TOOLS, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai-tools'
+import { AI_TOOLS, answerActivityQuestion, runAiTool, sharedMcpToolDefs, type AiToolCtx } from '@/lib/ai-tools'
+import { askClock } from '@/lib/ask-activity'
 import { timecardScope } from '@/lib/db/timecards'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { safeTz } from '@/lib/dates'
@@ -65,8 +66,23 @@ Voice: a sharp dispatcher who knows the yard — plain sentences, no fluff, no m
 Ground rules:
 - Use the tools for ANY question about locations, history, hours, visits, or alerts. Never guess numbers.
 - If a tool returns an error listing valid names, retry once with the best match.
-- Times from tools are already in the user's timezone — repeat them as given.
+- Times from tools are already in the company's timezone (the clock at the end) — repeat them as given.
 - Estimates (like fuel) must be labeled as estimates.
+- Time windows: read the user's words against the clock at the end, in the company's timezone. "Morning" is
+  6:00 AM unless they give a time. "Since Friday" = the most recent Friday (today, if it is Friday) at 12:00 AM;
+  "this week" = Monday 12:00 AM → now; "last week" = the Monday before that → this Monday 12:00 AM; "last N
+  days" = 12:00 AM N days ago → now. For any window that isn't exactly one of asset_activity's named ranges, call
+  it with \`from\` (and \`to\` unless the window runs to now) as a local time like YYYY-MM-DDTHH:MM. Never answer
+  for a different window than the one asked, and never carve a number out of a bigger range. Say which window
+  the numbers cover, using the tool's \`window\` text ("Fri Sep 25 6:00 AM → now"), and pass along any note
+  that the window was cut.
+- Fuel: asset_activity reads the truck's own fuel gauge when it reports one — lead with that (percent of the
+  tank, refuels in one line). Give gallons only from the tool's gallons or a tank size the user states; never
+  assume a tank size. Otherwise give the distance-based gallons as a labeled ballpark, and offer to convert if
+  they tell you the tank size.
+- Asked the same thing again? Answer again, plainly and completely — re-run the tool, the data may have moved.
+  Never say "as I just told you", "same as before", "like I said", or anything that suggests they should have
+  remembered.
 - NEVER mention GPS tracker hardware brands or model numbers, even if they appear in data.
 - Keep answers to a few sentences unless listing visits/alerts the user asked for.
 - You CAN see off-site stops: asset_stops classifies every 5+ minute stop (restaurant, supplier,
@@ -89,6 +105,22 @@ Ground rules:
   since" instead of claiming they're on the road.`
 
 interface HistoryRow { role: 'user' | 'assistant'; content: string; at?: string }
+
+/** The company's timezone (Settings → Summaries, digest_prefs.tz) — the zone
+ *  its digests and briefings already speak, so "Friday morning" means the
+ *  same 6:00 AM for everyone who asks. A company that never set one answers
+ *  in the asker's browser zone, else Eastern (safeTz). */
+async function companyTz(companyId: string, fallback: string): Promise<string> {
+  if (isMock) return fallback
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data } = await createClient().from('companies').select('digest_prefs').eq('id', companyId).maybeSingle()
+    const tz = (data?.digest_prefs as { tz?: unknown } | null | undefined)?.tz
+    return typeof tz === 'string' && tz ? safeTz(tz) : fallback
+  } catch {
+    return fallback
+  }
+}
 
 /** Last N turns of this user's thread, oldest first. Empty when the table is
  *  missing (migration 014 not run), logged out, or demo mode. `sinceIso`
@@ -220,7 +252,7 @@ export async function POST(request: NextRequest) {
   // — the shared tools read as the service role and are narrowed to it too.
   const { assets: rawAssets, pairings: toolAssociations, alerts } = scopeFleet(perms, rawAssetsAll, toolAssociationsAll, alertsAll)
   const assets = resolveToolLocations(rawAssets, toolAssociations)
-  const tz = safeTz(request.cookies.get('ht_tz')?.value)
+  const tz = await companyTz(companyId, safeTz(request.cookies.get('ht_tz')?.value))
 
   // Insight-engine findings (role-filtered) — grounds the tap-to-ask chips
   // and "what should I look at" on the deterministic path; the agent path
@@ -236,14 +268,30 @@ export async function POST(request: NextRequest) {
     } catch { return [] }
   })()
 
+  /** The built-in engine. An activity question ("miles since Friday
+   *  morning", "gallons it burned") reads that machine's fixes, the same
+   *  numbers the tool gives the model; everything else answers from the
+   *  live fleet. A follow-up ("how many gallons did it burn") borrows the
+   *  machine and the window from the thread's last question. */
+  const groundedAnswer = async (history: HistoryRow[]): Promise<string> => {
+    const last = history.filter((h) => h.role === 'user').pop()
+    const prev = last ? { text: last.content, atMs: last.at ? Date.parse(last.at) : 0 } : null
+    const activity = await answerActivityQuestion(question, { companyId, tz, assets, geofences, alerts, canViewCosts: perms.canViewCosts }, prev)
+    if (activity) return activity
+    const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
+    return answerQuestion(question, ctx).answer
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY
 
   // ── No API key → deterministic grounded engine (instant, free) ──
   if (!apiKey) {
-    const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
-    const grounded = answerQuestion(question, ctx)
-    await enrichWithMovement(grounded, companyId, assets)
-    return NextResponse.json({ answer: grounded.answer, grounded: true })
+    const { userId, companyId: userCompanyId, rows: history } = await loadHistory(6, sinceTs)
+    const answer = await groundedAnswer(history)
+    // Stored like the agent's answers, so the thread survives a reopen and a
+    // follow-up has a question to follow.
+    if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, answer)
+    return NextResponse.json({ answer, grounded: true })
   }
 
   // ── With a key: real tool-use agent over live data ──
@@ -269,6 +317,9 @@ export async function POST(request: NextRequest) {
     // model for this purpose — Sonnet 5 should be fine for now"); AI_MODEL
     // overrides. The monthly owner memo keeps Opus (AI_MODEL_DEEP, lib/memo.ts).
     const model = process.env.AI_MODEL || 'claude-sonnet-5'
+    // The clock rides on every request: "since Friday morning" only means a
+    // window once the model knows what day it is, and in which zone.
+    const system = `${SYSTEM}\n\n${askClock(Date.now(), tz)}`
     const messages: Anthropic.MessageParam[] = [
       ...history.map((h) => ({ role: h.role, content: h.content })),
       { role: 'user' as const, content: question },
@@ -278,7 +329,7 @@ export async function POST(request: NextRequest) {
       model,
       max_tokens: 1500,
       thinking: { type: 'adaptive' },
-      system: SYSTEM,
+      system,
       tools,
       messages,
     })
@@ -297,7 +348,7 @@ export async function POST(request: NextRequest) {
         model,
         max_tokens: 1500,
         thinking: { type: 'adaptive' },
-        system: SYSTEM,
+        system,
         tools,
         messages,
       })
@@ -331,16 +382,15 @@ export async function POST(request: NextRequest) {
   // the real reason pages the owner once every 30 min instead of dying in a
   // server log nobody reads.
   if (degradedReason) void reportDegraded(degradedReason)
-  const ctx: AssistantContext = { assets, geofences, projects: PROJECTS, alerts, insights }
-  const grounded = answerQuestion(question, ctx)
-  if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, grounded.answer)
+  const answer = await groundedAnswer(history)
+  if (!perms.viewingAs) await saveTurn(userId, userCompanyId, question, answer)
   // Admins (and the owner) get the reason in the panel itself — "out of
   // credits" or "key refused" read next to the answer beats a founder push
   // nobody opens (Sep 23: credits were reloaded and nobody could tell from
   // the app whether it had taken). A category, never the provider's raw
   // text; crew get the flag only.
   const showReason = perms.isMaster || perms.role === 'admin'
-  return NextResponse.json({ answer: grounded.answer, grounded: true, degraded: !!degradedReason, degradedReason: showReason && degradedWhy ? degradedWhy : undefined })
+  return NextResponse.json({ answer, grounded: true, degraded: !!degradedReason, degradedReason: showReason && degradedWhy ? degradedWhy : undefined })
 }
 
 /** One push per half hour, whatever the traffic — a broken key would
@@ -353,52 +403,4 @@ async function reportDegraded(reason: string): Promise<void> {
     const { notifySystem } = await import('@/lib/monitor')
     await notifySystem('Ask AI fell back', `The AI service did not answer — ${reason.slice(0, 200)}. Answers are coming from the built-in engine until it clears.`)
   } catch { /* monitoring never breaks a reply */ }
-}
-
-/** Legacy enrichment for the no-key path: last-24h movement per asset so
- *  "where did the truck go today" is answerable from the draft facts. */
-async function enrichWithMovement(
-  grounded: { facts: Record<string, unknown> },
-  companyId: string,
-  assets: { id: string; name: string }[]
-): Promise<void> {
-  const history = await getLocationHistory(companyId, new Date(Date.now() - 24 * 3_600_000).toISOString())
-  if (!history?.length) return
-  const R = 6_371_000
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const byAsset = new Map<string, typeof history>()
-  for (const r of history) {
-    if (!byAsset.has(r.asset_id)) byAsset.set(r.asset_id, [])
-    byAsset.get(r.asset_id)!.push(r)
-  }
-  const movement: Record<string, unknown> = {}
-  for (const [assetId, rowsRaw] of Array.from(byAsset.entries())) {
-    const rows = rowsRaw.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    let miles = 0
-    let activeMs = 0
-    let firstMove: string | null = null
-    let lastMove: string | null = null
-    for (let i = 1; i < rows.length; i++) {
-      const a = rows[i - 1], b = rows[i]
-      const dt = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      if (dt <= 0 || dt > 10 * 60_000) continue
-      const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng)
-      const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
-      const meters = 2 * R * Math.asin(Math.sqrt(h))
-      if ((b.speed ?? 0) > 1 || meters > 25) {
-        miles += meters / 1609.34
-        activeMs += dt
-        if (!firstMove) firstMove = b.timestamp
-        lastMove = b.timestamp
-      }
-    }
-    const name = assets.find((a) => a.id === assetId)?.name ?? assetId
-    movement[name] = {
-      milesLast24h: Math.round(miles * 10) / 10,
-      activeHours: Math.round((activeMs / 3_600_000) * 10) / 10,
-      firstMovement: firstMove,
-      lastMovement: lastMove,
-    }
-  }
-  grounded.facts.movementLast24h = movement
 }

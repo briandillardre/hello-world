@@ -2,7 +2,9 @@
  * Per-asset activity math — miles, moving/idle/parked time, starts, fuel
  * estimate — computed from raw ping streams. Shared by the asset panel's
  * range table (/api/asset-stats) and the AI assistant's asset_activity tool
- * so both always report identical numbers.
+ * so both always report identical numbers. Also the truck's OWN fuel gauge
+ * read over a window (fuelFromLevels) — `scripts/ask-activity-test.mjs`
+ * asserts it against the shapes the real gauges send.
  */
 
 export interface StatPoint {
@@ -200,4 +202,248 @@ export function computeRangeStats(
     starts,
     fuelGalEst: Math.round(fuelGal * 10) / 10,
   }
+}
+
+// ── Fuel from the truck's own gauge ─────────────────────────────────────────
+// What a real OBD gauge sends (the Charleston RAM 2500, Sep 24–28): a level
+// on nearly every fix while the engine runs, bouncing ±15% inside a minute as
+// the fuel sloshes (brakes, corners, grades), 0 whenever the sender bottoms
+// out, and nothing at all with the key off. So one fix is never "the level" —
+// a median over minutes of readings is — and a fill is a step up across a
+// stop: nobody fills a truck while it is rolling.
+
+/** One gauge reading: when, and percent of the tank. */
+export interface FuelSample {
+  ms: number
+  pct: number
+  /** Speed at the fix — a vehicle's level is only trusted on the move. */
+  mph?: number | null
+}
+
+export interface FuelRefuel {
+  /** First reading after the fill. */
+  atMs: number
+  /** Last reading before it — a long gap means "sometime in between". */
+  beforeMs: number
+  fromPct: number
+  toPct: number
+  addedPct: number
+}
+
+export interface FuelGauge {
+  /** Tank used across the window with the fills taken out, in percent of
+   *  the tank — past 100 when it was refilled along the way. */
+  usedPct: number
+  startPct: number
+  endPct: number
+  refuels: FuelRefuel[]
+  firstMs: number
+  lastMs: number
+  /** Readings that counted. */
+  samples: number
+}
+
+/** A drop smaller than this between two fills is the sensor, not fuel. */
+export const FUEL_NOISE_PCT = 2
+/** A climb at least this big is a fill. The RAM's real ones ran +11% to +73%;
+ *  a smoothed gauge wanders a few percent on its own. */
+export const FUEL_REFUEL_MIN_PCT = 8
+/** Readings this far apart are two stretches — a stop, or the key off. */
+export const FUEL_RUN_GAP_MS = 2 * 60_000
+/** A stretch's level at either end: the median of this much of it. */
+export const FUEL_EDGE_MS = 5 * 60_000
+const FUEL_EDGE_MIN_N = 12
+/** A machine's level inside one stretch: five-minute medians. */
+const FUEL_BUCKET_MS = 5 * 60_000
+/** Gauge silent this long = whatever was driven meanwhile went unmeasured. */
+export const FUEL_GAP_MS = 15 * 60_000
+/** Climbs this close together are one fill, read in steps. */
+const FUEL_FILL_MERGE_MS = 30 * 60_000
+
+/** Readings that count, oldest first. 0 is the sender bottoming out (slosh
+ *  in a low tank) or no value at all — never a level to measure from. A
+ *  vehicle's level is only read on the move: parked on a slope it reads
+ *  several percent off for as long as it sits, and a pump running with the
+ *  key on reads its way up mid-fill. */
+export function usableFuelSamples(samples: FuelSample[], movingOnly = false): FuelSample[] {
+  return samples
+    .filter((s) => Number.isFinite(s.ms) && Number.isFinite(s.pct) && s.pct > 0 && s.pct <= 100 &&
+      (!movingOnly || (s.mph ?? 0) >= MOVE_MPH))
+    .sort((a, b) => a.ms - b.ms)
+}
+
+const median = (xs: number[]): number => {
+  const s = xs.slice().sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** A stretch's level at one end: the median of its first (or last) five
+ *  minutes of readings — at least a dozen, reaching up to fifteen minutes in
+ *  to find them. */
+function edgeLevel(run: FuelSample[], side: 'head' | 'tail'): number {
+  const at = (i: number) => (side === 'head' ? run[i] : run[run.length - 1 - i])
+  const t0 = at(0).ms
+  const pick: number[] = []
+  for (let i = 0; i < run.length; i++) {
+    const dt = Math.abs(at(i).ms - t0)
+    if (dt > 3 * FUEL_EDGE_MS || (dt > FUEL_EDGE_MS && pick.length >= FUEL_EDGE_MIN_N)) break
+    pick.push(at(i).pct)
+  }
+  return median(pick)
+}
+
+/** A step in the level: across a stop between two stretches, or a climb
+ *  inside one. */
+interface FuelStep { beforeMs: number; atMs: number; from: number; to: number }
+
+/** Climbs inside one unbroken stretch — only a machine has them: filled with
+ *  the key on, it reads its way up without a gap. Five-minute medians, then
+ *  a median of three neighbours so one odd five minutes is neither a fill
+ *  nor a burn, then each valley-to-peak climb. */
+function climbsInside(run: FuelSample[]): FuelStep[] {
+  const buckets: { firstMs: number; lastMs: number; pct: number }[] = []
+  let cur: FuelSample[] = []
+  const flush = () => {
+    if (cur.length) buckets.push({ firstMs: cur[0].ms, lastMs: cur[cur.length - 1].ms, pct: median(cur.map((s) => s.pct)) })
+    cur = []
+  }
+  for (const s of run) {
+    if (cur.length && Math.floor(s.ms / FUEL_BUCKET_MS) !== Math.floor(cur[0].ms / FUEL_BUCKET_MS)) flush()
+    cur.push(s)
+  }
+  flush()
+  const lvl = buckets.map((b, i) =>
+    i > 0 && i < buckets.length - 1 ? median([buckets[i - 1].pct, b.pct, buckets[i + 1].pct]) : b.pct)
+  const out: FuelStep[] = []
+  for (let i = 1; i < lvl.length; i++) {
+    if (lvl[i] <= lvl[i - 1]) continue
+    let j = i
+    while (j + 1 < lvl.length && lvl[j + 1] >= lvl[j]) j++
+    out.push({ beforeMs: buckets[i - 1].lastMs, atMs: buckets[i].firstMs, from: lvl[i - 1], to: lvl[j] })
+    i = j
+  }
+  return out
+}
+
+/**
+ * Fuel used over a window, read off the gauge. The readings split into
+ * unbroken stretches (a drive; for a machine, a key-on spell). A fill is a
+ * climb of FUEL_REFUEL_MIN_PCT or more across a stop — for a vehicle only
+ * there, since its level is read on the move — or, for a machine, inside a
+ * stretch too. What burned is counted fill to fill (the level after one
+ * fill − the level before the next), never fix by fix: slosh up and slosh
+ * down cancel inside a stretch, where summing every little drop counts the
+ * same fuel a hundred times. Null when no reading counts.
+ */
+export function fuelFromLevels(samples: FuelSample[], opts: { movingOnly?: boolean } = {}): FuelGauge | null {
+  const use = usableFuelSamples(samples, opts.movingOnly)
+  if (!use.length) return null
+  const runs: FuelSample[][] = []
+  for (const s of use) {
+    const run = runs[runs.length - 1]
+    if (run && s.ms - run[run.length - 1].ms < FUEL_RUN_GAP_MS) run.push(s)
+    else runs.push([s])
+  }
+  const steps: FuelStep[] = []
+  runs.forEach((run, i) => {
+    if (i > 0) {
+      const prev = runs[i - 1]
+      steps.push({ beforeMs: prev[prev.length - 1].ms, atMs: run[0].ms, from: edgeLevel(prev, 'tail'), to: edgeLevel(run, 'head') })
+    }
+    if (!opts.movingOnly) steps.push(...climbsInside(run))
+  })
+
+  const startPct = edgeLevel(runs[0], 'head')
+  const endPct = edgeLevel(runs[runs.length - 1], 'tail')
+  const refuels: FuelRefuel[] = []
+  let used = 0
+  let level = startPct
+  let lastFillMs = -Infinity
+  for (const st of steps) {
+    if (st.to - st.from < FUEL_REFUEL_MIN_PCT) continue // the gauge wandering, not a fill
+    const last = refuels[refuels.length - 1]
+    if (last && st.atMs - lastFillMs < FUEL_FILL_MERGE_MS) {
+      // Climbs this close are one fill read in steps (a pump running with the
+      // key on); the "burn" between them is a level caught mid-rise.
+      last.toPct = st.to
+      last.addedPct = last.toPct - last.fromPct
+    } else {
+      if (level - st.from >= FUEL_NOISE_PCT) used += level - st.from
+      refuels.push({ atMs: st.atMs, beforeMs: st.beforeMs, fromPct: st.from, toPct: st.to, addedPct: st.to - st.from })
+    }
+    level = st.to
+    lastFillMs = st.atMs
+  }
+  if (level - endPct >= FUEL_NOISE_PCT) used += level - endPct
+  return {
+    usedPct: Math.round(used * 10) / 10,
+    startPct,
+    endPct,
+    refuels,
+    firstMs: use[0].ms,
+    lastMs: use[use.length - 1].ms,
+    samples: use.length,
+  }
+}
+
+/** Miles driven while the gauge said nothing — before its first reading,
+ *  after its last, and across any silence longer than `gapMs`. A gauge
+ *  figure cannot include them. `sampleMs` oldest first; same miles math as
+ *  the stats. */
+export function gaugeSilentMiles(pts: StatPoint[], sampleMs: number[], from: number, to: number, gapMs = FUEL_GAP_MS): number {
+  const ts = sampleMs.filter((ms) => ms >= from && ms < to)
+  const holes: [number, number][] = []
+  if (!ts.length) holes.push([from, to])
+  else {
+    if (ts[0] - from > gapMs) holes.push([from, ts[0]])
+    for (let i = 1; i < ts.length; i++) if (ts[i] - ts[i - 1] > gapMs) holes.push([ts[i - 1], ts[i]])
+    if (to - ts[ts.length - 1] > gapMs) holes.push([ts[ts.length - 1], to])
+  }
+  let miles = 0
+  for (const [a, b] of holes) miles += computeRangeStats(pts, a, b, a, b).miles
+  return Math.round(miles * 10) / 10
+}
+
+// Tank size: nothing decodes it (the VIN decoder has no such field), so it
+// comes from what the owner wrote down — a fuel-tank spec key, or a note
+// like "36 gal tank" / "fuel tank: 36 gal". A water truck's "3000 gal water
+// tank" is not its fuel.
+const TANK_KEYS = ['fuel_tank', 'fuel_tank_gal', 'fuel_tank_size', 'fuel_tank_capacity', 'fuel_capacity']
+const TANK_UNIT = '(gal(?:lon)?s?|l|liters?|litres?)'
+const TANK_VALUE = new RegExp(`^\\s*(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*(?:${TANK_UNIT}\\.?)?\\s*$`, 'i')
+const TANK_NOTE = [
+  new RegExp(`\\b(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*${TANK_UNIT}\\.?\\s+(?:fuel\\s+|diesel\\s+|gas\\s+)?tank\\b`, 'i'),
+  new RegExp(`\\b(?:fuel|diesel|gas)\\s+tank\\b[\\s:=-]*(?:is\\s+|holds\\s+|of\\s+)?(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*${TANK_UNIT}(?![a-z])`, 'i'),
+]
+
+/** Gallons from 32 / "32 gal" / "32 gallons" / "120 L"; null for anything
+ *  else, or for a size no truck or machine carries (under 3 or over 400). */
+function tankGallons(v: unknown, unitRequired: boolean): number | null {
+  let gal: number | null = null
+  if (typeof v === 'number' && !unitRequired) gal = v
+  else if (typeof v === 'string') {
+    const m = TANK_VALUE.exec(v)
+    if (m && (m[2] || !unitRequired)) gal = Number(m[1]) * (m[2] && /^l/i.test(m[2]) ? 0.264172 : 1)
+  }
+  return gal != null && Number.isFinite(gal) && gal >= 3 && gal <= 400 ? Math.round(gal * 10) / 10 : null
+}
+
+/** The asset's fuel tank in gallons, when the owner has written it down. */
+export function tankGallonsFrom(meta: unknown): { gallons: number; source: 'specs' | 'notes' } | null {
+  const md = (meta && typeof meta === 'object' ? meta : {}) as Record<string, unknown>
+  const nested = (md.specs && typeof md.specs === 'object' ? md.specs : {}) as Record<string, unknown>
+  for (const src of [md, nested]) {
+    for (const k of TANK_KEYS) {
+      const g = tankGallons(src[k], false)
+      if (g != null) return { gallons: g, source: 'specs' }
+    }
+  }
+  const notes = typeof md.notes === 'string' ? md.notes : ''
+  for (const re of TANK_NOTE) {
+    const m = re.exec(notes)
+    const g = m ? tankGallons(`${m[1]} ${m[2]}`, true) : null
+    if (g != null) return { gallons: g, source: 'notes' }
+  }
+  return null
 }
