@@ -138,6 +138,9 @@ export function powerLostReason(
   return `${shortName(assetName)} lost truck power at ${when} ${movingOrParked(speedMph)} — it is running on its own battery and will go dark within the hour. ${PLUG_HINT}`
 }
 
+/** A battery unit silent at or below this was running out, not out of range. */
+export const FLAT_PCT = 20
+
 /**
  * Why a hardware tracker is silent, in one sentence, from what it said last.
  * Used by the health cron so the founder's push carries the diagnosis instead
@@ -170,6 +173,12 @@ export function silenceDiagnosis(input: {
   if (state === 'battery') {
     return `Was already on its own battery at its last fix (${last}) — truck power was gone. ${PLUG_HINT}`
   }
-  const pct = input.battery != null ? `, ${Math.round(input.battery)}% at its last fix` : ''
-  return `Battery unit${pct} (last heard ${last}) — asleep or out of coverage; check the SIM in KORE One.`
+  const pct = input.battery != null ? Math.round(input.battery) : null
+  // A battery unit that went quiet nearly empty ran down — not a coverage or
+  // SIM problem (Sep 28: three TAT141s died at 6.0–6.4 V and were reported
+  // as "100%, check the SIM").
+  if (pct != null && pct <= FLAT_PCT) {
+    return `Battery unit, down to ${pct}% at its last fix (last heard ${last}) — it has most likely run flat; it needs a new battery.`
+  }
+  return `Battery unit${pct != null ? `, ${pct}% at its last fix` : ''} (last heard ${last}) — asleep or out of coverage; check the SIM in KORE One.`
 }

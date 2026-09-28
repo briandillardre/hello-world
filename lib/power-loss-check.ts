@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { assessPower, externalVolts, powerLostReason, silenceDiagnosis, type PowerFix } from './power-loss'
+import { batteryPercentFromVolts } from './flespi'
 
 /**
  * The database half of lib/power-loss.ts: read a unit's recent fixes, decide,
@@ -152,11 +153,18 @@ export async function diagnoseSilence(
       lastFixIso: last.timestamp,
       lastVolts: externalVolts(last.raw),
       lastSpeed: last.speed,
-      battery: last.battery,
+      // Re-read from the raw voltage: rows stored before Sep 28 carry a
+      // battery unit's percent off the one-cell ladder (always 100).
+      battery: rawBatteryPct(last.raw) ?? last.battery,
       powerLostAtIso,
       tz,
     })
   } catch {
     return 'Silent — no diagnosis available from its last fix.'
   }
+}
+
+function rawBatteryPct(raw: unknown): number | null {
+  const v = raw && typeof raw === 'object' ? (raw as Record<string, unknown>)['battery.voltage'] : undefined
+  return typeof v === 'number' && Number.isFinite(v) ? batteryPercentFromVolts(v) : null
 }

@@ -133,6 +133,25 @@ const truck4 = (lastOffset) => [
   const e = silenceDiagnosis({ ...base, lastVolts: 14.1, lastSpeed: 45, powerLostAtIso: iso(-20 * 3600) })
   ok('diagnosis: a powered last fix outranks an older event', /^Had truck power/.test(e) && /moving/.test(e) && !e.includes(PLUG_HINT), e)
   ok('no Hologram anywhere in the wording', ![a, b, c, d].some((s) => /hologram/i.test(s)))
+  // Sep 28: three TAT141s went quiet at 6.0–6.4 V and were reported as
+  // "100%, check the SIM". A battery unit that stopped nearly empty ran flat.
+  const f = silenceDiagnosis({ ...base, lastVolts: null, powerLostAtIso: null, battery: 0 })
+  ok('diagnosis: a flat battery unit needs a battery, not a SIM check', /run flat; it needs a new battery/.test(f) && !/KORE One/.test(f), f)
+  const g = silenceDiagnosis({ ...base, lastVolts: null, powerLostAtIso: null, battery: 20 })
+  ok('diagnosis: 20% counts as running out', /needs a new battery/.test(g), g)
+  const h = silenceDiagnosis({ ...base, lastVolts: null, powerLostAtIso: null, battery: 98 })
+  ok('diagnosis: a full battery unit is coverage or the SIM', /asleep or out of coverage/.test(h) && /98%/.test(h), h)
+}
+
+// The battery ladder the ingest and the diagnosis share (lib/flespi.ts).
+{
+  const flespiSrc = readFileSync(new URL('../lib/flespi.ts', import.meta.url), 'utf8')
+  const fjs = ts.transpileModule(flespiSrc, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
+  const { batteryPercentFromVolts: pct } = await import('data:text/javascript;base64,' + Buffer.from(fjs).toString('base64'))
+  ok('two-cell full reads full', pct(7.2) === 100 && pct(7.18) === 98, [pct(7.2), pct(7.18)])
+  ok('the VW unit fading reads fading', pct(6.848) === 65, pct(6.848))
+  ok('the dead units read empty-ish', pct(6.352) === 15 && pct(6.016) === 0 && pct(6.4) === 20, [pct(6.352), pct(6.016), pct(6.4)])
+  ok('one-cell ladder unchanged', pct(4.2) === 100 && pct(3.3) === 0 && pct(3.671) === 41, [pct(4.2), pct(3.3), pct(3.671)])
 }
 
 console.log(`power-loss: ${pass} passed, ${fail} failed`)
