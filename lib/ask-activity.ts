@@ -556,6 +556,9 @@ export function activityToolResult(f: ActivityFacts): Record<string, unknown> {
             ...(tank ? { gaugeUsedGallons: round1((g.usedPct / 100) * tank) } : {}),
             gaugeStartPct: Math.round(g.startPct),
             gaugeEndPct: Math.round(g.endPct),
+            // Counted for the model: listing three fills, it once said
+            // "refueled twice" (live check, Sep 28).
+            refuelCount: g.refuels.length,
             refuels: g.refuels.map((r) => ({
               at: fmtWhen(r.atMs, f.tz),
               ...(r.atMs - r.beforeMs > HOUR_MS ? { sometimeAfter: fmtWhen(r.beforeMs, f.tz) } : {}),
@@ -576,7 +579,7 @@ export function activityToolResult(f: ActivityFacts): Record<string, unknown> {
     }
   }
   if (f.truncated) out.dataTruncated = true
-  out.note = 'Say which window these cover (the `window` text) and pass along any `notes`. Fuel: when measuredBy is the gauge, lead with gaugeUsedPctOfTank (over 100 = more than one tank, refilled along the way) and the refuels; give gallons only from gaugeUsedGallons or a tank size the user states — never assume a tank size. estimateGallons is a ballpark from distance: call it an estimate.'
+  out.note = 'Say which window these cover (the `window` text) and pass along any `notes`. Fuel: when measuredBy is the gauge, lead with gaugeUsedPctOfTank (over 100 = more than one tank, refilled along the way) and the refuels — refuelCount is how many, never count them yourself; give gallons only from gaugeUsedGallons or a tank size the user states — never assume a tank size. estimateGallons is a ballpark from distance: call it an estimate.'
   return out
 }
 
