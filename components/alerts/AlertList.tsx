@@ -249,16 +249,18 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
             <p className="text-xs text-ink flex-1 min-w-[12rem]">
               Mark all {markIds.length} as handled? That includes {riders}.
             </p>
-            <div className="flex gap-2 ml-auto">
+            {/* Thumb-sized and apart: the red one marks every theft alert
+                handled and nothing undoes it. */}
+            <div className="flex gap-3 ml-auto">
               <button
                 onClick={() => setConfirmAll(false)}
-                className="px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors"
+                className="min-h-[40px] px-4 py-2 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={markAll}
-                className="px-3 py-1 rounded-full text-xs font-semibold bg-alert text-white hover:bg-alert/90 transition-colors whitespace-nowrap"
+                className="min-h-[40px] px-4 py-2 rounded-full text-xs font-semibold bg-alert text-white hover:bg-alert/90 transition-colors whitespace-nowrap"
               >
                 Mark all handled
               </button>

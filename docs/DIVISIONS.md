@@ -60,6 +60,7 @@ it's how you find what still needs labelling.
 | File | What |
 |---|---|
 | `supabase/migrations/106_divisions.sql` | Table, RLS, `division_id` on assets / geofences / places, indexes |
+| `supabase/migrations/123_geofences_json_division.sql` | `division_id` on the `geofences_json` view every zone read goes through — missing from 106, so zones never carried their division until Sep 28 |
 | `lib/db/divisions.ts` | `getDivisions`, `getAllDivisions`, `getDivisionCounts`, and `inDivision()` — the ONE filter rule every surface shares |
 | `lib/actions/divisions.ts` | create / update / archive / `setRowDivisionAction` / `bulkSetDivisionAction` |
 | `components/divisions/DivisionsCard.tsx` | The Settings card |

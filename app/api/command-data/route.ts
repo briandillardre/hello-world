@@ -5,6 +5,7 @@ import { getToolAssociations, resolveToolLocations, getPairingEpisodes } from '@
 import { getAlertEvents } from '@/lib/db/alerts'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
+import { scopeFleet } from '@/lib/permissions'
 import { buildCostCurve } from '@/lib/costs'
 import { moneyFull } from '@/lib/projects'
 import { rangeWindow, safeTz } from '@/lib/dates'
@@ -41,32 +42,35 @@ export async function GET() {
   const fullSince = new Date(earliestMs ?? Date.now() - 30 * 86_400_000).toISOString()
 
   let costToday: string | null = null
-  const [pairingEpisodes, alerts] = await Promise.all([
+  const [pairingEpisodes, alertsAll, rawAssets] = await Promise.all([
     getPairingEpisodes(companyId, fullSince),
     // Fresh alerts ride along so the wall display's ticker/rail don't fossilize
     // at whatever the server render saw (ship-check P2) — the client re-polls
     // this endpoint every few minutes.
     getAlertEvents(companyId),
-    (async () => {
-      if (!perms.canViewCosts) return
-      // Same window as the map timeline's "cost today" (rangeWindow 'live' in
-      // the viewer's tz): the header chip used a rolling 24h span and showed a
-      // different dollar figure than the timeline chip on the SAME screen
-      // ($375 vs $201, logged-in review Aug 26). "These should be the exact
-      // same map" (Brian, Aug 22) applies to the numbers too.
-      const tz = safeTz(cookies().get('ht_tz')?.value)
-      const w = rangeWindow(tz, 'live')
-      const [rawAssets, toolAssociations, history] = await Promise.all([
-        getAssetsWithLocations(companyId),
-        getToolAssociations(companyId),
-        getLocationHistory(companyId, new Date(w.from).toISOString()),
-      ])
-      const assets = resolveToolLocations(rawAssets, toolAssociations)
-      costToday = history
-        ? moneyFull(buildCostCurve(assets, history, w.from, w.to).curve.at(-1) ?? 0)
-        : moneyFull(0)
-    })(),
+    getAssetsWithLocations(companyId),
   ])
+  // The same cut as the wall's server render (scopeFleet): the polled list
+  // used to go out raw, so a view-as preview's wall counted and blinked for
+  // alerts about machines hidden from that role (ship-check, Sep 28).
+  const { alerts } = scopeFleet(perms, rawAssets, [], alertsAll)
+  if (perms.canViewCosts) {
+    // Same window as the map timeline's "cost today" (rangeWindow 'live' in
+    // the viewer's tz): the header chip used a rolling 24h span and showed a
+    // different dollar figure than the timeline chip on the SAME screen
+    // ($375 vs $201, logged-in review Aug 26). "These should be the exact
+    // same map" (Brian, Aug 22) applies to the numbers too.
+    const tz = safeTz(cookies().get('ht_tz')?.value)
+    const w = rangeWindow(tz, 'live')
+    const [toolAssociations, history] = await Promise.all([
+      getToolAssociations(companyId),
+      getLocationHistory(companyId, new Date(w.from).toISOString()),
+    ])
+    const assets = resolveToolLocations(rawAssets, toolAssociations)
+    costToday = history
+      ? moneyFull(buildCostCurve(assets, history, w.from, w.to).curve.at(-1) ?? 0)
+      : moneyFull(0)
+  }
 
   return NextResponse.json(
     { earliestMs, pairingEpisodes, costToday, alerts },

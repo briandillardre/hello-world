@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertList } from './AlertList'
 import { AlertRulesManager } from './AlertRulesManager'
 import { acknowledgeAlertAction, acknowledgeManyAlertsAction } from '@/lib/actions/alerts'
@@ -18,6 +18,18 @@ interface Props {
 export function AlertsView({ alerts: initial, rules, geofences, assets, editable }: Props) {
   const [tab, setTab] = useState<'activity' | 'rules'>('activity')
   const [alerts, setAlerts] = useState(initial)
+  // Every ack revalidates /alerts and the server sends a fresh list — take
+  // it. Holding the first render's list meant a "Mark all" over a capped
+  // batch ended on "All clear" while older open alerts were still waiting.
+  // An ack made here that the fresh list does not show yet (another ack's
+  // answer arriving first; demo mode, which saves nothing) stays made.
+  useEffect(() => {
+    setAlerts((cur) => {
+      if (cur === initial) return cur
+      const ackedHere = new Map(cur.filter((a) => a.acknowledged_at).map((a) => [a.id, a.acknowledged_at]))
+      return initial.map((a) => (!a.acknowledged_at && ackedHere.has(a.id) ? { ...a, acknowledged_at: ackedHere.get(a.id)! } : a))
+    })
+  }, [initial])
 
   const acknowledge = async (id: string) => {
     const prev = alerts.find((a) => a.id === id)?.acknowledged_at ?? null
