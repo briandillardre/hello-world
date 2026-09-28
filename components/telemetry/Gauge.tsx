@@ -48,8 +48,10 @@ export interface GaugeProps {
   label: string
   /** One-line verdict under the label ("Running hot"). */
   words?: string | null
-  /** "as of 3h ago" when the reading is older than the newest fix. */
+  /** "3h ago" when the reading is older than the newest fix — shown as is
+   *  under the label, and as "as of 3h ago" in the tooltip and the name. */
   stale?: string | null
+  /** The most the dial grows to; it shrinks to fit a narrower column. */
   size?: number
 }
 
@@ -63,13 +65,16 @@ export function Gauge({ value, min, max, bands, tone, text, unit, label, words, 
   const bigSize = text.length > 5 ? 15 : text.length > 4 ? 17 : 19
 
   return (
+    // Never wider than its grid column: a fixed width overflowed the 3-across
+    // grid in the map panel (~62–71 px columns at 280–320 px phones and in the
+    // desktop sidebar), and neighbouring captions ran into each other.
     <figure
       role="img"
-      aria-label={`${label} ${text}${unit ? ' ' + unit : ''}${words ? ', ' + words : ''}`}
-      className="m-0 flex flex-col items-center"
-      style={{ width: size }}
+      aria-label={`${label} ${text}${unit ? ' ' + unit : ''}${words ? ', ' + words : ''}${stale ? ', as of ' + stale : ''}`}
+      className="m-0 flex w-full min-w-0 flex-col items-center"
+      style={{ maxWidth: size }}
     >
-      <svg viewBox="0 0 100 92" width={size} height={size * 0.92} className="block overflow-visible">
+      <svg viewBox="0 0 100 92" className="block h-auto w-full overflow-visible">
         {/* track */}
         <path d={arc(0, 1)} stroke={TRACK} strokeWidth={7} fill="none" strokeLinecap="round" />
         {/* bands, faint — the map of "where is normal" */}
@@ -91,12 +96,12 @@ export function Gauge({ value, min, max, bands, tone, text, unit, label, words, 
           {unit && <tspan fontSize={8} fontWeight={600} fill="#9fb6cc" dx={2}>{unit}</tspan>}
         </text>
       </svg>
-      <figcaption className="mt-0.5 text-center leading-tight">
+      <figcaption className="mt-0.5 w-full text-center leading-tight [overflow-wrap:anywhere]">
         <span className="block font-mono text-[9.5px] uppercase tracking-[0.1em] text-faint">{label}</span>
         {words && (
           <span className="block text-[10.5px] font-semibold" style={{ color: tone === 'off' || tone === 'info' ? '#9fb6cc' : hex }}>{words}</span>
         )}
-        {stale && <span className="block text-[9.5px] text-amber/80">as of {stale}</span>}
+        {stale && <span className="block text-[9.5px] text-amber/80" title={`as of ${stale}`}>{stale}</span>}
       </figcaption>
     </figure>
   )
