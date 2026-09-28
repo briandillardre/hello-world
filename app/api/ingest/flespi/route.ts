@@ -9,6 +9,10 @@ import { checkTruckPower } from '@/lib/power-loss-check'
 import { recordTelemetry } from '@/lib/telemetry-ingest'
 import { POWERED_MIN_V, externalVolts } from '@/lib/power-loss'
 import { safeTz } from '@/lib/dates'
+import {
+  CONFIRM_WINDOW_MS, chatterState, chatterStep, isTagChatter, jumpReason, jumpVerdict, newestFix, tagIdsOf,
+  type ChatterFix, type ChatterState,
+} from '@/lib/ingest-guard'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
 
@@ -36,6 +40,56 @@ function verifyToken(request: NextRequest): boolean {
 // batches (60 msgs × sequential per-message DB work + beacon round-trips)
 // need more than the platform default (ship-check P2, Aug 24).
 export const maxDuration = 60
+
+/** One asset_locations row as the ingest writes it. */
+interface LocRow {
+  asset_id: string
+  company_id: string
+  lat: number
+  lng: number
+  speed: number | null
+  heading: number | null
+  altitude: number | null
+  battery: number | null
+  accuracy: null
+  timestamp: string
+  raw: Record<string, unknown>
+  ignition: boolean | null
+}
+
+/** A fix the guards may hold back, carrying the row to write if it is kept. */
+type HeldFix = ChatterFix & { row: LocRow }
+
+function toFix(row: { timestamp: string; lat: number; lng: number; speed: number | null; raw: Record<string, unknown> | null }, thin = true): ChatterFix {
+  return {
+    ms: Date.parse(row.timestamp), lat: row.lat, lng: row.lng, speed: row.speed,
+    chatter: thin && isTagChatter(row.raw, row.speed), tags: tagIdsOf(row.raw),
+  }
+}
+
+function heldFix(row: LocRow, thin = true): HeldFix {
+  return { ...toFix(row, thin), row }
+}
+
+/** A row this route wrote into asset_fix_tail / asset_location_rejects, read
+ *  back — only ever the asset's own, and only with a usable position. */
+function asLocRow(v: unknown, assetId: string): LocRow | null {
+  if (!v || typeof v !== 'object') return null
+  const o = v as Partial<LocRow>
+  if (o.asset_id !== assetId || typeof o.company_id !== 'string') return null
+  if (typeof o.lat !== 'number' || typeof o.lng !== 'number' || typeof o.timestamp !== 'string' || !Number.isFinite(Date.parse(o.timestamp))) return null
+  return {
+    asset_id: o.asset_id, company_id: o.company_id, lat: o.lat, lng: o.lng,
+    speed: typeof o.speed === 'number' ? o.speed : null,
+    heading: typeof o.heading === 'number' ? o.heading : null,
+    altitude: typeof o.altitude === 'number' ? o.altitude : null,
+    battery: typeof o.battery === 'number' ? o.battery : null,
+    accuracy: null,
+    timestamp: o.timestamp,
+    raw: o.raw && typeof o.raw === 'object' ? o.raw : {},
+    ignition: typeof o.ignition === 'boolean' ? o.ignition : null,
+  }
+}
 
 export async function POST(request: NextRequest) {
   if (!verifyToken(request)) {
@@ -89,6 +143,44 @@ export async function POST(request: NextRequest) {
   // Every stored fix's parameter bag, per asset — folded once per batch into
   // asset_telemetry_latest (115), the "what does this truck report" row.
   const telemetryRows = new Map<string, { companyId: string; rows: { timestamp: string; params: Record<string, unknown> }[] }>()
+  // Per-asset stream guards (lib/ingest-guard, 124): GPS spikes and parked
+  // tag chatter.
+  const guards = new Map<string, {
+    companyId: string
+    thin: boolean
+    s: ChatterState<HeldFix>
+    loadedTail: HeldFix | null
+    lastReject: { fix: HeldFix; id: number | null } | null
+    rejectLoaded: boolean
+  }>()
+  let thinned = 0
+  let rejected = 0
+
+  /** Write one position row; false when it bounced (logged). */
+  const storeRow = async (row: LocRow): Promise<boolean> => {
+    let { error: locErr } = await supabase.from('asset_locations').insert(row)
+    // Retry without the column ONLY on a pre-034 schema (undefined column /
+    // stale schema cache). Any other failure is real — retrying it masked
+    // RLS/data errors and `persisted` over-counted (code review, Jul 21).
+    if (locErr && (locErr.code === '42703' || locErr.code === 'PGRST204')) {
+      const { ignition: _ignition, ...pre034 } = row
+      ;({ error: locErr } = await supabase.from('asset_locations').insert(pre034))
+    }
+    if (locErr) {
+      // Beacon association still runs — tools shouldn't lose their
+      // last-seen because one location row bounced.
+      console.error(`flespi: asset_locations insert failed for ${row.asset_id}: ${locErr.code} ${locErr.message}`)
+      return false
+    }
+    persisted++
+    insertedRows.set(row.asset_id, (insertedRows.get(row.asset_id) ?? 0) + 1)
+    const tr: { companyId: string; rows: { timestamp: string; params: Record<string, unknown> }[] } =
+      telemetryRows.get(row.asset_id) ?? { companyId: row.company_id, rows: [] }
+    tr.rows.push({ timestamp: row.timestamp, params: row.raw })
+    telemetryRows.set(row.asset_id, tr)
+    return true
+  }
+
   for (const r of normalized) {
     // Plausibility gate (sec-check, Sep 1): a fix dated in the future would sit
     // as the asset's 'latest' position forever (every read orders by
@@ -144,24 +236,34 @@ export async function POST(request: NextRequest) {
     }
 
     assetNames.set(asset.id, (asset.name as string | null) ?? 'Tracker')
-    const pinVolts = externalVolts(r.params)
-    if (pinVolts != null) {
-      hadPowerPin.add(asset.id)
-      if (pinVolts < POWERED_MIN_V) lowInBatch.add(asset.id)
+
+    // The asset's stream so far — its newest stored row (also the "before
+    // this batch" fix the zone-edge alerts compare against) and the parked
+    // record held back last batch (124). Once per asset per batch.
+    let g = guards.get(asset.id)
+    if (!g) {
+      const [{ data: prev }, tailQ] = await Promise.all([
+        supabase.from('asset_locations').select('lat, lng, speed, timestamp, raw')
+          .eq('asset_id', asset.id).order('timestamp', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('asset_fix_tail').select('fix, run_tags').eq('asset_id', asset.id).maybeSingle(),
+      ])
+      if (prev) prevFix.set(asset.id, { lat: prev.lat, lng: prev.lng })
+      const tailRow = !tailQ.error ? asLocRow(tailQ.data?.fix, asset.id) : null
+      const loadedTail = tailRow ? heldFix(tailRow) : null
+      g = {
+        companyId: asset.company_id,
+        // No tail table (pre-124) = no thinning: without somewhere to hold a
+        // run's last record between batches the time math would drift.
+        thin: !tailQ.error,
+        s: chatterState<HeldFix>(prev ? toFix(prev) : null, loadedTail, (tailQ.data?.run_tags as string[] | null) ?? []),
+        loadedTail,
+        lastReject: null,
+        rejectLoaded: false,
+      }
+      guards.set(asset.id, g)
     }
 
-    if (!prevFix.has(asset.id)) {
-      const { data: prev } = await supabase
-        .from('asset_locations')
-        .select('lat, lng')
-        .eq('asset_id', asset.id)
-        .order('timestamp', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (prev) prevFix.set(asset.id, prev)
-    }
-
-    const locRow = {
+    const locRow: LocRow = {
       asset_id: asset.id,
       company_id: asset.company_id,
       lat: r.lat,
@@ -176,28 +278,68 @@ export async function POST(request: NextRequest) {
       // nothing the tracker reports is discarded — the asset page and future
       // maintenance/utilization features read from here.
       raw: { source: 'flespi', ...r.params },
+      // Engine state as a REAL column (034) so the idle math can select it
+      // cheaply — idle must mean engine ON, not merely device-awake.
+      ignition: null,
     }
-    // Engine state as a REAL column (034) so the idle math can select it
-    // cheaply — idle must mean engine ON, not merely device-awake.
-    const ignition = vehiclePower(locRow.raw).engineOn
-    let { error: locErr } = await supabase.from('asset_locations').insert({ ...locRow, ignition })
-    // Retry without the column ONLY on a pre-034 schema (undefined column /
-    // stale schema cache). Any other failure is real — retrying it masked
-    // RLS/data errors and `persisted` over-counted (code review, Jul 21).
-    if (locErr && (locErr.code === '42703' || locErr.code === 'PGRST204')) {
-      ;({ error: locErr } = await supabase.from('asset_locations').insert(locRow))
+    locRow.ignition = vehiclePower(locRow.raw).engineOn
+    const fix = heldFix(locRow, g.thin)
+
+    // ── GPS spike guard (lib/ingest-guard) ──────────────────────────────────
+    // A fix hundreds of miles out and back in minutes is not a place the
+    // machine went. Logged in asset_location_rejects, never drawn; a second
+    // fix that agrees with it proves the move and both go in.
+    const before = newestFix(g.s)
+    let verdict = jumpVerdict(before, fix, g.lastReject?.fix ?? null)
+    if (verdict === 'reject' && !g.lastReject && !g.rejectLoaded) {
+      g.rejectLoaded = true
+      const { data: rj } = await supabase.from('asset_location_rejects')
+        .select('id, fix').eq('asset_id', asset.id).is('restored_at', null)
+        .gte('timestamp', new Date(fix.ms - CONFIRM_WINDOW_MS).toISOString())
+        .order('timestamp', { ascending: false }).limit(1).maybeSingle()
+      const rjRow = asLocRow(rj?.fix, asset.id)
+      if (rj && rjRow) {
+        g.lastReject = { fix: heldFix(rjRow), id: rj.id as number }
+        verdict = jumpVerdict(before, fix, g.lastReject.fix)
+      }
     }
-    if (locErr) {
-      // Beacon association below still runs — tools shouldn't lose their
-      // last-seen because one location row bounced.
-      console.error(`flespi: asset_locations insert failed for ${asset.id}: ${locErr.code} ${locErr.message}`)
-    } else {
-      persisted++
-      insertedRows.set(asset.id, (insertedRows.get(asset.id) ?? 0) + 1)
-      const tr: { companyId: string; rows: { timestamp: string; params: Record<string, unknown> }[] } =
-        telemetryRows.get(asset.id) ?? { companyId: asset.company_id, rows: [] }
-      tr.rows.push({ timestamp: r.timestamp, params: locRow.raw })
-      telemetryRows.set(asset.id, tr)
+    if (verdict === 'reject') {
+      const reason = jumpReason(before!, fix)
+      console.warn(`flespi: ${r.tracker_id} fix at ${r.timestamp} (${r.lat}, ${r.lng}) rejected — ${reason}`)
+      const { data: logged } = await supabase.from('asset_location_rejects').insert({
+        asset_id: asset.id, company_id: asset.company_id, timestamp: r.timestamp,
+        lat: r.lat, lng: r.lng, reason, fix: locRow,
+      }).select('id').maybeSingle()
+      g.lastReject = { fix, id: (logged?.id as number | undefined) ?? null }
+      rejected++
+      continue
+    }
+    if (verdict === 'confirmed' && g.lastReject) {
+      // The fix we turned away was real — it goes in first, in its place.
+      const confirmed = g.lastReject
+      g.lastReject = null
+      const step = chatterStep(g.s, confirmed.fix)
+      if (step.flush) await storeRow(step.flush.row)
+      if (step.store) await storeRow(confirmed.fix.row)
+      if (confirmed.id != null) {
+        await supabase.from('asset_location_rejects').update({ restored_at: new Date().toISOString() }).eq('id', confirmed.id)
+      }
+    }
+
+    const pinVolts = externalVolts(r.params)
+    if (pinVolts != null) {
+      hadPowerPin.add(asset.id)
+      if (pinVolts < POWERED_MIN_V) lowInBatch.add(asset.id)
+    }
+
+    // ── Parked tag chatter (lib/ingest-guard) ───────────────────────────────
+    // A repeat of "parked here, hearing these tags" is not stored as a
+    // position; tool custody below still hears every one of them.
+    const step = chatterStep(g.s, fix)
+    if (step.flush) await storeRow(step.flush.row)
+    if (!step.store) {
+      thinned++
+    } else if (await storeRow(locRow)) {
       if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
       updated.get(asset.company_id)!.set(asset.id, r)
     }
@@ -208,6 +350,19 @@ export async function POST(request: NextRequest) {
     if (r.beacons.length) {
       try { await recordBeaconSightings(supabase, asset, { lat: r.lat, lng: r.lng, timestamp: r.timestamp }, r.beacons, { reportedAs: 'hex' }) } catch { /* custody is additive */ }
     }
+  }
+
+  // A parked run still going at the end of the batch: hold its newest
+  // record for the next batch (124), so the record that ends the run can
+  // put it in first.
+  for (const [assetId, g] of Array.from(guards.entries())) {
+    const t = g.s.tail as HeldFix | null
+    if (!g.thin || !t || t === g.loadedTail) continue
+    const { error } = await supabase.from('asset_fix_tail').upsert({
+      asset_id: assetId, company_id: g.companyId, ts: t.row.timestamp, fix: t.row,
+      run_tags: Array.from(g.s.runTags), updated_at: new Date().toISOString(),
+    })
+    if (error) console.error(`flespi: holding the parked record for ${assetId} failed: ${error.code} ${error.message}`)
   }
 
   // ── Vehicle health: fuel low + 12V battery weak, straight from telemetry ──
@@ -382,5 +537,5 @@ export async function POST(request: NextRequest) {
     console.error('alert evaluation failed', err)
   }
 
-  return NextResponse.json({ ok: true, persisted, buffered, alerts: alertsFired })
+  return NextResponse.json({ ok: true, persisted, buffered, thinned, rejected, alerts: alertsFired })
 }
