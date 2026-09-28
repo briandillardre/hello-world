@@ -5,7 +5,7 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 /** The newest 100 events (the log) PLUS every alert still waiting for a
- *  decision, however old. The 100-row window alone let a few days of routine
+ *  decision from the last 90 days. The 100-row window alone let a few days of routine
  *  zone crossings push unhandled theft and left-site alerts off the page and
  *  every badge — Sep 28: 70 of 91 open alerts were hidden that way, and "Mark
  *  all as handled" could never have reached them. Newest first. */
@@ -25,6 +25,10 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       asset:assets!inner(id, name, type),
       rule:alert_rules${innerRule ? '!inner' : ''}(*, geofence:geofences(id, name, color))
     `
+  // Open alerts from the last 90 days: no index covers "unhandled", so the
+  // open queries walk the company's rows newest-first (row by row through the
+  // 111 visibility policy) — the bound keeps that walk finite as history grows.
+  const openSince = new Date(Date.now() - 90 * 86_400_000).toISOString()
   const [recent, openRuled, openSystem] = await Promise.all([
     supabase
       .from('alert_events')
@@ -42,6 +46,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .eq('asset.active', true)
       .is('acknowledged_at', null)
       .not('rule.trigger', 'in', '(enter,exit)')
+      .gte('triggered_at', openSince)
       .order('triggered_at', { ascending: false })
       .limit(150),
     // …and open telemetry alerts (022: `kind`, no rule).
@@ -52,6 +57,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .eq('asset.active', true)
       .is('acknowledged_at', null)
       .not('kind', 'is', null)
+      .gte('triggered_at', openSince)
       .order('triggered_at', { ascending: false })
       .limit(50),
   ])

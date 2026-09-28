@@ -4733,6 +4733,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // The zone's outline comes from the map's own zone list — alert rows
       // no longer carry geometry (they ride the 20 s poll).
       const g = a.rule?.geofence ? geofencesRef.current.find((z) => z.id === a.rule!.geofence!.id) : undefined
+      // A zone alert whose zone is off this map (a division filter) stays
+      // off it too — never pinned at wherever the truck is now instead.
+      if (a.rule?.geofence && !g) continue
       const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
       let key: string, cx: number, cy: number
       if (g && ring?.length) {
