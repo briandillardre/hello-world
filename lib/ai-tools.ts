@@ -17,7 +17,7 @@ import {
   type FuelSample, type StatPoint,
 } from './asset-stats'
 import {
-  activityAnswer, activityIntent, activityToolResult, asksWholeFleet, clampWindow, fmtWhen, followOnIntent, normalizeAsk,
+  activityAnswer, activityIntent, activityToolResult, asksWholeFleet, clampWindow, fmtWhen, followOnIntent, normalizeAsk, priorIntent,
   parseWhen, type ActivityFacts, type PhraseWindow,
 } from './ask-activity'
 import { resolveAssetPick } from './assistant'
@@ -305,6 +305,7 @@ const FUEL_LEVEL_KEYS: string[] = (() => {
 })()
 
 interface WindowRow {
+  id?: string
   lat: number
   lng: number
   speed: number | null
@@ -344,25 +345,34 @@ async function firstFixMs(db: SupabaseClient, assetId: string): Promise<number |
  * One window of fixes, oldest first. Keyset pages down the (asset_id,
  * timestamp) index, newest first, so a window over the cap keeps its recent
  * end — offset paging re-walked every skipped row on every page, each one
- * through the 111 policy. Fuel rides along as JSON paths into `raw`, never
- * the whole bag.
+ * through the 111 policy. The cursor is (timestamp, id): records can share a
+ * second (a retried webhook, an engine record and a tag scan), and a
+ * timestamp-only cursor skipped the rest of a second a page ended inside
+ * (ship-check, Sep 28). Fuel rides along as JSON paths into `raw`, never the
+ * whole bag.
  */
 async function readWindow(db: SupabaseClient, assetId: string, fromMs: number, toMs: number, fuelKeys: string[]): Promise<{ rows: WindowRow[]; truncated: boolean } | null> {
   const read = async (keys: string[]) => {
-    const cols = ['lat', 'lng', 'speed', 'timestamp', 'ignition', ...keys.map((k, i) => `f${i}:raw->"${k}"`)].join(', ')
+    const cols = ['id', 'lat', 'lng', 'speed', 'timestamp', 'ignition', ...keys.map((k, i) => `f${i}:raw->"${k}"`)].join(', ')
     const fromIso = new Date(fromMs).toISOString()
-    let before = new Date(toMs).toISOString()
+    const toIso = new Date(toMs).toISOString()
+    let cursor: { ts: string; id: string } | null = null
     const rows: WindowRow[] = []
     while (rows.length < WINDOW_ROW_CAP) {
-      const { data, error } = await db.from('asset_locations').select(cols)
-        .eq('asset_id', assetId).gte('timestamp', fromIso).lt('timestamp', before)
-        .order('timestamp', { ascending: false }).limit(PAGE)
+      let q = db.from('asset_locations').select(cols).eq('asset_id', assetId).gte('timestamp', fromIso)
+      // The exact timestamp string back as the cursor — microseconds and all,
+      // quoted: it carries the characters the filter syntax reserves.
+      q = cursor
+        ? q.or(`timestamp.lt."${cursor.ts}",and(timestamp.eq."${cursor.ts}",id.lt.${cursor.id})`)
+        : q.lt('timestamp', toIso)
+      const { data, error } = await q.order('timestamp', { ascending: false }).order('id', { ascending: false }).limit(PAGE)
       if (error) return null
       const page = (data ?? []) as unknown as WindowRow[]
       rows.push(...page)
       if (page.length < PAGE) return { rows: rows.reverse(), truncated: false }
-      // The exact string back as the cursor — microseconds and all.
-      before = page[page.length - 1].timestamp
+      const last = page[page.length - 1]
+      if (typeof last.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(last.id) || !/^[0-9T:.+\-Z ]+$/.test(last.timestamp)) return null
+      cursor = { ts: last.timestamp, id: last.id }
     }
     return { rows: rows.reverse(), truncated: true }
   }
@@ -424,7 +434,7 @@ export async function assetActivityFacts(
     // A tool's miles are its carriers' while the tag rode along — the asset
     // panel's numbers for a tool. Read oldest first, so a cut drops the end.
     const { getToolWindowRows } = await import('./db/tools')
-    rows = (await getToolWindowRows(asset.id, new Date(from).toISOString(), new Date(to).toISOString(), WINDOW_ROW_CAP)) as WindowRow[]
+    rows = (await getToolWindowRows(asset.id, new Date(from).toISOString(), new Date(to).toISOString(), WINDOW_ROW_CAP, { oldestFirst: true })) as WindowRow[]
     if (rows.length >= WINDOW_ROW_CAP) {
       to = Date.parse(rows[rows.length - 1].timestamp) + 1
       notes.push(`Only the first ${WINDOW_ROW_CAP.toLocaleString('en-US')} fixes were read, so these numbers stop at ${fmtWhen(to, ctx.tz)}.`)
@@ -518,7 +528,7 @@ export async function answerActivityQuestion(
   if (isMock) return null
   const nowMs = Date.now()
   const q = normalizeAsk(question)
-  const before = prev && nowMs - prev.atMs < CARRY_MS ? activityIntent(prev.text, nowMs, ctx.tz) : null
+  const before = prev && nowMs - prev.atMs < CARRY_MS ? priorIntent(prev, nowMs, ctx.tz) : null
   // "And the F350?" / "what about yesterday?" — the last question, changed.
   const intent = activityIntent(q, nowMs, ctx.tz) ?? followOnIntent(q, before, nowMs, ctx.tz)
   if (!intent) return null

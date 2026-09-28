@@ -95,6 +95,28 @@ ok('a window still ahead is none', w('tonight', SUN) === null)
 is('last week across the clock change', w('last week', t('2026-11-04T12:00:00-05:00')), '2026-10-26T00:00:00-04:00', '2026-11-02T00:00:00-05:00')
 is('Sunday morning on the change day is 6 AM EST', w('since sunday morning', t('2026-11-02T10:00:00-05:00')), '2026-11-01T06:00:00-05:00', '2026-11-02T10:00:00-05:00')
 is('another zone: Friday morning in Chicago', w(Q1, SUN, 'America/Chicago'), '2026-09-25T06:00:00-05:00', '2026-09-27T14:00:00-04:00')
+// A week back across a clock change is a calendar week, never 7 × 24 h
+// (ship-check, Sep 28: this read 7:00 AM in the fall and 5:00 AM in spring).
+const FRI_NOV6_EARLY = t('2026-11-06T05:00:00-05:00')
+is('since Friday morning, asked Friday 5 AM after fall-back', w('since friday morning', FRI_NOV6_EARLY), '2026-10-30T06:00:00-04:00', '2026-11-06T05:00:00-05:00')
+is('Friday morning, asked Friday 5 AM after fall-back', w('friday morning', FRI_NOV6_EARLY), '2026-10-30T06:00:00-04:00', '2026-10-30T12:00:00-04:00')
+is('since Friday morning, asked Friday 5 AM after spring-forward', w('since friday morning', t('2026-03-13T05:00:00-04:00')), '2026-03-06T06:00:00-05:00', '2026-03-13T05:00:00-04:00')
+
+// A follow-up keeps the window the last question meant, read when it was
+// asked (ship-check, Sep 28: "miles today" at 11:50 PM, then "how many
+// gallons" at 12:05 AM answered for 12:00–12:05 AM).
+{
+  const asked = t('2026-09-28T23:50:00-04:00')
+  const later = t('2026-09-29T00:05:00-04:00')
+  const today = ask.priorIntent({ text: 'miles today on the ram 2500', atMs: asked }, later, NY)
+  ok('follow-up after midnight: "today" is still the day it was asked, to now',
+    today && iso(today.window.from) === iso(t('2026-09-28T00:00:00-04:00')) && iso(today.window.to) === iso(later), today?.window)
+  const y = ask.priorIntent({ text: 'miles yesterday on the ram 2500', atMs: asked }, later, NY)
+  ok('…"yesterday" stays that yesterday, closed', y && iso(y.window.from) === iso(t('2026-09-27T00:00:00-04:00')) && iso(y.window.to) === iso(t('2026-09-28T00:00:00-04:00')), y?.window)
+  const two = ask.priorIntent({ text: 'miles in the last 2 hours', atMs: asked }, later, NY)
+  ok('…"last 2 hours" keeps its start', two && iso(two.window.from) === iso(asked - 2 * HOUR) && iso(two.window.to) === iso(later), two?.window)
+  ok('…no window stays no window', ask.priorIntent({ text: 'how many miles did the ram drive', atMs: asked }, later, NY)?.window === null)
+}
 
 // ── Tool input → one end of a window ────────────────────────────────────────
 const pw = (v, end = 'start', tz = NY) => iso(ask.parseWhen(v, end, SUN, tz))
@@ -322,6 +344,17 @@ const ramGauge = stats.fuelFromLevels(ram, { movingOnly: true })
   ok('"tank: 26 gal" alone could be any tank', tk({ notes: 'tank: 26 gal' }) === null)
   ok('cans are not a tank', tk({ notes: 'carries two 20 gal cans' }) === null)
   ok('nonsense and toys refused', tk({ fuel_tank: 'big' }) === null && tk({ fuel_tank: '2 gal' }) === null && tk(null) === null)
+  ok('padded values still read', tk({ fuel_tank: '  32 gal  ' })?.gallons === 32 && tk({ fuel_tank: '32 - gal' })?.gallons === 32)
+  // The owner writes these fields: a run of spaces used to backtrack
+  // cubically and pin a server for minutes (sec-check, Sep 28).
+  const pad = ' '.repeat(20_000)
+  const started = Date.now()
+  const spun = [
+    tk({ fuel_tank: `1${pad}x` }), tk({ specs: { fuel_capacity: `1${pad}-${pad}gal${pad}x` } }),
+    tk({ notes: `1${pad}-${pad}gal x` }), tk({ notes: `fuel tank${pad}1${pad}-${pad}x` }), tk({ notes: '1 '.repeat(10_000) }),
+  ]
+  const tookMs = Date.now() - started
+  ok('long runs of spaces answer at once', spun.every((v) => v === null) && tookMs < 200, { tookMs, spun })
 }
 
 // ── The answer, in words ────────────────────────────────────────────────────

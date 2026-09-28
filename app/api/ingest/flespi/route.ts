@@ -10,8 +10,8 @@ import { recordTelemetry } from '@/lib/telemetry-ingest'
 import { POWERED_MIN_V, externalVolts } from '@/lib/power-loss'
 import { safeTz } from '@/lib/dates'
 import {
-  CONFIRM_WINDOW_MS, chatterState, chatterStep, isTagChatter, jumpReason, jumpVerdict, newestFix, tagIdsOf,
-  type ChatterFix, type ChatterState,
+  CONFIRM_WINDOW_MS, JUMP_WINDOW_MS, chatterState, chatterStep, fixIsValid, isTagChatter, jumpBasis, jumpReason,
+  jumpVerdict, newestFix, tagIdsOf, type ChatterFix, type ChatterState, type GuardFix,
 } from '@/lib/ingest-guard'
 
 const HMAC_SECRET = 'hammertrack-flespi-token-comparison'
@@ -62,7 +62,7 @@ type HeldFix = ChatterFix & { row: LocRow }
 
 function toFix(row: { timestamp: string; lat: number; lng: number; speed: number | null; raw: Record<string, unknown> | null }, thin = true): ChatterFix {
   return {
-    ms: Date.parse(row.timestamp), lat: row.lat, lng: row.lng, speed: row.speed,
+    ms: Date.parse(row.timestamp), lat: row.lat, lng: row.lng, speed: row.speed, valid: fixIsValid(row.raw),
     chatter: thin && isTagChatter(row.raw, row.speed), tags: tagIdsOf(row.raw),
   }
 }
@@ -72,14 +72,17 @@ function heldFix(row: LocRow, thin = true): HeldFix {
 }
 
 /** A row this route wrote into asset_fix_tail / asset_location_rejects, read
- *  back — only ever the asset's own, and only with a usable position. */
-function asLocRow(v: unknown, assetId: string): LocRow | null {
+ *  back — only ever the asset's own, only with a usable position, and filed
+ *  under the company that owns the asset NOW: a machine moved to another
+ *  company between batches must not write its held record into the old
+ *  company's books (sec-check, Sep 28). */
+function asLocRow(v: unknown, assetId: string, companyId: string): LocRow | null {
   if (!v || typeof v !== 'object') return null
   const o = v as Partial<LocRow>
-  if (o.asset_id !== assetId || typeof o.company_id !== 'string') return null
+  if (o.asset_id !== assetId) return null
   if (typeof o.lat !== 'number' || typeof o.lng !== 'number' || typeof o.timestamp !== 'string' || !Number.isFinite(Date.parse(o.timestamp))) return null
   return {
-    asset_id: o.asset_id, company_id: o.company_id, lat: o.lat, lng: o.lng,
+    asset_id: o.asset_id, company_id: companyId, lat: o.lat, lng: o.lng,
     speed: typeof o.speed === 'number' ? o.speed : null,
     heading: typeof o.heading === 'number' ? o.heading : null,
     altitude: typeof o.altitude === 'number' ? o.altitude : null,
@@ -152,6 +155,10 @@ export async function POST(request: NextRequest) {
     loadedTail: HeldFix | null
     lastReject: { fix: HeldFix; id: number | null } | null
     rejectLoaded: boolean
+    /** The newest fix with a real GPS position (jumpBasis) — the newest
+     *  stored row may be a no-fix record repeating an old place. */
+    lastValid: GuardFix | null
+    validLoaded: boolean
   }>()
   let thinned = 0
   let rejected = 0
@@ -249,17 +256,27 @@ export async function POST(request: NextRequest) {
         supabase.from('asset_fix_tail').select('fix, run_tags').eq('asset_id', asset.id).maybeSingle(),
       ])
       if (prev) prevFix.set(asset.id, { lat: prev.lat, lng: prev.lng })
-      const tailRow = !tailQ.error ? asLocRow(tailQ.data?.fix, asset.id) : null
+      const tailRow = !tailQ.error ? asLocRow(tailQ.data?.fix, asset.id, asset.company_id) : null
       const loadedTail = tailRow ? heldFix(tailRow) : null
+      const prevFixed = prev ? toFix(prev) : null
+      // Newest real position we already hold: the held record if it is one
+      // and newer, else the newest row. Neither = looked up if ever needed.
+      const lastValid = [loadedTail, prevFixed]
+        .filter((f): f is ChatterFix => !!f && f.valid !== false)
+        .sort((a, b) => b.ms - a.ms)[0] ?? null
       g = {
         companyId: asset.company_id,
         // No tail table (pre-124) = no thinning: without somewhere to hold a
         // run's last record between batches the time math would drift.
         thin: !tailQ.error,
-        s: chatterState<HeldFix>(prev ? toFix(prev) : null, loadedTail, (tailQ.data?.run_tags as string[] | null) ?? []),
+        s: chatterState<HeldFix>(prevFixed, loadedTail, (tailQ.data?.run_tags as string[] | null) ?? []),
         loadedTail,
         lastReject: null,
         rejectLoaded: false,
+        lastValid,
+        // Either one found is the newest real position there is (the row is
+        // the newest stored, the held record newer still); none = look back.
+        validLoaded: !!lastValid,
       }
       guards.set(asset.id, g)
     }
@@ -284,28 +301,69 @@ export async function POST(request: NextRequest) {
       ignition: null,
     }
     locRow.ignition = vehiclePower(locRow.raw).engineOn
-    const fix = heldFix(locRow, g.thin)
+    let fix = heldFix(locRow, g.thin)
+    // The reading as the rest of the loop uses it (custody, zone alerts) —
+    // re-placed below when it has no GPS fix of its own.
+    let rd: NormalizedReading = r
 
     // ── GPS spike guard (lib/ingest-guard) ──────────────────────────────────
     // A fix hundreds of miles out and back in minutes is not a place the
     // machine went. Logged in asset_location_rejects, never drawn; a second
     // fix that agrees with it proves the move and both go in.
     const before = newestFix(g.s)
-    let verdict = jumpVerdict(before, fix, g.lastReject?.fix ?? null)
+    let basis: GuardFix | null = before
+    // A reject counts only until a real fix is accepted after it: that fix
+    // already answered it (no-fix records answer nothing — they repeat it).
+    const openReject = (): GuardFix | null =>
+      g.lastReject && (!g.lastValid || g.lastReject.fix.ms > g.lastValid.ms) ? g.lastReject.fix : null
+    let verdict = jumpVerdict(basis, fix, openReject())
+    if (verdict === 'reject' && before?.valid === false) {
+      // The newest record had no GPS fix: it repeats an old place under a
+      // fresh time. Measure from the newest REAL fix instead (jumpBasis) — a
+      // haul made with the GPS jammed or boxed in then reads as road speed.
+      if (!g.validLoaded) {
+        g.validLoaded = true
+        const { data: back } = await supabase.from('asset_locations')
+          .select('lat, lng, speed, timestamp, sats:raw->"position.satellites", valid:raw->"position.valid"')
+          .eq('asset_id', asset.id)
+          .gte('timestamp', new Date(fix.ms - JUMP_WINDOW_MS).toISOString())
+          .order('timestamp', { ascending: false }).limit(2000)
+        const rows = (back ?? []) as { lat: number; lng: number; speed: number | null; timestamp: string; sats: unknown; valid: unknown }[]
+        const hit = rows.find((b) => fixIsValid({ 'position.valid': b.valid, 'position.satellites': b.sats }))
+        const found = hit ? { ms: Date.parse(hit.timestamp), lat: hit.lat, lng: hit.lng, speed: hit.speed } : null
+        if (found && Number.isFinite(found.ms) && (!g.lastValid || found.ms > g.lastValid.ms)) g.lastValid = found
+      }
+      const b = jumpBasis(before, g.lastValid, fix)
+      if (b !== before) {
+        basis = b
+        verdict = jumpVerdict(basis, fix, openReject())
+      }
+    }
     if (verdict === 'reject' && !g.lastReject && !g.rejectLoaded) {
       g.rejectLoaded = true
       const { data: rj } = await supabase.from('asset_location_rejects')
         .select('id, fix').eq('asset_id', asset.id).is('restored_at', null)
         .gte('timestamp', new Date(fix.ms - CONFIRM_WINDOW_MS).toISOString())
         .order('timestamp', { ascending: false }).limit(1).maybeSingle()
-      const rjRow = asLocRow(rj?.fix, asset.id)
+      const rjRow = asLocRow(rj?.fix, asset.id, asset.company_id)
       if (rj && rjRow) {
         g.lastReject = { fix: heldFix(rjRow), id: rj.id as number }
-        verdict = jumpVerdict(before, fix, g.lastReject.fix)
+        verdict = jumpVerdict(basis, fix, openReject())
       }
     }
+    if (verdict === 'reject' && fix.valid === false && before) {
+      // No GPS fix of its own: the unit repeats the last place it knew — the
+      // one just turned away. That is no evidence of a move (it can never
+      // confirm one) and must not be drawn; its other data (engine, power
+      // pin, tags heard) still counts, filed at the newest place on record.
+      locRow.lat = before.lat
+      locRow.lng = before.lng
+      fix = heldFix(locRow, g.thin)
+      rd = { ...r, lat: before.lat, lng: before.lng }
+      verdict = 'ok'
+    }
     if (verdict === 'reject') {
-      const reason = jumpReason(before!, fix)
+      const reason = jumpReason(basis!, fix)
       console.warn(`flespi: ${r.tracker_id} fix at ${r.timestamp} (${r.lat}, ${r.lng}) rejected — ${reason}`)
       const { data: logged } = await supabase.from('asset_location_rejects').insert({
         asset_id: asset.id, company_id: asset.company_id, timestamp: r.timestamp,
@@ -319,12 +377,38 @@ export async function POST(request: NextRequest) {
       // The fix we turned away was real — it goes in first, in its place.
       const confirmed = g.lastReject
       g.lastReject = null
+      // No-fix records since it repeated that place and were filed at the
+      // last accepted one (below); the move was real, so they go where the
+      // unit said it was — else the day draws (and counts) a trip back.
+      const refile = (f: ChatterFix & { row?: LocRow }) => {
+        if (f.valid !== false || f.ms <= confirmed.fix.ms) return
+        f.lat = confirmed.fix.lat
+        f.lng = confirmed.fix.lng
+        if (f.row) { f.row.lat = f.lat; f.row.lng = f.lng }
+      }
+      if (g.s.last) refile(g.s.last)
+      if (g.s.tail) refile(g.s.tail)
+      const { data: filed } = await supabase.from('asset_locations')
+        .select('id, sats:raw->"position.satellites", valid:raw->"position.valid"')
+        .eq('asset_id', asset.id).gt('timestamp', confirmed.fix.row.timestamp).lt('timestamp', r.timestamp).limit(1000)
+      const refiled = ((filed ?? []) as { id: string; sats: unknown; valid: unknown }[])
+        .filter((x) => !fixIsValid({ 'position.valid': x.valid, 'position.satellites': x.sats })).map((x) => x.id)
+      for (let i = 0; i < refiled.length; i += 100) {
+        const { error } = await supabase.from('asset_locations')
+          .update({ lat: confirmed.fix.lat, lng: confirmed.fix.lng }).in('id', refiled.slice(i, i + 100))
+        if (error) console.error(`flespi: re-filing no-fix records for ${asset.id} failed: ${error.code} ${error.message}`)
+      }
       const step = chatterStep(g.s, confirmed.fix)
       if (step.flush) await storeRow(step.flush.row)
       if (step.store) await storeRow(confirmed.fix.row)
       if (confirmed.id != null) {
         await supabase.from('asset_location_rejects').update({ restored_at: new Date().toISOString() }).eq('id', confirmed.id)
       }
+    }
+    if (fix.valid !== false && (!g.lastValid || fix.ms >= g.lastValid.ms)) {
+      // Newer than any stored row — nothing left to look back for.
+      g.lastValid = fix
+      g.validLoaded = true
     }
 
     const pinVolts = externalVolts(r.params)
@@ -342,14 +426,14 @@ export async function POST(request: NextRequest) {
       thinned++
     } else if (await storeRow(locRow)) {
       if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
-      updated.get(asset.company_id)!.set(asset.id, r)
+      updated.get(asset.company_id)!.set(asset.id, rd)
     }
 
     // BLE tags this box heard → tool custody. The matcher, the strongest-
     // signal arbitration and the pairing history live in lib/ble-sightings
     // (shared with the phone gateway, /api/ingest/ble-phone).
-    if (r.beacons.length) {
-      try { await recordBeaconSightings(supabase, asset, { lat: r.lat, lng: r.lng, timestamp: r.timestamp }, r.beacons, { reportedAs: 'hex' }) } catch { /* custody is additive */ }
+    if (rd.beacons.length) {
+      try { await recordBeaconSightings(supabase, asset, { lat: rd.lat, lng: rd.lng, timestamp: rd.timestamp }, rd.beacons, { reportedAs: 'hex' }) } catch { /* custody is additive */ }
     }
   }
 
