@@ -41,9 +41,19 @@ const LIFTED = new Set([
   'position.latitude', 'position.longitude', 'position.speed', 'position.direction', 'position.altitude',
 ])
 
-function voltageToPercent(v: number): number {
-  // Rough 3xAA Li (Oyster) / backup-cell mapping, clamped 0-100.
-  const pct = ((v - 3.3) / (4.2 - 3.3)) * 100
+/**
+ * A tracker's own battery, percent, from its voltage — rough, clamped 0–100.
+ * Two ladders: a battery unit (TAT141) runs two lithium cells in series,
+ * ~7.2 V full and flat by ~6.2 V; a truck unit's backup cell or an Oyster's
+ * 3×AA pack reads 3.3–4.2 V. The one-cell ladder alone read every battery
+ * unit as 100%, dead ones included: on Sep 28 three TAT141s had run flat
+ * (6.0–6.4 V at their last fix) and the health feed still said "100% at its
+ * last fix — check the SIM". Nothing in between exists: one cell tops out
+ * near 4.4 V charging, and a two-cell unit shuts down long before 5 V.
+ */
+export function batteryPercentFromVolts(v: number): number {
+  const [empty, full] = v > 5 ? [6.2, 7.2] : [3.3, 4.2]
+  const pct = ((v - empty) / (full - empty)) * 100
   return Math.max(0, Math.min(100, Math.round(pct)))
 }
 
@@ -61,7 +71,7 @@ export function normalizeMessage(msg: FlespiMessage): NormalizedReading | null {
 
   let battery: number | null = null
   if (typeof msg['battery.level'] === 'number') battery = Math.round(msg['battery.level'])
-  else if (typeof msg['battery.voltage'] === 'number') battery = voltageToPercent(msg['battery.voltage'])
+  else if (typeof msg['battery.voltage'] === 'number') battery = batteryPercentFromVolts(msg['battery.voltage'])
 
   // Tag battery arrives as TLM voltage (~2.4-3.1 V coin cell) or a percent,
   // depending on tracker firmware. Normalize to percent; null when absent.
