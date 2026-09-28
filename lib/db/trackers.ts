@@ -340,6 +340,13 @@ async function forgetReadings(db: Db, assetIds: (string | null | undefined)[]): 
     const { error } = await db.from('asset_telemetry_latest').delete().in('asset_id', ids)
     if (error && error.code !== '42P01') console.error('asset_telemetry_latest forget failed:', error.message)
   } catch { /* additive: a tracker change never fails on the readings row */ }
+  // The parked record the ingest was holding (124) is the OLD unit's: kept,
+  // it would be written into this machine's history after the cut and judge
+  // the new unit's first fix as a jump (sec-check, Sep 28).
+  try {
+    const { error } = await db.from('asset_fix_tail').delete().in('asset_id', ids)
+    if (error && error.code !== '42P01') console.error('asset_fix_tail forget failed:', error.message)
+  } catch { /* additive */ }
 }
 
 /**

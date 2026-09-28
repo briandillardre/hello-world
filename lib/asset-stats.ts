@@ -411,10 +411,16 @@ export function gaugeSilentMiles(pts: StatPoint[], sampleMs: number[], from: num
 // tank" is not its fuel.
 const TANK_KEYS = ['fuel_tank', 'fuel_tank_gal', 'fuel_tank_size', 'fuel_tank_capacity', 'fuel_capacity']
 const TANK_UNIT = '(gal(?:lon)?s?|l|liters?|litres?)'
-const TANK_VALUE = new RegExp(`^\\s*(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*(?:${TANK_UNIT}\\.?)?\\s*$`, 'i')
+// Never two optional whitespace runs side by side (`\\s*-?\\s*`): on a long
+// run of spaces that backtracks cubically, and the owner writes these fields
+// — 8 KB of spaces in a spec pinned a server for minutes (sec-check, Sep 28).
+// Values are trimmed and capped too, notes read to 4,000 characters.
+const TANK_VALUE = new RegExp(`^(\\d{1,3}(?:\\.\\d+)?)\\s*(?:-\\s*)?(?:${TANK_UNIT}\\.?)?$`, 'i')
+const TANK_VALUE_MAX = 24
+const TANK_NOTES_MAX = 4000
 const TANK_NOTE = [
-  new RegExp(`\\b(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*${TANK_UNIT}\\.?\\s+(?:fuel\\s+|diesel\\s+|gas\\s+)?tank\\b`, 'i'),
-  new RegExp(`\\b(?:fuel|diesel|gas)\\s+tank\\b[\\s:=-]*(?:is\\s+|holds\\s+|of\\s+)?(\\d{1,3}(?:\\.\\d+)?)\\s*-?\\s*${TANK_UNIT}(?![a-z])`, 'i'),
+  new RegExp(`\\b(\\d{1,3}(?:\\.\\d+)?)\\s*(?:-\\s*)?${TANK_UNIT}\\.?\\s+(?:fuel\\s+|diesel\\s+|gas\\s+)?tank\\b`, 'i'),
+  new RegExp(`\\b(?:fuel|diesel|gas)\\s+tank\\b[\\s:=-]*(?:is\\s+|holds\\s+|of\\s+)?(\\d{1,3}(?:\\.\\d+)?)\\s*(?:-\\s*)?${TANK_UNIT}(?![a-z])`, 'i'),
 ]
 
 /** Gallons from 32 / "32 gal" / "32 gallons" / "120 L"; null for anything
@@ -423,7 +429,8 @@ function tankGallons(v: unknown, unitRequired: boolean): number | null {
   let gal: number | null = null
   if (typeof v === 'number' && !unitRequired) gal = v
   else if (typeof v === 'string') {
-    const m = TANK_VALUE.exec(v)
+    const t = v.trim()
+    const m = t.length <= TANK_VALUE_MAX ? TANK_VALUE.exec(t) : null
     if (m && (m[2] || !unitRequired)) gal = Number(m[1]) * (m[2] && /^l/i.test(m[2]) ? 0.264172 : 1)
   }
   return gal != null && Number.isFinite(gal) && gal >= 3 && gal <= 400 ? Math.round(gal * 10) / 10 : null
@@ -439,7 +446,7 @@ export function tankGallonsFrom(meta: unknown): { gallons: number; source: 'spec
       if (g != null) return { gallons: g, source: 'specs' }
     }
   }
-  const notes = typeof md.notes === 'string' ? md.notes : ''
+  const notes = typeof md.notes === 'string' ? md.notes.slice(0, TANK_NOTES_MAX) : ''
   for (const re of TANK_NOTE) {
     const m = re.exec(notes)
     const g = m ? tankGallons(`${m[1]} ${m[2]}`, true) : null

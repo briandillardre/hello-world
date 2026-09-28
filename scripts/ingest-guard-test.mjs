@@ -71,6 +71,55 @@ const ok = (name, cond, extra = '') => {
   // Two glitches in different bogus places do not confirm each other.
   const glitch2 = { ms: gulf.ms + 6 * min, lat: 40.1, lng: -100.2, speed: 30 }
   ok('scattered glitches stay rejected', G.jumpVerdict(before, glitch2, gulf) === 'reject')
+
+  // The same wrong area twice in 30 min, good fixes between (ship-check,
+  // Sep 28): the good fixes answered the first glitch, so the second one
+  // cannot vouch for it — two out-and-backs to the Gulf otherwise.
+  const homeA = { ...before, ms: gulf.ms + 2 * min, lat: before.lat + 0.0002 }
+  const homeB = { ...before, ms: gulf.ms + 3 * min, lat: before.lat + 0.0003 }
+  const gulf2 = { ...gulf, ms: gulf.ms + 5 * min, lat: gulf.lat + 0.01 }
+  ok('a glitch answered by good fixes cannot be confirmed', G.jumpVerdict(homeB, gulf2, gulf) === 'reject')
+  ok('…nor with the first good fix as the basis', G.jumpVerdict(homeA, gulf2, gulf) === 'reject')
+  // With only no-fix records since (they repeat it, they don't answer it) a
+  // real fix there still confirms — the unit really may be there.
+  ok('a reject followed only by no-fix records can still be confirmed',
+    G.jumpVerdict({ ...before, ms: gulf.ms + 2 * min, valid: false }, gulf2, gulf) === 'confirmed')
+
+  // ── No GPS fix (sec-check, Sep 28) ──
+  ok('position.valid false = no fix', G.fixIsValid({ 'position.valid': false, 'position.satellites': 7 }) === false)
+  ok('0 satellites = no fix', G.fixIsValid({ 'position.satellites': 0 }) === false)
+  ok('"0" satellites = no fix', G.fixIsValid({ 'position.satellites': '0' }) === false)
+  ok('4 satellites = a fix (the Gulf spike was one)', G.fixIsValid({ 'position.valid': true, 'position.satellites': 4 }) === true)
+  ok('no satellite count = a fix', G.fixIsValid({ 'event.enum': 385 }) === true)
+  ok('null satellites = a fix', G.fixIsValid({ 'position.satellites': null }) === true)
+  ok('no params = a fix', G.fixIsValid(null) === true)
+
+  // A no-fix record repeats the last place the unit knew — after a spike,
+  // the spike itself. It must never confirm it.
+  const repeat = { ...gulf, ms: gulf.ms + min, speed: 0, valid: false }
+  ok('a no-fix repeat of a spike does not confirm it', G.jumpVerdict(before, repeat, gulf) === 'reject')
+  ok('…while a real fix there would', G.jumpVerdict(before, { ...repeat, valid: true }, gulf) === 'confirmed')
+
+  // Jammed / boxed-in haul: the unit repeats the yard under fresh times while
+  // it travels 60 km; the first real fix is measured from the last REAL one.
+  const yardReal = { ms: at('2026-09-28T02:00:00Z'), lat: 34.78, lng: -82.61, speed: 0 }
+  const yardNoFix = { ...yardReal, ms: yardReal.ms + 50 * min, valid: false }
+  const q = { ms: yardNoFix.ms + 30_000, lat: 34.78 + 0.54, lng: -82.61, speed: 55 } // ~60 km north
+  ok('haul: measured from the no-fix record it reads as a spike', G.jumpVerdict(yardNoFix, q, null) === 'reject')
+  const basis = G.jumpBasis(yardNoFix, yardReal, q)
+  ok('haul: the basis is the last real fix', basis === yardReal)
+  ok('haul: at its real age it is road speed', G.jumpVerdict(basis, q, null) === 'ok')
+  // Parked with the GPS asleep for 6 h (every Sep 28 no-fix run was parked,
+  // 6–19 h long): a cold-start spike is still measured from the parked record.
+  const parkedReal = { ms: yardReal.ms, lat: 34.78, lng: -82.61, speed: 0 }
+  const parkedNoFix = { ...parkedReal, ms: parkedReal.ms + 6 * 3_600_000, valid: false }
+  const coldSpike = { ms: parkedNoFix.ms + 20_000, lat: 27.65, lng: -89.28, speed: 0 }
+  ok('cold start after 6 h asleep: basis stays the parked record', G.jumpBasis(parkedNoFix, parkedReal, coldSpike) === parkedNoFix)
+  ok('…and the spike is caught', G.jumpVerdict(G.jumpBasis(parkedNoFix, parkedReal, coldSpike), coldSpike, null) === 'reject')
+  ok('newest is a real fix: it is the basis', G.jumpBasis(yardReal, null, q) === yardReal)
+  ok('no real fix known: the newest is the basis', G.jumpBasis(yardNoFix, null, q) === yardNoFix)
+  ok('a "real fix" newer than the newest is ignored', G.jumpBasis(yardNoFix, { ...yardReal, ms: q.ms }, q) === yardNoFix)
+  ok('no history: no basis', G.jumpBasis(null, yardReal, q) === null)
 }
 
 // ── 2. Parked tag chatter ───────────────────────────────────────────────────
@@ -188,6 +237,36 @@ for (const plan of plans) {
     ok(`${tag}: ${k} unchanged`, st[k] === fullStats[k], { full: fullStats[k], kept: st[k] })
   }
   ok(`${tag}: trips unchanged`, JSON.stringify(tripsOf(kept)) === JSON.stringify(fullTrips), { full: fullTrips.length, kept: tripsOf(kept).length })
+}
+
+// Out of order: engine records sent ahead of / behind their queue arrive a
+// few seconds late (1–4% of truck records, Sep 28). Idling with tag scans,
+// engine-on records every 5 min, engine off; two of them 20 s late. The
+// held stretch goes in with a late record, so the idle math reads the same
+// day (it read 12 min of idle for 10 before — ship-check, Sep 28).
+{
+  const out = []
+  const eng = (sec, on) => ({ ms: s(sec), ...YARD, speed: 0, ign: on, params: { ...PLUMB, 'engine.ignition.status': on } })
+  out.push(eng(0, false))
+  for (let t = 7; t < 2400; t += 11) out.push({ ms: s(t), ...YARD, speed: 0, ign: null, params: { ...PLUMB, 'event.enum': 385, 'ble.beacons': [{ id: TAG_A, rssi: -90 }] } })
+  const engines = []
+  for (let t = 600; t < 1500; t += 300) { const e = eng(t, true); out.push(e); engines.push(e) }
+  out.push(eng(1500, false))
+  let lat = YARD.lat
+  for (let t = 2400; t < 2700; t += 5) { lat += 0.0005; out.push({ ms: s(t), lat, lng: YARD.lng, speed: 30, ign: true, params: { ...PLUMB, 'engine.ignition.status': true } }) }
+  out.sort((a, b) => a.ms - b.ms)
+  const late = new Set(engines.slice(1, 3))
+  const arrival = out.filter((r) => !late.has(r))
+  for (const e of late) arrival.splice(arrival.findIndex((r) => r.ms > e.ms + 20_000), 0, e)
+  const statsOfDay = (rows) => S.computeRangeStats(rows.map((r) => ({ lat: r.lat, lng: r.lng, speed: r.speed, ms: r.ms, ign: r.ign })), out[0].ms, out[out.length - 1].ms + 1, out[0].ms, out[out.length - 1].ms + 1)
+  const want = statsOfDay(out)
+  ok('out-of-order day has idle to protect', want.idleMin >= 8, want)
+  for (const plan of [[arrival.length], [1], [7]]) {
+    const kept = runGuard(arrival, plan)
+    const got = statsOfDay(kept)
+    for (const k of ['idleMin', 'parkedMin', 'movingMin']) ok(`late records, batches ${plan.join('/')}: ${k} unchanged`, got[k] === want[k], { want: want[k], got: got[k] })
+    ok(`late records, batches ${plan.join('/')}: every engine record kept`, [...late].every((e) => kept.includes(e)))
+  }
 }
 
 // Moving tag scans are never skipped; a late record is stored and changes nothing.

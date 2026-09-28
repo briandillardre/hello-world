@@ -282,7 +282,9 @@ export function resolveWindowPhrase(text: string, nowMs: number, tz: string): Ph
     if (ref) {
       const clock = clockOf(m[2] ?? m[5] ?? '')
       let from = startOf(ref, m[4] as Part | undefined, clock, tz)
-      if (from > nowMs && ref.weekday) from -= 7 * DAY_MS // "since Friday morning", asked before 6 AM on a Friday
+      // "since Friday morning", asked before 6 AM on a Friday: last week's —
+      // stepped as a calendar week, so a clock change between keeps 6 AM.
+      if (from > nowMs && ref.weekday) from = startOf(weekEarlier(ref), m[4] as Part | undefined, clock, tz)
       const after = q.slice(m.index + m[0].length)
       const end = RE_END.exec(after)
       const to = end ? endWords(end, from, today, tz, nowMs) : nowMs
@@ -306,9 +308,9 @@ export function resolveWindowPhrase(text: string, nowMs: number, tz: string): Ph
     const ref = dayRef(m[1].replace(/^on /, ''), today)
     if (!ref) return null
     const clock = clockOf(m[3] ?? '')
-    let from = startOf(ref, m[2] as Part | undefined, clock, tz)
-    let span = endOf(ref, m[2] as Part | undefined, clock, tz)
-    if (from > nowMs && ref.weekday) { from -= 7 * DAY_MS; span -= 7 * DAY_MS }
+    const day = startOf(ref, m[2] as Part | undefined, clock, tz) > nowMs && ref.weekday ? weekEarlier(ref) : ref
+    const from = startOf(day, m[2] as Part | undefined, clock, tz)
+    const span = endOf(day, m[2] as Part | undefined, clock, tz)
     const after = q.slice(m.index + m[0].length)
     const end = RE_END.exec(after)
     if (end) {
@@ -332,8 +334,15 @@ function endWords(end: RegExpExecArray, fromMs: number, today: string, tz: strin
   const clock = clockOf(end[5] ?? '')
   const part = end[4] as Part | undefined
   const through = end[1] === 'through' || end[1] === 'thru' || end[1] === 'and'
-  const to = (part || clock) && !through ? startOf(ref, part, clock, tz) : endOf(ref, part, clock, tz)
-  return to <= fromMs && ref.weekday ? to + 7 * DAY_MS : to
+  const at = (r: DayRef) => (part || clock) && !through ? startOf(r, part, clock, tz) : endOf(r, part, clock, tz)
+  const to = at(ref)
+  return to <= fromMs && ref.weekday ? at({ ...ref, key: addDaysKey(ref.key, 7) }) : to
+}
+
+/** The same weekday a calendar week earlier — never 7 × 24 h, which is an
+ *  hour off across a clock change (ship-check, Sep 28). */
+function weekEarlier(ref: DayRef): DayRef {
+  return { ...ref, key: addDaysKey(ref.key, -7) }
 }
 
 // ── Tool input → a window ───────────────────────────────────────────────────
@@ -452,6 +461,14 @@ export function activityIntent(question: string, nowMs: number, tz: string): Act
   if (!focus) return null
   const rest = (window ? q.replace(window.match, ' ') : q).replace(ACTIVITY_WORDS, ' ').replace(/\s+/g, ' ').trim()
   return { focus, window, rest }
+}
+
+/** The last question, read at the moment it was asked — "today" at 11:50 PM
+ *  is still that day at 12:05 AM (ship-check, Sep 28). A window that ran to
+ *  "now" then still runs to now. */
+export function priorIntent(prev: { text: string; atMs: number }, nowMs: number, tz: string): ActivityIntent | null {
+  const was = activityIntent(prev.text, prev.atMs, tz)
+  return was?.window && was.window.to >= prev.atMs ? { ...was, window: { ...was.window, to: Math.max(nowMs, was.window.to) } } : was
 }
 
 /** "What did the trucks do today" asks about the fleet, so it never borrows

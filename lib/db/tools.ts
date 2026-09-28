@@ -111,7 +111,11 @@ export async function getToolWindowRows(
   toolId: string,
   fromIso: string,
   toIso: string,
-  cap = 20_000
+  cap = 20_000,
+  /** Read each ride oldest first, so hitting the cap drops the END of the
+   *  window rather than the start of the ride being read (Ask AI's activity
+   *  tool, which says where its numbers stop). The panels read newest first. */
+  opts: { oldestFirst?: boolean } = {}
 ): Promise<ToolWindowRow[]> {
   if (isMock) return []
   const { createClient } = await import('../supabase-server')
@@ -147,7 +151,7 @@ export async function getToolWindowRows(
         .eq('asset_id', ep.carrier_asset_id)
         .gte('timestamp', from)
         .lt('timestamp', to)
-        .order('timestamp', { ascending: false })
+        .order('timestamp', { ascending: !!opts.oldestFirst })
         .range(got, got + PAGE - 1)
       if (!data?.length) break
       out.push(...data)
@@ -157,6 +161,8 @@ export async function getToolWindowRows(
     if (out.length >= cap) break
   }
   out.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  // Rides were read in time order, so the first `cap` rows are the earliest.
+  if (opts.oldestFirst && out.length > cap) out.length = cap
   return out
 }
 

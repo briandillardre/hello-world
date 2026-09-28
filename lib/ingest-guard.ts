@@ -30,7 +30,9 @@
  *    parked, same spot, no engine signal. So every "time since the last
  *    fix" the ledger, trips, scorecards and idle math add up covers the
  *    same span as before, only in fewer, still-short pieces — kept under
- *    the 3-minute idle cadence in lib/asset-stats (IDLE_CADENCE_MS).
+ *    the 3-minute idle cadence in lib/asset-stats (IDLE_CADENCE_MS). That
+ *    holds for records delivered in order; a late one keeps a close later
+ *    neighbour and a possibly 2.5-minute-old earlier one (chatterStep).
  */
 
 export interface GuardFix {
@@ -39,6 +41,20 @@ export interface GuardFix {
   lng: number
   /** mph, as stored */
   speed: number | null
+  /** false = no GPS fix: the record repeats the last known place under a
+   *  fresh time (fixIsValid). Absent = a real fix. */
+  valid?: boolean
+}
+
+/** A record with no GPS fix repeats the last known place under a fresh time:
+ *  flespi's `position.valid` false, or zero satellites. Parked units do it
+ *  for hours while their GPS sleeps (6–19 h runs on Sep 28, every one
+ *  parked); a truck with its GPS jammed or boxed in does it on the move. */
+export function fixIsValid(params: Record<string, unknown> | null | undefined): boolean {
+  if (!params) return true
+  if (params['position.valid'] === false) return false
+  const sats = params['position.satellites']
+  return !(sats === 0 || sats === '0')
 }
 
 const R_KM = 6371.0088
@@ -70,18 +86,41 @@ export const CONFIRM_MAX_MPH = 150
 export type JumpVerdict = 'ok' | 'reject' | 'confirmed'
 
 /**
- * `prev` is the newest fix the asset has (stored or held); `lastReject` the
- * newest fix this guard turned away. 'confirmed' = store the earlier reject
- * too, then this one.
+ * `prev` is the newest fix the asset has (stored or held — or jumpBasis's
+ * pick); `lastReject` the newest fix this guard turned away. 'confirmed' =
+ * store the earlier reject too, then this one. Only a REAL fix confirms: a
+ * record with no GPS fix repeats the last place the unit knew, which after
+ * a spike is the spike itself. And only a reject nothing real has answered
+ * since: a good fix after it already said the machine never went there, so
+ * a unit that glitches to the same wrong area twice in 30 minutes must not
+ * have the second glitch vouch for the first (ship-check, Sep 28). The
+ * caller also drops a reject older than the newest real fix it accepted.
  */
 export function jumpVerdict(prev: GuardFix | null, fix: GuardFix, lastReject: GuardFix | null): JumpVerdict {
   if (!prev || fix.ms <= prev.ms || fix.ms - prev.ms > JUMP_WINDOW_MS) return 'ok'
   if (kmBetween(prev, fix) <= JUMP_MIN_KM || impliedMph(prev, fix) <= JUMP_MAX_MPH) return 'ok'
   if (
-    lastReject && lastReject.ms < fix.ms && fix.ms - lastReject.ms <= CONFIRM_WINDOW_MS &&
+    fix.valid !== false &&
+    lastReject && (prev.valid === false || lastReject.ms > prev.ms) &&
+    lastReject.ms < fix.ms && fix.ms - lastReject.ms <= CONFIRM_WINDOW_MS &&
     (kmBetween(lastReject, fix) <= JUMP_MIN_KM || impliedMph(lastReject, fix) <= CONFIRM_MAX_MPH)
   ) return 'confirmed'
   return 'reject'
+}
+
+/**
+ * The fix a far one is measured from, when the newest record had no GPS fix.
+ * That record only repeats the last known place under a fresh time, so
+ * measured from it a haul made with the GPS jammed or boxed in reads as a
+ * teleport; from the newest REAL fix, at its real age, it reads as road
+ * speed. Only inside the jump window: a parked unit sleeps its GPS for hours
+ * and the first fix after that is where a cold-start spike lands — measured
+ * from the parked record seconds before it, that spike is still caught.
+ */
+export function jumpBasis(newest: GuardFix | null, newestValid: GuardFix | null, fix: GuardFix): GuardFix | null {
+  if (!newest || newest.valid !== false || !newestValid) return newest
+  if (newestValid.ms > newest.ms || fix.ms - newestValid.ms > JUMP_WINDOW_MS) return newest
+  return newestValid
 }
 
 /** One line for the log row and the server log. */
@@ -170,11 +209,28 @@ export function chatterStep<T extends ChatterFix>(s: ChatterState<T>, f: T): { s
     s.runTags = new Set(f.chatter ? f.tags : [])
     return { store: true, flush: null }
   }
-  // A late record (buffered offline, a retried batch): store it, touch
-  // nothing. The SAME second is not late — an engine record stamped the
-  // second a scan was held must still end the run, or the scans after it
-  // lose their place and its time goes to the wrong column.
-  if (f.ms < newest.ms) return { store: true, flush: null }
+  // A late record (buffered offline, a retried batch, an event record sent
+  // ahead of its queue — 1–4% of truck records on Sep 28, most a few seconds
+  // late): stored, the run untouched. The SAME second is not late — an
+  // engine record stamped the second a scan was held must still end the
+  // run, or the scans after it lose their place and its time goes to the
+  // wrong column.
+  if (f.ms < newest.ms) {
+    const held = s.tail
+    if (!f.chatter && held && s.last && f.ms > s.last.ms) {
+      // It landed inside the stretch being skipped: the held record goes in
+      // with it, so its later side keeps a neighbour as close as it arrived
+      // late, not up to 2.5 min away — the idle math carries a record's
+      // engine state over the piece after it (ship-check, Sep 28: late
+      // engine records turned 10 min of idle into 12). Its earlier side can
+      // still be up to 2.5 min back: those scans are gone.
+      s.last = held
+      s.tail = null
+      for (const t of held.tags) s.runTags.add(t)
+      return { store: true, flush: held }
+    }
+    return { store: true, flush: null }
+  }
 
   const last = s.last!
   const held = s.tail
