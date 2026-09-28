@@ -163,7 +163,8 @@ export async function POST(request: NextRequest) {
     // stale schema cache). Any other failure is real — retrying it masked
     // RLS/data errors and `persisted` over-counted (code review, Jul 21).
     if (locErr && (locErr.code === '42703' || locErr.code === 'PGRST204')) {
-      const { ignition: _ignition, ...pre034 } = row
+      const pre034: Partial<LocRow> = { ...row }
+      delete pre034.ignition
       ;({ error: locErr } = await supabase.from('asset_locations').insert(pre034))
     }
     if (locErr) {
