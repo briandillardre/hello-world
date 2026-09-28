@@ -144,7 +144,10 @@ ok('no engine state on a battery unit', ctx4.engineOn === null)
 ok('one-cell battery ladder', cat.describeReading('battery.voltage', { v: 3.75, t: T }, { family: 'obd' }).tone === 'warn')
 
 // ── Summary for the AI ──────────────────────────────────────────────────────
-const S = cat.readingsSummary(R, 'obd')
+// readingsSummary judges health against the real clock (verdicts older than
+// 36 h are dropped), so its bag is stamped now: stamped T, this check went
+// red on its own at 2026-09-22 23:36 UTC.
+const S = cat.readingsSummary(cat.readingsFromRaw(f350, new Date().toISOString()), 'obd')
 ok('summary fuel', S.fuelPct === 52)
 ok('summary coolant F', near(S.coolantF, 192.2, 0.01))
 ok('summary codes', S.checkEngineCodes === 5)
