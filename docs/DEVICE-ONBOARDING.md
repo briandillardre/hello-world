@@ -88,7 +88,8 @@ dashboard, flespi Toolbox open.
    login/password):
    - APN: `  setparam 2001:hologram`
    - Server: `  setparam 2004:<channel-host>;2005:<port>;2006:0   (host + port from the flespi channel page)`
-   - Beacons + records: `  setparam 113:1;800:2;1115:1;134:1;136:1`
+   - Beacons + records: `  setparam 113:1;800:2;1115:1;134:1;136:1;137:60;139:300`
+     (136:1 Beacon Record = Periodic · 137 record period on move 60 s · 139 on stop 300 s — see the Sep 28 note under the KORE checklist)
    The device replies "New value …" — check the SIM's message log (Events)
    for the confirmation. USB + Teltonika Configurator works too, but SMS is
    the preferred path (no cables, works after install).
@@ -162,7 +163,14 @@ The Hologram sections above are for the two July pilot units only.*
    - **System:** Data Protocol = Codec 8 Extended
    - **Bluetooth:** BT Radio = Enable (hidden) — never "visible"
    - **Bluetooth 4.0:** Non Stop Scan = Enable
-   - **Beacon List:** Beacon Detection = All (EYE panel stays Disabled)
+   - **Beacon List:** Beacon Detection = All (EYE panel stays Disabled) ·
+     **Beacon Record = Periodic · Record Period on Move 60 s · on Stop 300 s**
+     (params 134:1 · 136:1 · 137:60 · 139:300). Sep 28: the default On
+     Change writes a record every time the list changes, and a tag at the
+     edge of range flickers in and out — a truck parked at the yard sent a
+     tag scan every ~11 s all day (the F650: 2,503 records while it never
+     moved), burning SIM data. Periodic sends the list on a clock instead;
+     the ingest trims what still repeats (lib/ingest-guard.ts).
    - Never set a Security keyword. Save to file
      (`hammertrack-<model>-fw<ver>.cfg`).
 3. **Push via FOTA WEB** — Files → Upload the .cfg (one time), then
