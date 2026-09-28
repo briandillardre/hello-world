@@ -15,10 +15,14 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
   // No zone geometry: the map places a zone's alert pin from its own zone
-  // list, and this list rides the 20 s map poll.
+  // list, and this list rides the 20 s map poll. Active machines only: a
+  // deleted machine's open alerts showed on no page (every list is scoped to
+  // the active fleet), yet the nav bell counted them — a number "Mark all"
+  // could never clear (8 of them on 3 deleted machines, Sep 28). Restoring
+  // the machine brings them back.
   const cols = (innerRule: boolean) => `
       *,
-      asset:assets(id, name, type),
+      asset:assets!inner(id, name, type),
       rule:alert_rules${innerRule ? '!inner' : ''}(*, geofence:geofences(id, name, color))
     `
   const [recent, openRuled, openSystem] = await Promise.all([
@@ -26,6 +30,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .from('alert_events')
       .select(cols(false))
       .eq('company_id', companyId)
+      .eq('asset.active', true)
       .order('triggered_at', { ascending: false })
       .limit(100),
     // Open rule alerts that are not routine enter/exit crossings (the zone
@@ -34,6 +39,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .from('alert_events')
       .select(cols(true))
       .eq('company_id', companyId)
+      .eq('asset.active', true)
       .is('acknowledged_at', null)
       .not('rule.trigger', 'in', '(enter,exit)')
       .order('triggered_at', { ascending: false })
@@ -43,6 +49,7 @@ export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
       .from('alert_events')
       .select(cols(false))
       .eq('company_id', companyId)
+      .eq('asset.active', true)
       .is('acknowledged_at', null)
       .not('kind', 'is', null)
       .order('triggered_at', { ascending: false })
