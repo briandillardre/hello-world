@@ -31,8 +31,8 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     }
   }
 
-  // Ack a SPECIFIC set (the "Ack visible" path) — the blanket ack-all is
-  // gone from the UI: theft must never ride along in a bulk sweep (Aug 22).
+  // Ack a SPECIFIC set — a line, a machine, or a tab's "Mark all" (the ids
+  // on screen; theft rides along only after the list's confirm names it).
   // On server failure the optimistic paint REVERTS — the one page that
   // must never show theft as handled when nothing persisted (sec-check).
   const acknowledgeMany = async (ids: string[]) => {

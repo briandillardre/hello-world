@@ -46,7 +46,7 @@ const SNOOZE_KEY = 'ht_alert_snooze'
 interface AlertListProps {
   alerts: AlertEvent[]
   onAcknowledge?: (id: string) => void
-  /** Ack a specific id set (the "Ack visible" path — theft never rides along). */
+  /** Ack a specific id set — a line, a machine, or "Mark all" on a tab. */
   onAcknowledgeMany?: (ids: string[]) => void
 }
 
@@ -170,9 +170,30 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
 
   const activeGroups = groups.filter((g) => g.critical || !snoozedUntil(g.assetId))
   const snoozedGroups = groups.filter((g) => !g.critical && snoozedUntil(g.assetId))
-  // "Ack visible" — every unread id on screen EXCEPT theft/left-site: those
-  // demand a per-row decision, never a bulk sweep (Aug 22 rebuild).
-  const ackVisibleIds = activeGroups.flatMap((g) => g.lines.filter((l) => !l.critical).flatMap((l) => l.ids))
+
+  // "Mark all as handled" — every open item on the tab you are looking at
+  // (Brian, Sep 28: "need mark all as handled on needs attention and zone
+  // log. There are way too many"). On Needs attention that now includes
+  // theft and left-site, which used to be excluded so the button never even
+  // showed on a page of left-site alerts — they still never go in silently:
+  // the first tap asks, naming how many ride along. Snoozed machines count;
+  // "all" is the number on the tab.
+  const unreadActivity = activity.filter((a) => !a.acknowledged_at)
+  const markIds = (tab === 'alerts' ? unreadActionable : unreadActivity).map((a) => a.id)
+  const theftOpen = unreadActionable.filter((a) => isCriticalEvent(a) && a.rule?.trigger === 'after_hours_movement').length
+  const leftSiteOpen = unreadActionable.filter((a) => isCriticalEvent(a) && a.rule?.trigger === 'left_site').length
+  const [confirmAll, setConfirmAll] = useState(false)
+  const needsConfirm = tab === 'alerts' && theftOpen + leftSiteOpen > 0
+  const markAll = () => {
+    if (needsConfirm && !confirmAll) { setConfirmAll(true); return }
+    setConfirmAll(false)
+    onAcknowledgeMany?.(markIds)
+  }
+  const pickTab = (t: 'alerts' | 'activity') => { setConfirmAll(false); setTab(t) }
+  const riders = [
+    theftOpen > 0 && `${theftOpen} theft alert${theftOpen === 1 ? '' : 's'}`,
+    leftSiteOpen > 0 && `${leftSiteOpen} left-site alert${leftSiteOpen === 1 ? '' : 's'}`,
+  ].filter(Boolean).join(' and ')
 
   const acked = actionable.filter((a) => a.acknowledged_at)
     .sort((a, b) => b.triggered_at.localeCompare(a.triggered_at))
@@ -209,28 +230,55 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
               {unreadActionable.length}
             </span>
           )}
-          {tab === 'alerts' && mounted && ackVisibleIds.length > 1 && onAcknowledgeMany && (
+          {markIds.length > 1 && onAcknowledgeMany && !(confirmAll && needsConfirm) && (
             <button
-              onClick={() => onAcknowledgeMany(ackVisibleIds)}
+              onClick={markAll}
               className="ml-auto px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors whitespace-nowrap"
-              title="Marks everything on screen as handled — except theft and left-site, which you decide one at a time"
+              title={tab === 'alerts' ? 'Marks every open alert on this tab as handled' : 'Marks every new zone crossing as handled'}
             >
-              ✓ Mark all {ackVisibleIds.length} as handled
+              ✓ Mark all {markIds.length} as handled
             </button>
           )}
         </div>
+        {confirmAll && needsConfirm && onAcknowledgeMany && (
+          <div
+            role="alertdialog"
+            aria-label="Confirm mark all as handled"
+            className="rounded-lg border border-alert/40 bg-alert/10 px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-2"
+          >
+            <p className="text-xs text-ink flex-1 min-w-[12rem]">
+              Mark all {markIds.length} as handled? That includes {riders}.
+            </p>
+            <div className="flex gap-2 ml-auto">
+              <button
+                onClick={() => setConfirmAll(false)}
+                className="px-3 py-1 rounded-full text-xs font-medium border border-navy-700 text-faint hover:text-ink transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={markAll}
+                className="px-3 py-1 rounded-full text-xs font-semibold bg-alert text-white hover:bg-alert/90 transition-colors whitespace-nowrap"
+              >
+                Mark all handled
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-0.5 bg-navy-900 rounded-lg p-0.5 border border-navy-800 w-fit">
           <button
-            onClick={() => setTab('alerts')}
+            onClick={() => pickTab('alerts')}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'alerts' ? 'bg-alert/20 text-alert' : 'text-faint hover:text-ink'}`}
           >
             Needs attention{unreadActionable.length > 0 ? ` (${unreadActionable.length})` : ''}
           </button>
+          {/* The number is what is NEW — so "Mark all as handled" visibly
+              lands here too. The log itself keeps every crossing. */}
           <button
-            onClick={() => setTab('activity')}
+            onClick={() => pickTab('activity')}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'activity' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink'}`}
           >
-            Zone log ({activity.length})
+            Zone log{unreadActivity.length > 0 ? ` (${unreadActivity.length} new)` : ''}
           </button>
         </div>
         {tab === 'activity' && (

@@ -4,22 +4,55 @@ import { MOCK_ALERTS, MOCK_ALERT_RULES } from '../mock-data'
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
+/** The newest 100 events (the log) PLUS every alert still waiting for a
+ *  decision, however old. The 100-row window alone let a few days of routine
+ *  zone crossings push unhandled theft and left-site alerts off the page and
+ *  every badge — Sep 28: 70 of 91 open alerts were hidden that way, and "Mark
+ *  all as handled" could never have reached them. Newest first. */
 export async function getAlertEvents(companyId: string): Promise<AlertEvent[]> {
   if (isMock) return MOCK_ALERTS
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { data } = await supabase
-    .from('alert_events')
-    .select(`
+  // No zone geometry: the map places a zone's alert pin from its own zone
+  // list, and this list rides the 20 s map poll.
+  const cols = (innerRule: boolean) => `
       *,
       asset:assets(id, name, type),
-      rule:alert_rules(*, geofence:geofences(id, name, color, geometry))
-    `)
-    .eq('company_id', companyId)
-    .order('triggered_at', { ascending: false })
-    .limit(100)
-  return data ?? []
+      rule:alert_rules${innerRule ? '!inner' : ''}(*, geofence:geofences(id, name, color))
+    `
+  const [recent, openRuled, openSystem] = await Promise.all([
+    supabase
+      .from('alert_events')
+      .select(cols(false))
+      .eq('company_id', companyId)
+      .order('triggered_at', { ascending: false })
+      .limit(100),
+    // Open rule alerts that are not routine enter/exit crossings (the zone
+    // log is a log — isZoneLogEvent)…
+    supabase
+      .from('alert_events')
+      .select(cols(true))
+      .eq('company_id', companyId)
+      .is('acknowledged_at', null)
+      .not('rule.trigger', 'in', '(enter,exit)')
+      .order('triggered_at', { ascending: false })
+      .limit(150),
+    // …and open telemetry alerts (022: `kind`, no rule).
+    supabase
+      .from('alert_events')
+      .select(cols(false))
+      .eq('company_id', companyId)
+      .is('acknowledged_at', null)
+      .not('kind', 'is', null)
+      .order('triggered_at', { ascending: false })
+      .limit(50),
+  ])
+  const byId = new Map<string, AlertEvent>()
+  for (const q of [recent, openRuled, openSystem]) {
+    for (const e of (q.data ?? []) as unknown as AlertEvent[]) byId.set(e.id, e)
+  }
+  return Array.from(byId.values()).sort((a, b) => b.triggered_at.localeCompare(a.triggered_at))
 }
 
 export async function acknowledgeAlert(id: string): Promise<void> {
@@ -36,20 +69,28 @@ export async function acknowledgeAlert(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** Clear the whole backlog in one tap — nobody acknowledges 47 rows by hand. */
-/** Bulk-ack a specific set (the "Ack visible" button — never blanket).
+/** Bulk-ack a specific set — the ids on screen, never a blanket sweep (an
+ *  alert that lands after the page loaded is never handled unseen).
  *  RLS scopes the update to the caller's company. */
 export async function acknowledgeAlerts(ids: string[]): Promise<void> {
   if (isMock || !ids.length) return
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  const { error } = await supabase
-    .from('alert_events')
-    .update({ acknowledged_at: new Date().toISOString() })
-    .in('id', ids.slice(0, 500))
-  // Surface failure — a swallowed error here means the UI shows theft
-  // alerts as acknowledged while nothing persisted (sec-check P2).
-  if (error) throw new Error(error.message)
+  const now = new Date().toISOString()
+  const all = ids.slice(0, 500)
+  // 100 per UPDATE: every id rides in the request URL, and a few hundred
+  // overrun the gateway's request-line limit ("Mark all" sends them all).
+  for (let i = 0; i < all.length; i += 100) {
+    const { error } = await supabase
+      .from('alert_events')
+      .update({ acknowledged_at: now })
+      .in('id', all.slice(i, i + 100))
+      // Already handled keeps its first handled time.
+      .is('acknowledged_at', null)
+    // Surface failure — a swallowed error here means the UI shows theft
+    // alerts as acknowledged while nothing persisted (sec-check P2).
+    if (error) throw new Error(error.message)
+  }
 }
 
 export async function getAlertRules(companyId: string): Promise<AlertRule[]> {

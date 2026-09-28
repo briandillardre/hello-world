@@ -29,8 +29,10 @@ export async function acknowledgeAlertAction(id: string): Promise<{ ok: boolean 
   return { ok: true }
 }
 
-/** Ack a SPECIFIC visible set — replaces blanket ack-all in the UI so
- *  critical theft rows can never ride along unseen (Aug 22 rebuild). */
+/** Ack a SPECIFIC set — the ids the viewer has on screen, never a sweep, so
+ *  an alert that arrived after the page loaded is never handled unseen.
+ *  Theft/left-site ride along in "Mark all" only after the page's confirm
+ *  names them (Brian, Sep 28). */
 export async function acknowledgeManyAlertsAction(ids: string[]): Promise<{ ok: boolean }> {
   // Strict UUIDs only — one malformed id used to fail the whole .in()
   // UPDATE silently while the UI painted everything acked (sec-check P2).
