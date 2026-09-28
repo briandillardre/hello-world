@@ -4730,7 +4730,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     for (const a of alertsRef.current) {
       const at = new Date(a.triggered_at).getTime()
       if (at < fromMs || at > toMs) continue
-      const g = a.rule?.geofence
+      // The zone's outline comes from the map's own zone list — alert rows
+      // no longer carry geometry (they ride the 20 s poll).
+      const g = a.rule?.geofence ? geofencesRef.current.find((z) => z.id === a.rule!.geofence!.id) : undefined
       const ring = g?.geometry?.coordinates?.[0] as [number, number][] | undefined
       let key: string, cx: number, cy: number
       if (g && ring?.length) {
