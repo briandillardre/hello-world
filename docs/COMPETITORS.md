@@ -152,6 +152,11 @@
 
 **Where we beat them.** 60-second refresh vs. our seconds-level stream when moving. Their tool trackers are last-seen-location, not live inheritance through your trucks. No zones-as-job-sites, no cost ledger, no work orders, no OEM ingestion, no QuickBooks job costing (mileage sync only). The "free hardware" is a 3-year handcuff.
 
+**Closing their three gaps (Oct 1 2026, Brian: "Dashcams, eld logbooks, buying online. Let's solve this"):**
+- *ELD ($30/vehicle/mo at Linxup):* most contractor drivers are inside the 150-air-mile short-haul exception and need time records, not an ELD — **shipped:** DOT short-haul records off our time clock (/timecards/short-haul). For the rare driver past 8 log days in 30: Garmin eLog, ~$297 once, no monthly (`docs/ELD.md`).
+- *Dashcams:* pilot one flespi-decoded 4G dashcam (Queclink CV200XNA) with clips in our own storage, on our map (`docs/DASHCAMS.md`).
+- *Buy online:* signup + monthly billing exist; the hardware checkout waits on two pricing/tax answers (board #182).
+
 **Counter-line:** *"Linxup tells you where a dot is. It can't tell you what the job cost, who had the drill, or that your skid steer moved at 2 AM. And that free tracker costs three years."*
 
 ---

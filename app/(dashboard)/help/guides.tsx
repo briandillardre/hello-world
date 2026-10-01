@@ -509,6 +509,15 @@ export const GUIDES: HelpGuide[] = [
               <B> CSV</B> for payroll or pushes a day to <B>QuickBooks</B>; a manager can correct an entry
               (forgot to clock out) — the recorded times stay on the row beside the correction.
             </P>
+            <P>
+              <B>DOT short-haul records</B> (link at the top of Time cards): most drivers of a commercial vehicle
+              (10,001 lb or more) need no ELD on a day they stay within <B>150 air-miles</B>, come back, and are
+              released within <B>14 hours</B> — the carrier just keeps time records for 6 months. Mark who drives
+              one (<B>CDL driver</B> or <B>Commercial driver, no CDL</B>) and every clocked shift becomes a record:
+              reported for duty, released, hours on duty, the prior 7 days, and how far the phone went from where
+              the day started. A day that misses the rules says <B>Log needed</B> and why (a paper log for that
+              day); past 8 of those in 30 days, the driver needs an ELD. CSV export for an auditor.
+            </P>
           </>
         ),
       },

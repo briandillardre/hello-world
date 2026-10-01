@@ -97,6 +97,11 @@ export function TimeCardsView({ cards, verified, integrity = verified, week, tz,
           <div className="flex-1 min-w-0">
             <h1 className="font-display font-bold text-xl text-ink flex items-center gap-2"><CalendarClock className="h-5 w-5 text-amber" /> Time cards</h1>
             <p className="text-[12.5px] text-faint">GPS-verified hours, week by week. Export for payroll or push a day to QuickBooks.</p>
+            {seesAll && (
+              <Link href="/timecards/short-haul" className="mt-1 inline-block text-[12px] font-semibold text-teal underline-offset-2 hover:underline">
+                DOT short-haul records →
+              </Link>
+            )}
           </div>
           {/* The shell has no download handler — the file is for a computer. */}
           {native ? (

@@ -225,3 +225,38 @@ to `lib/timecards.ts` or `lib/clock-policy.ts`.**
 
 Next: a "needs a look" line in the Friday wrap-up, a push to the manager the
 moment a shift closes with a red finding, and daily-OT states.
+
+## DOT short-haul records (Oct 1 2026, migration 126)
+
+Brian, of Linxup's $30/vehicle/mo ELD: "Dashcams, eld logbooks, buying
+online. Let's solve this." Most contractor drivers need no ELD — the federal
+short-haul exception (49 CFR 395.1(e)) asks only for time records, and the
+time clock already holds them. `/timecards/short-haul` (link at the top of
+Time cards, Foreman and up; crew see their own):
+
+- **Who:** `profiles.driver_class` — `cdl` ((e)(1) rules) or `cmv`
+  (commercial driver without a CDL, (e)(2) rules); NULL = no record. Set in
+  the page's "Who drives a commercial vehicle?" list by the team ability,
+  strictly down the ladder (`setDriverClassAction`, service-role write behind
+  the checks — profiles stay write-locked, 068).
+- **The record, per driver per local day:** first clock-in (reported for
+  duty), last clock-out (released), hours on duty (clocked minus unpaid
+  breaks), start-to-release span, prior 7 days (395.8(j)(2)), farthest
+  air-miles from where the day started and how far from it the release was.
+  `shorthaul_reach()` measures every phone fix in a shift from the DAY's
+  first clock-in point (the loader computes the points — `reportingPoints`
+  — and the function takes them as arrays), same cost shape as
+  `timecard_gps_stats_v2`, run with the service role for the same reason.
+- **Verdicts:** Met · **Log needed** (past 150 air-miles · released more than
+  a mile from the start · CDL past 14 h · CDL under 10 h off · non-CDL past
+  16 h · non-CDL 3rd day past 14 h in any 7) · Can't verify (no clock-in
+  location, no phone GPS, GPS above the viewer's role) · On duty. A shift open
+  more than 24 h is "fix the time card", never a long day. **8-in-30:** log
+  days in the 30 days ending the window, amber at 6, "needs an ELD" past 8;
+  drivers nearest the line sort first. CSV for an auditor.
+- **Honest limits, said on the page:** federal rules only (SC intrastate can
+  differ); the 14/16-hour checks use the on-duty span as a stand-in for "last
+  drove"; the reporting location is where the day's first clock-in was; two
+  duty periods in one calendar day read as one.
+- Harness: `node scripts/short-haul-test.mjs` (70 assertions) — run it after
+  ANY change to `lib/short-haul.ts`. Research and the ELD plan: `docs/ELD.md`.
