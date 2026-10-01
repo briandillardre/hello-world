@@ -74,9 +74,10 @@ Rows are the families worth considering. **Bold** = we already own it.
 
 | Device | Power | Network | BLE — how it scans | CAN / J1939 | Camera | Battery life | Use for |
 |---|---|---|---|---|---|---|---|
-| **FMM00A** | OBD-II port (10–30 V), 115 mAh backup | Cat M1 | **Full beacon list, Detect All (max 100/record)** | Reads OBD-II K-Line + CAN via the port; not J1939 | No | n/a (vehicle power) | Light-duty trucks, plug & go |
+| **FMM00A** | OBD-II port (10–30 V), 115 mAh backup | Cat M1 | **Full beacon list, Detect All (max 100/record)** | OBD-II via the port; **J1939 in ELD mode** (`setparam 40000:2`, 35+ heavy-truck parameters — [wiki](https://wiki.teltonika-gps.com/view/How_to_read_ELD_data_with_FMX00A)); a 9-pin adapter fits Deutsch ports (Teltonika's own is end-of-life — use a standard ELD 9-pin→OBD cable) | No | n/a (vehicle power) | Light-duty trucks, plug & go; medium-duty trucks and machines with a 9-pin J1939 port |
 | FMM003 | OBD-II port | Cat M1 | Full beacon list | OBD-II | No | n/a | Same as 00A, older rev |
-| FMM130 | Wired 10–30 V | Cat M1 | Full beacon list | Via LV-CAN200 / ALL-CAN300 adapter | No | n/a | Wired trucks, hidden install |
+| FMM130 | Wired 10–30 V | Cat M1 | Full beacon list | Via LV-CAN200 / ALL-CAN300 adapter | No | n/a | Wired trucks, hidden install; machines with no engine computer (key-on hours) |
+| FMM150 | Wired 10–30 V, 170 mAh backup | Cat M1 | Full beacon list, Detect All (max 100), **50 per record** from fw 3.27.07 ([wiki](https://wiki.teltonika-gps.com/view/FMM150_Beacon_List)) | **Built-in CAN processor**, 2 CAN lines, OEM + J1939 ([supported vehicles](https://wiki.teltonika-gps.com/view/FMX150_supported_vehicles)) | No | n/a | Machines with an engine computer — smaller and cheaper than the 650 (~$115 retail) |
 | FMM125 | Wired, RS232/RS485 | Cat M1 | Full beacon list | Via adapter | UNVERIFIED for FMM; **FMC125 is a listed DualCam/DashCam host** | n/a | Serial peripherals |
 | FMM230 / FMC230 | Wired, **IP67**, external antennas | Cat M1 / Cat 1 | Full beacon list | Via adapter | FMC225 hosts DualCam/DashCam | n/a | Outdoor/exposed mounts |
 | **FMM650** | Wired 8–32 V, 550 mAh backup | Cat M1/NB-IoT | **Full beacon list, Detect All — but max 25 beacons per record** | **Native**: FMS CAN (J1939), J1708 fuel, dual CAN with switchable terminators | **Yes** — 2× RS232; ADAS explicitly supports "FMX6"; DSM + DualCam simultaneously on FMC650 | n/a | Heavy equipment with CAN |
@@ -198,9 +199,10 @@ FMM00A.
 
 | Situation | Buy | Why |
 |---|---|---|
-| Heavy equipment **with** CAN/J1939 | **FMM650 + ALL-CAN300** (what we own) | Native FMS CAN, true engine hours/fuel/faults, and it's a full beacon gateway |
+| Heavy equipment **with** CAN/J1939 | **FMM150** (CAN built in), or **FMM650 + ALL-CAN300** (we own 3) | True engine hours/fuel/faults, and a full beacon gateway |
+| Machines / medium-duty trucks with a **9-pin J1939 port** | **FMM00A in ELD mode + a 9-pin adapter** | No wiring, the same 100-tag gateway as the pickups — test first on the F650 (it reads nothing in OBD mode) |
 | Heavy equipment **without** CAN, has 12/24 V aux | FMM130 or **FMM230 (IP67)** wired to aux | Machine power solves the battery problem; full beacon scanning comes free |
-| Heavy equipment, no power, low duty | **TAT141** (what we own) | GPS + theft only. Accept that it's not a tool gateway |
+| Heavy equipment, no power, low duty | **TAT141** (what we own) — last resort | GPS + theft only, no tool gateway, thin data. **Brian, Oct 1 2026: "I don't like tat141. No ble hub and no where near as good as obd2"** — machines get wired units |
 | **Enclosed tool trailer** | **FMM230 / FMC230 (IP67) or FMM130 wired to the trailer's 12 V**, mounted inside | Needs Detect-All beacon scanning, which only the FMx line has, which means wired power. This is the gap TAT141 cannot fill |
 | Light-duty trucks | **FMM00A** (what we own) | 5-minute install, 100-beacon Detect All, OBD engine data |
 | Attachments, light towers, low-use assets | TAT141 on a slow scheduler (a few reports/day) | Cheapest honest answer. Nothing in the catalog does 10-year BLE |

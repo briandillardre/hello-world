@@ -16,7 +16,7 @@
 | **EquipmentShare T3** | Their rental customers; mid/large mixed fleets | Quote-only; ~$30–70/asset/mo (third-party estimates); 12-mo auto-renew, 90-day notice | High — telematics, keypads, cams, time cards | Your utilization data feeds a $4B+ rental business with an incentive to sell against you owning equipment |
 | **Trackunit** (Goldman Sachs) | OEMs, mega-rentals, enterprise equipment fleets | Quote-only; 36–42 month contracts typical | High on machine health; zero on trucks, money, jobs | No truck fleet product, no job-cost story, widely panned post-sale support |
 | **HCSS Telematics** (Nemetschek, Jul 2026) | Heavy-civil contractors already on HeavyBid/HeavyJob | Quote-only; ~$11–20/asset/mo reported + upfront hardware; expensive as a suite | High if you run their suite; an attach product, not standalone | Useless without HeavyJob; base equipment plan pings as slowly as every 4 hours |
-| **Linxup** | 1–50 vehicle small businesses, self-serve | ~$23–25/vehicle/mo published; free hardware = 2–3 yr lock-in | Low — dots on a map, last-seen tool trackers | Shallow reporting; cancellation-refusal complaints; no job-site or money story |
+| **Linxup** (Spectrum Equity) | 1–50 vehicle small businesses, self-serve | $25/vehicle/mo published; free hardware = 2–3 yr lock-in | Low — dots on a map, last-seen tool trackers | Shallow reporting; cancellation-refusal complaints; no job-site or money story |
 | **Motive** | Trucking fleets needing ELD + AI cams | Quote-only; $25–50/vehicle/mo reported; 12–36 mo contracts | Low-medium — construction is a marketing vertical | D- BBB / 1.7 Trustpilot; renewal and billing complaints; overkill for a non-CDL GC |
 | **Azuga** (Bridgestone) | 5–500 vehicle SMB fleets; plug-in OBD + optional dashcam | Published: $25 / $30 / $35 per vehicle/mo (Basic / Safe / Complete); AI dashcam +$49.99/vehicle/mo; 36-month contract when a camera is in | Low — vehicle-first; a battery asset tracker for trailers, no small-tool tags we can find, no job costing | The dashcam upsell drags the bill to ~$75–85/vehicle/mo on a 3-year term; driver gamification is the pitch, not the job site |
 
@@ -144,11 +144,18 @@
 
 **What they are.** Self-serve budget GPS (website/Amazon checkout): plug-in OBD trackers, solar asset trackers, last-seen tool trackers, dashcams, simple dashboard.
 
-**Pricing reality.** Published (credit where due): ~$22.99–25/vehicle/mo, asset trackers ~$15/mo, dashcam service ~$25/mo. The hook: hardware is $69.99 with no contract but **free with a 3-year contract** — and Trustpilot/complaint sites document refusal to cancel, silent auto-renewals, and billing after cancellation.
+**Who owns them (checked Oct 1 2026).** Founded 2004 in St. Louis as Agilis Systems; HQ Chesterfield, MO, with an office in Charlotte, NC — inside our beachhead corridor. Growth-equity firm **Spectrum Equity** (Boston / San Francisco) invested in Feb 2019 and still lists Linxup as a current holding; Runway Growth Capital lent $50M in Nov 2023 to refinance debt and fund growth. Claims 30,000+ businesses. Sources: [Spectrum Equity portfolio](https://www.spectrumequity.com/portfolio/linxup/), [Spectrum's 2019 announcement](https://www.spectrumequity.com/news/spectrum-equity-invests-in-linxup-formerly-known-as-agilis-systems/), [Runway release](https://www.prnewswire.com/news-releases/runway-growth-capital-provides-a-50-million-debt-commitment-to-linxup-301995078.html), [linxup.com/about](https://www.linxup.com/about/our-company.html).
+
+**Pricing reality.** Published (credit where due): $25/vehicle/mo on [their pricing page](https://www.linxup.com/pricing/) (Oct 2026; 5+ devices on a 3-year contract = free hardware + 20% off), asset trackers ~$15/mo, ELD $30/vehicle/mo, dashcam service ~$25/mo. The hook: hardware is $69.99 with no contract but **free with a 3-year contract** — and Trustpilot/complaint sites document refusal to cancel, silent auto-renewals, and billing after cancellation.
 
 **Where they beat us.** Buy-it-this-afternoon friction — no sales conversation at all. A shipping solar tracker for non-powered assets. Years of SEO and Amazon presence.
 
 **Where we beat them.** 60-second refresh vs. our seconds-level stream when moving. Their tool trackers are last-seen-location, not live inheritance through your trucks. No zones-as-job-sites, no cost ledger, no work orders, no OEM ingestion, no QuickBooks job costing (mileage sync only). The "free hardware" is a 3-year handcuff.
+
+**Closing their three gaps (Oct 1 2026, Brian: "Dashcams, eld logbooks, buying online. Let's solve this"):**
+- *ELD ($30/vehicle/mo at Linxup):* most contractor drivers are inside the 150-air-mile short-haul exception and need time records, not an ELD — **shipped:** DOT short-haul records off our time clock (/timecards/short-haul). For the rare driver past 8 log days in 30: Garmin eLog, ~$297 once, no monthly (`docs/ELD.md`).
+- *Dashcams:* pilot one flespi-decoded 4G dashcam (Queclink CV200XNA) with clips in our own storage, on our map (`docs/DASHCAMS.md`).
+- *Buy online:* signup + monthly billing exist; the hardware checkout waits on two pricing/tax answers (board #182).
 
 **Counter-line:** *"Linxup tells you where a dot is. It can't tell you what the job cost, who had the drill, or that your skid steer moved at 2 AM. And that free tracker costs three years."*
 
