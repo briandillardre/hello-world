@@ -198,6 +198,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'receipts', label: 'Receipts', group: 'jobs', status: 'live', isLive: true, hint: 'every card swipe, pinned where the truck was — red = still needs a photo (tap: Snap now), teal = captured (tap: see it) · follows the timeline · needs the costs permission' },
   { id: 'siteimg', label: 'Site imagery', group: 'jobs', status: 'live', hasOpacity: true, hint: 'placed drone shots pinned to the ground · follows the timeline — scrub to see the site that day' },
   { id: 'siteplans', label: 'Scaled plans', group: 'jobs', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
+  { id: 'dirt', label: 'Cut / fill', group: 'jobs', status: 'live', hasOpacity: true, hint: 'each site’s saved dirt takeoff where its grading plan puts it — red = cut, blue = fill, deeper = darker · yards on the label from street zoom · the dirt takeoff add-on' },
   { id: 'measures', label: 'Measurements', group: 'jobs', status: 'live', hint: 'saved points, lines & areas — tap one on the map to open, edit, or delete it' },
 
   // ── Weather ───────────────────────────────────────────────────────────────
