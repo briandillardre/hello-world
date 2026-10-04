@@ -217,7 +217,15 @@ export default function PlanReader(p: Props) {
   }, [p.ground, loaded, phase])
 
   // ── Open the PDF ──
+  // Never throws: a page that won't read says so instead of spinning forever.
   const begin = useCallback(async (doc: PdfDoc, pdfjs: PdfjsModule, img: HTMLImageElement, pageNo: number, note: string | null) => {
+    try { await readPage(doc, pdfjs, img, pageNo, note) } catch {
+      setError(`Page ${pageNo} of that PDF didn't read — pick the PDF again, or another one.`)
+      setPhase('error')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.area, p.ground, p.sheet.corners])
+  const readPage = async (doc: PdfDoc, pdfjs: PdfjsModule, img: HTMLImageElement, pageNo: number, note: string | null) => {
     setPhase('loading')
     setProgress(`Reading page ${pageNo}…`)
     const page = await doc.getPage(pageNo)
@@ -238,17 +246,23 @@ export default function PlanReader(p: Props) {
     // Read where the takeoff is (its grading limits, else the site), plus a margin for the ladders.
     let box: { x0: number; y0: number; x1: number; y1: number } | null = null
     if (p.area && p.area.length >= 3) {
-      const xs: number[] = [], ys: number[] = []
-      for (const [lng, lat] of p.area) { const [x, y] = map.toPage(lng, lat); xs.push(x); ys.push(y) }
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+      for (const [lng, lat] of p.area) {
+        const [x, y] = map.toPage(lng, lat)
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (y > y1) y1 = y
+      }
       const m = 60 * map.ptPerFt
-      box = { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m }
+      box = { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m }
     }
     setLoaded({ geo, map, pageNo, lines, texts, note })
     seq.current++
     sentGround.current = p.ground
     setReading(true)
     worker.current?.postMessage({ type: 'load', seq: seq.current, input: { pens: penList, lines, texts, box, ptPerFt: map.ptPerFt }, geo, ground: p.ground })
-  }, [p.area, p.ground, p.sheet.corners])
+  }
 
   const onFile = async (f: File) => {
     setError(null); setPhase('loading'); setProgress('Opening the PDF…'); setDone(null)
@@ -316,7 +330,9 @@ export default function PlanReader(p: Props) {
     const map = loaded.map
     const ll = (pts: number[]) => { const o: [number, number][] = []; for (let i = 0; i < pts.length; i += 2) o.push(map.toLngLat(pts[i], pts[i + 1])); return o }
     const zs = read.contours.filter(c => c.z !== null && !out.has(c.id)).map(c => c.z as number)
-    const lo = zs.length ? Math.min(...zs) : 0, hi = zs.length ? Math.max(...zs) : 1
+    let lo = Infinity, hi = -Infinity
+    for (const z of zs) { if (z < lo) lo = z; if (z > hi) hi = z }
+    if (!zs.length) { lo = 0; hi = 1 }
     const feats: GeoJSON.Feature[] = []
     if (penShown !== null) {
       for (const l of loaded.lines) if (l.pen === penShown) feats.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: ll(l.pts) }, properties: { k: 'pen' } })

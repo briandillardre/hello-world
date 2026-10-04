@@ -48,6 +48,11 @@ export interface PdfText {
 }
 
 type Mat = [number, number, number, number, number, number]
+
+/** Words longer than this are notes, never labels or spot grades (and a PDF can't hang the reader with a huge one). */
+const MAX_WORDS = 200
+/** A dash pattern is a handful of numbers; a PDF's 100,000-entry one is cut. */
+const MAX_DASH = 16
 const IDENT: Mat = [1, 0, 0, 1, 0, 0]
 
 function mul(m: Mat, n: Mat): Mat {
@@ -140,14 +145,14 @@ export function extractVectors(
       }
       case OPS.paintFormXObjectEnd: gs = formStack.pop() ?? gs; break
       case OPS.setLineWidth: gs.width = Number(args?.[0]) || 0; break
-      case OPS.setDash: gs.dash = Array.isArray(args?.[0]) ? (args[0] as number[]).map(Number) : []; break
+      case OPS.setDash: gs.dash = Array.isArray(args?.[0]) ? (args[0] as number[]).slice(0, MAX_DASH).map(Number) : []; break
       case OPS.setStrokeRGBColor: gs.color = colorOf(args, 'rgb') ?? gs.color; break
       case OPS.setStrokeGray: gs.color = colorOf(args, 'gray') ?? gs.color; break
       case OPS.setStrokeCMYKColor: gs.color = colorOf(args, 'cmyk') ?? gs.color; break
       case OPS.setGState: {
         for (const kv of (args?.[0] as [string, unknown][]) ?? []) {
           if (kv[0] === 'LW') gs.width = Number(kv[1]) || 0
-          else if (kv[0] === 'D' && Array.isArray(kv[1])) gs.dash = Array.isArray((kv[1] as unknown[])[0]) ? ((kv[1] as unknown[])[0] as number[]).map(Number) : []
+          else if (kv[0] === 'D' && Array.isArray(kv[1])) gs.dash = Array.isArray((kv[1] as unknown[])[0]) ? ((kv[1] as unknown[])[0] as number[]).slice(0, MAX_DASH).map(Number) : []
         }
         break
       }
@@ -229,8 +234,9 @@ export function textFromContent(items: ArrayLike<{ str?: string; transform?: num
   const out: PdfText[] = []
   for (let i = 0; i < items.length; i++) {
     const it = items[i]
-    const str = (it.str ?? '').trim()
-    if (!str || !it.transform) continue
+    // Labels and spot grades are short: a long run of words (or a booby-trapped one) is never read.
+    const str = (it.str ?? '').replace(/\s+/g, ' ').trim()
+    if (!str || str.length > MAX_WORDS || !it.transform) continue
     const [a, b, c, d, e, f] = it.transform
     const angle = Math.atan2(b, a)
     const size = Math.hypot(c, d) || Math.hypot(a, b) || 1
@@ -253,8 +259,8 @@ export function textFromShx(annots: ArrayLike<{ subtype?: string; rect?: number[
     const a = annots[i]
     const title = a.titleObj?.str ?? a.title ?? ''
     if (!/shx/i.test(title)) continue
-    const str = (a.contentsObj?.str ?? a.contents ?? '').trim()
-    if (!str || !a.rect || a.rect.length < 4) continue
+    const str = (a.contentsObj?.str ?? a.contents ?? '').replace(/\s+/g, ' ').trim()
+    if (!str || str.length > MAX_WORDS || !a.rect || a.rect.length < 4) continue
     const [x0, y0, x1, y1] = a.rect
     const w = Math.abs(x1 - x0), h = Math.abs(y1 - y0)
     const along = Math.max(w, h), across = Math.min(w, h)

@@ -15,6 +15,7 @@ import { ArrowLeft, Check, Copy, Eye, EyeOff, FileUp, Layers, Loader2, Trash2, U
 import { MAX_FEATURES, MAX_POINTS_TOTAL } from '@/lib/dirt/schema'
 import type { ImportResult } from '@/lib/dirt/plan-import'
 import { saveTakeoffAction, deleteTakeoffAction } from '@/lib/actions/dirt'
+import { NO_REPLY } from '@/lib/action-reply'
 import { decodeGround } from '@/lib/dirt/ground-format'
 import { ringSelfCrosses } from '@/lib/dirt/geom'
 import { boxTooBig, groundBoxFor, type LngLatBox } from '@/lib/dirt/ground-box'
@@ -119,6 +120,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const [heatVisible, setHeatVisible] = useState(true)
   const [heatOpacity, setHeatOpacity] = useState(0.75)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [msg, setMsg] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null)
   const [frame, setFrame] = useState<{ key: number; coords: [number, number][] } | undefined>(undefined)
   const [copied, setCopied] = useState(false)
@@ -385,7 +387,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     const sentName = nameRef.current
     try {
       const r = await saveTakeoffAction(takeoff.id, { name: sentName, design: sentDesign, groundBox: ground.box })
-      if (!r.ok) { setMsg({ tone: 'warn', text: r.error ?? 'Could not save.' }); return }
+      // No reply (a gateway error or a timeout) resolves to undefined, not a throw.
+      if (!r?.ok) { setMsg({ tone: 'warn', text: r?.error ?? NO_REPLY }); return }
       // Edits made while the save ran are still unsaved.
       if (designRef.current === sentDesign && nameRef.current === sentName) {
         setDirty(false)
@@ -401,11 +404,17 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     }
   }
   async function del() {
-    if (!canEdit) return
+    if (!canEdit || deleting) return
     if (!window.confirm(`Delete "${name}"? This can't be undone from here.`)) return
-    const r = await deleteTakeoffAction(takeoff.id)
-    if (r.ok) { leaving.current = true; writeDraft(takeoff.id, null); window.location.href = `/zones/${zone.id}` }
-    else setMsg({ tone: 'warn', text: r.error ?? 'Could not delete.' })
+    setDeleting(true)
+    try {
+      const r = await deleteTakeoffAction(takeoff.id)
+      if (r?.ok) { leaving.current = true; writeDraft(takeoff.id, null); window.location.href = `/zones/${zone.id}`; return }
+      setMsg({ tone: 'warn', text: r?.error ?? NO_REPLY })
+    } catch {
+      setMsg({ tone: 'warn', text: 'Could not delete — check the connection and try again.' })
+    }
+    setDeleting(false)
   }
 
   useEffect(() => {
@@ -757,7 +766,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             {canEdit && (
               <div className="flex items-center justify-between border-t border-navy-800 pt-3 text-xs">
                 <span className="text-faint">{design.features.length} traced feature{design.features.length === 1 ? '' : 's'}</span>
-                <button onClick={del} className="flex items-center gap-1 text-red-300 hover:text-red-200"><Trash2 className="h-3.5 w-3.5" /> Delete takeoff</button>
+                <button onClick={del} disabled={deleting} className="flex items-center gap-1 text-red-300 hover:text-red-200 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /> {deleting ? 'Deleting…' : 'Delete takeoff'}</button>
               </div>
             )}
           </div>

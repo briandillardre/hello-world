@@ -195,9 +195,16 @@ picture — every contour, label and spot comes out as geometry:
   (`lib/dirt/plan-geo.ts` — the same triangles MapLibre draws the raster
   with, so they land exactly on the picture), thinned to 0.15 ft, each
   marked with its sheet (`src`) so reading the sheet again replaces them.
+  It fits the design's caps (`lib/dirt/limits.ts`) whatever the sheet holds:
+  pads and the limit first; spot grades promised half of what's left (a
+  dense survey can't crowd the contours out, nor fragments the spots); too
+  many contours → the shortest go, too many points → contours thin first; a
+  contour past 6,000 points is split where it would overflow (lossless);
+  spots past the room left are kept evenly over the sheet; an elevation
+  outside −1,500…30,000 ft is left out and said.
   Existing contours can become the existing ground ("traced") or just set
   the lidar's datum offset.
-- **Proof** — `node scripts/plan-read-test.mjs` (160 assertions; run it after
+- **Proof** — `node scripts/plan-read-test.mjs` (170 assertions; run it after
   ANY change to pdf-vectors / plan-read / plan-geo / plan-lidar /
   plan-import): `scripts/plan-pdf-fixture.mjs` writes a REAL PDF drawn the
   way Civil 3D exports look (layers, dashed grey existing with exploded-dash

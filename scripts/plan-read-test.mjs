@@ -33,7 +33,8 @@ const surfUrl = transpile('../lib/dirt/surface.ts', { delaunator: import.meta.re
 const pl = await import(transpile('../lib/dirt/plan-lidar.ts', { './surface': surfUrl, './tm': tmUrl }))
 const tm = await import(tmUrl)
 const tk = await import(transpile('../lib/dirt/takeoff.ts', { earcut: import.meta.resolve('earcut'), './tm': tmUrl, './geom': geomUrl, './surface': surfUrl }))
-const pi = await import(transpile('../lib/dirt/plan-import.ts', { './geom': geomUrl, './plan-read': transpile('../lib/dirt/plan-read.ts', { './geom': geomUrl }) }))
+const pi = await import(transpile('../lib/dirt/plan-import.ts', { './geom': geomUrl, './limits': transpile('../lib/dirt/limits.ts'), './plan-read': transpile('../lib/dirt/plan-read.ts', { './geom': geomUrl }) }))
+const fe = await import(transpile('../lib/dirt/features.ts'))
 const pdfjs = await import(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs'))
 
 let pass = 0, fail = 0
@@ -397,6 +398,44 @@ for (const rotate of [0, 90]) {
   const ex = new Set(read.contours.filter(q => q.role === 'eg' && q.z !== null).slice(0, 3).map(q => q.id))
   const r3 = pi.readToFeatures(read, map, { ...all, excluded: ex }, { features: 3000, points: 80000 }, 'sheet-1', newId)
   ok('import: contours set aside stay out', r3.counts.egContours === named('eg') - 3, r3.counts)
+
+  // The caps hold whatever a sheet throws at them (lib/dirt/limits.ts): 2,500 spot shots, 3,500
+  // contour fragments, one 13,000-point contour no thinning can shorten, one label of 45,000 ft.
+  {
+    let seed = 7
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    let cid = 1e6
+    const shots = (n) => Array.from({ length: n }, () => ({ role: 'eg', z: 800 + rnd() * 20, x: 60 + rnd() * 1580, y: 60 + rnd() * 1140, text: '800' }))
+    const zig = []
+    for (let i = 0; i < 13000; i++) zig.push(40 + i * 0.12, 600 + (i % 2 ? 6 : -6))
+    const big = { id: cid++, role: 'eg', z: 812, pts: zig }
+    const frags = Array.from({ length: 3500 }, (_, i) => { const x = 60 + (i % 70) * 23, y = 60 + Math.floor(i / 70) * 23; return { id: cid++, role: 'fg', z: 805 + (i % 10), pts: [x, y, x + 4 + (i % 7), y + 3] } })
+    const wild = { id: cid++, role: 'eg', z: 45000, pts: [100, 100, 200, 200] }
+    const sheet = (contours, spots) => ({ contours, ladders: [], interval: { eg: 1, fg: 1 }, datumFt: null, spots, pads: [], limits: null, warnings: [] })
+    const picks = { ...all, pads: [], limits: false }
+    const cap = { features: 3000, points: 80000 }
+    const r = pi.readToFeatures(sheet([big, wild, ...frags], shots(2500)), map, picks, cap, 'sheet-2', fe.newId)
+    const totPts = r.features.reduce((m, f) => m + f.coords.length, 0)
+    ok(`caps: ${r.features.length} features, ${totPts.toLocaleString()} points — inside 3,000 / 80,000`, r.features.length <= 3000 && totPts <= 80000, { n: r.features.length, totPts })
+    ok('caps: no feature over 6,000 points', r.features.every(f => f.coords.length <= 6000), Math.max(...r.features.map(f => f.coords.length)))
+    ok('caps: every id unique (no wrap at 1,296)', new Set(r.features.map(f => f.id)).size === r.features.length)
+    const pieces = r.features.filter(f => f.kind === 'eg_contour')
+    const joined = pieces.every((f, i) => i === 0 || (f.coords[0][0] === pieces[i - 1].coords.at(-1)[0] && f.coords[0][1] === pieces[i - 1].coords.at(-1)[1]))
+    ok(`caps: the 13,000-point contour splits into ${pieces.length} pieces that share their ends — nothing lost`, pieces.length === 3 && joined && pieces.reduce((m, f) => m + f.coords.length, 0) === pr.simplify(zig, 0.15 * PT_PER_FT).length / 2 + 2 && r.counts.egContours === 1, { n: pieces.length, joined, counts: r.counts })
+    ok('caps: too many contours drops the shortest without thinning the rest', r.tolFt === 0.15 && r.dropped > 0 && r.warnings.some(w => /short contours left out/.test(w)), { tol: r.tolFt, dropped: r.dropped })
+    ok('caps: a 45,000 ft label is left out and said', !r.features.some(f => f.z === 45000) && r.warnings.some(w => /outside/.test(w)), r.warnings)
+    ok(`caps: fragments can't crowd the spot grades out (${r.counts.egSpots} of 2,500 kept)`, r.counts.egSpots >= 1250 && r.droppedSpots === 2500 - r.counts.egSpots, r.counts)
+    const quad = [0, 0, 0, 0]
+    for (const f of r.features.filter(q => q.kind === 'eg_spot')) { const [x, y] = map.toPage(...f.coords[0]); quad[(x > 850 ? 1 : 0) + (y > 630 ? 2 : 0)]++ }
+    ok(`caps: the spot grades kept are spread over the sheet (${quad.join(' / ')} by quarter)`, quad.every(q => q > 0.2 * r.counts.egSpots), quad)
+    const r2 = pi.readToFeatures(sheet([big], shots(5000)), map, picks, cap, 'sheet-2', fe.newId)
+    ok(`caps: a dense survey can't crowd the contours out (contour kept, ${r2.counts.egSpots} of 5,000 spots)`, r2.counts.egContours === 1 && r2.features.length === 3000 && r2.dropped === 0, { counts: r2.counts, n: r2.features.length })
+    const wavy = []
+    for (let i = 0; i < 13000; i++) wavy.push(40 + i * 0.12, 600 + (i % 2 ? 1 : -1))
+    const r4 = pi.readToFeatures(sheet([{ id: cid++, role: 'eg', z: 812, pts: wavy }], shots(10)), map, picks, { features: 3000, points: 9000 }, 'sheet-2', fe.newId)
+    const p4 = r4.features.reduce((m, f) => m + f.coords.length, 0)
+    ok(`caps: too many points thins (${r4.tolFt} ft) and still fits (${p4.toLocaleString()} of 9,000)`, r4.tolFt > 0.15 && p4 <= 9000 && r4.counts.egContours === 1 && r4.counts.egSpots === 10, { tol: r4.tolFt, p4, counts: r4.counts })
+  }
 
   // The lidar through the placement: a grid of the truth in UTM, read back in page space.
   const p17 = tm.utmParams(17)

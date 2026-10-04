@@ -242,7 +242,11 @@ export async function deleteTakeoffAction(id: string): Promise<{ ok: boolean; er
     .update({ deleted_at: new Date().toISOString(), updated_by: g.userId, heat_path: null, heat_corners: null })
     .eq('id', id).eq('company_id', g.companyId).is('deleted_at', null).select('geofence_id')
   if (error) return { ok: false, error: 'Could not delete. Try again in a minute.' }
-  if (!data?.length) return { ok: false, error: 'That takeoff was not found.' }
+  if (!data?.length) {
+    // A retry after a reply that never arrived: already deleted is what was asked for.
+    const { data: gone } = await svc.from('dirt_takeoffs').select('id').eq('id', id).eq('company_id', g.companyId).not('deleted_at', 'is', null).maybeSingle()
+    return gone ? { ok: true } : { ok: false, error: 'That takeoff was not found.' }
+  }
   // The picture goes now; the row itself is purged after 30 days (health cron).
   if (before?.heat_path) {
     try { await svc.storage.from('dirt').remove([before.heat_path as string]) } catch { /* the health cron sweeps leftovers */ }
