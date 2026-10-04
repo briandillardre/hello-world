@@ -7,6 +7,7 @@
  * company's takeoffs, a prospect sees none.
  */
 import type { DirtDesign, DirtResults } from '@/lib/dirt/takeoff'
+import type { LngLatBox } from '@/lib/dirt/ground-box'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -57,6 +58,41 @@ export async function dirtAddonActive(companyId: string | null): Promise<boolean
     return await isPlatformOwnerCompany(svc, companyId)
   } catch {
     return false
+  }
+}
+
+/**
+ * Where a takeoff lives, read under the caller's RLS: its zone's outline plus
+ * its saved traces, as a lng/lat box. The lidar route only reads ground near
+ * this (a login can't use it to pull elevation for anywhere in the country).
+ * Null = no such takeoff for this login.
+ */
+export async function takeoffExtent(id: string): Promise<LngLatBox | null> {
+  if (isMock || !/^[0-9a-f-]{36}$/i.test(id)) return null
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const sb = createClient()
+    const { data, error } = await sb.from('dirt_takeoffs').select('id, geofence_id, design').eq('id', id).is('deleted_at', null).maybeSingle()
+    if (error || !data) return null
+    const coords: [number, number][] = []
+    const design = data.design as DirtDesign | null
+    for (const f of Array.isArray(design?.features) ? design!.features : []) {
+      for (const c of Array.isArray(f?.coords) ? f.coords : []) coords.push([Number(c[0]), Number(c[1])])
+    }
+    if (data.geofence_id) {
+      const { getGeofence } = await import('@/lib/db/zones')
+      const zone = await getGeofence(data.geofence_id as string)
+      for (const c of zone?.geometry?.coordinates?.[0] ?? []) coords.push([Number(c[0]), Number(c[1])])
+    }
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+    for (const [lng, lat] of coords) {
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue
+      minLng = Math.min(minLng, lng); maxLng = Math.max(maxLng, lng)
+      minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat)
+    }
+    return Number.isFinite(minLng) ? { minLng, minLat, maxLng, maxLat } : null
+  } catch {
+    return null
   }
 }
 

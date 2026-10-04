@@ -54,14 +54,16 @@ site page's **Dirt takeoff** card and the map's **Cut / fill** layer.
 - **Shrink:** fill × (1 + shrink %) = bank yards it takes. Onsite = cut placed
   back as fill; export / import = cut − adjusted fill; loads at the truck size.
 
-`node scripts/dirt-test.mjs` — 81 assertions: a flat pad (370.37 CY), a sloped
+`node scripts/dirt-test.mjs` — 99 assertions: a flat pad (370.37 CY), a sloped
 plane split at its zero line (2,500 ft³ each side), vertical asphalt deducts,
 topsoil stacking, overlapping areas both ways, a pad beating paving, demo, a
 planar TIN from traced contours, tie-in mounds, the datum check, lidar gaps,
 the UTM projection against the published 4,427,757.22 m, and a fuzz of random
 sites integrated exactly vs. a fine brute-force grid (worst 0.43% at 5 cm,
-converging onto the exact number as the grid halves). **Run it after ANY change
-to lib/dirt/*.**
+converging onto the exact number as the grid halves), plus the review pass:
+paving under a pad, self-crossing areas, overlapping pads, the grid's last
+node, the work budget and deadline, and the 5 km site span. **Run it after ANY
+change to lib/dirt/*.**
 
 ## Lidar (lib/dirt/ground.ts)
 
@@ -77,13 +79,47 @@ so the editor's preview and the server's run read the same numbers.
 grades far from existing (warned past 15 ft), and two or three traced existing
 spot grades measure the offset.
 
+## Limits and safety (review pass, Oct 4 — ship-check + sec-check on #180)
+
+- **Save runs first, then writes.** The server validates the design, reads
+  lidar, runs it, uploads the picture, and only then stores design + numbers
+  + picture in one compare-and-set on the row's `updated_at`. A design too
+  big to run (`TakeoffTooBig`: 15M units of work or 40 s — a real 1.2 km site
+  with 40 contours and 20 paving areas is ~3M / ~10 s) is never stored, so it
+  can't hang a colleague's editor. Two saves racing: the second is told to
+  save again. Lidar down at Save: the traces are stored with no numbers yet
+  (honest), never zeros. 6 saves a minute per person.
+- **One site, not a county.** Every trace must fit ~5 km (`schema.ts`);
+  grading-limit tie-in samples stop at 20k; a self-crossing area (bowtie) is
+  refused in the editor and skipped by the run with a warning.
+- **Lidar route** (`/api/dirt/ground?takeoff=&bbox=`): signed in, `zones`
+  view level, add-on, never a prospect, and only within 1.5 km of that
+  takeoff's zone or saved traces. New USGS reads: 10 per person per 10 min
+  (shared with Save). Tiles only from `prd-tnm.s3.amazonaws.com`.
+- **Cache.** Per company (a shared one let a customer tell, by speed, that
+  another had pulled a site), flat `ground/<company>_<grid>.bin` in the
+  private bucket. A read that partly failed is never stored (memory only,
+  5 min). A stored grid is handed to the browser as a 2-minute signed link —
+  a big site's grid is 6–8 MB, past what a function response should carry.
+  The health cron (step 8) drops grids after 60 days, deleted takeoffs after
+  30, and stray pictures after a day.
+- **Big sites** step to a 2/4/8 m grid and read the COG's overview level;
+  overviews carry no georeferencing, so origin and EPSG come from image 0.
+- **Rows (128).** A deleted takeoff is invisible to the API too;
+  `company_addons` has no member read policy (only the service role reads it).
+- **Caps.** 25 live takeoffs per site, 300 per company; no takeoff on a
+  personal zone (its name and outline would reach the whole company).
+
 ## Where it lives
 
-- `/dirt/<id>` — the editor (live preview in a web worker, `lib/dirt/worker.ts`).
-  **Save** validates the design (`lib/dirt/schema.ts`), stores it, and re-runs
-  it on the SERVER (`saveTakeoffAction`): the stored numbers and the cut/fill
-  PNG (`lib/dirt/png.ts`) are the server's, never a figure a browser posted. A
-  slower run never overwrites a newer save (compare-and-set on the save stamp).
+- `/dirt/<id>` — the editor (live preview in a web worker, `lib/dirt/worker.ts`,
+  one run in flight). **Save** validates the design (`lib/dirt/schema.ts`),
+  runs it on the SERVER and stores it (`saveTakeoffAction`): the stored numbers
+  and the cut/fill PNG (`lib/dirt/png.ts`) are the server's, never a figure a
+  browser posted, and they stand on screen until you change something. Unsaved
+  work is kept on the device (offered back on open) and in-app links ask
+  before leaving it. Number boxes keep what's typed — a type=number box reads
+  '' for a lone minus sign, so the first cut turned "-10" into +10.
 - Site page → **Dirt takeoff** card (list + New takeoff; locked for companies
   without the add-on).
 - Main map → layers → My sites → **Cut / fill** (`/api/dirt-map`).

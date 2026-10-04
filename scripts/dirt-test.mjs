@@ -29,11 +29,15 @@ const surfUrl = transpile('../lib/dirt/surface.ts', {
 })
 const tkUrl = transpile('../lib/dirt/takeoff.ts', { earcut: npm('earcut'), './tm': tmUrl, './geom': geomUrl, './surface': surfUrl })
 const heatUrl = transpile('../lib/dirt/heat.ts', { './takeoff': tkUrl, './geom': geomUrl })
+const featUrl = transpile('../lib/dirt/features.ts', { './takeoff': tkUrl })
+const schemaUrl = transpile('../lib/dirt/schema.ts', { zod: npm('zod'), './takeoff': tkUrl })
 const tm = await import(tmUrl)
 const geom = await import(geomUrl)
 const surf = await import(surfUrl)
 const tk = await import(tkUrl)
 const heat = await import(heatUrl)
+const feat = await import(featUrl)
+const schema = await import(schemaUrl)
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {
@@ -275,6 +279,13 @@ const design = (features, extra = {}) => ({ v: 1, features, existing: { source: 
   const fixed = design(off.features, { existing: { source: 'lidar', offsetFt: -200 } })
   const rf = tk.runTakeoff(fixed, g).results
   ok('Datum: with the −200 ft offset the volumes match the NAVD88 run', near(rf.fillCy, r.fillCy, 0.05), [rf.fillCy, r.fillCy])
+  // A pad alone is enough to catch an assumed datum (FFE 100.00 on 300 ft ground).
+  const padOff = design([F('boundary', rect(10, 10, 90, 90)), F('platform', rect(40, 40, 60, 60), { z: 100, label: 'Building' })])
+  const rp = tk.runTakeoff(padOff, g).results
+  ok('Datum: a lone pad 200 ft under the lidar is flagged', rp.warnings.some(w => /assumed datum/.test(w)) && rp.datum.samples === 4, [rp.warnings, rp.datum])
+  const padOk = design([F('boundary', rect(10, 10, 90, 90)), F('platform', rect(40, 40, 60, 60), { z: 301, label: 'Building' })])
+  const rq = tk.runTakeoff(padOk, g).results
+  ok('Datum: a pad 1 ft above the lidar is not', !rq.warnings.some(w => /datum/.test(w)) && near(rq.datum.proposedMinusExistingFt, 1, 0.01), [rq.warnings, rq.datum])
 }
 
 // ── 8. Missing ground ──────────────────────────────────────────────────────
@@ -362,6 +373,73 @@ const design = (features, extra = {}) => ({ v: 1, features, existing: { source: 
   const lg = heat.legendRows(0.5)
   ok('Heat legend: five bands per side, last one open-ended', lg.cut.length === 5 && lg.fill[4][0] === '2+ ft' && lg.fill[0][0] === '0–0.5 ft', lg.fill)
   ok('Heat: band choices widen for deep sites', heat.bandFor(12) === 5 && heat.bandFor(60) === 10 && heat.bandFor(0.8) === 0.25)
+}
+
+// ── 11. Snapping never joins two elevations ───────────────────────────────
+{
+  const d = design([
+    F('fg_contour', [[0, 0], [1, 0]], { z: 960 }),
+    F('fg_contour', [[0, 1], [1, 1]], { z: 961 }),
+    F('eg_contour', [[0, 2], [1, 2]], { z: 960 }),
+    F('demo', [[5, 5], [6, 5], [6, 6]], { thicknessIn: 4 }),
+    F('boundary', [[9, 9], [10, 9], [10, 10]]),
+  ])
+  const c = feat.snapVertices(d, { kind: 'fg_contour', z: 960 })
+  ok('Snap: a 960 proposed contour snaps only to proposed 960 points', c.length === 2 && c.every(p => p[1] === 0), c)
+  const a = feat.snapVertices(d, { kind: 'reduce', thicknessIn: 8 })
+  ok('Snap: an area snaps to area corners only (demo + limits)', a.length === 6 && a.every(p => p[0] >= 5), a)
+  ok('Snap: no tool, no snapping', feat.snapVertices(d, null).length === 0)
+}
+
+// ── 12. Review pass (Oct 4): pads over paving, self-crossing areas, overlapping pads, grid edge, limits ──
+{
+  const g = grid(() => 300, -20, -20, 120, 120)
+  // Paving under a pad: the pad wins in the volume, so the paving SF stops at the pad too.
+  const d = design([
+    F('boundary', rect(0, 0, 100, 100)),
+    F('reduce', rect(0, 0, 100, 100), { thicknessIn: 8, label: 'Light duty asphalt' }),
+    F('platform', rect(30, 30, 70, 70), { z: 300, offsetIn: -8, label: 'Building' }),
+  ])
+  const r = tk.runTakeoff(d, g).results
+  ok('Paving SF stops at the pad drawn over it (10,000 − 1,600 = 8,400 SF)', near(r.reduce[0]?.sf, 8400, 1), r.reduce)
+
+  // A bowtie area is refused, not measured two different ways (signed area |A1−A2| vs point-in-ring A1+A2).
+  const bow = design([F('boundary', rect(0, 0, 100, 100)), F('topsoil', [ll(0, 0), ll(100, 60), ll(100, 0), ll(0, 100)], { thicknessIn: 6 })])
+  const rb = tk.runTakeoff(bow, g).results
+  ok('Self-crossing topsoil is skipped with a warning', rb.topsoil.cy === 0 && rb.warnings.some(w => /crosses itself/.test(w)), [rb.topsoil, rb.warnings])
+  const rbb = tk.runTakeoff(design([F('boundary', [ll(0, 0), ll(100, 100), ll(100, 0), ll(0, 100)])]), g).results
+  ok('Self-crossing grading limits say so', rbb.warnings.some(w => /grading limits cross themselves/.test(w)), rbb.warnings)
+  ok('ringSelfCrosses: square no, bowtie yes', !geom.ringSelfCrosses([0, 0, 1, 0, 1, 1, 0, 1]) && geom.ringSelfCrosses([0, 0, 1, 1, 1, 0, 0, 1]))
+  ok('ringSelfCrosses: an L-shaped lot is not a crossing', !geom.ringSelfCrosses([0, 0, 2, 0, 2, 1, 1, 1, 1, 2, 0, 2]))
+
+  // Overlapping pads: the later one wins, and that is not a tracing mistake.
+  const pads = design([
+    F('boundary', rect(0, 0, 100, 100)),
+    F('platform', rect(20, 20, 60, 60), { z: 301, offsetIn: 0, label: 'A' }),
+    F('platform', rect(40, 40, 80, 80), { z: 302, offsetIn: 0, label: 'B' }),
+  ])
+  const rp = tk.runTakeoff(pads, g).results
+  ok('Overlapping pads: no false "cross another line" warning', !rp.warnings.some(w => /cross another line/.test(w)), rp.warnings)
+  ok('Overlapping pads: the later pad keeps its whole footprint (1,600 SF), the earlier loses the overlap (1,200)', near(rp.platforms[1]?.sf, 1600, 1) && near(rp.platforms[0]?.sf, 1200, 1), rp.platforms)
+
+  // The grid ends at its last node.
+  const gs = new surf.GridSurface({ x0: 0, y0: 0, dx: 1, dy: 1, nx: 3, ny: 3, z: new Float32Array([0, 1, 2, 0, 1, 2, 0, 1, 2]) })
+  ok('Grid: nothing past the last node (no extrapolation)', Number.isNaN(gs.zAt(2.5, 1)) && Number.isNaN(gs.zAt(1, 2.5)) && near(gs.zAt(2, 1), 2, 1e-9), [gs.zAt(2.5, 1), gs.zAt(2, 1)])
+
+  // Limits: too much work or past the deadline → TakeoffTooBig, never a hang.
+  let threw = ''
+  try { tk.runTakeoff(d, g, new Date(), { maxWork: 1000 }) } catch (e) { threw = e.name }
+  ok('Limits: a run past its work budget throws TakeoffTooBig', threw === 'TakeoffTooBig', threw)
+  threw = ''
+  try { tk.runTakeoff(d, g, new Date(), { deadline: Date.now() - 1 }) } catch (e) { threw = e.name }
+  ok('Limits: a run past its deadline throws TakeoffTooBig', threw === 'TakeoffTooBig', threw)
+  ok('Limits: a normal run reports its work', r.diagnostics.work > 0, r.diagnostics)
+
+  // Schema: one site, not a county.
+  const far = design([F('boundary', rect(0, 0, 100, 100)), F('eg_spot', [[-82.394 + 0.06, 34.8526]], { z: 300 })])
+  const sc = schema.checkDesign(far)
+  ok('Schema: traces spread over more than ~5 km are refused', !sc.ok && /5 km/.test(sc.error), sc)
+  ok('Schema: a normal design passes', schema.checkDesign(d).ok)
 }
 
 console.log(`dirt takeoff: ${pass} passed, ${fail} failed`)

@@ -69,8 +69,9 @@ export class GridSurface implements Surface {
 
   zAt(x: number, y: number): number {
     const fx = (x - this.x0) / this.dx, fy = (y - this.y0) / this.dy
+    // Nothing past the last node: the grid's triangles end there (each() has none beyond).
+    if (fx < 0 || fy < 0 || fx > this.nx - 1 + 1e-9 || fy > this.ny - 1 + 1e-9) return NaN
     let i = Math.floor(fx), j = Math.floor(fy)
-    if (i < 0 || j < 0 || i > this.nx - 1 || j > this.ny - 1) return NaN
     if (i === this.nx - 1) i--          // the far edge belongs to the last cell
     if (j === this.ny - 1) j--
     if (i < 0 || j < 0) return NaN
@@ -207,10 +208,11 @@ export function buildTin(points: TinPoint[], edges: [number, number][]): TinBuil
       const ax = flat[2 * a], ay = flat[2 * a + 1], bx = flat[2 * b], by = flat[2 * b + 1]
       const sb = { x0: Math.min(ax, bx), y0: Math.min(ay, by), x1: Math.max(ax, bx), y1: Math.max(ay, by) }
       let bad = false
+      let crossed: [number, number] | null = null
       for (const id of idx.query(sb)) {
         const [c, d] = accepted[id]
         if (c === a || c === b || d === a || d === b) continue
-        if (segmentsCross(ax, ay, bx, by, flat[2 * c], flat[2 * c + 1], flat[2 * d], flat[2 * d + 1])) { bad = true; break }
+        if (segmentsCross(ax, ay, bx, by, flat[2 * c], flat[2 * c + 1], flat[2 * d], flat[2 * d + 1])) { bad = true; crossed = [c, d]; break }
       }
       if (!bad) {
         try {
@@ -223,11 +225,15 @@ export function buildTin(points: TinPoint[], edges: [number, number][]): TinBuil
         }
       }
       dropped++
+      // Overlapping building pads cross by design (the later pad wins, and its
+      // edges go in first) — not a tracing mistake worth a warning.
+      const pad = (i: number) => pts[i].src === 'pad' || pts[i].src.startsWith('pad ')
+      if (crossed && pad(a) && pad(b) && pad(crossed[0]) && pad(crossed[1])) continue
       droppedSrc.add(pts[a].src === pts[b].src ? pts[a].src : `${pts[a].src} / ${pts[b].src}`)
     }
     try { con.delaunify(true) } catch { /* the constrained triangulation stands as is */ }
   }
-  if (dropped) {
+  if (droppedSrc.size) {
     const names = Array.from(droppedSrc).slice(0, 4).join(', ')
     warnings.push(`${dropped} traced segment${dropped === 1 ? '' : 's'} cross another line (${names}) — check those traces.`)
   }

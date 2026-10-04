@@ -10,15 +10,21 @@
  *    filled from the 3DEP ImageServer's best-available mosaic (often 10 m —
  *    the header says so, and the takeoff warns).
  * 3. Results are cached: in memory per instance and in the private `dirt`
- *    bucket, keyed by the snapped UTM grid, so the editor's preview and the
- *    server's authoritative run read the same numbers.
+ *    bucket, keyed by company + the snapped UTM grid, so the editor's preview
+ *    and the server's authoritative run read the same numbers. Per company on
+ *    purpose: a shared cache would let one customer tell (by speed) that
+ *    another had already pulled a site. A read that partly failed is never
+ *    stored — USGS blinked, and the next read should try again.
  */
 import { fromArrayBuffer, fromUrl, type GeoTIFFImage } from 'geotiff'
 import { decodeGround, encodeGround, type GroundHeader } from './ground-format'
 import { planGrid, type GridPlan, type LngLatBox } from './ground-box'
+import { tmInverse, utmParams } from './tm'
 import type { GroundGrid } from './takeoff'
 
 const TNM = 'https://tnmaccess.nationalmap.gov/api/v1/products'
+/** The only place 1 m tiles are read from (TNM's own S3 bucket). */
+const TILE_URL = /^https:\/\/prd-tnm\.s3\.amazonaws\.com\/StagedProducts\/Elevation\/1m\/[A-Za-z0-9_./-]+\.tif$/i
 const IMAGESERVER = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage'
 interface TnmItem { title: string; downloadURL: string; publicationDate?: string }
 
@@ -33,7 +39,7 @@ async function listTiles(b: LngLatBox, signal: AbortSignal): Promise<TnmItem[]> 
   if (!r.ok) throw new Error(`tnm ${r.status}`)
   const j = (await r.json()) as { items?: TnmItem[] }
   return (j.items ?? [])
-    .filter(i => typeof i.downloadURL === 'string' && /^https:\/\/[a-z0-9.-]+\.amazonaws\.com\//.test(i.downloadURL) && /\.tif$/i.test(i.downloadURL))
+    .filter(i => typeof i.downloadURL === 'string' && TILE_URL.test(i.downloadURL) && !i.downloadURL.includes('..'))
     .sort((a, c) => (c.publicationDate ?? '').localeCompare(a.publicationDate ?? '') || projectYear(c.title) - projectYear(a.title))
 }
 
@@ -50,10 +56,28 @@ function projectName(title: string): string {
 
 const NODATA = (v: number) => !Number.isFinite(v) || v < -1000 || v > 10000
 
-/** Fill NaN nodes of `z` from one GeoTIFF image (any alignment — bilinear when off-grid). */
-async function fillFromImage(img: GeoTIFFImage, p: GridPlan, z: Float32Array, signal: AbortSignal): Promise<number> {
-  const [ox, oy] = img.getOrigin()
-  const [rx, ry] = img.getResolution()
+/** The grid's own extent in lng/lat — what the tile list is asked for, so the tiles depend only on the cache key. */
+function planLngLatBox(p: GridPlan): LngLatBox {
+  const tm = utmParams(p.zone)
+  const xs = [p.x0 - p.dx / 2, p.x0 + (p.nx - 1) * p.dx / 2, p.x0 + (p.nx - 0.5) * p.dx]
+  const ys = [p.y0 - p.dx / 2, p.y0 + (p.ny - 1) * p.dx / 2, p.y0 + (p.ny - 0.5) * p.dx]
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+  for (const x of xs) for (const y of ys) {
+    const [lng, lat] = tmInverse(tm, x, y)
+    minLng = Math.min(minLng, lng); maxLng = Math.max(maxLng, lng)
+    minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat)
+  }
+  return { minLng, minLat, maxLng, maxLat }
+}
+
+/**
+ * Fill NaN nodes of `z` from one GeoTIFF image (any alignment — bilinear when
+ * off-grid). Origin and pixel size come from the caller: a COG's overview
+ * levels carry no georeferencing of their own (they share image 0's).
+ */
+async function fillFromImage(img: GeoTIFFImage, origin: number[], res: number[], p: GridPlan, z: Float32Array, signal: AbortSignal): Promise<number> {
+  const [ox, oy] = origin
+  const [rx, ry] = res
   const w = img.getWidth(), h = img.getHeight()
   // Pixel-centre coordinates: x = ox + (c + .5)·rx, y = oy + (r + .5)·ry (ry < 0).
   const colOf = (x: number) => (x - ox) / rx - 0.5
@@ -101,16 +125,18 @@ export async function fetchGround(b: LngLatBox, signal: AbortSignal): Promise<{ 
   let filled = 0
   let tilesErr = false
   try {
-    const tiles = await listTiles(b, signal)
+    const tiles = await listTiles(planLngLatBox(p), signal)
     for (const t of tiles.slice(0, 6)) {
       if (filled >= z.length) break
       try {
         const tiff = await fromUrl(t.downloadURL, { allowFullFile: false }, signal)
-        const level = Math.min(Math.max(0, Math.round(Math.log2(p.dx))), (await tiff.getImageCount()) - 1)
-        const img = await tiff.getImage(level)
-        const epsg = Number(img.getGeoKeys()?.ProjectedCSTypeGeoKey)
+        const img0 = await tiff.getImage(0)
+        const epsg = Number(img0.getGeoKeys()?.ProjectedCSTypeGeoKey)
         if (epsg !== p.epsg) continue // a tile cut in another UTM zone
-        const n = await fillFromImage(img, p, z, signal)
+        // A coarser grid (big sites step to 2/4/8 m) reads the matching overview.
+        const level = Math.min(Math.max(0, Math.round(Math.log2(p.dx))), (await tiff.getImageCount()) - 1)
+        const img = level === 0 ? img0 : await tiff.getImage(level)
+        const n = await fillFromImage(img, img0.getOrigin(), level === 0 ? img0.getResolution() : img.getResolution(img0), p, z, signal)
         if (n > 0) { filled += n; used.push(t.title) }
       } catch (e) {
         if (signal.aborted) throw e
@@ -124,6 +150,7 @@ export async function fetchGround(b: LngLatBox, signal: AbortSignal): Promise<{ 
   const lidarNodes = filled
   // Fill what the 1 m tiles didn't cover from the best-available mosaic.
   let mosaic = false
+  let mosaicErr = false
   if (filled < z.length) {
     try {
       const half = p.dx / 2
@@ -135,7 +162,8 @@ export async function fetchGround(b: LngLatBox, signal: AbortSignal): Promise<{ 
       })
       if (p.nx <= 8000 && p.ny <= 8000) {
         const r = await fetch(`${IMAGESERVER}?${q}`, { signal })
-        if (r.ok && (r.headers.get('content-type') ?? '').includes('tiff')) {
+        if (!r.ok || !(r.headers.get('content-type') ?? '').includes('tiff')) mosaicErr = true
+        else {
           const tiff = await fromArrayBuffer(await r.arrayBuffer(), signal)
           const img = await tiff.getImage()
           const raw: ArrayLike<number> = await img.readRasters({ interleave: true, signal })
@@ -153,6 +181,7 @@ export async function fetchGround(b: LngLatBox, signal: AbortSignal): Promise<{ 
       }
     } catch (e) {
       if (signal.aborted) throw e
+      mosaicErr = true
     }
   }
   const lidarShare = z.length ? lidarNodes / z.length : 0
@@ -170,36 +199,79 @@ export async function fetchGround(b: LngLatBox, signal: AbortSignal): Promise<{ 
     resolutionM: lidarShare >= 0.98 ? p.dx : 10,
     coverage: z.length ? filled / z.length : 0,
     tiles: used,
+    ...(tilesErr || mosaicErr ? { partial: true } : {}),
   }
   return { header, z }
 }
 
 // ── Caching ──────────────────────────────────────────────────────────────
 
-const mem = new Map<string, Uint8Array>()
+interface MemEntry { bytes: Uint8Array; partial: boolean; at: number; stored: string | null }
+const mem = new Map<string, MemEntry>()
 const MEM_CAP = 6
+const PARTIAL_TTL_MS = 5 * 60_000
 
-function remember(key: string, bytes: Uint8Array) {
+function remember(key: string, e: MemEntry) {
   mem.delete(key)
-  mem.set(key, bytes)
+  mem.set(key, e)
   while (mem.size > MEM_CAP) mem.delete(mem.keys().next().value as string)
 }
 
-type Svc = { storage: { from(b: string): { download(p: string): Promise<{ data: Blob | null; error: unknown }>; upload(p: string, body: Uint8Array, o: { contentType: string; upsert: boolean }): Promise<{ error: unknown }> } } }
+/** New USGS reads (cache misses) per person: 10 per 10 minutes — the route and Save share it. */
+const MISS_LIMIT = 10
+const MISS_WINDOW_MS = 10 * 60_000
+const misses = new Map<string, number[]>()
+
+export class GroundBusy extends Error {
+  constructor() {
+    super('Too many new lidar reads in a few minutes — try again shortly.')
+    this.name = 'GroundBusy'
+  }
+}
+
+function spendMiss(who: string): boolean {
+  const now = Date.now()
+  const hits = (misses.get(who) ?? []).filter(t => now - t < MISS_WINDOW_MS)
+  if (hits.length >= MISS_LIMIT) { misses.set(who, hits); return false }
+  hits.push(now)
+  misses.set(who, hits)
+  if (misses.size > 5000) misses.clear()
+  return true
+}
+
+type Svc = { storage: { from(b: string): {
+  download(p: string): Promise<{ data: Blob | null; error: unknown }>
+  upload(p: string, body: Uint8Array, o: { contentType: string; upsert: boolean }): Promise<{ error: unknown }>
+} } }
+
+/** Storage path of a company's cached grid (flat, so the health cron can age it out with one listing). */
+export function groundPath(companyId: string, key: string): string {
+  return `ground/${companyId}_${key.replace(/\//g, '_')}.bin`
+}
 
 /**
- * The grid for a box, cached. Returns the encoded bytes (what the route sends)
- * and the decoded grid (what the server-side takeoff run uses). A grid with no
- * data at all is returned but never cached (USGS may simply have been down).
+ * The grid for a box, cached per company. Returns the encoded bytes, the
+ * decoded grid (what the server-side run uses), and — when the grid sits in
+ * the bucket — its storage path, so the route can hand the browser a signed
+ * link instead of pushing megabytes through a function. A read with no data
+ * at all is returned but never cached (USGS may simply have been down); a
+ * partial read stays in memory for 5 minutes only.
  */
-export async function groundCached(svc: Svc | null, b: LngLatBox, signal: AbortSignal): Promise<{ bytes: Uint8Array; grid: GroundGrid; header: GroundHeader; cached: boolean }> {
+export async function groundCached(
+  svc: Svc | null,
+  b: LngLatBox,
+  signal: AbortSignal,
+  opts: { companyId: string; who?: string },
+): Promise<{ bytes: Uint8Array; grid: GroundGrid; header: GroundHeader; cached: boolean; stored: string | null }> {
   const p = planGrid(b)
-  const hit = mem.get(p.key)
-  if (hit) {
-    const d = decodeGround(hit.buffer.slice(hit.byteOffset, hit.byteOffset + hit.byteLength) as ArrayBuffer)
-    if (d) return { bytes: hit, grid: d.grid, header: d.header, cached: true }
+  const key = `${opts.companyId}/${p.key}`
+  const path = groundPath(opts.companyId, p.key)
+  const hit = mem.get(key)
+  if (hit && hit.partial && Date.now() - hit.at > PARTIAL_TTL_MS) mem.delete(key)
+  else if (hit) {
+    const d = decodeGround(hit.bytes.buffer.slice(hit.bytes.byteOffset, hit.bytes.byteOffset + hit.bytes.byteLength) as ArrayBuffer)
+    if (d) return { bytes: hit.bytes, grid: d.grid, header: d.header, cached: true, stored: hit.stored }
   }
-  const path = `ground/${p.key}.bin`
   if (svc) {
     try {
       const { data } = await svc.storage.from('dirt').download(path)
@@ -208,24 +280,30 @@ export async function groundCached(svc: Svc | null, b: LngLatBox, signal: AbortS
         const d = decodeGround(buf)
         if (d) {
           const bytes = new Uint8Array(buf)
-          remember(p.key, bytes)
-          return { bytes, grid: d.grid, header: d.header, cached: true }
+          remember(key, { bytes, partial: false, at: Date.now(), stored: path })
+          return { bytes, grid: d.grid, header: d.header, cached: true, stored: path }
         }
       }
     } catch { /* fall through to USGS */ }
   }
+  if (opts.who && !spendMiss(opts.who)) throw new GroundBusy()
   const { header, z } = await fetchGround(b, signal)
   const bytes = encodeGround(header, z)
+  let stored: string | null = null
   if (header.coverage > 0) {
-    remember(p.key, bytes)
-    if (svc) {
-      try { await svc.storage.from('dirt').upload(path, bytes, { contentType: 'application/octet-stream', upsert: true }) } catch { /* cache is best-effort */ }
+    if (svc && !header.partial) {
+      try {
+        const { error } = await svc.storage.from('dirt').upload(path, bytes, { contentType: 'application/octet-stream', upsert: true })
+        if (!error) stored = path
+      } catch { /* cache is best-effort */ }
     }
+    remember(key, { bytes, partial: !!header.partial, at: Date.now(), stored })
   }
   return {
     bytes,
     grid: { zone: header.zone, epsg: header.epsg, x0: header.x0, y0: header.y0, dx: header.dx, dy: header.dy, nx: header.nx, ny: header.ny, z, source: header.source, resolutionM: header.resolutionM },
     header,
     cached: false,
+    stored,
   }
 }

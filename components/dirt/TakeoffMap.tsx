@@ -27,6 +27,8 @@ interface Props {
   heat: { url: string; corners: [number, number][] } | null
   heatVisible: boolean
   heatOpacity: number
+  /** Results step: cut/fill over the plan sheets. Tracing: under them, so the plan's lines read. */
+  heatOverSheets: boolean
   drawing: boolean
   snapTo: [number, number][]
   onClick: (p: [number, number], meta: { closesRing: boolean }) => void
@@ -73,6 +75,8 @@ export default function TakeoffMap(props: Props) {
     m.on('load', () => {
       m.addSource('heat', { type: 'image', url: TRANSPARENT_PNG, coordinates: [[0, 0.0001], [0.0001, 0.0001], [0.0001, 0], [0, 0]] })
       m.addLayer({ id: 'heat', type: 'raster', source: 'heat', paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-resampling': 'nearest' } })
+      // Plan sheets go under this (invisible) anchor; the heat moves above or below them.
+      m.addLayer({ id: 'sheets-top', type: 'background', paint: { 'background-opacity': 0 } })
       m.addSource('feat', { type: 'geojson', data: EMPTY })
       m.addSource('draft', { type: 'geojson', data: EMPTY })
       const isArea: maplibregl.ExpressionSpecification = ['==', ['get', 'g'], 'ar']
@@ -162,7 +166,7 @@ export default function TakeoffMap(props: Props) {
         return
       }
       const hits = m.queryRenderedFeatures(
-        [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]],
+        [[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], // a fingertip, not a mouse pointer
         { layers: FEATURE_LAYERS.filter(l => m.getLayer(l)) },
       )
       const order = ['feat-pt', 'feat-ln', 'feat-ar-line', 'feat-ar-fill']
@@ -219,21 +223,37 @@ export default function TakeoffMap(props: Props) {
       const sid = `sheet-${s.id}`
       if (!m.getSource(sid)) {
         m.addSource(sid, { type: 'image', url: s.url, coordinates: s.corners as [[number, number], [number, number], [number, number], [number, number]] })
-        m.addLayer({ id: sid, type: 'raster', source: sid, paint: { 'raster-opacity': s.opacity, 'raster-fade-duration': 0 } }, 'heat')
+        m.addLayer({ id: sid, type: 'raster', source: sid, paint: { 'raster-opacity': s.opacity, 'raster-fade-duration': 0 } }, 'sheets-top')
         sheetIds.current.add(s.id)
       } else {
         m.setPaintProperty(sid, 'raster-opacity', s.opacity)
       }
     }
+    syncOrder()
   }
 
+  function syncOrder() {
+    const m = mapRef.current
+    if (!m || !ready.current || !m.getLayer('heat')) return
+    if (live.current.heatOverSheets) { m.moveLayer('heat', 'sheets-top'); return }
+    const bottom = Array.from(sheetIds.current)[0] // added in order, each just under the anchor
+    if (bottom && m.getLayer(`sheet-${bottom}`)) m.moveLayer('heat', `sheet-${bottom}`)
+  }
+
+  // The picture is re-sent only when it changes: updateImage refetches and
+  // re-uploads the texture, which made every render (a slider drag, a tap) janky.
+  const shownHeat = useRef('')
   function syncHeat() {
     const m = mapRef.current
     if (!m || !ready.current) return
     const h = live.current.heat
     const src = m.getSource('heat') as maplibregl.ImageSource | undefined
     if (!src) return
-    if (h) src.updateImage({ url: h.url, coordinates: h.corners as [[number, number], [number, number], [number, number], [number, number]] })
+    const sig = h ? `${h.url}|${h.corners.flat().join(',')}` : ''
+    if (h && sig !== shownHeat.current) {
+      src.updateImage({ url: h.url, coordinates: h.corners as [[number, number], [number, number], [number, number], [number, number]] })
+      shownHeat.current = sig
+    }
     m.setPaintProperty('heat', 'raster-opacity', h && live.current.heatVisible ? live.current.heatOpacity : 0)
   }
 
@@ -253,7 +273,8 @@ export default function TakeoffMap(props: Props) {
   }, [props.features])
   useEffect(() => { syncDraft() }, [props.draft]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { syncSheets() }, [props.sheets]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { syncHeat() }, [props.heat, props.heatVisible, props.heatOpacity]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { syncHeat() }, [props.heat?.url, props.heat?.corners, props.heatVisible, props.heatOpacity]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { syncOrder() }, [props.heatOverSheets]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const m = mapRef.current
     if (!m) return

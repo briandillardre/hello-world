@@ -4591,6 +4591,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const planOn = !!overlaysOn.siteplans
     const active = new Set(siteImgActiveKey ? siteImgActiveKey.split(',') : [])
     const known = new Set<string>()
+    // Photos and plan sheets go UNDER any cut/fill picture already drawn, so
+    // turning Scaled plans on after Cut / fill never buries the cut/fill.
+    const firstDirt = (m.getStyle()?.layers ?? []).find((l) => l.id.startsWith('dirt-') && l.id !== 'dirt-labels')?.id
     for (const ov of siteOverlays ?? []) {
       const isPlan = ov.kind === 'plan'
       const show = isPlan ? planOn : photoOn && active.has(ov.id)
@@ -4600,7 +4603,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       if (show && !m.getSource(srcId)) {
         try {
           m.addSource(srcId, { type: 'image', url: ov.url, coordinates: ov.coords })
-          const beforeId = m.getLayer('geofence-fill') ? 'geofence-fill' : undefined
+          const beforeId = firstDirt ?? (m.getLayer('geofence-fill') ? 'geofence-fill' : undefined)
           m.addLayer(
             {
               id: lid, type: 'raster', source: srcId,

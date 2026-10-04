@@ -30,7 +30,7 @@ import earcut from 'earcut'
 import { fromFrame, makeFrame, toFrame, utmZone, type Frame } from './tm'
 import {
   BinIndex, boxOf, boxesOverlap, centroid, clipByTriangle, ccw, pointInRing, polyArea,
-  polyPosNeg, segmentCrosses, splitByLine, type Box, type Poly,
+  polyPosNeg, ringSelfCrosses, segmentCrosses, splitByLine, type Box, type Poly,
 } from './geom'
 import { buildTin, GridSurface, OffsetSurface, type PlaneTri, type Surface, type TinPoint } from './surface'
 
@@ -125,10 +125,47 @@ export interface DirtResults {
     planExistingMinusLidarFt: number | null
     samples: number
   }
-  diagnostics: { pieces: number; ms: number; flatTriangles: number; droppedEdges: number }
+  diagnostics: { pieces: number; ms: number; flatTriangles: number; droppedEdges: number; work?: number }
   warnings: string[]
   /** Band width (ft) of the stored cut/fill picture — set by the server run. */
   heatBandFt?: number
+}
+
+// ── Limits ────────────────────────────────────────────────────────────────
+
+/**
+ * Thrown when a design is too much work to run — on the server it means the
+ * design is NOT saved (a run that can't finish must never park a design that
+ * hangs everyone's editor). A real 1.2 km site with 40 contours and 20 paving
+ * areas is ~2.8M pieces / ~10 s; the caps sit well above that.
+ */
+export class TakeoffTooBig extends Error {
+  constructor() {
+    super('This takeoff is too complex to run in one go — split the site into smaller takeoffs, or simplify the grading limits and areas (fewer, straighter edges).')
+    this.name = 'TakeoffTooBig'
+  }
+}
+
+export interface RunLimits {
+  /** Epoch ms after which the run gives up. */
+  deadline?: number
+  /** Integration pieces + area splits allowed. */
+  maxWork?: number
+}
+
+const DEFAULT_MAX_WORK = 15_000_000
+/** Tie-in samples along the grading limits: every 2 m, but never more than this many. */
+const MAX_TIE_SAMPLES = 20_000
+
+class Budget {
+  private work = 0
+  constructor(private limits: RunLimits) {}
+  get used(): number { return this.work }
+  spend(n = 1): void {
+    this.work += n
+    if (this.work > (this.limits.maxWork ?? DEFAULT_MAX_WORK)) throw new TakeoffTooBig()
+    if (this.limits.deadline && (this.work & 1023) < n && Date.now() > this.limits.deadline) throw new TakeoffTooBig()
+  }
 }
 
 // ── Internal: the built takeoff (also feeds the heat map) ─────────────────
@@ -170,6 +207,19 @@ function centerOf(design: DirtDesign): [number, number] | null {
 
 /** A flat CCW ring in frame metres, or null when it has < 3 distinct corners. */
 function ringOf(frame: Frame, coords: [number, number][]): Poly | null {
+  const out = rawRingOf(frame, coords)
+  if (out.length < 6 || polyArea(out) < 1e-6) return null
+  return ccw(out)
+}
+
+/** A traced area that crosses itself (a bowtie) — checked before its area, which a symmetric bowtie zeroes. */
+function crossesItself(frame: Frame, coords: [number, number][]): boolean {
+  const r = rawRingOf(frame, coords)
+  return r.length >= 8 && ringSelfCrosses(r)
+}
+
+/** Frame-metre corners, consecutive duplicates and a closing duplicate dropped. */
+function rawRingOf(frame: Frame, coords: [number, number][]): Poly {
   const out: Poly = []
   for (const [lng, lat] of coords) {
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue
@@ -180,8 +230,7 @@ function ringOf(frame: Frame, coords: [number, number][]): Poly | null {
   }
   // drop a closing duplicate
   if (out.length >= 4 && Math.abs(out[0] - out[out.length - 2]) < 1e-6 && Math.abs(out[1] - out[out.length - 1]) < 1e-6) out.length -= 2
-  if (out.length < 6 || polyArea(out) < 1e-6) return null
-  return ccw(out)
+  return out
 }
 
 function lineOf(frame: Frame, coords: [number, number][]): number[] {
@@ -197,7 +246,7 @@ function lineOf(frame: Frame, coords: [number, number][]): number[] {
 }
 
 /** Areas of one kind with the parts covered by later areas of that kind removed. */
-export function effectiveAreas(areas: Area[]): number[] {
+export function effectiveAreas(areas: Area[], budget: Budget = new Budget({})): number[] {
   return areas.map((a, i) => {
     const later = areas.slice(i + 1).filter(b => boxesOverlap(a.box, b.box))
     if (!later.length) return polyArea(a.ring)
@@ -214,6 +263,7 @@ export function effectiveAreas(areas: Area[]): number[] {
         for (let k = 0; k < r.length; k += 2) {
           const m = (k + 2) % r.length
           const next: Poly[] = []
+          budget.spend(parts.length)
           for (const p of parts) {
             if (segmentCrosses(p, r[k], r[k + 1], r[m], r[m + 1])) next.push(...splitByLine(p, r[k], r[k + 1], r[m], r[m + 1]))
             else next.push(p)
@@ -266,8 +316,12 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
   const areasOf = (k: DirtKind, t: (f: DirtFeature) => number, z: (f: DirtFeature) => number = () => 0): Area[] => {
     const out: Area[] = []
     for (const f of byKind(k)) {
+      if (crossesItself(frame, f.coords)) {
+        warnings.push(k === 'boundary' ? 'The grading limits cross themselves — redraw them.' : `A ${kindWords(k)} area crosses itself — redraw it. It was skipped.`)
+        continue
+      }
       const ring = ringOf(frame, f.coords)
-      if (!ring) { warnings.push(`A ${kindWords(k)} area has fewer than 3 corners — skipped.`); continue }
+      if (!ring) { warnings.push(k === 'boundary' ? 'The grading limits have fewer than 3 corners — redraw them.' : `A ${kindWords(k)} area has fewer than 3 corners — skipped.`); continue }
       out.push({ ring, box: boxOf(ring), t: t(f), label: (f.label ?? '').trim(), z: z(f), order: out.length })
     }
     return out
@@ -280,6 +334,7 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
   const platforms: Area[] = []
   for (const f of byKind('platform')) {
     if (!Number.isFinite(f.z)) { warnings.push(`Platform "${f.label || 'pad'}" has no finished floor elevation — skipped.`); continue }
+    if (crossesItself(frame, f.coords)) { warnings.push(`Platform "${f.label || 'pad'}" crosses itself — redraw it. It was skipped.`); continue }
     const ring = ringOf(frame, f.coords)
     if (!ring) { warnings.push(`Platform "${f.label || 'pad'}" has fewer than 3 corners — skipped.`); continue }
     const off = Number.isFinite(f.offsetIn) ? Number(f.offsetIn) : -8
@@ -339,16 +394,23 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
     const [x, y] = toFrame(frame, f.coords[0][0], f.coords[0][1])
     fgPoints.push({ x, y, z: Number(f.z) * FT, src: `spot ${f.z}` })
   }
-  const designPoints = fgPoints.length
+  const padEdges: [number, number][][] = []
   for (const f of byKind('platform')) {
     if (!Number.isFinite(f.z)) continue
     const ring = ringOf(frame, f.coords)
-    if (!ring) continue
+    if (!ring || crossesItself(frame, f.coords)) continue
     const base = fgPoints.length
     const n = ring.length / 2
+    const edges: [number, number][] = []
     for (let i = 0; i < n; i++) fgPoints.push({ x: ring[2 * i], y: ring[2 * i + 1], z: Number(f.z) * FT, src: `pad ${f.label || ''}`.trim() })
-    for (let i = 0; i < n; i++) fgEdges.push([base + i, base + ((i + 1) % n)])
+    for (let i = 0; i < n; i++) edges.push([base + i, base + ((i + 1) % n)])
+    padEdges.push(edges)
   }
+  // The later pad wins where pads overlap, so its edges are honoured first.
+  for (let i = padEdges.length - 1; i >= 0; i--) fgEdges.push(...padEdges[i])
+  // Everything the plan says (contours, spots, pad corners) — the datum check
+  // reads these, never the tie-in samples below, which ARE existing.
+  const designPoints = fgPoints.length
   const proposedFromExisting = fgPoints.length === 0
 
   let fg: Surface | null = null
@@ -378,12 +440,18 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
       return false
     }
     let missing = 0
+    let perimeter = 0
+    for (const b of boundary) for (let i = 0; i < b.ring.length; i += 2) {
+      const j = (i + 2) % b.ring.length
+      perimeter += Math.hypot(b.ring[j] - b.ring[i], b.ring[j + 1] - b.ring[i + 1])
+    }
+    const spacing = Math.max(2, perimeter / MAX_TIE_SAMPLES)
     for (const b of boundary) {
       const r = b.ring
       for (let i = 0; i < r.length; i += 2) {
         const j = (i + 2) % r.length
         const len = Math.hypot(r[j] - r[i], r[j + 1] - r[i + 1])
-        const steps = Math.max(1, Math.ceil(len / 2))
+        const steps = Math.max(1, Math.ceil(len / spacing))
         for (let s = 0; s < steps; s++) {
           const x = r[i] + ((r[j] - r[i]) * s) / steps
           const y = r[i + 1] + ((r[j + 1] - r[i + 1]) * s) / steps
@@ -406,7 +474,6 @@ export function buildContext(design: DirtDesign, ground: GroundGrid | null, warn
   let domain: Box | null = null
   for (const b of boundary) domain = domain ? { x0: Math.min(domain.x0, b.box.x0), y0: Math.min(domain.y0, b.box.y0), x1: Math.max(domain.x1, b.box.x1), y1: Math.max(domain.y1, b.box.y1) } : { ...b.box }
 
-  void designPoints
   return { frame, eg, fg, boundary, demo, topsoil, reduce, platforms, domain, flatTriangles, droppedEdges, proposedFromExisting, fgPoints: fgPoints.slice(0, designPoints), egTracedPoints }
 }
 
@@ -466,9 +533,13 @@ export function lookups(ctx: TakeoffContext) {
   }
 }
 
-/** Run the takeoff. `now` is injectable for the harness. */
-export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: Date = new Date()): { results: DirtResults; ctx: TakeoffContext } {
+/**
+ * Run the takeoff. `now` is injectable for the harness; `limits` bound the
+ * work (TakeoffTooBig past them).
+ */
+export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: Date = new Date(), limits: RunLimits = {}): { results: DirtResults; ctx: TakeoffContext } {
   const t0 = Date.now()
+  const budget = new Budget(limits)
   const warnings: string[] = []
   const built = buildContext(design, ground, warnings)
   const { frame, eg, fg, boundary, demo, topsoil, reduce, platforms, domain } = built
@@ -527,6 +598,7 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     segHits.length = 0
     segIdx.query(boxOf(p), segHits, segSeen)
     let parts: Poly[] = [p]
+    budget.spend(1 + segHits.length)
     for (const s of segHits) {
       const o = 4 * s
       const ax = segs[o], ay = segs[o + 1], bx = segs[o + 2], by = segs[o + 3]
@@ -538,7 +610,7 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
           next.push(...splitByLine(q, ax, ay, bx, by))
         } else if (next) next.push(q)
       }
-      if (next) parts = next
+      if (next) { budget.spend(next.length); parts = next }
     }
     for (const q of parts) piece(q, egT, fgT)
   }
@@ -567,11 +639,11 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     : 'No lidar ground loaded for this site — trace the existing contours instead.')
   else if (coveredPct < 99) warnings.push(`Existing or proposed ground covers only ${coveredPct.toFixed(0)}% of the grading limits — the rest counts as no change.`)
 
-  const effTop = effectiveAreas(topsoil)
+  const effTop = effectiveAreas(topsoil, budget)
   const topsoilM2 = effTop.reduce((s, a) => s + a, 0)
   const topsoilM3 = effTop.reduce((s, a, i) => s + a * topsoil[i].t, 0)
 
-  const effDemo = effectiveAreas(demo)
+  const effDemo = effectiveAreas(demo, budget)
   const demoRows = new Map<string, { label: string; thicknessIn: number; sf: number; cy: number }>()
   demo.forEach((d, i) => {
     const label = d.label || 'Demo'
@@ -583,7 +655,8 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     demoRows.set(key, row)
   })
 
-  const effReduce = effectiveAreas(reduce)
+  // A pad wins over paving under it (as in the volume), so paving SF stops at the pad.
+  const effReduce = effectiveAreas([...reduce, ...platforms], budget).slice(0, reduce.length)
   const reduceRows = new Map<string, { label: string; thicknessIn: number; sf: number }>()
   reduce.forEach((r, i) => {
     const label = r.label || 'Paving'
@@ -594,8 +667,11 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     reduceRows.set(key, row)
   })
 
-  const effPads = effectiveAreas(platforms)
-  const padFeatures = design.features.filter(f => f.kind === 'platform' && Number.isFinite(f.z) && ringOf(frame, f.coords))
+  const effPads = effectiveAreas(platforms, budget)
+  const padFeatures = design.features.filter(f => {
+    if (f.kind !== 'platform' || !Number.isFinite(f.z)) return false
+    return !!ringOf(frame, f.coords) && !crossesItself(frame, f.coords)
+  })
   const platformRows = platforms.map((p, i) => ({
     label: p.label || 'Building pad',
     ffeFt: round(Number(padFeatures[i]?.z), 2),
@@ -624,7 +700,7 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     const m = median(diffs)
     samples = diffs.length
     if (m !== null) proposedMinusExistingFt = round(ft(m), 2)
-    if (m !== null && diffs.length >= 5 && Math.abs(ft(m)) > 15 && design.existing?.source !== 'traced') {
+    if (m !== null && diffs.length >= 3 && Math.abs(ft(m)) > 15 && design.existing?.source !== 'traced') {
       warnings.push(`The plan's proposed grades sit ${Math.abs(ft(m)).toFixed(1)} ft ${m > 0 ? 'above' : 'below'} the lidar ground on average — the plan may use an assumed datum. Set the existing-ground offset, or trace the existing contours.`)
     }
   }
@@ -673,7 +749,7 @@ export function runTakeoff(design: DirtDesign, ground: GroundGrid | null, now: D
     reduce: Array.from(reduceRows.values()).map(r => ({ ...r, sf: round(r.sf, 0) })),
     platforms: platformRows,
     datum: { proposedMinusExistingFt, planExistingMinusLidarFt, samples },
-    diagnostics: { pieces, ms: Date.now() - t0, flatTriangles: built.flatTriangles, droppedEdges: built.droppedEdges },
+    diagnostics: { pieces, ms: Date.now() - t0, flatTriangles: built.flatTriangles, droppedEdges: built.droppedEdges, work: budget.used },
     warnings: Array.from(new Set(warnings)),
   }
   return { results, ctx: built }

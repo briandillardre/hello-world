@@ -32,3 +32,21 @@ export function ipRateLimited(req: { headers: { get(k: string): string | null } 
   if (buckets.size > BUCKET_CAP) buckets.clear()
   return false
 }
+
+/**
+ * Same sliding window keyed by anything (a user id) — for server actions,
+ * which have no request to read an address from. Per instance, like the above.
+ */
+export function keyRateLimited(key: string, tag: string, limit: number, windowMs = WINDOW_MS): boolean {
+  const id = tag + ':' + createHash('sha256').update(key).digest('base64').slice(0, 16)
+  const now = Date.now()
+  const hits = (buckets.get(id) ?? []).filter((t) => now - t < windowMs)
+  if (hits.length >= limit) {
+    buckets.set(id, hits)
+    return true
+  }
+  hits.push(now)
+  buckets.set(id, hits)
+  if (buckets.size > BUCKET_CAP) buckets.clear()
+  return false
+}

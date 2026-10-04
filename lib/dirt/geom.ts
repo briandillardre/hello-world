@@ -234,6 +234,43 @@ export function polyPosNeg(p: Poly, vals: ArrayLike<number>): [number, number] {
 }
 
 /** Uniform bin index over boxes (triangles, segments, rings). */
+/**
+ * Does a closed ring cross itself — two edges that aren't neighbours properly
+ * intersecting? A bowtie's signed area is |A1 − A2| while point-in-ring sees
+ * A1 + A2, so a self-crossing area can't be measured honestly: refuse it.
+ */
+export function ringSelfCrosses(ring: ArrayLike<number>): boolean {
+  const n = ring.length >> 1
+  if (n < 4) return false
+  const b = boxOf(ring)
+  const idx = new BinIndex(b, Math.max(b.x1 - b.x0, b.y1 - b.y0, 1e-9) / Math.max(4, Math.ceil(Math.sqrt(n))))
+  const eb = (i: number): Box => {
+    const j = (i + 1) % n
+    return { x0: Math.min(ring[2 * i], ring[2 * j]), y0: Math.min(ring[2 * i + 1], ring[2 * j + 1]), x1: Math.max(ring[2 * i], ring[2 * j]), y1: Math.max(ring[2 * i + 1], ring[2 * j + 1]) }
+  }
+  for (let i = 0; i < n; i++) idx.insert(i, eb(i))
+  const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) => (qx - px) * (ry - py) - (qy - py) * (rx - px)
+  const hits: number[] = []
+  const seen = new Set<number>()
+  for (let i = 0; i < n; i++) {
+    const i2 = (i + 1) % n
+    const ax = ring[2 * i], ay = ring[2 * i + 1], bx = ring[2 * i2], by = ring[2 * i2 + 1]
+    const len = Math.hypot(bx - ax, by - ay)
+    hits.length = 0
+    idx.query(eb(i), hits, seen)
+    for (const j of hits) {
+      if (j <= i || j === i + 1 || (i === 0 && j === n - 1)) continue
+      const j2 = (j + 1) % n
+      const cx = ring[2 * j], cy = ring[2 * j + 1], dx = ring[2 * j2], dy = ring[2 * j2 + 1]
+      const eps = 1e-9 * Math.max(len, Math.hypot(dx - cx, dy - cy), 1e-9)
+      const d1 = o(cx, cy, dx, dy, ax, ay), d2 = o(cx, cy, dx, dy, bx, by)
+      const d3 = o(ax, ay, bx, by, cx, cy), d4 = o(ax, ay, bx, by, dx, dy)
+      if (((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) && ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps))) return true
+    }
+  }
+  return false
+}
+
 export class BinIndex {
   readonly x0: number
   readonly y0: number

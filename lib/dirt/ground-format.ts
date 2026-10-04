@@ -22,6 +22,8 @@ export interface GroundHeader {
   coverage: number
   /** USGS products used, newest first. */
   tiles: string[]
+  /** Part of the read failed (a tile or the mosaic didn't answer) — never cached; read again later. */
+  partial?: boolean
 }
 
 export function encodeGround(h: GroundHeader, z: Float32Array): Uint8Array {
