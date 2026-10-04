@@ -27,7 +27,7 @@ export function MeasurementsManager({ measurements }: { measurements: Measuremen
     setConfirmId(null)
     startTransition(async () => {
       const r = await deleteMeasurementAction(id)
-      if (!r.ok) setErr(r.error ?? 'Delete failed.')
+      if (!r?.ok) setErr(r?.error ?? 'Delete failed.')
       else router.refresh()
     })
   }

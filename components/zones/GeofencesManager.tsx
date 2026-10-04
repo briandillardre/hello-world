@@ -177,7 +177,7 @@ function GeofenceRow({
     if (!ok) return
     start(async () => {
       const r = await setZoneCompletedAction(fence.id, !done)
-      setFlipNote(r.ok ? (r.qbo ?? null) : (r.error ?? 'Failed'))
+      setFlipNote(r?.ok ? (r.qbo ?? null) : (r?.error ?? 'Failed'))
     })
   }
 

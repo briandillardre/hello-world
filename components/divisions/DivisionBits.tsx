@@ -112,8 +112,8 @@ export function DivisionPicker({ divisions, table, rowId, value, canEdit, label 
     const prev = pick
     setPick(next); setState('saving'); setErr(null)
     const r = await setRowDivisionAction(table, rowId, next)
-    if (!r.ok) {
-      setPick(prev); setState('error'); setErr(r.error ?? 'Could not save it.')
+    if (!r?.ok) {
+      setPick(prev); setState('error'); setErr(r?.error ?? 'Could not save it.')
       return
     }
     setState('saved')

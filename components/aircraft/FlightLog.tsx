@@ -186,17 +186,17 @@ export function FlightLog({
     startSave(async () => {
       if (isSaved) {
         const r = await removeAircraftAction(ident.hex)
-        if (r.ok) setSaved((s) => s.filter((x) => x.hex !== ident.hex))
-        else setNote(r.error ?? 'Could not remove that plane.')
+        if (r?.ok) setSaved((s) => s.filter((x) => x.hex !== ident.hex))
+        else setNote(r?.error ?? 'Could not remove that plane.')
       } else {
         const r = await saveAircraftAction({ hex: ident.hex })
-        if (r.ok) {
+        if (r?.ok) {
           setSaved((s) => [{
             id: ident.hex, hex: ident.hex, reg: ident.reg, typeCode: ident.typeCode,
             descr: ident.desc, owner: ident.owner, label: null, notes: null,
             lastSyncedAt: null, lastFlightAt: null, createdAt: new Date().toISOString(),
           }, ...s.filter((x) => x.hex !== ident.hex)])
-        } else setNote(r.error ?? 'Could not save that plane.')
+        } else setNote(r?.error ?? 'Could not save that plane.')
       }
     })
   }

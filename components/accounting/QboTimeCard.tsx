@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Loader2, Users } from 'lucide-react'
 import { getQboTimeStatusAction, saveEmployeeMappingAction, type QboTimeStatus } from '@/lib/actions/qbo-time'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /**
  * Crew ↔ QBO employee mapping — the setup step for the timesheet push.
@@ -43,7 +44,7 @@ export function QboTimeCard({ demo }: { demo: boolean }) {
     })
     const r = await saveEmployeeMappingAction(userId, qboEmployeeId || null, name)
     setSaving(null)
-    if ('error' in r) {
+    if (!r || 'error' in r) {
       // Payroll mapping must never LOOK saved when it isn't — roll back.
       setStatus((s) => s && {
         ...s,
@@ -51,7 +52,7 @@ export function QboTimeCard({ demo }: { demo: boolean }) {
           ? { ...s.mappings, [userId]: prev }
           : Object.fromEntries(Object.entries(s.mappings).filter(([k]) => k !== userId)),
       })
-      setSaveError(r.error)
+      setSaveError(r?.error ?? NO_REPLY)
     } else setSaved(userId)
   }
 

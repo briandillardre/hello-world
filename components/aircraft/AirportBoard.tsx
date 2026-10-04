@@ -99,7 +99,7 @@ export function AirportBoard({
     setNote(null)
     start(async () => {
       const r = await saveAirportAction(code)
-      if (!r.ok) { setNote(r.error ?? 'Could not add that airfield.'); return }
+      if (!r?.ok) { setNote(r?.error ?? 'Could not add that airfield.'); return }
       setSaved((s) => s.some((x) => x.ident === code) ? s : [...s, { id: code, ident: code, name: null, label: null, lastSweptAt: null }])
       setAdding(''); setActive(code)
     })
@@ -108,7 +108,7 @@ export function AirportBoard({
   const drop = (ident: string) => {
     start(async () => {
       const r = await removeAirportAction(ident)
-      if (!r.ok) { setNote(r.error ?? 'Could not remove that airfield.'); return }
+      if (!r?.ok) { setNote(r?.error ?? 'Could not remove that airfield.'); return }
       setSaved((s) => s.filter((x) => x.ident !== ident))
       setActive((a) => (a === ident ? null : a))
     })

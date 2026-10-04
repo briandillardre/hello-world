@@ -71,8 +71,8 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                   disabled={!canManage || pending}
                   onClick={() => start(async () => {
                     const r = await enableInstantChaseAction()
-                    if (r.ok && r.address) { setAddress(r.address); setError(null) }
-                    else setError(r.error ?? 'Failed')
+                    if (r?.ok && r.address) { setAddress(r.address); setError(null) }
+                    else setError(r?.error ?? 'Failed')
                   })}
                   className="rounded-lg bg-amber text-[#1a1100] font-bold text-sm px-3.5 py-2 disabled:opacity-40 flex-none"
                 >
@@ -95,8 +95,8 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                       disabled={pending}
                       onClick={() => start(async () => {
                         const r = await sendTestChargeAction()
-                        if (r.ok && r.link) { setTest({ link: r.link, pushed: r.pushed ?? 0, texted: !!r.texted }); setError(null) }
-                        else setError(r.error ?? 'Failed')
+                        if (r?.ok && r.link) { setTest({ link: r.link, pushed: r.pushed ?? 0, texted: !!r.texted }); setError(null) }
+                        else setError(r?.error ?? 'Failed')
                       })}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-amber/50 bg-amber/10 text-amber font-semibold text-sm px-3 py-2 disabled:opacity-40 flex-none"
                     >
@@ -205,8 +205,8 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                       disabled={pending || last4.length !== 4}
                       onClick={() => start(async () => {
                         const r = await saveCardAction({ last4, label, userId: holder, phone: cell })
-                        if (r.ok) { setLast4(''); setLabel(''); setHolder(''); setCell(''); setError(null) }
-                        else setError(r.error ?? 'Failed')
+                        if (r?.ok) { setLast4(''); setLabel(''); setHolder(''); setCell(''); setError(null) }
+                        else setError(r?.error ?? 'Failed')
                       })}
                       className="rounded-lg bg-navy-700 text-ink font-semibold text-sm px-3 py-2 disabled:opacity-40"
                     >
@@ -225,8 +225,8 @@ export function InstantChase({ address: initialAddress, cards, members, canManag
                       disabled={pending}
                       onClick={() => start(async () => {
                         const r = await sendTestChargeAction()
-                        if (r.ok && r.link) { setTest({ link: r.link, pushed: r.pushed ?? 0, texted: !!r.texted }); setError(null) }
-                        else setError(r.error ?? 'Failed')
+                        if (r?.ok && r.link) { setTest({ link: r.link, pushed: r.pushed ?? 0, texted: !!r.texted }); setError(null) }
+                        else setError(r?.error ?? 'Failed')
                       })}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-amber/50 bg-amber/10 text-amber font-semibold text-sm px-3 py-2 disabled:opacity-40 flex-none"
                     >

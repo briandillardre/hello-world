@@ -9714,7 +9714,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
                 onClick={async () => {
                   const nm = (measureRename ?? '').trim() || 'Measurement'
                   const r = await updateMeasurementAction(selectedMeasure.id, { name: nm })
-                  if (!r.ok) { toast(r.error ?? 'Rename failed.', { variant: 'error' }); return }
+                  if (!r?.ok) { toast(r?.error ?? 'Rename failed.', { variant: 'error' }); return }
                   setMeasures((prev) => prev.map((x) => (x.id === selectedMeasure.id ? { ...x, name: nm } : x)))
                   setSelectedMeasure((cur) => (cur ? { ...cur, name: nm } : cur))
                   setMeasureRename(null)
@@ -9732,7 +9732,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
                   onClick={async () => {
                     const props = { ...selectedMeasure.props, color: c.key }
                     const r = await updateMeasurementAction(selectedMeasure.id, { props })
-                    if (!r.ok) { toast(r.error ?? 'Could not change the colour.', { variant: 'error' }); return }
+                    if (!r?.ok) { toast(r?.error ?? 'Could not change the colour.', { variant: 'error' }); return }
                     setMeasures((prev) => prev.map((x) => (x.id === selectedMeasure.id ? { ...x, props } : x)))
                     setSelectedMeasure((cur) => (cur ? { ...cur, props } : cur))
                   }}
@@ -9766,7 +9766,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
                   const src = selectedMeasure
                   const nm = `${src.name} (copy)`
                   const r = await saveMeasurementAction({ name: nm, kind: src.kind, personal: src.personal, geometry: src.geometry, props: src.props })
-                  if (!r.ok || !r.id) { toast(r.error ?? 'Copy failed.', { variant: 'error' }); return }
+                  if (!r?.ok || !r.id) { toast(r?.error ?? 'Copy failed.', { variant: 'error' }); return }
                   const row = { ...src, id: r.id, name: nm, created_at: new Date().toISOString() }
                   setMeasures((prev) => [row, ...prev])
                   setSelectedMeasure(null)
@@ -9782,7 +9782,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
                   const okGo = await confirmSheet({ title: 'Delete this measurement?', message: `“${selectedMeasure.name}” comes off the map for everyone it's shared with.`, confirmLabel: 'Delete', destructive: true })
                   if (!okGo) return
                   const r = await deleteMeasurementAction(selectedMeasure.id)
-                  if (!r.ok) { toast(r.error ?? 'Delete failed.', { variant: 'error' }); return }
+                  if (!r?.ok) { toast(r?.error ?? 'Delete failed.', { variant: 'error' }); return }
                   setMeasures((prev) => prev.filter((x) => x.id !== selectedMeasure.id))
                   setSelectedMeasure(null)
                 }}

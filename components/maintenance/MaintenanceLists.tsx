@@ -251,12 +251,12 @@ function NewScheduleDialog({ assetNames, onClose }: {
                 intervalValue: Number(intervalValue),
                 lastServiceValue: reading === '' ? undefined : Number(reading),
               })
-              if (r.ok) {
+              if (r?.ok) {
                 toast('Schedule added — the countdown is live.', { variant: 'success' })
                 onClose()
                 router.refresh()
               } else {
-                toast(r.error === 'Demo mode' ? 'Demo — changes aren’t saved.' : r.error ?? 'Could not create the schedule.', { variant: 'error' })
+                toast(r?.error === 'Demo mode' ? 'Demo — changes aren’t saved.' : r?.error ?? 'Could not create the schedule.', { variant: 'error' })
               }
             })}
             className="rounded-lg bg-amber text-[#1a1100] font-bold text-sm px-3.5 py-2 disabled:opacity-40"

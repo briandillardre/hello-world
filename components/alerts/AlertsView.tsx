@@ -36,7 +36,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     setAlerts((cur) => cur.map((a) => (a.id === id ? { ...a, acknowledged_at: new Date().toISOString() } : a)))
     if (!editable) return
     const res = await acknowledgeAlertAction(id).catch(() => ({ ok: false }))
-    if (!res.ok) {
+    if (!res?.ok) {
       setAlerts((cur) => cur.map((a) => (a.id === id ? { ...a, acknowledged_at: prev } : a)))
       const { toast } = await import('@/components/ui/feedback')
       toast('Could not acknowledge — check your connection and try again.', { variant: 'error' })
@@ -54,7 +54,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
     setAlerts((prev) => prev.map((a) => (idSet.has(a.id) && !a.acknowledged_at ? { ...a, acknowledged_at: now } : a)))
     if (!editable) return
     const res = await acknowledgeManyAlertsAction(ids).catch(() => ({ ok: false }))
-    if (!res.ok) {
+    if (!res?.ok) {
       setAlerts((prev) => prev.map((a) => (idSet.has(a.id) ? { ...a, acknowledged_at: prevById.get(a.id) ?? null } : a)))
       const { toast } = await import('@/components/ui/feedback')
       toast('Could not acknowledge — check your connection and try again.', { variant: 'error' })

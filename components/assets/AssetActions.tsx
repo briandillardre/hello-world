@@ -22,8 +22,8 @@ export function AssetActions({ asset, photos = [], crews = [] }: { asset: Asset;
     const doneBar = trackBusy('Saving asset changes…')
     try {
       const result = await updateAssetAction(asset.id, data, photosToFormData(newPhotos ?? []))
-      if (!result.ok) {
-        toast(result.error ?? 'Could not save changes. Please try again.', { variant: 'error' })
+      if (!result?.ok) {
+        toast(result?.error ?? 'Could not save changes. Please try again.', { variant: 'error' })
         return
       }
       setEditing(false)
@@ -60,7 +60,7 @@ export function AssetActions({ asset, photos = [], crews = [] }: { asset: Asset;
     if (!ok) return
     try {
       const res = await softDeleteAssetAction(asset.id)
-      if (!res.ok) { toast(res.error ?? 'Could not delete the asset.', { variant: 'error' }); return }
+      if (!res?.ok) { toast(res?.error ?? 'Could not delete the asset.', { variant: 'error' }); return }
       toast(`"${asset.name}" deleted — restore within 30 days from Trackers`, { variant: 'success' })
       router.push('/assets')
       router.refresh()

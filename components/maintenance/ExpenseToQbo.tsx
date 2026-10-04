@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Check, ExternalLink, Loader2, Receipt } from 'lucide-react'
 import { pushServiceExpenseAction } from '@/lib/actions/qbo'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /** One-tap "send this service cost to QuickBooks as an expense". */
 export function ExpenseToQbo({ recordId }: { recordId: string }) {
@@ -13,7 +14,7 @@ export function ExpenseToQbo({ recordId }: { recordId: string }) {
   const send = async () => {
     setState('busy')
     const r = await pushServiceExpenseAction(recordId)
-    if ('error' in r) { setState('error'); setMsg(r.error) }
+    if (!r || 'error' in r) { setState('error'); setMsg(r?.error ?? NO_REPLY) }
     else { setState('done'); setUrl(r.url) }
   }
 

@@ -6,6 +6,7 @@ import { CheckCircle2, CircleAlert, Keyboard, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { registerTrackerAction } from '@/lib/actions/trackers'
+import { NO_REPLY } from '@/lib/action-reply'
 import { parseTrackerId } from '@/lib/devices'
 import { Scanner } from './Scanner'
 
@@ -44,7 +45,7 @@ export function AddTrackers() {
     setBusy(true)
     try {
       const res = await registerTrackerAction(raw)
-      if (!res.ok) { pushError(res.error); return 'submitted' }
+      if (!res?.ok) { pushError(res?.error ?? NO_REPLY); return 'submitted' }
       cooldown.current.set(parsed.id, Infinity)
       setRows((r) => [res.existed
         ? { kind: 'existed', id: res.id, modelName: res.modelName, onAsset: res.onAsset?.name ?? null }

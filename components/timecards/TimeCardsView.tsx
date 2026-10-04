@@ -11,6 +11,7 @@ import { addDaysKey } from '@/lib/dates'
 import { FLAG_LABEL, categoryLabel, clockTime, reviewItems, summarizeCards, weekLabel, type PersonCard, type TimeCardFlag, type TimeCardRow } from '@/lib/timecards'
 import { adjustTimeEntryAction } from '@/lib/actions/timecards'
 import { pushQboDayAction } from '@/lib/actions/qbo-time'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /**
  * /timecards — GPS-verified hours, week by week (Workyard's "GPS-verified
@@ -85,7 +86,7 @@ export function TimeCardsView({ cards, verified, integrity = verified, week, tz,
     setPushing(day)
     try {
       const r = await pushQboDayAction(day, tz)
-      if ('error' in r) toast(r.error, { variant: 'error' })
+      if (!r || 'error' in r) toast(r?.error ?? NO_REPLY, { variant: 'error' })
       else toast(`QuickBooks: ${r.pushed} pushed${r.skipped ? `, ${r.skipped} already there` : ''}${r.failed.length ? `, ${r.failed.length} failed` : ''}`)
     } finally { setPushing(null) }
   }
@@ -343,7 +344,7 @@ function EditEntrySheet({ row, tz, onClose, onSaved }: { row: TimeCardRow; tz: s
       note,
     })
     setBusy(false)
-    if (!res.ok) { setErr(res.error ?? 'Save failed'); return }
+    if (!res?.ok) { setErr(res?.error ?? 'Save failed'); return }
     toast('Time entry updated — the original times stay on the record.')
     onSaved()
   }

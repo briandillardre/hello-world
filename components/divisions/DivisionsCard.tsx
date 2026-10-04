@@ -43,7 +43,7 @@ export function DivisionsCard({ initial, counts, canEdit }: {
     setBusy(true); setMsg(null)
     const r = await createDivisionAction(clean, color)
     setBusy(false)
-    if (!r.ok || !r.id) { setMsg(r.error ?? 'Could not create it.'); return }
+    if (!r?.ok || !r.id) { setMsg(r?.error ?? 'Could not create it.'); return }
     setRows((p) => [...p, { id: r.id!, name: clean, color }])
     setName(''); setAdding(false)
   }
@@ -54,7 +54,7 @@ export function DivisionsCard({ initial, counts, canEdit }: {
     setBusy(true); setMsg(null)
     const r = await updateDivisionAction(id, { name: clean })
     setBusy(false)
-    if (!r.ok) { setMsg(r.error ?? 'Could not rename it.'); return }
+    if (!r?.ok) { setMsg(r?.error ?? 'Could not rename it.'); return }
     setRows((p) => p.map((d) => (d.id === id ? { ...d, name: clean } : d)))
     setEditId(null)
   }
@@ -62,14 +62,14 @@ export function DivisionsCard({ initial, counts, canEdit }: {
   const recolor = async (id: string, c: string) => {
     setRows((p) => p.map((d) => (d.id === id ? { ...d, color: c } : d)))
     const r = await updateDivisionAction(id, { color: c })
-    if (!r.ok) setMsg(r.error ?? 'Could not change the colour.')
+    if (!r?.ok) setMsg(r?.error ?? 'Could not change the colour.')
   }
 
   const setArchived = async (id: string, archive: boolean) => {
     setBusy(true); setMsg(null)
     const r = await setDivisionArchivedAction(id, archive)
     setBusy(false)
-    if (!r.ok) { setMsg(r.error ?? 'Could not do that.'); return }
+    if (!r?.ok) { setMsg(r?.error ?? 'Could not do that.'); return }
     setRows((p) => p.map((d) => (d.id === id ? { ...d, archived_at: archive ? new Date().toISOString() : null } : d)))
   }
 

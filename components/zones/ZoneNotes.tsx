@@ -21,7 +21,7 @@ export function ZoneNotes({ id, initial }: { id: string; initial: string }) {
     setError(null)
     const res = await saveZoneNotesAction(id, notes)
     setSaving(false)
-    if (!res.ok) { setError(res.error ?? 'Could not save.'); return }
+    if (!res?.ok) { setError(res?.error ?? 'Could not save.'); return }
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }

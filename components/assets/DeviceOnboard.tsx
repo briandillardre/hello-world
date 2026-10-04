@@ -12,6 +12,7 @@ import {
   addDeviceAction, setDeviceStepAction, deleteDeviceAction,
   addDevicesBulkAction, registerDeviceAssetAction,
 } from '@/lib/actions/devices'
+import { NO_REPLY } from '@/lib/action-reply'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -58,7 +59,7 @@ function RegisterAsset({ device }: { device: DeviceWithLive }) {
   const go = () => {
     start(async () => {
       const res = await registerDeviceAssetAction(device.imei, name, type)
-      if (!res.ok) { toast(res.error ?? 'Could not create that asset.', { variant: 'error' }); return }
+      if (!res?.ok) { toast(res?.error ?? 'Could not create that asset.', { variant: 'error' }); return }
       toast(`${name.trim()} registered.`)
     })
   }
@@ -108,7 +109,8 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
   const toggle = (key: string, done: boolean) => {
     start(async () => {
       const res = await setDeviceStepAction(device.imei, key, done)
-      if (!res.ok && res.error) toast(res.error, { variant: 'error' })
+      if (!res) toast(NO_REPLY, { variant: 'error' })
+      else if (!res.ok && res.error) toast(res.error, { variant: 'error' })
     })
   }
 
@@ -121,7 +123,8 @@ function DeviceCard({ device }: { device: DeviceWithLive }) {
     }))) return
     start(async () => {
       const res = await deleteDeviceAction(device.imei)
-      if (!res.ok && res.error) toast(res.error, { variant: 'error' })
+      if (!res) toast(NO_REPLY, { variant: 'error' })
+      else if (!res.ok && res.error) toast(res.error, { variant: 'error' })
     })
   }
 
@@ -322,7 +325,7 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const submitOne = () => {
     start(async () => {
       const res = await addDeviceAction({ imei, model, label, iccid })
-      if (!res.ok) { toast(res.error ?? 'Could not add that device.', { variant: 'error' }); return }
+      if (!res?.ok) { toast(res?.error ?? 'Could not add that device.', { variant: 'error' }); return }
       toast('Device added to the checklist.')
       reset(); onOpenChange(false)
     })
@@ -331,7 +334,7 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const submitMany = () => {
     start(async () => {
       const res = await addDevicesBulkAction(bulk, model)
-      if (res.error) { toast(res.error, { variant: 'error' }); return }
+      if (!res || res.error) { toast(res?.error ?? NO_REPLY, { variant: 'error' }); return }
       setSkipped(res.skipped)
       toast(`Added ${res.added} device${res.added === 1 ? '' : 's'}.`)
       if (!res.skipped.length) { reset(); onOpenChange(false) }

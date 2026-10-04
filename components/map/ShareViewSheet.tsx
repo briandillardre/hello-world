@@ -6,6 +6,7 @@ import { createViewLinkAction, listTeammatesAction, sendViewLinkAction, type Tea
 import { deliverLink, copyText } from '@/lib/map-export'
 import type { SharedView } from '@/lib/share-links'
 import { toast } from '@/components/ui/feedback'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /**
  * Share THIS SCREEN with the team (Brian, Sep 19: "Need share option to send
@@ -51,7 +52,7 @@ export function ShareViewSheet({ open, onClose, snapshot, summary, defaultTitle 
   useEffect(() => {
     if (!open) return
     let gone = false
-    listTeammatesAction().then((t) => { if (!gone) setTeam(t) }).catch(() => { if (!gone) setTeam([]) })
+    listTeammatesAction().then((t) => { if (!gone) setTeam(t ?? []) }).catch(() => { if (!gone) setTeam([]) })
     return () => { gone = true }
   }, [open])
 
@@ -65,7 +66,7 @@ export function ShareViewSheet({ open, onClose, snapshot, summary, defaultTitle 
     try {
       const r = await createViewLinkAction({ title: typed, view: snapshot })
       if (seq !== mintSeq.current) return null // a newer title won
-      if (!r.ok) { setErr(r.error); return null }
+      if (!r?.ok) { setErr(r?.error ?? NO_REPLY); return null }
       const l = { id: r.id, url: r.url, path: r.path, title: r.title, typed }
       setLink(l)
       return l
@@ -125,7 +126,7 @@ export function ShareViewSheet({ open, onClose, snapshot, summary, defaultTitle 
     setSentLine(null)
     try {
       const r = await sendViewLinkAction(l.id, Array.from(picked), note.trim() || null)
-      if (!r.ok) { setErr(r.error); return }
+      if (!r?.ok) { setErr(r?.error ?? NO_REPLY); return }
       const parts: string[] = []
       if (r.sent.length) parts.push(`Sent to ${listNames(r.sent)}.`)
       if (r.noPhone.length) parts.push(`${listNames(r.noPhone)} ${r.noPhone.length === 1 ? 'has' : 'have'} no phone in the app yet — send ${r.noPhone.length === 1 ? 'them' : 'them'} the link.`)

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Check, Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import { confirmSheet, toast } from '@/components/ui/feedback'
 import { rotateApiKeyAction } from '@/lib/actions/company-key'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /**
  * Masked tracker API key with reveal + copy + admin rotation. The real key
@@ -40,12 +41,12 @@ export function ApiKeyReveal({ apiKey, demo }: { apiKey: string; demo: boolean }
     if (!ok) return
     startTransition(async () => {
       const res = await rotateApiKeyAction()
-      if (res.ok) {
+      if (res?.ok) {
         setShown(false)
         toast(`New key issued (${res.masked}) — copy it above.`, { variant: 'success' })
         router.refresh()
       } else {
-        toast(res.error, { variant: 'error' })
+        toast(res?.error ?? NO_REPLY, { variant: 'error' })
       }
     })
   }

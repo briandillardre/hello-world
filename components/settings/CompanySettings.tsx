@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { updateCompanySettingsAction, saveCompanyLogoAction, saveLogoBgAction } from '@/lib/actions/company'
+import { NO_REPLY } from '@/lib/action-reply'
 import { normalizeUsPhone } from '@/lib/phone'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
     const prev = logoBg
     setLogoBg(bg)
     const r = await saveLogoBgAction(bg).catch(() => ({ ok: false as const, error: 'Save failed' }))
-    if (!r.ok) { setLogoBg(prev); setErr(r.error ?? 'Backing save failed.') }
+    if (!r?.ok) { setLogoBg(prev); setErr(r?.error ?? 'Backing save failed.') }
     else router.refresh()
   }
   const [err, setErr] = useState<string | null>(null)
@@ -98,7 +99,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
       const fd = new FormData()
       if (send) fd.set('logo', send)
       const r = await saveCompanyLogoAction(fd)
-      if (!r.ok) setErr(r.error ?? 'Logo upload failed.')
+      if (!r?.ok) setErr(r?.error ?? 'Logo upload failed.')
       else router.refresh()
     } finally { setLogoBusy(false); doneBar() }
   }
@@ -131,7 +132,7 @@ export function CompanySettings({ name, plan, work_start, work_end, work_days, a
     const doneBar = trackBusy('Saving company settings…')
     try {
       const ok = await updateCompanySettingsAction({ ...form, sms_consent: smsConsent || consentOnFile })
-      if (!ok) { setErr('Could not save. You may not have admin rights, or the database rejected it.'); return }
+      if (!ok) { setErr(ok === undefined ? NO_REPLY : 'Could not save. You may not have admin rights, or the database rejected it.'); return }
       setEditing(false)
       router.refresh()
     } catch { setErr('Could not save. Please try again.') }

@@ -27,13 +27,13 @@ export function PhotosPage({ photos, canEdit, myId, demo }: { photos: FieldPhoto
   useEffect(() => {
     if (!moving || sites.length) return
     let alive = true
-    void listPhotoSitesAction().then((r) => { if (alive) setSites(r) }).catch(() => {})
+    void listPhotoSitesAction().then((r) => { if (alive && r) setSites(r) }).catch(() => {})
     return () => { alive = false }
   }, [moving, sites.length])
 
   async function move(p: FieldPhoto, geofenceId: string) {
     const r = await movePhotoAction(p.id, geofenceId)
-    if (!r.ok) { window.alert(r.error ?? 'Could not move it.'); return }
+    if (!r?.ok) { window.alert(r?.error ?? 'Could not move it.'); return }
     setList((xs) => xs.map((x) => (x.id === p.id ? { ...x, zone: r.zone ?? null, geofence_id: geofenceId, lat: r.lat!, lng: r.lng! } : x)))
     setMoving(null); setLightbox(null)
   }
@@ -52,8 +52,8 @@ export function PhotosPage({ photos, canEdit, myId, demo }: { photos: FieldPhoto
   async function remove(p: FieldPhoto) {
     if (!window.confirm('Remove this photo from the map and the index?')) return
     const r = await deletePhotoAction(p.id)
-    if (r.ok) { setList((xs) => xs.filter((x) => x.id !== p.id)); setLightbox(null) }
-    else window.alert(r.error ?? 'Could not remove it.')
+    if (r?.ok) { setList((xs) => xs.filter((x) => x.id !== p.id)); setLightbox(null) }
+    else window.alert(r?.error ?? 'Could not remove it.')
   }
 
   return (

@@ -42,7 +42,7 @@ function PendingCard({ r, zoneNames }: { r: ReceiptRow; zoneNames: Record<string
             category: category || undefined,
           })
         : await rejectReceiptAction(r.id)
-      if (!res.ok) setMsg(res.error ?? 'Failed')
+      if (!res?.ok) setMsg(res?.error ?? 'Failed')
       else router.refresh()
     } finally {
       setBusy(null)

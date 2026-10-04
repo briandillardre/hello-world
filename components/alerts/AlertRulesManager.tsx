@@ -21,6 +21,7 @@ import {
   createAlertRuleAction, toggleAlertRuleAction, deleteAlertRuleAction,
   updateAlertRuleAction, bulkZoneRulesAction,
 } from '@/lib/actions/alerts'
+import { NO_REPLY } from '@/lib/action-reply'
 
 type MatrixCol = 'after_hours_movement' | 'left_site' | 'inout' | 'idle'
 
@@ -390,7 +391,7 @@ function CustomRuleForm({ geofences, assets, onDone }: {
     // Demo mode (or a failed insert) returns null — say so and keep the form
     // open instead of closing as if the rule saved.
     if (!created) {
-      toast('Demo — changes aren’t saved.', { variant: 'error' })
+      toast(created === undefined ? NO_REPLY : 'Demo — changes aren’t saved.', { variant: 'error' })
       return
     }
     onDone()

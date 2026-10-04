@@ -9,6 +9,7 @@ import type { TeamData, Role, TeamMember } from '@/lib/db/team'
 import { createInviteAction, emailInviteAction, revokeInviteAction, updateMemberRoleAction, removeMemberAction, updateMemberOverridesAction, updateRolePolicyAction } from '@/lib/actions/team'
 import { PushPrefs } from '@/components/settings/PushPrefs'
 import { viewAsAction } from '@/lib/actions/viewas'
+import { NO_REPLY } from '@/lib/action-reply'
 import { ROLE_DEFAULTS, ROLE_LABEL, ROLE_BLURB, GRANTABLE_FEATURES, ROLE_FEATURE_DEFAULTS, PROSPECT_NEVER, featuresForRole, type FeatureKey, type RolePolicy } from '@/lib/permissions'
 import { formatRelativeTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -50,7 +51,7 @@ export function TeamManager({ data }: { data: TeamData }) {
     try {
       const to = email.trim()
       const res = await createInviteAction(email, role)
-      if ('error' in res) { setErr(res.error); return }
+      if (!res || 'error' in res) { setErr(res?.error ?? NO_REPLY); return }
       setNewLink(linkFor(res.token))
       if (res.emailed) setSentNote(`Invite emailed to ${to} — link below if you want to text it too.`)
       else if (res.emailError === 'not configured' && to) setSentNote('Email sending isn’t set up yet (RESEND_API_KEY) — copy the link below and send it yourself.')
@@ -69,7 +70,7 @@ export function TeamManager({ data }: { data: TeamData }) {
 
   const changeRole = async (id: string, r: Role) => {
     const ok = await updateMemberRoleAction(id, r)
-    if (!ok) toast('Couldn’t change that role — you can only set levels below your own.', { variant: 'error' })
+    if (!ok) toast(ok === undefined ? NO_REPLY : 'Couldn’t change that role — you can only set levels below your own.', { variant: 'error' })
     router.refresh()
   }
   const remove = async (id: string, name: string) => {
@@ -155,7 +156,7 @@ export function TeamManager({ data }: { data: TeamData }) {
                       setEmailing(inv.id)
                       try {
                         const r = await emailInviteAction(inv.id)
-                        setSentNote(r.ok ? `Invite emailed to ${inv.email}.` : r.error ?? 'Send failed.')
+                        setSentNote(r?.ok ? `Invite emailed to ${inv.email}.` : r?.error ?? 'Send failed.')
                       } finally { setEmailing(null) }
                     }}
                     disabled={emailing === inv.id}
@@ -213,7 +214,7 @@ function MemberRow({
 
   const viewAs = () => start(async () => {
     const res = await viewAsAction(m.id)
-    if (!res.ok) { toast(res.error ?? 'Could not start the preview.', { variant: 'error' }); return }
+    if (!res?.ok) { toast(res?.error ?? 'Could not start the preview.', { variant: 'error' }); return }
     router.push('/map'); router.refresh()
   })
 
@@ -317,7 +318,7 @@ function ViewLevels({ policy, editableRoles, isMaster }: { policy: RolePolicy; e
     setBusy(id)
     const res = await updateRolePolicyAction(role, key, value)
     setBusy(null)
-    if (!res.ok) { toast(res.error ?? 'Could not save.', { variant: 'error' }); return }
+    if (!res?.ok) { toast(res?.error ?? 'Could not save.', { variant: 'error' }); return }
     router.refresh()
   }
 

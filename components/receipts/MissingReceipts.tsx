@@ -37,7 +37,7 @@ export function MissingReceipts({
     setBusy(key); setMsg(null)
     try {
       const r = (await fn()) as { ok?: boolean; error?: string }
-      if (r && r.ok === false) setMsg(r.error ?? 'Something went wrong.')
+      if (!r || r.ok === false) setMsg(r?.error ?? 'Something went wrong.')
       else { if (okMsg) setMsg(okMsg); router.refresh() }
     } finally { setBusy(null) }
   }
@@ -81,7 +81,7 @@ export function MissingReceipts({
             disabled={busy === 'import' || !csv.trim()}
             onClick={() => run('import', async () => {
               const r = await importChargesAction(csv)
-              if (r.ok) { setCsv(''); setShowImport(false); setMsg(`Imported ${r.imported} charge(s)${r.matched ? `, ${r.matched} auto-matched` : ''}${r.skipped ? `, ${r.skipped} skipped` : ''}.`) }
+              if (r?.ok) { setCsv(''); setShowImport(false); setMsg(`Imported ${r.imported} charge(s)${r.matched ? `, ${r.matched} auto-matched` : ''}${r.skipped ? `, ${r.skipped} skipped` : ''}.`) }
               return r
             })}
             className="rounded-lg bg-amber text-[#1a1100] font-semibold text-[13px] px-4 py-2 disabled:opacity-50"
@@ -103,7 +103,7 @@ export function MissingReceipts({
             disabled={busy === 'add' || !form.merchant.trim() || !form.amount}
             onClick={() => run('add', async () => {
               const r = await addExpenseAction({ merchant: form.merchant, amount: Number(form.amount), txn_date: form.txn_date, last4: form.last4 || undefined })
-              if (r.ok) { setForm({ merchant: '', amount: '', txn_date: form.txn_date, last4: '' }); setShowAdd(false) }
+              if (r?.ok) { setForm({ merchant: '', amount: '', txn_date: form.txn_date, last4: '' }); setShowAdd(false) }
               return r
             })}
             className="rounded-lg bg-amber text-[#1a1100] font-semibold text-[13px] px-4 py-2 disabled:opacity-50"

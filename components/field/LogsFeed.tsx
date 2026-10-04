@@ -7,6 +7,7 @@ import type { PairSegment } from '@/lib/pairing'
 import { decidePairAction, type PairDecision } from '@/lib/actions/pairs'
 import { pushQboDayAction } from '@/lib/actions/qbo-time'
 import { toast } from '@/components/ui/feedback'
+import { NO_REPLY } from '@/lib/action-reply'
 
 /**
  * The office's morning read: every crew day grouped date → project, with the
@@ -66,7 +67,7 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
     } finally {
       setPushingDay(null)
     }
-    if ('error' in r) { toast(r.error, { variant: 'error' }); return }
+    if (!r || 'error' in r) { toast(r?.error ?? NO_REPLY, { variant: 'error' }); return }
     if (r.pushedEntryIds.length) {
       setQboPushed((p) => new Set(Array.from(p).concat(r.pushedEntryIds)))
     }
@@ -89,9 +90,9 @@ export function LogsFeed({ entries, logs, zoneNames, tz, pairs = [], pairDecisio
     const k = `${day}|${personId}|${machineId}`
     setLocalDecisions((p) => ({ ...p, [k]: status }))
     const res = await decidePairAction(day, personId, machineId, status)
-    if (!res.ok) {
+    if (!res?.ok) {
       setLocalDecisions((p) => { const n = { ...p }; delete n[k]; return n })
-      toast(res.error ?? 'Could not save that decision.', { variant: 'error' })
+      toast(res?.error ?? 'Could not save that decision.', { variant: 'error' })
     }
   }
 

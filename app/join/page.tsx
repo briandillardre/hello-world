@@ -36,7 +36,7 @@ function JoinInner() {
     let alive = true
     setLoadFailed(false)
     getInviteInfoAction(token)
-      .then((i) => { if (alive) setInfo(i) })
+      .then((i) => { if (alive) { if (i) setInfo(i); else setLoadFailed(true) } })
       .catch(() => { if (alive) setLoadFailed(true) })
     ;(async () => {
       const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -64,7 +64,7 @@ function JoinInner() {
       setError('Could not reach HammerTrack. Check your connection and try again.')
       return false
     }
-    if (!res.ok) { setError(res.error ?? 'Could not join.'); return false }
+    if (!res?.ok) { setError(res?.error ?? 'Could not join.'); return false }
     router.push('/map'); router.refresh(); return true
   }
 

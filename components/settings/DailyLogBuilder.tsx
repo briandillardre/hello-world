@@ -28,8 +28,8 @@ export function DailyLogBuilder({ initial, editable }: { initial: LogFormItem[];
     setSaved('saving')
     start(async () => {
       const r = await saveLogFormAction(next).catch(() => ({ ok: false as const, error: 'Save failed' }))
-      if (r.ok) { setSaved('saved'); setError(null) }
-      else { setSaved('error'); setError(r.error ?? 'Save failed') }
+      if (r?.ok) { setSaved('saved'); setError(null) }
+      else { setSaved('error'); setError(r?.error ?? 'Save failed') }
     })
   }
 

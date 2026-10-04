@@ -126,14 +126,14 @@ export function NotifyPrefsForm({
     setSaved(false)
     start(async () => {
       const r = token ? await saveNotifyPrefsByTokenAction(token, next) : await saveDigestPrefsAction(next)
-      if (r.ok) {
+      if (r?.ok) {
         setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200)
         // The emailed link can only turn things DOWN, so show what the server
         // actually stored rather than what the switch was tapped to.
         const res = r as { prefs?: DigestPrefs; clamped?: boolean }
         if (res.prefs) setP(res.prefs)
         if (res.clamped) setError('This link can only turn things off. Sign in to switch a summary back on.')
-      } else { setError(r.error ?? 'Save failed'); setP(prev) }
+      } else { setError(r?.error ?? 'Save failed'); setP(prev) }
     })
   }
 
@@ -145,11 +145,11 @@ export function NotifyPrefsForm({
     setSaved(false)
     start(async () => {
       const r = token ? await silenceAllByTokenAction(token) : await saveDigestPrefsAction(next)
-      if (r.ok) {
+      if (r?.ok) {
         setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200)
         const res = r as { prefs?: DigestPrefs }
         if (res.prefs) setP(res.prefs)
-      } else { setError(r.error ?? 'Save failed'); setP(prev) }
+      } else { setError(r?.error ?? 'Save failed'); setP(prev) }
     })
   }
 

@@ -395,7 +395,7 @@ export function MeasureTool({
     if (initial?.id) {
       const r = await updateMeasurementAction(initial.id, { name: finalName, geometry, props })
       setSaving(false)
-      if (!r.ok) { setMsg(r.error ?? 'Update failed.'); return }
+      if (!r?.ok) { setMsg(r?.error ?? 'Update failed.'); return }
       onSaved({ id: initial.id, name: finalName, kind: mode, personal, geometry, props })
       reset()
       setMsg('Updated ✓')
@@ -403,7 +403,7 @@ export function MeasureTool({
     }
     const r = await saveMeasurementAction({ name: finalName, kind: mode, personal, geometry, props })
     setSaving(false)
-    if (!r.ok) { setMsg(r.error ?? 'Save failed.'); return }
+    if (!r?.ok) { setMsg(r?.error ?? 'Save failed.'); return }
     onSaved(r.id ? { id: r.id, name: finalName, kind: mode, personal, geometry, props } : undefined)
     reset()
     setMsg('Saved ✓')
