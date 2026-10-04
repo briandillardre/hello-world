@@ -17,6 +17,20 @@
  *   PLAY_SERVICE_ACCOUNT_JSON=... node scripts/play-promote.mjs [track]
  */
 import { createSign } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+/** This checkout's app version — a draft uploaded over an older draft keeps
+ *  that release's NAME (1.5.4 sat in Play labelled "1.5.0"), so the promote
+ *  renames it when build.gradle is the build being promoted. */
+function gradleVersion() {
+  try {
+    const g = readFileSync(fileURLToPath(new URL('../android/app/build.gradle', import.meta.url)), 'utf8')
+    const code = g.match(/^\s*versionCode\s+(\d+)/m)?.[1]
+    const name = g.match(/^\s*versionName\s+"([^"]+)"/m)?.[1]
+    return code && name ? { code, name } : null
+  } catch { return null }
+}
 
 const PKG = process.env.PLAY_PACKAGE || 'com.hammertrack.app'
 const TRACK = process.argv[2] || process.env.PLAY_TRACK || 'production'
@@ -85,6 +99,12 @@ try {
   // userFraction is invalid on a completed release, so it is dropped.
   const { userFraction: _drop, ...rest } = draft
   void _drop
+  const v = gradleVersion()
+  const codes = (draft.versionCodes ?? []).map(String)
+  if (v && codes.length === 1 && codes[0] === v.code && rest.name !== v.name) {
+    console.log(`Renaming the release "${rest.name ?? ''}" → "${v.name}" (versionCode ${v.code}).`)
+    rest.name = v.name
+  }
   // ONLY the promoted release. Sending the outgoing one alongside it is a
   // 400 — "Only one completed release is allowed" — and it is not needed:
   // Play retires the previous release itself (it shows up under Release
