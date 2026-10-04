@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { MaintenanceSchedule } from '@/lib/types'
 import { notifySystem } from '@/lib/monitor'
 import { diagnoseSilence } from '@/lib/power-loss-check'
 import { clockLabel, shortName } from '@/lib/power-loss'
@@ -461,6 +462,39 @@ export async function GET(req: NextRequest) {
       if (aged.length) await svc.storage.from('dirt').remove(aged)
       out.dirtGroundExpired = aged.length
     } catch (err) { out.dirtSweep = err instanceof Error ? err.message : 'failed' }
+
+    // 9 — a work order for every overdue DATE schedule, every company. They
+    // used to open only when someone loaded /maintenance, so "opens its own
+    // work order" was true only for a company that looked (truth-check,
+    // Oct 4). Hour and mile schedules wait on the tracker meters (board
+    // #190); the unique open-WO-per-schedule index makes a repeat a no-op.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const { computeStatus } = await import('@/lib/db/maintenance')
+      const svc = createServiceClient()
+      const { data: scheds, error: sErr } = await svc.from('maintenance_schedules')
+        .select('*, asset:assets!inner(name, active)')
+        .eq('interval_type', 'days').eq('asset.active', true).limit(2000)
+      if (sErr) throw new Error(`maintenance_schedules read: ${sErr.message}`)
+      let opened = 0
+      for (const row of scheds ?? []) {
+        const { asset, ...sched } = row as MaintenanceSchedule & { asset: { name: string } }
+        if (computeStatus(sched as MaintenanceSchedule, 0).status !== 'overdue') continue
+        const { error } = await svc.from('work_orders').insert({
+          company_id: sched.company_id,
+          asset_id: sched.asset_id,
+          title: `${sched.description || 'Scheduled service'} — ${asset.name}`,
+          detail: `Auto-opened: days interval of ${sched.interval_value} exceeded.`,
+          source: 'schedule',
+          source_ref: sched.id,
+          priority: 'high',
+          reading: null,
+        })
+        if (!error) opened++
+        else if (error.code !== '23505') throw new Error(`work_orders insert: ${error.message}`)
+      }
+      out.scheduleWorkOrdersOpened = opened
+    } catch (err) { out.scheduleWorkOrders = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

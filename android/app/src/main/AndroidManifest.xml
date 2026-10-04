@@ -47,6 +47,9 @@
          Scan trackers (getUserMedia). Undeclared, the WebView auto-denies
          the request and the scanner silently falls back to typing. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- The scanner's short buzz on a read: without this the WebView's
+         navigator.vibrate is a silent no-op (a normal permission, no prompt). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Microphone: talking to Ask AI and the map search (v1.5.2, Sep 19 2026 —
          Brian: "Talk to ai verbally button not working"). The WebView's own

@@ -42,6 +42,21 @@ if (process.env.STORE_SHOTS_CA) {
   launch.args.push(`--ignore-certificate-errors-spki-list=${createHash('sha256').update(cert.publicKey.export({ type: 'spki', format: 'der' })).digest('base64')}`)
 }
 const browser = await chromium.launch(launch)
+
+// Demo mode or nothing — checked BEFORE a frame is recorded (the file is headed for public YouTube).
+{
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  await page.goto(`${BASE}/reports`, { waitUntil: 'domcontentloaded', timeout: 120000 })
+  await page.waitForTimeout(2500)
+  const text = await page.locator('body').innerText().catch(() => '')
+  await ctx.close()
+  if (!/demo data/i.test(text)) {
+    console.error(`Refusing: ${BASE} is not in demo mode (/reports doesn't say "demo data"). Run the build with no Supabase env.`)
+    await browser.close(); process.exit(1)
+  }
+}
+
 const W = 1920, H = 1080
 const dir = mkdtempSync(path.join(os.tmpdir(), 'ht-video-'))
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, timezoneId: 'America/New_York', recordVideo: { dir, size: { width: W, height: H } } })
@@ -71,7 +86,6 @@ for (const p of ['/map', '/map?range=yesterday&t=0.05', '/alerts', '/assets', '/
   await warm.goto(BASE + p, { waitUntil: 'domcontentloaded', timeout: 120000 })
   await warm.waitForTimeout(p.startsWith('/map') || p === '/command' ? 9000 : 2500)
 }
-const body = await warm.locator('body').innerText()
 await warm.close()
 
 const mark = readFileSync(new URL('../public/brand/hammertrack-mark.png', import.meta.url)).toString('base64')
@@ -163,7 +177,6 @@ const v = page.video()
 await page.close()
 await ctx.close()
 await browser.close()
-if (!/demo data/i.test(body) && !/\(DEMO\)/.test(body)) console.warn('⚠ the app did not look like demo mode — check the video before using it')
 const src = v ? await v.path() : readdirSync(dir).map((f) => path.join(dir, f)).find((f) => f.endsWith('.webm'))
 
 // The recording starts on an empty tab — a few white frames before the first paint. Cut them with

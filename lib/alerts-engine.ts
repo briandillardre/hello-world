@@ -106,8 +106,31 @@ export function metresToEdge(point: [number, number], ring: [number, number][]):
   return best
 }
 
-/** A speeding fix must sit this far inside the zone: a road along the fence, GPS wander at the edge. */
+/** A speeding fix must sit this far inside the zone: a road along the fence, GPS wander at the edge… */
 export const SPEED_EDGE_M = 25
+/** …but never less than GPS wander. */
+export const SPEED_EDGE_MIN_M = 5
+
+/**
+ * How far inside a zone a speeding fix must be: a quarter of the zone's mean
+ * width (2 × area ÷ perimeter), between SPEED_EDGE_MIN_M and SPEED_EDGE_M. A
+ * flat 25 m left no point at all in a yard under ~50 m across, so "5 mph in
+ * the yard" — the commonest zone limit — could never fire (ship-check, Oct 4).
+ */
+export function speedEdgeMargin(ring: [number, number][]): number {
+  if (ring.length < 3) return SPEED_EDGE_M
+  const y0 = ring[0][1]
+  const kx = 111_320 * Math.cos((y0 * Math.PI) / 180), ky = 110_574
+  let twiceArea = 0, perimeter = 0
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const ax = ring[j][0] * kx, ay = ring[j][1] * ky, bx = ring[i][0] * kx, by = ring[i][1] * ky
+    twiceArea += ax * by - bx * ay
+    perimeter += Math.hypot(bx - ax, by - ay)
+  }
+  if (!(perimeter > 0)) return SPEED_EDGE_M
+  const meanWidth = Math.abs(twiceArea) / perimeter
+  return Math.max(SPEED_EDGE_MIN_M, Math.min(SPEED_EDGE_M, meanWidth / 4))
+}
 /** …and the fix before it, this recent, must be inside and over the limit too. */
 export const SPEED_PAIR_MS = 120_000
 
@@ -122,7 +145,7 @@ export interface PriorFix { lat: number; lng: number; speed: number | null; time
  */
 export function speedingHolds(ring: [number, number][], limit: number, cur: Pick<AssetLocation, 'lat' | 'lng' | 'speed' | 'timestamp'>, prev: PriorFix | null | undefined): boolean {
   if (!(limit > 0) || (cur.speed ?? 0) <= limit) return false
-  if (!pointInPolygon([cur.lng, cur.lat], ring) || metresToEdge([cur.lng, cur.lat], ring) < SPEED_EDGE_M) return false
+  if (!pointInPolygon([cur.lng, cur.lat], ring) || metresToEdge([cur.lng, cur.lat], ring) < speedEdgeMargin(ring)) return false
   if (!prev || prev.speed == null || prev.speed <= limit || !pointInPolygon([prev.lng, prev.lat], ring)) return false
   const dt = Date.parse(cur.timestamp) - Date.parse(prev.timestamp)
   return dt > 0 && dt <= SPEED_PAIR_MS

@@ -23,6 +23,9 @@ type DetectorCtor = (new (opts?: { formats?: string[] }) => Detector) & { getSup
 export const SCAN_FORMATS = ['code_128', 'qr_code', 'code_39', 'ean_13', 'itf', 'data_matrix']
 /** The zxing WebAssembly this build ships (public/zxing). */
 export const ZXING_WASM_PATH = '/zxing/zxing_reader.wasm'
+// ONE settings object for the page's life: zxing compares settings by identity,
+// so a fresh object per scanner reloaded the ~1 MB reader every time one opened.
+const ZXING_SETTINGS = { overrides: { locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? ZXING_WASM_PATH : prefix + path) } }
 
 export async function makeDetector(formats: string[] = SCAN_FORMATS): Promise<{ detector: Detector; engine: 'native' | 'zxing' }> {
   const Native = (globalThis as unknown as { BarcodeDetector?: DetectorCtor }).BarcodeDetector
@@ -35,7 +38,7 @@ export async function makeDetector(formats: string[] = SCAN_FORMATS): Promise<{ 
     } catch { /* no usable native reader — zxing below */ }
   }
   const m = await import('barcode-detector/ponyfill')
-  m.prepareZXingModule({ overrides: { locateFile: (path: string, prefix: string) => (path.endsWith('.wasm') ? ZXING_WASM_PATH : prefix + path) } })
+  m.prepareZXingModule(ZXING_SETTINGS)
   return { detector: new m.BarcodeDetector({ formats: formats as never }) as unknown as Detector, engine: 'zxing' }
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Radio } from 'lucide-react'
 import { isNativeApp } from '@/lib/native'
-import { GATEWAY_EVENT, GATEWAY_STATUS_EVENT, phoneGatewayEnabled, setPhoneGateway, type GatewayStatus } from './PhoneGateway'
+import { GATEWAY_EVENT, GATEWAY_STATUS_EVENT, GATEWAY_STATUS_QUERY, phoneGatewayEnabled, setPhoneGateway, type GatewayStatus } from './PhoneGateway'
 
 /**
  * The switch that makes this phone a tag gateway, with a live status line.
@@ -22,6 +22,7 @@ export function GatewayToggle() {
     const g = (e: Event) => setOn(!!(e as CustomEvent<{ on: boolean }>).detail?.on)
     window.addEventListener(GATEWAY_STATUS_EVENT, h)
     window.addEventListener(GATEWAY_EVENT, g)
+    window.dispatchEvent(new Event(GATEWAY_STATUS_QUERY))
     return () => { window.removeEventListener(GATEWAY_STATUS_EVENT, h); window.removeEventListener(GATEWAY_EVENT, g) }
   }, [])
   if (!native) return null
@@ -34,7 +35,7 @@ export function GatewayToggle() {
           <p className="font-display font-bold text-sm text-ink">This phone hears tags</p>
           <p className="text-[12px] text-muted leading-snug">
             {on
-              ? 'On by default. While the app is open, the tools near you show on the map as riding with you — the way they ride with a truck. It listens a few seconds at a time — every 20 seconds while it hears tags, easing off to every 1–2 minutes when it hears none — only checks where you are when it hears one, and rests below 15% battery. Nothing runs with the app closed.'
+              ? 'On by default. While the app is open, the tools near you show on the map as riding with you — the way they ride with a truck. It listens a few seconds at a time — every 20 seconds while it hears tags, easing off to every 1–2 minutes when it hears none or nothing new — only checks where you are when it hears a tag it hasn’t just reported, and rests below 15% battery. Nothing runs with the app closed.'
               : 'Off on this phone — no Bluetooth listening at all. The tools near you will only show on the map when a truck with a tracker hears them.'}
           </p>
         </div>

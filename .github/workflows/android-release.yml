@@ -48,6 +48,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The Play key lives in this environment — board #193 limits it to
+    # master, so a workflow dispatched from any other branch can't read it.
+    environment: play
+    permissions:
+      contents: read
     env:
       HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
@@ -59,6 +64,8 @@ jobs:
           fi
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:

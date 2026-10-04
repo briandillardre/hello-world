@@ -91,16 +91,16 @@ Rerunnable — it rebuilds the seeded company from scratch.
 
 ---
 
-## Status (Sep 10 2026)
+## Status (Oct 4 2026)
 
 **Android: LIVE.** `com.hammertrack.app` has been in Play Production since
 Aug 21 (org account); hands-off uploads from the android-release workflow are
-proven (Sep 3). 1.3.1 (versionCode 8) is the live build; 1.4.1 (the shift
-recorder) is uploaded and waits on the one-time Foreground-service
-declaration in Play Console (board #119). The listing re-upload
-(screenshots, tagline, feature graphic — top of this doc) is still pending.
-Google's Sep 30 2026 Android developer-verification deadline: confirm the
-package shows "registered" on the Play Console home page. **iOS: waiting on
+proven (Sep 3). 1.4.1 (versionCode 10, the shift recorder) is the live build;
+1.5.0–1.5.4 sit as drafts behind the one-time Photo and Video declaration
+(board #140) and `play-promote` rolls the newest out once it is filed. The
+new listing (words, screenshots, feature graphic — top of this doc) is ready
+and waits on board #191 to publish. Developer verification: registered
+(Sep 26). **iOS: waiting on
 Brian's INDIVIDUAL Apple enrollment** (the organization enrollment was denied
 as final Sep 4); everything else is ready — docs/APP-STORE-PLAYBOOK.md →
 Approval day.
@@ -125,6 +125,8 @@ Approval day.
    ios/App/fastlane/Fastfile (register → certificate + profile → manual
    signing → build → TestFlight) arm with four `ASC_*` secrets on approval
    day (playbook → Approval day). **Waiting on the Individual enrollment.**
-8. ~~Screenshots + feature graphic~~ ✅ AUTOMATED Oct 4 — `store-assets/`
-   from `scripts/store-shots.mjs`, pushed by the `play-listing` workflow (top
-   of this doc). Promo video: waits on a YouTube upload.
+8. Screenshots + feature graphic — ✅ MADE Oct 4 (`store-assets/` from
+   `scripts/store-shots.mjs`); **publishing waits on board #191** — the
+   `play-listing` workflow's first run uploaded everything and Play refused
+   the commit until the upload account may edit the store listing. Promo
+   video: made (`scripts/store-video.mjs`), waits on a YouTube upload.

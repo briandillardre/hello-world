@@ -35,7 +35,7 @@
     ]
   },
   "apple": {
-    "_comment": "iPhone today: no lock-screen push until APNs is set up (docs/APP-STORE-PLAYBOOK.md), no battery reading for the Bluetooth rest (navigator.getBattery is Android-only), and a FIRST version takes no release notes. Revisit each line when those land.",
+    "_comment": "iPhone today: no lock-screen push until APNs is set up (docs/APP-STORE-PLAYBOOK.md), no phone tag listening (iOS hides tag MACs and iBeacon frames from Bluetooth scans, so the phone-gateway can match nothing — trucks hear the tags), and a FIRST version takes no release notes. Revisit each line when those land.",
     "name": "HammerTrack",
     "subtitle": "Fleet, equipment & tool GPS",
     "promotionalText": "One live map for every truck, machine and tagged tool, and your crew on the clock — with after-hours theft alerts and hours on every site.",
@@ -64,7 +64,7 @@
       "• Add a tracker by scanning its barcode, or paste your whole fleet in from a spreadsheet",
       "",
       "BUILT FOR A PHONE IN A TRUCK",
-      "• Bluetooth tag listening runs only while the app is open and eases off when nothing is near — with its own off switch",
+      "• Tool tags are heard by your trucks' own trackers — no phone needed",
       "• Speed alerts use your own limit for each zone, and need two fast readings in a row inside it — never one stray fix at the fence line",
       "• Bad signal is normal: clock-ins, daily logs and equipment checks wait on the phone and send themselves when you're back",
       "",
