@@ -58,6 +58,8 @@ export interface DirtFeature {
   thicknessIn?: number
   /** [lng, lat] — one point for a spot, a line for a contour, a ring (not closed) for an area. */
   coords: [number, number][]
+  /** Read from this plan sheet (zone imagery id) — reading the sheet again replaces it. */
+  src?: string
 }
 
 export interface DirtDesign {

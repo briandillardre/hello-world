@@ -11,7 +11,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { ArrowLeft, Check, Copy, Eye, EyeOff, Layers, Loader2, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowLeft, Check, Copy, Eye, EyeOff, FileUp, Layers, Loader2, Trash2, Undo2, X } from 'lucide-react'
+import { MAX_FEATURES, MAX_POINTS_TOTAL } from '@/lib/dirt/schema'
+import type { ImportResult } from '@/lib/dirt/plan-import'
 import { saveTakeoffAction, deleteTakeoffAction } from '@/lib/actions/dirt'
 import { decodeGround } from '@/lib/dirt/ground-format'
 import { ringSelfCrosses } from '@/lib/dirt/geom'
@@ -24,8 +26,10 @@ import { CUT_STEPS, FILL_STEPS, NEUTRAL, legendRows } from '@/lib/dirt/heat'
 import type { DirtDesign, DirtFeature, DirtKind, DirtResults, GroundGrid } from '@/lib/dirt/takeoff'
 import type { PlanSheet, TakeoffFull } from '@/lib/db/dirt'
 import type { MapSheet } from './TakeoffMap'
+import NumField from './NumField'
 
 const TakeoffMap = dynamic(() => import('./TakeoffMap'), { ssr: false })
+const PlanReader = dynamic(() => import('./PlanReader'), { ssr: false })
 
 interface Props {
   takeoff: TakeoffFull
@@ -118,6 +122,12 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const [msg, setMsg] = useState<{ tone: 'ok' | 'warn'; text: string } | null>(null)
   const [frame, setFrame] = useState<{ key: number; coords: [number, number][] } | undefined>(undefined)
   const [copied, setCopied] = useState(false)
+  // The plan reader: which sheet, what it shows on the map, and the line drawn across contours.
+  const [reading, setReading] = useState<string | null>(null)
+  const [readOverlay, setReadOverlay] = useState<GeoJSON.FeatureCollection | null>(null)
+  const [readPick, setReadPick] = useState<{ id: number; key: number } | null>(null)
+  const [readLine, setReadLine] = useState<[number, number][] | null>(null)
+  const [readLineDone, setReadLineDone] = useState<{ key: number; coords: [number, number][] } | null>(null)
 
   // ── Design edits ──
   const designRef = useRef(design)
@@ -291,7 +301,14 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     }
     if (tool.kind === 'boundary' || tool.kind === 'platform') setTool(null)
   }, [tool, draft, design, commit, goingUp, interval])
+  const finishReadLine = useCallback(() => {
+    setReadLine(l => {
+      if (l && l.length >= 2) setReadLineDone({ key: Date.now(), coords: l })
+      return null
+    })
+  }, [])
   const onMapClick = useCallback((p: [number, number], meta: { closesRing: boolean }) => {
+    if (readLine !== null) { setReadLine(l => [...(l ?? []), p]); return }
     if (!tool) return
     const shape = KIND_META[tool.kind].shape
     if (shape === 'point') {
@@ -303,13 +320,19 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     }
     if (shape === 'area' && meta.closesRing) { finish(); return }
     setDraft(d => [...d, p])
-  }, [tool, commit, finish])
+  }, [tool, commit, finish, readLine])
 
   // Keyboard: Esc, Backspace, Enter, Ctrl+Z.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return
+      if (readLine !== null) {
+        if (e.key === 'Escape') setReadLine(null)
+        else if (e.key === 'Enter') finishReadLine()
+        else if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); setReadLine(l => (l ?? []).slice(0, -1)) }
+        return
+      }
       if (e.key === 'Escape') { if (draft.length) setDraft([]); else if (tool) stopTool(); else setSelected(null) }
       else if (e.key === 'Enter' && tool) finish()
       else if ((e.key === 'Backspace' || e.key === 'Delete') && draft.length) { e.preventDefault(); setDraft(d => d.slice(0, -1)) }
@@ -390,7 +413,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   }, [step])
 
   // ── Derived ──
-  const fc = useMemo(() => designGeoJSON(design, selected), [design, selected])
+  // While a sheet is being read, what it added before stays off the map (the read is about to replace it).
+  const fc = useMemo(() => designGeoJSON(reading ? { ...design, features: design.features.filter(f => f.src !== reading) } : design, selected), [design, selected, reading])
   const snapTo = useMemo(() => snapVertices(design, tool), [design, tool])
   const mapSheets: MapSheet[] = useMemo(() => sheets.map(s => ({ id: s.id, url: s.url, corners: s.corners, visible: !!sheetState[s.id]?.visible, opacity: sheetState[s.id]?.opacity ?? 0.8 })), [sheets, sheetState])
   const savedHeat = saved.heatUrl && saved.heatCorners ? { url: saved.heatUrl, corners: saved.heatCorners, bandFt: saved.results?.heatBandFt ?? 1 } : null
@@ -400,6 +424,17 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const boundary = design.features.find(f => f.kind === 'boundary')
   const byKind = (k: DirtKind) => design.features.filter(f => f.kind === k)
   const legend = heat ? legendRows(heat.bandFt) : null
+
+  const readBudget = useMemo(() => {
+    const others = design.features.filter(f => f.src !== reading)
+    return { features: MAX_FEATURES - others.length, points: MAX_POINTS_TOTAL - others.reduce((n, f) => n + f.coords.length, 0) }
+  }, [design.features, reading])
+  const onReadImport = (r: ImportResult, opts: { existing: 'traced' | 'lidar'; offsetFt: number | null }) => {
+    const d = designRef.current
+    const keep = d.features.filter(f => f.src !== reading && !(r.counts.limits > 0 && f.kind === 'boundary'))
+    commit({ ...d, existing: { source: opts.existing, offsetFt: opts.offsetFt ?? d.existing.offsetFt }, features: [...keep, ...r.features] })
+  }
+  const closeReader = () => { setReading(null); setReadOverlay(null); setReadLine(null); setReadPick(null) }
 
   const draftColor = toolMeta?.color ?? '#ffffff'
   const toolWords = tool ? `${KIND_META[tool.kind].label}${tool.z !== undefined ? ` at ${tool.z} ft` : ''}${tool.thicknessIn !== undefined ? ` · ${tool.thicknessIn}"` : ''}` : ''
@@ -444,15 +479,17 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             ring={zone.ring}
             sheets={mapSheets}
             features={fc}
-            draft={tool && KIND_META[tool.kind].shape !== 'point' ? { shape: KIND_META[tool.kind].shape, coords: draft, color: draftColor } : null}
+            draft={readLine !== null ? { shape: 'line', coords: readLine, color: '#22d3ee' } : tool && KIND_META[tool.kind].shape !== 'point' ? { shape: KIND_META[tool.kind].shape, coords: draft, color: draftColor } : null}
             heat={heat ? { url: heat.url, corners: heat.corners } : null}
             heatVisible={heatVisible}
             heatOpacity={heatOpacity}
             heatOverSheets={step === 'results'}
-            drawing={!!tool}
-            snapTo={snapTo}
+            drawing={!!tool || readLine !== null}
+            snapTo={readLine !== null ? [] : snapTo}
             onClick={onMapClick}
-            onDblClick={finish}
+            onDblClick={readLine !== null ? finishReadLine : finish}
+            readOverlay={readOverlay}
+            onPickRead={id => setReadPick({ id, key: Date.now() })}
             onPick={id => { setSelected(id); if (id) { const f = design.features.find(x => x.id === id); if (f) setStep(KIND_META[f.kind].step) } }}
             frame={frame}
           />
@@ -470,6 +507,16 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                 </>
               )}
               <button onClick={stopTool} className="min-h-[36px] min-w-[36px] rounded-md px-2 py-1 text-muted hover:bg-navy-800" aria-label="Stop drawing"><X className="mx-auto h-4 w-4" /></button>
+            </div>
+          )}
+          {readLine !== null && (
+            <div className="absolute left-1/2 top-3 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-cyan-500/50 bg-navy-900/95 px-3 py-2 text-xs shadow-lg">
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
+              <span className="font-semibold">Line across the contours</span>
+              <span className="text-muted">Start on the one you numbered · double-tap to finish</span>
+              <button onClick={() => setReadLine(l => (l ?? []).slice(0, -1))} disabled={!readLine.length} className="min-h-[36px] rounded-md px-3 py-1.5 text-muted hover:bg-navy-800 disabled:opacity-40">Back a point</button>
+              <button onClick={finishReadLine} disabled={readLine.length < 2} className="min-h-[36px] rounded-md bg-cyan-500/90 px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-40">Finish</button>
+              <button onClick={() => setReadLine(null)} className="min-h-[36px] min-w-[36px] rounded-md px-2 py-1 text-muted hover:bg-navy-800" aria-label="Stop drawing"><X className="mx-auto h-4 w-4" /></button>
             </div>
           )}
           {heat && heatVisible && legend && (
@@ -549,10 +596,38 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                     <input type="range" min={0.1} max={1} step={0.05} value={sheetState[s.id]?.opacity ?? 0.8}
                       onChange={e => setSheetState(st => ({ ...st, [s.id]: { visible: st[s.id]?.visible ?? true, opacity: Number(e.target.value) } }))}
                       className="mt-1 w-full accent-amber" aria-label="Sheet opacity" />
+                    {canEdit && reading !== s.id && (
+                      <button onClick={() => { closeReader(); setReading(s.id); setSheetState(st => ({ ...st, [s.id]: { opacity: st[s.id]?.opacity ?? 0.8, visible: true } })) }}
+                        className="mt-1.5 flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-lg border border-cyan-500/40 px-2 text-xs text-cyan-200 hover:bg-cyan-500/10">
+                        <FileUp className="h-3.5 w-3.5" /> Read contours, spot grades and pads off this sheet
+                      </button>
+                    )}
+                    {reading === s.id && <p className="mt-1.5 text-[11px] text-cyan-200">Reading this sheet — below.</p>}
                   </div>
                 ))}
-                <p className="text-[11px] text-faint">Kubla needs each sheet scaled and stacked by hand; here a placed sheet is already where it belongs, so the existing topo, grading and site plans line up with each other and with the lidar.</p>
+                {!reading && <p className="text-[11px] text-faint">Kubla needs each sheet scaled and stacked by hand; here a placed sheet is already where it belongs, so the existing topo, grading and site plans line up with each other and with the lidar — and the contours, spot grades and pads can be read straight off its PDF.</p>}
               </Section>
+            )}
+
+            {/* The reader stays mounted across steps — a PDF read once isn't read again for a look at another step. */}
+            {reading && sheets.some(x => x.id === reading) && (
+              <div className={step === 'plans' ? '' : 'hidden'}>
+                <PlanReader
+                  key={reading}
+                  sheet={sheets.find(x => x.id === reading)!}
+                  area={boundary?.coords ?? zone.ring}
+                  ground={ground.grid}
+                  canEdit={canEdit}
+                  budget={readBudget}
+                  existingSource={design.existing.source}
+                  onOverlay={setReadOverlay}
+                  pick={readPick}
+                  onLineMode={on => setReadLine(on ? [] : null)}
+                  line={readLineDone}
+                  onImport={onReadImport}
+                  onClose={closeReader}
+                />
+              </div>
             )}
 
             {step === 'existing' && (
@@ -689,46 +764,6 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
         </div>
       </div>
     </div>
-  )
-}
-
-/**
- * A number box that keeps what's being typed. A type=number box reads '' for a
- * lone '-' (or a cleared box), so coercing every keystroke turned "-10" into
- * +10 and an emptied box into 0. Only a whole number reaches onValue — as it's
- * typed (live) or when the box is left / Enter is pressed (one undo step per
- * edit, never a half-typed elevation in the design).
- */
-function NumField({ value, onValue, live = false, min, max, step, disabled, placeholder, className, ariaLabel }: {
-  value: number | undefined; onValue: (n: number) => void; live?: boolean
-  min?: number; max?: number; step?: number; disabled?: boolean; placeholder?: string; className?: string; ariaLabel?: string
-}) {
-  const shown = value === undefined || !Number.isFinite(value) ? '' : String(value)
-  const [text, setText] = useState(shown)
-  const editing = useRef(false)
-  useEffect(() => { if (!editing.current) setText(shown) }, [shown])
-  const parse = (t: string): number | null => {
-    if (t.trim() === '') return null
-    const n = Number(t)
-    return Number.isFinite(n) ? Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)) : null
-  }
-  const leave = () => {
-    editing.current = false
-    const n = parse(text)
-    if (n !== null && n !== value) onValue(n)
-    setText(n !== null ? String(n) : shown)
-  }
-  return (
-    <input type="number" step={step} min={min} max={max} disabled={disabled} placeholder={placeholder} aria-label={ariaLabel}
-      value={text} className={className}
-      onFocus={() => { editing.current = true }}
-      onChange={e => {
-        setText(e.target.value)
-        const n = live ? parse(e.target.value) : null
-        if (n !== null && n !== value) onValue(n)
-      }}
-      onBlur={leave}
-      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
   )
 }
 

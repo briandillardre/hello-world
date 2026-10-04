@@ -133,17 +133,94 @@ through the pricing sync rule (/pricing, splash, /demo, /help/billing,
 docs/PRICING-TIERS.md in one commit). Market: Kubla Cubed $295/yr per user
 (free Lite), InSite Elevation Pro from $3,900/yr.
 
+## Reading plans — contours pick themselves (Oct 4, phase 2)
+
+Plans step → a placed sheet → **Read contours, spot grades and pads off this
+sheet** → pick the PDF it came from (its name is in the sheet's caption). The
+PDF is read **on the device** and never uploaded; only what's imported goes
+into the takeoff. Civil sets are vector drawings, so nothing is traced from a
+picture — every contour, label and spot comes out as geometry:
+
+- **Which page** (`components/dirt/PlanReader.tsx`): the caption says
+  ("… — p7"); the placed raster confirms by a picture match (middle of the
+  sheet — title blocks repeat on every page). No match → it searches the PDF,
+  and a sheet it can't find is refused unless the estimator overrides.
+- **Pulling the linework** (`lib/dirt/pdf-vectors.ts`, pure): pdf.js operator
+  list → every stroked path with its pen (CAD layer from the PDF's optional
+  content, colour, width, dash), curves flattened; words from the text layer
+  and from AutoCAD's "SHX Text" comments (the words of SHX fonts ride as
+  Square annotations).
+- **Reading it** (`lib/dirt/plan-read.ts`, pure, in `lib/dirt/plan-worker.ts`):
+  1. *Pens.* Each pen gets a suggested role — existing, proposed, not
+     contours — from its layer name (TOPO/MAJR/MINR…, V- survey vs C- civil,
+     NCS status -E/-N), the elevation labels on it, dashes and grey screening,
+     smooth vs straight/zig-zag lines; white pens (masks) and short marks
+     (text drawn as strokes, hatching, a seal) never are. The estimator flips
+     any pen with one tap; a pen row lights its lines on the map.
+  2. *Lines.* Pieces of a pen join end to end — dashes drawn one by one, a
+     contour broken by the drafter — and labels stitch the two sides of their
+     gap back into one line.
+  3. *Labels.* Whole numbers sitting on a line (parallel) or in a gap cut for
+     them; "(271)" counts. Never a label: survey point numbers touching their
+     shot's elevation, numbers nowhere near the plan's spot elevations, a
+     stray outlier ("100" from a station). A line crossing a labelled contour
+     of its own kind is not a contour (a wall drawn on the topo layer).
+  4. *Elevations* (`resolveElevations`): rays across the contours give
+     ladders (every crossing, so a hilltop reads 809·810·809; a ray breaks at
+     a label gap, a contour ending beside it, a building wall). Between two
+     known contours the others step evenly — the interval is measured, never
+     assumed. Then the USGS lidar where it is sure (datum = the median of
+     label − lidar, else of the GS spot shots — an unlabelled survey still
+     gets named), proposed contours that END on an existing one tie in at
+     its level (the grading limits), and last a trend guess two contours
+     past the last label at most, never past a hilltop, flagged "check it".
+     A neighbour more than one interval off takes back a guess; two labels
+     that disagree are both flagged. **Nothing is named wrong silently: a
+     contour the read can't name stays unnamed.**
+  5. *Spots, pads, limits.* Spot grades with their tags (GS/EG existing; FG,
+     FS, BC, FL, EP, HP… proposed; TC, TW, INV, RIM… skipped as not ground),
+     paired across separate SHX words; the x or + marker is the point. The
+     finished floor ("FFE = 811.50", "GFF= 89.90") with the building around
+     it — a closed ring, or the wall band flooded from the label when the
+     outline is filled slivers. The limit of grading from its layer or its
+     words.
+- **Fixing what it couldn't** (the estimator): tap a contour → its number
+  (a typed one wins, and survives a re-read), or *Not a contour*. **Number
+  contours along a line**: type the first one's elevation, draw across the
+  run — they step by the interval. If any contour on the line already has a
+  different number on the plan, nothing is written and the number the labels
+  imply is offered ("the plan's labels make the first one 803, not 801").
+- **Import** (`lib/dirt/plan-import.ts`): contours, spot grades, the pad (FF
+  −8") and the limit become takeoff features through the sheet's placement
+  (`lib/dirt/plan-geo.ts` — the same triangles MapLibre draws the raster
+  with, so they land exactly on the picture), thinned to 0.15 ft, each
+  marked with its sheet (`src`) so reading the sheet again replaces them.
+  Existing contours can become the existing ground ("traced") or just set
+  the lidar's datum offset.
+- **Proof** — `node scripts/plan-read-test.mjs` (160 assertions; run it after
+  ANY change to pdf-vectors / plan-read / plan-geo / plan-lidar /
+  plan-import): `scripts/plan-pdf-fixture.mjs` writes a REAL PDF drawn the
+  way Civil 3D exports look (layers, dashed grey existing with exploded-dash
+  minors and SHX labels, solid proposed with labels in gaps and white masks,
+  survey shots with point numbers, a building, a legend and a seal outside
+  the site, a pipe size and a station number on lines), reads it through
+  pdf.js and checks every number — and the whole chain PDF → read → import →
+  takeoff lands within 2% of the exact volumes (fill 3,118 vs 3,107 CY).
+  Real county grading sets were used to harden it (scratch only, never in
+  the repo): residential and small-site sheets read partly — the tools
+  above finish them.
+
 ## Next (the "ideal world" half)
 
 1. **Plans place themselves.** Read the sheet's scale text and north arrow,
    grid-tick or survey-control coordinates and the site address (pdf.js text
    layer; GeoPDF when present) → the sheet lands in place, the estimator only
    nudges.
-2. **Contours pick themselves.** Civil PDFs are vector: group polylines by
-   stroke style (existing dashed vs proposed solid), read the elevation labels
-   along them, step the unlabelled ones by the interval.
+2. **Remember the reading.** Pen roles and typed numbers per sheet, so a
+   revised set reads itself the same way.
 3. **Plan vs. actual.** Drone flights (HammerTrack Aerial, #169) as a third
    surface → yards moved so far; machine hours on the site → cost per yard.
 4. Cross-sections, phases, LandXML/DXF import, a flat-triangle fix at contour
    bends (spot grades at peaks and low points cover it for now).
-5. Validate against one of DCG's real Kubla takeoffs (board #184); phase 2 is board #186.
+5. Validate against one of DCG's real Kubla takeoffs (board #184); the rest of
+   phase 2 is board #186.

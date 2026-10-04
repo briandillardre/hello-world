@@ -26,6 +26,7 @@ const feature = z.object({
   offsetIn: z.number().finite().min(-120).max(120).optional(),
   thicknessIn: z.number().finite().min(0).max(240).optional(),
   coords: z.array(lngLat).min(1).max(MAX_POINTS_PER_FEATURE),
+  src: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/).optional(),
 }).strip()
 
 export const designSchema = z.object({
