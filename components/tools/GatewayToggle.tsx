@@ -34,8 +34,8 @@ export function GatewayToggle() {
           <p className="font-display font-bold text-sm text-ink">This phone hears tags</p>
           <p className="text-[12px] text-muted leading-snug">
             {on
-              ? 'On by default. Whenever the app is open, the tools near you show on the map as riding with you — the way they ride with a truck. It listens in short bursts and reports every 20 seconds, and only checks where you are when it actually hears a tag.'
-              : 'Off on this phone. The tools near you will only show on the map when a truck with a tracker hears them.'}
+              ? 'On by default. While the app is open, the tools near you show on the map as riding with you — the way they ride with a truck. It listens a few seconds at a time — every 20 seconds while it hears tags, easing off to every 1–2 minutes when it hears none — only checks where you are when it hears one, and rests below 15% battery. Nothing runs with the app closed.'
+              : 'Off on this phone — no Bluetooth listening at all. The tools near you will only show on the map when a truck with a tracker hears them.'}
           </p>
         </div>
         <button
@@ -49,8 +49,9 @@ export function GatewayToggle() {
       {on && (
         <p className="text-[11.5px] font-mono text-faint">
           {st?.error ? <span className="text-alert">{st.error}</span>
-            : st?.reportedAt ? `heard ${st.heard} tag${st.heard === 1 ? '' : 's'} · ${st.matched} known tool${st.matched === 1 ? '' : 's'} · holding ${st.holding} · reported ${ago}s ago`
-            : st ? `listening… heard ${st.heard} tag${st.heard === 1 ? '' : 's'} so far` : 'starting…'}
+            : st?.paused ? st.paused
+            : st?.reportedAt ? `heard ${st.heard} tag${st.heard === 1 ? '' : 's'} · ${st.matched} known tool${st.matched === 1 ? '' : 's'} · holding ${st.holding} · reported ${ago}s ago${st.everyS ? ` · listening every ${st.everyS < 60 ? `${st.everyS}s` : `${st.everyS / 60} min`}` : ''}`
+            : st ? `listening${st.everyS ? ` every ${st.everyS < 60 ? `${st.everyS}s` : `${st.everyS / 60} min`}` : ''}… heard ${st.heard} tag${st.heard === 1 ? '' : 's'} so far` : 'starting…'}
         </p>
       )}
     </section>

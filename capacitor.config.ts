@@ -24,6 +24,10 @@ const config: CapacitorConfig = {
     // production since Aug 21, so already-installed copies still request the
     // root. app/AppEntryRedirect.tsx covers those on the next web deploy.
     url: 'https://hammertrack.ai/map',
+    // No signal (or the site down) shows the bundled page in webDir instead of
+    // Android's bare "Webpage not available" — it says so and reconnects by
+    // itself (Oct 4; native rebuild v1.5.3).
+    errorPath: 'index.html',
     // Never allow plain-HTTP content inside the shell.
     cleartext: false,
   },

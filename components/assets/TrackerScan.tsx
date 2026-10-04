@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
-import { Camera, CheckCircle2, CircleAlert, Keyboard, ScanLine, Truck, Wrench } from 'lucide-react'
+import { Camera, CheckCircle2, CircleAlert, Flashlight, FlashlightOff, Keyboard, ScanLine, Truck, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { quickAddTrackerAction } from '@/lib/actions/assets'
+import { useBarcodeScanner } from '@/components/trackers/useBarcodeScanner'
 
 /**
  * Scan-to-map: point the phone at the IMEI barcode on the tracker's box,
@@ -12,9 +13,9 @@ import { quickAddTrackerAction } from '@/lib/actions/assets'
  * unbox 13 devices, scan 13 times, done (Brian, Aug 28: setup time was
  * "absolutely insane"; the app side is now seconds per device).
  *
- * Camera scanning uses the native BarcodeDetector where the browser has it
- * (Android Chrome — the phone that's actually in the truck yard); every
- * browser gets the type-it-in path, which also covers unreadable labels.
+ * Camera scanning: lib/barcode-camera.ts (the phone's own reader, else
+ * zxing; a sharp, focused feed; the flashlight). Every browser also gets the
+ * type-it-in path, which covers unreadable labels.
  */
 
 type Row =
@@ -22,19 +23,12 @@ type Row =
   | { kind: 'existing'; id: string; name: string }
   | { kind: 'error'; text: string }
 
-interface DetectedBarcode { rawValue: string }
-type BarcodeDetectorCtor = new (opts?: { formats?: string[] }) => {
-  detect(source: HTMLVideoElement): Promise<DetectedBarcode[]>
-}
-
 export function TrackerScan() {
   const [type, setType] = useState<'vehicle' | 'equipment'>('vehicle')
   const [rows, setRows] = useState<Row[]>([])
   const [manual, setManual] = useState('')
   const [busy, setBusy] = useState(false)
-  const [camera, setCamera] = useState<'starting' | 'on' | 'off'>('starting')
   const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   // Per-IMEI throttle: the detector re-fires the SAME barcode ~3×/sec for
   // as long as the box is in frame, so a handled IMEI gets a cooldown —
   // Infinity once it lands (created/existing), ~6s after a failure so an
@@ -90,50 +84,13 @@ export function TrackerScan() {
     // 'dropped' (busy) keeps the input — press Add again in a second.
   }
 
-  // Camera + native barcode loop. No library: BarcodeDetector covers the
-  // Android phones this happens on; everyone else types the IMEI below.
-  useEffect(() => {
-    let cancelled = false
-    let timer: ReturnType<typeof setInterval> | undefined
-    const Detector = (globalThis as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
-    if (!Detector || !navigator.mediaDevices?.getUserMedia) { setCamera('off'); return }
-    ;(async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }, audio: false,
-        })
-        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          await videoRef.current.play().catch(() => {})
-        }
-        // Unmount during play() — cleanup already ran; don't resurrect a timer.
-        if (cancelled) return
-        const detector = new Detector({ formats: ['code_128', 'qr_code', 'code_39', 'ean_13', 'itf'] })
-        setCamera('on')
-        timer = setInterval(async () => {
-          const v = videoRef.current
-          if (!v || v.readyState < 2 || busyRef.current) return
-          try {
-            const codes = await detector.detect(v)
-            for (const c of codes) {
-              if (/(?:^|\D)\d{15}(?!\d)/.test(c.rawValue)) { void submit(c.rawValue); break }
-            }
-          } catch { /* a frame that fails to decode is just the next frame */ }
-        }, 350)
-      } catch {
-        if (!cancelled) setCamera('off') // denied/no camera → manual entry
-      }
-    })()
-    return () => {
-      cancelled = true
-      if (timer) clearInterval(timer)
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Camera + barcode loop: a code with a 15-digit run is an IMEI to add; a
+  // scan while the last one is still submitting waits for the next frame.
+  const { state: camera, torch, toggleTorch } = useBarcodeScanner(videoRef, (raw) => {
+    if (busyRef.current || !/(?:^|\D)\d{15}(?!\d)/.test(raw)) return false
+    void submit(raw)
+    return true
+  })
 
   return (
     <div className="max-w-xl mx-auto p-4 space-y-4">
@@ -167,6 +124,12 @@ export function TrackerScan() {
         <div className="relative rounded-xl overflow-hidden border border-navy-700 bg-navy-950 aspect-[4/3]">
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+          {torch.available && (
+            <button type="button" onClick={() => void toggleTorch()} aria-pressed={torch.on} aria-label={torch.on ? 'Turn the flashlight off' : 'Turn the flashlight on'}
+              className={`absolute bottom-1.5 right-1.5 z-10 grid h-10 w-10 place-items-center rounded-full border ${torch.on ? 'border-amber bg-amber text-navy-950' : 'border-navy-600 bg-navy-950/70 text-ink'}`}>
+              {torch.on ? <FlashlightOff className="h-4 w-4" /> : <Flashlight className="h-4 w-4" />}
+            </button>
+          )}
           <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-24 rounded-lg border-2 border-amber/70 pointer-events-none" />
           {camera === 'starting' && (
             <div className="absolute inset-0 grid place-items-center text-faint text-sm bg-navy-950/80">
