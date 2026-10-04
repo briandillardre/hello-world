@@ -253,7 +253,10 @@ export default function PlanReader(p: Props) {
   const onFile = async (f: File) => {
     setError(null); setPhase('loading'); setProgress('Opening the PDF…'); setDone(null)
     try {
-      const [pdfjs, img] = await Promise.all([loadPdfjs(), loadImage(p.sheet.url)])
+      const [pdfjs, img] = await Promise.all([
+        loadPdfjs().catch(() => { throw new Error('reader') }),
+        loadImage(p.sheet.url),
+      ])
       const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise
       // Which page is this sheet? The caption says; the picture confirms.
       const k = THUMB / Math.max(img.naturalWidth, img.naturalHeight)
@@ -279,7 +282,10 @@ export default function PlanReader(p: Props) {
       mismatch.current = { doc, pdfjs, img, best, score: bestS }
       setPhase('mismatch')
     } catch (err) {
-      setError(err instanceof Error && err.message === 'image' ? "The placed sheet's picture didn't load — check the connection." : "That file didn't open as a PDF.")
+      const why = err instanceof Error ? err.message : ''
+      setError(why === 'image' ? "The placed sheet's picture didn't load — check the connection and pick the PDF again."
+        : why === 'reader' ? "The PDF reader didn't load — check the connection and pick the PDF again."
+        : "That file didn't open as a PDF.")
       setPhase('error')
     }
   }
