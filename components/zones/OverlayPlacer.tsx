@@ -399,8 +399,8 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
       const c = m.getCenter()
       const bounds = cornersFrom([c.lng, c.lat], widthM, aspect, rotDeg)
       const r = await saveOverlayBoundsAction(zoneId, imageId, bounds)
-      if (r.ok) onSaved(bounds)
-      else setError(r.error ?? 'Save failed')
+      if (r?.ok) onSaved(bounds)
+      else setError(r?.error ?? 'Save failed')
     } finally {
       setBusy(false)
       done()
@@ -412,8 +412,8 @@ export function OverlayPlacer({ zoneId, imageId, imageUrl, ring, initialBounds, 
     const done = globalBusy('Removing from map…')
     try {
       const r = await saveOverlayBoundsAction(zoneId, imageId, null)
-      if (r.ok) onSaved(null)
-      else setError(r.error ?? 'Save failed')
+      if (r?.ok) onSaved(null)
+      else setError(r?.error ?? 'Save failed')
     } finally {
       setBusy(false)
       done()

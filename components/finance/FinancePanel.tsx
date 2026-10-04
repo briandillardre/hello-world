@@ -67,10 +67,10 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
     start(async () => {
       const r = await classifyCompanyAction(p.description!)
       setClassifying(false)
-      if (r.ok && r.key) {
+      if (r?.ok && r.key) {
         setP((x) => ({ ...x, industry: r.key, industryLabel: r.label ?? tradeByKey(r.key).label }))
         setManualTrade(false)
-      } else setError(r.error ?? 'Could not classify — pick the trade manually.')
+      } else setError(r?.error ?? 'Could not classify — pick the trade manually.')
     })
   }
 
@@ -83,8 +83,8 @@ export function FinancePanel({ initial, teamCount, autoFleetValue, canEdit, avai
   function save() {
     start(async () => {
       const r = await saveFinanceProfileAction(p)
-      if (r.ok) { setSaved(true); setError(null); setTimeout(() => setSaved(false), 2000) }
-      else setError(r.error ?? 'Save failed')
+      if (r?.ok) { setSaved(true); setError(null); setTimeout(() => setSaved(false), 2000) }
+      else setError(r?.error ?? 'Save failed')
     })
   }
 

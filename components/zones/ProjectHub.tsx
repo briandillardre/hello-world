@@ -66,7 +66,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
     setEditId(null)
     start(async () => {
       const r = await updateTaskAction(zoneId, id, { title: et, assigneeId: ea || undefined, dueDate: ed || undefined, high: eh })
-      if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+      if (!r?.ok) { setTasks(prev); setError(r?.error ?? 'Failed') }
     })
   }
 
@@ -81,7 +81,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
     setEditMsId(null)
     start(async () => {
       const r = await updateMilestoneAction(zoneId, id, { name: emName, targetDate: emDate || undefined })
-      if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+      if (!r?.ok) { setMilestones(prev); setError(r?.error ?? 'Failed') }
     })
   }
 
@@ -89,8 +89,8 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
     if (!title.trim()) return
     start(async () => {
       const r = await addTaskAction(zoneId, { title, assigneeId: assignee || undefined, dueDate: due || undefined, high })
-      if (r.ok && r.task) { setTasks((ts) => [r.task!, ...ts]); setTitle(''); setDue(''); setHigh(false); setError(null) }
-      else setError(r.error ?? 'Failed')
+      if (r?.ok && r.task) { setTasks((ts) => [r.task!, ...ts]); setTitle(''); setDue(''); setHigh(false); setError(null) }
+      else setError(r?.error ?? 'Failed')
     })
   }
 
@@ -193,7 +193,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                         setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: 'done' as const, done_at: new Date().toISOString() } : x))
                         start(async () => {
                           const r = await toggleTaskAction(zoneId, t.id, true)
-                          if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                          if (!r?.ok) { setTasks(prev); setError(r?.error ?? 'Failed') }
                         })
                       }}
                       aria-label={`Mark done: ${t.title}`}
@@ -216,7 +216,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                         setTasks((ts) => ts.filter((x) => x.id !== t.id))
                         start(async () => {
                           const r = await deleteTaskAction(zoneId, t.id)
-                          if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                          if (!r?.ok) { setTasks(prev); setError(r?.error ?? 'Failed') }
                         })
                       }}
                       aria-label={`Delete: ${t.title}`}>
@@ -240,7 +240,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       setTasks((ts) => ts.map((x) => x.id === t.id ? { ...x, status: 'open' as const, done_at: null } : x))
                       start(async () => {
                         const r = await toggleTaskAction(zoneId, t.id, false)
-                        if (!r.ok) { setTasks(prev); setError(r.error ?? 'Failed') }
+                        if (!r?.ok) { setTasks(prev); setError(r?.error ?? 'Failed') }
                       })
                     }}
                     aria-label={`Reopen: ${t.title}`}
@@ -306,7 +306,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       setMilestones((ms) => ms.map((x) => x.id === m.id ? { ...x, done_at: v ? new Date().toISOString() : null } : x))
                       start(async () => {
                         const r = await toggleMilestoneAction(zoneId, m.id, v)
-                        if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+                        if (!r?.ok) { setMilestones(prev); setError(r?.error ?? 'Failed') }
                       })
                     }}
                     aria-label={`Toggle milestone: ${m.name}`}
@@ -326,7 +326,7 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                       setMilestones((ms) => ms.filter((x) => x.id !== m.id))
                       start(async () => {
                         const r = await deleteMilestoneAction(zoneId, m.id)
-                        if (!r.ok) { setMilestones(prev); setError(r.error ?? 'Failed') }
+                        if (!r?.ok) { setMilestones(prev); setError(r?.error ?? 'Failed') }
                       })
                     }}
                     aria-label={`Delete milestone: ${m.name}`}>
@@ -345,10 +345,10 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
             <button type="button" disabled={!msName.trim()}
               onClick={() => start(async () => {
                 const r = await addMilestoneAction(zoneId, { name: msName, targetDate: msDate || undefined })
-                if (r.ok && r.milestone) {
+                if (r?.ok && r.milestone) {
                   setMilestones((ms) => [...ms, r.milestone!].sort((a, b) => (a.target_date ?? '9999').localeCompare(b.target_date ?? '9999')))
                   setMsName(''); setMsDate(''); setError(null)
-                } else setError(r.error ?? 'Failed')
+                } else setError(r?.error ?? 'Failed')
               })}
               className="rounded-lg bg-navy-700 text-ink font-semibold text-xs px-3 py-1.5 disabled:opacity-40">
               Add
@@ -383,8 +383,8 @@ export function ProjectHub({ zoneId, tasks: initialTasks, milestones: initialMil
                   onClick={() => start(async () => {
                     const v = budgetDraft.trim() === '' ? null : Number(budgetDraft)
                     const r = await saveBudgetAction(zoneId, v)
-                    if (r.ok) { setBudget(v); setEditingBudget(false); setError(null) }
-                    else setError(r.error ?? 'Failed')
+                    if (r?.ok) { setBudget(v); setEditingBudget(false); setError(null) }
+                    else setError(r?.error ?? 'Failed')
                   })}
                   className="rounded-lg bg-amber text-[#1a1100] font-bold text-xs px-3 py-2">Save</button>
                 <button type="button" onClick={() => setEditingBudget(false)} className="text-xs text-faint">Cancel</button>

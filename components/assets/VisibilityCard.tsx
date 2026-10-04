@@ -27,7 +27,7 @@ export function VisibilityCard({ assetId, current, viewerRank }: { assetId: stri
     setErr(null)
     start(async () => {
       const r = await setAssetVisibilityAction(assetId, k)
-      if (!r.ok) { setLevel(prev); setErr(r.error ?? 'Could not save.') }
+      if (!r?.ok) { setLevel(prev); setErr(r?.error ?? 'Could not save.') }
       else router.refresh()
     })
   }

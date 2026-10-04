@@ -11,6 +11,7 @@ import { SearchInput, SortPills } from '@/components/ui/list-controls'
 import { confirmSheet } from '@/components/ui/feedback'
 import { formatRelativeTime } from '@/lib/utils'
 import { previewZoneInvoiceAction, pushZoneInvoiceAction, disconnectQboAction, type ZoneInvoiceDraft } from '@/lib/actions/qbo'
+import { NO_REPLY } from '@/lib/action-reply'
 import { QboTimeCard } from '@/components/accounting/QboTimeCard'
 
 interface AccountingViewProps {
@@ -60,7 +61,8 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
     setConnError(null)
     const r = await disconnectQboAction()
     setDisconnecting(false)
-    if ('error' in r) setConnError(r.error)
+    if (!r) setConnError(NO_REPLY)
+    else if ('error' in r) setConnError(r.error)
     else router.refresh()
   }
 
@@ -81,7 +83,8 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
     setDraft(null)
     previewZoneInvoiceAction(fence.id, days).then((r) => {
       if (cancelled) return
-      if ('error' in r) setError(r.error)
+      if (!r) setError(NO_REPLY)
+      else if ('error' in r) setError(r.error)
       else setDraft(r)
     }).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -95,7 +98,8 @@ export function AccountingView({ connection, demo, sandbox = false, canPush = tr
     setError(null)
     const r = await pushZoneInvoiceAction(fence.id, days)
     setPushing(false)
-    if ('error' in r) setError(r.error)
+    if (!r) setError(NO_REPLY)
+    else if ('error' in r) setError(r.error)
     else setPushed(r)
   }
 

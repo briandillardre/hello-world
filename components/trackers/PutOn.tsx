@@ -42,7 +42,7 @@ export function PutOn({ trackerId, model, trackerless }: {
     setSaving(true); setError(null)
     try {
       const res = await putOnAction(trackerId, mode === 'existing' ? { mode: 'asset', assetId } : { mode: 'new', name: name.trim(), type })
-      if (!res.ok) { setError(res.error ?? 'Could not do that.'); return }
+      if (!res?.ok) { setError(res?.error ?? 'Could not do that.'); return }
       setOpen(false)
       toast('On the machine. It shows on the map at its next report.', { variant: 'success' })
       if (res.assetId) router.push(`/assets/${res.assetId}`)

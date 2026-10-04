@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Camera, CheckCircle2, CircleAlert, Flashlight, FlashlightOff, Keyboard, ScanLine, Truck, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { quickAddTrackerAction } from '@/lib/actions/assets'
+import { NO_REPLY } from '@/lib/action-reply'
 import { useBarcodeScanner } from '@/components/trackers/useBarcodeScanner'
 
 /**
@@ -57,7 +58,9 @@ export function TrackerScan() {
     setBusy(true)
     try {
       const res = await quickAddTrackerAction(raw, typeRef.current)
-      if (res.existing) {
+      if (!res) {
+        pushError(NO_REPLY)
+      } else if (res.existing) {
         cooldownRef.current.set(imei, Infinity)
         setRows((r) => [{ kind: 'existing', id: res.existing!.id, name: res.existing!.name }, ...r])
       } else if (res.ok && res.asset) {

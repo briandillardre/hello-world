@@ -34,7 +34,7 @@ export function ViewAsPicker({ variant, onDone }: { variant: 'menu' | 'sidebar' 
 
   const pick = (t: ViewAsTarget) => start(async () => {
     const res = await viewAsAction(t.id)
-    if (!res.ok) { toast(res.error ?? 'Could not start the preview.', { variant: 'error' }); return }
+    if (!res?.ok) { toast(res?.error ?? 'Could not start the preview.', { variant: 'error' }); return }
     setOpen(false)
     onDone?.()
     router.push('/map')

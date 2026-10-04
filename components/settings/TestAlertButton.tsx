@@ -16,7 +16,7 @@ export function TestAlertButton() {
     setMsg(null)
     const r = await sendTestAlertAction()
     setBusy(false)
-    if (!r.ok) { setMsg({ text: r.error ?? 'Failed to send.', ok: false }); return }
+    if (!r?.ok) { setMsg({ text: r?.error ?? 'Failed to send.', ok: false }); return }
     if (r.smsAttempted) {
       setMsg({ text: `Test SMS sent to ${r.smsTo} — check your phone. Webhook ${r.webhookConfigured ? 'also posted' : 'not configured'}.`, ok: true })
     } else if (!r.twilioConfigured) {

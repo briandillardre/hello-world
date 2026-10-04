@@ -31,8 +31,8 @@ export function BillingCard({
     setBusy(which); setErr(null)
     try {
       const r = which === 'checkout' ? await startCheckoutAction('founding25') : await openBillingPortalAction()
-      if (r.ok && r.url) { window.location.href = r.url; return }
-      setErr(r.error ?? 'Something went wrong.')
+      if (r?.ok && r.url) { window.location.href = r.url; return }
+      setErr(r?.error ?? 'Something went wrong.')
     } catch {
       setErr('Something went wrong. Please try again.')
     } finally { setBusy(null) }

@@ -282,7 +282,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     try {
       const res = await clockInAction({ ...input, idempotencyKey: key })
       setBusy(false)
-      if (!res.ok) setError(res.error ?? 'Clock-in failed') // server said no — show it
+      if (!res) saveOffline() // no reply (a gateway error, a timeout) — a transport failure too
+      else if (!res.ok) setError(res.error ?? 'Clock-in failed') // server said no — show it
       else { window.dispatchEvent(new Event(CLOCK_EVENT)); router.refresh() }
     } catch {
       saveOffline()
@@ -335,7 +336,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
     try {
       const res = await clockOutAction(fd)
       setBusy(false)
-      if (!res.ok) setError(res.error ?? 'Clock-out failed') // server said no — show it
+      if (!res) saveOffline() // no reply (a gateway error, a timeout) — a transport failure too
+      else if (!res.ok) setError(res.error ?? 'Clock-out failed') // server said no — show it
       else {
         clearLogForm()
         window.dispatchEvent(new Event(CLOCK_EVENT))

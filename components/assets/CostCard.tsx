@@ -53,8 +53,8 @@ export function CostCard({ asset }: { asset: Asset }) {
           ? { metadata: (() => { const m = { ...(asset.metadata ?? {}) }; if (purchaseDate) m.purchase_date = purchaseDate; else delete m.purchase_date; return m })() }
           : {}),
       })
-      if (!result.ok) {
-        setError(result.error ?? 'Could not save. Please try again.')
+      if (!result?.ok) {
+        setError(result?.error ?? 'Could not save. Please try again.')
         return
       }
       setEditing(false)

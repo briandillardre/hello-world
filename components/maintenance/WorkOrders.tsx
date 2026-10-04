@@ -113,7 +113,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                       patchLocal(o.id, { status: meta.next })
                       start(async () => {
                         const r = await updateWorkOrderAction(o.id, { status: meta.next })
-                        if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                        if (!r?.ok) { patchLocal(o.id, { status: prev }); showError(r?.error ?? 'Failed') }
                       })
                     }}
                     className={`order-2 sm:order-none flex-none rounded-full border px-2 py-0.5 text-[10px] font-bold ${meta.cls}`}
@@ -141,7 +141,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                         patchLocal(o.id, { assignee_id: e.target.value || null })
                         start(async () => {
                           const r = await updateWorkOrderAction(o.id, { assigneeId: e.target.value || null })
-                          if (!r.ok) { patchLocal(o.id, { assignee_id: prev }); showError(r.error ?? 'Failed') }
+                          if (!r?.ok) { patchLocal(o.id, { assignee_id: prev }); showError(r?.error ?? 'Failed') }
                         })
                       }}
                       className="rounded-lg bg-navy-950 border border-navy-700 px-2 py-1 text-[11px] text-muted min-w-0 flex-1 sm:flex-initial sm:max-w-[120px]"
@@ -161,7 +161,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                         patchLocal(o.id, { status: 'canceled' })
                         start(async () => {
                           const r = await cancelWorkOrderAction(o.id)
-                          if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                          if (!r?.ok) { patchLocal(o.id, { status: prev }); showError(r?.error ?? 'Failed') }
                         })
                       }}
                       className="flex-none text-faint hover:text-red-400 p-1">
@@ -196,7 +196,7 @@ export function WorkOrders({ orders: initial, members, assetNames, available, ca
                       patchLocal(o.id, { status: 'open' })
                       start(async () => {
                         const r = await updateWorkOrderAction(o.id, { status: 'open' })
-                        if (!r.ok) { patchLocal(o.id, { status: prev }); showError(r.error ?? 'Failed') }
+                        if (!r?.ok) { patchLocal(o.id, { status: prev }); showError(r?.error ?? 'Failed') }
                       })
                     }}
                     className="text-[11px] font-semibold text-teal hover:underline flex-none">
@@ -253,7 +253,7 @@ function NewWorkOrderForm({ assetNames, members, onDone, onError }: {
       <button type="button" disabled={pending || !assetId || !title.trim()}
         onClick={() => start(async () => {
           const r = await createWorkOrderAction({ assetId, title, priority, assigneeId: assignee || undefined, dueDate: due || undefined })
-          if (r.ok) { onError(null); onDone(r.wo ?? null) } else onError(r.error ?? 'Failed')
+          if (r?.ok) { onError(null); onDone(r.wo ?? null) } else onError(r?.error ?? 'Failed')
         })}
         className="rounded-lg bg-amber text-[#1a1100] font-bold text-sm px-3.5 py-2 disabled:opacity-40">
         {pending ? '…' : 'Open it'}
@@ -301,7 +301,7 @@ function CompleteDialog({ wo, assetName, onClose, onDone, onError }: {
                 partsCost: Number(parts) || 0, laborHours: Number(hours) || 0, laborRate: Number(rate) || 0,
                 vendor, notes, reading: reading === '' ? undefined : Number(reading),
               })
-              if (r.ok) { onError(null); onDone(wo.id) } else onError(r.error ?? 'Failed')
+              if (r?.ok) { onError(null); onDone(wo.id) } else onError(r?.error ?? 'Failed')
             })}
             className="rounded-lg bg-teal text-[#001523] font-bold text-sm px-3.5 py-2 disabled:opacity-40">
             {pending ? 'Saving…' : 'Complete & log service'}

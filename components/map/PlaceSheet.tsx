@@ -83,9 +83,9 @@ export function PlaceSheet({
     setErr(null)
     const res = await updatePlaceAction(place.id, { name: n, kind, notes: trimmedNotes })
     setBusy(false)
-    if (!res.ok) {
+    if (!res?.ok) {
       if (!isMock) onChanged(place) // roll back to what the server still has
-      setErr(res.error ?? 'Could not save the change.')
+      setErr(res?.error ?? 'Could not save the change.')
       return
     }
     setEditing(false)
@@ -96,9 +96,9 @@ export function PlaceSheet({
     setErr(null)
     const res = await removePlaceAction(place.id)
     setBusy(false)
-    if (!res.ok) {
+    if (!res?.ok) {
       setConfirmDel(false)
-      setErr(res.error ?? 'Could not remove it.')
+      setErr(res?.error ?? 'Could not remove it.')
       return
     }
     onRemoved(place.id)

@@ -69,6 +69,7 @@ export function CheckButtons({ assetId, checks, tz }: {
     try {
       const res = await addEquipmentCheckAction(assetId, key, '', idem)
       setBusy(null)
+      if (!res) return saveOffline() // no reply (a gateway error, a timeout) — a transport failure too
       if (!res.ok) { setError(res.error ?? 'Failed — try again'); return } // server said no
       setDone(key)
       setTimeout(() => setDone(null), 1800)

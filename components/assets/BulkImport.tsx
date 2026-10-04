@@ -10,6 +10,7 @@ import {
   type ColDef, type ColKey, type ImportRow, type RowVerdict,
 } from '@/lib/bulk-import'
 import { bulkCreateAssetsAction } from '@/lib/actions/assets'
+import { NO_REPLY } from '@/lib/action-reply'
 import type { AssetType } from '@/lib/types'
 
 /**
@@ -226,6 +227,8 @@ export function BulkImport({ existingNames, existingTrackers, canViewCosts, isDe
     setBanner(null)
     try {
       const res = await bulkCreateAssetsAction(send.map((s) => s.cells))
+      // No reply (a gateway error, a timeout) leaves the batch's fate unknown too.
+      if (!res) { setBanner(NO_REPLY + ' Reload the assets list to see what landed before importing again.'); return }
       if (!res.ok || !res.results) { setBanner(res.error ?? 'Import failed.'); return }
       const failedKeys = new Map<number, string>()
       const sentKeys = new Set(send.map((s) => s.key))

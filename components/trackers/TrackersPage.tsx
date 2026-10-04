@@ -45,7 +45,7 @@ export function TrackersPage({ data, canEdit, trackerless = [] }: { data: Tracke
       setBusyId(m.id)
       const res = await undoTrackerMoveAction(m.id)
       setBusyId(null)
-      if (!res.ok) { toast(res.error ?? 'Could not undo.', { variant: 'error' }); return }
+      if (!res?.ok) { toast(res?.error ?? 'Could not undo.', { variant: 'error' }); return }
       toast('Undone', { variant: 'success' })
       router.refresh()
     })
@@ -56,7 +56,7 @@ export function TrackersPage({ data, canEdit, trackerless = [] }: { data: Tracke
       setBusyId(id)
       const res = await restoreAssetAction(id)
       setBusyId(null)
-      if (!res.ok) { toast(res.error ?? 'Could not restore.', { variant: 'error' }); return }
+      if (!res?.ok) { toast(res?.error ?? 'Could not restore.', { variant: 'error' }); return }
       toast(res.trackerReleased ? `"${name}" is back — without its tracker, which is now on another machine.` : `"${name}" is back.`, { variant: 'success' })
       router.refresh()
     })

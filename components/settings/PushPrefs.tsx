@@ -48,8 +48,8 @@ export function PushPrefs({
     setTouched(true)
     start(async () => {
       const r = await savePersonNotifyAction(userId, patch)
-      if (r.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
-      else { setError(r.error ?? 'Save failed'); setP(prev) }
+      if (r?.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
+      else { setError(r?.error ?? 'Save failed'); setP(prev) }
     })
   }
 
@@ -60,8 +60,8 @@ export function PushPrefs({
     setTouched(true)
     start(async () => {
       const r = await mutePersonPushAction(userId)
-      if (r.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
-      else { setError(r.error ?? 'Save failed'); setP(prev) }
+      if (r?.ok && r.prefs) { setP(r.prefs); setError(null); setSaved(true); setTimeout(() => setSaved(false), 2200) }
+      else { setError(r?.error ?? 'Save failed'); setP(prev) }
     })
   }
 

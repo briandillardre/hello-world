@@ -146,7 +146,7 @@ export function TrackerSheet({ asset, choices }: { asset: Asset; choices: Tracke
     setSaving(true); setError(null)
     try {
       const res = await changeTrackerAction(asset.id, change)
-      if (!res.ok) { setError(res.error ?? 'Could not make that change.'); return }
+      if (!res?.ok) { setError(res?.error ?? 'Could not make that change.'); return }
       setOpen(false)
       const bits: string[] = []
       if (res.moved) bits.push(`${res.moved.toLocaleString()} pings moved`)

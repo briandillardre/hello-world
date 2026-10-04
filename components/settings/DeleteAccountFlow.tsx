@@ -39,7 +39,7 @@ export function DeleteAccountFlow() {
           disabled={!armed || busy}
           onClick={() => start(async () => {
             const r = await requestAccountDeletionAction()
-            if (!r.ok) { setError(r.error ?? 'Failed'); return }
+            if (!r?.ok) { setError(r?.error ?? 'Failed'); return }
             await createClient().auth.signOut().catch(() => {})
             router.push('/login?deleted=1')
           })}

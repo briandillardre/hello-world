@@ -179,7 +179,7 @@ function DriverRow({ person, disabled }: { person: ShortHaulPerson; disabled: bo
     setValue(next)
     start(async () => {
       const r = await setDriverClassAction(person.id, next || null)
-      if (!r.ok) { setValue(prev); toast(r.error ?? 'Could not save that.', { variant: 'error' }); return }
+      if (!r?.ok) { setValue(prev); toast(r?.error ?? 'Could not save that.', { variant: 'error' }); return }
       router.refresh()
     })
   }

@@ -22,7 +22,7 @@ export function FolderLink({ kind, id, initial }: { kind: 'asset' | 'zone'; id: 
     setSaving(true); setError(null)
     const res = kind === 'asset' ? await saveAssetFolderAction(id, url) : await saveZoneFolderAction(id, url)
     setSaving(false)
-    if (!res.ok) { setError(res.error ?? 'Could not save.'); return }
+    if (!res?.ok) { setError(res?.error ?? 'Could not save.'); return }
     setSaved(true); setEditing(false)
     setTimeout(() => setSaved(false), 2000)
   }

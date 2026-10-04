@@ -110,7 +110,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
   useEffect(() => {
     if (!open || sites.length) return
     let alive = true
-    void listPhotoSitesAction().then((rows) => { if (alive) setSites(rows) }).catch(() => {})
+    void listPhotoSitesAction().then((rows) => { if (alive && rows) setSites(rows) }).catch(() => {})
     return () => { alive = false }
   }, [open, sites.length])
 
@@ -268,6 +268,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
     let found: Awaited<ReturnType<typeof locatePhotosByTimeAction>>
     try { found = await locatePhotosByTimeAction(need.map((x) => x.takenAt as string)) }
     catch { return }
+    if (!found) return
     const byKey = new Map(need.map((x, i) => [x.key, found[i] ?? null]))
     setItems((xs) => xs.map((x) => {
       const hit = byKey.get(x.key)
@@ -339,7 +340,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
       try {
         const type = it.file.type || 'image/jpeg'
         const pre = await createPhotoUploadAction(type, it.file.size)
-        if (!pre.ok || !pre.path || !pre.token) throw new Error(pre.error || 'Upload didn’t start')
+        if (!pre?.ok || !pre.path || !pre.token) throw new Error(pre?.error || 'Upload didn’t start')
         const [thumb, up] = await Promise.all([makeThumb(it.file), storage.uploadToSignedUrl(pre.path, pre.token, it.file, { contentType: type })])
         if (up.error) throw new Error('Upload didn’t go through — check signal and try again.')
         let thumbPath: string | null = null
@@ -355,7 +356,7 @@ export function PhotoCaptureSheet({ open, onClose, onSaved }: {
           source: it.fromCamera ? 'camera' : 'import',
           geofenceId: it.siteId,
         })
-        if (!fin.ok || !fin.photo) throw new Error(fin.error || 'Save failed')
+        if (!fin?.ok || !fin.photo) throw new Error(fin?.error || 'Save failed')
         setItems((xs) => xs.map((x) => (x.key === it.key ? { ...x, state: 'done' } : x)))
         onSaved?.(fin.photo)
       } catch (err) {
