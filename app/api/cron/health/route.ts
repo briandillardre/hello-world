@@ -410,6 +410,57 @@ export async function GET(req: NextRequest) {
       out.clockPhotosExpired = expired
       out.clockPhotoOrphansSwept = orphaned
     } catch (err) { out.clockPhotoSweep = err instanceof Error ? err.message : 'failed' }
+
+    // 8 — dirt takeoffs (127; review pass Oct 4). A takeoff deleted 30 days
+    // ago goes for good (its picture went at delete); a cut/fill picture no
+    // row points at (a save that died between upload and write) goes after a
+    // day; a cached lidar grid is re-read from USGS after 60 days, which also
+    // keeps the cache bounded. Only paths of our own shape reach remove().
+    // Bounded: 200 rows, 100 recently saved takeoffs, 1000 cached grids.
+    try {
+      const { createServiceClient } = await import('@/lib/supabase-server')
+      const svc = createServiceClient()
+      const HEAT_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\/heat-[0-9]+\.png$/i
+      const GROUND_PATH = /^ground\/[0-9a-f-]{36}_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+_[0-9]+\.bin$/i
+      const DAY = 86_400_000
+      const { data: gone, error: goneErr } = await svc.from('dirt_takeoffs').select('id, heat_path')
+        .lt('deleted_at', new Date(Date.now() - 30 * DAY).toISOString()).limit(200)
+      if (goneErr) throw new Error(`dirt_takeoffs read: ${goneErr.message}`)
+      const pics = (gone ?? []).map((r) => r.heat_path).filter((x): x is string => typeof x === 'string' && HEAT_PATH.test(x))
+      if (pics.length) await svc.storage.from('dirt').remove(pics)
+      if (gone?.length) {
+        const { error } = await svc.from('dirt_takeoffs').delete().in('id', gone.map((r) => r.id as string))
+        if (error) throw new Error(`dirt_takeoffs delete: ${error.message}`)
+      }
+      out.dirtPurged = gone?.length ?? 0
+
+      let strays = 0
+      const { data: recent } = await svc.from('dirt_takeoffs').select('id, company_id, heat_path')
+        .gte('updated_at', new Date(Date.now() - 2 * DAY).toISOString()).limit(100)
+      for (const t of recent ?? []) {
+        const prefix = `${t.company_id}/${t.id}`
+        const { data: objects } = await svc.storage.from('dirt').list(prefix, { limit: 100, sortBy: { column: 'created_at', order: 'asc' } })
+        const stray = (objects ?? [])
+          .filter((o) => o.name && Date.parse(o.created_at ?? '') < Date.now() - DAY)
+          .map((o) => `${prefix}/${o.name}`)
+          .filter((x) => HEAT_PATH.test(x) && x !== t.heat_path)
+        if (stray.length) { await svc.storage.from('dirt').remove(stray); strays += stray.length }
+      }
+      out.dirtStrayPictures = strays
+
+      const { data: grids, error: gErr } = await svc.storage.from('dirt').list('ground', { limit: 1000, sortBy: { column: 'created_at', order: 'asc' } })
+      if (gErr) throw new Error(`dirt ground list: ${gErr.message}`)
+      const aged = (grids ?? [])
+        .filter((o) => o.name && o.id && Date.parse(o.created_at ?? '') < Date.now() - 60 * DAY)
+        .map((o) => `ground/${o.name}`).filter((x) => GROUND_PATH.test(x)).slice(0, 200)
+      // The first cache (Oct 4, before it was per company) sat in ground/<epsg>/ — nothing reads it now.
+      for (const f of (grids ?? []).filter((o) => o.name && !o.id && /^\d{5}$/.test(o.name)).slice(0, 5)) {
+        const { data: legacy } = await svc.storage.from('dirt').list(`ground/${f.name}`, { limit: 200 })
+        aged.push(...(legacy ?? []).filter((o) => o.name && /^[0-9_]+\.bin$/.test(o.name)).map((o) => `ground/${f.name}/${o.name}`))
+      }
+      if (aged.length) await svc.storage.from('dirt').remove(aged)
+      out.dirtGroundExpired = aged.length
+    } catch (err) { out.dirtSweep = err instanceof Error ? err.message : 'failed' }
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })

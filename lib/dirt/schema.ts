@@ -10,6 +10,8 @@ import { DIRT_KINDS, type DirtDesign } from './takeoff'
 export const MAX_FEATURES = 3000
 export const MAX_POINTS_PER_FEATURE = 6000
 export const MAX_POINTS_TOTAL = 80000
+/** Everything traced must fit in a box this many degrees across (~5 km). */
+export const MAX_SPAN_DEG = 0.05
 
 const lngLat = z.tuple([
   z.number().finite().min(-180).max(180),
@@ -51,6 +53,15 @@ export function checkDesign(input: unknown): DesignCheck {
   }
   const total = r.data.features.reduce((s, f) => s + f.coords.length, 0)
   if (total > MAX_POINTS_TOTAL) return { ok: false, error: `That takeoff has ${total.toLocaleString()} traced points — the limit is ${MAX_POINTS_TOTAL.toLocaleString()}.` }
+  // One site, not a county: everything traced must sit inside ~5 km.
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const f of r.data.features) for (const [lng, lat] of f.coords) {
+    if (lng < x0) x0 = lng
+    if (lng > x1) x1 = lng
+    if (lat < y0) y0 = lat
+    if (lat > y1) y1 = lat
+  }
+  if (x1 - x0 > MAX_SPAN_DEG || y1 - y0 > MAX_SPAN_DEG) return { ok: false, error: 'Your traces spread over more than about 5 km — a takeoff covers one site. Split it into separate takeoffs.' }
   const ids = new Set<string>()
   for (const f of r.data.features) {
     if (ids.has(f.id)) return { ok: false, error: 'Two traced features share an id — reload and try again.' }

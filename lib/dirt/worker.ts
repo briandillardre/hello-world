@@ -19,7 +19,8 @@ self.onmessage = (e: MessageEvent<In>) => {
   if (m.type === 'ground') { ground = m.ground; return }
   if (m.type !== 'run') return
   try {
-    const { results, ctx } = runTakeoff(m.design, ground)
+    // A design too big to run says so instead of pinning a phone's CPU for minutes.
+    const { results, ctx } = runTakeoff(m.design, ground, new Date(), { deadline: Date.now() + 120_000 })
     const heat = heatRaster(ctx, { maxPx: 1000 })
     post({ type: 'done', seq: m.seq, results, heat }, heat ? [heat.rgba.buffer] : [])
   } catch (err) {

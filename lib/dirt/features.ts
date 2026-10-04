@@ -106,10 +106,26 @@ export function designGeoJSON(design: DirtDesign, selectedId: string | null): Ge
   return { type: 'FeatureCollection', features: out }
 }
 
-/** Every vertex of the design, for snapping. */
-export function allVertices(design: DirtDesign): [number, number][] {
+/**
+ * What a new point may snap to. Areas snap to area corners (shared edges,
+ * closing a ring). A contour or spot snaps only to traced points of the SAME
+ * surface at the SAME elevation (continuing a line) — never onto another
+ * elevation, which would hand the surface two heights at one spot.
+ */
+export function snapVertices(design: DirtDesign, tool: { kind: DirtKind; z?: number } | null): [number, number][] {
+  if (!tool) return []
+  const shape = KIND_META[tool.kind].shape
+  const surface = tool.kind.slice(0, 3) // 'eg_' | 'fg_'
   const out: [number, number][] = []
-  for (const f of design.features) for (const c of f.coords) out.push(c)
+  for (const f of design.features) {
+    const meta = KIND_META[f.kind]
+    if (!meta) continue
+    if (shape === 'area') {
+      if (meta.shape === 'area') out.push(...f.coords)
+    } else if (meta.shape !== 'area' && f.kind.startsWith(surface) && tool.z !== undefined && f.z !== undefined && Math.abs(f.z - tool.z) < 1e-6) {
+      out.push(...f.coords)
+    }
+  }
   return out
 }
 

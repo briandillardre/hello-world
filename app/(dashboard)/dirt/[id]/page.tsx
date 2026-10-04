@@ -8,7 +8,7 @@ import TakeoffEditor from '@/components/dirt/TakeoffEditor'
 
 export const dynamic = 'force-dynamic'
 // Save re-runs the takeoff on the server (and may read the lidar fresh).
-export const maxDuration = 60
+export const maxDuration = 90
 
 /**
  * The dirt takeoff editor (migration 127). Behind the site pages' view level,

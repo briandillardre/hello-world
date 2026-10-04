@@ -65,3 +65,25 @@ export function groundBoxFor(coords: [number, number][]): LngLatBox | null {
 export function boxTooBig(b: LngLatBox): boolean {
   return b.maxLng - b.minLng > MAX_SPAN_DEG || b.maxLat - b.minLat > MAX_SPAN_DEG
 }
+
+/** A box grown by `m` metres on every side. */
+export function growBox(b: LngLatBox, m: number): LngLatBox {
+  const dLat = m / 111_320
+  const dLng = m / (111_320 * Math.cos(((b.minLat + b.maxLat) / 2) * Math.PI / 180))
+  return { minLng: b.minLng - dLng, minLat: b.minLat - dLat, maxLng: b.maxLng + dLng, maxLat: b.maxLat + dLat }
+}
+
+/** Is `a` entirely inside `b`? */
+export function boxInside(a: LngLatBox, b: LngLatBox): boolean {
+  return a.minLng >= b.minLng && a.minLat >= b.minLat && a.maxLng <= b.maxLng && a.maxLat <= b.maxLat
+}
+
+/** A well-formed lng/lat box from untrusted input, or null. */
+export function parseBox(v: unknown): LngLatBox | null {
+  if (!v || typeof v !== 'object') return null
+  const o = v as Record<string, unknown>
+  const b = { minLng: Number(o.minLng), minLat: Number(o.minLat), maxLng: Number(o.maxLng), maxLat: Number(o.maxLat) }
+  if (![b.minLng, b.minLat, b.maxLng, b.maxLat].every(Number.isFinite)) return null
+  if (b.minLng >= b.maxLng || b.minLat >= b.maxLat || b.minLng < -180 || b.maxLng > 180 || b.minLat < -85 || b.maxLat > 85) return null
+  return b
+}

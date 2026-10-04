@@ -14,10 +14,11 @@ import dynamic from 'next/dynamic'
 import { ArrowLeft, Check, Copy, Eye, EyeOff, Layers, Loader2, Trash2, Undo2, X } from 'lucide-react'
 import { saveTakeoffAction, deleteTakeoffAction } from '@/lib/actions/dirt'
 import { decodeGround } from '@/lib/dirt/ground-format'
+import { ringSelfCrosses } from '@/lib/dirt/geom'
 import { boxTooBig, groundBoxFor, type LngLatBox } from '@/lib/dirt/ground-box'
 import {
-  DEMO_PRESETS, KIND_META, REDUCE_PRESETS, STEPS, TOPSOIL_HINT, allVertices, designGeoJSON, estimateText,
-  featureTitle, newId, type Step,
+  DEMO_PRESETS, KIND_META, REDUCE_PRESETS, STEPS, TOPSOIL_HINT, designGeoJSON, estimateText,
+  featureTitle, newId, snapVertices, type Step,
 } from '@/lib/dirt/features'
 import { CUT_STEPS, FILL_STEPS, NEUTRAL, legendRows } from '@/lib/dirt/heat'
 import type { DirtDesign, DirtFeature, DirtKind, DirtResults, GroundGrid } from '@/lib/dirt/takeoff'
@@ -46,8 +47,28 @@ interface GroundState {
   grid: GroundGrid | null
   source?: string
   coverage?: number
+  /** Part of the read failed (USGS blinked) — "Try again" reads it fresh. */
+  partial?: boolean
   box?: LngLatBox
   error?: string
+}
+
+/** Unsaved work kept on this device (a back press, a crash, a dead battery). */
+interface LocalDraft { v: 1; at: number; name: string; design: DirtDesign }
+const draftKey = (id: string) => `ht_dirt_draft_${id}`
+function readDraft(id: string): LocalDraft | null {
+  try {
+    const raw = window.localStorage.getItem(draftKey(id))
+    if (!raw) return null
+    const d = JSON.parse(raw) as LocalDraft
+    return d && d.v === 1 && d.design && Array.isArray(d.design.features) ? d : null
+  } catch { return null }
+}
+function writeDraft(id: string, d: LocalDraft | null) {
+  try {
+    if (d) window.localStorage.setItem(draftKey(id), JSON.stringify(d))
+    else window.localStorage.removeItem(draftKey(id))
+  } catch { /* storage full or blocked — the leave guard still asks */ }
 }
 
 const n0 = (v: number | undefined) => Math.round(Number(v) || 0).toLocaleString()
@@ -75,15 +96,19 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const [tool, setTool] = useState<Tool | null>(null)
   const [draft, setDraft] = useState<[number, number][]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [egZ, setEgZ] = useState<number>(800)
-  const [fgZ, setFgZ] = useState<number>(800)
+  // No made-up starting elevation: the first one comes off the plan.
+  const [egZ, setEgZ] = useState<number | undefined>(undefined)
+  const [fgZ, setFgZ] = useState<number | undefined>(undefined)
   const [interval, setInterval_] = useState(1)
   const [goingUp, setGoingUp] = useState(true)
   const [sheetState, setSheetState] = useState<Record<string, { visible: boolean; opacity: number }>>(() =>
     Object.fromEntries(sheets.map((s, i) => [s.id, { visible: s.active || i === 0, opacity: 0.8 }])))
   const [ground, setGround] = useState<GroundState>({ status: 'idle', grid: null })
+  const [groundTry, setGroundTry] = useState(0)
   const [live, setLive] = useState<{ results: DirtResults; heat: { url: string; corners: [number, number][]; bandFt: number } | null } | null>(null)
+  const [liveError, setLiveError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const [restore, setRestore] = useState<LocalDraft | null>(null)
   const [saved, setSaved] = useState<{ results: DirtResults | null; heatUrl: string | null; heatCorners: [number, number][] | null; at: string | null }>({
     results: takeoff.results, heatUrl: takeoff.heatUrl, heatCorners: takeoff.heatCorners, at: takeoff.computedAt,
   })
@@ -97,6 +122,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   // ── Design edits ──
   const designRef = useRef(design)
   designRef.current = design
+  const nameRef = useRef(name)
+  nameRef.current = name
   const commit = useCallback((next: DirtDesign) => {
     setHistory(h => [...h.slice(-59), designRef.current])
     setDesign(next)
@@ -110,52 +137,85 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
       return h.slice(0, -1)
     })
   }, [])
-  const update = (id: string, patch: Partial<DirtFeature>) =>
-    commit({ ...design, features: design.features.map(f => (f.id === id ? { ...f, ...patch } : f)) })
+  const update = (id: string, patch: Partial<DirtFeature>) => {
+    const d = designRef.current
+    commit({ ...d, features: d.features.map(f => (f.id === id ? { ...f, ...patch } : f)) })
+  }
   const remove = (id: string) => {
-    commit({ ...design, features: design.features.filter(f => f.id !== id) })
+    const d = designRef.current
+    commit({ ...d, features: d.features.filter(f => f.id !== id) })
     if (selected === id) setSelected(null)
   }
 
   // ── Worker: live results ──
+  // ONE run in flight: a change while it runs parks the newest design, which
+  // goes the moment the run reports — tracing never queues up a backlog of
+  // stale runs on a big site.
   const worker = useRef<Worker | null>(null)
   const seq = useRef(0)
+  const inFlight = useRef(false)
+  const parked = useRef<DirtDesign | null>(null)
+  const applied = useRef(0)
+  const postRun = useCallback((d: DirtDesign) => {
+    const w = worker.current
+    if (!w) return
+    if (inFlight.current) { parked.current = d; return }
+    inFlight.current = true
+    seq.current++
+    setRunning(true)
+    w.postMessage({ type: 'run', seq: seq.current, design: d })
+  }, [])
   useEffect(() => {
     const w = new Worker(new URL('../../lib/dirt/worker.ts', import.meta.url))
     worker.current = w
+    const urls: string[] = []
     w.onmessage = (e: MessageEvent<{ type: string; seq: number; results?: DirtResults; heat?: { width: number; height: number; rgba: Uint8ClampedArray; corners: [number, number][]; bandFt: number } | null; error?: string }>) => {
       const m = e.data
-      if (m.seq !== seq.current) return
-      setRunning(false)
-      if (m.type !== 'done' || !m.results) return
-      let heat: { url: string; corners: [number, number][]; bandFt: number } | null = null
-      if (m.heat) {
-        const c = document.createElement('canvas')
-        c.width = m.heat.width
-        c.height = m.heat.height
-        const ctx = c.getContext('2d')
-        if (ctx) {
-          ctx.putImageData(new ImageData(new Uint8ClampedArray(m.heat.rgba), m.heat.width, m.heat.height), 0, 0)
-          heat = { url: c.toDataURL('image/png'), corners: m.heat.corners, bandFt: m.heat.bandFt }
-        }
+      inFlight.current = false
+      const next = parked.current
+      parked.current = null
+      if (next) postRun(next) // the newest design runs next; this answer still beats an older one on screen
+      else setRunning(false)
+      if (m.type !== 'done' || !m.results) { if (!next) setLiveError(m.error ?? 'The preview could not run.'); return }
+      setLiveError(null)
+      const results = m.results
+      const mySeq = m.seq
+      const apply = (heat: { url: string; corners: [number, number][]; bandFt: number } | null) => {
+        if (mySeq < applied.current) return
+        applied.current = mySeq
+        setLive({ results, heat })
       }
-      setLive({ results: m.results, heat })
+      if (!m.heat) { apply(null); return }
+      const hm = m.heat
+      const c = document.createElement('canvas')
+      c.width = hm.width
+      c.height = hm.height
+      const ctx = c.getContext('2d')
+      if (!ctx) { apply(null); return }
+      ctx.putImageData(new ImageData(new Uint8ClampedArray(hm.rgba), hm.width, hm.height), 0, 0)
+      // PNG encoding happens off the main thread (toBlob), unlike toDataURL.
+      c.toBlob(b => {
+        if (!b) { apply(null); return }
+        const url = URL.createObjectURL(b)
+        urls.push(url)
+        // Free older pictures once the map has had time to swap them out.
+        while (urls.length > 3) { const old = urls.shift()!; setTimeout(() => URL.revokeObjectURL(old), 5000) }
+        apply({ url, corners: hm.corners, bandFt: hm.bandFt })
+      }, 'image/png')
     }
-    return () => { w.terminate(); worker.current = null }
-  }, [])
+    return () => { w.terminate(); worker.current = null; urls.forEach(u => URL.revokeObjectURL(u)) }
+  }, [postRun])
   useEffect(() => {
     worker.current?.postMessage({ type: 'ground', ground: ground.grid })
   }, [ground.grid])
+  // The server's saved numbers stand until something changes — no preview run
+  // needed (or shown) for a takeoff opened as it was saved.
+  const needPreview = dirty || !saved.results
   useEffect(() => {
-    const w = worker.current
-    if (!w) return
-    const t = setTimeout(() => {
-      seq.current++
-      setRunning(true)
-      w.postMessage({ type: 'run', seq: seq.current, design })
-    }, 300)
+    if (!needPreview) return
+    const t = setTimeout(() => postRun(designRef.current), 300)
     return () => clearTimeout(t)
-  }, [design, ground.grid])
+  }, [design, ground.grid, needPreview, postRun])
 
   // ── Lidar ground ──
   const needBox = useMemo(() => {
@@ -163,15 +223,25 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     if (zone.ring) coords.push(...zone.ring)
     return groundBoxFor(coords)
   }, [design.features, zone.ring])
+  // A read in flight that already covers the box is left to finish (tracing
+  // inside the site must not restart a slow first read on every point).
+  const inflightGround = useRef<{ box: LngLatBox; ctl: AbortController; tryN: number } | null>(null)
+  useEffect(() => () => inflightGround.current?.ctl.abort(), [])
   useEffect(() => {
     if (design.existing.source !== 'lidar' || !needBox) return
-    if (ground.box && inside(needBox, ground.box) && ground.status === 'ready') return
+    if (ground.status === 'ready' && ground.box && inside(needBox, ground.box)) return
+    const cur = inflightGround.current
+    if (cur && cur.tryN === groundTry && inside(needBox, cur.box)) return
     if (boxTooBig(needBox)) { setGround(g => ({ ...g, status: 'error', error: 'This site is more than about 3 km across — trace the existing contours instead.' })); return }
-    const ctl = new AbortController()
+    const box = needBox
     const t = setTimeout(async () => {
+      inflightGround.current?.ctl.abort()
+      const req = { box, ctl: new AbortController(), tryN: groundTry }
+      inflightGround.current = req
       setGround(g => ({ ...g, status: 'loading', error: undefined }))
       try {
-        const r = await fetch(`/api/dirt/ground?bbox=${[needBox.minLng, needBox.minLat, needBox.maxLng, needBox.maxLat].map(v => v.toFixed(6)).join(',')}`, { signal: ctl.signal })
+        const q = [box.minLng, box.minLat, box.maxLng, box.maxLat].map(v => v.toFixed(6)).join(',')
+        const r = await fetch(`/api/dirt/ground?takeoff=${encodeURIComponent(takeoff.id)}&bbox=${q}`, { signal: req.ctl.signal })
         if (!r.ok) {
           const j = await r.json().catch(() => ({}))
           setGround(g => ({ ...g, status: 'error', error: j.error ?? `Lidar didn't load (${r.status}).` }))
@@ -179,14 +249,16 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
         }
         const d = decodeGround(await r.arrayBuffer())
         if (!d) { setGround(g => ({ ...g, status: 'error', error: "Lidar didn't load — try again." })); return }
-        setGround({ status: 'ready', grid: d.header.coverage > 0 ? d.grid : null, source: d.header.source, coverage: d.header.coverage, box: needBox })
+        setGround({ status: 'ready', grid: d.header.coverage > 0 ? d.grid : null, source: d.header.source, coverage: d.header.coverage, partial: !!d.header.partial, box })
       } catch {
-        if (!ctl.signal.aborted) setGround(g => ({ ...g, status: 'error', error: "Lidar didn't load — check the connection." }))
+        if (!req.ctl.signal.aborted) setGround(g => ({ ...g, status: 'error', error: "Lidar didn't load — check the connection." }))
+      } finally {
+        if (inflightGround.current === req) inflightGround.current = null
       }
     }, 600)
-    return () => { clearTimeout(t); ctl.abort() }
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needBox, design.existing.source])
+  }, [needBox, design.existing.source, groundTry])
 
   // ── Drawing ──
   const toolMeta = tool ? KIND_META[tool.kind] : null
@@ -195,9 +267,14 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const finish = useCallback(() => {
     if (!tool) return
     const shape = KIND_META[tool.kind].shape
+    if (shape === 'point' || !draft.length) return // a spot is placed by its tap; a double-tap or Enter adds nothing
     const pts = draft.filter((p, i) => i === 0 || Math.abs(p[0] - draft[i - 1][0]) > 1e-9 || Math.abs(p[1] - draft[i - 1][1]) > 1e-9)
     if (shape === 'line' && pts.length < 2) return
     if (shape === 'area' && pts.length < 3) return
+    if (shape === 'area' && ringSelfCrosses(pts.flat())) {
+      setMsg({ tone: 'warn', text: 'That outline crosses itself — use Back a point and go around without the twist.' })
+      return
+    }
     const f: DirtFeature = { id: newId(), kind: tool.kind, coords: pts }
     if (tool.z !== undefined) f.z = tool.z
     if (tool.thicknessIn !== undefined) f.thicknessIn = tool.thicknessIn
@@ -207,8 +284,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     const keep = tool.kind === 'boundary' ? design.features.filter(x => x.kind !== 'boundary') : design.features
     commit({ ...design, features: [...keep, f] })
     setDraft([])
-    if (tool.kind === 'eg_contour' || tool.kind === 'fg_contour') {
-      const next = Math.round(((tool.z ?? 0) + (goingUp ? interval : -interval)) * 100) / 100
+    if ((tool.kind === 'eg_contour' || tool.kind === 'fg_contour') && tool.z !== undefined) {
+      const next = Math.round((tool.z + (goingUp ? interval : -interval)) * 100) / 100
       setTool({ ...tool, z: next })
       if (tool.kind === 'eg_contour') setEgZ(next); else setFgZ(next)
     }
@@ -218,6 +295,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     if (!tool) return
     const shape = KIND_META[tool.kind].shape
     if (shape === 'point') {
+      // A double-tap fires two taps at one spot — one spot grade, not two.
+      if (designRef.current.features.some(x => x.kind === tool.kind && x.coords[0]?.[0] === p[0] && x.coords[0]?.[1] === p[1])) return
       const f: DirtFeature = { id: newId(), kind: tool.kind, coords: [p], z: tool.z }
       commit({ ...designRef.current, features: [...designRef.current.features, f] })
       return
@@ -241,24 +320,57 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  // Unsaved changes guard.
+  // Unsaved changes guard. A reload or a closed tab gets the browser's own
+  // question; in-app links (the back arrow, the bottom nav) navigate without
+  // unloading the page, so they get ours.
+  const leaving = useRef(false)
   useEffect(() => {
     if (!dirty) return
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    const h = (e: BeforeUnloadEvent) => { if (leaving.current) return; e.preventDefault(); e.returnValue = '' }
+    const onLink = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || a.target === '_blank' || a.origin !== window.location.origin || a.pathname === window.location.pathname) return
+      if (window.confirm('Leave this takeoff without saving? Changes since the last save will be lost.')) { leaving.current = true; return }
+      e.preventDefault()
+      e.stopPropagation()
+    }
     window.addEventListener('beforeunload', h)
-    return () => window.removeEventListener('beforeunload', h)
+    document.addEventListener('click', onLink, true)
+    return () => { window.removeEventListener('beforeunload', h); document.removeEventListener('click', onLink, true) }
   }, [dirty])
+
+  // Unsaved work is also kept on this device, so an Android back press or a
+  // dead battery doesn't cost the tracing. Offered back when the takeoff opens.
+  useEffect(() => {
+    if (!canEdit) return
+    const d = readDraft(takeoff.id)
+    if (d && JSON.stringify(d.design) !== JSON.stringify(normalized(takeoff.design))) setRestore(d)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => {
+    if (!dirty || !canEdit) return
+    const t = setTimeout(() => writeDraft(takeoff.id, { v: 1, at: Date.now(), name, design }), 800)
+    return () => clearTimeout(t)
+  }, [dirty, canEdit, name, design, takeoff.id])
 
   // ── Save ──
   async function save() {
     if (!canEdit || saving) return
     setSaving(true); setMsg(null)
+    const sentDesign = designRef.current
+    const sentName = nameRef.current
     try {
-      const r = await saveTakeoffAction(takeoff.id, { name, design })
+      const r = await saveTakeoffAction(takeoff.id, { name: sentName, design: sentDesign, groundBox: ground.box })
       if (!r.ok) { setMsg({ tone: 'warn', text: r.error ?? 'Could not save.' }); return }
-      setDirty(false)
-      if (r.results) setSaved({ results: r.results, heatUrl: r.heatUrl ?? null, heatCorners: r.heatCorners ?? null, at: r.results.computedAt })
-      setMsg(r.error ? { tone: 'warn', text: r.error } : { tone: 'ok', text: 'Saved — the numbers below are the server run.' })
+      // Edits made while the save ran are still unsaved.
+      if (designRef.current === sentDesign && nameRef.current === sentName) {
+        setDirty(false)
+        writeDraft(takeoff.id, null)
+      }
+      setSaved({ results: r.results ?? null, heatUrl: r.heatUrl ?? null, heatCorners: r.heatCorners ?? null, at: r.savedAt ?? new Date().toISOString() })
+      const serverWarnings = r.results?.warnings?.length ? ` ${r.results.warnings.length} note${r.results.warnings.length === 1 ? '' : 's'} on the Results step.` : ''
+      setMsg(r.error ? { tone: 'warn', text: r.error } : { tone: 'ok', text: `Saved — the numbers below are the server run.${serverWarnings}` })
     } catch {
       setMsg({ tone: 'warn', text: 'Could not save — check the connection and try again.' })
     } finally {
@@ -269,16 +381,21 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
     if (!canEdit) return
     if (!window.confirm(`Delete "${name}"? This can't be undone from here.`)) return
     const r = await deleteTakeoffAction(takeoff.id)
-    if (r.ok) window.location.href = `/zones/${zone.id}`
+    if (r.ok) { leaving.current = true; writeDraft(takeoff.id, null); window.location.href = `/zones/${zone.id}` }
     else setMsg({ tone: 'warn', text: r.error ?? 'Could not delete.' })
   }
 
+  useEffect(() => {
+    document.getElementById(`dirt-tab-${step}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  }, [step])
+
   // ── Derived ──
   const fc = useMemo(() => designGeoJSON(design, selected), [design, selected])
-  const snapTo = useMemo(() => allVertices(design), [design])
+  const snapTo = useMemo(() => snapVertices(design, tool), [design, tool])
   const mapSheets: MapSheet[] = useMemo(() => sheets.map(s => ({ id: s.id, url: s.url, corners: s.corners, visible: !!sheetState[s.id]?.visible, opacity: sheetState[s.id]?.opacity ?? 0.8 })), [sheets, sheetState])
-  const results = live?.results ?? saved.results
-  const heat = live?.heat ?? (saved.heatUrl && saved.heatCorners ? { url: saved.heatUrl, corners: saved.heatCorners, bandFt: saved.results?.heatBandFt ?? 1 } : null)
+  const savedHeat = saved.heatUrl && saved.heatCorners ? { url: saved.heatUrl, corners: saved.heatCorners, bandFt: saved.results?.heatBandFt ?? 1 } : null
+  const results = needPreview ? (live?.results ?? saved.results) : saved.results
+  const heat = needPreview ? (live?.heat ?? savedHeat) : savedHeat
   const sel = design.features.find(f => f.id === selected) ?? null
   const boundary = design.features.find(f => f.kind === 'boundary')
   const byKind = (k: DirtKind) => design.features.filter(f => f.kind === k)
@@ -288,7 +405,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   const toolWords = tool ? `${KIND_META[tool.kind].label}${tool.z !== undefined ? ` at ${tool.z} ft` : ''}${tool.thicknessIn !== undefined ? ` · ${tool.thicknessIn}"` : ''}` : ''
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-navy-950 text-ink" style={{ paddingTop: 'var(--ht-safe-top, 0px)', paddingBottom: 'var(--ht-safe-bottom, 0px)' }}>
+    <div className="fixed inset-0 z-40 flex flex-col bg-navy-950 pb-[calc(54px+var(--ht-safe-bottom,0px))] text-ink md:pb-[var(--ht-safe-bottom,0px)]" style={{ paddingTop: 'var(--ht-safe-top, 0px)' }}>
       {/* Top bar */}
       <div className="flex items-center gap-2 border-b border-navy-800 bg-navy-900 px-3 py-2">
         <Link href={`/zones/${zone.id}`} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-navy-800 hover:text-ink" aria-label="Back to the site">
@@ -331,6 +448,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             heat={heat ? { url: heat.url, corners: heat.corners } : null}
             heatVisible={heatVisible}
             heatOpacity={heatOpacity}
+            heatOverSheets={step === 'results'}
             drawing={!!tool}
             snapTo={snapTo}
             onClick={onMapClick}
@@ -347,11 +465,11 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
               </span>
               {KIND_META[tool.kind].shape !== 'point' && (
                 <>
-                  <button onClick={() => setDraft(d => d.slice(0, -1))} disabled={!draft.length} className="rounded-md px-2 py-1 text-muted hover:bg-navy-800 disabled:opacity-40">Back a point</button>
-                  <button onClick={finish} disabled={draft.length < (KIND_META[tool.kind].shape === 'area' ? 3 : 2)} className="rounded-md bg-amber/90 px-2 py-1 font-semibold text-navy-950 disabled:opacity-40">Finish</button>
+                  <button onClick={() => setDraft(d => d.slice(0, -1))} disabled={!draft.length} className="min-h-[36px] rounded-md px-3 py-1.5 text-muted hover:bg-navy-800 disabled:opacity-40">Back a point</button>
+                  <button onClick={finish} disabled={draft.length < (KIND_META[tool.kind].shape === 'area' ? 3 : 2)} className="min-h-[36px] rounded-md bg-amber/90 px-3 py-1.5 font-semibold text-navy-950 disabled:opacity-40">Finish</button>
                 </>
               )}
-              <button onClick={stopTool} className="rounded-md px-2 py-1 text-muted hover:bg-navy-800" aria-label="Stop drawing"><X className="h-3.5 w-3.5" /></button>
+              <button onClick={stopTool} className="min-h-[36px] min-w-[36px] rounded-md px-2 py-1 text-muted hover:bg-navy-800" aria-label="Stop drawing"><X className="mx-auto h-4 w-4" /></button>
             </div>
           )}
           {heat && heatVisible && legend && (
@@ -376,10 +494,11 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             {STEPS.map((s, i) => (
               <button
                 key={s.key}
+                id={`dirt-tab-${s.key}`}
                 role="tab"
                 aria-selected={step === s.key}
                 onClick={() => setStep(s.key)}
-                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs ${step === s.key ? 'bg-amber text-navy-950 font-semibold' : 'text-muted hover:bg-navy-800'}`}
+                className={`min-h-[36px] shrink-0 rounded-lg px-2.5 py-1.5 text-xs ${step === s.key ? 'bg-amber text-navy-950 font-semibold' : 'text-muted hover:bg-navy-800'}`}
               >
                 <span className="mr-1 font-mono opacity-60">{i + 1}</span>{s.label}
               </button>
@@ -390,9 +509,27 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
               <div className={`rounded-lg border px-3 py-2 text-xs ${msg.tone === 'ok' ? 'border-teal-700 bg-teal-950/40 text-teal-200' : 'border-amber/50 bg-amber/10 text-amber'}`}>{msg.text}</div>
             )}
             {!canEdit && <div className="rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 text-xs text-muted">View only — your role can see this takeoff but not change it.</div>}
+            {restore && (
+              <div className="space-y-2 rounded-lg border border-amber/50 bg-amber/10 px-3 py-2 text-xs text-amber">
+                <div>{`Unsaved changes on this device from ${new Date(restore.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`}</div>
+                <div className="flex gap-3">
+                  <button className="min-h-[36px] font-semibold underline" onClick={() => {
+                    setHistory([])
+                    setDesign(normalized(restore.design))
+                    setName(String(restore.name || name).slice(0, 120))
+                    setDirty(true)
+                    setRestore(null)
+                  }}>Restore them</button>
+                  <button className="min-h-[36px] text-muted underline" onClick={() => { writeDraft(takeoff.id, null); setRestore(null) }}>Discard</button>
+                </div>
+              </div>
+            )}
+            {liveError && needPreview && (
+              <div className="rounded-lg border border-amber/50 bg-amber/10 px-3 py-2 text-xs text-amber">{liveError}</div>
+            )}
 
             {sel && (
-              <SelectedCard f={sel} canEdit={canEdit} onChange={p => update(sel.id, p)} onDelete={() => remove(sel.id)} onClose={() => setSelected(null)} />
+              <SelectedCard key={sel.id} f={sel} canEdit={canEdit} onChange={p => update(sel.id, p)} onDelete={() => remove(sel.id)} onClose={() => setSelected(null)} />
             )}
 
             {step === 'plans' && (
@@ -437,13 +574,19 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                         {ground.status === 'loading' ? 'Reading USGS lidar under the site…' : ground.status === 'error' ? ground.error : ground.source ?? 'Waiting for the site outline…'}
                       </span>
                     </div>
+                    {ground.status === 'ready' && ground.partial && (
+                      <div className="text-amber">Part of this read used coarser USGS data because a lidar tile didn&apos;t answer.</div>
+                    )}
+                    {(ground.status === 'error' || (ground.status === 'ready' && ground.partial)) && (
+                      <button onClick={() => setGroundTry(n => n + 1)} className="min-h-[36px] text-left text-amber underline">Try again</button>
+                    )}
                     {ground.status === 'ready' && ground.coverage !== undefined && ground.coverage < 0.99 && (
                       <div className="text-amber">Covers {Math.round(ground.coverage * 100)}% of the site.</div>
                     )}
                     <label className="flex items-center gap-2">
                       <span className="text-muted">Datum offset</span>
-                      <input type="number" step="0.1" disabled={!canEdit} value={design.existing.offsetFt}
-                        onChange={e => commit({ ...design, existing: { ...design.existing, offsetFt: Number(e.target.value) || 0 } })}
+                      <NumField step={0.1} min={-1000} max={1000} disabled={!canEdit} value={design.existing.offsetFt} ariaLabel="Datum offset, feet"
+                        onValue={v => commit({ ...designRef.current, existing: { ...designRef.current.existing, offsetFt: v } })}
                         className="w-24 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" />
                       <span className="text-muted">ft</span>
                     </label>
@@ -458,8 +601,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                 )}
                 {canEdit && (
                   <ElevationTools z={egZ} setZ={setEgZ} interval={interval} setInterval={setInterval_} goingUp={goingUp} setGoingUp={setGoingUp}
-                    onContour={() => startTool({ kind: 'eg_contour', z: egZ })}
-                    onSpot={() => startTool({ kind: 'eg_spot', z: egZ })}
+                    onContour={() => egZ !== undefined && startTool({ kind: 'eg_contour', z: egZ })}
+                    onSpot={() => egZ !== undefined && startTool({ kind: 'eg_spot', z: egZ })}
                     active={tool?.kind === 'eg_contour' || tool?.kind === 'eg_spot'} kindWord="existing" />
                 )}
                 <FeatureList items={[...byKind('eg_contour'), ...byKind('eg_spot')]} selected={selected} onPick={setSelected} />
@@ -503,8 +646,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                       )}
                     </div>
                     <ElevationTools z={fgZ} setZ={setFgZ} interval={interval} setInterval={setInterval_} goingUp={goingUp} setGoingUp={setGoingUp}
-                      onContour={() => startTool({ kind: 'fg_contour', z: fgZ })}
-                      onSpot={() => startTool({ kind: 'fg_spot', z: fgZ })}
+                      onContour={() => fgZ !== undefined && startTool({ kind: 'fg_contour', z: fgZ })}
+                      onSpot={() => fgZ !== undefined && startTool({ kind: 'fg_spot', z: fgZ })}
                       active={tool?.kind === 'fg_contour' || tool?.kind === 'fg_spot'} kindWord="proposed" />
                     <PadTool onStart={(z, off, label) => startTool({ kind: 'platform', z, offsetIn: off, label })} active={tool?.kind === 'platform'} />
                   </div>
@@ -523,7 +666,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
 
             {step === 'results' && (
               <Results results={results} live={!!live} dirty={dirty} saved={saved.results} name={name}
-                design={design} canEdit={canEdit} onSettings={s => commit({ ...design, settings: { ...design.settings, ...s } })}
+                design={design} canEdit={canEdit} onSettings={s => commit({ ...designRef.current, settings: { ...designRef.current.settings, ...s } })}
                 heatVisible={heatVisible} setHeatVisible={setHeatVisible} heatOpacity={heatOpacity} setHeatOpacity={setHeatOpacity}
                 copied={copied} onCopy={async (text) => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* clipboard blocked */ } }} />
             )}
@@ -549,6 +692,46 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   )
 }
 
+/**
+ * A number box that keeps what's being typed. A type=number box reads '' for a
+ * lone '-' (or a cleared box), so coercing every keystroke turned "-10" into
+ * +10 and an emptied box into 0. Only a whole number reaches onValue — as it's
+ * typed (live) or when the box is left / Enter is pressed (one undo step per
+ * edit, never a half-typed elevation in the design).
+ */
+function NumField({ value, onValue, live = false, min, max, step, disabled, placeholder, className, ariaLabel }: {
+  value: number | undefined; onValue: (n: number) => void; live?: boolean
+  min?: number; max?: number; step?: number; disabled?: boolean; placeholder?: string; className?: string; ariaLabel?: string
+}) {
+  const shown = value === undefined || !Number.isFinite(value) ? '' : String(value)
+  const [text, setText] = useState(shown)
+  const editing = useRef(false)
+  useEffect(() => { if (!editing.current) setText(shown) }, [shown])
+  const parse = (t: string): number | null => {
+    if (t.trim() === '') return null
+    const n = Number(t)
+    return Number.isFinite(n) ? Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)) : null
+  }
+  const leave = () => {
+    editing.current = false
+    const n = parse(text)
+    if (n !== null && n !== value) onValue(n)
+    setText(n !== null ? String(n) : shown)
+  }
+  return (
+    <input type="number" step={step} min={min} max={max} disabled={disabled} placeholder={placeholder} aria-label={ariaLabel}
+      value={text} className={className}
+      onFocus={() => { editing.current = true }}
+      onChange={e => {
+        setText(e.target.value)
+        const n = live ? parse(e.target.value) : null
+        if (n !== null && n !== value) onValue(n)
+      }}
+      onBlur={leave}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+  )
+}
+
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
@@ -560,7 +743,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 function PresetButtons({ presets, onPick, activeLabel }: { presets: { label: string; thicknessIn: number; note?: string }[]; onPick: (p: { label: string; thicknessIn: number }) => void; activeLabel?: string }) {
-  const [custom, setCustom] = useState({ label: '', t: 6 })
+  const [custom, setCustom] = useState<{ label: string; t: number | undefined }>({ label: '', t: 6 })
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
@@ -575,26 +758,28 @@ function PresetButtons({ presets, onPick, activeLabel }: { presets: { label: str
       <div className="flex items-center gap-2 text-xs">
         <input value={custom.label} onChange={e => setCustom(c => ({ ...c, label: e.target.value }))} placeholder="Other type" maxLength={40}
           className="min-w-0 flex-1 rounded border border-navy-700 bg-navy-950 px-2 py-1.5" />
-        <input type="number" min={0} max={240} step={0.5} value={custom.t} onChange={e => setCustom(c => ({ ...c, t: Number(e.target.value) || 0 }))}
-          className="w-16 rounded border border-navy-700 bg-navy-950 px-2 py-1.5 text-right" aria-label="Thickness, inches" />
+        <NumField live min={0} max={240} step={0.5} value={custom.t} onValue={t => setCustom(c => ({ ...c, t }))}
+          className="w-16 rounded border border-navy-700 bg-navy-950 px-2 py-1.5 text-right" ariaLabel="Thickness, inches" />
         <span className="text-muted">in</span>
-        <button onClick={() => onPick({ label: custom.label.trim() || 'Custom', thicknessIn: custom.t })} className="rounded-lg border border-navy-700 px-2.5 py-1.5 hover:bg-navy-800">Draw</button>
+        <button onClick={() => custom.t !== undefined && onPick({ label: custom.label.trim() || 'Custom', thicknessIn: custom.t })} disabled={custom.t === undefined}
+          className="rounded-lg border border-navy-700 px-2.5 py-1.5 hover:bg-navy-800 disabled:opacity-40">Draw</button>
       </div>
     </div>
   )
 }
 
 function ElevationTools(p: {
-  z: number; setZ: (n: number) => void; interval: number; setInterval: (n: number) => void; goingUp: boolean; setGoingUp: (b: boolean) => void
+  z: number | undefined; setZ: (n: number) => void; interval: number; setInterval: (n: number) => void; goingUp: boolean; setGoingUp: (b: boolean) => void
   onContour: () => void; onSpot: () => void; active: boolean; kindWord: string
 }) {
+  const unset = p.z === undefined
   return (
     <div className={`space-y-2 rounded-lg border p-2 ${p.active ? 'border-amber/60' : 'border-navy-800'} bg-navy-950`}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <label className="flex items-center gap-1.5">
           <span className="text-muted">Elevation</span>
-          <input type="number" step="0.1" value={p.z} onChange={e => p.setZ(Number(e.target.value) || 0)}
-            className="w-24 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" />
+          <NumField live step={0.1} min={-1500} max={30000} value={p.z} onValue={p.setZ} placeholder="from plan" ariaLabel="Elevation, feet"
+            className={`w-24 rounded border bg-navy-900 px-2 py-1 text-right ${unset ? 'border-amber/60' : 'border-navy-700'}`} />
           <span className="text-muted">ft</span>
         </label>
         <label className="flex items-center gap-1.5">
@@ -602,32 +787,35 @@ function ElevationTools(p: {
           <select value={p.goingUp ? 'up' : 'down'} onChange={e => p.setGoingUp(e.target.value === 'up')} className="rounded border border-navy-700 bg-navy-900 px-1 py-1">
             <option value="up">+</option><option value="down">−</option>
           </select>
-          <input type="number" min={0.1} step={0.5} value={p.interval} onChange={e => p.setInterval(Math.max(0.1, Number(e.target.value) || 1))}
-            className="w-14 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" aria-label="Contour interval" />
+          <NumField live min={0.1} max={100} step={0.5} value={p.interval} onValue={p.setInterval}
+            className="w-14 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" ariaLabel="Contour interval" />
         </label>
       </div>
       <div className="flex gap-2">
-        <button onClick={p.onContour} className="flex-1 rounded-lg bg-navy-800 px-2 py-1.5 text-xs hover:bg-navy-700">Trace {p.kindWord} contour</button>
-        <button onClick={p.onSpot} className="flex-1 rounded-lg bg-navy-800 px-2 py-1.5 text-xs hover:bg-navy-700">Place spot grade</button>
+        <button onClick={p.onContour} disabled={unset} className="flex-1 rounded-lg bg-navy-800 px-2 py-1.5 text-xs hover:bg-navy-700 disabled:opacity-40">Trace {p.kindWord} contour</button>
+        <button onClick={p.onSpot} disabled={unset} className="flex-1 rounded-lg bg-navy-800 px-2 py-1.5 text-xs hover:bg-navy-700 disabled:opacity-40">Place spot grade</button>
       </div>
-      <p className="text-[11px] text-faint">After each contour the elevation steps by the interval, so you can trace them one after another.</p>
+      <p className="text-[11px] text-faint">{unset ? 'Type the elevation off the plan first.' : 'After each contour the elevation steps by the interval, so you can trace them one after another.'}</p>
     </div>
   )
 }
 
 function PadTool({ onStart, active }: { onStart: (z: number, offsetIn: number, label: string) => void; active: boolean }) {
-  const [z, setZ] = useState(800)
-  const [off, setOff] = useState(-8)
+  const [z, setZ] = useState<number | undefined>(undefined)
+  const [off, setOff] = useState<number | undefined>(-8)
   return (
     <div className={`space-y-2 rounded-lg border p-2 ${active ? 'border-amber/60' : 'border-navy-800'} bg-navy-950 text-xs`}>
       <div className="font-semibold">Building pad</div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5"><span className="text-muted">Finished floor</span>
-          <input type="number" step="0.01" value={z} onChange={e => setZ(Number(e.target.value) || 0)} className="w-24 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> ft</label>
+          <NumField live step={0.01} min={-1500} max={30000} value={z} onValue={setZ} placeholder="from plan" ariaLabel="Finished floor, feet"
+            className={`w-24 rounded border bg-navy-900 px-2 py-1 text-right ${z === undefined ? 'border-amber/60' : 'border-navy-700'}`} /> ft</label>
         <label className="flex items-center gap-1.5"><span className="text-muted">Subgrade</span>
-          <input type="number" step="0.5" value={off} onChange={e => setOff(Number(e.target.value) || 0)} className="w-16 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
+          <NumField live step={0.5} min={-120} max={120} value={off} onValue={setOff} ariaLabel="Subgrade offset, inches"
+            className="w-16 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
       </div>
-      <button onClick={() => onStart(z, off, 'Building')} className="w-full rounded-lg bg-navy-800 px-2 py-1.5 hover:bg-navy-700">Draw the pad</button>
+      <button onClick={() => z !== undefined && onStart(z, off ?? -8, 'Building')} disabled={z === undefined}
+        className="w-full rounded-lg bg-navy-800 px-2 py-1.5 hover:bg-navy-700 disabled:opacity-40">{z === undefined ? 'Type the finished floor first' : 'Draw the pad'}</button>
       <p className="text-[11px] text-faint">{'Slab + stone under the finished floor — −8" when the plans don\'t say.'}</p>
     </div>
   )
@@ -667,15 +855,18 @@ function SelectedCard({ f, canEdit, onChange, onDelete, onClose }: { f: DirtFeat
       )}
       {hasZ && (
         <label className="flex items-center gap-2"><span className="w-20 text-muted">{f.kind === 'platform' ? 'Finished floor' : 'Elevation'}</span>
-          <input type="number" step="0.01" disabled={!canEdit} value={f.z ?? ''} onChange={e => onChange({ z: Number(e.target.value) })} className="w-28 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> ft</label>
+          <NumField step={0.01} min={-1500} max={30000} disabled={!canEdit} value={f.z} onValue={z => onChange({ z })} ariaLabel="Elevation, feet"
+            className="w-28 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> ft</label>
       )}
       {f.kind === 'platform' && (
         <label className="flex items-center gap-2"><span className="w-20 text-muted">Subgrade</span>
-          <input type="number" step="0.5" disabled={!canEdit} value={f.offsetIn ?? -8} onChange={e => onChange({ offsetIn: Number(e.target.value) })} className="w-20 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
+          <NumField step={0.5} min={-120} max={120} disabled={!canEdit} value={f.offsetIn ?? -8} onValue={offsetIn => onChange({ offsetIn })} ariaLabel="Subgrade offset, inches"
+            className="w-20 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
       )}
       {hasT && (
         <label className="flex items-center gap-2"><span className="w-20 text-muted">Thickness</span>
-          <input type="number" step="0.5" min={0} max={240} disabled={!canEdit} value={f.thicknessIn ?? ''} onChange={e => onChange({ thicknessIn: Number(e.target.value) })} className="w-20 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
+          <NumField step={0.5} min={0} max={240} disabled={!canEdit} value={f.thicknessIn} onValue={thicknessIn => onChange({ thicknessIn })} ariaLabel="Thickness, inches"
+            className="w-20 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" /> in</label>
       )}
       <div className="text-faint">{f.coords.length} point{f.coords.length === 1 ? '' : 's'}</div>
       {canEdit && <button onClick={onDelete} className="flex items-center gap-1 text-red-300 hover:text-red-200"><Trash2 className="h-3.5 w-3.5" /> Delete</button>}
@@ -716,9 +907,11 @@ function Results(p: {
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <label className="flex items-center gap-1.5"><span className="text-muted">Shrink</span>
-          <input type="number" min={0} max={60} step={1} disabled={!p.canEdit} value={p.design.settings.shrinkPct} onChange={e => p.onSettings({ shrinkPct: Math.max(0, Math.min(60, Number(e.target.value) || 0)) })} className="w-14 rounded border border-navy-700 bg-navy-950 px-2 py-1 text-right" />%</label>
+          <NumField min={0} max={60} step={1} disabled={!p.canEdit} value={p.design.settings.shrinkPct} onValue={shrinkPct => p.onSettings({ shrinkPct })} ariaLabel="Shrink, percent"
+            className="w-14 rounded border border-navy-700 bg-navy-950 px-2 py-1 text-right" />%</label>
         <label className="flex items-center gap-1.5"><span className="text-muted">Truck</span>
-          <input type="number" min={1} max={40} step={1} disabled={!p.canEdit} value={p.design.settings.truckCy} onChange={e => p.onSettings({ truckCy: Math.max(1, Math.min(40, Number(e.target.value) || 12)) })} className="w-14 rounded border border-navy-700 bg-navy-950 px-2 py-1 text-right" />CY</label>
+          <NumField min={1} max={40} step={1} disabled={!p.canEdit} value={p.design.settings.truckCy} onValue={truckCy => p.onSettings({ truckCy })} ariaLabel="Truck size, cubic yards"
+            className="w-14 rounded border border-navy-700 bg-navy-950 px-2 py-1 text-right" />CY</label>
       </div>
       {(r.demo.length > 0 || r.reduce.length > 0 || r.platforms.length > 0) && (
         <table className="w-full text-xs">
