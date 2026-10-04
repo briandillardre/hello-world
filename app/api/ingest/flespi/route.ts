@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { normalizeMessage, type FlespiMessage, type NormalizedReading } from '@/lib/flespi'
-import { evaluateAlerts, pointInPolygon } from '@/lib/alerts-engine'
+import { evaluateAlerts, pointInPolygon, type PriorFix } from '@/lib/alerts-engine'
 import { vehiclePower } from '@/lib/vehicle-power'
 import type { Asset, AssetLocation, AlertRule, Geofence } from '@/lib/types'
 import { recordBeaconSightings } from '@/lib/ble-sightings'
@@ -134,7 +134,9 @@ export async function POST(request: NextRequest) {
   // asset_id -> the fix on record BEFORE this batch, for edge-triggered zone
   // alerts (left/entered = a transition, not a state — otherwise a truck
   // driving around town re-fires "left site" every dedupe window all day).
-  const prevFix = new Map<string, { lat: number; lng: number }>()
+  const prevFix = new Map<string, { lat: number; lng: number; speed: number | null; timestamp: string }>()
+  // The reading before each asset's latest one in this batch — speeding needs two in a row.
+  const priorInBatch = new Map<string, NormalizedReading>()
   // Names for the alert lines, and which assets reported their power pin in
   // this batch — the plug-came-out detector (lib/power-loss) runs for those.
   const assetNames = new Map<string, string>()
@@ -255,7 +257,7 @@ export async function POST(request: NextRequest) {
           .eq('asset_id', asset.id).order('timestamp', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('asset_fix_tail').select('fix, run_tags').eq('asset_id', asset.id).maybeSingle(),
       ])
-      if (prev) prevFix.set(asset.id, { lat: prev.lat, lng: prev.lng })
+      if (prev) prevFix.set(asset.id, { lat: prev.lat, lng: prev.lng, speed: prev.speed ?? null, timestamp: prev.timestamp })
       const tailRow = !tailQ.error ? asLocRow(tailQ.data?.fix, asset.id, asset.company_id) : null
       const loadedTail = tailRow ? heldFix(tailRow) : null
       const prevFixed = prev ? toFix(prev) : null
@@ -426,6 +428,8 @@ export async function POST(request: NextRequest) {
       thinned++
     } else if (await storeRow(locRow)) {
       if (!updated.has(asset.company_id)) updated.set(asset.company_id, new Map())
+      const was = updated.get(asset.company_id)!.get(asset.id)
+      if (was) priorInBatch.set(asset.id, was)
       updated.get(asset.company_id)!.set(asset.id, rd)
     }
 
@@ -568,9 +572,15 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const previous: Record<string, PriorFix | undefined> = {}
+      for (const a of targets) {
+        const b = priorInBatch.get(a.id)
+        previous[a.id] = b ? { lat: b.lat, lng: b.lng, speed: b.speed, timestamp: b.timestamp } : prevFix.get(a.id)
+      }
       const fired = evaluateAlerts({
         assets: targets,
         locations,
+        previous,
         rules: rules as AlertRule[],
         geofences: (fences ?? []) as Geofence[],
         company: companyRow,

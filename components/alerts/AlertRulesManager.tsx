@@ -435,6 +435,7 @@ function CustomRuleForm({ geofences, assets, onDone }: {
         <div>
           <label className="font-mono text-[10px] uppercase tracking-wide text-faint">Speed limit (mph, inside this zone)</label>
           <input type="number" min={5} max={90} value={mph} onChange={(e) => setMph(Number(e.target.value))} className={sel} />
+          <p className="mt-1 text-[11px] text-faint">Your limit for this zone — not a road&apos;s. It fires on two readings in a row over it, well inside the zone, so a road along the fence or one bad GPS fix never counts.</p>
         </div>
       )}
       {trigger === 'after_hours_movement' && (

@@ -14,10 +14,17 @@ import { parseIBeacon, APPLE_COMPANY_ID } from '@/lib/ble'
  * sightings with the phone's fix to /api/ingest/ble-phone — the same door a
  * truck's box uses via flespi, so the tools near you ride with you on the map.
  *
- * Always-on means battery discipline is not optional:
- *  - the radio listens for SCAN_MS of each WINDOW_MS and sleeps the rest (a
- *    tag advertises about once a second, so ten seconds hears everything in
- *    range), and it stops the moment the app leaves the screen;
+ * Always-on means battery discipline is not optional (Tenna's Play reviews,
+ * Oct 4: "always scanning for BLEs and drains your battery down" / "make it
+ * so the Bluetooth scanning can be turned off when not needed"):
+ *  - the radio listens for SCAN_MS at the top of each window and sleeps the
+ *    rest (a tag advertises about once a second, so eight seconds hears
+ *    everything in range), and it stops the moment the app leaves the screen;
+ *  - the window is 20 s only while tags are being heard somewhere new; a
+ *    phone hearing nothing eases off to 1 then 2 minutes, a parked phone
+ *    hearing the same tags to 1 minute — and those quiet listens use
+ *    Android's low-power scan;
+ *  - below 15% battery (not charging) it pauses and says so;
  *  - a location fix is only taken when something was actually heard, so a
  *    phone with no tags near it costs nothing but the short listen;
  *  - a phone that has not MOVED and hears the same tags repeats itself at most
@@ -44,14 +51,21 @@ const KEY = 'ht_phone_gateway'
 const PRIMER_KEY = 'ht_ble_primer'
 /** One report per window; the radio is only live for the first SCAN_MS of it. */
 const WINDOW_MS = 20_000
-const SCAN_MS = 10_000
+/** Hearing nothing (or nothing new): the windows stretch. */
+const WINDOW_IDLE_MS = 60_000
+const WINDOW_DEEP_MS = 120_000
+const EMPTY_BEFORE_IDLE = 3
+const EMPTY_BEFORE_DEEP = 10
+const SCAN_MS = 8_000
+/** Below this battery (and not charging) the radio rests. */
+const LOW_BATTERY = 0.15
 /** A parked phone hearing the same tags repeats itself at most this often. */
 const QUIET_MS = 300_000
 /** Under this much movement a report counts as "the same place". */
 const MOVED_M = 25
 export const GATEWAY_EVENT = 'ht:phone-gateway'
 export const GATEWAY_STATUS_EVENT = 'ht:phone-gateway-status'
-export interface GatewayStatus { on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null }
+export interface GatewayStatus { on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null; paused?: string | null; everyS?: number }
 
 function stored(): '1' | '0' | null {
   try { const v = localStorage.getItem(KEY); return v === '1' || v === '0' ? v : null } catch { return null }
@@ -146,7 +160,20 @@ export function PhoneGateway({ allowed = true }: {
     type Fix = { lat: number; lng: number; acc: number | null; heading: number | null; at: number }
     let fix: Fix | null = null
     let sent: { at: number; lat: number; lng: number; tags: string } | null = null
-    const status: GatewayStatus = { on: true, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null }
+    const status: GatewayStatus = { on: true, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null, paused: null, everyS: WINDOW_MS / 1000 }
+    // How hard the radio works: windows stretch while it hears nothing, or nothing new.
+    let emptyStreak = 0
+    let quiet = false
+    const easy = () => emptyStreak >= EMPTY_BEFORE_IDLE || quiet
+    const windowMs = () => (emptyStreak >= EMPTY_BEFORE_DEEP ? WINDOW_DEEP_MS : easy() ? WINDOW_IDLE_MS : WINDOW_MS)
+    const lowBattery = async (): Promise<boolean> => {
+      try {
+        const nav = navigator as Navigator & { getBattery?: () => Promise<{ level: number; charging: boolean }> }
+        if (!nav.getBattery) return false
+        const b = await nav.getBattery()
+        return !b.charging && b.level <= LOW_BATTERY
+      } catch { return false }
+    }
     const publish = () => window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { ...status } }))
     publish()
 
@@ -176,7 +203,12 @@ export function PhoneGateway({ allowed = true }: {
       starting = true
       sleep()
       try {
-        const { BleClient } = await import('@capacitor-community/bluetooth-le')
+        if (await lowBattery()) {
+          status.paused = `Resting — battery under ${Math.round(LOW_BATTERY * 100)}%. Plug in and it picks back up.`
+          publish(); return
+        }
+        status.paused = null
+        const { BleClient, ScanMode } = await import('@capacitor-community/bluetooth-le')
         // ONCE per effect: initialize() re-requests the OS permission on every
         // call, so calling it each window would re-throw the system dialog.
         if (!inited) { await BleClient.initialize({ androidNeverForLocation: false }); inited = true }
@@ -192,7 +224,7 @@ export function PhoneGateway({ allowed = true }: {
         // Assigned BEFORE the scan starts: a switch-off during initialize /
         // requestLEScan used to leave a scan running with nothing to stop it.
         stopScan = async () => { scanning = false; try { await BleClient.stopLEScan() } catch { /* already stopped */ } }
-        await BleClient.requestLEScan({ allowDuplicates: true }, (r: ScanResultLike) => {
+        await BleClient.requestLEScan({ allowDuplicates: true, scanMode: easy() ? ScanMode.SCAN_MODE_LOW_POWER : ScanMode.SCAN_MODE_BALANCED }, (r: ScanResultLike) => {
           const mac = r.device?.deviceId ?? null
           const md = r.manufacturerData?.[APPLE_COMPANY_ID]
           const ib = md ? parseIBeacon(md) : null
@@ -205,7 +237,7 @@ export function PhoneGateway({ allowed = true }: {
           else prev.at = Date.now()
         })
         if (stopped) { await stopScan(); return }
-        // Half a window of listening is plenty; the radio sleeps the rest.
+        // A few seconds of listening is plenty; the radio sleeps the rest of the window.
         sleepTimer = window.setTimeout(() => { sleepTimer = null; void stopScan?.() }, SCAN_MS)
         status.error = null; publish()
       } catch (e) {
@@ -229,16 +261,18 @@ export function PhoneGateway({ allowed = true }: {
 
     const report = async () => {
       const now = Date.now()
-      const fresh = Array.from(heard.values()).filter((b) => now - b.at < 25_000)
+      const fresh = Array.from(heard.values()).filter((b) => now - b.at < SCAN_MS + 5_000)
       heard.clear()
       status.heard = fresh.length
-      if (!fresh.length) { publish(); return }
+      if (!fresh.length) { emptyStreak++; quiet = false; publish(); return }
+      emptyStreak = 0
+      quiet = false
       const tags = fresh.map((b) => b.id).sort().join(',')
       const samePlace = (f: { lat: number; lng: number }) =>
         !!sent && sent.tags === tags && now - sent.at < QUIET_MS && metresApart(f, sent) < MOVED_M
       // Nothing new to say: same tags, same spot, said recently. Checked
       // against the fix we already hold BEFORE spending one on a new one.
-      if (fix && samePlace(fix)) { publish(); return }
+      if (fix && samePlace(fix)) { quiet = true; publish(); return }
       if (!fix || now - fix.at > 60_000) fix = await getFix()
       if (stopped) return
       if (!fix || Date.now() - fix.at > 120_000) {
@@ -249,7 +283,7 @@ export function PhoneGateway({ allowed = true }: {
         status.error = 'Location is too rough right now to place the tags.'
         publish(); return
       }
-      if (samePlace(fix)) { publish(); return }
+      if (samePlace(fix)) { quiet = true; publish(); return }
       try {
         const res = await fetch('/api/ingest/ble-phone', {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -275,24 +309,41 @@ export function PhoneGateway({ allowed = true }: {
       publish()
     }
 
-    const tick = window.setInterval(() => {
-      if (stopped) return
-      if (document.visibilityState === 'visible') void start() // top of the window: radio back on
-      void report()                                            // and send what the last one heard
-    }, WINDOW_MS)
+    // One window: listen at its top, report what that listen heard the moment
+    // it ends, then sleep out the window — whose length depends on what was heard.
+    // `gen` retires a cycle the moment a new one starts (a report still in
+    // flight must not schedule a second loop beside the new one).
+    let tick: number | null = null
+    let gen = 0
+    const cycle = (g: number) => {
+      if (stopped || g !== gen) return
+      if (document.visibilityState === 'visible') void start()
+      tick = window.setTimeout(async () => {
+        if (stopped || g !== gen) return
+        await report()
+        if (stopped || g !== gen) return
+        const ms = windowMs()
+        if (status.everyS !== ms / 1000) { status.everyS = ms / 1000; publish() }
+        tick = window.setTimeout(() => cycle(g), Math.max(1000, ms - SCAN_MS - 500))
+      }, SCAN_MS + 500)
+    }
 
     // Leaving the screen STOPS the radio — Android does not unregister a scan
     // for us, it only stops delivering results, so a scan left armed in a
-    // pocket is pure battery (ship-check, Sep 12).
+    // pocket is pure battery (ship-check, Sep 12). Coming back starts a fresh
+    // window at the short cadence: someone is looking.
     const onVis = () => {
-      if (document.visibilityState === 'visible') { retryAfter = 0; void start() }
-      else { sleep(); void stopScan?.() }
+      if (document.visibilityState === 'visible') {
+        retryAfter = 0; emptyStreak = 0; quiet = false
+        if (tick != null) window.clearTimeout(tick)
+        cycle(++gen)
+      } else { sleep(); void stopScan?.() }
     }
     document.addEventListener('visibilitychange', onVis)
-    void start()
+    cycle(gen)
     return () => {
       stopped = true
-      window.clearInterval(tick)
+      if (tick != null) window.clearTimeout(tick)
       sleep()
       document.removeEventListener('visibilitychange', onVis)
       void stopScan?.()

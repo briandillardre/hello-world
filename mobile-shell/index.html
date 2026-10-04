@@ -33,20 +33,36 @@
   </style>
 </head>
 <body>
-  <!-- Shown only when the device has no connection — the live app is remote. -->
+  <!-- Shown when the live app can't load (server.errorPath): no signal, or the
+       site not answering. Clock-ins, inspections and photos taken offline wait
+       on the phone and send themselves once the app is back. -->
   <div class="card">
     <div class="mark">🔨</div>
-    <h1>HammerTrack</h1>
-    <p>No connection. Your fleet is still tracking — reconnect to see the live map.</p>
-    <button onclick="go()">Retry</button>
-    <p class="hint">Reconnecting automatically…</p>
+    <h1 id="t">Can't reach HammerTrack</h1>
+    <p id="m">Your trackers keep recording — the map catches up the moment you're back.</p>
+    <button onclick="go()">Try again</button>
+    <p class="hint" id="h">Reconnecting automatically…</p>
   </div>
   <script>
-    function go() { location.href = 'https://hammertrack.ai'; }
-    // Jump back the instant the device is online again.
+    function say() {
+      var off = navigator.onLine === false;
+      document.getElementById('t').textContent = off ? 'No signal' : "Can't reach HammerTrack";
+      document.getElementById('h').textContent = off ? 'Reconnecting as soon as there is signal…' : 'Trying again by itself…';
+    }
+    say();
+    window.addEventListener('offline', say);
+    function go() { location.href = 'https://hammertrack.ai/map'; }
+    // Back the instant the phone is online again.
     window.addEventListener('online', go);
-    // And gently poll in case the online event is missed.
-    setInterval(function () { if (navigator.onLine) go(); }, 4000);
+    // And keep trying: a missed online event, or the site coming back. Each
+    // failed try lands back here, so the wait doubles across them (5 s → 60 s,
+    // remembered for 10 minutes) — a long outage isn't a reload every 5 s.
+    var st = {}, now = Date.now();
+    try { st = JSON.parse(sessionStorage.getItem('ht_fail') || '{}'); } catch (e) {}
+    var n = st.at && now - st.at < 600000 ? (st.n || 0) + 1 : 1;
+    try { sessionStorage.setItem('ht_fail', JSON.stringify({ n: n, at: now })); } catch (e) {}
+    var wait = Math.min(60000, 5000 * Math.pow(2, n - 1));
+    (function tick() { setTimeout(function () { if (navigator.onLine !== false) go(); else tick(); }, wait); })();
   </script>
 </body>
 </html>

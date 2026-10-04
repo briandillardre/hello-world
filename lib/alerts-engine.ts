@@ -91,9 +91,48 @@ export function inWatchWindow(date: Date, start: string, end: string, days?: num
 
 const MOVING_SPEED_MPH = 3
 
+/** Metres from a point to the nearest edge of a ring (flat-earth — fine at site scale). */
+export function metresToEdge(point: [number, number], ring: [number, number][]): number {
+  const [x0, y0] = point
+  const kx = 111_320 * Math.cos((y0 * Math.PI) / 180), ky = 110_574
+  let best = Infinity
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const ax = (ring[j][0] - x0) * kx, ay = (ring[j][1] - y0) * ky
+    const bx = (ring[i][0] - x0) * kx, by = (ring[i][1] - y0) * ky
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy
+    const t = l2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l2)) : 0
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy))
+  }
+  return best
+}
+
+/** A speeding fix must sit this far inside the zone: a road along the fence, GPS wander at the edge. */
+export const SPEED_EDGE_M = 25
+/** …and the fix before it, this recent, must be inside and over the limit too. */
+export const SPEED_PAIR_MS = 120_000
+
+export interface PriorFix { lat: number; lng: number; speed: number | null; timestamp: string }
+
+/**
+ * Speeding in a zone, said only when it is plainly true (Tenna's reviews:
+ * "65 in a 20 mph zone" — a highway picked up as the side road beside it).
+ * The zone's own limit, never a guessed road limit; the fix well inside the
+ * zone, not on its edge; and two fixes in a row over the limit inside it —
+ * one fast fix is a glitch or a truck passing, not a habit.
+ */
+export function speedingHolds(ring: [number, number][], limit: number, cur: Pick<AssetLocation, 'lat' | 'lng' | 'speed' | 'timestamp'>, prev: PriorFix | null | undefined): boolean {
+  if (!(limit > 0) || (cur.speed ?? 0) <= limit) return false
+  if (!pointInPolygon([cur.lng, cur.lat], ring) || metresToEdge([cur.lng, cur.lat], ring) < SPEED_EDGE_M) return false
+  if (!prev || prev.speed == null || prev.speed <= limit || !pointInPolygon([prev.lng, prev.lat], ring)) return false
+  const dt = Date.parse(cur.timestamp) - Date.parse(prev.timestamp)
+  return dt > 0 && dt <= SPEED_PAIR_MS
+}
+
 interface EvalInput {
   assets: Asset[]
   locations: Record<string, AssetLocation> // asset_id -> latest location
+  /** asset_id -> the fix before the latest (speeding needs two in a row). */
+  previous?: Record<string, PriorFix | undefined>
   rules: AlertRule[]
   geofences: Geofence[]
   company: Pick<Company, 'work_start' | 'work_end' | 'work_days'>
@@ -179,9 +218,10 @@ export function evaluateAlerts(input: EvalInput): EvaluatedAlert[] {
           break
         case 'speeding': {
           // Zone-scoped speed watch: fires while the asset is INSIDE the zone
-          // over the limit. "Anywhere" = put the rule on a big boundary.
+          // over the limit — well inside, two fixes running (speedingHolds).
+          // "Anywhere" = put the rule on a big boundary.
           const limit = p.max_mph ?? 0
-          if (limit > 0 && inside && (loc.speed ?? 0) > limit) {
+          if (speedingHolds(ring, limit, loc, input.previous?.[asset.id])) {
             out.push({
               rule_id: rule.id, asset_id: asset.id, trigger: rule.trigger,
               geofence_id: fence.id, severity: lift('warning'),
