@@ -31,7 +31,8 @@ interface Props {
   heatOverSheets: boolean
   drawing: boolean
   snapTo: [number, number][]
-  onClick: (p: [number, number], meta: { closesRing: boolean }) => void
+  /** `mpp`: ground metres per screen pixel where the tap landed (how big a fingertip is there). */
+  onClick: (p: [number, number], meta: { closesRing: boolean; mpp: number }) => void
   onDblClick: () => void
   onPick: (id: string | null) => void
   /** Bumped to re-frame the map on these coordinates. */
@@ -39,7 +40,15 @@ interface Props {
   /** What the plan reader found (components/dirt/PlanReader.tsx), drawn over everything. */
   readOverlay?: GeoJSON.FeatureCollection | null
   /** A read contour tapped. */
-  onPickRead?: (id: number) => void
+  /** A read contour tapped, by its key. */
+  onPickRead?: (rk: string) => void
+}
+
+/** Screen distance from a point to a segment. */
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 }
 
 export default function TakeoffMap(props: Props) {
@@ -206,24 +215,28 @@ export default function TakeoffMap(props: Props) {
       const p = live.current
       if (p.drawing) {
         const s = snap(e.lngLat, e.point)
-        p.onClick(s.p, { closesRing: s.closesRing })
+        const mpp = (40075016.686 * Math.cos((e.lngLat.lat * Math.PI) / 180)) / (512 * 2 ** m.getZoom())
+        p.onClick(s.p, { closesRing: s.closesRing, mpp })
         return
       }
       const box: [maplibregl.PointLike, maplibregl.PointLike] = [[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]] // a fingertip, not a mouse pointer
       if (p.readOverlay && p.onPickRead && m.getLayer('read-ln')) {
         const rh = m.queryRenderedFeatures(box, { layers: ['read-ln'] })
-        // The nearest line to the finger, not the first drawn.
-        let best: number | null = null, bestD = Infinity
+        // The nearest line to the finger, not the first drawn — measured to its segments, not its
+        // vertices (a straight contour has few, far apart).
+        let best: string | null = null, bestD = Infinity
         for (const h of rh) {
           const g = h.geometry
           if (g.type !== 'LineString') continue
+          let prev: maplibregl.Point | null = null
           for (const c of g.coordinates) {
             const q = m.project(c as [number, number])
-            const d = Math.hypot(q.x - e.point.x, q.y - e.point.y)
-            if (d < bestD) { bestD = d; best = Number(h.properties?.rid) }
+            const d = prev ? segDist(e.point.x, e.point.y, prev.x, prev.y, q.x, q.y) : Math.hypot(q.x - e.point.x, q.y - e.point.y)
+            if (d < bestD) { bestD = d; best = String(h.properties?.rk ?? '') }
+            prev = q
           }
         }
-        if (best !== null && Number.isFinite(best)) { p.onPickRead(best); return }
+        if (best) { p.onPickRead(best); return }
       }
       const hits = m.queryRenderedFeatures(box, { layers: FEATURE_LAYERS.filter(l => m.getLayer(l)) })
       const order = ['feat-pt', 'feat-ln', 'feat-ar-line', 'feat-ar-fill']

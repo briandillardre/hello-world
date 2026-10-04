@@ -163,17 +163,30 @@ picture — every contour, label and spot comes out as geometry:
   3. *Labels.* Whole numbers sitting on a line (parallel) or in a gap cut for
      them; "(271)" counts. Never a label: survey point numbers touching their
      shot's elevation, numbers nowhere near the plan's spot elevations, a
-     stray outlier ("100" from a station). A line crossing a labelled contour
-     of its own kind is not a contour (a wall drawn on the topo layer).
+     stray outlier ("100" from a station — judged against every elevation on
+     the plan when a kind has under 3 labels of its own). Words that sit in
+     HALF a gap (one line end faces them, its partner is clipped by the read
+     area, cut at a match line, set aside, on another pen) or near the read
+     area's edge never go to a line that merely passes by — the editor reads
+     the site + 60 ft, so crop edges are the normal case (60 random site
+     crops of the test sheet: 0 labels on the wrong line, 0 wrong values
+     unflagged; it was 5 of 60). A line crossing a labelled contour of its
+     own kind is not a contour (a wall drawn on the topo layer). A decimal
+     far from the plan's elevations ("24.00", a drive width) is no spot grade.
   4. *Elevations* (`resolveElevations`): rays across the contours give
      ladders (every crossing, so a hilltop reads 809·810·809; a ray breaks at
      a label gap, a contour ending beside it, a building wall). Between two
      known contours the others step evenly — the interval is measured, never
-     assumed. Then the USGS lidar where it is sure (datum = the median of
-     label − lidar, else of the GS spot shots — an unlabelled survey still
-     gets named), proposed contours that END on an existing one tie in at
-     its level (the grading limits), and last a trend guess two contours
-     past the last label at most, never past a hilltop, flagged "check it".
+     assumed. Then the USGS lidar where it is sure (datum = what most
+     label − lidar values agree on within ~⅓ interval — two labels a contour
+     apart agree on nothing — else the GS spot shots the same way, else no
+     datum; a label the datum doesn't fit is flagged), proposed contours that
+     END on an existing one tie in at its level (the grading limits — not
+     where both stop at the read area, a match line or the sheet's edge), and
+     last a trend guess two contours past the last label at most, never past
+     a hilltop, flagged "check it". Guesses import by default with their
+     count shown and a box to leave them out (41 test reads: 272 right, 3
+     wrong — leaving them out cost 12% of the fill on the test sheet).
      A neighbour more than one interval off takes back a guess; two labels
      that disagree are both flagged. **Nothing is named wrong silently: a
      contour the read can't name stays unnamed.**
@@ -185,11 +198,17 @@ picture — every contour, label and spot comes out as geometry:
      outline is filled slivers. The limit of grading from its layer or its
      words.
 - **Fixing what it couldn't** (the estimator): tap a contour → its number
-  (a typed one wins, and survives a re-read), or *Not a contour*. **Number
-  contours along a line**: type the first one's elevation, draw across the
-  run — they step by the interval. If any contour on the line already has a
-  different number on the plan, nothing is written and the number the labels
-  imply is offered ("the plan's labels make the first one 803, not 801").
+  (a typed one wins, and survives a re-read), or *Not a contour* — the sheet
+  is read again WITHOUT that line, so it takes no label, sets aside no
+  neighbour and feeds no ladder, datum or tie-in (grey on the map; tap it →
+  *It is a contour*). **Number contours along a line**: type the first one's
+  elevation, draw across the run — they step by the interval (the kind's
+  own interval). The first tap may land a hair past the contour it means:
+  the one within ~10 px counts as the start. If any contour on the line
+  already has a different number on the plan, nothing is written and the
+  number the labels imply is offered ("the plan's labels make the first one
+  803, not 801"); numbers counted between labels are checks too (*number
+  from …* or *Use my numbers anyway*).
 - **Import** (`lib/dirt/plan-import.ts`): contours, spot grades, the pad (FF
   −8") and the limit become takeoff features through the sheet's placement
   (`lib/dirt/plan-geo.ts` — the same triangles MapLibre draws the raster
@@ -204,7 +223,7 @@ picture — every contour, label and spot comes out as geometry:
   outside −1,500…30,000 ft is left out and said.
   Existing contours can become the existing ground ("traced") or just set
   the lidar's datum offset.
-- **Proof** — `node scripts/plan-read-test.mjs` (170 assertions; run it after
+- **Proof** — `node scripts/plan-read-test.mjs` (184 assertions; run it after
   ANY change to pdf-vectors / plan-read / plan-geo / plan-lidar /
   plan-import): `scripts/plan-pdf-fixture.mjs` writes a REAL PDF drawn the
   way Civil 3D exports look (layers, dashed grey existing with exploded-dash

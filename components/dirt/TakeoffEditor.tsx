@@ -127,9 +127,11 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   // The plan reader: which sheet, what it shows on the map, and the line drawn across contours.
   const [reading, setReading] = useState<string | null>(null)
   const [readOverlay, setReadOverlay] = useState<GeoJSON.FeatureCollection | null>(null)
-  const [readPick, setReadPick] = useState<{ id: number; key: number } | null>(null)
+  const [readPick, setReadPick] = useState<{ rk: string; key: number } | null>(null)
   const [readLine, setReadLine] = useState<[number, number][] | null>(null)
-  const [readLineDone, setReadLineDone] = useState<{ key: number; coords: [number, number][] } | null>(null)
+  const [readLineDone, setReadLineDone] = useState<{ key: number; coords: [number, number][]; slopM: number } | null>(null)
+  /** Ground metres under ~10 px where the read line's first tap landed — how far off a contour a finger lands. */
+  const readLineSlop = useRef(0)
 
   // ── Design edits ──
   const designRef = useRef(design)
@@ -274,7 +276,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
 
   // ── Drawing ──
   const toolMeta = tool ? KIND_META[tool.kind] : null
-  const startTool = (t: Tool) => { setTool(t); setDraft([]); setSelected(null) }
+  // One toolbar at a time: a design tool and the reader's line never run together.
+  const startTool = (t: Tool) => { setReadLine(null); setTool(t); setDraft([]); setSelected(null) }
   const stopTool = () => { setTool(null); setDraft([]) }
   const finish = useCallback(() => {
     if (!tool) return
@@ -305,12 +308,16 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
   }, [tool, draft, design, commit, goingUp, interval])
   const finishReadLine = useCallback(() => {
     setReadLine(l => {
-      if (l && l.length >= 2) setReadLineDone({ key: Date.now(), coords: l })
+      if (l && l.length >= 2) setReadLineDone({ key: Date.now(), coords: l, slopM: readLineSlop.current })
       return null
     })
   }, [])
-  const onMapClick = useCallback((p: [number, number], meta: { closesRing: boolean }) => {
-    if (readLine !== null) { setReadLine(l => [...(l ?? []), p]); return }
+  const onMapClick = useCallback((p: [number, number], meta: { closesRing: boolean; mpp: number }) => {
+    if (readLine !== null) {
+      if (!readLine.length) readLineSlop.current = 10 * meta.mpp
+      setReadLine(l => [...(l ?? []), p])
+      return
+    }
     if (!tool) return
     const shape = KIND_META[tool.kind].shape
     if (shape === 'point') {
@@ -497,8 +504,8 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
             snapTo={readLine !== null ? [] : snapTo}
             onClick={onMapClick}
             onDblClick={readLine !== null ? finishReadLine : finish}
-            readOverlay={readOverlay}
-            onPickRead={id => setReadPick({ id, key: Date.now() })}
+            readOverlay={step === 'plans' ? readOverlay : null}
+            onPickRead={step === 'plans' ? rk => setReadPick({ rk, key: Date.now() }) : undefined}
             onPick={id => { setSelected(id); if (id) { const f = design.features.find(x => x.id === id); if (f) setStep(KIND_META[f.kind].step) } }}
             frame={frame}
           />
@@ -631,7 +638,7 @@ export default function TakeoffEditor({ takeoff, zone, sheets, canEdit }: Props)
                   existingSource={design.existing.source}
                   onOverlay={setReadOverlay}
                   pick={readPick}
-                  onLineMode={on => setReadLine(on ? [] : null)}
+                  onLineMode={on => { if (on) stopTool(); setReadLine(on ? [] : null) }}
                   line={readLineDone}
                   onImport={onReadImport}
                   onClose={closeReader}

@@ -87,7 +87,14 @@ async function pageGray(page: PdfPage, w: number, h: number): Promise<Float32Arr
   await page.render({ canvas: c, canvasContext: ctx, viewport: vp }).promise
   const g = grayOf(c, w, h)
   c.width = 0; c.height = 0
+  page.cleanup()
   return g
+}
+
+/** Does polyline `pl` have the vertex (x, y)? */
+function hasVertex(pl: number[], x: number, y: number): boolean {
+  for (let i = 0; i + 1 < pl.length; i += 2) if (Math.abs(pl[i] - x) < 1e-6 && Math.abs(pl[i + 1] - y) < 1e-6) return true
+  return false
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -152,12 +159,12 @@ interface Props {
   budget: ImportBudget
   existingSource: 'lidar' | 'traced'
   onOverlay: (fc: GeoJSON.FeatureCollection | null) => void
-  /** A read contour tapped on the map. */
-  pick: { id: number; key: number } | null
+  /** A read contour tapped on the map (by its key). */
+  pick: { rk: string; key: number } | null
   /** Start (true) or cancel (false) drawing a line on the map. */
   onLineMode: (on: boolean) => void
-  /** The line just finished on the map. */
-  line: { key: number; coords: [number, number][] } | null
+  /** The line just finished on the map; `slopM` = how far off a contour its first tap may land. */
+  line: { key: number; coords: [number, number][]; slopM: number } | null
   onImport: (r: ImportResult, opts: { existing: 'traced' | 'lidar'; offsetFt: number | null }) => void
   onClose: () => void
 }
@@ -173,19 +180,26 @@ export default function PlanReader(p: Props) {
   const [base, setBase] = useState<PlanRead | null>(null)
   const [reading, setReading] = useState(false)
   const [userZ, setUserZ] = useState<Record<string, number>>({})
-  const [excluded, setExcluded] = useState<Record<string, true>>({})
-  const [sel, setSel] = useState<number | null>(null)
+  /** Lines set aside ("Not a contour"), as the read drew them — the worker reads again without them. */
+  const [exclude, setExclude] = useState<number[][]>([])
+  /** The selected contour, by key (ids change whenever the sheet is read again). */
+  const [sel, setSel] = useState<string | null>(null)
   const [penShown, setPenShown] = useState<number | null>(null)
   const [allPens, setAllPens] = useState(false)
   const [lineForm, setLineForm] = useState<{ role: 'eg' | 'fg'; z0: number | undefined; dz: number; up: boolean } | null>(null)
   const [lineMsg, setLineMsg] = useState<string | null>(null)
   /** The last line drawn, kept so "number from N" can run it again with the labels' number. */
-  const [lastLine, setLastLine] = useState<{ role: 'eg' | 'fg'; pts: number[]; dz: number; implied: number | null; typed: number } | null>(null)
+  const [lastLine, setLastLine] = useState<{ role: 'eg' | 'fg'; pts: number[]; dz: number; slop: number; implied: number | null; typed: number; counted: boolean } | null>(null)
   const [picks, setPicks] = useState({ egContours: true, fgContours: true, egSpots: true, fgSpots: true, limits: true, pads: {} as Record<number, boolean> })
   const [useForExisting, setUseForExisting] = useState(true)
   const [useDatum, setUseDatum] = useState(true)
+  const [includeGuesses, setIncludeGuesses] = useState(true)
   const [done, setDone] = useState<string | null>(null)
   const mismatch = useRef<{ doc: PdfDoc; pdfjs: PdfjsModule; img: HTMLImageElement; best: number; score: number } | null>(null)
+  /** The open PDF — freed once its page is read, on a new pick and on close (a big set is hundreds of MB on a phone). */
+  const docRef = useRef<PdfDoc | null>(null)
+  const freeDoc = () => { const d = docRef.current; docRef.current = null; mismatch.current = null; if (d) void d.loadingTask.destroy().catch(() => {}) }
+  useEffect(() => freeDoc, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Worker ──
   const worker = useRef<Worker | null>(null)
@@ -236,13 +250,15 @@ export default function PlanReader(p: Props) {
     const vp = page.getViewport({ scale: s })
     const geo: SheetGeo = { vp: Array.from(vp.transform) as SheetGeo['vp'], imgW, imgH, corners: p.sheet.corners.slice(0, 4) as SheetGeo['corners'] }
     const map = sheetMap(geo)
-    const [ops, tc, annots, oc] = await Promise.all([page.getOperatorList(), page.getTextContent(), page.getAnnotations(), doc.getOptionalContentConfig()])
+    // Annotations (Bluebeam markups, SHX words) are not the plan's linework — SHX words come from getAnnotations.
+    const [ops, tc, annots, oc] = await Promise.all([page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE }), page.getTextContent(), page.getAnnotations(), doc.getOptionalContentConfig()])
     const names = new Map<string, string>()
     try { for (const [id, g] of Array.from(oc as unknown as Iterable<[string, { name?: string }]>)) names.set(id, g?.name ?? id) } catch { /* no layers */ }
     setProgress('Finding the contours…')
     const { pens: penList, lines } = extractVectors(ops, pdfjs.OPS as unknown as Record<string, number>, id => names.get(id) ?? null)
     const texts = [...textFromContent(tc.items as { str?: string; transform?: number[]; width?: number; height?: number }[]), ...textFromShx(annots as never[])]
     page.cleanup()
+    if (docRef.current === doc) freeDoc(); else void doc.loadingTask.destroy().catch(() => {})
     // Read where the takeoff is (its grading limits, else the site), plus a margin for the ladders.
     let box: { x0: number; y0: number; x1: number; y1: number } | null = null
     if (p.area && p.area.length >= 3) {
@@ -266,12 +282,14 @@ export default function PlanReader(p: Props) {
 
   const onFile = async (f: File) => {
     setError(null); setPhase('loading'); setProgress('Opening the PDF…'); setDone(null)
+    freeDoc()
     try {
       const [pdfjs, img] = await Promise.all([
         loadPdfjs().catch(() => { throw new Error('reader') }),
         loadImage(p.sheet.url),
       ])
       const doc = await pdfjs.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise
+      docRef.current = doc
       // Which page is this sheet? The caption says; the picture confirms.
       const k = THUMB / Math.max(img.naturalWidth, img.naturalHeight)
       const tw = Math.max(16, Math.round(img.naturalWidth * k)), th = Math.max(16, Math.round(img.naturalHeight * k))
@@ -308,28 +326,25 @@ export default function PlanReader(p: Props) {
   const shown = useMemo(() => {
     if (!base || !loaded) return null
     const cs = base.contours.map(c => ({ ...c, flags: [...c.flags] }))
-    const out = new Set<number>()
     for (const c of cs) {
       const k = contourKey(c)
-      if (excluded[k]) out.add(c.id)
       if (userZ[k] !== undefined) { c.z = userZ[k]; c.how = 'user'; c.flags = c.flags.filter(f => !/labels disagree/.test(f)) }
     }
-    // A set-aside line is not a contour: the ladders step over it.
-    const ladders = out.size ? base.ladders.map(l => l.filter(id => !out.has(id))) : base.ladders
-    const { datumFt } = resolveElevations(cs, ladders, { ...base.interval }, {
+    const { datumFt } = resolveElevations(cs, base.ladders, { ...base.interval }, {
       lidar: lidarFn ? { at: lidarFn, spots: base.spots.filter(s => s.role === 'eg') } : undefined,
       ptPerFt: loaded.map.ptPerFt,
+      box: base.box ?? null,
     })
-    return { read: { ...base, contours: cs, ladders, datumFt }, out }
-  }, [base, loaded, userZ, excluded, lidarFn])
+    return { read: { ...base, contours: cs, datumFt } }
+  }, [base, loaded, userZ, lidarFn])
 
   // ── The map overlay ──
   useEffect(() => {
     if (!shown || !loaded) { p.onOverlay(null); return }
-    const { read, out } = shown
+    const { read } = shown
     const map = loaded.map
     const ll = (pts: number[]) => { const o: [number, number][] = []; for (let i = 0; i < pts.length; i += 2) o.push(map.toLngLat(pts[i], pts[i + 1])); return o }
-    const zs = read.contours.filter(c => c.z !== null && !out.has(c.id)).map(c => c.z as number)
+    const zs = read.contours.filter(c => c.z !== null).map(c => c.z as number)
     let lo = Infinity, hi = -Infinity
     for (const z of zs) { if (z < lo) lo = z; if (z > hi) hi = z }
     if (!zs.length) { lo = 0; hi = 1 }
@@ -338,17 +353,22 @@ export default function PlanReader(p: Props) {
       for (const l of loaded.lines) if (l.pen === penShown) feats.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: ll(l.pts) }, properties: { k: 'pen' } })
     }
     for (const c of read.contours) {
-      const ex = out.has(c.id)
+      const rk = contourKey(c)
       feats.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: ll(c.pts) },
         properties: {
-          k: 'ct', rid: c.id, eg: c.role === 'eg' ? 1 : 0, unk: c.z === null ? 1 : 0, ex: ex ? 1 : 0,
-          flag: c.flags.length && !ex ? 1 : 0, sel: sel === c.id ? 1 : 0,
-          color: ex ? '#64748b' : c.z === null ? '#ffffff' : rampAt(hi > lo ? ((c.z as number) - lo) / (hi - lo) : 0.5),
-          lbl: ex ? '' : c.z === null ? '?' : `${c.z}${c.how === 'extrapolated' ? '?' : ''}`,
+          k: 'ct', rk, eg: c.role === 'eg' ? 1 : 0, unk: c.z === null ? 1 : 0, ex: 0,
+          flag: c.flags.length ? 1 : 0, sel: sel === rk ? 1 : 0,
+          color: c.z === null ? '#ffffff' : rampAt(hi > lo ? ((c.z as number) - lo) / (hi - lo) : 0.5),
+          lbl: c.z === null ? '?' : `${c.z}${c.how === 'extrapolated' ? '?' : ''}`,
         },
       })
+    }
+    // Set aside: grey, still tappable so "It is a contour" can bring one back.
+    for (const a of read.aside ?? []) {
+      const rk = contourKey(a)
+      feats.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: ll(a.pts) }, properties: { k: 'ct', rk, eg: a.role === 'eg' ? 1 : 0, unk: 0, ex: 1, flag: 0, sel: sel === rk ? 1 : 0, color: '#64748b', lbl: '' } })
     }
     for (const s of read.spots) {
       if (s.role === 'skip') continue
@@ -366,16 +386,18 @@ export default function PlanReader(p: Props) {
   useEffect(() => () => p.onOverlay(null), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // A contour tapped on the map.
-  useEffect(() => { if (p.pick) setSel(p.pick.id) }, [p.pick])
+  useEffect(() => { if (p.pick) setSel(p.pick.rk) }, [p.pick])
 
   // A line drawn across contours: number them in order.
-  const runLine = (role: 'eg' | 'fg', pts: number[], z0: number, dz: number) => {
+  const runLine = (role: 'eg' | 'fg', pts: number[], z0: number, dz: number, slop: number, force = false) => {
     if (!shown) return
     const cs = shown.read.contours.map(c => ({ ...c, flags: [...c.flags] }))
-    const r = assignAlong(cs, role, pts, z0, dz, c => shown.out.has(c.id))
-    if (r.disagree) {
-      setLastLine({ role, pts, dz, implied: r.implied, typed: z0 })
-      setLineMsg(`Nothing changed: ${r.disagree} contour${r.disagree === 1 ? '' : 's'} on that line already ${r.disagree === 1 ? 'has' : 'have'} a different number on the plan.`)
+    const r = assignAlong(cs, role, pts, z0, dz, { slop, force })
+    if (r.disagree || (r.counted && !force)) {
+      setLastLine({ role, pts, dz, slop, implied: r.implied, typed: z0, counted: !r.disagree })
+      setLineMsg(r.disagree
+        ? `Nothing changed: ${r.disagree} contour${r.disagree === 1 ? '' : 's'} on that line already ${r.disagree === 1 ? 'has' : 'have'} a different number on the plan.`
+        : `Nothing changed yet: ${r.counted} contour${r.counted === 1 ? ' was' : 's were'} counted between the plan's labels as a different number.`)
       return
     }
     setLastLine(null)
@@ -387,7 +409,7 @@ export default function PlanReader(p: Props) {
   useEffect(() => {
     if (!p.line || !lineForm || !shown || !loaded || lineForm.z0 === undefined) return
     const pts = p.line.coords.flatMap(([lng, lat]) => loaded.map.toPage(lng, lat))
-    runLine(lineForm.role, pts, lineForm.z0, lineForm.up ? lineForm.dz : -lineForm.dz)
+    runLine(lineForm.role, pts, lineForm.z0, lineForm.up ? lineForm.dz : -lineForm.dz, (p.line.slopM / 0.3048) * loaded.map.ptPerFt)
     setLineForm(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.line?.key])
@@ -397,24 +419,33 @@ export default function PlanReader(p: Props) {
     setRoles(next)
     seq.current++
     setReading(true)
-    worker.current?.postMessage({ type: 'read', seq: seq.current, roles: next })
+    worker.current?.postMessage({ type: 'read', seq: seq.current, roles: next, exclude })
+  }
+  // "Not a contour" / "It is a contour": read again without (or with) the line.
+  const setAside = (next: number[][]) => {
+    setExclude(next)
+    seq.current++
+    setReading(true)
+    worker.current?.postMessage({ type: 'read', seq: seq.current, roles, exclude: next })
   }
 
   const read = shown?.read ?? null
-  const selC = read && sel !== null ? read.contours.find(c => c.id === sel) ?? null : null
+  const selC = read && sel !== null ? read.contours.find(c => contourKey(c) === sel) ?? null : null
+  const selAside = read && sel !== null && !selC ? (read.aside ?? []).find(c => contourKey(c) === sel) ?? null : null
   const stats = useMemo(() => {
-    if (!read || !shown) return null
-    const live = read.contours.filter(c => !shown.out.has(c.id))
+    if (!read) return null
+    const live = read.contours
     const of = (r: 'eg' | 'fg') => { const a = live.filter(c => c.role === r); return { n: a.length, named: a.filter(c => c.z !== null).length, guessed: a.filter(c => c.how === 'extrapolated').length } }
     return { eg: of('eg'), fg: of('fg'), egSpots: read.spots.filter(s => s.role === 'eg').length, fgSpots: read.spots.filter(s => s.role === 'fg').length, flagged: live.filter(c => c.flags.length).length }
-  }, [read, shown])
+  }, [read])
+  const dzFor = (role: 'eg' | 'fg') => (read ? (role === 'eg' ? read.interval.eg ?? read.interval.fg : read.interval.fg ?? read.interval.eg) : null) ?? 1
 
   const doImport = () => {
-    if (!read || !loaded || !shown) return
+    if (!read || !loaded) return
     const padIdx = read.pads.map((_, i) => i).filter(i => picks.pads[i] ?? read.pads[i].outline)
     const r = readToFeatures(read, loaded.map, {
       egContours: picks.egContours, fgContours: picks.fgContours, egSpots: picks.egSpots, fgSpots: picks.fgSpots,
-      pads: padIdx, limits: picks.limits, excluded: shown.out,
+      pads: padIdx, limits: picks.limits, excluded: new Set(), skipGuesses: !includeGuesses,
     }, p.budget, p.sheet.id, newId)
     const egIn = r.counts.egContours > 0
     p.onImport(r, {
@@ -437,7 +468,7 @@ export default function PlanReader(p: Props) {
       <div className="flex items-center gap-2">
         <FileUp className="h-4 w-4 text-cyan-300" />
         <div className="min-w-0 flex-1 font-semibold">Read {p.sheet.caption || 'this sheet'}</div>
-        <button onClick={() => { p.onLineMode(false); p.onClose() }} className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-navy-800 hover:text-ink" aria-label="Close the reader"><X className="h-4 w-4" /></button>
+        <button onClick={() => { p.onLineMode(false); p.onClose() }} className="-my-1 flex h-10 w-10 items-center justify-center rounded-md text-muted hover:bg-navy-800 hover:text-ink" aria-label="Close the reader"><X className="h-4 w-4" /></button>
       </div>
 
       {(phase === 'pick' || phase === 'error') && (
@@ -501,25 +532,36 @@ export default function PlanReader(p: Props) {
               <div className="flex items-center gap-2">
                 <span className="font-semibold">{selC.role === 'eg' ? 'Existing' : 'Proposed'} contour</span>
                 <span className="flex-1 text-muted">{selC.z !== null ? `${selC.z} ft · ${HOW_WORDS[selC.how ?? ''] ?? ''}` : 'no elevation yet'}</span>
-                <button onClick={() => setSel(null)} className="text-muted hover:text-ink" aria-label="Close"><X className="h-3.5 w-3.5" /></button>
+                <button onClick={() => setSel(null)} className="-m-2 flex h-10 w-10 shrink-0 items-center justify-center text-muted hover:text-ink" aria-label="Close"><X className="h-4 w-4" /></button>
               </div>
               {selC.flags.map(f => <p key={f} className="text-amber">• {f}</p>)}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
                   <NumField step={0.5} min={-1500} max={30000} value={userZ[contourKey(selC)] ?? (selC.z ?? undefined)} placeholder="elevation" ariaLabel="Contour elevation, feet"
                     onValue={v => setUserZ(u => ({ ...u, [contourKey(selC)]: v }))}
-                    className="w-24 rounded border border-navy-700 bg-navy-950 px-2 py-1 text-right" />
+                    className="h-10 w-24 rounded border border-navy-700 bg-navy-950 px-2 text-right" />
                   <span className="text-muted">ft</span>
                   {userZ[contourKey(selC)] !== undefined && (
-                    <button className="min-h-[32px] rounded-md px-2 text-muted underline" onClick={() => setUserZ(u => { const n = { ...u }; delete n[contourKey(selC)]; return n })}>Undo mine</button>
+                    <button className="min-h-[40px] rounded-md px-2 text-muted underline" onClick={() => setUserZ(u => { const n = { ...u }; delete n[contourKey(selC)]; return n })}>Undo mine</button>
                   )}
-                  <button className="min-h-[32px] rounded-md px-2 text-muted underline"
-                    onClick={() => setExcluded(x => { const n = { ...x }; const k = contourKey(selC); if (n[k]) delete n[k]; else n[k] = true; return n })}>
-                    {shown?.out.has(selC.id) ? 'It is a contour' : 'Not a contour'}
-                  </button>
+                  <button className="min-h-[40px] rounded-md px-2 text-muted underline" onClick={() => { setSel(null); setAside([...exclude, selC.pts]) }}>Not a contour</button>
                 </div>
               )}
               <p className="text-faint">Pen: {(() => { const pn = pens.find(q => q.id === selC.pen); return pn ? `${pn.layer ?? 'no layer'} · ${pn.dash ? 'dashed' : 'solid'}` : '—' })()}</p>
+            </div>
+          )}
+          {selAside && (
+            <div className="space-y-2 rounded-lg border border-navy-700 bg-navy-900 p-2">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-muted">Set aside — not read as a contour.</span>
+                <button onClick={() => setSel(null)} className="-m-2 flex h-10 w-10 shrink-0 items-center justify-center text-muted hover:text-ink" aria-label="Close"><X className="h-4 w-4" /></button>
+              </div>
+              {p.canEdit && (
+                <button className="min-h-[40px] rounded-md px-2 text-cyan-300 underline"
+                  onClick={() => { setSel(null); setAside(exclude.filter(pl => !hasVertex(pl, selAside.pts[0], selAside.pts[1]))) }}>
+                  It is a contour
+                </button>
+              )}
             </div>
           )}
 
@@ -527,38 +569,44 @@ export default function PlanReader(p: Props) {
           {p.canEdit && (stats.eg.n > 0 || stats.fg.n > 0) && (
             <div className="space-y-2 rounded-lg border border-navy-800 p-2">
               {!lineForm ? (
-                <button onClick={() => { setLineMsg(null); setLineForm({ role: stats.eg.named < stats.eg.n || stats.fg.n === 0 ? 'eg' : 'fg', z0: undefined, dz: read.interval.eg ?? read.interval.fg ?? 1, up: true }) }}
-                  className="flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-lg bg-navy-800 px-2 hover:bg-navy-700">
+                <button onClick={() => { const role = stats.eg.named < stats.eg.n || stats.fg.n === 0 ? 'eg' : 'fg'; setLineMsg(null); setLastLine(null); setLineForm({ role, z0: undefined, dz: dzFor(role), up: true }) }}
+                  className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg bg-navy-800 px-2 hover:bg-navy-700">
                   <Ruler className="h-3.5 w-3.5" /> Number contours along a line
                 </button>
               ) : (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select value={lineForm.role} onChange={e => setLineForm(f => f && { ...f, role: e.target.value as 'eg' | 'fg' })} className="rounded border border-navy-700 bg-navy-900 px-1 py-1">
+                    <select value={lineForm.role} onChange={e => { const role = e.target.value as 'eg' | 'fg'; setLineForm(f => f && { ...f, role, dz: dzFor(role) }) }} className="h-10 rounded border border-navy-700 bg-navy-900 px-1">
                       <option value="eg">Existing</option><option value="fg">Proposed</option>
                     </select>
                     <span className="text-muted">first one crossed</span>
                     <NumField live step={0.5} min={-1500} max={30000} value={lineForm.z0} onValue={z0 => setLineForm(f => f && { ...f, z0 })} placeholder="ft" ariaLabel="First contour elevation"
-                      className={`w-20 rounded border bg-navy-900 px-2 py-1 text-right ${lineForm.z0 === undefined ? 'border-amber/60' : 'border-navy-700'}`} />
-                    <select value={lineForm.up ? 'up' : 'down'} onChange={e => setLineForm(f => f && { ...f, up: e.target.value === 'up' })} className="rounded border border-navy-700 bg-navy-900 px-1 py-1">
+                      className={`h-10 w-20 rounded border bg-navy-900 px-2 text-right ${lineForm.z0 === undefined ? 'border-amber/60' : 'border-navy-700'}`} />
+                    <select value={lineForm.up ? 'up' : 'down'} onChange={e => setLineForm(f => f && { ...f, up: e.target.value === 'up' })} className="h-10 rounded border border-navy-700 bg-navy-900 px-1">
                       <option value="up">then up</option><option value="down">then down</option>
                     </select>
                     <NumField live step={0.25} min={0.1} max={100} value={lineForm.dz} onValue={dz => setLineForm(f => f && { ...f, dz })} ariaLabel="Contour interval"
-                      className="w-14 rounded border border-navy-700 bg-navy-900 px-2 py-1 text-right" />
+                      className="h-10 w-14 rounded border border-navy-700 bg-navy-900 px-2 text-right" />
                     <span className="text-muted">ft</span>
                   </div>
                   <div className="flex gap-2">
-                    <button disabled={lineForm.z0 === undefined} onClick={() => p.onLineMode(true)} className="min-h-[36px] flex-1 rounded-lg bg-cyan-600/90 px-2 font-semibold text-navy-950 disabled:opacity-40">Draw the line on the map</button>
-                    <button onClick={() => { setLineForm(null); p.onLineMode(false) }} className="min-h-[36px] rounded-lg px-2 text-muted hover:bg-navy-800">Cancel</button>
+                    <button disabled={lineForm.z0 === undefined} onClick={() => p.onLineMode(true)} className="min-h-[40px] flex-1 rounded-lg bg-cyan-600/90 px-2 font-semibold text-navy-950 disabled:opacity-40">Draw the line on the map</button>
+                    <button onClick={() => { setLineForm(null); p.onLineMode(false) }} className="min-h-[40px] rounded-lg px-2 text-muted hover:bg-navy-800">Cancel</button>
                   </div>
                   <p className="text-faint">Start on the contour whose elevation you typed and cross the others in order — they step by the interval. Labels already on the plan are kept and checked.</p>
                 </div>
               )}
               {lineMsg && <p className={lastLine ? 'text-amber' : 'text-cyan-200'}>{lineMsg}</p>}
-              {lastLine && lastLine.implied !== null && (
-                <button onClick={() => runLine(lastLine.role, lastLine.pts, lastLine.implied as number, lastLine.dz)}
-                  className="min-h-[36px] w-full rounded-lg border border-amber/60 px-2 text-amber hover:bg-amber/10">
-                  The plan&apos;s labels make the first one {lastLine.implied}, not {lastLine.typed} — number from {lastLine.implied}
+              {lastLine && lastLine.implied !== null && lastLine.implied !== lastLine.typed && (
+                <button onClick={() => runLine(lastLine.role, lastLine.pts, lastLine.implied as number, lastLine.dz, lastLine.slop)}
+                  className="min-h-[40px] w-full rounded-lg border border-amber/60 px-2 text-amber hover:bg-amber/10">
+                  The plan&apos;s {lastLine.counted ? 'counted numbers make' : 'labels make'} the first one {lastLine.implied}, not {lastLine.typed} — number from {lastLine.implied}
+                </button>
+              )}
+              {lastLine && lastLine.counted && (
+                <button onClick={() => runLine(lastLine.role, lastLine.pts, lastLine.typed, lastLine.dz, lastLine.slop, true)}
+                  className="min-h-[40px] w-full rounded-lg border border-navy-700 px-2 text-muted hover:bg-navy-800">
+                  Use my numbers anyway (from {lastLine.typed})
                 </button>
               )}
             </div>
@@ -578,7 +626,7 @@ export default function PlanReader(p: Props) {
                   <div className="mt-1 flex gap-1" role="radiogroup" aria-label={`What ${q.layer ?? 'this pen'} draws`}>
                     {(['eg', 'fg', 'none'] as Role[]).map(r => (
                       <button key={r} role="radio" aria-checked={(roles[q.id] ?? 'none') === r} onClick={() => setRole(q.id, r)}
-                        className={`min-h-[30px] flex-1 rounded px-1 ${(roles[q.id] ?? 'none') === r ? 'bg-navy-700 font-semibold text-ink' : 'text-muted hover:bg-navy-800'}`}>
+                        className={`min-h-[40px] flex-1 rounded px-1 ${(roles[q.id] ?? 'none') === r ? 'bg-navy-700 font-semibold text-ink' : 'text-muted hover:bg-navy-800'}`}>
                         {ROLE_WORDS[r]}
                       </button>
                     ))}
@@ -587,7 +635,7 @@ export default function PlanReader(p: Props) {
               </div>
             ))}
             {otherPens.length > 0 && (
-              <button onClick={() => setAllPens(v => !v)} className="min-h-[32px] text-cyan-300 underline">{allPens ? 'Hide the other linework' : `Show the other ${otherPens.length} pens (contours on an unusual layer?)`}</button>
+              <button onClick={() => setAllPens(v => !v)} className="min-h-[40px] text-left text-cyan-300 underline">{allPens ? 'Hide the other linework' : `Show the other ${otherPens.length} pens (contours on an unusual layer?)`}</button>
             )}
           </div>
 
@@ -595,8 +643,11 @@ export default function PlanReader(p: Props) {
           {p.canEdit && (
             <div className="space-y-2 rounded-lg border border-navy-800 p-2">
               <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-faint">Add to the takeoff</div>
-              {stats.eg.named > 0 && <Check2 on={picks.egContours} set={v => setPicks(x => ({ ...x, egContours: v }))} text={`${stats.eg.named} existing contours${stats.eg.n > stats.eg.named ? ` (${stats.eg.n - stats.eg.named} without an elevation stay out)` : ''}`} />}
-              {stats.fg.named > 0 && <Check2 on={picks.fgContours} set={v => setPicks(x => ({ ...x, fgContours: v }))} text={`${stats.fg.named} proposed contours${stats.fg.n > stats.fg.named ? ` (${stats.fg.n - stats.fg.named} without an elevation stay out)` : ''}`} />}
+              {stats.eg.named > 0 && <Check2 on={picks.egContours} set={v => setPicks(x => ({ ...x, egContours: v }))} text={`${stats.eg.named - (includeGuesses ? 0 : stats.eg.guessed)} existing contours${stats.eg.n > stats.eg.named ? ` (${stats.eg.n - stats.eg.named} without an elevation stay out)` : ''}`} />}
+              {stats.fg.named > 0 && <Check2 on={picks.fgContours} set={v => setPicks(x => ({ ...x, fgContours: v }))} text={`${stats.fg.named - (includeGuesses ? 0 : stats.fg.guessed)} proposed contours${stats.fg.n > stats.fg.named ? ` (${stats.fg.n - stats.fg.named} without an elevation stay out)` : ''}`} />}
+              {stats.eg.guessed + stats.fg.guessed > 0 && (
+                <Check2 on={includeGuesses} set={setIncludeGuesses} text={`Including ${stats.eg.guessed + stats.fg.guessed} guessed from the trend (marked ?) — nearly always right, but check them on the map`} />
+              )}
               {stats.egSpots > 0 && <Check2 on={picks.egSpots} set={v => setPicks(x => ({ ...x, egSpots: v }))} text={`${stats.egSpots} existing spot grades`} />}
               {stats.fgSpots > 0 && <Check2 on={picks.fgSpots} set={v => setPicks(x => ({ ...x, fgSpots: v }))} text={`${stats.fgSpots} proposed spot grades`} />}
               {read.pads.map((pd, i) => (
@@ -609,6 +660,9 @@ export default function PlanReader(p: Props) {
               )}
               {!(stats.eg.named > 0 && picks.egContours && useForExisting) && read.datumFt !== null && Math.abs(read.datumFt) >= 0.05 && (
                 <Check2 on={useDatum} set={setUseDatum} text={`Set the lidar datum offset to ${read.datumFt >= 0 ? '+' : '−'}${Math.abs(read.datumFt).toFixed(1)} ft`} />
+              )}
+              {stats.flagged > 0 && (
+                <p className="flex gap-1.5 text-amber"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{stats.flagged} contour{stats.flagged === 1 ? ' has' : 's have'} something to check (a red edge) — tap {stats.flagged === 1 ? 'it' : 'them'} on the map first.</p>
               )}
               <button onClick={doImport} className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg bg-amber px-3 font-semibold text-navy-950 hover:brightness-110">
                 <Check className="h-4 w-4" /> Add to the takeoff
@@ -625,8 +679,8 @@ export default function PlanReader(p: Props) {
 
 function Check2({ on, set, text, disabled }: { on: boolean; set: (v: boolean) => void; text: string; disabled?: boolean }) {
   return (
-    <label className={`flex min-h-[28px] items-start gap-2 ${disabled ? 'opacity-60' : ''}`}>
-      <input type="checkbox" checked={on} disabled={disabled} onChange={e => set(e.target.checked)} className="mt-0.5 accent-amber" />
+    <label className={`flex min-h-[40px] items-start gap-2 py-2 ${disabled ? 'opacity-60' : ''}`}>
+      <input type="checkbox" checked={on} disabled={disabled} onChange={e => set(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-amber" />
       <span>{text}</span>
     </label>
   )

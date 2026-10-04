@@ -10,11 +10,13 @@ import type { GroundGrid } from './takeoff'
 
 let input: ReadInput | null = null
 let roles: Record<number, Role> = {}
+/** Lines the estimator set aside ("Not a contour"). */
+let exclude: number[][] = []
 let lidar: ((x: number, y: number) => number) | undefined
 
 type In =
   | { type: 'load'; seq: number; input: ReadInput; geo: SheetGeo; ground: GroundGrid | null }
-  | { type: 'read'; seq: number; roles: Record<number, Role> }
+  | { type: 'read'; seq: number; roles: Record<number, Role>; exclude?: number[][] }
   | { type: 'ground'; seq: number; geo: SheetGeo; ground: GroundGrid | null }
 
 export type PlanWorkerOut =
@@ -33,14 +35,16 @@ self.onmessage = (e: MessageEvent<In>) => {
       lidar = m.ground ? lidarAtPage(sheetMap(m.geo), m.ground) : undefined
       const pens = summarizePens(input)
       roles = Object.fromEntries(pens.map(p => [p.id, p.suggested]))
+      exclude = []
       const read = readPlan(input, { roles, existingFt: lidar })
       post({ type: 'loaded', seq: m.seq, pens, roles, read, ms: Date.now() - t0 })
     } else if (m.type === 'read' && input) {
       roles = m.roles
-      post({ type: 'read', seq: m.seq, read: readPlan(input, { roles, existingFt: lidar }), ms: Date.now() - t0 })
+      exclude = m.exclude ?? []
+      post({ type: 'read', seq: m.seq, read: readPlan(input, { roles, existingFt: lidar, exclude }), ms: Date.now() - t0 })
     } else if (m.type === 'ground' && input) {
       lidar = m.ground ? lidarAtPage(sheetMap(m.geo), m.ground) : undefined
-      post({ type: 'read', seq: m.seq, read: readPlan(input, { roles, existingFt: lidar }), ms: Date.now() - t0 })
+      post({ type: 'read', seq: m.seq, read: readPlan(input, { roles, existingFt: lidar, exclude }), ms: Date.now() - t0 })
     }
   } catch (err) {
     post({ type: 'error', seq: m.seq, error: err instanceof Error ? err.message : String(err) })
