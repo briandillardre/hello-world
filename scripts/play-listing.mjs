@@ -114,6 +114,13 @@ try {
   }
 } catch (err) {
   console.error(`\n❌ ${err.message}`)
+  if (/→ 403/.test(err.message)) {
+    // Oct 4: the release workflow's service account could upload every word and image into the
+    // edit, then validate refused it — a store-listing change needs its own Play permission.
+    console.error('Play refused the listing change: the service account can publish releases but not the store listing.')
+    console.error('Fix (once): Play Console → Users and permissions → the service account → App permissions → HammerTrack →')
+    console.error('tick "Edit store listing, pricing and distribution" (Store presence) → Apply. Then run this again.')
+  }
   console.error('Nothing was committed — the store is unchanged.')
   process.exitCode = 1
 } finally {

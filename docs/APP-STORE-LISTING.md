@@ -20,6 +20,11 @@ caption change; behind a TLS-intercepting proxy set `STORE_SHOTS_CA`) →
 `node scripts/store-video.mjs` when a caption or a screen in it changed →
 commit → run the **`play-listing`** workflow (validate only by default; tick
 *commit* to publish — Play reviews listing changes, usually within hours).
+**One-time prerequisite (board #191):** the service account in
+`PLAY_SERVICE_ACCOUNT_JSON` publishes releases but needs Play Console → Users
+and permissions → that account → App permissions → HammerTrack → *Edit store
+listing, pricing and distribution*. Without it Play accepts the uploads into
+the edit and then refuses to validate it (403) — the Oct 4 first run.
 Releases and tracks are never touched by it. Run truth-check on any copy
 change: the splash truth rule applies to the store exactly as to the splash —
 nothing waiting on a vendor (no texts until a Twilio number is verified, no
