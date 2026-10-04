@@ -28,15 +28,8 @@ export const DEVICE_META: Record<DeviceType, { emoji: string; color: string; lab
   weather_station: { emoji: '🌦️', color: '#a78bfa', label: 'Weather station' },
 }
 
-// Positioned around the two active project geofences (Nashville site)
-export const MOCK_SITE_DEVICES: SiteDevice[] = [
-  { id: 'cam-1', type: 'camera', name: 'Gate A · Riverfront', lng: -86.7860, lat: 36.1610, status: 'Live · 1080p', online: true },
-  { id: 'cam-2', type: 'camera', name: 'Maple St · Gate', lng: -86.7928, lat: 36.1636, status: 'Live · 1080p', online: true },
-  { id: 'fuel-1', type: 'fuel', name: 'Diesel Tank · Yard', lng: -86.7880, lat: 36.1670, status: '64% · 320 gal', value: 64, online: true },
-  { id: 'gen-1', type: 'generator', name: 'Genset #2', lng: -86.7850, lat: 36.1618, status: 'Running · 38% fuel', value: 38, online: true },
-  { id: 'pump-1', type: 'pump', name: 'Dewatering Pump', lng: -86.7912, lat: 36.1590, status: 'Running · 12 gpm', online: true },
-  { id: 'wx-1', type: 'weather_station', name: 'Site Weather', lng: -86.7845, lat: 36.1637, status: '78°F · 6mph · 0.00"', online: true },
-]
+// No mock devices: nothing feeds this layer in production yet, so the demo
+// must not show any either (splash truth rule — Oct 4).
 
 // Popup markup is injected via maplibre's setHTML (innerHTML) — every
 // data-derived string must pass through here before interpolation.

@@ -121,6 +121,29 @@ ok('gauge order rpm, speed, coolant, fuel, 12V, load', G.map((g) => g.key).join(
 ok('gauge values converted', near(G.find((g) => g.key === 'can.engine.coolant.temperature').value, 192.2, 0.01))
 ok('gauge limit honoured', cat.pickGauges(R, ctx, 3).length === 3)
 
+// ── 24 V machines (most excavators, dozers, loaders): the ladder doubles ────
+{
+  const at = (v, ign) => cat.readingsFromRaw({ 'external.powersource.voltage': v, ...(ign == null ? {} : { 'engine.ignition.status': ign }) }, T)
+  const word = (v, ign) => { const r = at(v, ign); return cat.describeAll(r, cat.assessCtx(r, 'wired')).find((d) => d.key === 'external.powersource.voltage') }
+  ok('24 V running reads Charging, not Overcharging', word(27.9, true).words === 'Charging', word(27.9, true).words)
+  ok('24 V resting reads healthy', word(25.2, false).words === 'Battery healthy')
+  ok('24 V resting low is weak', word(24.1, false).tone === 'warn')
+  ok('24 V overcharge still caught', word(31.4, true).tone === 'bad')
+  ok('24 V resting is not engine-on without a flag', cat.assessCtx(at(25.2), 'wired').engineOn === false)
+  ok('24 V charging is engine-on without a flag', cat.assessCtx(at(27.9), 'wired').engineOn === true)
+  const g24 = cat.pickGauges(at(25.2, false), cat.assessCtx(at(25.2, false), 'wired')).find((g) => g.key === 'external.powersource.voltage')
+  ok('24 V dial runs 16–32 and says 24V', g24?.gauge.min === 16 && g24?.gauge.max === 32 && g24?.short === '24V', JSON.stringify(g24?.gauge))
+  const g12 = cat.pickGauges(at(12.6, false), cat.assessCtx(at(12.6, false), 'obd')).find((g) => g.key === 'external.powersource.voltage')
+  ok('12 V dial unchanged', g12?.gauge.min === 8 && g12?.gauge.max === 16 && g12?.short === '12V')
+  ok('gaugeFor picks the face by value', cat.gaugeFor('external.powersource.voltage', 27)?.max === 32 && cat.gaugeFor('external.powersource.voltage', 14)?.max === 16 && cat.gaugeFor('can.engine.rpm', 900)?.max === 6000)
+  // vehicle-power.ts (no imports) decides ignition at ingest — same ladder.
+  const vp = await import(asData(transpile('../lib/vehicle-power.ts')))
+  ok('vehiclePower: 24 V resting is engine off + good', vp.vehiclePower({ 'external.powersource.voltage': 25.1 }).engineOn === false && vp.vehiclePower({ 'external.powersource.voltage': 25.1 }).health === 'good')
+  ok('vehiclePower: 24 V charging is engine on', vp.vehiclePower({ 'external.powersource.voltage': 27.6 }).engineOn === true)
+  ok('vehiclePower: 12 V charging is engine on', vp.vehiclePower({ 'external.powersource.voltage': 14.1 }).engineOn === true)
+  ok('vehiclePower: mV still read as volts', vp.vehiclePower({ 'external.powersource.voltage': 13980 }).volts === 14)
+}
+
 // ── Not reported ────────────────────────────────────────────────────────────
 const NR = cat.notReported(R, 'obd').map((d) => d.key)
 ok('F350 not reporting oil temp + throttle', NR.includes('can.engine.oil.temperature') && NR.includes('can.throttle.pedal.level'))

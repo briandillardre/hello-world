@@ -3,7 +3,7 @@ import { MOCK_ASSETS } from '../lib/mock-data'
 import { generateTracks, trailUpTo, positionAt, clockLabel, rangeLabel, scrubLabel, RANGES, speedsForRange, formatSpeed, rangeWindowSeconds } from '../lib/trails'
 import { PROJECTS, projectCost, periodCost, RANGE_COST_LABEL, money } from '../lib/projects'
 import { weatherTileUrl, liveFrameIndex, type RadarFrame } from '../lib/weather'
-import { MOCK_SITE_DEVICES, devicePopupHTML } from '../lib/site-devices'
+import { devicePopupHTML, type SiteDevice } from '../lib/site-devices'
 import { MOCK_GEOFENCES } from '../lib/mock-data'
 import { geofencePresence, presencePopupHTML } from '../lib/site-presence'
 import { MOCK_ALERTS } from '../lib/mock-data'
@@ -69,12 +69,10 @@ ok('liveFrameIndex picks last past frame', liveFrameIndex(frames) === 1, `idx ${
 const url = weatherTileUrl('https://host', frames[0])
 ok('radar tile url well-formed', url === 'https://host/v2/radar/100/256/{z}/{x}/{y}/4/1_1.png', url)
 
-// ── Site devices ──
-ok('site devices present', MOCK_SITE_DEVICES.length >= 5, `${MOCK_SITE_DEVICES.length}`)
-ok('every device has coords + name', MOCK_SITE_DEVICES.every((d) => d.name && Number.isFinite(d.lng) && Number.isFinite(d.lat)))
-const cam = MOCK_SITE_DEVICES.find((d) => d.type === 'camera')!
-ok('camera popup renders snapshot + name', devicePopupHTML(cam).includes(cam.name) && devicePopupHTML(cam).includes('LIVE'))
-const fuel = MOCK_SITE_DEVICES.find((d) => d.type === 'fuel')!
+// ── Site devices (popup only — no device feeds the layer yet, demo included) ──
+const cam: SiteDevice = { id: 'cam-t', type: 'camera', name: 'Gate <A>', lng: -86.786, lat: 36.161, status: 'Live', online: true }
+ok('camera popup renders snapshot + escaped name', devicePopupHTML(cam).includes('Gate &lt;A&gt;') && devicePopupHTML(cam).includes('LIVE'))
+const fuel: SiteDevice = { id: 'fuel-t', type: 'fuel', name: 'Tank', lng: -86.788, lat: 36.167, status: '64%', value: 64, online: true }
 ok('fuel popup shows level %', devicePopupHTML(fuel).includes(`${fuel.value}%`))
 
 // ── Geofence presence / in-zone tracking ──

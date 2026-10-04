@@ -1,4 +1,4 @@
-import { resolveKey, formatReading, type Tone } from '@/lib/telemetry-catalog'
+import { resolveKey, formatReading, gaugeFor, type Tone } from '@/lib/telemetry-catalog'
 import type { TrendRow } from '@/lib/db/telemetry'
 import { TONE_HEX } from './Gauge'
 
@@ -33,7 +33,7 @@ function OneTrend({ readingKey, rows, tz }: { readingKey: string; rows: TrendRow
   const decimals = def?.decimals ?? 0
   const fmt = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
   const toneAt = (display: number): Tone => {
-    const bands = def?.gauge?.bands
+    const bands = def ? gaugeFor(def.key, display)?.bands : undefined
     if (!bands) return 'info'
     for (const b of bands) if (display <= b.to) return b.tone === 'off' ? 'info' : b.tone
     return bands[bands.length - 1].tone
@@ -75,7 +75,7 @@ function OneTrend({ readingKey, rows, tz }: { readingKey: string; rows: TrendRow
           const hex = TONE_HEX[c.tone]
           return (
             <g key={c.day}>
-              <title>{`${dayLong(c.day)} · ${fmt(c.min)}–${fmt(c.max)}${unit ? ' ' + unit : ''} · avg ${fmt(c.avg)} · ${c.n.toLocaleString()} reports`}</title>
+              <title>{`${dayLong(c.day)} · ${fmt(c.min)}–${fmt(c.max)}${unit ? ' ' + unit : ''} · avg ${fmt(c.avg)} · ${c.n.toLocaleString()} ${c.n === 1 ? 'report' : 'reports'}`}</title>
               <rect x={cx - barW / 2} y={top} width={barW} height={h} rx={2} fill={hex} fillOpacity={0.55} />
               <line x1={cx - barW / 2} x2={cx + barW / 2} y1={y(c.avg)} y2={y(c.avg)} stroke="#e8f0f7" strokeWidth={1.5} />
               <text x={cx} y={H - 4} textAnchor="middle" fontSize={8.5} fill="#6f88a0" fontFamily="ui-monospace,monospace">{dayLabel(c.day)}</text>
@@ -84,7 +84,7 @@ function OneTrend({ readingKey, rows, tz }: { readingKey: string; rows: TrendRow
         })}
       </svg>
       <p className="mt-1 text-[10.5px] text-faint leading-snug">
-        Bar = the day&apos;s low to high, tick = average. Latest day: {fmt(latest.min)}–{fmt(latest.max)}{unit ? ` ${unit}` : ''} over {latest.n.toLocaleString()} reports.
+        Bar = the day&apos;s low to high, tick = average. Latest day: {fmt(latest.min)}–{fmt(latest.max)}{unit ? ` ${unit}` : ''} over {latest.n.toLocaleString()} {latest.n === 1 ? 'report' : 'reports'}.
       </p>
       <details className="mt-1">
         <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-wide text-faint hover:text-muted">Table</summary>

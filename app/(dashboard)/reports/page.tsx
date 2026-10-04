@@ -8,6 +8,7 @@ import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
 import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getFleetScorecard } from '@/lib/db/scorecard'
+import { getConnectionStatus } from '@/lib/qbo'
 import { fmtClock, type VehicleScore } from '@/lib/scorecard'
 import { rangeWindow, fmtDay, type TimeRangeKey, safeTz } from '@/lib/dates'
 import { RANGES } from '@/lib/trails'
@@ -92,11 +93,15 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
   // and carry their own cost ("reports took 20 seconds for 7 day", Aug 10).
   const key = (keys.includes(searchParams?.range as TimeRangeKey) ? searchParams?.range : 'today') as TimeRangeKey
 
-  const [assets, geofences, settings] = await Promise.all([
+  const [assets, geofences, settings, qbo] = await Promise.all([
     getAssetsWithLocations(companyId),
     getGeofences(companyId),
     getCompanySettings(),
+    getConnectionStatus(companyId),
   ])
+  // Point at billing only when QuickBooks is REALLY connected — the demo
+  // connection (no QBO app yet, or demo mode) bills nothing.
+  const billsHours = qbo.connected && !qbo.demo && perms.canManageBilling
   const work = {
     work_start: settings.work_start || MOCK_COMPANY.work_start,
     work_end: settings.work_end || MOCK_COMPANY.work_end,
@@ -318,7 +323,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-faint mt-3">Site hours drive equipment-usage billing → <Link href="/accounting" className="text-teal hover:underline">see Accounting</Link>.</p>
+                {billsHours && <p className="text-xs text-faint mt-3">Site hours drive equipment-usage billing → <Link href="/accounting" className="text-teal hover:underline">see Accounting</Link>.</p>}
               </section>
             )}
 

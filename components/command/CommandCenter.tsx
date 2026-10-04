@@ -142,11 +142,11 @@ function KioskNav({ company, alerts, features, role, askAi }: { company: string;
   )
 }
 
-function Chip({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'amber' | 'teal' | 'alert' }) {
+function Chip({ label, value, tone = 'ink', className = '' }: { label: string; value: string; tone?: 'ink' | 'amber' | 'teal' | 'alert'; className?: string }) {
   const color = tone === 'amber' ? 'text-amber' : tone === 'teal' ? 'text-teal' : tone === 'alert' ? 'text-alert' : 'text-ink'
   return (
-    <div className="px-3 border-l border-navy-800 first:border-l-0">
-      <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint leading-none">{label}</div>
+    <div className={`px-3 border-l border-navy-800 first:border-l-0 ${className}`}>
+      <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint leading-none whitespace-nowrap">{label}</div>
       <div className={`font-display font-black text-[19px] leading-tight ${color}`}>{value}</div>
     </div>
   )
@@ -603,16 +603,20 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
           {/* phone: mark only — the wordmark fought the Ask button for space */}
           <span className="md:hidden"><Logo size={26} href={null} wordmark={false} /></span>
           <span className="hidden md:block"><Logo size={26} href={null} /></span>
-          <span className="hidden md:block w-px h-6 bg-navy-700" />
-          <span className="hidden md:block font-mono text-[11px] text-faint tracking-wide">{company.toUpperCase()}</span>
+          {/* The company name only where the bar has room for it: at iPad
+              widths it wrapped into a column over the Assets chip. */}
+          <span className="hidden 2xl:block w-px h-6 bg-navy-700" />
+          <span className="hidden 2xl:block max-w-[260px] truncate font-mono text-[11px] text-faint tracking-wide">{company.toUpperCase()}</span>
         </div>
 
         {panels.chips !== 'hidden' && (
           <div className="hidden sm:flex items-center">
             <Chip label="Assets" value={`${kpis.assetsOnline}/${kpis.assetsTotal}`} />
             <Chip label="Moving" value={`${kpis.equipmentRunning}`} tone="amber" />
-            <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" />
-            <Chip label="Sites" value={`${kpis.sites}`} />
+            {/* Below xl (iPads, small laptops) six chips + the clock overflow the
+                bar; these two wait for room — the PANELS rails carry both. */}
+            <Chip label="Crew on site" value={`${kpis.crewOnSite}`} tone="teal" className="hidden xl:block" />
+            <Chip label="Sites" value={`${kpis.sites}`} className="hidden xl:block" />
             <Chip label="Alerts" value={`${kpis.activeAlerts}`} tone={kpis.activeAlerts > 0 ? 'alert' : 'ink'} />
             <Chip label="Cost today" value={liveKpis.costToday} tone="amber" />
           </div>

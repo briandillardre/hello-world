@@ -209,7 +209,7 @@ function NewScheduleDialog({ assetNames, onClose }: {
       <div className="absolute inset-0 bg-navy-950/70" onClick={onClose} />
       <div className="relative w-full max-w-md rounded-2xl border border-navy-700 bg-navy-900 p-4 space-y-3">
         <p className="font-display font-bold text-ink">Add service schedule</p>
-        <p className="text-[11.5px] text-faint -mt-2">HammerTrack counts down from real tracker readings and flags overdue machines.</p>
+        <p className="text-[11.5px] text-faint -mt-2">Day schedules count down by themselves and open a work order when due. Hour and mile schedules need the tracker meters, coming next — until then they won’t come due on their own.</p>
         <label><span className={lbl}>Machine</span>
           <select value={assetId} onChange={(e) => setAssetId(e.target.value)} className={inp}>
             <option value="">Machine…</option>

@@ -30,12 +30,12 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 const MOCK_OVERVIEW: TrackersOverview = {
   installed: [
-    { imei: '863452084048569', model: 'FMM00A', label: 'Chevy 1500', registered: true, asset: { id: 'a1', name: 'Chevy 1500', type: 'vehicle' }, lastSeen: { timestamp: new Date(Date.now() - 4 * 60_000).toISOString(), lat: 34.85, lng: -82.4, speed: 0, battery: null }, unassignedSince: null, buffered: 0 },
-    { imei: '869267077050677', model: 'TAT141', label: 'Takeuchi TB235', registered: true, asset: { id: 'a2', name: 'Takeuchi TB235', type: 'equipment' }, lastSeen: { timestamp: new Date(Date.now() - 50 * 60_000).toISOString(), lat: 34.7, lng: -82.6, speed: 0, battery: 100 }, unassignedSince: null, buffered: 0 },
+    { imei: '863452089000110', model: 'FMM00A', label: 'Chevy 1500', registered: true, asset: { id: 'a1', name: 'Chevy 1500', type: 'vehicle' }, lastSeen: { timestamp: new Date(Date.now() - 4 * 60_000).toISOString(), lat: 34.85, lng: -82.4, speed: 0, battery: null }, unassignedSince: null, buffered: 0 },
+    { imei: '869267079000217', model: 'TAT141', label: 'Takeuchi TB235', registered: true, asset: { id: 'a2', name: 'Takeuchi TB235', type: 'equipment' }, lastSeen: { timestamp: new Date(Date.now() - 50 * 60_000).toISOString(), lat: 34.7, lng: -82.6, speed: 0, battery: 100 }, unassignedSince: null, buffered: 0 },
   ],
   unassigned: [
-    { imei: '860813075166517', model: 'FMM650', label: 'Tool trailer', registered: true, asset: null, lastSeen: null, unassignedSince: null, buffered: 0 },
-    { imei: '863452084000200', model: 'FMM00A', label: null, registered: true, asset: null, lastSeen: { timestamp: new Date(Date.now() - 20 * 60_000).toISOString(), lat: 34.84, lng: -82.39, speed: 0, battery: null }, unassignedSince: new Date(Date.now() - 26 * 3_600_000).toISOString(), buffered: 14 },
+    { imei: '860813079000316', model: 'FMM650', label: 'Tool trailer', registered: true, asset: null, lastSeen: null, unassignedSince: null, buffered: 0 },
+    { imei: '863452089000417', model: 'FMM00A', label: null, registered: true, asset: null, lastSeen: { timestamp: new Date(Date.now() - 20 * 60_000).toISOString(), lat: 34.84, lng: -82.39, speed: 0, battery: null }, unassignedSince: new Date(Date.now() - 26 * 3_600_000).toISOString(), buffered: 14 },
   ],
   deletedAssets: [
     { id: 'a9', name: 'Old Ford F250 (sold)', type: 'vehicle', tracker_id: null, deleted_at: new Date(Date.now() - 3 * 86_400_000).toISOString(), purge_at: new Date(Date.now() + 27 * 86_400_000).toISOString() },

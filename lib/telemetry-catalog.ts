@@ -115,6 +115,15 @@ export function fmtDuration(sec: number): string {
 
 // ── Verdict helpers ─────────────────────────────────────────────────────────
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+/** Most excavators, dozers, loaders and big trucks run 24 V — a wired unit on
+ *  one reads ~25 V resting and ~28 V running, which the 12 V ladder called
+ *  "Overcharging" with a pegged red dial. Past 18 V it is a 24 V system and
+ *  every threshold doubles. (A 24 V pair sagging under 18 V reads as a 12 V
+ *  truck — no reading tells those apart; it is a dead pair either way.) */
+const SYSTEM_24V_FROM = 18
+const voltScale = (n: number) => (n > SYSTEM_24V_FROM ? 2 : 1)
+const GAUGE_12V: GaugeSpec = { min: 8, max: 16, order: 5, bands: [{ to: 11.9, tone: 'bad' }, { to: 12.4, tone: 'warn' }, { to: 15.2, tone: 'ok' }, { to: 16, tone: 'bad' }] }
+const GAUGE_24V: GaugeSpec = { min: 16, max: 32, order: 5, bands: [{ to: 23.8, tone: 'bad' }, { to: 24.8, tone: 'warn' }, { to: 30.4, tone: 'ok' }, { to: 32, tone: 'bad' }] }
 const ladder = (v: unknown, okAt: number, warnAt: number, words: [string, string, string], higherIsBetter = true): Assessment | null => {
   const n = num(v)
   if (n == null) return null
@@ -348,20 +357,21 @@ export const TELEMETRY_CATALOG: ReadingDef[] = [
   {
     key: 'external.powersource.voltage', aliases: ['external.battery.voltage', 'external.voltage', 'vehicle.battery.voltage'], io: '66', label: 'Truck battery', short: '12V',
     group: 'electrical', source: 'device', kind: 'number', unit: 'V', decimals: 1,
-    gauge: { min: 8, max: 16, order: 5, bands: [{ to: 11.9, tone: 'bad' }, { to: 12.4, tone: 'warn' }, { to: 15.2, tone: 'ok' }, { to: 16, tone: 'bad' }] },
+    gauge: GAUGE_12V,
     assess: (v, ctx) => {
       const n = num(v); if (n == null) return null
       if (n < POWERED_MIN_V) return { tone: 'bad', words: 'No truck power — the plug is out or the port is dead' }
+      const k = voltScale(n)
       if (ctx.engineOn) {
-        if (n > 15.3) return { tone: 'bad', words: 'Overcharging — alternator or regulator' }
-        if (n < 13.0) return { tone: 'warn', words: 'Running but not charging well' }
+        if (n > 15.3 * k) return { tone: 'bad', words: 'Overcharging — alternator or regulator' }
+        if (n < 13.0 * k) return { tone: 'warn', words: 'Running but not charging well' }
         return { tone: 'ok', words: 'Charging' }
       }
-      if (n >= 12.4) return { tone: 'ok', words: 'Battery healthy' }
-      if (n >= 11.9) return { tone: 'warn', words: 'Battery getting weak' }
+      if (n >= 12.4 * k) return { tone: 'ok', words: 'Battery healthy' }
+      if (n >= 11.9 * k) return { tone: 'warn', words: 'Battery getting weak' }
       return { tone: 'bad', words: 'Battery low — may not start' }
     },
-    explain: 'The truck\'s 12-volt battery. Engine off, 12.4 V or more is healthy and under 11.9 V may not start tomorrow. Running, the alternator should hold it around 13.5–14.8 V.',
+    explain: 'The truck\'s 12-volt battery. Engine off, 12.4 V or more is healthy and under 11.9 V may not start tomorrow. Running, the alternator should hold it around 13.5–14.8 V. A 24-volt machine reads double.',
   },
   {
     key: 'can.vehicle.battery.voltage', aliases: ['control.module.voltage', 'obd.control.module.voltage'], io: '51', label: 'Battery (per computer)',
@@ -856,9 +866,16 @@ export function assessCtx(readings: Readings, family?: DeviceFamily): AssessCtx 
     typeof ign === 'boolean' ? ign
     : ign === 1 || ign === 0 ? ign === 1
     : rpm != null ? rpm > 300
-    : volts != null && volts >= POWERED_MIN_V ? volts >= 13.2
+    : volts != null && volts >= POWERED_MIN_V ? volts >= 13.2 * voltScale(volts)
     : null
   return { engineOn, family }
+}
+
+/** The dial for a reading at this value — a 24 V machine gets the 24 V face. */
+export function gaugeFor(key: string, value: number): GaugeSpec | null {
+  const def = resolveKey(key)?.def
+  if (!def?.gauge) return null
+  return def.key === 'external.powersource.voltage' && value > SYSTEM_24V_FROM ? GAUGE_24V : def.gauge
 }
 
 // ── The dashboard ───────────────────────────────────────────────────────────
@@ -877,7 +894,8 @@ export function pickGauges(readings: Readings, ctx: AssessCtx, limit = 6): Gauge
     if (!def?.gauge || seen.has(def.key)) continue
     if (typeof r.v !== 'number') continue
     seen.add(def.key)
-    out.push({ ...describeReading(k, r, ctx), gauge: def.gauge, short: def.short ?? def.label })
+    const gauge = gaugeFor(def.key, r.v) ?? def.gauge
+    out.push({ ...describeReading(k, r, ctx), gauge, short: gauge === GAUGE_24V ? '24V' : def.short ?? def.label })
   }
   return out.sort((a, b) => a.gauge.order - b.gauge.order).slice(0, limit)
 }

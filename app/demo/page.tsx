@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 const FEATURES = [
   { icon: MapPin, title: 'Whole fleet, one map', body: 'Trucks, heavy equipment, and Bluetooth-tagged tools — live on one map, on your phone.' },
   { icon: ShieldAlert, title: 'After-hours theft alerts', body: 'Your phone knows within minutes when a machine moves outside work hours or leaves the site.' },
-  { icon: Wrench, title: 'Maintenance built in', body: 'Service schedules by engine hours, mileage, or days. Never miss an oil change again.' },
+  { icon: Wrench, title: 'Maintenance built in', body: 'Service schedules that open their own work orders when they come due. Never miss an oil change again.' },
   { icon: Calculator, title: 'Job cost, ready for your books', body: 'Every hour and dollar lands on the right job automatically. QuickBooks sync is next.' },
 ]
 

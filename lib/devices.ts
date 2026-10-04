@@ -580,6 +580,13 @@ export function trackerKind(
     return k ? { key: k, ...KINDS[k] } : { key: 'gps', ...KINDS.gps }
   }
 
+  // The short shop ids the app itself suggests (the Asset form placeholder,
+  // Settings' direct-ingest examples): `obd-001` is an OBD unit posting to
+  // /api/ingest/obd2 and `gps-007` a GPS unit — not tags. Calling them tags
+  // put "Tool tag" on every demo truck in the store screenshots (Oct 4).
+  if (/^obd[-_]?\d/i.test(id)) return { key: 'obd', ...KINDS.obd }
+  if (/^gps[-_]?\d/i.test(id)) return { key: 'gps', ...KINDS.gps }
+
   // Everything else printed on a box is a tag: a 12-hex MAC, a beacon Minor,
   // a short shop id like `bt-042`.
   return { key: 'tag', ...KINDS.tag }

@@ -40,7 +40,7 @@ import { PLANE_TRAIL_MODES, trailColor, trailScale, legendStops, type PlaneTrail
 import { sunEquatorial, moonEquatorial, subPoint, moonIllumination, norm180, EARTH_RADIUS_M, SUN_RADIUS_KM, MOON_RADIUS_KM, AU_KM } from '@/lib/celestial'
 import { typeInfo } from '@/lib/aircraft-shapes'
 import { buildReplayTrail, replayPositionAt, bearingDeg, agoWords, type ReplayTrail, type ReplayPosition, type WindowFlight } from '@/lib/plane-replay'
-import { MOCK_SITE_DEVICES, DEVICE_META, type SiteDevice } from '@/lib/site-devices'
+import { DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
 import { synthesizeToolRows, TOOL_FRESH_MS } from '@/lib/tools-resolve'
 import { AssetPanel, type PanelStop } from './AssetPanel'
@@ -118,7 +118,11 @@ const fenceKind = (g: { kind?: string | null; color: string }) =>
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
-const SITE_DEVICES = isMock ? MOCK_SITE_DEVICES : []
+// Site devices (cameras, tank and pump sensors) are a ROADMAP idea: nothing
+// feeds them in production, so the demo shows none either — the demo is the
+// /live front door and the store screenshots (splash truth rule; Oct 4 the
+// store shots carried five fake "Live · 1080p" cameras and sensors).
+const SITE_DEVICES: SiteDevice[] = []
 
 const ASSET_COLORS: Record<AssetType, string> = {
   vehicle: '#ff9e16',
@@ -907,7 +911,7 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
   // Name labels (assets, tools, zones) — one kill switch for all of them at
   // every zoom (Brian, Aug 11). ON keeps the existing zoom-ladder convention.
   const [showLabels, setShowLabels] = useState(lastState.labels ?? true)
-  const [showDevices, setShowDevices] = useState(isMock)
+  const [showDevices] = useState(false) // no site devices yet — see SITE_DEVICES
   const realZoneCostsRef = useRef<Record<string, import('@/lib/costs').ZoneCostCurve> | null>(null)
   const realWindowRef = useRef<import('@/lib/trails').TrackWindow | null>(null)
   // tz via ref so the zoneRealAt callback (deliberately dep-free) stays fresh.
@@ -9263,7 +9267,6 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         showZones={showZones}
         onShowZones={setShowZones}
         showDevices={showDevices}
-        onToggleDevices={isMock ? () => setShowDevices((v) => !v) : undefined}
         waybackYears={waybackReleases.map((r) => String(r.year))}
         waybackIdx={waybackIdx}
         onWaybackIdx={setWaybackIdx}
