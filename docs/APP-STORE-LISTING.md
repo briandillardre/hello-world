@@ -1,86 +1,30 @@
-# App Store & Play Store Listing Pack — HammerTrack
+# App Store & Play Store Listing — HammerTrack
 
-*Reviewer-notes + privacy answers included — those are what actually stall a
-first submission.*
+**The listing is code (Oct 4 2026 — Brian: "make sure our Google Play listing
+and apple listing in the future has accurate descriptions and screenshots
+videos").** The Aug 28 pack sat in the repo for five weeks waiting on a manual
+Play Console re-upload while the app kept changing under it (its feature
+graphic still said "built for construction crews"; its alert screenshot said
+"Left job site"). Now nobody re-uploads anything by hand:
 
-> **Aug 28 2026 — listing cleanup.** The app has been live in Play Production
-> since Aug 21, but the listing was showing RAW BROWSER SCREENSHOTS (URL bar,
-> tabs, Android nav buttons visible) and no tagline under the title. Fresh
-> assets are in `store-assets/` — 6 captioned phone screenshots per platform
-> plus a rebuilt feature graphic, all shot against real satellite imagery
-> (the previous set was captured with no map tiles loaded, so the map read as
-> a black void). **What to re-upload in Play Console → Store listing:**
-> 1. Short description — the field that renders as the italic line under
->    "HammerTrack · Business" in search results. It is currently EMPTY.
-> 2. Phone screenshots — replace all with `store-assets/android-phone/*.png`
->    (1080×1920, in filename order).
-> 3. Feature graphic — `store-assets/feature-graphic-1024x500.png`.
+| What | Where | How it reaches the store |
+|---|---|---|
+| Every word — Play title (30), short (80) and full (4000) description, YouTube promo link; App Store name, subtitle, promotional text, keywords, release notes, URLs | `store-assets/listing.json` (limits checked by both scripts) | Play: `play-listing` workflow. Apple: `node scripts/store-meta.mjs` → fastlane `deliver` |
+| 8 captioned screenshots per device — Play phone 1080×1920, App Store iPhone 6.9" 1320×2868, iPad 13" 2064×2752 (also Play's 10-inch tablet set) + the 1024×500 feature graphic | `store-assets/android-phone/`, `ios-6.9/`, `ios-ipad-13/`, `feature-graphic-1024x500.png` — made by `scripts/store-shots.mjs` from the REAL app in demo mode (it refuses to run against a real company, so no customer fleet or name is ever in a store image); captions come from `listing.json → shots` | Same two doors |
+| Promo video | `scripts/store-video.mjs` records ~75 s of the same demo app at 1920×1080 (WebM), the screenshots' own captions as title cards between scenes — not committed, it is made again on demand. Play takes only a YouTube link → `listing.json → play.video` | Brian uploads the file to YouTube (Unlisted works); the link goes in listing.json, then the `play-listing` workflow. Apple's app previews are a separate format (device-sized, ≤ 30 s) — made when the iPhone app ships |
 
----
-
-## App identity
-
-- **App name:** HammerTrack
-- **Subtitle (App Store, 30 char):** `Fleet & tool GPS tracking`
-- **Short description (Play, 80 char):** `Live GPS for work trucks, equipment, crews and Bluetooth tools.`
-- **Bundle / package id:** `com.hammertrack.app`
-- **Primary category:** Business (secondary: Productivity)
-- **Support URL:** https://hammertrack.ai
-- **Marketing URL:** https://hammertrack.ai
-- **Privacy Policy URL:** https://hammertrack.ai/privacy
-
-## Keywords (App Store, 100 char, comma-sep, no spaces)
-```
-gps,fleet,tracker,landscaping,equipment,tools,geofence,telematics,theft,obd2,job cost,lawncare
-```
-
-## Full description (both stores)
-
-> **Know where every truck, machine, and tool is — right now.**
->
-> HammerTrack is GPS tracking built for field crews, not enterprise
-> fleets. One live map for your vehicles (OBD-II), heavy equipment (GPS), and
-> even your small tools (Bluetooth tags that ride along with whatever truck is
-> carrying them).
->
-> **Stop losing iron to theft.** Get a push within minutes of a machine leaving a
-> site after hours — "Your excavator just left at 2 AM." Draw a geofence around
-> any yard or site and know within minutes when something crosses it.
->
-> **Built for the field:**
-> • Live map of your whole fleet — trucks, equipment, trailers, tools
-> • After-hours theft & left-site alerts to your phone's lock screen
-> • Bluetooth tool tags — see which truck your laser level is in
-> • On-site hours & cost tracking — turn location into job costs
-> • Replay any day: speed-coloured trails, every stop, every site
-> • Maintenance reminders by engine hours, mileage, or date
-> • Trip history, daily site logs, and a time clock that knows the job
-> • Weekly owner digest and a workday-morning site briefing
-> • Set up in minutes — scan a tracker's barcode, or paste your whole
->   fleet in from a spreadsheet
-> • Ask it anything about your operation, in plain English
->
-> **Priced for field crews, not corporations** — a fraction of what the big
-> enterprise platforms charge, with no per-site setup fees.
->
-> Built by a working field-ops company — for construction, landscaping, paving and every crew that runs trucks and machines.
-
-## What's New
-
-**v1.2 (versionCode 5 — built Sep 1 2026, Play upload pending)**
-```
-Opens straight to the live map. Asks for your location once — only while
-you're using the app — so you show up on the crew map. New navy-and-amber
-icon that reads as HammerTrack on the home screen.
-```
-
-**v1.0**
-```
-First release. Live fleet map, theft & geofence alerts, Bluetooth tool
-tracking, maintenance reminders, and job-site hours — all on your phone.
-```
-
----
+**Changing the listing:** edit `listing.json` (and the shot captions there) →
+`npm run build && PORT=3313 npm start` with NO Supabase env (demo mode) →
+`node scripts/store-shots.mjs` (`--reuse` re-frames the last captures for a
+caption change; behind a TLS-intercepting proxy set `STORE_SHOTS_CA`) →
+`node scripts/store-video.mjs` when a caption or a screen in it changed →
+commit → run the **`play-listing`** workflow (validate only by default; tick
+*commit* to publish — Play reviews listing changes, usually within hours).
+Releases and tracks are never touched by it. Run truth-check on any copy
+change: the splash truth rule applies to the store exactly as to the splash —
+nothing waiting on a vendor (no texts until a Twilio number is verified, no
+QuickBooks until the QBO app exists), no prices, no competitor names, field
+fleets not only construction, no person's name.
 
 ## App Privacy answers (Apple "nutrition label" / Play Data Safety)
 
@@ -142,14 +86,6 @@ Rerunnable — it rebuilds the seeded company from scratch.
 
 ---
 
-## Assets checklist (make these)
-
-- **App icon** — 1024×1024 PNG (no alpha for iOS). The HammerTrack mark on navy.
-- **iOS screenshots** — 6.7" (1290×2796) and 6.5"; 3–5 shots: live map, theft
-  alert, asset panel, tool "on board", job-cost/zone page.
-- **Android screenshots** — phone (min 2), same set; plus a 1024×500 feature graphic.
-- **Short demo video** (optional, helps 4.2): 15–20s of the live map + a theft push.
-
 ## Status (Sep 10 2026)
 
 **Android: LIVE.** `com.hammertrack.app` has been in Play Production since
@@ -184,6 +120,6 @@ Approval day.
    ios/App/fastlane/Fastfile (register → certificate + profile → manual
    signing → build → TestFlight) arm with four `ASC_*` secrets on approval
    day (playbook → Approval day). **Waiting on the Individual enrollment.**
-8. Screenshots + feature graphic — in `store-assets/`; the Play Console
-   re-upload is still pending (listing shows raw browser screenshots and no
-   tagline until Brian does it).
+8. ~~Screenshots + feature graphic~~ ✅ AUTOMATED Oct 4 — `store-assets/`
+   from `scripts/store-shots.mjs`, pushed by the `play-listing` workflow (top
+   of this doc). Promo video: waits on a YouTube upload.

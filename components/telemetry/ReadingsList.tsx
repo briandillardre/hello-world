@@ -59,7 +59,7 @@ export function ReadingsList({ described, missing, family, full = false }: {
                   <span className="block text-[13px] font-semibold tabular-nums text-ink leading-snug text-balance">{breakable(d.text)}</span>
                   <span className="block font-mono text-[9.5px] text-faint leading-snug">
                     {full && d.n
-                      ? <><span className="whitespace-nowrap">{ago(d.t)} ·</span> <span className="whitespace-nowrap">{d.n.toLocaleString()} reports</span></>
+                      ? <><span className="whitespace-nowrap">{ago(d.t)} ·</span> <span className="whitespace-nowrap">{d.n.toLocaleString()} {d.n === 1 ? 'report' : 'reports'}</span></>
                       : <span className="whitespace-nowrap">{ago(d.t)}</span>}
                   </span>
                 </span>

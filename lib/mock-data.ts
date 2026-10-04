@@ -21,30 +21,30 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-1', company_id: 'mock-company-1', name: 'Chevy 1500 — Owner',
     type: 'vehicle', tracker_id: 'obd-001', active: true, hourly_rate: 68,
-    metadata: { make: 'Chevrolet', model: 'Silverado 1500', year: 2021, license: 'SC-DCG-001' },
+    metadata: { make: 'Chevrolet', model: 'Silverado 1500', year: 2021, license: 'TN-DEMO-01' },
     created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-1', asset_id: 'asset-1', company_id: 'mock-company-1',
       lat: 36.1629, lng: -86.7833, accuracy: 5, battery: 88, speed: 0, heading: 0,
-      timestamp: new Date(Date.now() - 12 * 60000).toISOString(),
+      timestamp: new Date(Date.now() - 3 * 60000).toISOString(), // fresh: idling now, as the ignition + RPM say
       raw: {
         source: 'flespi',
         'engine.ignition.status': true,
         'movement.status': false,
-        'external.powersource.voltage': 13980,
-        'battery.voltage': 4021,
+        'external.powersource.voltage': 13.98, // volts, as flespi sends them
+        'battery.voltage': 4.021,
         'battery.level': 88,
         'obd.engine.rpm': 780,
         'engine.coolant.temperature': 91,
         'obd.fuel.level': 64,
         'obd.vehicle.mileage': 135538, // km, as flespi reports (≈84,220 mi)
         'obd.dtc.number': 0,
-        'gsm.signal.level': 4,
+        'gsm.signal.level': 80, // percent, as flespi sends it
         'position.altitude': 187,
         'position.satellites': 11,
         'position.hdop': 0.8,
         'position.direction': 145,
-        'gnss.status': 3,
+        'gnss.status': true,
         'din.1': 1,
         'sleep.mode': 0,
       },
@@ -57,7 +57,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
     created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-2', asset_id: 'asset-2', company_id: 'mock-company-1',
-      lat: 36.1636, lng: -86.7828, accuracy: 8, battery: 42, speed: 0, heading: 0,
+      lat: 36.1636, lng: -86.7828, accuracy: 8, battery: 97, speed: 0, heading: 0,
       timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
       raw: {
         source: 'flespi',
@@ -66,14 +66,14 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
         'can.engine.hours': 4187.5,
         'can.engine.temperature': 38,
         'can.fuel.level': 47,
-        'external.powersource.voltage': 24120,
-        'battery.level': 42,
-        'battery.voltage': 3680,
-        'gsm.signal.level': 3,
+        'external.powersource.voltage': 24.12, // a 24 V machine
+        'battery.level': 97,
+        'battery.voltage': 4.08,
+        'gsm.signal.level': 60,
         'position.satellites': 9,
         'position.hdop': 1.1,
         'position.altitude': 192,
-        'gnss.status': 3,
+        'gnss.status': true,
         'sleep.mode': 1,
         'movement.idle.time': 0,
       },
@@ -115,7 +115,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-6', company_id: 'mock-company-1', name: 'RAM 3500 Dump',
     type: 'vehicle', tracker_id: 'obd-006', active: true, hourly_rate: 95,
-    metadata: { make: 'Ram', model: '3500', year: 2022, license: 'SC-DCG-002', icon: 'dump-truck' },
+    metadata: { make: 'Ram', model: '3500', year: 2022, license: 'TN-DEMO-02', icon: 'dump-truck' },
     created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-6', asset_id: 'asset-6', company_id: 'mock-company-1',
@@ -159,7 +159,7 @@ export const MOCK_ASSETS: AssetWithLocation[] = [
   {
     id: 'asset-10', company_id: 'mock-company-1', name: 'Peterbilt 567 Tri-Axle',
     type: 'vehicle', tracker_id: 'obd-010', active: true, hourly_rate: 105,
-    metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'SC-DCG-003', icon: 'dump-truck' },
+    metadata: { make: 'Peterbilt', model: '567', year: 2015, license: 'TN-DEMO-03', icon: 'dump-truck' },
     created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
     location: {
       id: 'loc-10', asset_id: 'asset-10', company_id: 'mock-company-1',

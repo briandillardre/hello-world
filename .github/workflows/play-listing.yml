@@ -1,0 +1,31 @@
+# The Google Play store listing, from the repo — store-assets/listing.json for
+# the words, store-assets/ for the screenshots and the feature graphic
+# (scripts/store-shots.mjs makes those from the real app in demo mode).
+#
+# Validates by default: the edit is built, Play checks it, and it is thrown
+# away — nothing changes in the store. Run with commit: true to publish
+# (Play reviews listing changes, usually within hours). Releases and tracks
+# are never touched, so a parked draft release stays exactly as it is.
+name: play-listing
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Publish to Play (false = validate only; nothing changes in the store)'
+        type: boolean
+        default: false
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Push the listing
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: node scripts/play-listing.mjs ${{ inputs.commit && '--commit' || '' }}

@@ -27,19 +27,19 @@ export interface DeviceWithLive extends DeviceRow {
  *  explorable with zero env vars like the rest of the app. */
 const MOCK_DEVICES: DeviceWithLive[] = [
   {
-    id: 'dev-1', imei: '863452084048569', model: 'FMM00A', label: 'Chevy 1500', iccid: '89883070000084226461',
+    id: 'dev-1', imei: '863452089000110', model: 'FMM00A', label: 'Chevy 1500', iccid: '89883000000000000011',
     steps: { battery: '2026-08-26T01:00:00Z', sim_in: '2026-08-26T01:05:00Z', paired: '2026-08-26T01:05:00Z', sim_active: '2026-08-26T01:45:00Z', config_queued: '2026-08-26T02:45:00Z', installed: '2026-08-26T03:00:00Z' },
     notes: null, created_at: '2026-08-26T01:00:00Z',
     live: { registered: true, everReported: true, ageMin: 4, hasFix: true, beacons: 2, assetId: 'a1', assetName: 'Chevy 1500' },
   },
   {
-    id: 'dev-2', imei: '869267077050677', model: 'TAT141', label: 'Takeuchi TB235', iccid: '89883070000084226537',
+    id: 'dev-2', imei: '869267079000217', model: 'TAT141', label: 'Takeuchi TB235', iccid: '89883000000000000029',
     steps: { sim_in: '2026-08-28T20:00:00Z', paired: '2026-08-28T20:00:00Z', sim_active: '2026-08-28T20:46:00Z', config_queued: '2026-08-28T02:00:00Z' },
     notes: null, created_at: '2026-08-28T20:00:00Z',
     live: { registered: true, everReported: false, ageMin: null, hasFix: false, beacons: 0, assetId: 'a2', assetName: 'Takeuchi TB235' },
   },
   {
-    id: 'dev-3', imei: '860813075166517', model: 'FMM650', label: 'Tool trailer', iccid: null,
+    id: 'dev-3', imei: '860813079000316', model: 'FMM650', label: 'Tool trailer', iccid: null,
     steps: { dummy_out: '2026-08-28T21:00:00Z', sim_in: '2026-08-28T21:10:00Z', antennas: '2026-08-28T21:20:00Z' },
     notes: 'Waiting on the 14th SIM from KORE.', created_at: '2026-08-28T21:00:00Z',
     live: { registered: false, everReported: false, ageMin: null, hasFix: false, beacons: 0, assetId: null, assetName: null },

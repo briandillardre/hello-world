@@ -25,6 +25,10 @@ export function vehiclePower(raw: unknown): VehiclePower {
   if (volts != null && volts > 1000) volts = volts / 1000 // devices that report mV
   if (volts != null) volts = Math.round(volts * 10) / 10
 
+  // A 24 V machine (most excavators, dozers, big trucks) reads double:
+  // every threshold below scales with it (lib/telemetry-catalog voltScale).
+  const k = volts != null && volts > 18 ? 2 : 1
+
   // Best signal wins: explicit ignition flag → RPM → charging voltage.
   const ign = r['engine.ignition.status']
   const rpm = num(r['obd.rpm']) ?? num(r['can.engine.rpm'])
@@ -32,14 +36,14 @@ export function vehiclePower(raw: unknown): VehiclePower {
     typeof ign === 'boolean' ? ign
     : ign === 1 || ign === 0 ? ign === 1
     : rpm != null ? rpm > 300
-    : volts != null ? volts >= 13.2
+    : volts != null ? volts >= 13.2 * k
     : null
 
   // 12.4+ resting = healthy; 11.9–12.4 = getting weak; under 11.9 = won't
   // start much longer. Skip the verdict while charging voltage is present.
   const health = volts == null || engineOn ? null
-    : volts >= 12.4 ? 'good'
-    : volts >= 11.9 ? 'weak'
+    : volts >= 12.4 * k ? 'good'
+    : volts >= 11.9 * k ? 'weak'
     : 'low'
 
   return { volts, engineOn, health }

@@ -447,7 +447,7 @@ function AddDeviceDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                 rows={7}
                 value={bulk}
                 onChange={(e) => setBulk(e.target.value)}
-                placeholder={'860813075166517\n863452084048247\n869267077050677'}
+                placeholder={'860813079000316\n863452089000110\n869267079000217'}
                 className="mt-1 w-full rounded-md border border-navy-700 bg-navy-900 text-ink px-3 py-2 text-sm font-mono placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-amber focus:border-transparent"
               />
               <p className="text-[11.5px] text-faint mt-1 leading-relaxed">
