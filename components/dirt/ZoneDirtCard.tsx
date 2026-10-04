@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Lock, Mountain, Plus } from 'lucide-react'
 import { createTakeoffAction } from '@/lib/actions/dirt'
+import { NO_REPLY } from '@/lib/action-reply'
 import type { TakeoffSummary } from '@/lib/db/dirt'
 
 const n0 = (v: number | undefined) => Math.round(Number(v) || 0).toLocaleString()
@@ -23,8 +24,10 @@ export function ZoneDirtCard({ zoneId, takeoffs, addon, canEdit }: { zoneId: str
     setBusy(true); setErr(null)
     try {
       const r = await createTakeoffAction(zoneId)
-      if (r.ok && r.id) router.push(`/dirt/${r.id}`)
-      else setErr(r.error ?? 'Could not start a takeoff.')
+      if (r?.ok && r.id) router.push(`/dirt/${r.id}`)
+      else setErr(r?.error ?? NO_REPLY)
+    } catch {
+      setErr('Could not start a takeoff — check the connection and try again.')
     } finally {
       setBusy(false)
     }

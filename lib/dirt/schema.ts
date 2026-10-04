@@ -6,12 +6,9 @@
  */
 import { z } from 'zod'
 import { DIRT_KINDS, type DirtDesign } from './takeoff'
+import { MAX_FEATURES, MAX_POINTS_PER_FEATURE, MAX_POINTS_TOTAL, MAX_SPAN_DEG, Z_MAX, Z_MIN } from './limits'
 
-export const MAX_FEATURES = 3000
-export const MAX_POINTS_PER_FEATURE = 6000
-export const MAX_POINTS_TOTAL = 80000
-/** Everything traced must fit in a box this many degrees across (~5 km). */
-export const MAX_SPAN_DEG = 0.05
+export { MAX_FEATURES, MAX_POINTS_PER_FEATURE, MAX_POINTS_TOTAL, MAX_SPAN_DEG, Z_MAX, Z_MIN }
 
 const lngLat = z.tuple([
   z.number().finite().min(-180).max(180),
@@ -22,7 +19,7 @@ const feature = z.object({
   id: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
   kind: z.enum(DIRT_KINDS as [string, ...string[]]),
   label: z.string().max(60).optional(),
-  z: z.number().finite().min(-1500).max(30000).optional(),
+  z: z.number().finite().min(Z_MIN).max(Z_MAX).optional(),
   offsetIn: z.number().finite().min(-120).max(120).optional(),
   thicknessIn: z.number().finite().min(0).max(240).optional(),
   coords: z.array(lngLat).min(1).max(MAX_POINTS_PER_FEATURE),

@@ -52,8 +52,14 @@ export const REDUCE_PRESETS: Preset[] = [
 export const TOPSOIL_HINT = 'Average the geotech borings. No report: 1–3" for graded sites or fields, 5" for woods.'
 
 let seq = 0
+/**
+ * A feature id: prefix + time + a counter that never wraps (the plan reader mints
+ * thousands at once — a counter wrapping at 1,296 could repeat an id inside one
+ * millisecond, and the schema refuses a design with two). The time part is
+ * fixed-width, so ids never run together.
+ */
 export function newId(prefix = 'f'): string {
-  seq = (seq + 1) % 1296
+  seq++
   return `${prefix}${Date.now().toString(36)}${seq.toString(36).padStart(2, '0')}`.slice(0, 32)
 }
 
