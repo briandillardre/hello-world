@@ -51,7 +51,7 @@ async function open(bytes) {
   const oc = await doc.getOptionalContentConfig()
   const names = new Map()
   for (const [id, g] of oc) names.set(id, g.name)
-  const ops = await page.getOperatorList()
+  const ops = await page.getOperatorList({ annotationMode: pdfjs.AnnotationMode.DISABLE }) // as the reader does
   const tc = await page.getTextContent()
   const ann = await page.getAnnotations()
   const { pens, lines } = pv.extractVectors(ops, pdfjs.OPS, id => names.get(id) ?? null)
@@ -302,6 +302,91 @@ const lidar = (x, y) => exist(...toFt(x, y)) - 200 // the lidar is on another da
   ok('cross line: a start one foot off disagrees with the labels', res.disagree > 0 && res.set === 0, res)
   ok('cross line: …writes nothing', JSON.stringify(r2.contours.map(c => [c.z, c.how])) === before)
   ok(`cross line: …and says what the labels make the first one (${res.implied})`, res.implied === z0, res)
+}
+
+// ── The cross line's first tap, and the numbers counted between labels ────────
+{
+  // From the labelled 805 to just short of 810, along y = 94 ft — the first tap lands 0.3 ft PAST
+  // 805 (under a pixel at street zoom), so the line never properly crosses it.
+  const y = 94 * PT_PER_FT + 150
+  const line = [(88.6 + 0.3) * PT_PER_FT + 150, y, 229 * PT_PER_FT + 150, y]
+  const slop = 2 * PT_PER_FT // ~10 px of finger at the zoom a line is drawn at
+  const r = pr.readPlan(input, { roles })
+  const snap = pr.assignAlong(r.contours, 'eg', line, 805, 1, { slop })
+  const mine = r.contours.filter(c => c.role === 'eg' && c.how === 'user')
+  ok(`cross line: a first tap just past the contour still starts on it (${snap.set} set)`, snap.disagree === 0 && snap.counted === 0 && mine.every(c => c.z === levelOf(c).lv), { snap, wrong: mine.filter(c => c.z !== levelOf(c).lv).map(c => [c.z, levelOf(c).lv]) })
+  // Without the snap the run is one off — and the numbers counted between the labels say so.
+  const r2 = pr.readPlan(input, { roles })
+  const before = JSON.stringify(r2.contours.map(c => [c.z, c.how]))
+  const off = pr.assignAlong(r2.contours, 'eg', line, 805, 1)
+  ok(`cross line: a run one off from the counted numbers writes nothing (${off.counted} disagree)`, off.set === 0 && off.counted > 0 && JSON.stringify(r2.contours.map(c => [c.z, c.how])) === before, off)
+  ok(`cross line: …and says what they make the first one (${off.implied})`, off.implied === 806, off)
+  const forced = pr.assignAlong(r2.contours, 'eg', line, 805, 1, { force: true })
+  ok('cross line: "use mine anyway" writes it', forced.set > 0, forced)
+}
+
+// ── Reading a crop: the editor reads the site + 60 ft, never the whole sheet ──
+{
+  let seed = 7
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+  const pg = (xft, yft) => [150 + xft * PT_PER_FT, 150 + yft * PT_PER_FT]
+  const N = 40
+  let reads = 0, silent = 0, labelled = 0, guessed = 0, other = 0
+  for (let k = 0; k < N; k++) {
+    const w = 80 + rnd() * 180, h = 80 + rnd() * 180
+    const a = rnd() * (420 - w), b = rnd() * (300 - h)
+    const [x0, y0] = pg(a - 60, b - 60), [x1, y1] = pg(a + w + 60, b + h + 60)
+    const r = pr.readPlan({ ...input, box: { x0, y0, x1, y1 } }, { roles })
+    const wrong = r.contours.filter(q => q.z !== null && q.z !== levelOf(q).lv)
+    if (wrong.length) reads++
+    for (const q of wrong) {
+      if (!q.flags.length) silent++
+      if (q.how === 'label') labelled++
+      else if (q.how === 'extrapolated') guessed++
+      else other++
+    }
+  }
+  ok(`crop: ${N} site-sized reads — no wrong elevation goes unflagged`, silent === 0, { silent, labelled, guessed, other })
+  ok("crop: no label names the wrong contour at the read area's edge", labelled === 0, labelled)
+  ok(`crop: what's left wrong is trend guesses (${guessed} in ${reads} reads) — the import leaves them out unless checked`, other === 0, { other, guessed })
+}
+
+// ── The datum when only two labels survive and one of them is a contour off ──
+{
+  const lidar = (x, y) => exist(...toFt(x, y)) - 200
+  for (const delta of [1, -1]) {
+    const keep = []
+    const sparse = texts.filter(t => {
+      if (t.src !== 'shx' || !/^\d{3}$/.test(t.str) || t.str === '100') return true
+      if (keep.length < 2 && !keep.some(k => k.str === t.str)) { keep.push(t); return true }
+      return false
+    })
+    const liar = keep[1]
+    const lie = sparse.map(t => (t === liar ? { ...t, str: String(Number(t.str) + delta) } : t))
+    const r = pr.readPlan({ ...input, texts: lie }, { roles, existingFt: lidar })
+    const wrong = r.contours.filter(c => c.z !== null && c.z !== levelOf(c).lv)
+    ok(`datum: two labels a contour apart (${liar.str} → ${Number(liar.str) + delta}) agree on nothing — the spot shots set it (${r.datumFt})`, near(r.datumFt, 200, 0.05), r.datumFt)
+    ok(`datum: …only the lying label is wrong, and it is flagged (${wrong.length} wrong)`, wrong.length <= 1 && wrong.every(c => c.flags.some(f => /lidar datum/.test(f))), wrong.map(c => [c.z, c.flags]))
+  }
+}
+
+// ── Spot grades that are really dimensions ──
+{
+  const dims = [
+    { str: '24.00', x: 150 + 300 * PT_PER_FT, y: 150 + 60 * PT_PER_FT, angle: 0, size: 6, len: 15, src: 'text' },
+    { str: '18.00', x: 150 + 320 * PT_PER_FT, y: 150 + 80 * PT_PER_FT, angle: 0, size: 6, len: 15, src: 'text' },
+  ]
+  const r = pr.readPlan({ ...input, texts: [...texts, ...dims] }, { roles })
+  ok('spots: a drive width "24.00" and a stall depth "18.00" are not spot grades', !r.spots.some(sp => sp.z < 100) && r.warnings.some(w => /not read as spot grade/.test(w)), r.spots.map(sp => sp.z))
+}
+
+// ── "Not a contour": the line goes before anything reads it ──
+{
+  const r = pr.readPlan(input, { roles })
+  const victim = r.contours.find(c => c.role === 'eg' && c.how === 'label')
+  const r2 = pr.readPlan(input, { roles, exclude: [victim.pts] })
+  ok('set aside: the line is out of the read and listed aside', r2.contours.length === r.contours.length - 1 && (r2.aside ?? []).length >= 1 && !r2.contours.some(c => c.pts.length === victim.pts.length && c.pts[0] === victim.pts[0] && c.pts[1] === victim.pts[1]), { before: r.contours.length, after: r2.contours.length, aside: (r2.aside ?? []).length })
+  ok('set aside: …and nothing else goes wrong', r2.contours.every(c => c.z === null || c.z === levelOf(c).lv))
 }
 
 // ── Sheet ↔ map ────────────────────────────────────────────────────────────

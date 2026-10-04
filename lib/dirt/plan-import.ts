@@ -31,6 +31,8 @@ export interface ImportPicks {
   limits: boolean
   /** Contour ids the estimator set aside. */
   excluded: ReadonlySet<number>
+  /** Leave out the contours only guessed from the trend (marked ?). They are right nearly always, so they go in unless the estimator says not. */
+  skipGuesses?: boolean
   /** Platform subgrade below finished floor, inches (DCG's default −8). */
   padOffsetIn?: number
 }
@@ -114,7 +116,7 @@ export function readToFeatures(
   }
   let outOfRange = 0
   const keepZ = (z: number | null) => { if (inRange(z)) return true; outOfRange++; return false }
-  const contours = read.contours.filter(c => c.z !== null && !picks.excluded.has(c.id) && (c.role === 'eg' ? picks.egContours : picks.fgContours) && keepZ(c.z))
+  const contours = read.contours.filter(c => c.z !== null && !picks.excluded.has(c.id) && (!picks.skipGuesses || c.how !== 'extrapolated') && (c.role === 'eg' ? picks.egContours : picks.fgContours) && keepZ(c.z))
   const spots = read.spots.filter(s => ((s.role === 'eg' && picks.egSpots) || (s.role === 'fg' && picks.fgSpots)) && keepZ(s.z))
   const pads = picks.pads.map(i => read.pads[i]).filter(p => p && p.outline && p.ring.length >= 6 && keepZ(p.ffe))
   const limits = picks.limits && read.limits && read.limits.length >= 6 ? read.limits : null

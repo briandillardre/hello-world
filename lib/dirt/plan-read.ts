@@ -70,6 +70,10 @@ export interface PlanRead {
   pads: PlanPad[]
   limits: number[] | null
   warnings: string[]
+  /** Lines the estimator set aside ("Not a contour"), as read — they took part in nothing. */
+  aside?: PlanContour[]
+  /** The read area the linework was clipped to (null = the whole sheet). */
+  box?: Box | null
 }
 
 export interface ReadInput {
@@ -88,6 +92,8 @@ export interface ReadOptions {
   existingFt?: (x: number, y: number) => number
   /** Interval the estimator typed, when the plan can't show it. */
   interval?: { eg?: number | null; fg?: number | null }
+  /** Lines the estimator set aside ("Not a contour"), as an earlier read drew them. */
+  exclude?: number[][]
 }
 
 // ── small geometry ─────────────────────────────────────────────────────────
@@ -476,6 +482,26 @@ export function summarizePens(inp: ReadInput): PenSummary[] {
 
 interface End { line: number; at: 0 | 1; x: number; y: number; ox: number; oy: number }
 
+/** Does any long line (any pen — not only the contours read) end facing these words within `reach`? */
+function facesAnyEnd(P: Prepared, t: PdfText, reach: number): boolean {
+  if (!P.lineIdx) return false
+  const hits: number[] = []
+  P.lineIdx.query({ x0: t.x - reach, y0: t.y - reach, x1: t.x + reach, y1: t.y + reach }, hits)
+  const minLen = Math.max(t.len, 3 * t.size) // not the words' own strokes, not a hatch tick
+  const seen = new Set<number>()
+  for (const id of hits) {
+    const li = P.segs[id * 5 + 4]
+    if (seen.has(li)) continue
+    seen.add(li)
+    const l = P.lines[li]
+    if (l.closed || l.len < minLen) continue
+    for (const e of endsOf(l.pts, li)) {
+      if (Math.hypot(e.x - t.x, e.y - t.y) <= reach && (t.x - e.x) * e.ox + (t.y - e.y) * e.oy > 0) return true
+    }
+  }
+  return false
+}
+
 function endsOf(pts: number[], line: number): [End, End] {
   const n = pts.length
   const dir = (ax: number, ay: number, bx: number, by: number): [number, number] => {
@@ -684,9 +710,27 @@ export function readPlan(inp: ReadInput, opt: ReadOptions): PlanRead {
       contours.push({ id: contours.length, role, pen, pts: c.pts, closed: c.closed, z: null, how: null, flags: [] })
     }
   }
+  // Lines the estimator set aside go before anything reads them: they take no label, set aside no
+  // neighbour, feed no ladder, datum or tie-in. Matched by vertex — the set-aside contour was built
+  // from these very pieces (a label gap may have stitched two of them into one).
+  const aside: PlanContour[] = []
+  if (opt.exclude?.length) {
+    const vk = (x: number, y: number) => `${Math.round(x * 100)},${Math.round(y * 100)}`
+    const out = new Set<string>()
+    for (const pl of opt.exclude) for (let i = 0; i + 1 < pl.length; i += 2) out.add(vk(pl[i], pl[i + 1]))
+    const keep: PlanContour[] = []
+    for (const c of contours) {
+      let all = true
+      for (let i = 0; i < c.pts.length && all; i += 2) all = out.has(vk(c.pts[i], c.pts[i + 1]))
+      ;(all ? aside : keep).push(c)
+    }
+    contours.length = 0
+    keep.forEach((c, i) => { c.id = i; contours.push(c) })
+    aside.forEach((c, i) => { c.id = -1 - i })
+  }
 
   // ── Spots first: they say what elevations this plan is about ──
-  const spots = readSpots(P, inp.pens)
+  let spots = readSpots(P, inp.pens)
   const sz = spots.map(s => s.z).sort((a, b) => a - b)
   let zLo = -Infinity, zHi = Infinity
   if (sz.length >= 8) {
@@ -749,6 +793,13 @@ export function readPlan(inp: ReadInput, opt: ReadOptions): PlanRead {
       if (a.ci !== b.ci) stitch.push([a.ci, b.ci, z])
       continue
     }
+    // Half a gap: an end faces the words but its partner is missing — clipped by the read area, cut
+    // at the sheet's edge or a match line, masked, set aside, on a pen not picked. The words name
+    // THAT line; a neighbour passing by must not take them. Leave it to the ladders.
+    if (ends.length || facesAnyEnd(P, t, reach)) continue
+    // At the read area's edge the other half of a gap may lie outside it: only well inside may the
+    // words name the line they sit on.
+    if (inp.box && (t.x - reach < inp.box.x0 || t.x + reach > inp.box.x1 || t.y - reach < inp.box.y0 || t.y + reach > inp.box.y1)) continue
     // On the line: the nearest contour, parallel to the words when they have a direction.
     let pick = -1, pickD = onLine(t)
     for (const [ci, v] of Array.from(best.entries())) {
@@ -779,7 +830,9 @@ export function readPlan(inp: ReadInput, opt: ReadOptions): PlanRead {
 
   // Plausible elevations only: a stray "100" from a scale bar is not a contour.
   if (offRange) warnings.push(`${offRange} number${offRange === 1 ? '' : 's'} on lines ignored — nowhere near the plan's spot elevations.`)
-  dropOutlierLabels(contours, warnings)
+  dropOutlierLabels(contours, warnings, spots.map(s => s.z))
+  // A decimal number far from every elevation on the plan is a dimension or a station, not a spot grade.
+  spots = dropOutlierSpots(spots, contours, warnings)
 
   // Contours of one kind never cross: a line that does is something else (a wall, hatching, a grid).
   const dropped = dropCrossers(contours)
@@ -803,7 +856,8 @@ export function readPlan(inp: ReadInput, opt: ReadOptions): PlanRead {
   // ── Elevations: ladders, lidar, trend — and the checks between them ──
   const lidar = opt.existingFt ? { at: opt.existingFt, spots: spots.filter(s => s.role === 'eg') } : undefined
   if (lidar && interval.eg === null) interval.eg = lidarInterval(contours, ladders, lidar.at)
-  const { datumFt } = resolveElevations(contours, ladders, interval, { lidar, ptPerFt })
+  const box = inp.box ?? null
+  const { datumFt } = resolveElevations(contours, ladders, interval, { lidar, ptPerFt, box })
 
   // ── Crossings: two contours of one kind never cross — a misread pen or label shows up here. ──
   flagCrossings(contours)
@@ -813,7 +867,7 @@ export function readPlan(inp: ReadInput, opt: ReadOptions): PlanRead {
 
   const missing = contours.filter(c => c.z === null).length
   if (contours.length && missing) warnings.push(`${missing} of ${contours.length} contours need an elevation — tap one to type it, or draw a line across them.`)
-  return { contours, ladders, interval, datumFt, spots, pads, limits, warnings }
+  return { contours, ladders, interval, datumFt, spots, pads, limits, warnings, aside, box }
 }
 
 function push(m: Map<number, number[]>, k: number, v: number) {
@@ -874,9 +928,13 @@ function mergeStitched(cs: PlanContour[], stitch: [number, number, number][]) {
   keep.forEach((c, i) => { c.id = i; cs.push(c) })
 }
 
-function dropOutlierLabels(cs: PlanContour[], warnings: string[]) {
+function dropOutlierLabels(cs: PlanContour[], warnings: string[], spotZ: number[]) {
+  // Every elevation the plan states — for a kind with too few labels of its own to judge by.
+  const pool = [...cs.filter(c => c.z !== null).map(c => c.z as number), ...spotZ]
   for (const role of ['eg', 'fg'] as const) {
-    const zs = cs.filter(c => c.role === role && c.z !== null).map(c => c.z as number).sort((a, b) => a - b)
+    let zs = cs.filter(c => c.role === role && c.z !== null).map(c => c.z as number)
+    if (zs.length < 3) zs = pool
+    zs = [...zs].sort((a, b) => a - b)
     if (zs.length < 3) continue
     const med = zs[zs.length >> 1]
     // Robust spread: a keynote "10" on a 250 ft site is out, a 200 ft hillside is in.
@@ -889,6 +947,20 @@ function dropOutlierLabels(cs: PlanContour[], warnings: string[]) {
     }
     if (dropped) warnings.push(`${dropped} ${role === 'eg' ? 'existing' : 'proposed'} label${dropped === 1 ? '' : 's'} ignored — far from the plan's other elevations.`)
   }
+}
+
+/** Spot grades far from every other elevation on the plan (the labels, else the spots): "24.00" is a drive width. */
+function dropOutlierSpots(spots: PlanSpot[], cs: PlanContour[], warnings: string[]): PlanSpot[] {
+  const labels = cs.filter(c => c.z !== null).map(c => c.z as number)
+  const ref = (labels.length >= 3 ? labels : [...labels, ...spots.map(s => s.z)]).sort((a, b) => a - b)
+  if (ref.length < 3) return spots
+  const med = ref[ref.length >> 1]
+  const dev = ref.map(z => Math.abs(z - med)).sort((a, b) => a - b)
+  const lim = Math.max(40, 6 * dev[dev.length >> 1])
+  const keep = spots.filter(s => Math.abs(s.z - med) <= lim)
+  const n = spots.length - keep.length
+  if (n) warnings.push(`${n} decimal number${n === 1 ? '' : 's'} not read as spot grade${n === 1 ? '' : 's'} — far from the plan's elevations (a dimension or a station?).`)
+  return keep
 }
 
 /**
@@ -1054,7 +1126,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100
 const RANK: Record<string, number> = { user: 4, label: 3, ladder: 2, 'tie-in': 1, lidar: 1, extrapolated: 0 }
 const anchor = (c: PlanContour) => c.z !== null && c.how !== 'extrapolated'
 /** Flags the elevation pass writes (and clears before it runs again). */
-const AUTO_FLAG = /ft off the lidar$|^jumps |^guessed from the trend|^the trend and the lidar|^ties into /
+const AUTO_FLAG = /ft off the lidar$|ft off the lidar datum$|^labels disagree with the lidar|^jumps |^guessed from the trend|^the trend and the lidar|^ties into /
 
 /** Even runs between anchors: 812 · · · · 817 steps 813…816. Repeats until nothing changes. */
 function interpolate(cs: PlanContour[], ladders: number[][], interval: { eg: number | null; fg: number | null }): void {
@@ -1195,6 +1267,22 @@ export interface LidarInput {
 
 function median(a: number[]): number { const s = [...a].sort((p, q) => p - q); return s.length ? s[s.length >> 1] : NaN }
 
+/**
+ * What most of `vals` agree on within `tol`: the median of the biggest
+ * cluster, when it holds at least `min` values and more than half of them.
+ * Two labels a contour apart agree on nothing — neither is trusted.
+ */
+function consensus(vals: number[], tol: number, min: number): number | null {
+  const s = [...vals].sort((a, b) => a - b)
+  let bi = 0, bn = 0
+  for (let i = 0, j = 0; i < s.length; i++) {
+    while (s[i] - s[j] > tol) j++
+    if (i - j + 1 > bn) { bn = i - j + 1; bi = j }
+  }
+  if (bn < min || bn * 2 <= s.length) return null
+  return median(s.slice(bi, bi + bn))
+}
+
 /** The lidar's median under each existing contour. */
 function lidarAlong(cs: PlanContour[], at: (x: number, y: number) => number): Map<number, number> {
   const along = new Map<number, number>()
@@ -1234,16 +1322,26 @@ function lidarInterval(cs: PlanContour[], ladders: number[][], at: (x: number, y
  * there: same elevation (the grading stops where it meets existing). Both
  * ends must agree when both touch; an end touching two levels says nothing.
  */
-function tieIns(cs: PlanContour[], tol: number): number {
+function tieIns(cs: PlanContour[], tol: number, box: Box | null): number {
   const eg = cs.filter(c => c.role === 'eg' && c.z !== null)
   const { idx, segs } = indexContours(eg)
   if (!idx) return 0
+  // Where an existing contour stops too, both stop at a line drawn across the plan — a match line,
+  // the sheet's edge, the read area — not where the grading meets the ground.
+  const egEnds: number[] = []
+  for (const c of eg) if (!c.closed) egEnds.push(c.pts[0], c.pts[1], c.pts[c.pts.length - 2], c.pts[c.pts.length - 1])
+  const cut = (x: number, y: number) => {
+    if (box && (Math.abs(x - box.x0) < 0.5 || Math.abs(x - box.x1) < 0.5 || Math.abs(y - box.y0) < 0.5 || Math.abs(y - box.y1) < 0.5)) return true
+    for (let i = 0; i < egEnds.length; i += 2) if (Math.hypot(egEnds[i] - x, egEnds[i + 1] - y) <= 2 * tol) return true
+    return false
+  }
   const hits: number[] = [], seen = new Set<number>()
   let n = 0
   for (const c of cs) {
     if (c.role !== 'fg' || c.z !== null || c.closed) continue
     const zs: number[] = []
     for (const [x, y] of [[c.pts[0], c.pts[1]], [c.pts[c.pts.length - 2], c.pts[c.pts.length - 1]]]) {
+      if (cut(x, y)) continue
       hits.length = 0
       idx.query({ x0: x - tol, y0: y - tol, x1: x + tol, y1: y + tol }, hits, seen)
       const at = new Set<number>()
@@ -1273,7 +1371,7 @@ export function resolveElevations(
   cs: PlanContour[],
   ladders: number[][],
   interval: { eg: number | null; fg: number | null },
-  opt: { lidar?: LidarInput; ptPerFt?: number } = {},
+  opt: { lidar?: LidarInput; ptPerFt?: number; box?: Box | null } = {},
 ): { datumFt: number | null } {
   const lidar = opt.lidar
   for (const c of cs) {
@@ -1285,15 +1383,22 @@ export function resolveElevations(
   let along: Map<number, number> | null = null
   const dzEg = interval.eg
   if (lidar && dzEg) {
-    along = lidarAlong(cs, lidar.at)
-    const resid: number[] = []
-    for (const c of cs) if (c.role === 'eg' && (c.how === 'label' || c.how === 'user') && along.has(c.id)) resid.push((c.z as number) - (along.get(c.id) as number))
-    if (resid.length >= 2) datum = median(resid)
-    else {
+    const al = lidarAlong(cs, lidar.at)
+    along = al
+    // The plan's datum: what the written existing numbers agree on (two labels a contour apart agree
+    // on nothing), else what the existing spot shots agree on, else none.
+    const tolD = Math.max(0.35 * dzEg, 0.3)
+    const written = cs.filter(c => c.role === 'eg' && (c.how === 'label' || c.how === 'user') && al.has(c.id))
+    const resid = written.map(c => (c.z as number) - (al.get(c.id) as number))
+    datum = consensus(resid, tolD, 2)
+    if (datum === null) {
       const sp: number[] = []
       for (const s of lidar.spots ?? []) { const v = lidar.at(s.x, s.y); if (Number.isFinite(v)) sp.push(s.z - v) }
-      if (sp.length >= 3) datum = median(sp)
+      datum = consensus(sp, Math.max(tolD, 0.5), 3)
     }
+    const d0 = datum
+    if (d0 !== null) written.forEach((c, i) => { if (Math.abs(resid[i] - d0) > tolD) c.flags.push(`${(resid[i] - d0).toFixed(1)} ft off the lidar datum`) })
+    else if (resid.length >= 2) written.forEach(c => c.flags.push('labels disagree with the lidar — check this one'))
     if (datum !== null) {
       for (const c of cs) {
         if (c.role !== 'eg' || c.z !== null || !along.has(c.id)) continue
@@ -1305,7 +1410,7 @@ export function resolveElevations(
     }
   }
   // Proposed contours tie into the existing ground where the grading ends.
-  if (tieIns(cs, Math.max(0.5, 0.4 * (opt.ptPerFt ?? 1)))) interpolate(cs, ladders, interval)
+  if (tieIns(cs, Math.max(0.5, 0.4 * (opt.ptPerFt ?? 1)), opt.box ?? null)) interpolate(cs, ladders, interval)
   const lidarSays = (c: PlanContour): number | null => (c.role === 'eg' && datum !== null && along?.has(c.id) ? (along.get(c.id) as number) + datum : null)
   // A lidar snap that does not fit a labelled neighbour gives way before anything builds on it.
   for (let round = 0; round < 3 && checkLadders(cs, ladders, interval) > 0; round++) interpolate(cs, ladders, interval)
@@ -1420,13 +1525,22 @@ function properCross(ax: number, ay: number, bx: number, by: number, cx: number,
  * plan's labels, earlier numbers of the estimator's) is kept and checks the
  * run: if any of it disagrees, NOTHING is written — a typo in the first
  * elevation must not renumber a sheet — and `implied` says what those labels
- * make the first contour, when they agree among themselves.
+ * make the first contour, when they agree among themselves. Values counted
+ * between labels check it too: when they disagree nothing is written unless
+ * `force` (`counted` says how many, `implied` what they make the first one).
+ *
+ * The first tap may land a hair past the contour it means (under a pixel at
+ * street zoom), so the contour within `slop` of the start counts as crossed
+ * first.
  */
-export function assignAlong(cs: PlanContour[], role: 'eg' | 'fg', line: number[], z0: number, dz: number, skip?: (c: PlanContour) => boolean): { set: number; disagree: number; implied: number | null } {
+export function assignAlong(
+  cs: PlanContour[], role: 'eg' | 'fg', line: number[], z0: number, dz: number,
+  opt: { skip?: (c: PlanContour) => boolean; slop?: number; force?: boolean } = {},
+): { set: number; disagree: number; counted: number; implied: number | null } {
   const hits: { t: number; ci: number }[] = []
   const byId = new Map(cs.map(c => [c.id, c]))
   for (const c of cs) {
-    if (c.role !== role || skip?.(c)) continue
+    if (c.role !== role || opt.skip?.(c)) continue
     let best = Infinity
     for (let i = 2; i < c.pts.length; i += 2) {
       for (let k = 2; k < line.length; k += 2) {
@@ -1437,24 +1551,38 @@ export function assignAlong(cs: PlanContour[], role: 'eg' | 'fg', line: number[]
     if (Number.isFinite(best)) hits.push({ t: best, ci: c.id })
   }
   hits.sort((a, b) => a.t - b.t)
+  if (opt.slop && opt.slop > 0 && line.length >= 2) {
+    let near = -1, nd = opt.slop
+    for (const c of cs) {
+      if (c.role !== role || opt.skip?.(c)) continue
+      for (let i = 2; i < c.pts.length; i += 2) {
+        const d = distToSeg(line[0], line[1], c.pts[i - 2], c.pts[i - 1], c.pts[i], c.pts[i + 1])
+        if (d < nd) { nd = d; near = c.id }
+      }
+    }
+    if (near >= 0 && !hits.some(h => h.ci === near)) hits.unshift({ t: -1, ci: near })
+  }
   const written = (c: PlanContour) => c.z !== null && (c.how === 'label' || c.how === 'user')
-  let disagree = 0
-  const implies = new Set<number>()
+  const ladder = (c: PlanContour) => c.z !== null && c.how === 'ladder'
+  let disagree = 0, counted = 0
+  const implies = new Set<number>(), countedImplies = new Set<number>()
   hits.forEach((h, k) => {
     const c = byId.get(h.ci) as PlanContour
-    if (!written(c)) return
-    implies.add(round2((c.z as number) - k * dz))
-    if (Math.abs((c.z as number) - round2(z0 + k * dz)) > 1e-6) disagree++
+    const off = Math.abs((c.z as number) - round2(z0 + k * dz)) > 1e-6
+    if (written(c)) { implies.add(round2((c.z as number) - k * dz)); if (off) disagree++ }
+    else if (ladder(c)) { countedImplies.add(round2((c.z as number) - k * dz)); if (off) counted++ }
   })
-  const implied = implies.size === 1 ? Array.from(implies)[0] : null
-  if (disagree) return { set: 0, disagree, implied }
+  const one = (s: Set<number>) => (s.size === 1 ? Array.from(s)[0] : null)
+  const implied = implies.size ? one(implies) : one(countedImplies)
+  if (disagree) return { set: 0, disagree, counted, implied }
+  if (counted && !opt.force) return { set: 0, disagree: 0, counted, implied }
   let set = 0
   hits.forEach((h, k) => {
     const c = byId.get(h.ci) as PlanContour
     if (written(c)) return // what people wrote is never overwritten; anything derived is
     c.z = round2(z0 + k * dz); c.how = 'user'; c.flags = c.flags.filter(f => !/labels disagree/.test(f)); set++
   })
-  return { set, disagree: 0, implied }
+  return { set, disagree: 0, counted, implied }
 }
 
 /** Segment AB vs CD: AB's parameter in [0,1] at a proper crossing, or −1. */
