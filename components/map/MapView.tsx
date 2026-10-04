@@ -4632,6 +4632,83 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, overlaysOn, siteOverlays, siteImgActiveKey])
 
+  // ── Dirt takeoffs (127): each saved takeoff's cut/fill picture where its
+  // grading plan puts it (red cut · blue fill, lib/dirt/heat.ts), with the
+  // headline yards as a label from street zoom. The pictures are private
+  // (signed URLs, 1 h) — re-asked every 30 min while the layer is on.
+  const [dirtItems, setDirtItems] = useState<{ id: string; url: string; corners: [number, number][]; cutCy: number; fillCy: number; exportCy: number; importCy: number }[]>([])
+  const dirtUrls = useRef<Map<string, string>>(new Map())
+  useEffect(() => {
+    if (!overlaysOn.dirt) return
+    let cancelled = false
+    const load = () => {
+      fetch('/api/dirt-map')
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`dirt ${r.status}`))))
+        .then((j: { takeoffs?: typeof dirtItems }) => {
+          if (cancelled) return
+          setDirtItems(j.takeoffs ?? [])
+          window.dispatchEvent(new CustomEvent('ht:layer-updated', { detail: { key: 'dirt', at: Date.now() } }))
+        })
+        .catch((err) => {
+          if (!cancelled) window.dispatchEvent(new CustomEvent('ht:layer-error', { detail: { key: 'dirt', msg: err instanceof Error ? err.message : 'takeoffs unreachable' } }))
+        })
+    }
+    load()
+    const t = setInterval(load, 30 * 60_000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [overlaysOn.dirt])
+  useEffect(() => {
+    const m = map.current
+    if (!mapReady || !m || !mapAlive(m)) return
+    const on = !!overlaysOn.dirt
+    const items = on ? dirtItems : []
+    const known = new Set<string>()
+    const opacity = overlayOpacity.dirt ?? 0.8
+    for (const d of items) {
+      const sid = `dirt-${d.id}`
+      known.add(sid)
+      const coords = d.corners as [[number, number], [number, number], [number, number], [number, number]]
+      const src = m.getSource(sid) as maplibregl.ImageSource | undefined
+      try {
+        if (!src) {
+          m.addSource(sid, { type: 'image', url: d.url, coordinates: coords })
+          m.addLayer({ id: sid, type: 'raster', source: sid, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 0 } },
+            m.getLayer('geofence-fill') ? 'geofence-fill' : undefined)
+        } else if (dirtUrls.current.get(sid) !== d.url) {
+          src.updateImage({ url: d.url, coordinates: coords })
+        }
+        dirtUrls.current.set(sid, d.url)
+        if (m.getLayer(sid)) m.setPaintProperty(sid, 'raster-opacity', opacity)
+      } catch { /* a bad picture skips, the rest still draw */ }
+    }
+    for (const lyr of m.getStyle()?.layers ?? []) {
+      if (lyr.id.startsWith('dirt-') && lyr.id !== 'dirt-labels' && !known.has(lyr.id)) {
+        m.removeLayer(lyr.id)
+        if (m.getSource(lyr.id)) m.removeSource(lyr.id)
+        dirtUrls.current.delete(lyr.id)
+      }
+    }
+    const yd = (v: number) => Math.round(v).toLocaleString()
+    const fc: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: items.map((d) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [(d.corners[0][0] + d.corners[2][0]) / 2, (d.corners[0][1] + d.corners[2][1]) / 2] },
+        properties: { lbl: `Cut ${yd(d.cutCy)} · Fill ${yd(d.fillCy)} CY\n${d.exportCy > 0 ? `Export ${yd(d.exportCy)}` : `Import ${yd(d.importCy)}`} CY` },
+      })),
+    }
+    const lsrc = m.getSource('dirt-labels') as maplibregl.GeoJSONSource | undefined
+    if (lsrc) lsrc.setData(fc)
+    else if (items.length) {
+      m.addSource('dirt-labels', { type: 'geojson', data: fc })
+      m.addLayer({
+        id: 'dirt-labels', type: 'symbol', source: 'dirt-labels', minzoom: 14,
+        layout: { 'text-field': ['get', 'lbl'], 'text-size': 11, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-allow-overlap': false },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#04121d', 'text-halo-width': 1.6 },
+      }, m.getLayer('clusters') ? 'clusters' : undefined)
+    }
+  }, [mapReady, overlaysOn.dirt, dirtItems, overlayOpacity.dirt])
+
   // Raster tiles that fail to load (moved WMS layer, dead service, blocked
   // request) used to die in silence — the row looked on, the map drew
   // nothing. Surface each failing overlay ONCE per session on its panel row.

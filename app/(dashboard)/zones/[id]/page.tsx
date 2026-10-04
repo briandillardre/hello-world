@@ -21,6 +21,9 @@ import { ZoneNotes } from '@/components/zones/ZoneNotes'
 import { ProjectHub } from '@/components/zones/ProjectHub'
 import { ZoneImagery } from '@/components/zones/ZoneImagery'
 import { ZonePlans } from '@/components/zones/ZonePlans'
+import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
+import { isProspect } from '@/lib/permissions'
+import { Suspense } from 'react'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
 import { FolderLink } from '@/components/ui/FolderLink'
@@ -384,6 +387,11 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         )}
         {!isBoundary && !isVendor && plansAvailable && (
           <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />
+        )}
+        {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
+          <Suspense fallback={null}>
+            <ZoneDirtSection zoneId={fence.id} companyId={companyId} canEdit={perms.canEdit && !perms.viewingAs} />
+          </Suspense>
         )}
 
         <ZoneWeather rows={weather} centroid={ring && ring.length >= 3 ? {
