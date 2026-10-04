@@ -427,33 +427,32 @@ export const MOCK_TOOL_ASSOCIATIONS: ToolAssociation[] = [
 ]
 
 // ── v2: Maintenance ───────────────────────────────────────────────────────────
+// Date schedules only: hour and mile schedules wait on the tracker meters
+// (board #190), and the demo — /live and the store pictures — shows only what
+// production can (truth-check, Oct 4).
 export const MOCK_MAINTENANCE_SCHEDULES: MaintenanceSchedule[] = [
   {
     id: 'maint-1', company_id: 'mock-company-1', asset_id: 'asset-2',
-    interval_type: 'engine_hours', interval_value: 250, last_service_value: 1180,
+    interval_type: 'days', interval_value: 30, last_service_value: 0,
     last_service_date: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
-    description: 'Hydraulic fluid & filter service',
+    description: 'Hydraulic fluid & filter service', // 40 of 30 days — OVERDUE
   },
   {
     id: 'maint-2', company_id: 'mock-company-1', asset_id: 'asset-1',
-    interval_type: 'mileage', interval_value: 5000, last_service_value: 38000,
-    last_service_date: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
-    description: 'Oil change & tire rotation',
+    interval_type: 'days', interval_value: 90, last_service_value: 0,
+    last_service_date: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString(),
+    description: 'Oil change & tire rotation', // 80 of 90 days — due soon
   },
   {
     id: 'maint-3', company_id: 'mock-company-1', asset_id: 'asset-9',
-    interval_type: 'engine_hours', interval_value: 500, last_service_value: 2100,
+    interval_type: 'days', interval_value: 365, last_service_value: 0,
     last_service_date: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString(),
     description: 'Annual inspection & greasing',
   },
 ]
 
-// Current readings used to compute due/overdue (engine hours or odometer)
-export const MOCK_CURRENT_READINGS: Record<string, number> = {
-  'asset-1': 42600, // miles — 4600 since last service (due soon at 5000)
-  'asset-2': 1455,  // engine hours — 275 since last service (OVERDUE, interval 250)
-  'asset-9': 2380,  // engine hours — 280 since last service (due at 500, ok)
-}
+// Meter readings for hour/mile schedules — none in the demo (see above).
+export const MOCK_CURRENT_READINGS: Record<string, number> = {}
 
 export const MOCK_SERVICE_RECORDS: ServiceRecord[] = [
   {

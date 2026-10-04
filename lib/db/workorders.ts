@@ -16,20 +16,20 @@ export async function getWorkOrders(companyId: string): Promise<WorkOrderData> {
   const empty: WorkOrderData = { available: false, orders: [], members: [] }
   if (isMock) {
     // Demo backs up the auto-WO story: the overdue mock schedule (maint-1 —
-    // Link-Belt hydraulic service, 275/250 hrs) has already opened its work
+    // Link-Belt hydraulic service, 40 of 30 days) has already opened its work
     // order, shaped exactly as ensureScheduleWorkOrders would write it
-    // (`${description} — ${assetName}` title, high priority, live reading).
+    // (`${description} — ${assetName}` title, high priority; a date schedule carries no reading).
     const mockWo: WorkOrder = {
       id: 'wo-mock-1',
       asset_id: 'asset-2',
       title: 'Hydraulic fluid & filter service — Link-Belt 130X2 Excavator',
-      detail: 'Auto-opened: engine hours interval of 250 exceeded.',
+      detail: 'Auto-opened: days interval of 30 exceeded.',
       source: 'schedule',
       priority: 'high',
       status: 'open',
       assignee_id: null,
       due_date: null,
-      reading: 1455,
+      reading: null,
       parts_cost: 0,
       labor_hours: 0,
       labor_rate: null,

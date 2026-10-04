@@ -37,6 +37,15 @@ ok('the fix before was 5 minutes earlier → not a run', !ae.speedingHolds(ring,
 ok('at the limit → not speeding', !ae.speedingHolds(ring, limit, fix(110, 60, 15, 10), fix(90, 60, 15, 0)))
 ok('no limit set → never', !ae.speedingHolds(ring, 0, fix(110, 60, 70, 10), fix(90, 60, 70, 0)))
 
+// Small zones: the margin scales with the zone, so a yard limit can fire at all.
+const box = (w, h) => [[0, 0], [w, 0], [w, h], [0, h], [0, 0]].map(([e, n]) => { const p = at(e, n); return [p.lng, p.lat] })
+ok('margin: the 200 × 120 m site keeps a ~19 m margin', Math.abs(ae.speedEdgeMargin(ring) - 18.75) < 0.3, ae.speedEdgeMargin(ring))
+ok('margin: never more than 25 m on a big site', ae.speedEdgeMargin(box(1000, 800)) === 25)
+ok('margin: never less than 5 m on a tiny pad', ae.speedEdgeMargin(box(15, 15)) === 5)
+ok('a 45 m yard: a run through the middle → speeding', ae.speedingHolds(box(45, 45), 5, fix(25, 22, 14, 6), fix(15, 22, 12, 3)))
+ok('a 45 m yard: the road 3 m inside its fence → not speeding', !ae.speedingHolds(box(45, 45), 5, fix(25, 3, 40, 6), fix(15, 3, 40, 3)))
+ok('a 40 m-wide haul road: down the middle → speeding', ae.speedingHolds(box(400, 40), 10, fix(200, 20, 25, 6), fix(170, 20, 25, 3)))
+
 // The whole evaluator: the rule only fires with the fix before it.
 const rule = { id: 'r1', company_id: 'c', asset_id: null, geofence_id: 'g1', trigger: 'speeding', active: true, params: { max_mph: limit } }
 const fence = { id: 'g1', name: 'Creekside', geometry: { type: 'Polygon', coordinates: [ring] } }

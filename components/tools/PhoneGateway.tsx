@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Radio } from 'lucide-react'
 import { isNativeApp } from '@/lib/native'
-import { parseIBeacon, APPLE_COMPANY_ID } from '@/lib/ble'
+import { parseIBeacon, tagShaped, APPLE_COMPANY_ID } from '@/lib/ble'
 
 /**
  * The phone as a BLE gateway (Brian, Sep 9: "phone as ble gateway is a must";
@@ -65,6 +65,8 @@ const QUIET_MS = 300_000
 const MOVED_M = 25
 export const GATEWAY_EVENT = 'ht:phone-gateway'
 export const GATEWAY_STATUS_EVENT = 'ht:phone-gateway-status'
+/** A status line that opens mid-window asks; the gateway answers with publish(). */
+export const GATEWAY_STATUS_QUERY = 'ht:phone-gateway-status-query'
 export interface GatewayStatus { on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null; paused?: string | null; everyS?: number }
 
 function stored(): '1' | '0' | null {
@@ -85,7 +87,7 @@ export function setPhoneGateway(on: boolean) {
   window.dispatchEvent(new CustomEvent(GATEWAY_EVENT, { detail: { on } }))
 }
 
-interface ScanResultLike { device: { deviceId: string; name?: string }; localName?: string; rssi?: number; manufacturerData?: Record<string, DataView> }
+interface ScanResultLike { device: { deviceId: string; name?: string }; localName?: string; rssi?: number; manufacturerData?: Record<string, DataView>; serviceData?: Record<string, DataView>; uuids?: string[] }
 
 /** Metres between two fixes — flat-earth is plenty at this scale. */
 function metresApart(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -165,6 +167,9 @@ export function PhoneGateway({ allowed = true }: {
     let emptyStreak = 0
     let quiet = false
     const easy = () => emptyStreak >= EMPTY_BEFORE_IDLE || quiet
+    // The low-power scan only after empty listens: its duty cycle misses tags
+    // a balanced listen hears, and with tags around a miss reads as news.
+    const lowPower = () => emptyStreak >= EMPTY_BEFORE_IDLE
     const windowMs = () => (emptyStreak >= EMPTY_BEFORE_DEEP ? WINDOW_DEEP_MS : easy() ? WINDOW_IDLE_MS : WINDOW_MS)
     const lowBattery = async (): Promise<boolean> => {
       try {
@@ -176,6 +181,9 @@ export function PhoneGateway({ allowed = true }: {
     }
     const publish = () => window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { ...status } }))
     publish()
+    // Windows run up to 2 min now: a status line opened between them asks
+    // instead of reading "starting…" until the next one (ship-check, Oct 4).
+    window.addEventListener(GATEWAY_STATUS_QUERY, publish)
 
     // Asked for only when there is something to report, so an all-day gateway
     // that hears nothing never wakes the GPS. maximumAge lets the OS hand back
@@ -204,6 +212,8 @@ export function PhoneGateway({ allowed = true }: {
       sleep()
       try {
         if (await lowBattery()) {
+          // The rest is the news — an older error must not sit on top of it.
+          status.error = null
           status.paused = `Resting — battery under ${Math.round(LOW_BATTERY * 100)}%. Plug in and it picks back up.`
           publish(); return
         }
@@ -224,7 +234,9 @@ export function PhoneGateway({ allowed = true }: {
         // Assigned BEFORE the scan starts: a switch-off during initialize /
         // requestLEScan used to leave a scan running with nothing to stop it.
         stopScan = async () => { scanning = false; try { await BleClient.stopLEScan() } catch { /* already stopped */ } }
-        await BleClient.requestLEScan({ allowDuplicates: true, scanMode: easy() ? ScanMode.SCAN_MODE_LOW_POWER : ScanMode.SCAN_MODE_BALANCED }, (r: ScanResultLike) => {
+        await BleClient.requestLEScan({ allowDuplicates: true, scanMode: lowPower() ? ScanMode.SCAN_MODE_LOW_POWER : ScanMode.SCAN_MODE_BALANCED }, (r: ScanResultLike) => {
+          // Tags only: a neighbour's phone or earbuds must not keep this awake.
+          if (!tagShaped(r)) return
           const mac = r.device?.deviceId ?? null
           const md = r.manufacturerData?.[APPLE_COMPANY_ID]
           const ib = md ? parseIBeacon(md) : null
@@ -268,8 +280,13 @@ export function PhoneGateway({ allowed = true }: {
       emptyStreak = 0
       quiet = false
       const tags = fresh.map((b) => b.id).sort().join(',')
+      // Same spot and nothing the last report didn't already carry = nothing
+      // to say. A SUBSET counts: a short listen misses a tag now and then, and
+      // the gateway never reports absence — treating a partial hear as news
+      // cost a GPS fix and a post each time (ship-check, Oct 4).
+      const sentIds = new Set(sent ? sent.tags.split(',') : [])
       const samePlace = (f: { lat: number; lng: number }) =>
-        !!sent && sent.tags === tags && now - sent.at < QUIET_MS && metresApart(f, sent) < MOVED_M
+        !!sent && fresh.every((b) => sentIds.has(b.id)) && now - sent.at < QUIET_MS && metresApart(f, sent) < MOVED_M
       // Nothing new to say: same tags, same spot, said recently. Checked
       // against the fix we already hold BEFORE spending one on a new one.
       if (fix && samePlace(fix)) { quiet = true; publish(); return }
@@ -345,6 +362,7 @@ export function PhoneGateway({ allowed = true }: {
       stopped = true
       if (tick != null) window.clearTimeout(tick)
       sleep()
+      window.removeEventListener(GATEWAY_STATUS_QUERY, publish)
       document.removeEventListener('visibilitychange', onVis)
       void stopScan?.()
       window.dispatchEvent(new CustomEvent(GATEWAY_STATUS_EVENT, { detail: { on: false, heard: 0, matched: 0, holding: 0, reportedAt: null, error: null } satisfies GatewayStatus }))

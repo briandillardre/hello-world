@@ -22,34 +22,53 @@ export function useBarcodeScanner(videoRef: RefObject<HTMLVideoElement>, onCode:
     const v = videoRef.current
     if (!v || !navigator.mediaDevices?.getUserMedia) { setState('off'); return }
     ;(async () => {
+      let c: Camera | null = null
       try {
-        const [c, { detector }] = await Promise.all([openCamera(v), makeDetector()])
+        // The camera first, then the reader: a reader that fails to load (an
+        // offline yard, a chunk gone after a deploy) must not leave the camera
+        // running behind a viewfinder that has already gone (ship-check, Oct 4).
+        c = await openCamera(v)
+        if (cancelled) { c.stop(); return }
+        const { detector } = await makeDetector()
         if (cancelled) { c.stop(); return }
         cam.current = c
         setTorch({ available: c.torch, on: false })
         setState('on')
         let detecting = false
-        let last = '', lastAt = 0
+        let failures = 0
+        // When each code last buzzed: two codes in view (IMEI + serial) used
+        // to look new on every frame and buzz six times a second.
+        const buzzed = new Map<string, number>()
         timer = setInterval(async () => {
           if (!v || v.readyState < 2 || detecting) return
           detecting = true
           try {
             const codes = await detector.detect(v)
+            failures = 0
             if (cancelled) return
             for (const code of codes) {
               if (!code.rawValue) continue
               const took = onCodeRef.current(code.rawValue)
               const now = Date.now()
-              if (took !== false && (code.rawValue !== last || now - lastAt > 2500)) {
+              if (took !== false && now - (buzzed.get(code.rawValue) ?? 0) > 2500) {
+                buzzed.set(code.rawValue, now)
                 try { navigator.vibrate?.(40) } catch { /* no vibration */ }
               }
-              last = code.rawValue; lastAt = now
             }
-          } catch { /* a frame that fails to decode is just the next frame */ }
+          } catch {
+            // One bad frame is just the next frame; a reader that throws on
+            // every frame never loaded — hand over to typing it in.
+            if (++failures >= 10 && !cancelled) {
+              if (timer) clearInterval(timer)
+              c?.stop(); cam.current = null
+              setState('off')
+            }
+          }
           finally { detecting = false }
         }, 350)
       } catch {
-        if (!cancelled) setState('off') // denied / no camera → type it in
+        c?.stop()
+        if (!cancelled) setState('off') // denied / no camera / no reader → type it in
       }
     })()
     return () => {

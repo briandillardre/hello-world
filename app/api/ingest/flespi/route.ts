@@ -476,8 +476,11 @@ export async function POST(request: NextRequest) {
           const raw = r.params[k]
           if (typeof raw !== 'number') continue
           const volts = raw > 100 ? raw / 1000 : raw
-          if (volts > 5 && volts < 11.8) {
-            checks.push({ kind: 'battery_low', reason: `12V battery weak — ${volts.toFixed(1)} V`, severity: volts < 11.4 ? 'critical' : 'warning' })
+          // A 24 V machine reads double — the same ladder ×2 the dials use
+          // (lib/telemetry-catalog voltScale), or a sagging 22 V pair never alerts.
+          const scale = volts > 18 ? 2 : 1
+          if (volts > 5 && volts < 11.8 * scale) {
+            checks.push({ kind: 'battery_low', reason: `${scale === 2 ? '24V' : '12V'} battery weak — ${volts.toFixed(1)} V`, severity: volts < 11.4 * scale ? 'critical' : 'warning' })
           }
           break
         }

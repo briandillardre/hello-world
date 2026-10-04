@@ -467,11 +467,13 @@ export function nextAction(stages: Stage[]): string {
  */
 export function shortTracker(
   trackerId: string | null | undefined,
-): { kind: 'imei' | 'phone' | 'tag'; label: string; short: string; full: string } | null {
+): { kind: 'imei' | 'phone' | 'tag' | 'unit'; label: string; short: string; full: string } | null {
   const full = (trackerId ?? '').trim()
   if (!full) return null
   if (/^phone-/i.test(full)) return { kind: 'phone', label: 'Phone', short: 'this phone', full }
   if (/^\d{15}$/.test(full)) return { kind: 'imei', label: 'IMEI', short: `····${full.slice(-4)}`, full }
+  // The shop ids the app suggests for a GPS/OBD unit (see trackerKind) are units, not tags.
+  if (/^(obd|gps)[-_]?\d/i.test(full)) return { kind: 'unit', label: 'Unit', short: full, full }
   // Short enough to read whole (bt-042, obd-001, a beacon Minor) — show it all.
   if (full.length <= 10) return { kind: 'tag', label: 'Tag', short: full, full }
   return { kind: 'tag', label: 'Tag', short: `····${full.slice(-4)}`, full }

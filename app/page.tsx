@@ -23,7 +23,7 @@ const AI = [
   {
     icon: Wrench,
     title: 'Service that tracks itself',
-    body: 'A service schedule opens its own work order once it comes due — not after the machine is down. Meters off the trackers (engine hours, miles) are next.',
+    body: 'A service schedule opens its own work order once it comes due — not after the machine is down.',
     tag: 'LIVE',
   },
   {

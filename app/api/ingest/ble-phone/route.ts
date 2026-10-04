@@ -33,6 +33,14 @@ export async function POST(req: NextRequest) {
   if (!perms.features.includes('tags') || !perms.features.includes('track')) {
     return NextResponse.json({ ok: false, error: 'not allowed' }, { status: 403 })
   }
+  // The app posts at most every 20 s (3 a minute) and backs off when quiet;
+  // anything past 8 a minute is not the app. Per instance like every limiter
+  // here — it ends a loop writing into the table the ledger scans, not a
+  // careful attacker (sec-check, Oct 4).
+  const { keyRateLimited } = await import('@/lib/rate-limit')
+  if (keyRateLimited(perms.userId, 'ble-phone', 8)) {
+    return NextResponse.json({ ok: false, error: 'too many reports' }, { status: 429 })
+  }
   let body: { beacons?: unknown; lat?: unknown; lng?: unknown; accuracy?: unknown; heading?: unknown; battery?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ ok: false, error: 'bad json' }, { status: 400 }) }
 

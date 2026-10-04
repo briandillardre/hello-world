@@ -72,8 +72,9 @@ export function MaintenanceLists({ statuses, services, qboLive, assetNames, canV
               </div>
               <p className="text-ink font-display font-bold">No blown engines on your watch</p>
               <p className="text-sm text-faint mt-1.5 leading-relaxed">
-                Set a service interval by engine hours, miles, or days and HammerTrack counts down
-                from real tracker data — overdue machines turn red before they turn expensive.
+                Set a service interval by days and HammerTrack counts down, flags it overdue and opens
+                a work order — overdue machines turn red before they turn expensive. Hour and mile
+                intervals need the tracker meters, coming next.
               </p>
               {assetNames && Object.keys(assetNames).length > 0 && (
                 <div className="mt-4 flex justify-center">
@@ -197,7 +198,8 @@ function NewScheduleDialog({ assetNames, onClose }: {
   const router = useRouter()
   const [assetId, setAssetId] = useState('')
   const [description, setDescription] = useState('')
-  const [intervalType, setIntervalType] = useState<MaintenanceIntervalType>('engine_hours')
+  // Days by default: hour and mile intervals wait on the tracker meters (board #190).
+  const [intervalType, setIntervalType] = useState<MaintenanceIntervalType>('days')
   const [intervalValue, setIntervalValue] = useState('')
   const [reading, setReading] = useState('')
   const [pending, start] = useTransition()

@@ -249,7 +249,7 @@ In factory mode a gateway with Beacon Detection = All reports the tag as
 tool with Tracker ID = that 12-character MAC (e.g. `7CD9F408B572`) and it
 matches on the next truck pass. The earlier "switch to iBeacon in the EYE
 app" step was unnecessary. They may ship in Hibernate — a magnet wakes them.
-**Placement rule:** a beacon only shows while a gateway is within ~30–50 m. A crew phone with the app open counts as a gateway too — **on by default in the app since Sep 12** (the "This phone hears tags" switch — Settings → My phone or the Tag scanner — turns it off on one phone; it listens 8 s every 20 s while hearing tags, easing to 1–2 min when it hears none, and rests below 15% battery) — an Android phone hears a factory-mode tag by its MAC like the trucks do; an iPhone only hears tags switched to iBeacon (iOS hides Bluetooth MACs).
+**Placement rule:** a beacon only shows while a gateway is within ~30–50 m. A crew phone with the app open counts as a gateway too — **on by default in the app since Sep 12** (the "This phone hears tags" switch — Settings → My phone or the Tag scanner — turns it off on one phone; it listens 8 s every 20 s while hearing tags, easing to 1–2 min when it hears none or nothing new, counts only tag-shaped signals (iBeacon, Eddystone, Teltonika EYE — never a neighbour's phone or earbuds), and rests below 15% battery) — an Android phone hears a factory-mode tag by its MAC like the trucks do; an iPhone hears no tags (iOS hides tag MACs and iBeacon frames from Bluetooth scans), so on iPhone crews the trucks do the hearing.
 Trailers behind tracked trucks are perfect; a machine that lives alone on a
 site needs its own TAT141.
 
