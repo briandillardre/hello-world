@@ -140,11 +140,12 @@ function Scorecard({ view, writable }: { view: FuelPilotView; writable: boolean 
         {CHECK_KINDS.map((k) => {
           const s = m.byKind[k]
           return (
-            <div key={k} className="flex items-center gap-2 px-3 py-2 text-[12px]">
-              <span className="flex-1 min-w-0 truncate text-ink">{KIND_LABEL[k]}</span>
-              <span className="flex-none text-faint tabular-nums">{s.open} open</span>
-              <span className="flex-none text-faint tabular-nums hidden sm:inline">{s.valid} valid · {s.false} false</span>
-              <span className="flex-none w-16 text-right tabular-nums text-muted" title="False alarms ÷ decided">{s.fpRate == null ? '—' : `${Math.round(s.fpRate * 100)}% FP`}</span>
+            <div key={k} className="px-3 py-2">
+              <div className="flex items-baseline gap-2">
+                <span className="flex-1 min-w-0 text-[12.5px] text-ink">{KIND_LABEL[k]}</span>
+                <span className="flex-none tabular-nums text-[12px] text-muted" title="False alarms ÷ decided">{s.fpRate == null ? '—' : `${Math.round(s.fpRate * 100)}% false`}</span>
+              </div>
+              <p className="text-[11px] text-faint tabular-nums">{s.unclassified} to decide · {s.valid} valid · {s.false} false alarm{s.false === 1 ? '' : 's'}</p>
             </div>
           )
         })}
@@ -267,10 +268,10 @@ function ExceptionCard({ e, t, tz, writable }: { e: FuelExceptionView; t: FuelTx
         </div>
       )}
       {(e.verdict === 'valid' || e.verdict === 'false') && !editing ? (
-        <div className="flex items-center gap-2 text-[12px]">
-          <span className={`rounded-full border px-2 py-0.5 font-semibold ${VERDICT_BTN.find((b) => b.v === e.verdict)!.on}`}>{VERDICT_LABEL[e.verdict]}</span>
-          <span className="flex-1 min-w-0 text-faint truncate">{[e.verdictBy, e.verdictAtMs ? fmtDay(e.verdictAtMs, tz) : null].filter(Boolean).join(' · ')}{e.verdictNote ? ` — “${e.verdictNote}”` : ''}</span>
-          {writable && <button type="button" onClick={() => setEditing(true)} className="flex-none text-teal hover:underline">Change</button>}
+        <div className="flex items-start gap-2 text-[12px]">
+          <span className={`flex-none rounded-full border px-2 py-0.5 font-semibold ${VERDICT_BTN.find((b) => b.v === e.verdict)!.on}`}>{VERDICT_LABEL[e.verdict]}</span>
+          <span className="flex-1 min-w-0 pt-0.5 text-faint">{[e.verdictBy, e.verdictAtMs ? fmtDay(e.verdictAtMs, tz) : null].filter(Boolean).join(' · ')}{e.verdictNote ? <> — <span className="text-muted">“{e.verdictNote}”</span></> : null}</span>
+          {writable && <button type="button" onClick={() => setEditing(true)} className="flex-none pt-0.5 text-teal hover:underline">Change</button>}
         </div>
       ) : writable ? (
         <div className="space-y-2">

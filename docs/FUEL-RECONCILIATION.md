@@ -105,7 +105,7 @@ to a site.
   (or at least twice a week). For each one: look at the evidence, ask the
   driver if needed, then mark
   - **Valid** — the fuel did not go where it should, or nobody can explain it;
-  - **False alarm** — a legitimate explanation (jerry cans for a machine, the
+  - **False alarm** — a legitimate explanation (fuel cans for a machine, the
     export named the wrong store, the truck swap wasn't recorded, a bulk tank);
   - **Unsure** — needs follow-up; it stays in the queue and doesn't count as
     decided.

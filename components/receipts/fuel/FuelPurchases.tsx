@@ -87,8 +87,8 @@ function Row({ t, tz, open, onToggle, view, writable }: {
           <span className="flex-1 min-w-0 truncate text-[13px] text-ink">{t.placeLabel ?? t.merchant}</span>
           <span className="flex-none font-semibold tabular-nums text-[13px] text-ink">{money(t.amount)}</span>
         </div>
-        <div className="mt-1 flex items-center gap-2">
-          <span className="flex-1 min-w-0 truncate text-[11.5px] text-faint">
+        <div className="mt-1 flex items-start gap-2">
+          <span className="flex-1 min-w-0 text-[11.5px] text-faint">
             {whenWords(t, tz)}{t.gallons != null ? ` · ${t.gallonsEstimated ? '~' : ''}${t.gallons.toFixed(1)} gal` : ''} · {t.assetName ?? (t.cardLast4 ? `…${t.cardLast4}, no vehicle` : 'no vehicle')}
           </span>
           <span className="flex-none flex items-center gap-1" aria-label="The four checks">

@@ -125,7 +125,7 @@ function TankRow({ v, writable }: { v: FuelVehicleView; writable: boolean }) {
         <span className={`block text-[11px] ${v.reportsFuel ? 'text-teal' : 'text-faint'}`}>{gauge}{v.fuelType ? ` · ${v.fuelType}` : ''}{v.tankSource === 'notes' ? ' · size from its notes' : ''}</span>
       </span>
       <input inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') save() }}
-        placeholder="gal" disabled={!writable || pending} aria-label={`Tank size of ${v.name} in gallons`}
+        placeholder="—" disabled={!writable || pending} aria-label={`Tank size of ${v.name} in gallons`}
         className={`w-20 flex-none rounded-lg border bg-navy-950 px-2 py-1.5 text-right text-[12.5px] text-ink tabular-nums disabled:opacity-50 ${v.tankGal ? 'border-navy-700' : 'border-amber/40'}`} />
       <span className="flex-none text-[11px] text-faint w-6">gal</span>
     </div>
@@ -136,7 +136,9 @@ function PilotSettings({ view, writable, todayKey }: { view: FuelPilotView; writ
   const router = useRouter()
   const [pending, start] = useTransition()
   const s = view.settings
-  const init = { startedOn: s.startedOn ?? '', gasPrice: String(s.gasPrice), dieselPrice: String(s.dieselPrice), areaMiles: String(s.areaMiles), runtimeHours: String(s.runtimeHours) }
+  // Prices read like a pump sign (3.10, 3.459) — never 3.1, and never rounded so a save changes them.
+  const price = (n: number) => n.toFixed(3).replace(/0$/, '')
+  const init = { startedOn: s.startedOn ?? '', gasPrice: price(s.gasPrice), dieselPrice: price(s.dieselPrice), areaMiles: String(s.areaMiles), runtimeHours: String(s.runtimeHours) }
   const [f, setF] = useState(init)
   const changed = JSON.stringify(f) !== JSON.stringify(init)
   const save = () => start(async () => {
@@ -161,7 +163,7 @@ function PilotSettings({ view, writable, todayKey }: { view: FuelPilotView; writ
     <div className="space-y-2">
       <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink"><Settings2 className="h-3.5 w-3.5 text-teal" /> Pilot settings</p>
       <div className="grid grid-cols-2 gap-2">
-        {field('startedOn', 'Pilot started', 'Day 1 of 90; set by the first import', 'date')}
+        {field('startedOn', 'Pilot started', 'The 90 days count from here; the first import sets it', 'date')}
         {field('areaMiles', 'Approved area (mi)', 'From a site, yard, place or the day’s route')}
         {field('gasPrice', 'Gas $/gal', 'Only to estimate gallons a line lacks')}
         {field('dieselPrice', 'Diesel $/gal', 'Only to estimate gallons a line lacks')}

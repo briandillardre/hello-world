@@ -105,10 +105,10 @@ export function demoFuelPilot(todayKey: string, tz: string, nowMs = Date.now()):
     was: { at: SHELL_HWY70.point, speed: 0 }, ran: 'yes', filled: true,
     verdict: { asset_absent: { v: 'false', note: 'Bought at the Shell on Hwy 70 — the export listed a different store.', daysLater: 1 } },
   })
-  specs.push({ // jerry cans for the mini-ex — machines don't drive to the pump: false alarm
+  specs.push({ // fuel cans for the mini-ex — machines don't drive to the pump: false alarm
     ago: 16, at: null, station: QT_WESTEND, amount: 41.5, card: '5512', rowAsset: 'asset-9',
     was: { stopsAt: [centre('fence-2')] }, ran: 'yes',
-    verdict: { asset_absent: { v: 'false', note: 'Jerry cans for the mini-ex.', daysLater: 3 } },
+    verdict: { asset_absent: { v: 'false', note: 'Filled fuel cans for the mini-ex.', daysLater: 3 } },
   })
   specs.push({ // Sunday afternoon on the dump truck's card — waiting on a verdict
     ago: 5, at: 14 * 60 + 15, station: QT_WESTEND, amount: 72.4, gallons: 20.7, unitPrice: 3.5, product: 'diesel', card: '0417', was: 'pump', ran: 'yes', on: 'sunday',

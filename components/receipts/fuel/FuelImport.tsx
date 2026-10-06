@@ -74,7 +74,7 @@ export function FuelImport({ tz, todayKey, writable, defaultOpen, vehicles }: {
       </button>
       {open && (
         <div className="border-t border-navy-700 px-4 py-3 space-y-3">
-          {!writable && <p className="text-[12px] text-faint">Someone with the edit ability imports purchases.</p>}
+          {!writable && <p className="text-[12px] text-faint">Try the preview — it reads the file right here and saves nothing. Importing takes someone with the edit ability on a real account.</p>}
           <div className="flex gap-2">
             {(['file', 'one'] as const).map((k) => (
               <button key={k} type="button" onClick={() => setTab(k)}
@@ -86,8 +86,8 @@ export function FuelImport({ tz, todayKey, writable, defaultOpen, vehicles }: {
           {tab === 'one' ? <AddOne todayKey={todayKey} vehicles={vehicles} writable={writable} /> : (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={!writable}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[12px] font-semibold text-ink hover:border-amber/50 disabled:opacity-40">
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 bg-navy-900 px-3 py-2 text-[12px] font-semibold text-ink hover:border-amber/50">
                   <FileUp className="h-3.5 w-3.5" /> Choose a CSV
                 </button>
                 <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="hidden"
@@ -95,7 +95,7 @@ export function FuelImport({ tz, todayKey, writable, defaultOpen, vehicles }: {
                 <span className="text-[11.5px] text-faint truncate">{fileName ?? 'or paste below'}</span>
               </div>
               <textarea
-                value={fileName ? '' : text} onChange={(e) => load(e.target.value, null)} rows={4} disabled={!writable || !!fileName}
+                value={fileName ? '' : text} onChange={(e) => load(e.target.value, null)} rows={4} disabled={!!fileName}
                 placeholder={'Transaction Date,Description,Amount\n10/01/2026,SPINX #0156 GREENVILLE SC,-84.20'}
                 className="w-full rounded-lg border border-navy-700 bg-navy-950 px-3 py-2 font-mono text-[12.5px] text-ink outline-none focus:border-amber/50 disabled:opacity-50"
               />
@@ -111,7 +111,6 @@ export function FuelImport({ tz, todayKey, writable, defaultOpen, vehicles }: {
                             <span className="w-[38%] min-w-0 truncate text-[12px] text-muted" title={h}>{h || `Column ${i + 1}`}</span>
                             <select
                               value={preview.mapping[i] ?? ''}
-                              disabled={!writable}
                               onChange={(e) => {
                                 const next = preview.mapping.slice()
                                 const v = (e.target.value || null) as FuelField | null
