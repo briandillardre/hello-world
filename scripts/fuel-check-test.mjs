@@ -311,6 +311,34 @@ function drive(fromMs, toMs, pct, stepMs = 5000, mph = 42) {
   ok('the same station on the vehicle\'s route that day → pass', onRoute.outcome === 'pass', onRoute)
   const city = check('outside_shift_or_area', { txn: { points: [off(STATION, -12_000, 0)], precision: 'city', placeLabel: 'Easley', cityRadiusM: 6000 } })
   ok('a city-only station is measured generously (the city\'s radius off)', city.outcome === 'pass' && city.missing.includes('merchant_city_only'), city)
+  const county = { id: 'z-county', name: 'Whole county', kind: 'boundary', ring: box(STATION, 80_000) }
+  const ringed = check('outside_shift_or_area', { txn: { points: [farStation], placeLabel: 'Spinx (Anderson)' }, area: { zones: [...ZONES, county], places: [], dayPath: [] } })
+  ok('a property boundary drawn round the county approves nothing', ringed.outcome === 'exception', ringed)
+  const dateOnly = check('outside_shift_or_area', { txn: { txnAtMs: null, cardholderUserId: null } })
+  ok('a date-only line says "no time" once — not "no cardholder" and "no clock" too', dateOnly.missing.includes('no_time') && !dateOnly.missing.includes('no_cardholder') && !dateOnly.missing.includes('no_clock'), dateOnly.missing)
+  const timedNoHolder = check('outside_shift_or_area', { txn: { cardholderUserId: null } })
+  ok('a timed purchase on a card tied to nobody says so', timedNoHolder.missing.includes('no_cardholder'))
+}
+
+// ── The public demo: built by the real checks, nothing real in it ───────────
+{
+  const mockUrl = transpile('../lib/mock-data.ts')
+  const fcUrl = transpile('../lib/fuel-check.ts', { './asset-stats': statsUrl, './dates': datesUrl, './bulk-import': bulkUrl })
+  const demo = await import(transpile('../lib/fuel-check-demo.ts', { './fuel-check': fcUrl, './dates': datesUrl, './mock-data': mockUrl }))
+  for (const today of ['2026-10-06', '2026-10-11', '2026-12-31']) {
+    const v = demo.demoFuelPilot(today, TZ, at(`${today}T12:00:00-04:00`))
+    const kinds = new Set(v.exceptions.map((e) => e.kind))
+    ok(`demo (${today}): every kind of exception shows up`, fc.CHECK_KINDS.every((k) => kinds.has(k)), Array.from(kinds))
+    ok(`demo (${today}): verdicts of every kind, and some waiting`, ['valid', 'false', 'unsure'].every((x) => v.exceptions.some((e) => e.verdict === x)) && v.metrics.unclassified > 0)
+    const routineSunday = v.txns.filter((t) => new Date(t.txnDate + 'T12:00:00Z').getUTCDay() === 0)
+    ok(`demo (${today}): one Sunday purchase — the one meant to be flagged`, routineSunday.length === 1, routineSunday.map((t) => t.txnDate))
+    ok(`demo (${today}): no dates past today, no verdict from the future`, v.txns.every((t) => t.txnDate <= today) && v.exceptions.every((e) => (e.verdictAtMs ?? 0) <= at(`${today}T12:00:00-04:00`)))
+    const strings = []
+    const walk = (x) => { if (typeof x === 'string') strings.push(x); else if (x && typeof x === 'object') Object.values(x).forEach(walk) }
+    walk(v)
+    ok(`demo (${today}): no tracker ids or card numbers in any text, cards are four digits`, strings.every((s) => !/\d{9,}/.test(s))
+      && v.cards.every((c) => /^\d{4}$/.test(c.last4)), strings.filter((s) => /\d{9,}/.test(s)).slice(0, 3))
+  }
 }
 
 // ── Storage: a re-check never touches a verdict ─────────────────────────────

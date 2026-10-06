@@ -526,6 +526,8 @@ export interface FuelCsvPreview {
   header: string[]
   headerRow: number
   mapping: (FuelField | null)[]
+  /** The first line under the header, as cells — the preview's hint per column. */
+  sampleRow: string[]
   rows: FuelDraft[]
   skipped: { line: number; reason: string; text: string }[]
   /** 'fleet' = a fuel-card export (gallons or products); 'bank' = a card/bank statement. */
@@ -547,7 +549,7 @@ export const MAX_IMPORT_ROWS = 3000
  */
 export function parseFuelCsv(text: string, opts: { tz: string; mapping?: (FuelField | null)[] | null }): FuelCsvPreview {
   const grid = parseDelimited(text.slice(0, 2_000_000))
-  const empty: FuelCsvPreview = { header: [], headerRow: -1, mapping: [], rows: [], skipped: [], shape: 'bank', signFlipped: false, warnings: [] }
+  const empty: FuelCsvPreview = { header: [], headerRow: -1, mapping: [], sampleRow: [], rows: [], skipped: [], shape: 'bank', signFlipped: false, warnings: [] }
   if (!grid.length) return { ...empty, warnings: ['Nothing to read — paste the export or pick the CSV file.'] }
   const headerRow = findHeaderRow(grid)
   if (headerRow < 0) return { ...empty, warnings: ['No header row found — the first lines should name the columns (Date, Description, Amount…).'] }
@@ -690,7 +692,7 @@ export function parseFuelCsv(text: string, opts: { tz: string; mapping?: (FuelFi
     })
   })
   if (!rows.length && !warnings.length) warnings.push(skipped.length ? 'No fuel purchases found in this export.' : 'No rows under the header.')
-  return { header, headerRow, mapping, rows, skipped, shape, signFlipped, warnings }
+  return { header, headerRow, mapping, sampleRow: (grid[headerRow + 1] ?? []).map((c) => c.slice(0, 40)), rows, skipped, shape, signFlipped, warnings }
 }
 
 /** Two records of ONE purchase arriving by different doors (a card alert and
@@ -975,7 +977,6 @@ function presenceCheck(inp: CheckInput): CheckResult {
   const r = (outcome: CheckOutcome, evidence: string, facts: Facts, missing: MissingCode[], severity: Severity | null = null): CheckResult =>
     ({ kind: 'asset_absent', outcome, severity, evidence, facts, dollarsAtRisk: outcome === 'exception' ? txn.amount : 0, missing })
   const hasTime = txn.txnAtMs != null
-  const when = hasTime ? `at ${fmtTime(txn.txnAtMs!, tz)}` : `on ${dayWords(txn.txnDate)}`
   const missing: MissingCode[] = []
   if (!hasTime) missing.push('no_time')
   const othersLine = (): { text: string; n: number } => {
@@ -1239,7 +1240,10 @@ function localWeekdayMin(ms: number, tz: string): { day: number; min: number } {
 function areaCheck(inp: CheckInput, approvedMi: number): { outcome: 'pass' | 'exception' | 'unknown'; text: string; facts: Facts; missing: MissingCode[]; far: boolean } {
   const { txn, area, asset } = inp
   if (!txn.points.length) return { outcome: 'unknown', text: '', facts: {}, missing: ['merchant_unplaced'], far: false }
-  const zones = area.zones
+  // Where the company works: its sites, yards and vendor zones. A property
+  // BOUNDARY is a perimeter for theft alerts — drawn round a county it would
+  // approve every pump inside it — so it doesn't count.
+  const zones = area.zones.filter((z) => z.kind !== 'boundary')
   const anchors = zones.length + area.places.length + area.dayPath.length
   if (!anchors) return { outcome: 'unknown', text: '', facts: {}, missing: ['no_zones'], far: false }
   const slack = txn.precision === 'city' ? (txn.cityRadiusM ?? 8000) : 0
@@ -1271,7 +1275,7 @@ function areaCheck(inp: CheckInput, approvedMi: number): { outcome: 'pass' | 'ex
       facts, missing, far: dist > 3 * approvedMi * M_PER_MI,
     }
   }
-  return { outcome: 'pass', text: `within ${fmtDist(dist)} of ${best.to}`, facts, missing, far: false }
+  return { outcome: 'pass', text: dist === 0 ? `at ${best.to}` : `${fmtDist(dist)} from ${best.to}`, facts, missing, far: false }
 }
 
 function shiftHoursCheck(inp: CheckInput): CheckResult {
@@ -1316,10 +1320,11 @@ function shiftHoursCheck(inp: CheckInput): CheckResult {
     else passes.push('on a work day')
   }
 
-  // 2. The cardholder's shift.
-  if (!txn.cardholderUserId || !shift) missing.push('no_cardholder')
+  // 2. The cardholder's shift — only a timed purchase can be read against
+  // one, so a line without a time says "no time" once, not three ways.
+  if (txn.txnAtMs == null) { /* no_time already said */ }
+  else if (!txn.cardholderUserId || !shift) missing.push('no_cardholder')
   else if (!shift.usesClock) missing.push('no_clock')
-  else if (txn.txnAtMs == null) { /* no_time already said */ }
   else {
     anyKnown = true
     const t = txn.txnAtMs

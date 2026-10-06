@@ -306,7 +306,8 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
   LIMIT 50
 $$;
 
--- One asset's fuel gauge in a window (≤ 48 h): only the fixes that carry a
+-- One asset's fuel gauge in a window (≤ 60 h — a date-only purchase reads the
+-- day, six hours before it and the runtime window after): only the fixes that carry a
 -- level, under any key the catalog knows it by (lib/telemetry-catalog.ts).
 CREATE OR REPLACE FUNCTION public.fuel_gauge(p_company UUID, p_asset UUID, p_from TIMESTAMPTZ, p_to TIMESTAMPTZ)
 RETURNS TABLE (ts TIMESTAMPTZ, speed REAL, pct DOUBLE PRECISION)
@@ -321,7 +322,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public AS $$
       ) AS lvl
     FROM asset_locations l
     WHERE l.asset_id = p_asset AND l.company_id = p_company
-      AND l."timestamp" >= p_from AND l."timestamp" < LEAST(p_to, p_from + interval '48 hours')
+      AND l."timestamp" >= p_from AND l."timestamp" < LEAST(p_to, p_from + interval '60 hours')
   ) x
   WHERE x.lvl IS NOT NULL
   ORDER BY x.ts

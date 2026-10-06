@@ -67,6 +67,10 @@
     {
       "path": "/api/cron/satellite",
       "schedule": "35 22 * * *"
+    },
+    {
+      "path": "/api/cron/fuel-check",
+      "schedule": "35 9 * * *"
     }
   ]
 }

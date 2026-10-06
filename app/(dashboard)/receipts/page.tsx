@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { ChevronRight, Fuel } from 'lucide-react'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { getGeofences } from '@/lib/db/zones'
 import { getExpenses, type Expense } from '@/lib/db/expenses'
@@ -114,6 +116,16 @@ export default async function ReceiptsPage() {
         </div>
       ) : (
         <>
+          {perms.canViewCosts && (
+            <Link href="/receipts/fuel" className="flex items-center gap-3 rounded-xl border border-navy-700 bg-navy-900 px-4 py-3 hover:border-amber/50">
+              <Fuel className="h-4.5 w-4.5 flex-none text-amber" />
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-ink text-[13.5px]">Fuel check</span>
+                <span className="block text-[12px] text-faint">Every fuel purchase read against where the truck was, its tank and whether it ran after.</span>
+              </span>
+              <ChevronRight className="h-4 w-4 flex-none text-faint" />
+            </Link>
+          )}
           <InstantChase address={chase.address} cards={chase.cards} members={chase.members} canManage={perms.canManageBilling} ready={chase.ready} />
           <MissingReceipts open={openExpenses} suggestions={suggestions} receiptsById={receiptsById} bankSync={bankSync} />
           <ReceiptsInbox pending={pending} done={done} zoneNames={zoneNames} />
