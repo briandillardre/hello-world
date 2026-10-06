@@ -340,11 +340,32 @@ export function decodeFix(a: unknown): DrivingFix | null {
   }
 }
 
+/**
+ * Models that are over 10,000 lb GVWR as built — a one-ton pickup and up
+ * (F-350, Ram/Silverado/Sierra 3500: Class 3) and the commercial makes —
+ * read from the specs' make + model, else the asset's own name ("F750 Tool
+ * Truck", "2016 Ford F350 — Charleston"). Three-quarter-tons (F-250, 2500)
+ * stay light: their GVWR tops out at 10,000 lb. A GVWR in the specs (the VIN
+ * decoder writes it) always wins over this guess.
+ */
+const HEAVY_MODELS: RegExp[] = [
+  /\bf[- ]?(350|450|550|650|750)\b/i,
+  /\b(ram|silverado|sierra|chevy|chevrolet|gmc)\b[^0-9]{0,12}(3500|4500|5500|6500)\b/i,
+  /\b(peterbilt|kenworth|mack|freightliner|international|navistar|western star|autocar|sterling|hino|isuzu|fuso)\b/i,
+  /\b(dump truck|tri-?axle|tandem|day ?cab|semi|tractor[- ]trailer|box truck|water truck|mixer)\b/i,
+]
+
 /** Light or medium/heavy: the GVWR in the specs when known (VIN decode
- *  stores "Class 3: 10,001 - 14,000 lb"), else the map icon, else light. */
-export function vehicleClassOf(meta: Record<string, unknown> | null | undefined): VehicleClass {
+ *  stores "Class 3: 10,001 - 14,000 lb"), else the model (specs, then the
+ *  asset's name), else the map icon, else light. */
+export function vehicleClassOf(meta: Record<string, unknown> | null | undefined, name?: string | null): VehicleClass {
   const lb = gvwrLb(meta?.gvwr ?? meta?.GVWR)
   if (lb != null) return lb > 10_000 ? 'heavy' : 'light'
+  const str = (v: unknown) => (typeof v === 'string' || typeof v === 'number' ? String(v) : '')
+  const model = `${str(meta?.make)} ${str(meta?.model)}`.trim()
+  for (const text of [model, name ?? '']) {
+    if (text && HEAVY_MODELS.some((re) => re.test(text))) return 'heavy'
+  }
   const icon = meta?.icon
   if (typeof icon === 'string' && (SAFETY_METHOD.heavyIcons as readonly string[]).includes(icon)) return 'heavy'
   return 'light'

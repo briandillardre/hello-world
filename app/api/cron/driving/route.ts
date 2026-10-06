@@ -45,13 +45,13 @@ export async function GET(req: NextRequest) {
   const { addDaysKey, dayKey, safeTz, zonedMidnightMs } = await import('@/lib/dates')
   const db = createServiceClient()
 
-  const { data: assetRows, error } = await db.from('assets').select('id, company_id, type, tracker_id, metadata')
+  const { data: assetRows, error } = await db.from('assets').select('id, company_id, name, type, tracker_id, metadata')
     .eq('active', true).eq('type', 'vehicle').limit(5000)
   if (error) return NextResponse.json({ ok: false, error: 'assets read failed' }, { status: 500 })
-  const assets = ((assetRows ?? []) as { id: string; company_id: string; type: string; tracker_id: string | null; metadata: Record<string, unknown> | null }[]).filter(isScoredAsset)
+  const assets = ((assetRows ?? []) as { id: string; company_id: string; name: string | null; type: string; tracker_id: string | null; metadata: Record<string, unknown> | null }[]).filter(isScoredAsset)
   if (!assets.length) return NextResponse.json({ ok: true, vehicles: 0 })
   const companyOf = new Map(assets.map((a) => [a.id, a.company_id]))
-  // Light or medium/heavy decides the harsh-event thresholds (GVWR, else the map icon).
+  // Light or medium/heavy decides the harsh-event thresholds (GVWR, else the model, else the map icon).
   const classOf = new Map(assets.map((a) => [a.id, classOfAsset(a)]))
   const companyIds = Array.from(new Set(assets.map((a) => a.company_id)))
   const { data: cos } = await db.from('companies').select('id, digest_prefs').in('id', companyIds)

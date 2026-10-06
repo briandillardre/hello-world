@@ -39,11 +39,14 @@ const EDGE_MS = 10 * 60_000
 /** Look-back for "this truck's accelerometer events are on". */
 const ACCEL_LOOKBACK_DAYS = 30
 
-/** What gets a score: ROAD vehicles with a cellular hardware tracker
- *  (Safety Score v1 — machines and tools never enter a driving score;
- *  phones and tags are not vehicles). */
+/** What gets a score: ROAD vehicles with a tracker that records the drive —
+ *  an OBD or wired unit (an IMEI the TAC table does not know counts too, and
+ *  so does a direct-ingest `obd-001`). Never a battery unit (a TAT141 fixes
+ *  every few minutes: it cannot see a drive), a phone or a tag; machines and
+ *  tools never enter a driving score (Safety Score v1). */
+const SCORED_KINDS = new Set(['obd', 'wired', 'gps'])
 export function isScoredAsset(a: { type?: string | null; tracker_id?: string | null }): boolean {
-  return a.type === 'vehicle' && /^\d{15}$/.test((a.tracker_id ?? '').trim())
+  return a.type === 'vehicle' && SCORED_KINDS.has(trackerKind(a.tracker_id).key)
 }
 
 // ── 1. Build ────────────────────────────────────────────────────────────────
@@ -470,7 +473,7 @@ function vehicleRow(a: SafetyAsset, cur: RowLike[], prior: RowLike[], withPrior:
   const meta = (a.metadata ?? {}) as Record<string, unknown>
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : null)
   return {
-    assetId: a.id, name: a.name, type: a.type, trackerKind: trackerKind(a.tracker_id).key, vehicleClass: vehicleClassOf(meta),
+    assetId: a.id, name: a.name, type: a.type, trackerKind: trackerKind(a.tracker_id).key, vehicleClass: vehicleClassOf(meta, a.name),
     score, totals,
     trend: score.credible && before?.credible && score.score != null && before.score != null ? score.score - before.score : null,
     ident: { year: str(meta.year), make: str(meta.make), model: str(meta.model), plate: str(meta.license ?? meta.plate), vin: vin ?? str(meta.vin) },
@@ -577,8 +580,8 @@ export function insurerReady(rep: Pick<SafetyReport, 'firstDay' | 'toKey' | 'veh
 }
 
 /** Used by the cron: a vehicle-class lookup from the asset's specs and icon. */
-export function classOfAsset(a: { metadata?: Record<string, unknown> | null }): VehicleClass {
-  return vehicleClassOf(a.metadata ?? null)
+export function classOfAsset(a: { metadata?: Record<string, unknown> | null; name?: string | null }): VehicleClass {
+  return vehicleClassOf(a.metadata ?? null, a.name ?? null)
 }
 
 export type { DailyRow }

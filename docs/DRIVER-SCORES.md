@@ -42,7 +42,7 @@ to their agent. What an insurer does with it is the insurer's business.
 Harnesses — run both after ANY change to the engine, the migration or the builder:
 
 ```
-node scripts/driving-score-test.mjs                                   # 140 assertions
+node scripts/driving-score-test.mjs                                   # 143 assertions
 PSQL="psql -h localhost -p 5432 -U postgres" bash scripts/driving-sql-test/run.sh   # 51 checks, local PG 16
 ```
 
@@ -57,8 +57,11 @@ period sums (`driving_rollup`) read exactly like the day rows they sum.
 ## The method (v1)
 
 ### Scope and exposure
-- **Road vehicles only** (`assets.type = 'vehicle'`) with a cellular hardware tracker
-  (15-digit IMEI). Machines, tools and phones never get a driving score.
+- **Road vehicles only** (`assets.type = 'vehicle'`) with a tracker that records the
+  drive: an OBD or wired unit (`trackerKind` obd / wired, or a cellular IMEI the TAC
+  table does not know yet). Never a battery unit — a TAT141 fixes every few minutes
+  and cannot see a drive (four of DCG's "vehicles" carry one) — nor a phone or a tag.
+  Machines and tools never get a driving score.
 - **Exposure** = miles and hours the tracker recorded while moving: consecutive fixes
   ≤ 120 s apart (`TRACKED_GAP_S`) with an average ≥ 2 mph. A jump of ≥ 800 m with
   nothing recorded in between (unplugged, off, out of coverage) is a **data gap**,
@@ -77,8 +80,13 @@ period sums (`driving_rollup`) read exactly like the day rows they sum.
 
 - **Vehicle class**: the GVWR in the asset's specs (`metadata.gvwr` — a number in lb,
   "11,500 lb", "5,200 kg", or the VIN decoder's "Class 3: 10,001 - 14,000 lb") →
-  ≤ 10,000 lb light, else heavy; without one, the map icon (dump truck, day cab, semi,
-  mixer, box truck, water truck = heavy); else light.
+  ≤ 10,000 lb light, else heavy; without one, the model — specs make + model, else the
+  asset's name: a one-ton pickup and up (F-350/450/550/650/750, Ram/Silverado/Sierra
+  3500+) or a commercial make (Peterbilt, Kenworth, Mack, Freightliner, International,
+  Hino, Isuzu…) is heavy, a three-quarter-ton (F-250, 2500) stays light; else the map
+  icon (dump truck, day cab, semi, mixer, box truck, water truck = heavy); else light.
+  On DCG's fleet today: the F-750s and the Ram 3500 / F-350 read heavy, the F-250,
+  RAM 2500 and Tundra light.
 - An event is **scored** only when it comes from the tracker's own accelerometer
   (Teltonika Green Driving, AVL 253/254) **and** the speed stream confirms it within
   **± 3 s**: ≥ 3 mph slower (braking), ≥ 3 mph faster (launch), ≥ 10° of turn

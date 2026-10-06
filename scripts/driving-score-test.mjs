@@ -85,6 +85,12 @@ ok('GVWR typed as "11,500 lb" = heavy; "9,900" = light', D.vehicleClassOf({ gvwr
 ok('GVWR in kg is converted (5,200 kg = 11,464 lb)', D.vehicleClassOf({ gvwr: '5200 kg' }) === 'heavy')
 ok('no GVWR: a dump-truck icon = heavy, a pickup = light, nothing = light', D.vehicleClassOf({ icon: 'dump-truck' }) === 'heavy' && D.vehicleClassOf({ icon: 'pickup' }) === 'light' && D.vehicleClassOf(null) === 'light')
 ok('the GVWR outranks the icon', D.vehicleClassOf({ gvwr: 'Class 2H: 9,001 - 10,000 lb', icon: 'dump-truck' }) === 'light')
+ok('no GVWR: a one-ton by model is medium/heavy (F-350, Ram 3500), a three-quarter-ton is light',
+  D.vehicleClassOf({ make: 'Ford', model: 'F-350', icon: 'pickup' }) === 'heavy' && D.vehicleClassOf({ make: 'Ram', model: '3500' }) === 'heavy'
+  && D.vehicleClassOf({ make: 'RAM', model: '2500', icon: 'pickup' }) === 'light' && D.vehicleClassOf({ make: 'Ford', model: 'F-250' }) === 'light')
+ok('…and by the asset\'s own name when the specs are empty', D.vehicleClassOf({}, 'F750 Tool Truck') === 'heavy' && D.vehicleClassOf(null, '2016 Ford F350 — Charleston') === 'heavy'
+  && D.vehicleClassOf(null, 'Chevy 1500 — Owner') === 'light' && D.vehicleClassOf(null, 'Peterbilt 567 Tri-Axle') === 'heavy')
+ok('…but a GVWR in the specs still wins over the model', D.vehicleClassOf({ gvwr: 'Class 2H: 9,001 - 10,000 lb', model: 'F-350' }) === 'light')
 
 // ── Thresholds by class ─────────────────────────────────────────────────────
 ok('light braking: 0.32 g is an event, 0.31 is not', D.harshSeverity('harsh_brake', 0.32, 'light') === 'moderate' && D.harshSeverity('harsh_brake', 0.31, 'light') === null)

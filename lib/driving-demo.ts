@@ -80,7 +80,7 @@ export function demoDriving(fromKey: string, toKey: string, tz: string): { rows:
   const events: DemoEvent[] = []
   for (const p of PERSONAS) {
     const asset = MOCK_ASSETS.find((a) => a.id === p.assetId)
-    const vclass = vehicleClassOf((asset?.metadata ?? null) as Record<string, unknown> | null)
+    const vclass = vehicleClassOf((asset?.metadata ?? null) as Record<string, unknown> | null, asset?.name)
     const path = (MOCK_PATHS[p.assetId] ?? []).map(pt)
     // The demo stage is compact: the shared artery runs through the sites,
     // so "the road" is the stretch of each route outside every zone.
@@ -191,7 +191,7 @@ export function demoSafety(opts: SafetyOpts & { days: number; fromKey: string; t
     const score = scoreTotals(t, { fleetMean })
     const before = opts.withPrior ? scoreTotals(sumDaily(prior.filter((r) => r.asset_id === p.assetId)), { fleetMean }) : null
     return {
-      assetId: a.id, name: a.name, type: a.type, trackerKind: 'obd', vehicleClass: vehicleClassOf(meta), score, totals: t,
+      assetId: a.id, name: a.name, type: a.type, trackerKind: 'obd', vehicleClass: vehicleClassOf(meta, a.name), score, totals: t,
       trend: score.credible && before?.credible && score.score != null && before.score != null ? score.score - before.score : null,
       ident: { year: meta.year != null ? String(meta.year) : null, make: (meta.make as string) ?? null, model: (meta.model as string) ?? null, plate: null, vin: null },
     }

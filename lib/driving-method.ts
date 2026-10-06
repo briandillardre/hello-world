@@ -22,7 +22,7 @@ export function methodSections(): MethodSection[] {
     {
       title: 'Scope and exposure',
       body: [
-        'Road vehicles only — pickups, vans, dump trucks and tractors. Machines and tools never enter a driving score.',
+        'Road vehicles only — pickups, vans, dump trucks and tractors. Machines and tools never enter a driving score, and neither does a vehicle carrying only a battery tracker (it records a position every few minutes, too seldom to see a drive).',
         'Every vehicle carries a cellular tracker plugged into its diagnostic port (or wired in). While the truck moves it records position and speed every 1–6 seconds; parked, it checks in about hourly.',
         'Exposure is the miles and hours the tracker recorded while the truck was moving (consecutive records no more than two minutes apart). Driving with no records in between — tracker unplugged, switched off, or out of coverage — is reported as a data gap, never counted as driving. Days are cut at midnight in the company\'s own time zone.',
       ],
@@ -30,7 +30,7 @@ export function methodSections(): MethodSection[] {
     {
       title: 'Harsh events (scored from the accelerometer only)',
       body: [
-        `Light vehicles (10,000 lb GVWR or less): hard braking ${L.harsh_brake} g (${ms2(L.harsh_brake)} m/s², about ${mphps(L.harsh_brake)} mph lost per second), hard launch ${L.harsh_accel} g, hard cornering ${L.harsh_corner} g. Medium and heavy trucks: ${Hv.harsh_brake} g, ${Hv.harsh_accel} g, ${Hv.harsh_corner} g. Severe at ${M.severeFactor}× the threshold. Cornering counts at 30 km/h (19 mph) and up. The class comes from the GVWR in the vehicle's specs, else its type on the map (dump truck, day cab, semi, mixer, box or water truck = heavy), else light.`,
+        `Light vehicles (10,000 lb GVWR or less): hard braking ${L.harsh_brake} g (${ms2(L.harsh_brake)} m/s², about ${mphps(L.harsh_brake)} mph lost per second), hard launch ${L.harsh_accel} g, hard cornering ${L.harsh_corner} g. Medium and heavy trucks: ${Hv.harsh_brake} g, ${Hv.harsh_accel} g, ${Hv.harsh_corner} g. Severe at ${M.severeFactor}× the threshold. Cornering counts at 30 km/h (19 mph) and up. The class comes from the GVWR in the vehicle's specs, else its model (a one-ton pickup — F-350, 3500 — and up, or a commercial make, is medium/heavy), else its type on the map (dump truck, day cab, semi, mixer, box or water truck = heavy), else light.`,
         `An event is SCORED only when it comes from the tracker's own accelerometer (Teltonika "Green Driving", configured to these thresholds) AND the speed stream confirms it within ±${M.confirm.windowS} seconds: at least ${M.confirm.minMph} mph slower (braking) or faster (launch), or at least ${M.confirm.minTurnDeg}° of turn (cornering) — from the truck's own speedometer where it reports one, otherwise GPS. A spike the speed does not confirm (a pothole, a dropped tool) is listed as unconfirmed and not scored.`,
         `Until the accelerometer is switched on, harsh events are not measured and the score is speeding plus late night. Hard stops and launches ESTIMATED from GPS speed are shown for coaching only and never scored (records ${GPS_RULES.minDtS}–${GPS_RULES.maxDtS} s apart at ${GPS_RULES.minMph}+ mph; invalid fixes, out-of-step event records, single wild readings, anything past ${GPS_RULES.maxG} g, and speeds that disagree with the ground covered are all thrown out).`,
         'Possible impacts (the tracker\'s crash detection, 1.5 g for 5 ms) are listed with time and place, never scored automatically.',
