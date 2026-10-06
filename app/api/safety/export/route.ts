@@ -5,7 +5,7 @@ import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getAssets } from '@/lib/db/assets'
 import { getSafetyReport, insurerReady, listSafetyEvents } from '@/lib/db/driving'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
-import { KIND_LABEL, toCsv, type SafetyScore } from '@/lib/driving-score'
+import { KIND_LABEL, measuredCount, toCsv, type SafetyScore } from '@/lib/driving-score'
 import { safeTz } from '@/lib/dates'
 
 export const dynamic = 'force-dynamic'
@@ -22,7 +22,9 @@ type Kind = (typeof KINDS)[number]
  * trailing 12 months. Same gate as the report — the billing ability, never a
  * view-as preview, never a Prospective Client — and the same history floor
  * (90 days, 3 scored vehicles). No per-driver data and no coordinates: the
- * file is meant to leave the company.
+ * file is meant to leave the company. A count nobody measured is a BLANK
+ * cell, never a 0: harsh events while the accelerometer was off, and the
+ * impact / jamming / towing detectors that ship switched off with it.
  */
 export async function GET(req: NextRequest) {
   const kind = new URL(req.url).searchParams.get('kind') as Kind | null
@@ -62,18 +64,26 @@ export async function GET(req: NextRequest) {
         'Late night % time (12-4 AM)', 'Evening % time (10 PM-12, not scored)',
         'Accelerometer', 'Speed source', 'Miles with known limit %', 'Device uptime %', 'Driving recorded %',
         'Unplugged or lost power', 'Jamming events', 'Towing events', 'GPS jumps refused', 'Data quality'],
-      report.vehicles.map((v) => [
-        v.name, v.ident.year, v.ident.make, v.ident.model, v.ident.vin, v.ident.plate, v.vehicleClass === 'heavy' ? 'medium/heavy' : 'light',
-        round1(v.score.miles), round1(v.score.hours), v.score.engineHours ? round1(v.score.engineHours) : '',
-        ...scoreCells(v.score),
-        v.score.per1000.harsh_brake, v.score.per1000.harsh_corner, v.score.per1000.harsh_accel,
-        v.score.counts.harsh_brake, v.score.counts.harsh_brake_severe, v.score.counts.harsh_corner, v.score.counts.harsh_accel,
-        v.score.quality.unconfirmed, v.score.counts.est_brake, v.score.counts.crash,
-        v.score.speedPct.severe, v.score.speedPct.heavy, v.score.speedPct.moderate, v.score.counts.max_speed,
-        v.score.lateNightPct, v.score.eveningPct,
-        v.score.quality.accelerometer, v.score.quality.speedSource, v.score.quality.limitPct, v.score.quality.uptimePct, v.score.quality.coveragePct,
-        v.score.quality.unplugged, v.score.quality.jamming, v.score.quality.towing, v.score.quality.rejects, v.score.quality.verdict,
-      ]),
+      report.vehicles.map((v) => {
+        const s = v.score, q = s.quality
+        // Accelerometer counts (confirmed or not) exist only where it was on —
+        // the rate is null otherwise; GPS estimates only where it was off. A
+        // count above zero was measured either way.
+        const harsh = (n: number) => (n > 0 || s.per1000.harsh_brake != null ? n : null)
+        return [
+          v.name, v.ident.year, v.ident.make, v.ident.model, v.ident.vin, v.ident.plate, v.vehicleClass === 'heavy' ? 'medium/heavy' : 'light',
+          round1(s.miles), round1(s.hours), s.engineHours ? round1(s.engineHours) : '',
+          ...scoreCells(s),
+          s.per1000.harsh_brake, s.per1000.harsh_corner, s.per1000.harsh_accel,
+          harsh(s.counts.harsh_brake), harsh(s.counts.harsh_brake_severe), harsh(s.counts.harsh_corner), harsh(s.counts.harsh_accel),
+          harsh(q.unconfirmed), q.accelerometer === 'on' && !s.counts.est_brake ? null : s.counts.est_brake,
+          measuredCount(s.counts.crash, q.accelerometer),
+          s.speedPct.severe, s.speedPct.heavy, s.speedPct.moderate, s.counts.max_speed,
+          s.lateNightPct, s.eveningPct,
+          q.accelerometer, q.speedSource, q.limitPct, q.uptimePct, q.coveragePct,
+          q.unplugged, measuredCount(q.jamming, q.accelerometer), measuredCount(q.towing, q.accelerometer), q.rejects, q.verdict,
+        ]
+      }),
     )
   } else if (kind === 'months') {
     csv = toCsv(
@@ -84,11 +94,11 @@ export async function GET(req: NextRequest) {
         m.month, m.vehicles, round1(m.score.miles), round1(m.score.hours), ...scoreCells(m.score),
         m.score.per1000.harsh_brake, m.score.per1000.harsh_corner, m.score.per1000.harsh_accel,
         m.score.speedPct.severe, m.score.speedPct.heavy, m.score.speedPct.moderate, m.score.counts.max_speed, m.score.lateNightPct,
-        m.score.counts.crash, m.score.quality.accelerometer,
+        measuredCount(m.score.counts.crash, m.score.quality.accelerometer), m.score.quality.accelerometer,
       ]),
     )
   } else {
-    const events = await listSafetyEvents(db, { companyId, tz, fromKey: report.fromKey, toKey: report.toKey, assets })
+    const events = await listSafetyEvents({ companyId, tz, fromKey: report.fromKey, toKey: report.toKey, assets })
     const vin = new Map(report.vehicles.map((v) => [v.assetId, v.ident.vin]))
     const date = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
     const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })

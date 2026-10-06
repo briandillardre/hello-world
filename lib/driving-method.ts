@@ -62,18 +62,18 @@ export function methodSections(): MethodSection[] {
     {
       title: 'Data quality, printed with every score',
       body: [
-        'Event source (accelerometer on, partly on, or off; confirmed and unconfirmed counts; GPS estimates), speed source (the truck\'s own speedometer vs GPS), share of miles with a known speed limit, device uptime (days reporting), share of driving actually recorded, times the tracker lost truck power or was unplugged, GPS or cell jamming, towing, impossible GPS jumps refused at the door, and the share of miles tied to a named driver.',
+        'Event source (accelerometer on, partly on, or off; confirmed and unconfirmed counts; GPS estimates), speed source (the truck\'s own speedometer vs GPS), share of miles with a known speed limit, device uptime (days reporting), share of driving actually recorded, times the tracker lost truck power or was unplugged, GPS or cell jamming, towing, impossible GPS jumps refused at the door, and the share of miles tied to a named driver. Possible impacts, jamming and towing come from detectors that are switched on with the accelerometer; while they are off those lines read "not measured", never zero.',
       ],
     },
     {
       title: 'Drivers',
       body: [
-        'A drive is matched to a person only when their phone — clocked in on the HammerTrack app — rides within 150 m of the moving truck for five minutes or more, and it counts toward that person only when theirs was the only phone aboard. Per-driver results stay inside the company and are not part of this report.',
+        'A drive is matched to a person only when their phone — clocked in on the HammerTrack app — rides within 150 m of the moving truck for five minutes or more, and it counts toward that person only when theirs was the only phone aboard. A phone the company hides from part of its own team still counts as a phone aboard but is never named. Per-driver results stay inside the company — each person\'s are seen only by them and the people above them — and are not part of this report.',
       ],
     },
     {
       title: 'Version',
-      body: [`HammerTrack Safety Score v${M.version}. When the method changes the version changes and past days are recalculated under it. The thresholds and weights start from published industry defaults and will be recalibrated once enough history exists.`],
+      body: [`HammerTrack Safety Score v${M.version}. When the method changes, the version changes and every day of the last 12 months is recalculated under it, in hourly batches — each day with the accelerometer status it had at the time. The thresholds and weights start from published industry defaults and will be recalibrated once enough history exists.`],
     },
   ]
 }

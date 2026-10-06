@@ -46,7 +46,7 @@ const FEATURES = [
   { icon: Users, title: 'Run the job on it', body: 'Punch lists, milestones, and budget burn per site — plus crew clock-in and zone-verified daily logs.' },
   { icon: Banknote, title: 'Books that keep themselves', body: 'Job-cost sync into QuickBooks (connecting soon), live budget burn per site, and a "snap the receipt?" ping seconds after a company card swipes (coming — turns on with your card alerts).' },
   { icon: Wrench, title: 'A shop that stays ahead', body: 'Service schedules open their own work orders when they come due — assign, track parts & labor, done.' },
-  { icon: Calculator, title: 'Know what it all earns', body: 'Utilization and driver-safety grades per machine, margins vs your trade, and a live company valuation.' },
+  { icon: Calculator, title: 'Know what it all earns', body: 'Utilization per machine, driver-safety grades per truck, margins vs your trade, and a live company valuation.' },
 ]
 
 // Ladder bullets: strings are shipped features (✓); `roadmap: true` renders

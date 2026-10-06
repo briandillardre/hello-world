@@ -246,8 +246,7 @@ export default async function SafetyPage({ searchParams }: { searchParams?: { da
           <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">{picked ? `${picked.name} — events` : 'Recent events'}</h2>
           {picked && <Link href={`/reports/safety?days=${days}`} className="text-[11.5px] text-teal hover:underline">all vehicles</Link>}
         </div>
-        <EventList events={report.events} tz={tz} showAsset={!picked}
-          empty={picked ? 'No events for this vehicle in this period.' : 'No events in this period — no hard stops, corners, launches, impacts or speeding.'} />
+        <EventList events={report.events} tz={tz} showAsset={!picked} empty={noEventsWords((picked?.score ?? report.fleet).quality.accelerometer, !!picked)} />
       </section>
 
       <p className="text-[11px] text-faint leading-relaxed">
@@ -258,6 +257,18 @@ export default async function SafetyPage({ searchParams }: { searchParams?: { da
       </p>
     </Shell>
   )
+}
+
+/** An empty event list says only what was measured: with the accelerometer
+ *  off, "no hard stops" would be a zero nobody measured. */
+function noEventsWords(accel: 'on' | 'partial' | 'off', oneVehicle: boolean): string {
+  if (accel === 'on') return oneVehicle ? 'No events for this vehicle in this period.' : 'No events in this period — no hard stops, corners, launches, impacts or speeding.'
+  if (accel === 'partial') {
+    return `No events ${oneVehicle ? 'for this vehicle ' : ''}in this period. Hard stops, corners, launches and impacts are only measured on the days ${oneVehicle ? 'its' : 'a truck\'s'} accelerometer was on.`
+  }
+  return oneVehicle
+    ? 'No events for this vehicle in this period. Hard stops, corners, launches and impacts aren\'t measured until its accelerometer is on.'
+    : 'No events in this period. Hard stops, corners, launches and impacts aren\'t measured until the trucks\' accelerometers are on.'
 }
 
 function Shell({ children, days, assetQuery, canInsurer, sub }: { children: ReactNode; days: number; assetQuery: string | null; canInsurer: boolean; sub?: string }) {

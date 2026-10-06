@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import type { DataQuality, Grade, SafetyScore, ScoreComponent } from '@/lib/driving-score'
+import { measuredCount, type DataQuality, type Grade, type SafetyScore, type ScoreComponent } from '@/lib/driving-score'
 import type { SafetyEvent } from '@/lib/db/driving'
 import { fmtDateTime } from '@/lib/dates'
 
@@ -110,19 +110,24 @@ export function QualityNotes({ q }: { q: DataQuality }) {
   )
 }
 
-/** The data-quality block as a grid of plain facts (every score carries it). */
+/** The data-quality block as a grid of plain facts (every score carries it).
+ *  A count nobody measured says so — never a 0 (the impact, jamming and
+ *  towing detectors ship switched off with the accelerometer). Part of the
+ *  time on, the counts stand: the "Harsh events" cell says how much. */
 export function QualityGrid({ q }: { q: DataQuality }) {
   const pctOr = (x: number | null, none = '—') => (x == null ? none : `${x}%`)
+  const det = (n: number) => measuredCount(n, q.accelerometer === 'partial' ? 'on' : q.accelerometer)
+  const jam = det(q.jamming), tow = det(q.towing)
   const cells: [string, string, boolean][] = [
     ['Harsh events', q.accelerometer === 'on' ? 'accelerometer' : q.accelerometer === 'partial' ? 'accelerometer, part of the time' : 'not measured yet', q.accelerometer !== 'on'],
-    ['Confirmed · unconfirmed', `${q.confirmed} · ${q.unconfirmed}`, q.unconfirmed > 0],
-    ['GPS estimates (not scored)', String(q.estimated), false],
+    ['Confirmed · unconfirmed', q.accelerometer === 'off' && !q.confirmed && !q.unconfirmed ? 'not measured' : `${q.confirmed} · ${q.unconfirmed}`, q.unconfirmed > 0],
+    ['GPS estimates (not scored)', q.accelerometer === 'on' && !q.estimated ? 'not used (accelerometer on)' : String(q.estimated), false],
     ['Speed source', q.speedSource === 'obd' ? 'truck speedometer' : q.speedSource === 'mixed' ? `speedometer ${q.obdPct}%` : 'GPS', q.speedSource !== 'obd'],
     ['Miles with a known limit', pctOr(q.limitPct), false],
     ['Device uptime', pctOr(q.uptimePct), q.uptimePct != null && q.uptimePct < 90],
     ['Driving recorded', pctOr(q.coveragePct), q.coveragePct != null && q.coveragePct < 95],
     ['Unplugged / power lost', String(q.unplugged), q.unplugged > 0],
-    ['Jamming · towing', `${q.jamming} · ${q.towing}`, q.jamming > 0],
+    ['Jamming · towing', jam == null && tow == null ? 'not measured' : `${jam ?? 'not measured'} · ${tow ?? 'not measured'}`, q.jamming > 0],
     ['GPS jumps refused', String(q.rejects), false],
     ['Miles tied to a driver', pctOr(q.attributedPct), false],
   ]
