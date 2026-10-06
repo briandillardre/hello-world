@@ -106,6 +106,10 @@ export const TANK_TOL_MIN_GAL = 2
 export const TANK_TOL_PCT = 0.1
 /** Extra tolerance when the gallons are estimated from dollars at a default price. */
 export const EST_TOL_PCT = 0.15
+/** A city-only station whose measured radius was lost (the geocode cache row
+ *  is gone): how far round the city's middle it may be. The measured radius
+ *  is always used when there is one. */
+export const CITY_RADIUS_FALLBACK_M = 8000
 
 export interface PilotSettings {
   /** Default $/gal — used ONLY to estimate gallons on a row that has none. */
@@ -118,11 +122,21 @@ export interface PilotSettings {
 }
 export const DEFAULT_SETTINGS: PilotSettings = { gasPrice: 3.1, dieselPrice: 3.6, areaMiles: 5, runtimeHours: 24 }
 
-/** Clamp a stored or typed settings blob to sane values. */
+/** What a real pump price can be, $/gal. Gallons are only ESTIMATED from
+ *  dollars at a default price inside this window, and the settings refuse a
+ *  price outside it: a $0.50 default turns a $60 fill into "120 gal" and
+ *  flags every estimated purchase. */
+export const PUMP_PRICE_MIN = 1
+export const PUMP_PRICE_MAX = 10
+export const pumpPriceOk = (p: number) => Number.isFinite(p) && p >= PUMP_PRICE_MIN && p <= PUMP_PRICE_MAX
+
+/** Clamp a stored or typed settings blob to sane values. Zero or less is never
+ *  a setting — it is a cleared box (Number('') is 0) — so it falls back to
+ *  the default instead of clamping up to the floor. */
 export function cleanSettings(raw: Partial<Record<keyof PilotSettings, unknown>> | null | undefined): PilotSettings {
   const num = (v: unknown, lo: number, hi: number, d: number) => {
     const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
-    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d
+    return Number.isFinite(n) && n > 0 ? Math.min(hi, Math.max(lo, n)) : d
   }
   return {
     gasPrice: Math.round(num(raw?.gasPrice, 0.5, 15, DEFAULT_SETTINGS.gasPrice) * 1000) / 1000,
@@ -130,6 +144,17 @@ export function cleanSettings(raw: Partial<Record<keyof PilotSettings, unknown>>
     areaMiles: Math.round(num(raw?.areaMiles, 0.5, 100, DEFAULT_SETTINGS.areaMiles) * 10) / 10,
     runtimeHours: Math.round(num(raw?.runtimeHours, 4, 96, DEFAULT_SETTINGS.runtimeHours)),
   }
+}
+
+/** A settings SAVE: each field the form left blank, zero, negative or
+ *  unreadable keeps its saved value; the rest are clamped like any setting. */
+export function mergeSettings(stored: PilotSettings, input: Partial<Record<keyof PilotSettings, unknown>> | null | undefined): PilotSettings {
+  const pick = (k: keyof PilotSettings): number => {
+    const v = input?.[k]
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN
+    return Number.isFinite(n) && n > 0 ? n : stored[k]
+  }
+  return cleanSettings({ gasPrice: pick('gasPrice'), dieselPrice: pick('dieselPrice'), areaMiles: pick('areaMiles'), runtimeHours: pick('runtimeHours') })
 }
 
 // ── Small parsers ───────────────────────────────────────────────────────────
@@ -776,7 +801,10 @@ export interface CheckTxn {
   precision: GeoPrecision | null
   /** "Spinx · Goose Creek" — how the evidence names the station. */
   placeLabel: string | null
-  /** Rough radius of the city when only the city is known, metres. */
+  /** How far round `points[0]` the station may be when it is placed only to
+   *  the city (precision `city`), metres: the radius the geocoder measured —
+   *  1,500 round a street address it couldn't pin to a station, the town's
+   *  own size (1.5–25 km) for a town. Unknown → CITY_RADIUS_FALLBACK_M. */
   cityRadiusM?: number | null
   cardLast4: string | null
   cardholderUserId: string | null
@@ -909,19 +937,42 @@ export function checkWindows(txn: Pick<CheckTxn, 'txnDate' | 'txnAtMs'>, setting
 
 /** Gallons for the tank check: as exported, from the pump price, or estimated
  *  from dollars at the default price for the product (the vehicle's fuel type
- *  when the line doesn't say). */
+ *  when the line doesn't say). `priceOk` is false for an estimate made at a
+ *  default that isn't a pump price — nothing is concluded from (or stored
+ *  off) that one. */
 export function resolveGallons(txn: Pick<CheckTxn, 'gallons' | 'unitPrice' | 'amount' | 'product'>, asset: Pick<CheckAsset, 'fuelType'> | null, settings: PilotSettings):
-  { gallons: number; estimated: boolean; price: number; how: string } {
+  { gallons: number; estimated: boolean; price: number; priceOk: boolean; how: string } {
   if (txn.gallons != null && txn.gallons > 0) {
     const price = txn.unitPrice ?? txn.amount / txn.gallons
-    return { gallons: txn.gallons, estimated: false, price, how: 'from the export' }
+    return { gallons: txn.gallons, estimated: false, price, priceOk: true, how: 'from the export' }
   }
   if (txn.unitPrice != null && txn.unitPrice > 0) {
-    return { gallons: txn.amount / txn.unitPrice, estimated: false, price: txn.unitPrice, how: `${money(txn.amount)} at ${money(txn.unitPrice)}/gal` }
+    return { gallons: txn.amount / txn.unitPrice, estimated: false, price: txn.unitPrice, priceOk: true, how: `${money(txn.amount)} at ${money(txn.unitPrice)}/gal` }
   }
   const kind = txn.product === 'diesel' || txn.product === 'gas' ? txn.product : asset?.fuelType ?? 'gas'
   const price = kind === 'diesel' ? settings.dieselPrice : settings.gasPrice
-  return { gallons: txn.amount / price, estimated: true, price, how: `estimated from ${money(txn.amount)} at ${money(price)}/gal ${kind}` }
+  return { gallons: txn.amount / price, estimated: true, price, priceOk: pumpPriceOk(price), how: `estimated from ${money(txn.amount)} at ${money(price)}/gal ${kind}` }
+}
+
+/** The fuel_transactions.gallons column holds a real fill: 0–2,000 gal (the
+ *  import's bound and the column's CHECK). */
+export const MAX_FILL_GAL = 2000
+
+/**
+ * What a check run writes back to a purchase's gallons (the runner in
+ * lib/db/fuel-check.ts): the estimate the tank check made, when it was made at
+ * a pump price and is the size of a real fill; or — when this run tried to
+ * estimate and can't stand behind it — the estimate an earlier run stored,
+ * taken back. Gallons the export carried are never touched. null = no change.
+ */
+export function gallonsWriteBack(row: { gallons: number | null; gallonsEstimated: boolean }, tank: Pick<CheckResult, 'facts'> | null | undefined):
+  { gallons: number | null; gallons_estimated: boolean } | null {
+  if (row.gallons != null && !row.gallonsEstimated) return null
+  const f = tank?.facts
+  if (!f || f.estimated !== true) return null
+  const est = f.priceOk !== false && typeof f.gallons === 'number' && f.gallons > 0 && f.gallons < MAX_FILL_GAL ? f.gallons : null
+  if (est != null) return { gallons: est, gallons_estimated: true }
+  return row.gallonsEstimated && row.gallons != null ? { gallons: null, gallons_estimated: false } : null
 }
 
 /** Merge stop clusters that are one stop (cell boundaries, a short shuffle):
@@ -1136,6 +1187,10 @@ function tankCheck(inp: CheckInput, win: CheckWindows): CheckResult {
   const g = resolveGallons(txn, asset, settings)
   const missing: MissingCode[] = []
   if (g.estimated) missing.push('gallons_estimated')
+  if (!g.priceOk) {
+    return r('unknown', `No gallons on this purchase, and the default price it would be estimated at (${money(g.price)}/gal) isn't a pump price — fix it in Pilot settings.`,
+      { estimated: true, priceOk: false }, asset.tankGal ? missing : [...missing, 'no_tank_size'])
+  }
   if (!asset.tankGal) {
     return r('unknown', `${asset.name}'s tank size isn't set — ${g.estimated ? 'about ' : ''}${gal(g.gallons)} can't be compared to anything.`, { gallons: round1(g.gallons) }, [...missing, 'no_tank_size'])
   }
@@ -1246,7 +1301,7 @@ function areaCheck(inp: CheckInput, approvedMi: number): { outcome: 'pass' | 'ex
   const zones = area.zones.filter((z) => z.kind !== 'boundary')
   const anchors = zones.length + area.places.length + area.dayPath.length
   if (!anchors) return { outcome: 'unknown', text: '', facts: {}, missing: ['no_zones'], far: false }
-  const slack = txn.precision === 'city' ? (txn.cityRadiusM ?? 8000) : 0
+  const slack = txn.precision === 'city' ? (txn.cityRadiusM != null && txn.cityRadiusM > 0 ? txn.cityRadiusM : CITY_RADIUS_FALLBACK_M) : 0
   // The candidate station closest to anything the company does is the generous read.
   let best = { m: Infinity, to: '' }
   for (const p of txn.points) {

@@ -1,5 +1,6 @@
 /**
- * Migration 130 (the fuel pilot), applied for real before it ships: PGlite
+ * Migration 130 (the fuel pilot) and 135 (its review pass: the table grants),
+ * applied for real before they ship: PGlite
  * (Postgres 17 compiled to WASM, in-process — no server, no root) runs the
  * migration VERBATIM over stubbed Supabase pieces (auth.uid, profiles, the
  * 119 lockdown function as shipped, 111's asset ladder) and a stubbed PostGIS
@@ -69,9 +70,33 @@ await db.exec(`
     lat float8, lng float8, geom geometry, speed real, ignition boolean, "timestamp" timestamptz, raw jsonb);
 `)
 
+// Supabase grants every table created in public to anon and authenticated
+// (default privileges) — 130's tables were born with them, as production showed.
+await db.exec(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated`)
+
 const sql = readFileSync(MIGRATION, 'utf8')
 try { await db.exec(sql); ok('migration applies', true) } catch (e) { ok('migration applies', false, e.message) }
 try { await db.exec(sql); ok('migration re-applies (idempotent)', true) } catch (e) { ok('migration re-applies (idempotent)', false, e.message) }
+
+// ── 135: the review pass takes the writes (and anon) back ──────────────────
+const FUEL_TABLES = ['fuel_pilot', 'fuel_card_assets', 'fuel_transactions', 'fuel_exceptions', 'fuel_merchant_places']
+const has = async (role, table, p) => (await db.query(`SELECT has_table_privilege($1, $2, $3) AS h`, [role, `public.${table}`, p])).rows[0].h
+ok('before 135: a session may TRUNCATE the purchases and anon may insert a pilot row (the review finding)',
+  await has('authenticated', 'fuel_transactions', 'TRUNCATE') && await has('anon', 'fuel_pilot', 'INSERT'))
+const M135 = readFileSync(new URL('../supabase/migrations/135_fuel_satellite_review.sql', import.meta.url), 'utf8')
+try { await db.exec(M135); ok('135 applies', true) } catch (e) { ok('135 applies', false, e.message) }
+try { await db.exec(M135); ok('135 re-applies (idempotent)', true) } catch (e) { ok('135 re-applies (idempotent)', false, e.message) }
+for (const t of FUEL_TABLES) {
+  const anon = []
+  for (const p of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) if (await has('anon', t, p)) anon.push(p)
+  ok(`135: anon holds nothing on ${t}`, anon.length === 0, anon)
+  const writes = []
+  for (const p of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) if (await has('authenticated', t, p)) writes.push(p)
+  ok(`135: a session writes nothing to ${t}`, writes.length === 0, writes)
+  // Reads stay with the policies (the cache stays closed, as 130 left it).
+  ok(`135: a session ${t === 'fuel_merchant_places' ? 'still cannot read the cache' : 'still reads ' + t + ' (RLS decides what)'}`,
+    await has('authenticated', t, 'SELECT') === (t !== 'fuel_merchant_places'))
+}
 
 // ── Data ────────────────────────────────────────────────────────────────────
 const C1 = '11111111-1111-1111-1111-111111111111'
@@ -105,7 +130,10 @@ for (const t of [T1, T2, T3]) {
 }
 
 // ── RLS ─────────────────────────────────────────────────────────────────────
-await db.exec(`GRANT USAGE ON SCHEMA public, auth TO authenticated; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;`)
+// The stand-in Supabase tables get a session's usual grants; the fuel tables
+// keep exactly what 130 + 135 left them (SELECT only — RLS decides the rows).
+await db.exec(`GRANT USAGE ON SCHEMA public, auth TO authenticated;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON companies, profiles, assets, expenses, geofences, asset_locations TO authenticated;`)
 async function as(uid, q, params = []) {
   await db.exec(`RESET ROLE`)
   await db.query(`SELECT set_config('test.uid', $1, false)`, [uid])
@@ -209,5 +237,5 @@ for (const h of [50, 65]) {
 const longGauge = (await db.query(`SELECT * FROM fuel_gauge($1, $2, $3, $4)`, [C1, A, new Date(t0 - 3_600_000).toISOString(), new Date(t0 + 70 * 3_600_000).toISOString()])).rows
 ok('gauge: a 54-hour date-only window is read whole; past 60 h it is cut', longGauge.some((g) => new Date(g.ts).getTime() === t0 + 50 * 3_600_000) && !longGauge.some((g) => new Date(g.ts).getTime() === t0 + 65 * 3_600_000))
 
-console.log(`migration 130 (PGlite): ${pass} passed, ${fail} failed`)
+console.log(`migrations 130 + 135 (PGlite): ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
