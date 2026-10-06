@@ -33,6 +33,7 @@ privacy zones too.
 |---|---|---|---|---|
 | Shift recorder (`/api/clock/fix`) | on the clock | outside privacy zones | **yes** — up to every 30 s, sooner after a 40 m move | — |
 | Shift recorder | on the clock | inside a privacy zone | **no** (the clock card says "Paused — you're in a privacy zone") | — |
+| Driver safety score (`/api/cron/driving`, migration 129) reading the shift recorder's points | on the clock | riding in a company road vehicle as the **only** phone aboard (≤ 150 m of the moving truck for 5+ min) | **no new point** — the kept shift points are matched to the truck, and its speeding, hard stops and late-night miles count toward that person's driver safety score, seen by them and anyone who outranks them (the company-key MCP door is admin-grade and sees every driver); never in the insurer report. With other phones aboard, only "rode along" miles are noted | — |
 | Tag listener (`/api/ingest/ble-phone`) | on the clock | outside privacy zones | **yes** — on the person's `phone-<uid>` asset | **custody**: they ride WITH the phone (tool_associations + pairing_log name it), exact |
 | Tag listener | on the clock | inside a privacy zone | **no** | **anonymous**, at the zone's centre |
 | Tag listener | off the clock | anywhere outside zones | **no** — the phone asset is not touched, not even created | **anonymous**, on a ~250 m grid cell |
@@ -188,10 +189,24 @@ punch only as **"in a privacy zone"** — never the zone's name or a street
 the page every role can open) and inside the shift recorder's location
 disclosure ("Exactly what HammerTrack records about you", opened in place).
 Every line is what the code does; **change the code and the card in the same
-commit.** The tag-listener switch card (`GatewayToggle`), its first-run
-primer (`PhoneGateway`) and the Tool tags help guide say the same thing in
-fewer words, and the tag listener's status line says which way each report
-was filed ("off the clock — tags' rough area only, nothing of yours kept").
+commit.** The same facts, in fewer words: the shift recorder's disclosure
+(`ShiftTracker` — Play's prominent disclosure; it names the driver safety
+score), the one-time location primer (`LocationPrimer`), the tag-listener
+switch card (`GatewayToggle`) and its first-run primer (`PhoneGateway`), the
+zone page's `PrivacyZoneCard`, the asset page's `RecoveryCard`, the Tool tags
+and Clock in help guides, and the public policy at `/privacy`. The tag
+listener's status line says which way each report was filed ("off the clock
+— tags' rough area (exact for an item in recovery), nothing that says it was
+you").
+
+Two facts every surface keeps straight:
+
+- The phone sends its fix when it hears **any** tag — it cannot tell a
+  company tag from a shop's beacon (`tagShaped` in `lib/ble.ts`) — and off
+  the clock the server keeps nothing for a tag that is not a company tool.
+- A clock-in or clock-out tap, a photo and a receipt keep their spot even
+  inside a privacy zone, so no surface says "nothing is kept" without
+  "automatic" (or "no shift points").
 
 ## Deferred, and why
 

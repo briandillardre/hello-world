@@ -388,9 +388,12 @@ export function PhoneGateway({ allowed = true }: {
         </div>
         <p className="text-[13px] text-muted leading-relaxed">
           While the app is open, HammerTrack listens for the Bluetooth tags on your company&apos;s
-          tools. On the clock, the tools near you show on the map riding with you — the way tools
-          ride with a truck. Off the clock it keeps only a tag&apos;s rough area, never where you
-          are. It only listens for tags; it never connects to anything else.
+          tools. A phone can&apos;t tell those from a shop&apos;s, so when it hears any tag it sends
+          the phone&apos;s location for HammerTrack to check the tag against your tools — one that
+          isn&apos;t your company&apos;s is dropped. On the clock, the tools near you show on the map
+          riding with you — the way tools ride with a truck. Off the clock it keeps only a
+          tag&apos;s rough area (its exact spot if the item is in recovery) and nothing that says it
+          was your phone. It only listens for tags; it never connects to anything else.
         </p>
         <div className="mt-4 flex gap-2">
           <button onClick={() => setPhoneGateway(true)} className="flex-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors">

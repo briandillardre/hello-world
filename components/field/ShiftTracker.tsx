@@ -373,7 +373,7 @@ export function ShiftTracker() {
             <p className="text-2xl mb-1">📍</p>
             <h2 id="shift-disclosure-title" className="font-display font-bold text-lg text-ink">Location while you&apos;re on the clock</h2>
             <p className="mt-2 text-[13.5px] text-muted leading-relaxed">
-              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card and show you on the crew map. A notification shows the whole time a shift is recording, and it stops when you clock out. Nothing is kept inside a privacy zone your company has marked. Never sold, never used for ads.
+              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card, show you on the crew map and, when yours is the only phone riding in a company truck, count that truck&apos;s driving toward your driver safety score. A notification shows the whole time a shift is recording, and it stops when you clock out. No shift points are kept inside a privacy zone your company has marked. Never sold, never used for ads.
             </p>
             {/* The whole list, in plain words (132) — opened in place: a link
                 would leave this sheet sitting over the page it opened. */}

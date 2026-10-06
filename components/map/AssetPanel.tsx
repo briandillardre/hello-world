@@ -1023,7 +1023,7 @@ function ToolCustody({ assetId }: { assetId: string }) {
               <div key={i} className="flex items-center gap-2 text-[12px]" title={w.long}>
                 <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (a.reason === 'recovery' ? 'bg-alert' : 'border border-dashed border-amber/70')} />
                 <span className="truncate flex-1 text-muted">{a.reason === 'off_shift' ? 'Heard off the clock' : a.reason === 'privacy_zone' ? 'Heard in a privacy zone' : 'Heard in recovery'}</span>
-                <span className={'flex-none text-[10.5px] ' + (a.reason === 'recovery' ? 'text-alert font-semibold' : 'text-amber')}>{a.reason === 'recovery' ? 'exact' : a.reason === 'privacy_zone' ? 'zone' : `~${a.precisionM ?? 250} m`}{a.heardN > 1 ? ` ×${a.heardN}` : ''}</span>
+                <span className={'flex-none text-[10.5px] ' + (a.reason === 'recovery' ? 'text-alert font-semibold' : 'text-amber')}>{a.reason === 'recovery' ? 'exact' : `~${a.precisionM ?? 250} m`}{a.heardN > 1 ? ` ×${a.heardN}` : ''}</span>
                 <span className="text-faint font-mono text-[10.5px] flex-none">{d0 === d1 ? d1 : `${d0}–${d1}`}</span>
               </div>
             )

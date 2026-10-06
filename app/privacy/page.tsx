@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'How HammerTrack collects, uses, and protects your data.',
 }
 
-const UPDATED = 'September 1, 2026'
+const UPDATED = 'October 6, 2026'
 
 export default function PrivacyPage() {
   return (
@@ -69,15 +69,16 @@ export default function PrivacyPage() {
             <p className="mt-2">
               If you use personnel tracking, you are responsible for notifying your crew and
               complying with applicable employment and privacy laws in your jurisdiction.
-              HammerTrack tracks during configured work hours as set by your account.
+              HammerTrack records a crew member&apos;s phone location only while they are clocked in or have
+              turned on Go Live, and with the photos or receipts they send; off the clock their phone can still
+              place company tool tags it hears (see below).
             </p>
           </section>
 
           <section>
             <h2>Mobile app permissions (iOS &amp; Android)</h2>
             <p className="mt-2">
-              The HammerTrack app requests only the permissions a feature needs, and only when you
-              use that feature:
+              The HammerTrack app requests only the permissions its features need:
             </p>
             <ul className="mt-2 space-y-1.5 list-disc pl-5">
               <li>
@@ -92,6 +93,14 @@ export default function PrivacyPage() {
               <li>
                 <strong className="text-ink">Notifications</strong> — to deliver theft and critical
                 fleet alerts to your lock screen. We store only an anonymous per-device push token.
+              </li>
+              <li>
+                <strong className="text-ink">Bluetooth (Nearby devices)</strong> — to hear your company&apos;s
+                tool tags while the app is open; switch it off under My phone.
+              </li>
+              <li>
+                <strong className="text-ink">Microphone</strong> — only when you tap the mic to talk to Ask AI
+                or the map search, or while Ask AI&apos;s conversation mode is on.
               </li>
             </ul>
             <p className="mt-2">
@@ -114,26 +123,33 @@ export default function PrivacyPage() {
               when the app is closed or not in use</strong> on app versions that support it (Android 1.4 and
               later; you are shown a notice and asked for permission before this starts, and a notification
               stays visible the whole time a shift is recording). Your employer uses
-              this to record where your shift happened and to verify your time card. Nothing is recorded when
-              you are not clocked in. Turning location off while clocked in pauses recording and the app tells
-              you so.
+              this to record where your shift happened and to verify your time card. The shift recorder records
+              nothing when you are not clocked in. Turning location off while clocked in pauses recording and the
+              app tells you so.
             </p>
             <p className="mt-2">
-              <strong className="text-ink">Bluetooth tool tags:</strong> while the app is open it can listen for
-              your company&apos;s Bluetooth tool tags (switch it off under My phone). On the clock, the tools your
-              phone hears are shown with you. Off the clock, your phone&apos;s location is sent only so the tag can
-              be placed: HammerTrack keeps the tag&apos;s rough area (about 250 m) and nothing that identifies you
-              or your phone — or, for an item your company has put in recovery as missing, the tag&apos;s exact spot.
+              <strong className="text-ink">Bluetooth tool tags:</strong> while the app is open it listens for
+              Bluetooth tags (switch it off under My phone) and, when it hears one, sends this phone&apos;s location
+              so the tag can be checked against your company&apos;s tools and placed. On the clock, the tools your
+              phone hears are shown with you. Off the clock, HammerTrack keeps nothing for a tag that is not one
+              of your company&apos;s tools; for one that is, it keeps the tag&apos;s rough area (about 250 m) and
+              nothing that names you or your phone — or, for an item your company has put in recovery as missing,
+              the tag&apos;s exact spot, which only your company&apos;s Admins see.
             </p>
             <p className="mt-2">
               <strong className="text-ink">Privacy zones:</strong> inside a place your company marks as a privacy
-              zone, the app keeps no automatic location — no shift recording, no tag-listener location, no Go Live.
-              A clock-in or clock-out you make there still records where you tapped, as every clock-in does.
+              zone (or right at its edge), the app keeps no automatic location — no shift recording, no
+              tag-listener location, no Go Live — and a tag heard there is kept only as a rough area. A clock-in or
+              clock-out you make there still records where you tapped, as every clock-in does, and a photo or
+              receipt you send there carries its spot.
             </p>
             <p className="mt-2">
               Location is used solely to display your fleet and crew on your company&apos;s map, to build
-              your company&apos;s time cards and to trigger the alerts your company configures — it is never
-              used for advertising and never sold or shared with third parties.
+              your company&apos;s time cards, to trigger the alerts your company configures and, when a
+              clocked-in person&apos;s phone is the only one riding in a company vehicle, to count that
+              vehicle&apos;s driving toward their driver safety score, which only they and the people above them
+              in the company can see. It is never used for advertising and never sold or shared with third
+              parties.
             </p>
           </section>
 
