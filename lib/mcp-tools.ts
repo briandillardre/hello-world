@@ -1057,10 +1057,12 @@ export async function runMcpTool(
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
       case 'fuel_exceptions': return runFuelExceptions(companyId, args, opts?.visibleAssetIds ?? null)
-      // Drivers: the company-key door is admin-grade (every driver); the
-      // session door sees the asker and the people they outrank.
+      // Drivers: the company-key door has an Admin's reach — it names the
+      // people an Admin outranks, never an Admin or the owner (the key can
+      // sit in anyone's AI, and a person's score is theirs and their
+      // bosses'). The session door sees the asker and the people they outrank.
       case 'safety_scores': return runSafetyScores(companyId, args, opts?.visibleAssetIds ?? null,
-        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : 'all')
+        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : { viewerRank: 3, viewerId: null })
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }
