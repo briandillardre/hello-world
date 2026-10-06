@@ -125,7 +125,7 @@ const ok = (name, cond, extra = '') => {
 // ── 2. Parked tag chatter ───────────────────────────────────────────────────
 const PLUMB = { peer: '1.2.3.4:5', 'server.timestamp': 0, 'channel.id': 1401177, 'protocol.id': 14, 'codec.id': 142, 'event.priority.enum': 0, 'position.satellites': 0 }
 {
-  const scan = { ...PLUMB, 'event.enum': 385, 'ble.beacons': [{ id: '00000000-0000-0000-0000-7cd9f408b56b', rssi: -90 }] }
+  const scan = { ...PLUMB, 'event.enum': 385, 'ble.beacons': [{ id: '00000000-0000-0000-0000-0a0b0c0d0e01', rssi: -90 }] }
   ok('a parked tag scan is chatter', G.isTagChatter(scan, 0))
   ok('…with our stored source key too', G.isTagChatter({ source: 'flespi', ...scan }, 0))
   ok('…and with an empty list', G.isTagChatter({ ...PLUMB, 'event.enum': 385 }, null))
@@ -134,7 +134,7 @@ const PLUMB = { peer: '1.2.3.4:5', 'server.timestamp': 0, 'channel.id': 1401177,
   ok('a tag scan carrying a voltage is not', !G.isTagChatter({ ...scan, 'external.powersource.voltage': 12.7 }, 0))
   ok('any other event is not', !G.isTagChatter({ ...scan, 'event.enum': 240 }, 0))
   ok('no params, not chatter', !G.isTagChatter(null, 0))
-  ok('tag ids upper-cased', G.tagIdsOf(scan)[0] === '00000000-0000-0000-0000-7CD9F408B56B')
+  ok('tag ids upper-cased', G.tagIdsOf(scan)[0] === '00000000-0000-0000-0000-0A0B0C0D0E01')
   ok('no list, no ids', G.tagIdsOf(PLUMB).length === 0)
 }
 
@@ -142,8 +142,8 @@ const PLUMB = { peer: '1.2.3.4:5', 'server.timestamp': 0, 'channel.id': 1401177,
 const YARD = { lat: 34.780898, lng: -82.611738 }
 const T0 = Date.parse('2026-09-28T10:00:00Z')
 const s = (sec) => T0 + sec * 1000
-const TAG_A = '00000000-0000-0000-0000-7CD9F408B56B'
-const TAG_B = '00000000-0000-0000-0000-7CD9F408B573'
+const TAG_A = '00000000-0000-0000-0000-0A0B0C0D0E01'
+const TAG_B = '00000000-0000-0000-0000-0A0B0C0D0E02'
 function dayStream() {
   const out = []
   const io = (sec, ign, extra = {}) => out.push({ ms: s(sec), ...YARD, speed: 0, ign, params: { ...PLUMB, 'engine.ignition.status': ign, 'external.powersource.voltage': ign ? 14.2 : 12.7 }, ...extra })
