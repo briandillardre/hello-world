@@ -204,6 +204,11 @@ export interface RiderTrack {
   personId: string
   fixes: { ms: number; lat: number; lng: number; speed: number | null }[]
   shifts: [number, number][]
+  /** The phone is hidden by the per-asset ladder (111: Managers+, Admins or
+   *  owner only). It still counts as a phone ABOARD — whoever rode with it is
+   *  never charged with two people's driving — but nothing is recorded about
+   *  its person: no `drivers` entry, no event charged to them (review, 134). */
+  hidden?: boolean
 }
 
 /** Per-person exposure for one vehicle-day. Everything but `s`/`mi` counts
@@ -275,7 +280,8 @@ export interface DailyRow {
   towing_n: number
   rejects_n: number
   /** Harsh events counted as MEASURED this day: Green Driving records seen
-   *  today, or within the builder's 30-day look-back (accel_seen). */
+   *  this day, or on any of the 30 days before it (accelLookback over the
+   *  vehicle's accel_seen days — counted from this day, never from today). */
   accel_on: boolean
   /** This day's own fixes carried Green Driving keys — the raw evidence the
    *  look-back reads (never inherited, so a switched-off unit ages out). */
@@ -586,8 +592,8 @@ export function confirmHarsh(kind: HarshKind, at: number, fixes: DrivingFix[]): 
 
 export interface DetectOpts {
   vehicleClass?: VehicleClass
-  /** The truck's accelerometer events are on (seen in the last 30 days): the
-   *  speed-stream estimate stands down entirely. */
+  /** The truck's accelerometer events are on (seen this day or in the 30
+   *  before it — accelLookback): the speed-stream estimate stands down entirely. */
   accelerometerOn?: boolean
   /** Sites with their own posted limits (already filtered to this asset). */
   zones?: ZoneLimit[]
@@ -917,6 +923,8 @@ export function rollupDay(input: RollupInput): { row: DailyRow; events: DrivingE
   const kin = kinematic(all)
   const plan = speedingPlan(kin, input.zones ?? [], vclass)
   const aboard = input.riders?.length ? ridersAboard(all, input.riders) : new Map<number, string[]>()
+  // Hidden phones are aboard (they keep the others from riding "alone") but never named.
+  const unnamed = new Set((input.riders ?? []).filter((r) => r.hidden).map((r) => r.personId))
 
   const row: DailyRow = {
     day: dayKey, tz, vclass, miles: 0, moving_s: 0, engine_s: 0, night_s: 0, evening_s: 0, max_mph: 0,
@@ -972,6 +980,7 @@ export function rollupDay(input: RollupInput): { row: DailyRow; events: DrivingE
       else if (t === 'moderate') row.zone_mod_s += lenS
       const people = aboard.get(Math.floor(b.ms / BIN_MS)) ?? []
       for (const pid of people) {
+        if (unnamed.has(pid)) continue
         const acc = riderAcc.get(pid) ?? emptyRider()
         acc.s += lenS
         acc.mi += m / 1609.344
@@ -1003,12 +1012,13 @@ export function rollupDay(input: RollupInput): { row: DailyRow; events: DrivingE
     row[k] = Math.round(row[k])
   }
 
-  // The day's events, stamped with the lone rider when there was one.
+  // The day's events, stamped with the lone rider when there was one (and
+  // their phone is not one the ladder hides).
   const events: DrivingEvent[] = []
   for (const e of input.events) {
     if (e.at < s0 || e.at >= s1) continue
     const people = aboard.get(Math.floor(e.at / BIN_MS)) ?? []
-    const ev = { ...e, personId: people.length === 1 ? people[0] : null }
+    const ev = { ...e, personId: people.length === 1 && !unnamed.has(people[0]) ? people[0] : null }
     events.push(ev)
     countEvent(row, ev)
   }
@@ -1032,6 +1042,24 @@ function countEvent(row: DailyRow, e: DrivingEvent) {
   } else if (e.kind === 'crash') row.crashes++
   else if (e.kind === 'zone_speeding') row.zone_speed_n++
   else if (e.kind === 'max_speed') row.max_speed_n++
+}
+
+/** How many days before a vehicle-day the builder looks for evidence that the
+ *  truck's harsh-event detection is switched on. */
+export const ACCEL_LOOKBACK_DAYS = 30
+
+/**
+ * "Harsh events are measured" for one vehicle-day, from the vehicle's OTHER
+ * days: Green Driving records were seen (`seenDays` = its accel_seen day
+ * keys) on any of the 30 days BEFORE the day being built. Measured from that
+ * day, never from today — a re-bank after the unit is switched on must not
+ * mark last spring "measured" and throw away its GPS estimates (review,
+ * Oct 6). The day's own records count too: analyzeDay reads them from its
+ * fixes, never from a stored row.
+ */
+export function accelLookback(seenDays: readonly string[], day: string, lookbackDays = ACCEL_LOOKBACK_DAYS): boolean {
+  const from = addDaysKey(day, -lookbackDays)
+  return seenDays.some((d) => d >= from && d < day)
 }
 
 /** detectEvents + rollupDay in one call — what the builder runs per vehicle-day. */
@@ -1106,6 +1134,10 @@ export type RowLike = Partial<Omit<DailyRow, 'day' | 'tz' | 'vclass' | 'version'
   n_driving?: number
   n_accel?: number
   accel_miles?: number
+  /** A summed row's solo miles tied to ANY named driver (134). Its `drivers`
+   *  hold only the people the caller may see; this total is everyone's, so
+   *  "miles tied to a named driver" does not change with who is looking. */
+  attributed_miles?: number
 }
 
 export function sumDaily(rows: RowLike[], periodDays: number | null = null): DrivingTotals {
@@ -1153,7 +1185,8 @@ export function sumDaily(rows: RowLike[], periodDays: number | null = null): Dri
     t.rejects += n(r.rejects_n)
     if (summed) { t.accelDays += n(r.n_accel); t.accelMiles += n(r.accel_miles) }
     else if (driving && r.accel_on) { t.accelDays++; t.accelMiles += miles }
-    for (const d of Object.values(r.drivers ?? {})) t.attributedMiles += n(d?.smi)
+    if (r.attributed_miles != null) t.attributedMiles += n(r.attributed_miles)
+    else for (const d of Object.values(r.drivers ?? {})) t.attributedMiles += n(d?.smi)
   }
   t.miles = round1(t.miles)
   t.accelMiles = round1(t.accelMiles)
@@ -1488,6 +1521,27 @@ export function eventWords(e: Pick<DrivingEvent, 'kind' | 'severity' | 'source' 
 export function fmtDur(s: number): string {
   const m = Math.floor(s / 60), r = Math.round(s % 60)
   return m ? `${m}m ${String(r).padStart(2, '0')}s` : `${r}s`
+}
+
+/**
+ * A count from a detector that ships switched OFF and is pushed on with the
+ * accelerometer (docs/DRIVER-SCORES.md, "Turning on the accelerometer"):
+ * possible impacts, GPS/cell jamming, towing. A zero means "none" only while
+ * it was on: null = not measured, which a report prints as such and a CSV
+ * leaves blank — never a 0 nobody measured. A count above zero was measured
+ * whatever the switch reads (the events arrived).
+ */
+export function measuredCount(n: number, accelerometer: DataQuality['accelerometer']): number | null {
+  return n > 0 || accelerometer === 'on' ? n : null
+}
+
+/** The insurer report's period in words: "trailing 12 months" only when the
+ *  data truly reaches back a year, else "N months of data" — never rounded up
+ *  to twelve. `daysOfData` = the first day with data → the report's last day. */
+export function periodWords(daysOfData: number): string {
+  if (daysOfData >= 365) return 'trailing 12 months'
+  const m = Math.min(11, Math.max(1, Math.round(daysOfData / 30.4375)))
+  return `${m} ${m === 1 ? 'month' : 'months'} of data`
 }
 
 // ── CSV (insurer exports) ───────────────────────────────────────────────────

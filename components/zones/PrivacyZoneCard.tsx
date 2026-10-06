@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ShieldCheck } from 'lucide-react'
 import { setPrivacyZoneAction } from '@/lib/actions/privacy-zones'
 import { NO_REPLY } from '@/lib/action-reply'
-import { isPrivacyKind } from '@/lib/location-policy'
+import { isPrivacyKind, OFF_SHIFT_GRID_M } from '@/lib/location-policy'
 
 /**
  * Privacy zone switch on the zone page (132). Admins and the owner turn it
@@ -26,7 +26,7 @@ export function PrivacyZoneCard({ zoneId, on, kind, canManage }: { zoneId: strin
     return (
       <p className="flex items-start gap-2 rounded-xl border border-teal/30 bg-teal/[0.05] p-3 text-[12.5px] text-muted leading-snug">
         <ShieldCheck className="h-4 w-4 text-teal flex-none mt-0.5" />
-        <span><span className="font-semibold text-ink">Privacy zone.</span> Crew phones keep no location inside it. Company trucks and machines are tracked as usual.</span>
+        <span><span className="font-semibold text-ink">Privacy zone.</span> Crew phones keep no automatic location inside it — a clock-in or clock-out tap, photo or receipt still carries its spot. Company trucks and machines are tracked as usual.</span>
       </p>
     )
   }
@@ -53,11 +53,11 @@ export function PrivacyZoneCard({ zoneId, on, kind, canManage }: { zoneId: strin
           <p className="font-display font-bold text-sm text-ink">Privacy zone</p>
           {inert ? (
             <p className="text-[12px] text-amber leading-snug">
-              This zone is a {kind ?? 'site'} now, so it no longer works as a privacy zone — crews&apos; phones are recorded here like any work place. Turn the switch off, or draw the private place as its own Boundary zone.
+              This zone is a {kind ?? 'site'} now, so it no longer works as a privacy zone — crews&apos; phones are recorded here like any work place. Turn the switch off, or draw the private place as its own Boundary zone, clear of any site or yard.
             </p>
           ) : (
             <p className="text-[12px] text-muted leading-snug">
-              Inside it, crew phones keep no location — no shift points, no tag-listener fixes, no Go Live. Tags heard inside show at the middle of the zone. A clock-in or clock-out tap still saves its spot (the time card says only &ldquo;in a privacy zone&rdquo;). Company trucks and machines are tracked as usual.
+              Inside it, and near its edge, crew phones keep no automatic location — no shift points, no tag-listener fixes, no Go Live. A tag heard there keeps only its rough area (~{OFF_SHIFT_GRID_M} m). A clock-in or clock-out tap still saves its spot (the time card says only &ldquo;in a privacy zone&rdquo;), and so does a photo or receipt. A zone over a site or yard can&apos;t be made private, and once private only Admins can redraw or delete it. Company trucks and machines are tracked as usual.
             </p>
           )}
           <p className="mt-1 text-[11.5px] text-faint leading-snug">

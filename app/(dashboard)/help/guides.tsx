@@ -368,10 +368,10 @@ export const GUIDES: HelpGuide[] = [
         body: (
           <L
             items={[
-              <>With the app open, a crew phone listens for tags like a truck does. <B>On the clock</B>, the tools near the person ride with them on the map.</>,
-              <><B>Off the clock</B>, nothing about the person is kept: the tool lands on a rough ~250 m area, and nothing says whose phone heard it.</>,
-              <>Inside a <B>privacy zone</B> (a Boundary or Vendor zone an Admin marked private on its zone page), phones keep no automatic location — no shift points, no tag-listener fixes, no Go Live — and tags heard there show at the middle of the zone.</>,
-              <>A missing tool? On its page an Admin can <B>Start recovery</B> (7 days, extendable): phones off the clock then report its exact spot, still never whose phone.</>,
+              <>With the app open, a crew phone listens for tags like a truck does. A phone can&apos;t tell your company&apos;s tags from a shop&apos;s, so when it hears any tag it sends where it is to be checked against your tools; a tag that isn&apos;t yours is dropped. <B>On the clock</B>, the tools near the person ride with them on the map.</>,
+              <><B>Off the clock</B>, the tag listener keeps nothing about the person: the tool lands on a rough ~250 m area, and nothing says whose phone heard it.</>,
+              <>Inside a <B>privacy zone</B> (a Boundary or Vendor zone, not over a site or yard, that an Admin marked private on its zone page), and near its edge, phones keep no automatic location — no shift points, no tag-listener fixes, no Go Live — and tags heard there land on a rough ~250 m area. A clock-in or clock-out tap, photo or receipt still carries its spot.</>,
+              <>A missing tool? On its page an Admin can <B>Start recovery</B> (7 days, extendable): phones off the clock, outside privacy zones, then report its exact spot — only Admins see it, and still never whose phone.</>,
               <>Everyone can read exactly what is recorded about them on <B>My phone</B>.</>,
             ]}
           />
@@ -501,6 +501,12 @@ export const GUIDES: HelpGuide[] = [
               It stops the moment you clock out. Location off while clocked in = an amber bar until it&apos;s
               back on or you clock out.
             </P>
+            <P>
+              When yours is the only phone riding in a company truck while you&apos;re clocked in (within about
+              150 m for 5 minutes or more), that truck&apos;s speeding, hard stops and late-night miles count
+              toward your <B>driver safety score</B>. You and the people above you can see it; it is never in
+              the insurer report. Everything recorded about you is listed on <B>My phone</B>.
+            </P>
           </>
         ),
       },
@@ -592,11 +598,14 @@ export const GUIDES: HelpGuide[] = [
         heading: 'Pictures from space',
         body: (
           <P>
-            With the satellite add-on, a site&apos;s page has a <B>Satellite</B> card. Turn it on and a
-            clear Sentinel-2 picture lands on the site&apos;s photo timeline every few days, dated, and
-            on the map&apos;s <B>Site imagery</B> layer — scrub the timeline to watch the site change.
-            At 10 m a picture shows clearing, pads and big grading changes, not machines or stakes;
-            cloudy passes are skipped. Daily 3 m pictures (Planet) need a separate setup — ask us.
+            With the satellite add-on, a site&apos;s page has a <B>Satellite</B> card. Turn it on and
+            Sentinel-2 passes every few days; the clear ones (about weekly in dry weather, fewer in a
+            wet month) land on the site&apos;s photo timeline, dated, and on the map&apos;s <B>Site
+            imagery</B> layer — scrub the timeline to watch the site change. At 10 m a picture shows
+            clearing, pads and big grading changes, not machines or stakes; cloudy passes are skipped.
+            On the map a sharper drone or site photo stays up until a satellite picture more than 14
+            days newer comes in. A job marked complete, or past its active dates, gets no new
+            pictures. Daily 3 m pictures (Planet) are on the roadmap.
           </P>
         ),
       },

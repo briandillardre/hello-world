@@ -678,8 +678,15 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
   const newestAnon = anon[0]
     ? { seenMs: Date.parse(anon[0].last_seen as string), lat: Number(anon[0].lat), lng: Number(anon[0].lng), precisionM: anon[0].precision_m == null ? null : Number(anon[0].precision_m) }
     : null
+  // The same pick as the map (lib/tools-resolve): a FRESH custody tool rides
+  // its carrier's live position, and a phone heard it near there is the same
+  // place — not "somewhere else" because the truck drove on since its snapshot.
+  const { toolIsFresh } = await import('./tools-resolve')
+  const gwLoc = assoc ? assets.find((a) => a.id === (assoc.gateway_asset_id as string))?.location ?? null : null
+  const live = assoc?.last_seen && gwLoc && toolIsFresh(assoc.last_seen as string) && Number.isFinite(gwLoc.lat) && Number.isFinite(gwLoc.lng)
+    ? { lat: gwLoc.lat, lng: gwLoc.lng } : null
   const anonFirst = !!newestAnon && anonymousWins(
-    assoc?.last_seen ? { seenMs: Date.parse(assoc.last_seen as string), lat: (assoc.last_lat as number | null) ?? null, lng: (assoc.last_lng as number | null) ?? null } : null,
+    assoc?.last_seen ? { seenMs: Date.parse(assoc.last_seen as string), lat: (assoc.last_lat as number | null) ?? null, lng: (assoc.last_lng as number | null) ?? null, live } : null,
     newestAnon,
   )
 
@@ -719,9 +726,11 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
     })),
     bestPosition: anonFirst && newestAnon
       ? { lat: newestAnon.lat, lng: newestAnon.lng, at: fmtDateTime(newestAnon.seenMs, DEFAULT_TZ), from: 'heard off the clock — the tag\'s place only', roughToMetres: newestAnon.precisionM ?? 0 }
-      : assoc?.last_lat != null
-        ? { lat: assoc.last_lat as number, lng: assoc.last_lng as number, at: fmtDateTime(Date.parse(assoc.last_seen as string), DEFAULT_TZ), from: `its carrier ${nameOf(assoc.gateway_asset_id as string)}`, roughToMetres: 0 }
-        : null,
+      : live && assoc
+        ? { lat: live.lat, lng: live.lng, at: fmtDateTime(Date.parse(assoc.last_seen as string), DEFAULT_TZ), from: `its carrier ${nameOf(assoc.gateway_asset_id as string)}, where the carrier is now`, roughToMetres: 0 }
+        : assoc?.last_lat != null
+          ? { lat: assoc.last_lat as number, lng: assoc.last_lng as number, at: fmtDateTime(Date.parse(assoc.last_seen as string), DEFAULT_TZ), from: `its carrier ${nameOf(assoc.gateway_asset_id as string)}`, roughToMetres: 0 }
+          : null,
     note: assoc
       ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.' + (anon.length ? ' heardOffTheClock entries never say whose phone heard the tag — do not guess.' : '')
       : anon.length
@@ -1057,10 +1066,12 @@ export async function runMcpTool(
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
       case 'fuel_exceptions': return runFuelExceptions(companyId, args, opts?.visibleAssetIds ?? null)
-      // Drivers: the company-key door is admin-grade (every driver); the
-      // session door sees the asker and the people they outrank.
+      // Drivers: the company-key door has an Admin's reach — it names the
+      // people an Admin outranks, never an Admin or the owner (the key can
+      // sit in anyone's AI, and a person's score is theirs and their
+      // bosses'). The session door sees the asker and the people they outrank.
       case 'safety_scores': return runSafetyScores(companyId, args, opts?.visibleAssetIds ?? null,
-        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : 'all')
+        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : { viewerRank: 3, viewerId: null })
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

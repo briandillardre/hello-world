@@ -1,16 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { requireFeature } from '@/lib/permissions-server'
 import { isProspect, visibleAssets } from '@/lib/permissions'
 import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getAssets } from '@/lib/db/assets'
 import { getSafetyReport, insurerReady } from '@/lib/db/driving'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
-import { SAFETY_METHOD, type SafetyScore } from '@/lib/driving-score'
+import { measuredCount, periodWords, SAFETY_METHOD, type DataQuality, type SafetyScore } from '@/lib/driving-score'
 import { methodSections } from '@/lib/driving-method'
 import { fmtDay, safeTz, zonedMidnightMs } from '@/lib/dates'
-import { PrintButton } from '@/components/reports/PrintButton'
+import { InsurerActions } from '@/components/reports/InsurerActions'
 
 export const metadata = { title: 'HammerTrack — Fleet safety report' }
 export const dynamic = 'force-dynamic'
@@ -21,11 +21,13 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 /**
  * The insurer report — the company's own driving data, laid out the way an
  * underwriter reads a submission (docs/INSURANCE-TELEMATICS.md §4): the
- * trailing 12 months with a monthly trend, the vehicle schedule with VINs,
- * rates per 1,000 miles next to every score, the data-quality block and the
- * method in plain words. Printable ("Save as PDF") plus the same tables as
- * CSV. Refused under 90 days of driving or 3 scored vehicles; marked low
- * credibility under 10,000 fleet miles.
+ * trailing 12 months (or as many months as there is data — the header says
+ * which) with a monthly trend, the vehicle schedule with VINs, rates per
+ * 1,000 miles next to every score, the data-quality block and the method in
+ * plain words. Printable ("Save as PDF") plus the same tables as CSV — both
+ * on a computer; the app says so instead (InsurerActions). Refused under 90
+ * days of driving or 3 scored vehicles; marked low credibility under 10,000
+ * fleet miles. A count nobody measured reads "not measured", never 0.
  *
  * WHO: the billing ability (owner + admins by default). This report is a
  * company document handed to an outside party — the agent or carrier — the
@@ -68,16 +70,7 @@ export default async function InsurerReportPage() {
           <h1 className="text-xl font-bold text-ink">Insurer report</h1>
           <p className="text-xs text-faint mt-0.5">Your own driving data, for you to hand to your agent or carrier{report.demo ? ' · demo data' : ''}</p>
         </div>
-        {gate.ok && (
-          <div className="ml-auto flex items-center gap-2 flex-wrap">
-            {(['vehicles', 'months', 'events'] as const).map((k) => (
-              <a key={k} href={`/api/safety/export?kind=${k}`} className="inline-flex items-center gap-1.5 rounded-lg border border-navy-700 px-3 py-1.5 text-[12.5px] text-muted hover:text-ink hover:bg-navy-800">
-                <Download className="h-4 w-4" /> {k === 'vehicles' ? 'Vehicles CSV' : k === 'months' ? 'Months CSV' : 'Events CSV'}
-              </a>
-            ))}
-            <PrintButton />
-          </div>
-        )}
+        {gate.ok && <InsurerActions />}
       </div>
 
       <div className="p-4">
@@ -96,7 +89,7 @@ export default async function InsurerReportPage() {
               <p className="text-[10px] uppercase tracking-[0.18em] text-[#6b7280]">Fleet driving safety report</p>
               <h1 className="text-[22px] font-bold mt-1">{settings.name}</h1>
               <p className="text-[12px] text-[#374151] mt-1">
-                {period} · trailing 12 months · generated {generated} · HammerTrack Safety Score v{SAFETY_METHOD.version}
+                {period} · {periodWords(gate.daysOfData)} · generated {generated} · HammerTrack Safety Score v{SAFETY_METHOD.version}
               </p>
               <p className="text-[11px] text-[#6b7280] mt-1">
                 Compiled by the company from its own vehicle telematics (cellular trackers on each vehicle) and shared at its choice. Per-driver data is not included.
@@ -124,7 +117,7 @@ export default async function InsurerReportPage() {
                   <Row k="Severe speeding (share of driving time)" v={`${f.speedPct.severe}% · ${f.counts.max_speed} top-speed run${f.counts.max_speed === 1 ? '' : 's'} (${SAFETY_METHOD.maxSpeed.light}+ mph; ${SAFETY_METHOD.maxSpeed.heavy}+ heavy)`} />
                   <Row k="Heavy · moderate speeding over a posted site limit" v={`${f.speedPct.heavy}% · ${f.speedPct.moderate}% (a limit was known for ${q.limitPct ?? 0}% of miles)`} />
                   <Row k="Late-night driving (midnight–4 AM)" v={`${f.lateNightPct}% of driving · 10 PM–midnight ${f.eveningPct}% (not scored)`} />
-                  <Row k="Possible impacts (listed, not scored)" v={String(f.counts.crash)} />
+                  <Row k="Possible impacts (listed, not scored)" v={detected(f.counts.crash, q.accelerometer)} />
                   {f.per100EngineHours != null && <Row k="Confirmed harsh events per 100 engine hours" v={String(f.per100EngineHours)} />}
                 </tbody>
               </table>
@@ -192,13 +185,13 @@ export default async function InsurerReportPage() {
               <table className="w-full border-collapse">
                 <tbody>
                   <Row k="Harsh-event source" v={q.accelerometer === 'on' ? 'Tracker accelerometer, each event confirmed by the speed stream' : q.accelerometer === 'partial' ? 'Tracker accelerometer for part of the period' : 'Not measured yet (accelerometer off)'} />
-                  <Row k="Accelerometer events confirmed · unconfirmed" v={`${q.confirmed} · ${q.unconfirmed} (unconfirmed are listed, not scored)`} />
+                  <Row k="Accelerometer events confirmed · unconfirmed" v={q.accelerometer === 'off' && !q.confirmed && !q.unconfirmed ? 'not measured (accelerometer off)' : `${q.confirmed} · ${q.unconfirmed} (unconfirmed are listed, not scored)`} />
                   <Row k="Speed source" v={q.speedSource === 'obd' ? 'The vehicles\' own speedometers (OBD)' : q.speedSource === 'mixed' ? `Own speedometer for ${q.obdPct}% of driving, GPS for the rest` : 'GPS'} />
                   <Row k="Miles with a known posted limit" v={`${q.limitPct ?? 0}%`} />
                   <Row k="Device uptime (vehicle-days reporting)" v={q.uptimePct != null ? `${q.uptimePct}%` : '—'} />
                   <Row k="Driving time actually recorded" v={q.coveragePct != null ? `${q.coveragePct}%` : '—'} />
                   <Row k="Tracker unplugged or lost vehicle power" v={String(q.unplugged)} />
-                  <Row k="GPS / cell jamming · towing events" v={`${q.jamming} · ${q.towing}`} />
+                  <Row k="GPS / cell jamming · towing events" v={jammingTowing(q)} />
                   <Row k="Impossible GPS jumps refused at ingest" v={String(q.rejects)} />
                   <Row k="Miles tied to a named driver" v={q.attributedPct != null ? `${q.attributedPct}%` : '—'} />
                 </tbody>
@@ -248,6 +241,20 @@ const PRINT_CSS = `
 function rateText(rate: number | null, n: number, severe = 0): string {
   if (rate == null) return 'not measured (accelerometer off)'
   return `${rate} (${n} event${n === 1 ? '' : 's'}${severe ? `, ${severe} severe` : ''})`
+}
+
+/** Impacts, jamming, towing: their detectors ship switched off with the
+ *  accelerometer, so a zero is only a zero while they were on. */
+function detected(n: number, accel: DataQuality['accelerometer']): string {
+  const c = measuredCount(n, accel)
+  if (c != null) return String(c)
+  return accel === 'partial' ? '0 while detection was on (part of the period)' : 'not measured (detection off)'
+}
+
+/** "2 · 0", or one "not measured (detection off)" when neither was. */
+function jammingTowing(q: DataQuality): string {
+  const j = detected(q.jamming, q.accelerometer), t = detected(q.towing, q.accelerometer)
+  return j === t && measuredCount(q.jamming, q.accelerometer) == null ? j : `${j} · ${t}`
 }
 
 function scoreText(s: SafetyScore): string {

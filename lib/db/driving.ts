@@ -1,24 +1,27 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  analyzeDay, byMonth, decodeFix, driverTotals, emptyTotals, ENGINE_VERSION, eventWords, SAFETY_METHOD, scoreTotals, sumDaily,
-  vehicleClassOf, type DailyRow, type DrivingEvent, type DrivingFix, type DrivingTotals, type EventKind, type RiderTrack,
-  type RowLike, type SafetyScore, type Severity, type VehicleClass, type ZoneLimit,
+  accelLookback, ACCEL_LOOKBACK_DAYS, analyzeDay, byMonth, decodeFix, driverTotals, emptyTotals, ENGINE_VERSION, eventWords,
+  SAFETY_METHOD, scoreTotals, sumDaily, vehicleClassOf, type DailyRow, type DrivingEvent, type DrivingFix, type DrivingTotals,
+  type EventKind, type RiderTrack, type RowLike, type SafetyScore, type Severity, type VehicleClass, type ZoneLimit,
 } from '../driving-score'
 import { addDaysKey, dayKey, zonedMidnightMs } from '../dates'
 import { trackerKind } from '../devices'
 import { pointInPolygon } from '../alerts-engine'
-import { MASTER_RANK, RANK, type Role } from '../permissions'
+import { assetVisibility, MASTER_RANK, RANK, visibilityRank, type Role } from '../permissions'
 
 /**
- * Driver safety scores — the database half (migration 129). Two jobs:
+ * Driver safety scores — the database half (migrations 129 + 134). Two jobs:
  *
  *  1. BUILD (service role, the hourly /api/cron/driving): one vehicle-day at
  *     a time — read its fixes slimmed in SQL, its company's site limits, the
  *     clocked-in crew phones and the GPS spikes the ingest refused, run
  *     lib/driving-score, replace the day whole with driving_put_day.
- *  2. READ (the caller's client — RLS decides, 111 + 119 included — or the
- *     service role scoped by company for the MCP door): the period's rows
- *     summed into fleet / vehicle / driver scores, plus the events in words.
+ *  2. READ (the caller's client — RLS and 134's definer sums decide: the
+ *     company, 111's vehicle ladder, 119's lockdown, and a PERSON's driving
+ *     only for themselves and the people they outrank — or the service role
+ *     scoped by company for the MCP door and the insurer's event CSV): the
+ *     period's rows summed into fleet / vehicle / driver scores, plus the
+ *     events in words.
  *
  * The math lives in lib/driving-score.ts; this file only fetches and writes.
  */
@@ -36,8 +39,12 @@ export function idChunks(ids: string[], size = 150): string[][] {
 
 /** Read this far either side of a day, so a drive across midnight is whole. */
 const EDGE_MS = 10 * 60_000
-/** Look-back for "this truck's accelerometer events are on". */
-const ACCEL_LOOKBACK_DAYS = 30
+/** The hourly backfill builds days in this window that have fixes and no row
+ *  at the current ENGINE_VERSION — a first deploy's catch-up. */
+export const BACKFILL_DAYS = 90
+/** A method change (a new ENGINE_VERSION) re-banks this far back: the
+ *  insurer report's whole 12 months, not just the backfill's 90 days. */
+export const REBANK_DAYS = 366
 
 /** What gets a score: ROAD vehicles with a tracker that records the drive —
  *  an OBD or wired unit (an IMEI the TAC table does not know counts too, and
@@ -57,23 +64,26 @@ interface GeofenceRow { id: string; name: string; kind: string | null; geometry:
 export interface CompanyBuildCtx {
   companyId: string
   tz: string
+  /** The run's "today" in the company's zone — bounds the look-back reads. */
+  todayKey: string
   zones: ZoneLimit[]
   /** phone asset id → user id (tracker `phone-<uid>`). */
   phones: Map<string, string>
-  /** Vehicles whose accelerometer events showed up in the last 30 days. */
-  accelOn: Set<string>
+  /** People whose phone the 111 ladder hides from anyone below its level
+   *  (Managers+, Admins, owner only): counted aboard, never named (134). */
+  hiddenPeople: Set<string>
+  /** Per vehicle: the days its own fixes carried Green Driving keys
+   *  (accel_seen), oldest first — read once per run, kept current as days
+   *  are rebuilt, so every day's look-back counts back from THAT day. */
+  accelSeen: Map<string, string[]>
   /** Per day: the clocked-in phones' tracks (loaded once, shared by every truck). */
   riders: Map<string, RiderTrack[]>
 }
 
 export async function loadCompanyCtx(db: SupabaseClient, companyId: string, tz: string, todayKey: string): Promise<CompanyBuildCtx> {
-  const [rulesRes, phonesRes, accelRes] = await Promise.all([
+  const [rulesRes, phonesRes] = await Promise.all([
     db.from('alert_rules').select('geofence_id, asset_id, params').eq('company_id', companyId).eq('trigger', 'speeding').eq('active', true).limit(500),
-    db.from('assets').select('id, tracker_id').eq('company_id', companyId).like('tracker_id', 'phone-%').limit(2000),
-    // accel_SEEN, never accel_on: the look-back must read raw evidence, or a
-    // unit switched off would keep itself "measured" forever.
-    db.from('driving_daily').select('asset_id').eq('company_id', companyId).eq('accel_seen', true)
-      .gte('day', addDaysKey(todayKey, -ACCEL_LOOKBACK_DAYS)).limit(5000),
+    db.from('assets').select('id, tracker_id, metadata').eq('company_id', companyId).like('tracker_id', 'phone-%').limit(2000),
   ])
   const rules = ((rulesRes.data ?? []) as { geofence_id: string | null; asset_id: string | null; params: { max_mph?: unknown } | null }[])
     .filter((r) => r.geofence_id && Number(r.params?.max_mph) > 0)
@@ -91,15 +101,44 @@ export async function loadCompanyCtx(db: SupabaseClient, companyId: string, tz: 
     })
   }
   const phones = new Map<string, string>()
-  for (const p of (phonesRes.data ?? []) as { id: string; tracker_id: string }[]) {
+  const hiddenPeople = new Set<string>()
+  for (const p of (phonesRes.data ?? []) as { id: string; tracker_id: string; metadata: unknown }[]) {
     const uid = p.tracker_id.slice('phone-'.length)
-    if (/^[0-9a-f-]{36}$/i.test(uid)) phones.set(p.id, uid)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) continue
+    phones.set(p.id, uid)
+    // A phone marked Managers+ / Admins / owner only (111) is hidden from the
+    // people below that level. Naming its person on a truck would hand them
+    // what the mark hides, so it rides as an unnamed phone: still aboard, so
+    // whoever rode with it is never charged alone, but never recorded. Any
+    // one of a person's phones being hidden is enough.
+    if (visibilityRank(assetVisibility(p.metadata)) > 0) hiddenPeople.add(uid)
   }
-  return {
-    companyId, tz, zones, phones,
-    accelOn: new Set(((accelRes.data ?? []) as { asset_id: string }[]).map((r) => r.asset_id)),
-    riders: new Map(),
-  }
+  return { companyId, tz, todayKey, zones, phones, hiddenPeople, accelSeen: new Map(), riders: new Map() }
+}
+
+/** The vehicle's accel_seen days, read once per run (≤ one row per day over
+ *  the re-bank reach plus the look-back — well under the API's row cap).
+ *  null = the read failed: the day is not built rather than built "off". */
+async function accelSeenDays(db: SupabaseClient, ctx: CompanyBuildCtx, assetId: string): Promise<string[] | null> {
+  const got = ctx.accelSeen.get(assetId)
+  if (got) return got
+  // accel_SEEN, never accel_on: the look-back reads raw evidence, or a unit
+  // switched off would keep itself "measured" forever.
+  const { data, error } = await db.from('driving_daily').select('day').eq('asset_id', assetId).eq('accel_seen', true)
+    .gte('day', addDaysKey(ctx.todayKey, -(REBANK_DAYS + ACCEL_LOOKBACK_DAYS + 1)))
+    .order('day', { ascending: true }).limit(1000)
+  if (error) return null
+  const days = ((data ?? []) as { day: string }[]).map((r) => r.day)
+  ctx.accelSeen.set(assetId, days)
+  return days
+}
+
+/** Keep the run's look-back current after a day is rebuilt (or dropped). */
+function noteAccelSeen(ctx: CompanyBuildCtx, assetId: string, day: string, seen: boolean): void {
+  const days = ctx.accelSeen.get(assetId)
+  if (!days) return
+  const i = days.indexOf(day)
+  if (seen && i < 0) { days.push(day); days.sort() } else if (!seen && i >= 0) days.splice(i, 1)
 }
 
 /** The clocked-in crew phones for one company-day — loaded once per run. */
@@ -136,7 +175,7 @@ async function ridersFor(db: SupabaseClient, ctx: CompanyBuildCtx, day: string, 
         const uid = ctx.phones.get(assetId)
         if (!uid || !Number.isFinite(ms) || !Number.isFinite(lat) || !Number.isFinite(lng)) continue
         let t = tracks.get(uid)
-        if (!t) tracks.set(uid, (t = { personId: uid, fixes: [], shifts: shifts.get(uid) ?? [] }))
+        if (!t) tracks.set(uid, (t = { personId: uid, fixes: [], shifts: shifts.get(uid) ?? [], hidden: ctx.hiddenPeople.has(uid) }))
         t.fixes.push({ ms, lat, lng, speed: typeof speed === 'number' ? speed : null })
       }
       riders = Array.from(tracks.values())
@@ -157,12 +196,23 @@ export interface DayBuild {
   ok: boolean
   /** False when the day held no fixes of its own (nothing written). */
   wrote: boolean
+  /** The day had no fixes any more and its old row was removed (dropIfEmpty). */
+  dropped?: boolean
   events: DrivingEvent[]
   error?: string
 }
 
-/** Rebuild one vehicle's company-local day. Idempotent. */
-export async function buildVehicleDay(db: SupabaseClient, ctx: CompanyBuildCtx, assetId: string, day: string, vehicleClass: VehicleClass): Promise<DayBuild> {
+/**
+ * Rebuild one vehicle's company-local day. Idempotent. `dropIfEmpty` is the
+ * re-bank's: a stored day whose fixes are gone (moved to another vehicle with
+ * its tracker) is removed — a rebuild replaces the day whole, and an empty
+ * day has no row — instead of coming back as "still at the old version"
+ * every hour.
+ */
+export async function buildVehicleDay(
+  db: SupabaseClient, ctx: CompanyBuildCtx, assetId: string, day: string, vehicleClass: VehicleClass,
+  opts: { dropIfEmpty?: boolean } = {},
+): Promise<DayBuild> {
   const s0 = zonedMidnightMs(day, ctx.tz)
   const s1 = zonedMidnightMs(addDaysKey(day, 1), ctx.tz)
   const { data, error } = await db.rpc('driving_day_fixes', {
@@ -170,7 +220,22 @@ export async function buildVehicleDay(db: SupabaseClient, ctx: CompanyBuildCtx, 
   })
   if (error) return { ok: false, wrote: false, events: [], error: error.message }
   const fixes = (Array.isArray(data) ? data : []).map(decodeFix).filter((f): f is DrivingFix => !!f)
-  if (!fixes.some((f) => f.ms >= s0 && f.ms < s1)) return { ok: true, wrote: false, events: [] }
+  if (!fixes.some((f) => f.ms >= s0 && f.ms < s1)) {
+    if (!opts.dropIfEmpty) return { ok: true, wrote: false, events: [] }
+    // Events first: a failure between the two leaves the stale row, which the
+    // next run finds again.
+    for (const table of ['driving_events', 'driving_daily'] as const) {
+      const del = await db.from(table).delete().eq('asset_id', assetId).eq('day', day)
+      if (del.error) return { ok: false, wrote: false, events: [], error: del.error.message }
+    }
+    noteAccelSeen(ctx, assetId, day, false)
+    return { ok: true, wrote: false, dropped: true, events: [] }
+  }
+  // Harsh events are "measured" when this day's own records carry Green
+  // Driving keys (analyzeDay reads those) or one of the 30 days BEFORE it did
+  // — counted back from this day, never from today.
+  const seen = await accelSeenDays(db, ctx, assetId)
+  if (!seen) return { ok: false, wrote: false, events: [], error: 'accelerometer look-back read failed' }
   const moved = fixes.some((f) => f.ms >= s0 && f.ms < s1 && (f.speed ?? 0) >= 5)
   const [riders, rejects] = await Promise.all([
     moved ? ridersFor(db, ctx, day, s0, s1) : Promise.resolve([] as RiderTrack[]),
@@ -181,10 +246,11 @@ export async function buildVehicleDay(db: SupabaseClient, ctx: CompanyBuildCtx, 
   ])
   const zones = ctx.zones.filter((z) => !z.assetId || z.assetId === assetId)
   const { row, events } = analyzeDay({
-    fixes, dayKey: day, tz: ctx.tz, riders, zones, rejects, vehicleClass, accelerometerOn: ctx.accelOn.has(assetId),
+    fixes, dayKey: day, tz: ctx.tz, riders, zones, rejects, vehicleClass, accelerometerOn: accelLookback(seen, day),
   })
   const put = await db.rpc('driving_put_day', { p_asset: assetId, p_day: day, p_row: row, p_events: events.map(eventToDb) })
   if (put.error) return { ok: false, wrote: false, events: [], error: put.error.message }
+  noteAccelSeen(ctx, assetId, day, row.accel_seen)
   return { ok: true, wrote: true, events }
 }
 
@@ -312,9 +378,11 @@ export interface SafetyOpts {
 export type DbDaily = RowLike & { asset_id: string; day: string; vclass?: VehicleClass; updated_at?: string }
 
 /** A period [from, to] (company-local days) summed per vehicle-month in SQL —
- *  ≤ vehicles × 13 rows however long the period, never the day rows. Runs
- *  as the caller (RLS: company, 111's ladder, 119's lockdown). null = the
- *  read failed (never a partial answer). */
+ *  ≤ vehicles × 13 rows however long the period, never the day rows. For a
+ *  member's client the definer (134) applies the company, 111's vehicle
+ *  ladder, 119's lockdown, and keeps in `drivers` only the people the caller
+ *  may see; `attributed_miles` stays everyone's. The service role reads the
+ *  whole company. null = the read failed (never a partial answer). */
 async function rollup(db: SupabaseClient, companyId: string, ids: string[], from: string, to: string): Promise<DbDaily[] | null> {
   const out: DbDaily[] = []
   for (let page = 0; page < 20; page++) {
@@ -538,16 +606,25 @@ export async function getVehicleSafety(db: SupabaseClient | null, opts: { compan
  * Every event in a period for the insurer CSV — paged past the API's row
  * cap, oldest first, no people (the insurer report carries no per-driver
  * data) and no street addresses (the site name is enough). Capped at 20,000.
+ *
+ * Read with the SERVICE ROLE, never the caller's client: since 134 RLS hides
+ * a whole event row charged to someone the caller does not outrank, and the
+ * insurer's file must hold every event on the vehicles in it. Safe because
+ * the caller has already passed the billing gate (/api/safety/export), the
+ * read is pinned to their company and to `opts.assets` — the vehicles THEY
+ * may see (RLS-read, view-as filtered) — and person_id is stripped below.
  */
-export async function listSafetyEvents(db: SupabaseClient | null, opts: { companyId: string; tz: string; fromKey: string; toKey: string; assets: SafetyAsset[] }): Promise<SafetyEvent[]> {
+export async function listSafetyEvents(opts: { companyId: string; tz: string; fromKey: string; toKey: string; assets: SafetyAsset[] }): Promise<SafetyEvent[]> {
   const scored = opts.assets.filter(isScoredAsset)
-  if (isMock || !db) {
+  if (isMock) {
     const days = spanDays(opts.fromKey, opts.toKey)
     const rep = await getSafetyReport(null, { companyId: opts.companyId, tz: opts.tz, days, assets: opts.assets, drivers: 'none', eventLimit: 200, todayKey: opts.toKey })
     return rep.events.map((e) => ({ ...e, personName: null })).sort((a, b) => a.at - b.at)
   }
   const ids = scored.map((a) => a.id)
   if (!ids.length) return []
+  const { createServiceClient } = await import('../supabase-server')
+  const db = createServiceClient()
   const fromIso = new Date(zonedMidnightMs(opts.fromKey, opts.tz)).toISOString()
   const toIso = new Date(zonedMidnightMs(addDaysKey(opts.toKey, 1), opts.tz)).toISOString()
   const rows: DbEvent[] = []

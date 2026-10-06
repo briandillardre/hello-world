@@ -74,7 +74,8 @@ export interface AnonToolSighting {
   toolId: string
   lat: number
   lng: number
-  /** Rough on purpose, metres (250 off the clock, a zone's radius); null = exact (a recovery). */
+  /** Rough on purpose, metres (250 off the clock; a privacy zone's: at least
+   *  250, its radius when bigger); null = exact (a recovery). */
   precisionM: number | null
   reason: 'off_shift' | 'privacy_zone' | 'recovery'
   firstMs: number
@@ -157,10 +158,14 @@ export function findGatewayForTool(
  * `anon` (132): the newest anonymous sighting per tool — a phone off the
  * clock or inside a privacy zone heard it. It wins when it is newer than the
  * custody sighting (lib/location-policy `anonymousWins` — a truck parked by
- * the tag keeps its exact spot), and the tool is placed at it: a ~250 m cell
- * centre, a privacy zone's centre, or a recovery's exact spot. The location
- * says so (`raw.anonymous`, `accuracy` = the deliberate roughness), so no
- * screen mistakes a cell centre for the spot.
+ * the tag keeps its exact spot, and so does a truck HAULING it: a fresh
+ * custody tool is drawn at its carrier's live position, so the sighting is
+ * also measured against that, or a phone riding along would flip the dot
+ * between the truck and a rough cell all the way — 133), and the tool is
+ * placed at it: a ~250 m cell centre (a privacy zone's: the cell of its
+ * centre), or a recovery's exact spot. The location says so
+ * (`raw.anonymous`, `accuracy` = the deliberate roughness), so no screen
+ * mistakes a cell centre for the spot.
  */
 export function resolveToolLocations(
   assets: AssetWithLocation[],
@@ -173,7 +178,10 @@ export function resolveToolLocations(
     const match = findGatewayForTool(asset.id, associations, assets)
     const a = anon?.get(asset.id)
     if (a) {
-      const custody = match ? { seenMs: Date.parse(match.assoc.last_seen), lat: match.assoc.last_lat ?? null, lng: match.assoc.last_lng ?? null } : null
+      const gwLoc = match?.gateway.location
+      const live = match && gwLoc && toolIsFresh(match.assoc.last_seen, nowMs) && Number.isFinite(gwLoc.lat) && Number.isFinite(gwLoc.lng)
+        ? { lat: gwLoc.lat, lng: gwLoc.lng } : null
+      const custody = match ? { seenMs: Date.parse(match.assoc.last_seen), lat: match.assoc.last_lat ?? null, lng: match.assoc.last_lng ?? null, live } : null
       const ownMs = asset.location ? Date.parse(asset.location.timestamp) : NaN
       if (anonymousWins(custody, a) && !(Number.isFinite(ownMs) && ownMs >= a.seenMs)) {
         return { ...asset, location: anonLocation(asset, a) }

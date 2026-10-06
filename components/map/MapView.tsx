@@ -42,6 +42,7 @@ import { typeInfo } from '@/lib/aircraft-shapes'
 import { buildReplayTrail, replayPositionAt, bearingDeg, agoWords, type ReplayTrail, type ReplayPosition, type WindowFlight } from '@/lib/plane-replay'
 import { DEVICE_META, type SiteDevice } from '@/lib/site-devices'
 import { geofencePresence } from '@/lib/site-presence'
+import { activeSitePhotoIds } from '@/lib/satellite/display'
 import { synthesizeToolRows, TOOL_FRESH_MS } from '@/lib/tools-resolve'
 import { AssetPanel, type PanelStop } from './AssetPanel'
 import { MeasureTool } from './MeasureTool'
@@ -691,7 +692,7 @@ interface MapViewProps {
   /** Placed drone/site imagery (052/053/055): every placed photo (the map
    *  timeline picks the frame) + each zone's active plan sheet. Photos ride
    *  the 'siteimg' toggle, plans ride 'siteplans'. */
-  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan'; satellite?: boolean }[]
   /** First-ever fix (ms), for the "All time" window. */
   earliestMs?: number | null
   /** Viewer IANA timezone for local-calendar-day range windows. */
@@ -4580,15 +4581,10 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     const cutoff = range !== 'live' && realWindowEff
       ? realWindowEff.from + pbT * (realWindowEff.to - realWindowEff.from)
       : Infinity
-    const byZone = new Map<string, { id: string; takenOn: string }>()
-    for (const o of photos) {
-      // A shot represents the site from the start of its capture day onward.
-      const shotMs = new Date(o.takenOn + 'T00:00:00').getTime()
-      if (!Number.isFinite(shotMs) || shotMs > cutoff) continue
-      const cur = byZone.get(o.zoneId)
-      if (!cur || o.takenOn >= cur.takenOn) byZone.set(o.zoneId, { id: o.id, takenOn: o.takenOn })
-    }
-    return Array.from(byZone.values()).map((v) => v.id).sort().join(',')
+    // A shot represents the site from the start of its capture day onward;
+    // a satellite picture never displaces a drone/site photo taken within the
+    // 14 days before it (lib/satellite/display.ts).
+    return activeSitePhotoIds(photos, cutoff, (d) => new Date(d + 'T00:00:00').getTime()).join(',')
   }, [siteOverlays, range, realWindowEff, pbT])
 
   useEffect(() => {

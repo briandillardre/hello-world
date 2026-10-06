@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { pushPhoneLocation } from '@/lib/actions/tracker'
+import { recordPhoneLocation } from '@/lib/phone-location'
 import { recordBeaconSightings } from '@/lib/ble-sightings'
 
 export const dynamic = 'force-dynamic'
@@ -19,15 +19,18 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  *    matcher, strongest-signal arbitration and custody history as a truck.
  *  • Off the clock, or inside a privacy zone: nothing of the person is kept.
  *    The phone asset is not touched (not even created); each tag it heard is
- *    filed anonymously in `tool_sightings` — on a ~250 m grid cell, at the
- *    privacy zone's centre, or at its exact spot when its asset is in
- *    recovery. "Stop sharing" still means the phone reports nothing.
+ *    filed anonymously in `tool_sightings` — on a ~250 m grid cell (a privacy
+ *    zone's: the cell of its centre), or at its exact spot when its asset is
+ *    in recovery. "Stop sharing" still means the phone reports nothing.
  *
  * Auth = the user's own session. Body: { beacons: [{ id, rssi }], lat, lng,
  * accuracy?, heading?, battery? }. Ids are the Tag scanner's own forms
  * (UUID:major:minor decimal, or a MAC); the matcher tolerates both.
  * Reply: { ok, matched, holding, mode: 'custody' | 'anonymous', withheld? }
- * — the phone's status line says which, so the person can see it.
+ * — the phone's status line says which, so the person can see it. Inside
+ * someone else's personal ("only me") privacy zone the reply is the one the
+ * same report gets outside any zone (133): nothing of the person is kept
+ * there either, but a reply must never map a zone they cannot see.
  */
 export async function POST(req: NextRequest) {
   if (isMock) return NextResponse.json({ ok: true, mode: 'demo', matched: 0, holding: 0 })
@@ -85,14 +88,16 @@ export async function POST(req: NextRequest) {
   try { zones = await loadPrivacyZones(svc, companyId) } catch {
     return NextResponse.json({ ok: false, error: 'could not check privacy zones — will retry' }, { status: 503 })
   }
-  let zone = privacyZoneAt({ lat, lng }, zones)
-  const onShift = zone ? false : await isOnShift(svc, companyId, userId)
+  let zone = privacyZoneAt({ lat, lng }, zones, { accuracyM: accuracy })
+  // Read even inside a zone: the reply for someone else's personal zone has
+  // to be the one this person gets outside it (custody on the clock).
+  const onShift = await isOnShift(svc, companyId, userId)
   const policy = phoneFixPolicy({ source: 'gateway', onShift, privacyZone: zone })
 
   if (policy.custody) {
-    // The fix lands on the phone's own asset first (creates/reactivates it and
-    // enforces the session); that asset is the gateway.
-    const fix = await pushPhoneLocation({
+    // The fix lands on the phone's own asset first (creates/reactivates it);
+    // that asset is the gateway. `userId`/`companyId` are this session's.
+    const fix = await recordPhoneLocation({ userId, companyId }, {
       lat, lng, accuracy, heading: num(body.heading, 0, 360), battery: num(body.battery, 0, 100),
       source: 'gateway',
       // Never revives a stopped share — the gateway is not a way back onto the map.
@@ -100,15 +105,16 @@ export async function POST(req: NextRequest) {
     })
     if (fix.withheld === 'privacy_zone') {
       // A zone marked private between the two reads — file anonymously below,
-      // at that zone's centre; without it, ask the phone to try again.
-      zone = privacyZoneAt({ lat, lng }, await loadPrivacyZones(svc, companyId).catch(() => []))
+      // at that zone's cell; without it, ask the phone to try again.
+      zones = await loadPrivacyZones(svc, companyId).catch(() => ({ zones: [], work: [] }))
+      zone = privacyZoneAt({ lat, lng }, zones, { accuracyM: accuracy })
       if (!zone) return NextResponse.json({ ok: false, error: 'could not check privacy zones — will retry' }, { status: 503 })
     } else {
       if (!fix.ok || !fix.assetId) {
         if (fix.reason === 'sharing_off') {
           return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
         }
-        return NextResponse.json({ ok: false, error: fix.reason === 'auth' ? 'sign in' : 'could not record the phone fix' }, { status: fix.reason === 'auth' ? 401 : 500 })
+        return NextResponse.json({ ok: false, error: 'could not record the phone fix' }, { status: 500 })
       }
       if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0, mode: 'custody' })
       const { data: gw } = await svc.from('assets').select('id, company_id').eq('id', fix.assetId).maybeSingle()
@@ -123,13 +129,22 @@ export async function POST(req: NextRequest) {
   // Off the clock or inside a privacy zone: the person's fix is not kept and
   // their phone asset is not touched. "Stop sharing" still means it — a phone
   // whose share was stopped reports nothing at all (ship-check, Sep 12).
-  const withheld = zone ? 'privacy_zone' : 'off_shift'
+  // A zone this person cannot see (someone else's "only me" zone) is never
+  // named in the reply (133): it reads as the same report outside any zone.
+  // Inside one they CAN see too (a company-wide zone around it), it says so.
+  const seenZone = !!zone && !!privacyZoneAt({ lat, lng }, zones, { accuracyM: accuracy, onlyVisibleTo: userId })
+  const asIfOutside = !!zone && !seenZone
+  const withheld = seenZone ? 'privacy_zone' : 'off_shift'
   const { data: phone } = await svc.from('assets').select('active, metadata')
     .eq('company_id', companyId).eq('tracker_id', `phone-${userId}`).maybeSingle()
   if (phone && phone.active === false) {
     return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
   }
-  if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0, mode: 'anonymous', withheld })
+  const reply = (matched: number, placed: number) => asIfOutside && onShift
+    // What the custody path answers: the tags it heard, held by this phone.
+    ? { ok: true, matched, holding: matched, mode: 'custody' as const }
+    : { ok: true, matched, holding: 0, ...(beacons.length ? { placed } : {}), mode: 'anonymous' as const, withheld }
+  if (!beacons.length) return NextResponse.json(reply(0, 0))
   // The sighting says nothing of whose phone heard it, but it is read at the
   // phone's own visibility level (111): the owner's hidden phone stays hidden.
   const { visibilityRank, assetVisibility } = await import('@/lib/permissions')
@@ -139,5 +154,5 @@ export async function POST(req: NextRequest) {
     { lat, lng, timestamp: new Date().toISOString() },
     { privacyZone: zone, recovery, visibleRank },
     { reportedAs: 'dec' })
-  return NextResponse.json({ ok: true, matched: out.matched, holding: 0, placed: out.placed, mode: 'anonymous', withheld })
+  return NextResponse.json(reply(out.matched, out.placed))
 }

@@ -8,8 +8,11 @@
  * outside the shift / hours / area — each with the dollars at risk and what
  * telemetry limited it. These go in front of an owner as "your driver may
  * have bought fuel for something else", so the false alarms are asserted
- * out as hard as the real ones are asserted in. Run after ANY change to
- * lib/fuel-check.ts (and to lib/asset-stats.ts's gauge reader).
+ * out as hard as the real ones are asserted in. The last section drives the
+ * runner (lib/db/fuel-check.ts runFuelCheck) end to end against a stand-in
+ * database and a stubbed Photon. Run after ANY change to lib/fuel-check.ts,
+ * lib/db/fuel-check.ts or lib/fuel-geocode.ts (and to lib/asset-stats.ts's
+ * gauge reader).
  */
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -423,9 +426,50 @@ function drive(fromMs, toMs, pct, stepMs = 5000, mph = 42) {
 
 // Settings are clamped
 ok('settings: junk falls back, extremes clamp', (() => {
-  const s = fc.cleanSettings({ gasPrice: 'abc', dieselPrice: 99, areaMiles: 0, runtimeHours: 1000 })
+  const s = fc.cleanSettings({ gasPrice: 'abc', dieselPrice: 99, areaMiles: 0.1, runtimeHours: 1000 })
   return s.gasPrice === fc.DEFAULT_SETTINGS.gasPrice && s.dieselPrice === 15 && s.areaMiles === 0.5 && s.runtimeHours === 96
 })())
+// Review finding (Oct 6): a cleared box sent Number('') = 0, which clamped UP
+// to the floor — $0.50/gal, 0.5 mi, 4 h — and turned a $60 fill into 120 gal.
+ok('settings: zero or less is a cleared box, never the floor', (() => {
+  const s = fc.cleanSettings({ gasPrice: 0, dieselPrice: -3, areaMiles: '0', runtimeHours: '' })
+  return s.gasPrice === fc.DEFAULT_SETTINGS.gasPrice && s.dieselPrice === fc.DEFAULT_SETTINGS.dieselPrice && s.areaMiles === fc.DEFAULT_SETTINGS.areaMiles && s.runtimeHours === fc.DEFAULT_SETTINGS.runtimeHours
+})())
+{
+  const saved = { gasPrice: 3.459, dieselPrice: 3.899, areaMiles: 12, runtimeHours: 36 }
+  const kept = fc.mergeSettings(saved, { gasPrice: '', dieselPrice: 0, areaMiles: -1, runtimeHours: 'abc' })
+  ok('settings save: a blank, zero, negative or unreadable box keeps its saved value', JSON.stringify(kept) === JSON.stringify(saved), kept)
+  const sparse = fc.mergeSettings(saved, { areaMiles: 7 })
+  ok('settings save: only the boxes sent change', sparse.areaMiles === 7 && sparse.gasPrice === 3.459 && sparse.dieselPrice === 3.899 && sparse.runtimeHours === 36, sparse)
+  const typed = fc.mergeSettings(saved, { gasPrice: '3.199', runtimeHours: 500 })
+  ok('settings save: typed numbers are read and clamped like any setting', typed.gasPrice === 3.199 && typed.runtimeHours === 96, typed)
+  ok('settings save: nothing sent changes nothing', JSON.stringify(fc.mergeSettings(saved, null)) === JSON.stringify(saved))
+  ok('pump price: $1–$10 is a pump price; the $0.50 floor and $15 are not', fc.pumpPriceOk(3.1) && fc.pumpPriceOk(1) && fc.pumpPriceOk(10)
+    && !fc.pumpPriceOk(0.5) && !fc.pumpPriceOk(15) && !fc.pumpPriceOk(NaN))
+}
+// An estimate is never concluded from — or stored off — a price that isn't a pump price.
+{
+  const floor = { ...SETTINGS, gasPrice: 0.5, dieselPrice: 0.5 }
+  const sixty = { txn: { gallons: null, unitPrice: null, amount: 60, product: null }, asset: { ...RAM, tankGal: 26, fuelType: null, reportsFuelLevel: false }, settings: floor }
+  const t = check('gallons_exceed_tank', sixty)
+  ok('a $0.50 default price: a $60 fill is not "120 gal" — can\'t check, says why', t.outcome === 'unknown' && t.facts.priceOk === false && t.facts.gallons === undefined
+    && /isn't a pump price/.test(t.evidence) && t.missing.includes('gallons_estimated') && t.dollarsAtRisk === 0, t)
+  ok('a $0.50 default price raises no tank exception', fc.runFuelChecks(input(sixty)).every((r) => r.kind !== 'gallons_exceed_tank' || r.outcome !== 'exception'))
+  ok('resolveGallons: an estimate at the floor is marked untrusted; exported gallons always trusted',
+    fc.resolveGallons({ gallons: null, unitPrice: null, amount: 60, product: 'gas' }, null, floor).priceOk === false
+    && fc.resolveGallons({ gallons: 20, unitPrice: null, amount: 60, product: 'gas' }, null, floor).priceOk === true)
+  const good = check('gallons_exceed_tank', { ...sixty, settings: SETTINGS })
+  const wbGood = fc.gallonsWriteBack({ gallons: null, gallonsEstimated: false }, good)
+  ok('write-back: an estimate at a pump price is stored as an estimate', good.outcome === 'pass' && wbGood?.gallons_estimated === true && near(wbGood.gallons, 19.4, 0.05), wbGood)
+  ok('write-back: an estimate at the floor price is never stored', fc.gallonsWriteBack({ gallons: null, gallonsEstimated: false }, t) === null)
+  ok('write-back: …and one an earlier run stored is taken back', JSON.stringify(fc.gallonsWriteBack({ gallons: 120, gallonsEstimated: true }, t)) === JSON.stringify({ gallons: null, gallons_estimated: false }))
+  ok('write-back: the export\'s own gallons are never touched', fc.gallonsWriteBack({ gallons: 24.3, gallonsEstimated: false }, t) === null && fc.gallonsWriteBack({ gallons: 24.3, gallonsEstimated: false }, good) === null)
+  const bulk = check('gallons_exceed_tank', { ...sixty, txn: { ...sixty.txn, amount: 9_000, product: 'diesel' }, settings: SETTINGS })
+  ok('write-back: a "fill" past the column\'s 2,000 gal (a bulk delivery) is flagged but never stored', bulk.outcome === 'exception'
+    && fc.gallonsWriteBack({ gallons: null, gallonsEstimated: false }, bulk) === null, { o: bulk.outcome, g: bulk.facts.gallons })
+  const noTank = check('gallons_exceed_tank', { ...sixty, asset: { ...RAM, tankGal: null }, settings: SETTINGS })
+  ok('write-back: a check with no tank to compare to leaves the row alone', fc.gallonsWriteBack({ gallons: 19.4, gallonsEstimated: true }, noTank) === null)
+}
 ok('windows: a timed purchase reads ±30 min at the pump and 24 h after', (() => {
   const w = fc.checkWindows({ txnDate: '2026-10-01', txnAtMs: T }, SETTINGS, TZ)
   return w.presenceFromMs === T - 30 * MIN && w.presenceToMs === T + 30 * MIN && w.runtimeToMs === T + 24 * HOUR
@@ -434,6 +478,186 @@ ok('windows: a date-only purchase reads the local day', (() => {
   const w = fc.checkWindows({ txnDate: '2026-10-01', txnAtMs: null }, SETTINGS, TZ)
   return w.presenceFromMs === at('2026-10-01T00:00:00-04:00') && w.presenceToMs === at('2026-10-02T00:00:00-04:00')
 })())
+
+// ── The runner, the real production path, against a stand-in database ──────
+// lib/db/fuel-check.ts runFuelCheck exactly as the import, the re-check and
+// the nightly cron call it: rows in, Photon (stubbed fetch) for the station,
+// the geocode cache, the evidence reads (rpc stand-ins), stored checks and
+// exception rows out. Only the database and the network are fakes.
+{
+  const devicesUrl = transpile('../lib/devices.ts')
+  const catalogUrl = transpile('../lib/telemetry-catalog.ts', { './power-loss': transpile('../lib/power-loss.ts') })
+  const fcUrl = transpile('../lib/fuel-check.ts', { './asset-stats': statsUrl, './dates': datesUrl, './bulk-import': bulkUrl })
+  const geocodeUrl = transpile('../lib/fuel-geocode.ts', { './place-label': transpile('../lib/place-label.ts'), './fuel-check': fcUrl })
+  const run = await import(transpile('../lib/db/fuel-check.ts', {
+    '@/lib/fuel-check': fcUrl, '@/lib/asset-stats': statsUrl, '@/lib/dates': datesUrl, '@/lib/devices': devicesUrl,
+    '@/lib/telemetry-catalog': catalogUrl, '@/lib/fuel-geocode': geocodeUrl, '@/lib/permissions': transpile('../lib/permissions.ts'),
+  }))
+
+  // Just the PostgREST calls the runner makes, over plain arrays.
+  const fakeDb = (tables, rpcs = {}) => ({
+    tables,
+    from(table) {
+      const filters = []
+      let op = 'select', payload = null, onConflict = null, limitN = Infinity
+      const rows = () => (tables[table] ??= [])
+      const exec = () => {
+        const hit = (r) => filters.every((f) => f(r))
+        if (op === 'select') return { data: rows().filter(hit).slice(0, limitN), error: null }
+        if (op === 'update') { for (const r of rows()) if (hit(r)) Object.assign(r, payload); return { data: null, error: null } }
+        if (op === 'insert') { for (const p of [].concat(payload)) rows().push({ ...p }); return { data: null, error: null } }
+        const keys = onConflict.split(',')
+        for (const p of [].concat(payload)) {
+          const same = rows().find((r) => keys.every((k) => r[k] === p[k]))
+          if (same) Object.assign(same, p); else rows().push({ id: crypto.randomUUID(), ...p })
+        }
+        return { data: null, error: null }
+      }
+      const cmp = (c, v, f) => { filters.push((r) => r[c] != null && f(String(r[c]), String(v))); return q }
+      const q = {
+        select() { return q }, order() { return q }, or() { return q },
+        eq(c, v) { filters.push((r) => r[c] === v); return q },
+        in(c, vs) { filters.push((r) => vs.includes(r[c])); return q },
+        is(c, v) { filters.push((r) => (r[c] ?? null) === v); return q },
+        gte: (c, v) => cmp(c, v, (a, b) => a >= b), lte: (c, v) => cmp(c, v, (a, b) => a <= b), lt: (c, v) => cmp(c, v, (a, b) => a < b),
+        limit(n) { limitN = n; return q },
+        update(p) { op = 'update'; payload = p; return q },
+        upsert(p, o) { op = 'upsert'; payload = p; onConflict = o.onConflict; return q },
+        insert(p) { op = 'insert'; payload = p; return q },
+        maybeSingle() { const r = exec(); return Promise.resolve({ data: r.data?.[0] ?? null, error: r.error }) },
+        then(res, rej) { return Promise.resolve(exec()).then(res, rej) },
+      }
+      return q
+    },
+    rpc(name, args) { return Promise.resolve({ data: rpcs[name] ? rpcs[name](args) : [], error: null }) },
+  })
+  const CO = '7e1d2c3b-0000-4000-8000-0000000000c0'
+  const iso = (ms) => new Date(ms).toISOString()
+  const companyRow = { id: CO, work_start: '07:00', work_end: '17:00', work_days: [1, 2, 3, 4, 5], digest_prefs: { tz: TZ } }
+  const zoneRow = (z) => ({ id: z.id, company_id: CO, name: z.name, kind: z.kind, owner_id: null, geometry: { type: 'Polygon', coordinates: [z.ring] } })
+  const txnRow = (o) => ({
+    company_id: CO, source: 'csv', dedupe_key: 'k-' + o.id, alt_keys: [], expense_id: null, txn_at: null, txn_date: '2026-10-01', has_time: false,
+    brand: null, store_no: null, address: null, city: null, state: 'SC', zip: null, city_candidates: [], lat: null, lng: null, merchant_points: null,
+    geocode_source: null, geocode_precision: null, place_label: null, geocoded_at: null, gallons: null, gallons_estimated: false, unit_price: null,
+    amount: 62.15, product: null, card_last4: null, cardholder_user_id: null, driver_text: null, vehicle_text: null, job_text: null, asset_id: null,
+    asset_source: null, geofence_id: null, odometer: null, excluded: false, excluded_reason: null, checks: null, checked_at: null, created_at: iso(NOW),
+    ...o,
+  })
+  const stored = (db, id, kind) => fc.readStoredChecks(db.tables.fuel_transactions.find((t) => t.id === id)?.checks)?.r.find((x) => x.k === kind)
+
+  // Finding: the city's measured radius was dropped — every city-only station
+  // was read with a flat 8 km, both ways wrong.
+  const SITE = { lat: 34.85, lng: -82.30 }
+  const siteZone = { id: 'z-job', name: 'Creekside', kind: 'site', ring: box(SITE, 250) }
+  const nearTown = off(SITE, -12_000, 0)  // an address 12 km west of the job, no station matched there
+  const bigCity = off(SITE, -18_000, 0)   // the middle of a city whose edge runs past the job
+  const easley = off(SITE, -14_000, 0)    // a town Photon will size at ~4.2 km across the half-diagonal
+  const addrRow = txnRow({ id: 'tx-addr', merchant: 'SPINX #0412 GREENVILLE SC', brand: 'Spinx', address: '900 Main St', city: 'Greenville',
+    lat: nearTown.lat, lng: nearTown.lng, merchant_points: [nearTown], geocode_source: 'address', geocode_precision: 'city', place_label: 'Main St, Greenville', geocoded_at: iso(NOW - HOUR) })
+  const cityRow = txnRow({ id: 'tx-city', merchant: 'QT 1042 COLUMBIA SC', brand: 'QuikTrip', city_candidates: ['Columbia'],
+    lat: bigCity.lat, lng: bigCity.lng, merchant_points: [bigCity], geocode_source: 'city', geocode_precision: 'city', place_label: 'Columbia', geocoded_at: iso(NOW - HOUR) })
+  const freshRow = txnRow({ id: 'tx-fresh', merchant: 'SPINX #0156 EASLEY SC', brand: 'Spinx', city_candidates: ['Easley'] })
+  const cache = [
+    { company_id: CO, key: run.rowMerchantKey(addrRow), precision: 'city', lat: nearTown.lat, lng: nearTown.lng, points: [nearTown], label: 'Main St, Greenville', radius_m: 1500, source: 'address' },
+    { company_id: CO, key: run.rowMerchantKey(cityRow), precision: 'city', lat: bigCity.lat, lng: bigCity.lng, points: [bigCity], label: 'Columbia', radius_m: 20_000, source: 'city' },
+  ]
+  const db = fakeDb({
+    companies: [companyRow], fuel_pilot: [], fuel_transactions: [addrRow, cityRow, freshRow], fuel_merchant_places: cache,
+    assets: [], fuel_card_assets: [], company_cards: [], geofences_json: [zoneRow(siteZone)], places: [], fuel_exceptions: [],
+  })
+  const sw = off(easley, -3_000, -3_000), ne = off(easley, 3_000, 3_000)
+  const realFetch = globalThis.fetch
+  const asked = []
+  globalThis.fetch = async (url) => {
+    const u = new URL(String(url))
+    asked.push(u.pathname + '?' + u.searchParams.get('q'))
+    if (u.hostname !== 'photon.komoot.io') return new Response('unexpected', { status: 500 })
+    if (u.searchParams.get('osm_tag') === 'place' && /easley/i.test(u.searchParams.get('q') ?? '')) {
+      return Response.json({ features: [{ geometry: { coordinates: [easley.lng, easley.lat] }, properties: {
+        osm_key: 'place', osm_value: 'town', name: 'Easley', state: 'South Carolina', countrycode: 'US', extent: [sw.lng, ne.lat, ne.lng, sw.lat] } }] })
+    }
+    return Response.json({ features: [] }) // no Spinx found round the town
+  }
+  let r
+  try {
+    r = await run.runFuelCheck(db, CO, { ids: ['tx-addr', 'tx-city', 'tx-fresh'], budgetMs: 20_000, geocodeCalls: 8, nowMs: NOW })
+  } finally {
+    globalThis.fetch = realFetch
+  }
+  ok('runner: all three purchases checked, the new one placed by Photon', r.checked === 3 && r.placed === 1 && asked.length === 2, { r, asked })
+  const freshPlace = db.tables.fuel_merchant_places.find((p) => p.key === run.rowMerchantKey(freshRow))
+  ok('runner: the town is sized from its own extent and cached with that radius', freshPlace?.precision === 'city' && near(freshPlace.radius_m, 4243, 30), freshPlace)
+  const a = stored(db, 'tx-addr', 'outside_shift_or_area')
+  ok('runner: an address 12 km from every site is measured with its own 1.5 km — flagged (the flat 8 km passed it)',
+    a?.o === 'exception' && /is 6\.\d mi from the nearest site/.test(a.e) && a.m.includes('merchant_city_only'), a)
+  const c = stored(db, 'tx-city', 'outside_shift_or_area')
+  ok('runner: a big city reaching past the job is measured with its own 20 km — not flagged (the flat 8 km flagged a pump beside the job)', c?.o === 'pass', c)
+  const f = stored(db, 'tx-fresh', 'outside_shift_or_area')
+  ok('runner: a town placed in the same run is measured with the radius just measured — flagged at 5.9 mi (the flat 8 km passed it)',
+    f?.o === 'exception' && /is 5\.9 mi from the nearest site/.test(f.e), f)
+  ok('runner: toCheckTxn carries the radius only for a city-only station', run.toCheckTxn(addrRow, null, 1500).cityRadiusM === 1500
+    && run.toCheckTxn({ ...addrRow, geocode_precision: 'exact' }, null, 1500).cityRadiusM === null && run.toCheckTxn(addrRow, null).cityRadiusM === null)
+  ok('runner: a lost radius falls back to 8 km, the old reading', fc.CITY_RADIUS_FALLBACK_M === 8000)
+
+  // Finding: the stored evidence named vehicles (and the cardholder's phone)
+  // that some of its readers may not see (111).
+  const RAM_ID = 'a1111111-0000-4000-8000-000000000001', F750_ID = 'a1111111-0000-4000-8000-000000000002'
+  const OWNER_ID = 'a1111111-0000-4000-8000-000000000003', PHONE_ID = 'a1111111-0000-4000-8000-000000000004'
+  const evidenceWith = async (hidden) => {
+    const meta = hidden ? { visibility: 'master' } : {}
+    const db2 = fakeDb({
+      companies: [companyRow], fuel_pilot: [], fuel_merchant_places: [], fuel_exceptions: [], places: [], trail_daily: [], time_entries: [],
+      geofences_json: ZONES.map(zoneRow),
+      assets: [
+        { id: RAM_ID, company_id: CO, name: 'RAM 3500', type: 'vehicle', tracker_id: '350000000000001', metadata: {}, active: true },
+        { id: F750_ID, company_id: CO, name: 'F750 Tool Truck', type: 'vehicle', tracker_id: '350000000000002', metadata: {}, active: true },
+        { id: OWNER_ID, company_id: CO, name: 'Owner Tahoe', type: 'vehicle', tracker_id: '350000000000003', metadata: meta, active: true },
+        { id: PHONE_ID, company_id: CO, name: 'Owner phone', type: 'personnel', tracker_id: 'phone-u-owner', metadata: meta, active: true },
+      ],
+      fuel_card_assets: [{ company_id: CO, last4: '0417', asset_id: RAM_ID, valid_from: '2026-09-01' }],
+      company_cards: [{ company_id: CO, last4: '0417', user_id: 'u-owner' }],
+      asset_telemetry_latest: [{ asset_id: RAM_ID, ign: true }],
+      asset_locations: [{ id: 'l1', asset_id: RAM_ID, lat: YARD_C.lat, lng: YARD_C.lng, speed: 0, timestamp: iso(T - 3 * MIN) }],
+      fuel_transactions: [txnRow({ id: 'tx-pump', merchant: 'SPINX #0156', brand: 'Spinx', has_time: true, txn_at: iso(T), card_last4: '0417', amount: 84.09,
+        lat: STATION.lat, lng: STATION.lng, merchant_points: [STATION], geocode_source: 'export', geocode_precision: 'exact', place_label: 'Spinx (Wade Hampton Blvd)', geocoded_at: iso(NOW) })],
+    }, {
+      fuel_near: (args) => (args.p_asset ? [] : [
+        { asset_id: OWNER_ID, first_at: iso(T - 6 * MIN), last_at: iso(T), n: 4, still_n: 3, min_m: 18 },
+        { asset_id: F750_ID, first_at: iso(T - 4 * MIN), last_at: iso(T + 2 * MIN), n: 5, still_n: 4, min_m: 22 },
+        { asset_id: PHONE_ID, first_at: iso(T - 5 * MIN), last_at: iso(T), n: 3, still_n: 3, min_m: 9 },
+      ]),
+    })
+    await run.runFuelCheck(db2, CO, { ids: ['tx-pump'], budgetMs: 20_000, geocodeCalls: 4, nowMs: NOW })
+    return { check: stored(db2, 'tx-pump', 'asset_absent'), row: db2.tables.fuel_exceptions.find((e) => e.kind === 'asset_absent') }
+  }
+  const open = await evidenceWith(false)
+  ok('evidence (everyone sees all): names who was at the pump and the cardholder\'s phone',
+    open.check?.o === 'exception' && /Owner Tahoe \(7:36 AM\) and F750 Tool Truck \(7:38 AM\) were there\./.test(open.check.e) && /cardholder's phone was there at 7:37 AM/.test(open.check.e), open.check?.e)
+  const shut = await evidenceWith(true)
+  ok('evidence: an owner-only truck at the pump is left out of the stored sentence',
+    shut.check?.o === 'exception' && /F750 Tool Truck \(7:38 AM\) was there\./.test(shut.check.e) && !/Owner Tahoe/.test(shut.check.e) && shut.check.f?.others === 1, shut.check?.e)
+  ok('evidence: an owner-only phone is not mentioned at all', !/phone/.test(shut.check?.e ?? 'phone'), shut.check?.e)
+  ok('evidence: the exception row carries the same filtered sentence', shut.row && !/Owner Tahoe|phone/.test(shut.row.evidence.text) && /F750 Tool Truck/.test(shut.row.evidence.text), shut.row?.evidence)
+
+  // Finding: the write-back stored "120 gal" estimated at the $0.50 floor.
+  const db3 = fakeDb({
+    companies: [companyRow], fuel_pilot: [{ company_id: CO, gas_price: 0.5, diesel_price: 0.5, area_miles: 5, runtime_hours: 24 }],
+    fuel_merchant_places: [], fuel_exceptions: [], places: [], trail_daily: [], time_entries: [], geofences_json: ZONES.map(zoneRow),
+    assets: [{ id: RAM_ID, company_id: CO, name: 'RAM 3500', type: 'vehicle', tracker_id: null, metadata: { fuel_tank_gal: 26 }, active: true }],
+    fuel_card_assets: [{ company_id: CO, last4: '0417', asset_id: RAM_ID, valid_from: '2026-09-01' }], company_cards: [],
+    fuel_transactions: [txnRow({ id: 'tx-est', merchant: 'SPINX #0156', brand: 'Spinx', card_last4: '0417', amount: 60, gallons: 120, gallons_estimated: true,
+      lat: STATION.lat, lng: STATION.lng, merchant_points: [STATION], geocode_source: 'export', geocode_precision: 'exact', geocoded_at: iso(NOW) })],
+  })
+  await run.runFuelCheck(db3, CO, { ids: ['tx-est'], budgetMs: 20_000, geocodeCalls: 4, nowMs: NOW })
+  const est = db3.tables.fuel_transactions[0]
+  ok('runner: at a $0.50 default the stored "120 gal" estimate is taken back and nothing is flagged',
+    est.gallons === null && est.gallons_estimated === false && stored(db3, 'tx-est', 'gallons_exceed_tank')?.o === 'unknown'
+    && !db3.tables.fuel_exceptions.some((e) => e.kind === 'gallons_exceed_tank'), { gallons: est.gallons, est: est.gallons_estimated, chk: stored(db3, 'tx-est', 'gallons_exceed_tank') })
+  db3.tables.fuel_pilot[0].gas_price = 3.1
+  await run.runFuelCheck(db3, CO, { ids: ['tx-est'], budgetMs: 20_000, geocodeCalls: 4, nowMs: NOW })
+  ok('runner: at a pump price the estimate is made and stored again', near(db3.tables.fuel_transactions[0].gallons, 19.4, 0.05) && db3.tables.fuel_transactions[0].gallons_estimated === true,
+    db3.tables.fuel_transactions[0].gallons)
+}
 
 console.log(`fuel-check: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

@@ -139,8 +139,11 @@ export function LocationPrimer() {
             </div>
             <p className="text-[13px] text-muted leading-relaxed">
               HammerTrack uses your location <span className="text-ink font-semibold">while you&apos;re using the app</span> to
-              show you on the crew map, clock you in at the right site, and find the machines
-              nearest you. Tap allow on the next screen.
+              show you on the crew map, clock you in at the right site, find the machines nearest
+              you and place company tool tags your phone hears. On the clock it also records your
+              shift (in the app, even with the screen off) and, when yours is the only phone riding
+              in a company truck, counts that truck&apos;s driving toward your driver safety score.
+              Tap allow on the next screen.
             </p>
             <div className="mt-4 flex gap-2">
               <button onClick={request} className="flex-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors">

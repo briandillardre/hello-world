@@ -1,20 +1,23 @@
 #!/bin/bash
-# Migration 132 (location privacy) on a plain local PostgreSQL 16 — no
-# Supabase, no PostGIS; 132 applies VERBATIM. Proves it applies twice
-# (idempotent), appends privacy_zone to geofences_json even when another
-# migration appended a column first, keeps the flag server-only, and that
-# tool_sightings / asset_recovery read the way the roles need (company,
-# 111's visibility ladder, the prospect lockdown) and write only from the
-# service role.
+# Migrations 132 + 133 (location privacy + its review pass) on a plain local
+# PostgreSQL 16 — no Supabase, no PostGIS; both apply VERBATIM. Proves they
+# apply twice (idempotent), that 132 appends privacy_zone to geofences_json
+# even when another migration appended a column first, that 133 cleans up
+# 132's leaky rows, and that the flag, a private zone's shape/kind/owner,
+# tool_sightings, the newest-per-tool RPC, asset_recovery (its reason column,
+# the 30-day cap, never a person) and the append-only extensions read and
+# write the way the roles need (company, 111's ladder, the prospect lockdown,
+# the service role).
 #
 #   PSQL="psql -h localhost -U postgres" scripts/privacy-sql-test/run.sh
 #   (default: `su postgres -c psql`, i.e. a Debian/Ubuntu postgres service)
 #
-# Run it after ANY change to 132's SQL.
+# Run it after ANY change to 132's or 133's SQL.
 set -e
 cd "$(dirname "$0")"
 REPO="$(cd ../.. && pwd)"
 MIG="$REPO/supabase/migrations/132_location_privacy.sql"
+MIG133="$REPO/supabase/migrations/133_privacy_review.sql"
 export PGOPTIONS='-c client_min_messages=warning'
 if [ -n "$PSQL" ]; then
   q() { $PSQL -v ON_ERROR_STOP=1 -qAt -d "$1" < "$2"; }
@@ -26,22 +29,28 @@ else
   mk() { su postgres -c "dropdb --if-exists $1" && su postgres -c "createdb $1"; }
 fi
 
-# 1. The real order: 123's view, then 132 — twice.
+# 1. The real order: 123's view, then 132 — twice — then rows 132's first
+#    code could have written, then 133 — twice.
 DB=ht_privacy_test
 mk $DB
 q $DB setup.sql
 q $DB "$MIG" > /dev/null
 q $DB "$MIG" > /dev/null
+q $DB pre133.sql
+q $DB "$MIG133" > /dev/null
+q $DB "$MIG133" > /dev/null
 OUT="$(q $DB checks.sql 2>&1 | grep -v '^$' || true)"
 echo "$OUT" | grep -E '^(FAIL|privacy-sql)' || { echo "$OUT"; exit 1; }
 
 # 2. A parallel branch appended its own column to the view first: 132 must
-#    keep it (a hard-coded column list would try to drop it and fail, 42P16).
+#    keep it (a hard-coded column list would try to drop it and fail, 42P16),
+#    and 133 applies on top.
 DB2=ht_privacy_test_b
 mk $DB2
 q $DB2 setup.sql
 qa $DB2 "ALTER TABLE geofences ADD COLUMN imagery_note TEXT; CREATE OR REPLACE VIEW geofences_json WITH (security_invoker = true) AS SELECT id, company_id, owner_id, name, color, parent_id, kind, notes, folder_url, completed_at, qbo_customer_id, budget, active_from, active_until, created_at, ST_AsGeoJSON(geometry)::jsonb AS geometry, division_id, imagery_note FROM geofences;"
 q $DB2 "$MIG" > /dev/null
+q $DB2 "$MIG133" > /dev/null
 COLS="$(qa $DB2 "SELECT string_agg(column_name, ',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_name = 'geofences_json'")"
 case "$COLS" in
   *,division_id,imagery_note,privacy_zone) echo "privacy-sql: view kept a sibling branch's column ($COLS)";;

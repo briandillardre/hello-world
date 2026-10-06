@@ -8,9 +8,10 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /** Stop starting new vehicle-days past this (the function has 300 s). */
 const BUDGET_MS = 220_000
-/** How far back the backfill reaches, and how many days it asks for per company per run. */
-const BACKFILL_DAYS = 90
+/** How many days the backfill and the re-bank each ask for per company per run
+ *  (their reach — BACKFILL_DAYS, REBANK_DAYS — lives in lib/db/driving.ts). */
 const BACKFILL_PER_COMPANY = 80
+const REBANK_PER_COMPANY = 80
 /** Watermark: when the last run started (rows created since then are new). */
 const STATE_KEY = 'driving.since'
 
@@ -23,10 +24,16 @@ const STATE_KEY = 'driving.since'
  *     built before the day ended. Each day is rebuilt whole and idempotently.
  *  2. BACKFILL — older days (≤ 90) with fixes but no row at the current
  *     engine version, oldest first, until the time budget runs out. A first
- *     deploy catches up over a few hours of runs; a math change (a new
- *     ENGINE_VERSION) re-banks history the same way. Nothing runs at deploy.
- *  3. ADDRESSES — the new events' spots go through the geocode cache so the
+ *     deploy catches up over a few hours of runs. Nothing runs at deploy.
+ *  3. RE-BANK — a math change (a new ENGINE_VERSION) recalculates the
+ *     insurer report's whole 12 months, not just the backfill's 90 days:
+ *     stored rows older than that window still at an older version, oldest
+ *     first, a batch per run. A stored day whose fixes are gone (they moved
+ *     to another vehicle with its tracker) is dropped, not retried forever.
+ *  4. ADDRESSES — the new events' spots go through the geocode cache so the
  *     pages can say "near 123 Main St" without a network call.
+ * Every day's "accelerometer on" counts back from THAT day (lib/db/driving
+ * accelSeenDays), so a re-bank never marks the past measured.
  * Fails closed on CRON_SECRET, like every service-role cron.
  */
 export async function GET(req: NextRequest) {
@@ -40,7 +47,7 @@ export async function GET(req: NextRequest) {
   const { createServiceClient } = await import('@/lib/supabase-server')
   const { readState, writeState } = await import('@/lib/system-state')
   const { resolveDigestPrefs } = await import('@/lib/weekly-digest')
-  const { buildVehicleDay, classOfAsset, daysBetween, idChunks, isScoredAsset, loadCompanyCtx } = await import('@/lib/db/driving')
+  const { BACKFILL_DAYS, REBANK_DAYS, buildVehicleDay, classOfAsset, daysBetween, idChunks, isScoredAsset, loadCompanyCtx } = await import('@/lib/db/driving')
   const { ENGINE_VERSION } = await import('@/lib/driving-score')
   const { addDaysKey, dayKey, safeTz, zonedMidnightMs } = await import('@/lib/dates')
   const db = createServiceClient()
@@ -99,12 +106,13 @@ export async function GET(req: NextRequest) {
     if (builtAt != null && builtAt < endedAt) add(a.id, y)
   }
 
-  let built = 0, skipped = 0, failed = 0, pending = 0
+  let built = 0, skipped = 0, failed = 0, pending = 0, dropped = 0
   const spots: { lat: number; lng: number }[] = []
   const errors: string[] = []
-  const run = async (t: { assetId: string; companyId: string; day: string }) => {
-    const r = await buildVehicleDay(db, await ctxFor(t.companyId), t.assetId, t.day, classOf.get(t.assetId) ?? 'light')
+  const run = async (t: { assetId: string; companyId: string; day: string }, opts: { dropIfEmpty?: boolean } = {}) => {
+    const r = await buildVehicleDay(db, await ctxFor(t.companyId), t.assetId, t.day, classOf.get(t.assetId) ?? 'light', opts)
     if (!r.ok) { failed++; if (errors.length < 5 && r.error) errors.push(r.error); return }
+    if (r.dropped) { dropped++; return }
     if (!r.wrote) { skipped++; return }
     built++
     for (const e of r.events) if (spots.length < 200) spots.push({ lat: e.lat, lng: e.lng })
@@ -141,7 +149,38 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── 3. Addresses for the new events ───────────────────────────────────────
+  // ── 3. Re-bank the rest of the insurer's 12 months ────────────────────────
+  // Only after a method change: rows older than the backfill window still at
+  // an older ENGINE_VERSION (the backfill above already covers the last 90
+  // days, rows or not). A plain indexed read of the stored rows, so a quiet
+  // year costs one empty query per company.
+  let rebanked = 0
+  for (const companyId of companyIds) {
+    if (Date.now() - started > BUDGET_MS) break
+    const today = dayKey(started, tzOf.get(companyId) ?? 'America/New_York')
+    const ids = assets.filter((a) => a.company_id === companyId).map((a) => a.id)
+    const stale: { asset_id: string; day: string }[] = []
+    for (const chunk of idChunks(ids)) {
+      const { data, error: staleErr } = await db.from('driving_daily').select('asset_id, day')
+        .in('asset_id', chunk).lt('version', ENGINE_VERSION)
+        .gte('day', addDaysKey(today, -REBANK_DAYS)).lt('day', addDaysKey(today, -BACKFILL_DAYS))
+        .order('day', { ascending: true }).limit(REBANK_PER_COMPANY)
+      if (staleErr) { if (errors.length < 5) errors.push(staleErr.message); continue }
+      stale.push(...((data ?? []) as { asset_id: string; day: string }[]))
+    }
+    stale.sort((a, b) => a.day.localeCompare(b.day) || a.asset_id.localeCompare(b.asset_id))
+    for (const t of stale.slice(0, REBANK_PER_COMPANY)) {
+      if (Date.now() - started > BUDGET_MS) break
+      if (tasks.has(`${t.asset_id}|${t.day}`)) continue
+      try {
+        const before = built
+        await run({ assetId: t.asset_id, companyId, day: t.day }, { dropIfEmpty: true })
+        if (built > before) rebanked++
+      } catch (err) { failed++; if (errors.length < 5) errors.push(err instanceof Error ? err.message : String(err)) }
+    }
+  }
+
+  // ── 4. Addresses for the new events ───────────────────────────────────────
   let named = 0
   if (spots.length && Date.now() - started < BUDGET_MS + 30_000) {
     try {
@@ -152,7 +191,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: failed === 0, vehicles: assets.length, changedDays: tasks.size, built, backfilled, skipped, failed, pending, named,
+    ok: failed === 0, vehicles: assets.length, changedDays: tasks.size, built, backfilled, rebanked, dropped, skipped, failed, pending, named,
     ms: Date.now() - started, ...(errors.length ? { errors } : {}),
   })
 }

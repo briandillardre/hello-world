@@ -95,8 +95,15 @@ export async function updateGeofence(
     p_clear_dates: payload.clear_dates ?? false,
   })
   if (!full.error) return
+  // 42501 = a guard said no (133: only an Admin reshapes, re-kinds or
+  // re-owns a privacy zone) — fail loudly instead of retrying the older
+  // signatures and letting the editor say "saved".
+  if (full.error.code === '42501') throw new Error(full.error.message)
   const withKind = await supabase.rpc('upsert_geofence', { ...base, p_kind: payload.kind ?? null })
-  if (withKind.error) await supabase.rpc('upsert_geofence', base)
+  if (!withKind.error) return
+  if (withKind.error.code === '42501') throw new Error(withKind.error.message)
+  const last = await supabase.rpc('upsert_geofence', base)
+  if (last.error?.code === '42501') throw new Error(last.error.message)
 }
 
 /** Zone change history, newest first. Empty on a pre-028 database. */
@@ -133,5 +140,7 @@ export async function deleteGeofence(id: string): Promise<void> {
 
   const { createClient } = await import('../supabase-server')
   const supabase = createClient()
-  await supabase.from('geofences').delete().eq('id', id)
+  const { error } = await supabase.from('geofences').delete().eq('id', id)
+  // Only an Admin deletes a privacy zone (133) — say so rather than "deleted".
+  if (error?.code === '42501') throw new Error(error.message)
 }

@@ -7,7 +7,8 @@
  * Gate: signed in, not demo mode, the `edit` ability (requireEditOrThrow — a
  * view-as preview and a prospect never hold it), the `zones` view level, the
  * company's satellite add-on, a company site (not a boundary, vendor or
- * personal zone) of a sane size, and — for Planet — the key being set.
+ * personal zone, not finished) of a sane size, and — for Planet, which is
+ * billed per picture — the key being set AND the Billing permission.
  * Writes ride the service client after those checks (the table has no member
  * write policy).
  */
@@ -17,6 +18,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { satelliteAddonActive } from '@/lib/db/satellite'
 import { boxSize, cleanRing, ringBox, siteAoiBox } from '@/lib/satellite/geo'
 import { planetBilledKm2, type Provider } from '@/lib/satellite/pricing'
+import { siteFinished } from '@/lib/satellite/scenes'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -57,7 +59,13 @@ export async function setZoneSatelliteAction(zoneId: string, provider: Provider 
 
   if (!(await satelliteAddonActive(companyId))) return { ok: false, error: 'Satellite pictures are an add-on — ask us to turn it on for your company.' }
   if (provider === 'planet' && !process.env.PL_API_KEY?.trim()) {
-    return { ok: false, error: 'Daily Planet pictures aren’t set up yet — ask us to turn them on.' }
+    return { ok: false, error: 'Daily Planet pictures are on the roadmap — not available yet.' }
+  }
+  // Every Planet picture is billed to us: turning it on is a spending
+  // decision, so it takes the Billing permission — not just `edit`, which a
+  // Foreman holds by default.
+  if (provider === 'planet' && !perms.canManageBilling) {
+    return { ok: false, error: 'Daily Planet pictures are billed — someone with the Billing permission turns them on.' }
   }
 
   const { getGeofence } = await import('@/lib/db/zones')
@@ -67,6 +75,10 @@ export async function setZoneSatelliteAction(zoneId: string, provider: Provider 
   // A personal zone is its owner's alone; satellite pictures land on the
   // company-wide photo timeline and map.
   if (zone.owner_id) return { ok: false, error: 'This is a personal zone. Make it a company site first.' }
+  // A finished job gets no new pictures (the cron skips it); say so now
+  // rather than turn on a watch that never takes one.
+  const finished = siteFinished(zone, Date.now())
+  if (finished) return { ok: false, error: finished }
   const ring = cleanRing(zone.geometry?.coordinates?.[0])
   if (!ring) return { ok: false, error: 'This site’s outline can’t be read — redraw it first.' }
   if (boxSize(ringBox(ring)).km2 > MAX_SITE_BOX_KM2) return { ok: false, error: 'This site is too big for one satellite picture — split it into smaller sites.' }

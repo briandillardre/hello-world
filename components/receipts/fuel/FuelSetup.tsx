@@ -135,19 +135,28 @@ function TankRow({ v, writable }: { v: FuelVehicleView; writable: boolean }) {
 function PilotSettings({ view, writable, todayKey }: { view: FuelPilotView; writable: boolean; todayKey: string }) {
   const router = useRouter()
   const [pending, start] = useTransition()
-  const s = view.settings
   // Prices read like a pump sign (3.10, 3.459) — never 3.1, and never rounded so a save changes them.
   const price = (n: number) => n.toFixed(3).replace(/0$/, '')
-  const init = { startedOn: s.startedOn ?? '', gasPrice: price(s.gasPrice), dieselPrice: price(s.dieselPrice), areaMiles: String(s.areaMiles), runtimeHours: String(s.runtimeHours) }
+  const fieldsOf = (s: { startedOn: string | null; gasPrice: number; dieselPrice: number; areaMiles: number; runtimeHours: number }) => ({
+    startedOn: s.startedOn ?? '', gasPrice: price(s.gasPrice), dieselPrice: price(s.dieselPrice), areaMiles: String(s.areaMiles), runtimeHours: String(s.runtimeHours),
+  })
+  const init = fieldsOf(view.settings)
   const [f, setF] = useState(init)
   const changed = JSON.stringify(f) !== JSON.stringify(init)
+  // A box left blank or at zero keeps its saved value — Number('') is 0, and
+  // a cleared price box used to save the $0.50 floor (the server holds the
+  // same line). The form then shows what was actually saved.
+  const pos = (v: string) => {
+    const n = Number(v.trim())
+    return v.trim() && Number.isFinite(n) && n > 0 ? n : undefined
+  }
   const save = () => start(async () => {
-    const r = await saveFuelPilotAction({
-      startedOn: f.startedOn || null, gasPrice: Number(f.gasPrice), dieselPrice: Number(f.dieselPrice),
-      areaMiles: Number(f.areaMiles), runtimeHours: Number(f.runtimeHours),
-    })
+    const sent = { gasPrice: pos(f.gasPrice), dieselPrice: pos(f.dieselPrice), areaMiles: pos(f.areaMiles), runtimeHours: pos(f.runtimeHours) }
+    const kept = Object.values(sent).some((v) => v === undefined) || (!f.startedOn && !!init.startedOn)
+    const r = await saveFuelPilotAction({ startedOn: f.startedOn || undefined, ...sent })
     if (!r?.ok) { toast(r?.error ?? NO_REPLY, { variant: 'error' }); return }
-    toast('Saved — the next check uses them.', { variant: 'success' })
+    if (r.settings) setF(fieldsOf(r.settings))
+    toast(kept ? 'Saved — a box left blank or at 0 kept its saved value.' : 'Saved — the next check uses them.', { variant: 'success' })
     router.refresh()
   })
   const input = 'w-full rounded-lg border border-navy-700 bg-navy-950 px-2 py-1.5 text-[12.5px] text-ink tabular-nums disabled:opacity-50'

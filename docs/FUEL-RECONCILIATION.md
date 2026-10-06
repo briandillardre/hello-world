@@ -1,7 +1,10 @@
 # Fuel reconciliation — the 90-day pilot
 
-**Page:** `/receipts/fuel` (linked from /receipts) · **Migration:** `130_fuel_check.sql` ·
-**Engine:** `lib/fuel-check.ts` (pure; harness `node scripts/fuel-check-test.mjs`) ·
+**Page:** `/receipts/fuel` (linked from /receipts) · **Migrations:** `130_fuel_check.sql`,
+`135_fuel_satellite_review.sql` (grants) ·
+**Engine:** `lib/fuel-check.ts` (pure; harness `node scripts/fuel-check-test.mjs`, which also
+drives the runner end to end against a stand-in database; SQL: `PGLITE_DIR=… node
+scripts/fuel-sql-test.mjs`) ·
 **Server:** `lib/db/fuel-check.ts`, `lib/actions/fuel-check.ts`, `lib/fuel-geocode.ts` ·
 **Nightly:** `/api/cron/fuel-check` (09:35 UTC) · **AI:** `fuel_exceptions` (Ask AI + the MCP door)
 
@@ -91,7 +94,11 @@ Times are read in the company's time zone. Charges written as negatives
    `assets.metadata.fuel_tank_gal`, which Ask AI's gallons answers also read).
 3. Settings: the pilot start date (set by the first import), default $/gal
    (only to estimate gallons on lines without them), the approved-area radius,
-   the run-after window.
+   the run-after window. A box left blank or at 0 keeps its saved value (a
+   cleared price box used to save the $0.50 floor and turn every $60 fill into
+   "120 gal"). A default price outside $1–$10/gal is refused; gallons are never
+   estimated at one, and an estimate made at one is never stored on the
+   purchase (one stored earlier is taken back).
 
 An export's vehicle column is matched to a vehicle by name / plate / serial /
 VIN when the match is unique; its driver column to a teammate; its job column
@@ -149,7 +156,11 @@ to a site.
 - **Stations** are placed by Photon (OpenStreetMap, keyless — the geocoder the
   rest of the app uses): the brand's stations around the bank line's city
   (`brand` — "the nearest Spinx in Goose Creek"), the brand's station nearest a
-  fleet export's address (`exact`), or the city (`city`). Per company cache,
+  fleet export's address (`exact`), or the city (`city`). A `city` station is
+  measured from the city's middle less the radius the geocoder measured for it —
+  1.5 km round a street address that matched no station, the town's own size
+  (1.5–25 km) for a town — read back from the cache by the row's merchant key
+  (8 km only if that cache row is gone). Per company cache,
   at most three lookups at once, budgeted; a provider error is retried next
   run, an honest "nothing" is remembered. An unplaced station leaves "at the
   pump" asking whether the vehicle stopped at *any* fuel station (OSM
@@ -162,7 +173,13 @@ to a site.
 - **Writes** go through the service role after the edit + costs checks; a check
   never writes a verdict column. Reads need the Receipts page and the $
   figures (RLS: `ht_viewer_can_costs()`), follow asset visibility (111), and
-  are closed to prospects (119).
+  are closed to prospects (119). Table grants (135): anon none; a signed-in
+  session SELECT only.
+- **Evidence names only what everyone may see.** The evidence sentence is
+  stored once and read by every cost-viewer, the export and Ask AI, so the
+  "who else was at the pump" line keeps only vehicles at the 111 level
+  *Everyone*, and the cardholder's phone is mentioned only when that phone is
+  too.
 
 ## Known limits
 

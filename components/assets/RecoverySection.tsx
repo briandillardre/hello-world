@@ -24,7 +24,8 @@ export async function RecoverySection({ assetId, isTool, canManage, viewerRank, 
   // The demo has no recoveries and cannot start one — no card at all.
   if (isMock) return null
   const [rows, heard] = await Promise.all([
-    getRecoveries(assetId, 4),
+    // The reason is for the people who manage recovery (133 — not in members' column grants).
+    getRecoveries(assetId, 4, { withReason: canManage }),
     isTool ? getToolAnonHistory(assetId, viewerRank, 1) : Promise.resolve([]),
   ])
   const active = rows.find((r) => r.active) ?? null
@@ -41,13 +42,13 @@ export async function RecoverySection({ assetId, isTool, canManage, viewerRank, 
         startedByName: active.startedByName,
         startedText: when(active.startedAt),
         endsText: when(active.expiresAt),
-        reason: active.reason,
+        reason: active.reason ?? '',
       } : null}
       // Only what was heard while this recovery ran is "exact"; an older rough sighting says so.
       lastHeard={last ? { whenText: when(new Date(last.seenMs).toISOString()), exact: last.reason === 'recovery' } : null}
       past={canManage ? rows.filter((r) => !r.active).slice(0, 3).map((r) => ({
         text: `${day(r.startedAt)}–${day(r.endedAt ?? r.expiresAt)} · ${r.startedByName ?? 'an Admin'}${r.endedByName ? `, stopped by ${r.endedByName}` : r.endedAt && !r.endedByName ? ', ran out' : ''}`,
-        reason: r.reason,
+        reason: r.reason ?? '',
       })) : []}
       startOpen={startOpen}
       alertEventId={alertEventId}

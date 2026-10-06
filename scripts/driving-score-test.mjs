@@ -301,6 +301,28 @@ ok('an ordinary 8-second stop is not harsh', D.detectEvents(drive(T0, [[0, 40], 
   const dt = D.driverTotals([solo.row], solo.events, 'p1')
   ok('driverTotals charges solo miles and the lone rider\'s confirmed events', dt.harsh_brake.severe === 1 && near(dt.miles, 6.7, 0.6) && dt.accelMiles > 0, dt)
   ok('the miles tied to a named driver are counted', near(D.sumDaily([solo.row]).attributedMiles, solo.row.miles, 0.6))
+  // A phone the per-asset ladder hides (111: owner only, Admins, Managers+) is
+  // aboard but never named (review, 134) — naming it would hand the people
+  // below that level what the mark hides.
+  const hid = day(withBrake, { riders: [{ personId: 'p1', fixes: phoneOf(20), shifts: shift }, { personId: 'boss', fixes: phoneOf(-25), shifts: shift, hidden: true }] })
+  ok('a hidden phone aboard: the crew member is not charged with two people\'s driving', hid.row.drivers.p1?.ss === 0 && hid.row.drivers.p1?.s > 800 && hid.events.every((e) => e.personId == null), hid.row.drivers)
+  ok('…and nothing is recorded about the hidden phone\'s person', !('boss' in hid.row.drivers) && hid.events.every((e) => e.personId !== 'boss'), hid.row.drivers)
+  const alone = day(withBrake, { riders: [{ personId: 'boss', fixes: phoneOf(20), shifts: shift, hidden: true }] })
+  ok('a hidden phone riding alone is named nowhere; the truck still counts its event', Object.keys(alone.row.drivers).length === 0 && alone.events.every((e) => e.personId == null) && alone.row.brake_sev === 1, [alone.row.drivers, alone.events])
+}
+
+// ── The accelerometer look-back counts back from the day built ──────────────
+{
+  const seen = ['2026-10-01', '2026-10-03'] // Green Driving first seen Oct 1
+  ok('look-back: from the day being built, never from today', D.accelLookback(seen, '2026-06-15') === false && D.accelLookback(seen, '2026-10-02') === true
+    && D.accelLookback(seen, '2026-11-02') === true && D.accelLookback(seen, '2026-11-03') === false)
+  ok('…the 30 days BEFORE it — its own records come from its fixes, a later day never counts', D.accelLookback(['2026-10-01'], '2026-10-01') === false
+    && D.accelLookback(['2026-09-01'], '2026-10-01') === true && D.accelLookback(['2026-08-31'], '2026-10-01') === false && D.accelLookback(['2026-10-02'], '2026-10-01') === false)
+  const stop = drive(T0, [[0, 45], [10, 45], [11, 25], [12, 0]], 1) // Oct 6: a GPS-estimated hard stop
+  const rebanked = day(stop, { accelerometerOn: D.accelLookback(['2026-10-20', '2026-10-28'], '2026-10-06') }).row
+  ok('switched on Oct 20, re-banked later: Oct 6 stays "not measured" and keeps its GPS estimate', rebanked.accel_on === false && rebanked.brake_est === 1, rebanked)
+  const after = day(stop, { accelerometerOn: D.accelLookback(['2026-09-20'], '2026-10-06') }).row
+  ok('…while a day within 30 days after Green Driving was seen is measured (no estimate)', after.accel_on === true && after.accel_seen === false && after.brake_est === 0, after)
 }
 
 // ── The score ───────────────────────────────────────────────────────────────
@@ -383,12 +405,23 @@ const pair = (moderate, severe = 0) => ({ moderate, severe })
   const d1 = D.driverTotals(days, [], 'p1'), d2 = D.driverTotals([summed], [], 'p1')
   ok('…and a driver\'s slice of it too', ['days', 'drivingDays', 'accelDays', 'accelMiles', 'miles', 'movingS', 'zoneModS', 'rodeMiles'].every((k) => d1[k] === d2[k]), [d1, d2])
   ok('…and the score with it', JSON.stringify(D.scoreTotals(a1)) === JSON.stringify(D.scoreTotals(a2)))
+  // 134: a member's summed row carries only the riders they may see, plus the
+  // vehicle's attributed miles whole — "miles tied to a named driver" reads
+  // the same whoever is looking (the insurer report prints it).
+  const narrowed = { ...summed, drivers: { p2: summed.drivers.p2 } }
+  ok('a summed row keeps its attributed miles whole when its riders are narrowed to the caller\'s',
+    D.sumDaily([{ ...narrowed, attributed_miles: 40 }], 90).attributedMiles === a1.attributedMiles && a1.attributedMiles === 40
+    && D.sumDaily([narrowed], 90).attributedMiles === 0, [a1.attributedMiles, D.sumDaily([{ ...narrowed, attributed_miles: 40 }], 90).attributedMiles])
 }
 
 // ── Words + CSV + the one constant ──────────────────────────────────────────
 ok('event words: a confirmed device hard brake', D.eventWords({ kind: 'harsh_brake', severity: 'severe', source: 'device', confirmed: true, value: 0.52, speedMph: 41 }) === 'Severe hard brake · 0.52 g from 41 mph')
 ok('event words: a GPS estimate says it is not scored', D.eventWords({ kind: 'harsh_brake', severity: 'moderate', source: 'gps', value: 0.36, speedMph: 38 }).endsWith('(GPS estimate, not scored)'))
 ok('event words: site speeding', D.eventWords({ kind: 'zone_speeding', severity: 'heavy', source: 'gps', value: 28, speedMph: 28, durationS: 74, limitMph: 15 }, 'Creekside') === '28 mph in a 15 mph site (Creekside) for 1m 14s — heavy')
+ok('a detector that ships off: zero is "not measured" unless the accelerometer was on', D.measuredCount(0, 'off') === null && D.measuredCount(0, 'partial') === null && D.measuredCount(0, 'on') === 0)
+ok('…and a count above zero was measured whatever the switch says', D.measuredCount(2, 'off') === 2 && D.measuredCount(1, 'partial') === 1)
+ok('insurer period: "trailing 12 months" only when the data reaches back a year', D.periodWords(365) === 'trailing 12 months' && D.periodWords(400) === 'trailing 12 months')
+ok('…else the months there are, never rounded up to twelve', D.periodWords(364) === '11 months of data' && D.periodWords(90) === '3 months of data' && D.periodWords(20) === '1 month of data')
 ok('CSV: a formula-looking name is neutralised', D.csvCell('=HYPERLINK("x")') === `"'=HYPERLINK(""x"")"`)
 ok('CSV: numbers stay numbers', D.toCsv(['a', 'b'], [[1.5, 'x,y']]) === 'a,b\r\n1.5,"x,y"\r\n')
 ok('the method is one constant: weights 4 / 2 / 1, tiers 1 / 4 / 6, floor 250 mi + 10 h', M.eventWeights.harsh_brake === 4 && M.eventWeights.harsh_corner === 2 && M.eventWeights.harsh_accel === 1

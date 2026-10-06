@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cleanRing } from '@/lib/satellite/geo'
 import type { Provider } from '@/lib/satellite/pricing'
-import { collectPlanetOrders, runPlanetSite, runSentinelSite, type SatSub, type Site, type Tally } from '@/lib/satellite/run'
+import { collectPlanetOrders, runPlanetSite, runSentinelSite, COLLECT_HEADROOM_MS, type SatSub, type Site, type Tally } from '@/lib/satellite/run'
 import { planetReady } from '@/lib/satellite/planet'
+import { siteFinished } from '@/lib/satellite/scenes'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -12,6 +13,10 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /** Stop starting new sites this long into the run (maxDuration is 300 s). */
 const SOFT_DEADLINE_MS = 230_000
+/** Every piece of work is FINISHED by this point — the runners only start a
+ *  scene, an order or a download whose worst case fits before it — leaving
+ *  the last writes and the answer inside the 300 s limit. */
+const HARD_END_MS = 285_000
 /** A site checked less than this long ago is someone else's (a retried cron, a second run). */
 const CLAIM_MS = 20 * 60_000
 
@@ -24,7 +29,10 @@ const CLAIM_MS = 20 * 60_000
  * the site's timeline (lib/satellite/run.ts): Sentinel-2 every few days at
  * 10 m (free), or PlanetScope daily at 3 m when `PL_API_KEY` is set. Planet
  * orders take minutes; the ones placed earlier are collected at the end.
- * Bounded: a soft deadline, a site cap, and per-site caps inside the runner.
+ * Bounded: a soft deadline for starting a site, a hard end every scene,
+ * order and download must fit before (worst case, lib/satellite/run.ts), a
+ * site cap, and per-site caps inside the runner. A site whose job is marked
+ * complete or whose active dates ended is skipped, with the reason.
  *
  * Runs at 22:35 UTC: Sentinel-2 crosses the eastern US around 16:20 UTC and
  * Earth Search lists it a few hours later. Fails CLOSED on CRON_SECRET — it
@@ -39,6 +47,7 @@ export async function GET(req: NextRequest) {
 
   const started = Date.now()
   const deadline = started + SOFT_DEADLINE_MS
+  const endBy = started + HARD_END_MS
   const maxSites = Math.max(1, Math.min(Number(req.nextUrl.searchParams.get('max')) || 40, 100))
 
   const { createServiceClient } = await import('@/lib/supabase-server')
@@ -59,9 +68,12 @@ export async function GET(req: NextRequest) {
   }
 
   const ids = (subs ?? []).map((s) => s.zone_id)
-  const zones = new Map<string, { company_id: string; kind: string | null; owner_id: string | null; geometry: { coordinates?: unknown[] } | null }>()
+  const zones = new Map<string, {
+    company_id: string; kind: string | null; owner_id: string | null; geometry: { coordinates?: unknown[] } | null
+    completed_at: string | null; active_until: string | null
+  }>()
   if (ids.length) {
-    const { data } = await svc.from('geofences_json').select('id, company_id, kind, owner_id, geometry').in('id', ids)
+    const { data } = await svc.from('geofences_json').select('id, company_id, kind, owner_id, geometry, completed_at, active_until').in('id', ids)
     for (const z of data ?? []) zones.set(z.id, z)
   }
 
@@ -74,10 +86,14 @@ export async function GET(req: NextRequest) {
     if (Date.now() > deadline) break
     const zone = zones.get(s.zone_id)
     const ring = cleanRing(zone?.geometry?.coordinates?.[0])
+    // A finished job is not pictured (nor, with Planet on, billed) any more;
+    // reopening it starts the pictures again. The site's card says so.
+    const finished = siteFinished(zone, Date.now())
     let skip: string | null = null
     if (!addon.get(s.company_id)) skip = 'Satellite add-on is off for this company.'
     else if (!zone || zone.company_id !== s.company_id) skip = 'Site not found.'
     else if (zone.kind === 'boundary' || zone.kind === 'vendor' || zone.owner_id) skip = 'Not a company site.'
+    else if (finished) skip = finished
     else if (!ring) skip = 'Site outline can’t be read.'
     else if (s.provider === 'planet' && !planetReady()) skip = 'Planet isn’t set up (no key).'
     if (skip) {
@@ -103,8 +119,8 @@ export async function GET(req: NextRequest) {
     const site: Site = { id: s.zone_id, companyId: s.company_id, ring: ring! }
     try {
       const tally = s.provider === 'planet'
-        ? await runPlanetSite(svc, s, site, deadline)
-        : await runSentinelSite(svc, site, deadline)
+        ? await runPlanetSite(svc, s, site, endBy)
+        : await runSentinelSite(svc, site, endBy)
       const patch: Record<string, unknown> = { last_error: null }
       if (tally.newest && (!s.last_scene_at || Date.parse(tally.newest) > Date.parse(s.last_scene_at))) patch.last_scene_at = tally.newest
       await finish(s.zone_id, patch)
@@ -118,9 +134,9 @@ export async function GET(req: NextRequest) {
   }
 
   let planet: Awaited<ReturnType<typeof collectPlanetOrders>> | null = null
-  if (planetReady() && Date.now() < started + 280_000) {
+  if (planetReady() && Date.now() + COLLECT_HEADROOM_MS <= endBy) {
     try {
-      planet = await collectPlanetOrders(svc, started + 280_000)
+      planet = await collectPlanetOrders(svc, endBy)
     } catch (e) {
       console.error('planet collect failed', e)
     }

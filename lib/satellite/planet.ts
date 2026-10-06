@@ -54,9 +54,22 @@ function headers(): Record<string, string> {
   return { authorization: `api-key ${key}`, 'content-type': 'application/json', accept: 'application/json' }
 }
 
+/** Planet ANSWERED with an error status. A 4xx means it did nothing (an order
+ *  refused was never placed or billed); anything without an answer — a
+ *  timeout, a dropped connection — leaves that unknown. */
+export class PlanetHttpError extends Error {
+  constructor(readonly status: number, path: string) {
+    super(`Planet answered ${status} on ${path}`)
+    this.name = 'PlanetHttpError'
+  }
+}
+
+/** Did Planet definitely refuse (so nothing was ordered or billed)? */
+export const planetRefused = (e: unknown) => e instanceof PlanetHttpError && e.status >= 400 && e.status < 500
+
 async function planetJson(path: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
   const r = await fetch(`${API}${path}`, { ...init, headers: { ...headers(), ...(init.headers as Record<string, string> | undefined) }, signal })
-  if (!r.ok) throw new Error(`Planet answered ${r.status} on ${path.split('?')[0]}`)
+  if (!r.ok) throw new PlanetHttpError(r.status, path.split('?')[0])
   return r.json()
 }
 

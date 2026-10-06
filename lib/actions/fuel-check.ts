@@ -6,7 +6,7 @@ import { getCurrentCompanyId } from '@/lib/db/company'
 import { keyRateLimited } from '@/lib/rate-limit'
 import { addDaysKey, isDayKey } from '@/lib/dates'
 import {
-  PILOT_DAYS, cleanSettings, localToUtcMs, parseFuelCsv, parseMerchant, parseTimeCell, samePurchase,
+  PILOT_DAYS, PUMP_PRICE_MAX, PUMP_PRICE_MIN, cleanSettings, localToUtcMs, mergeSettings, parseFuelCsv, parseMerchant, parseTimeCell, pumpPriceOk, samePurchase,
   type FuelField, type FuelProduct, type PilotSettings, type Verdict,
 } from '@/lib/fuel-check'
 import {
@@ -206,20 +206,35 @@ export async function setTankSizeAction(assetId: string, gallons: number | null)
   return { ok: true }
 }
 
-export async function saveFuelPilotAction(input: Partial<PilotSettings> & { startedOn?: string | null }): Promise<{ ok: boolean; error?: string }> {
+/**
+ * The pilot's settings. A box left blank, zero or negative KEEPS its saved
+ * value — Number('') is 0, and a cleared price box used to save the $0.50
+ * floor, which turned every $60 fill into "120 gal" and flagged it. Same for
+ * a blank start date. Answers with what is now saved.
+ */
+export async function saveFuelPilotAction(input: Partial<PilotSettings> & { startedOn?: string | null }): Promise<{ ok: boolean; error?: string; settings?: PilotSettings & { startedOn: string | null } }> {
   const g = await guard()
   if (!g.ok) return g
-  const s = cleanSettings(input)
-  if (input.startedOn != null && !isDayKey(input.startedOn)) return { ok: false, error: 'Pick the day the pilot started.' }
+  const startedOn = typeof input?.startedOn === 'string' && input.startedOn.trim() ? input.startedOn.trim() : null
+  if (startedOn != null && !isDayKey(startedOn)) return { ok: false, error: 'Pick the day the pilot started.' }
   const { svc } = await clients()
+  const { data: cur, error: readErr } = await svc.from('fuel_pilot').select('started_on, gas_price, diesel_price, area_miles, runtime_hours')
+    .eq('company_id', g.companyId).maybeSingle()
+  if (readErr) return { ok: false, error: readErr.code === '42P01' ? 'The database is still updating for this page — try again in a few minutes.' : 'Could not read the pilot settings. Try again.' }
+  const c = cur as { started_on: string | null; gas_price: unknown; diesel_price: unknown; area_miles: unknown; runtime_hours: unknown } | null
+  const stored = cleanSettings(c ? { gasPrice: c.gas_price, dieselPrice: c.diesel_price, areaMiles: c.area_miles, runtimeHours: c.runtime_hours } : null)
+  const s = mergeSettings(stored, input)
+  if (!pumpPriceOk(s.gasPrice) || !pumpPriceOk(s.dieselPrice)) {
+    return { ok: false, error: `A pump price is between $${PUMP_PRICE_MIN.toFixed(2)} and $${PUMP_PRICE_MAX.toFixed(2)} a gallon.` }
+  }
   const { error } = await svc.from('fuel_pilot').upsert({
     company_id: g.companyId, gas_price: s.gasPrice, diesel_price: s.dieselPrice, area_miles: s.areaMiles, runtime_hours: s.runtimeHours,
-    ...(input.startedOn !== undefined ? { started_on: input.startedOn } : {}),
+    ...(startedOn ? { started_on: startedOn } : {}),
     updated_by: g.userId, updated_at: new Date().toISOString(),
   }, { onConflict: 'company_id' })
   if (error) return { ok: false, error: 'Could not save the pilot settings.' }
   revalidatePath(PATH)
-  return { ok: true }
+  return { ok: true, settings: { ...s, startedOn: startedOn ?? c?.started_on ?? null } }
 }
 
 /** Re-check the last N days now (the nightly run does the last 14 on its own). */

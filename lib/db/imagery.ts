@@ -11,6 +11,9 @@ export interface SiteOverlay {
   takenOn: string
   /** 'photo' rides the Site imagery toggle + timeline; 'plan' rides Scaled plans. */
   kind: 'photo' | 'plan'
+  /** A satellite picture (source 'satellite') — it yields on the map to a
+   *  sharper drone/site photo up to 14 days older (lib/satellite/display.ts). */
+  satellite: boolean
 }
 
 type Corner = [number, number]
@@ -32,10 +35,12 @@ function validCorners(b: unknown): b is [Corner, Corner, Corner, Corner] {
  *   plans  — only each zone's map_active sheet (055 radio; one per zone),
  *            fetched on their own so photos can never crowd them out.
  * Photos sort before plans so plans mount later → draw on top when both
- * toggles are on. Within one day a satellite picture sorts BEFORE the other
- * shots, so the map (newest-in-order wins) keeps the sharper drone/aerial shot
- * of that day. Tolerates pre-055 (no kind column → all rows are photos) and
- * pre-052/053 (table/column missing → empty).
+ * toggles are on. Photos carry `satellite` so the map can keep a sharper
+ * drone/site shot over a satellite picture taken within 14 days of it
+ * (lib/satellite/display.ts — the same day included); within one day a
+ * satellite picture also sorts BEFORE the other shots. Tolerates pre-055 (no
+ * kind column → all rows are photos) and pre-052/053 (table/column missing →
+ * empty).
  */
 export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOverlay[]> {
   if (isMock) return []
@@ -99,6 +104,7 @@ export async function getPlacedSiteOverlays(companyId: string): Promise<SiteOver
         zoneId: String(row.geofence_id),
         takenOn: String(row.taken_on ?? ''),
         kind: row.kind === 'plan' ? 'plan' : 'photo',
+        satellite: row.source === 'satellite',
       }
       if (item.kind === 'plan') {
         if (row.map_active === true) plans.push(item)

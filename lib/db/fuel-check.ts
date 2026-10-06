@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   CLOCK_USE_DAYS, DRIVE_BY_M, PRESENCE_RADIUS_DAY_M, PRESENCE_RADIUS_TIME_M,
-  checkWindows, cleanSettings, exceptionWrites, fuelTypeOf, isFuelMerchant, isRealStop, merchantKey, mergeStops,
+  checkWindows, cleanSettings, exceptionWrites, fuelTypeOf, gallonsWriteBack, isFuelMerchant, isRealStop, merchantKey, mergeStops,
   metresToRing, missingTelemetry, parseMerchant, pilotMetrics, readStoredChecks, runFuelChecks, samePurchase, storedChecks,
   type CheckAsset, type CheckKind, type CheckTxn, type FixRec, type FuelDraft, type FuelProduct, type GeoPrecision, type LatLng,
   type MetricException, type MetricTxn, type MissingCode, type MissingItem, type PilotMetrics, type PilotSettings,
@@ -12,7 +12,7 @@ import { addDaysKey, dayKey, safeTz } from '@/lib/dates'
 import { trackerKind } from '@/lib/devices'
 import { TELEMETRY_CATALOG } from '@/lib/telemetry-catalog'
 import { PhotonBudget, cleanPoints, fuelStationNear, placeMerchants, type MerchantAsk } from '@/lib/fuel-geocode'
-import { canSeeAsset, type Permissions } from '@/lib/permissions'
+import { assetVisibility, canSeeAsset, visibilityRank, type Permissions } from '@/lib/permissions'
 
 /**
  * The fuel reconciliation pilot — the loader and the check runner (migration
@@ -379,6 +379,17 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
     .filter((z) => z.ring.length >= 3)
   const places = ((placeRes.data ?? []) as { name: string; lat: number; lng: number }[]).filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng))
   const bias = zoneCentroid(zones)
+  // Evidence is stored ONCE and read by every cost-viewer, the export and Ask
+  // AI, whatever their rank — so it may only name what everyone in the
+  // company can see (111). A restricted asset is left out of it entirely.
+  const everyoneSees = (id: string | undefined) => {
+    const a = id ? assetById.get(id) : undefined
+    return !!a && visibilityRank(assetVisibility(a.metadata)) === 0
+  }
+
+  // A station placed only to its city is measured from the city's middle,
+  // less the radius the geocoder measured for it (txn id → metres).
+  const cityRadius = new Map<string, number>()
 
   // 1. Place the stations nobody has looked up yet.
   const unplacedRows = rows.filter((t) => !t.geocoded_at)
@@ -388,7 +399,7 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
     for (const t of unplacedRows) {
       const parts = parseMerchant(t.merchant)
       const ask: MerchantAsk = {
-        key: merchantKey({ brand: t.brand ?? parts.brand, name: parts.name, city: t.city, cityCandidates: t.city_candidates ?? [], state: t.state, address: t.address }),
+        key: rowMerchantKey(t),
         brand: t.brand ?? parts.brand, name: parts.name, address: t.address, city: t.city,
         cityCandidates: t.city_candidates ?? [], state: t.state, zip: t.zip,
       }
@@ -405,8 +416,28 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
         geocode_source: m?.source ?? 'none', place_label: m?.label ?? null, geocoded_at: nowIso,
       }
       Object.assign(t, patch)
+      if (m?.precision === 'city' && m.radiusM != null && m.radiusM > 0) cityRadius.set(t.id, m.radiusM)
       await svc.from('fuel_transactions').update(patch).eq('id', t.id).eq('company_id', companyId)
       res.placed++
+    }
+  }
+  // …and for stations placed by an earlier run, from the geocode cache (the
+  // purchase row keeps the city's middle, not its size).
+  const needRadius = rows.filter((t) => t.geocode_precision === 'city' && !cityRadius.has(t.id))
+  if (needRadius.length) {
+    const keyOfRow = new Map(needRadius.map((t) => [t.id, rowMerchantKey(t)]))
+    const keys = Array.from(new Set(Array.from(keyOfRow.values())))
+    const byKey = new Map<string, number>()
+    for (let i = 0; i < keys.length; i += 200) {
+      const { data } = await svc.from('fuel_merchant_places').select('key, radius_m').eq('company_id', companyId).in('key', keys.slice(i, i + 200))
+      for (const r of (data ?? []) as { key: string; radius_m: number | string | null }[]) {
+        const m = num(r.radius_m)
+        if (m != null && m > 0) byKey.set(r.key, m)
+      }
+    }
+    for (const t of needRadius) {
+      const m = byKey.get(keyOfRow.get(t.id)!)
+      if (m != null) cityRadius.set(t.id, m)
     }
   }
 
@@ -434,7 +465,7 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
       const { assetId, via } = resolveAsset(t, cardHist)
       const a = assetId ? assetById.get(assetId) ?? null : null
       const cardholder = t.cardholder_user_id ?? (t.card_last4 ? holderOf.get(t.card_last4) ?? null : null)
-      const txn = toCheckTxn(t, cardholder)
+      const txn = toCheckTxn(t, cardholder, cityRadius.get(t.id) ?? null)
       const win = checkWindows(txn, settings, tz)
       const cap = a ? caps.get(a.id) : undefined
       const asset: CheckAsset | null = a ? {
@@ -484,11 +515,12 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
             const others = await fuelNear(svc, companyId, null, win.presenceFromMs, win.presenceToMs, txn.points, radius)
             const phone = cardholder ? phoneOf.get(cardholder) : undefined
             presence.others = others
-              .filter((o) => o.assetId !== asset.id && o.assetId !== phone && (o.stillN > 0 || o.minM <= DRIVE_BY_M))
+              .filter((o) => o.assetId !== asset.id && o.assetId !== phone && (o.stillN > 0 || o.minM <= DRIVE_BY_M) && everyoneSees(o.assetId))
               .map((o) => ({ ...o, a: assetById.get(o.assetId) }))
               .filter((o) => o.a && (o.a.type === 'vehicle' || o.a.type === 'equipment'))
               .map((o) => ({ assetId: o.assetId, name: o.a!.name, firstMs: o.firstMs, minM: o.minM }))
-            const ph = phone ? others.find((o) => o.assetId === phone) : undefined
+            // The cardholder's phone only when everyone may see that phone.
+            const ph = phone && everyoneSees(phone) ? others.find((o) => o.assetId === phone) : undefined
             presence.cardholderPhone = ph ? { firstMs: ph.firstMs, minM: ph.minM } : null
           }
         }
@@ -503,7 +535,7 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
         presence = {
           fromMs: win.presenceFromMs, toMs: win.presenceToMs, near: null, stops: null, before: null, after: null, fixesInWindow: 0, cardholderPhone: null,
           others: others.map((o) => ({ ...o, a: assetById.get(o.assetId) }))
-            .filter((o) => o.a && (o.a.type === 'vehicle' || o.a.type === 'equipment') && (o.stillN > 0 || o.minM <= DRIVE_BY_M))
+            .filter((o) => o.a && (o.a.type === 'vehicle' || o.a.type === 'equipment') && (o.stillN > 0 || o.minM <= DRIVE_BY_M) && everyoneSees(o.assetId))
             .map((o) => ({ assetId: o.assetId, name: o.a!.name, firstMs: o.firstMs, minM: o.minM })),
         }
       }
@@ -515,15 +547,16 @@ export async function runFuelCheck(svc: SupabaseClient, companyId: string, opts:
         hours, settings, nowMs,
       })
       // Store: the four results, the vehicle it was read against, the gallons
-      // figure the tank check used (an estimate is re-made at today's price).
-      const tank = results.find((r) => r.kind === 'gallons_exceed_tank')
-      const estGal = tank?.facts.estimated === true && typeof tank.facts.gallons === 'number' ? tank.facts.gallons : null
+      // figure the tank check used (an estimate is re-made at today's price,
+      // and never stored when that price isn't a pump price).
       const patch: Record<string, unknown> = {
         checks: storedChecks(results, nowIso), checked_at: nowIso,
         asset_id: assetId, asset_source: assetId ? via : null,
       }
-      if (estGal != null && (t.gallons == null || t.gallons_estimated)) { patch.gallons = estGal; patch.gallons_estimated = true }
-      await svc.from('fuel_transactions').update(patch).eq('id', t.id).eq('company_id', companyId)
+      const galPatch = gallonsWriteBack({ gallons: num(t.gallons), gallonsEstimated: !!t.gallons_estimated }, results.find((r) => r.kind === 'gallons_exceed_tank'))
+      if (galPatch) Object.assign(patch, galPatch)
+      const { error: upErr } = await svc.from('fuel_transactions').update(patch).eq('id', t.id).eq('company_id', companyId)
+      if (upErr) throw new Error(`fuel_transactions update: ${upErr.message}`)
       const w = exceptionWrites(t.id, companyId, results, nowIso)
       if (w.upserts.length) {
         const { error } = await svc.from('fuel_exceptions').upsert(w.upserts, { onConflict: 'transaction_id,kind' })
@@ -552,7 +585,17 @@ export function resolveAsset(t: Pick<TxnRow, 'asset_id' | 'asset_source' | 'card
   return { assetId: cur?.assetId ?? null, via: 'card' }
 }
 
-export function toCheckTxn(t: TxnRow, cardholder: string | null): CheckTxn {
+/** The geocode cache key a purchase's station is filed under — the key
+ *  placeMerchants writes (fuel_merchant_places) and the runner reads the
+ *  city radius back by. One function for both, so they can't disagree. */
+export function rowMerchantKey(t: Pick<TxnRow, 'merchant' | 'brand' | 'city' | 'city_candidates' | 'state' | 'address'>): string {
+  const parts = parseMerchant(t.merchant)
+  return merchantKey({ brand: t.brand ?? parts.brand, name: parts.name, city: t.city, cityCandidates: t.city_candidates ?? [], state: t.state, address: t.address })
+}
+
+/** A purchase row as the checks read it. `cityRadiusM`: the measured radius
+ *  of a city-only station (fuel_merchant_places.radius_m by rowMerchantKey). */
+export function toCheckTxn(t: TxnRow, cardholder: string | null, cityRadiusM: number | null = null): CheckTxn {
   const pts = cleanPoints(t.merchant_points)
   const points: LatLng[] = pts.length ? pts : t.lat != null && t.lng != null ? [{ lat: Number(t.lat), lng: Number(t.lng) }] : []
   return {
@@ -569,7 +612,7 @@ export function toCheckTxn(t: TxnRow, cardholder: string | null): CheckTxn {
     points,
     precision: points.length ? (t.geocode_precision ?? 'exact') : null,
     placeLabel: t.place_label,
-    cityRadiusM: null,
+    cityRadiusM: t.geocode_precision === 'city' && cityRadiusM != null && cityRadiusM > 0 ? cityRadiusM : null,
     cardLast4: t.card_last4,
     cardholderUserId: cardholder,
   }

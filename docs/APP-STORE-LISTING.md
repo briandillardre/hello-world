@@ -38,10 +38,10 @@ Data collected and **linked to the user**, used only for **App Functionality**
 
 | Data type | Collected | Why |
 |---|---|---|
-| Precise location | Yes | Show the user on the crew map + the fleet on the map; geofence alerts. **While clocked in** the phone's location is recorded to the person's time card in the background (iOS `UIBackgroundModes location`; Android a location foreground service — both on "while using the app" permission, recording starts at clock-in and stops at clock-out, disclosed in-app first). Otherwise only while the app is open and Go Live is on. |
+| Precise location | Yes | Show the user on the crew map + the fleet on the map; geofence alerts. **While clocked in** the phone's location is recorded to the person's time card in the background (iOS `UIBackgroundModes location`; Android a location foreground service — both on "while using the app" permission, recording starts at clock-in and stops at clock-out, disclosed in-app first). While the app is open it also listens for the company's Bluetooth tool tags and, on hearing one, sends the phone's location to place it — off the clock only a non-identifying ~250 m area is kept for a company tag and nothing for any other tag. A clocked-in person's phone riding alone in a company truck counts that truck's driving toward their driver safety score. Otherwise only while the app is open and Go Live is on. |
 | Coarse location | Yes | Same |
 | Name / email | Yes | Account |
-| Photos | Yes | Asset / receipt photos the user attaches |
+| Photos | Yes | Job, asset and receipt photos the user takes or attaches (job photos keep where they were taken); a clock-in/out photo only when the company requires one, deleted after 90 days |
 | Device ID (push token) | Yes | Deliver alerts to the device |
 | Product interaction / diagnostics | Yes | Keep the app working |
 
@@ -73,8 +73,11 @@ account-deletion entry point.
 Location is requested at point of use after an in-app explainer; Go Live and
 clock-in are user-initiated. Both are disclosed in-app and in the privacy
 policy (https://hammertrack.ai/privacy). Location is used only to show the
-crew and fleet on the company map and to verify time cards — never for
-advertising, never sold. Sign-in inside the app is our own email + password
+crew and fleet on the company map, to verify time cards, to place the
+company's Bluetooth tool tags the phone hears (off the clock only a rough,
+non-identifying area is kept) and to count a clocked-in driver's trips in a
+company truck toward their driver safety score — never for advertising,
+never sold. Sign-in inside the app is our own email + password
 (no third-party login service is offered in the app). Customers subscribe on
 our website; the app does not sell digital purchases.
 ```

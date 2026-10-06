@@ -2,11 +2,15 @@
 
 /**
  * The site page's "Satellite" card (migration 131): watch this site from
- * space. Free Sentinel-2 every few days at 10 m when the company has the
- * satellite add-on; daily 3 m Planet only once it is set up (PL_API_KEY) —
- * until then it says "ask us to turn it on". Clear pictures land on the photo
- * timeline above and the map's Site imagery layer. The cost line under it is
- * the platform owner's alone (no customer price exists yet).
+ * space. Sentinel-2 (10 m, a pass every few days — the clear ones land, about
+ * weekly in dry weather) comes with the company's satellite add-on; daily
+ * 3 m Planet is ROADMAP until it is set up (PL_API_KEY and Planet's partner
+ * licence), and then only someone with the Billing permission turns it on —
+ * every Planet picture is billed. A finished job (marked complete, or past
+ * its active dates) takes no new pictures, and the card says so. Clear
+ * pictures land on the photo timeline above and the map's Site imagery
+ * layer. The cost line under it is the platform owner's alone (no customer
+ * price exists yet).
  */
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -21,13 +25,13 @@ type Provider = 'sentinel2' | 'planet'
 const FEEDS: { key: Provider; title: string; detail: string }[] = [
   {
     key: 'sentinel2',
-    title: 'Every few days · 10 m · Sentinel-2',
-    detail: 'Free. Shows clearing, pads and big grading changes — not machines or stakes. Cloudy passes are skipped.',
+    title: 'Clear passes · 10 m · Sentinel-2',
+    detail: 'Included with the add-on. Sentinel-2 passes every few days; the clear ones land here — about weekly in dry weather, fewer in a wet month. Shows clearing, pads and big grading changes — not machines or stakes.',
   },
   {
     key: 'planet',
     title: 'Daily · 3 m · Planet',
-    detail: 'A clear picture most days. Shows haul roads, stockpiles and pads taking shape.',
+    detail: 'Planet images every day; the clear ones land here. Shows haul roads, stockpiles and pads taking shape.',
   },
 ]
 
@@ -43,11 +47,15 @@ function ago(iso: string): string {
   return day(iso)
 }
 
-export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetReady, estimate, siteAcres }: {
+export function ZoneSatellite({ zoneId, addon, canEdit, canBill, personal, finished, state, planetReady, estimate, siteAcres }: {
   zoneId: string
   addon: boolean
   canEdit: boolean
+  /** The Billing permission: daily Planet pictures are billed per picture. */
+  canBill: boolean
   personal: boolean
+  /** Why this finished site takes no new pictures (lib/satellite/scenes siteFinished), or null. */
+  finished: string | null
   state: ZoneSatelliteState | null
   planetReady: boolean
   /** Platform owner only: what this site costs us. */
@@ -85,8 +93,9 @@ export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetR
             <div>
               <div className="font-semibold text-ink">Pictures of this site from space — an add-on</div>
               <p className="mt-1 text-xs text-muted">
-                A clear satellite picture every few days lands on this site&apos;s photo timeline and the map&apos;s
-                Site imagery layer, dated, so you can watch the work move between visits. Ask us to turn it on for your company.
+                Sentinel-2 passes every few days; the clear ones (about weekly in dry weather, fewer in a wet month) land on
+                this site&apos;s photo timeline and the map&apos;s Site imagery layer, dated, so you can watch the work move
+                between visits. Ask us to turn it on for your company.
               </p>
             </div>
           </div>
@@ -95,7 +104,7 @@ export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetR
             <p className="text-sm text-ink">
               {on ? (
                 <>
-                  <span className="font-semibold text-teal">On</span> · {current === 'planet' ? 'daily · 3 m (Planet)' : 'every few days · 10 m (Sentinel-2)'}
+                  <span className="font-semibold text-teal">On</span> · {current === 'planet' ? 'daily · 3 m (Planet)' : 'the clear passes · 10 m (Sentinel-2)'}
                 </>
               ) : (
                 <span className="text-muted">Off for this site.</span>
@@ -104,17 +113,20 @@ export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetR
             {on && state && (
               // Relative times and local dates differ between the server render and the phone.
               <p className="text-xs text-muted" suppressHydrationWarning>
-                {state.lastCheckedAt ? `Last looked ${ago(state.lastCheckedAt)}` : 'First look tonight'}
+                {state.lastCheckedAt ? `Last looked ${ago(state.lastCheckedAt)}` : finished ? 'Not looked at' : 'First look tonight'}
                 {state.lastSceneAt ? ` · newest clear picture ${day(state.lastSceneAt)}` : ''}
                 {` · ${state.pictures} picture${state.pictures === 1 ? '' : 's'} so far`}
                 {state.cloudy > 0 ? ` · ${state.cloudy} cloudy pass${state.cloudy === 1 ? '' : 'es'} skipped` : ''}
                 {state.pending > 0 ? ` · ${state.pending} being made` : ''}
-                {!state.lastCheckedAt && current === 'sentinel2' ? '. The last two months fill in over the next few nights.' : ''}
+                {!state.lastCheckedAt && !finished && current === 'sentinel2' ? '. The last two months fill in over the next few nights.' : ''}
               </p>
             )}
-            {on && state?.lastError && (
+            {finished ? (
+              // The cron skips a finished job; its last note would only repeat this.
+              <p className="text-xs text-amber">{finished}</p>
+            ) : on && state?.lastError ? (
               <p className="text-xs text-amber">Last check didn&apos;t finish: {state.lastError}</p>
-            )}
+            ) : null}
 
             {personal ? (
               <p className="text-xs text-muted">This is a personal zone. Make it a company site to watch it from space.</p>
@@ -122,16 +134,22 @@ export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetR
               <div className="space-y-2">
                 {FEEDS.map((f) => {
                   const selected = current === f.key
-                  const available = f.key === 'sentinel2' || planetReady
+                  // Planet: roadmap until it is set up; then billed, so the Billing permission turns it on.
+                  const roadmap = f.key === 'planet' && !planetReady
+                  const billingOnly = f.key === 'planet' && !roadmap && !canBill
+                  const available = !roadmap
                   return (
                     <div key={f.key} className={`flex items-start gap-3 rounded-lg border px-3 py-2 ${selected ? 'border-teal/50 bg-teal/5' : 'border-navy-800 bg-navy-950'}`}>
                       <div className="min-w-0 flex-1">
                         <div className={`text-sm font-semibold ${available ? 'text-ink' : 'text-muted'}`}>{f.title}</div>
-                        <p className="text-xs text-muted">{available ? f.detail : 'Not set up yet — ask us to turn it on.'}</p>
+                        <p className="text-xs text-muted">{roadmap ? 'Roadmap — not available yet.' : f.detail}</p>
+                        {billingOnly && !selected && canEdit && !finished && (
+                          <p className="text-xs text-faint">Billed per picture — someone with the Billing permission turns it on.</p>
+                        )}
                       </div>
                       {selected ? (
                         <span className="shrink-0 self-center text-xs font-semibold text-teal">On ✓</span>
-                      ) : canEdit && available ? (
+                      ) : canEdit && available && !billingOnly && !finished ? (
                         <button type="button" disabled={busy} onClick={() => choose(f.key)}
                           className="shrink-0 self-center rounded-lg border border-navy-700 px-2.5 py-1 text-xs font-semibold text-ink hover:bg-navy-800 disabled:opacity-50">
                           {busy ? '…' : on ? 'Switch' : 'Turn on'}
@@ -146,7 +164,7 @@ export function ZoneSatellite({ zoneId, addon, canEdit, personal, state, planetR
                     Turn off satellite pictures for this site
                   </button>
                 )}
-                {!canEdit && !on && (
+                {!canEdit && !on && !finished && (
                   <p className="text-xs text-faint">Someone who can edit sites can turn this on.</p>
                 )}
               </div>

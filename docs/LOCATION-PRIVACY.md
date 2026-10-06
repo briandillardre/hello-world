@@ -1,6 +1,6 @@
 # Location privacy by place and shift
 
-Migration 132 · Oct 2026 · from the market brief Brian forwarded: Motive now
+Migrations 132 + 133 (the review pass) · Oct 2026 · from the market brief Brian forwarded: Motive now
 uses geofences to decide what its devices may **collect**, not just to fire
 entry alerts, the rules run on the device, and the driver can see that
 recording stopped. HammerTrack applies the same principle to the people side
@@ -16,11 +16,12 @@ The aims are less battery, less privacy exposure, and tracking an employee
 can read in one card and believe.
 
 **The rule lives in one pure file:** `lib/location-policy.ts`
-(harness `node scripts/location-policy-test.mjs`, 166 assertions). Its
-database half is `lib/location-privacy.ts`. The SQL is
-`supabase/migrations/132_location_privacy.sql` (harness
-`scripts/privacy-sql-test/run.sh`, local PostgreSQL 16, 32 checks + the
-view-append check).
+(harness `node scripts/location-policy-test.mjs`, 225 assertions). Its
+database half is `lib/location-privacy.ts`, and every worker-phone fix goes
+through ONE door, `recordPhoneLocation` in `lib/phone-location.ts`. The SQL
+is `supabase/migrations/132_location_privacy.sql` + `133_privacy_review.sql`
+(harness `scripts/privacy-sql-test/run.sh`, local PostgreSQL 16: 132 →
+133 twice, 80 checks + the view-append check).
 
 ## What a phone may leave behind
 
@@ -33,23 +34,33 @@ privacy zones too.
 |---|---|---|---|---|
 | Shift recorder (`/api/clock/fix`) | on the clock | outside privacy zones | **yes** — up to every 30 s, sooner after a 40 m move | — |
 | Shift recorder | on the clock | inside a privacy zone | **no** (the clock card says "Paused — you're in a privacy zone") | — |
+| Driver safety score (`/api/cron/driving`, migration 129) reading the shift recorder's points | on the clock | riding in a company road vehicle as the **only** phone aboard (≤ 150 m of the moving truck for 5+ min) | **no new point** — the kept shift points are matched to the truck, and its speeding, hard stops and late-night miles count toward that person's driver safety score, seen by them and anyone who outranks them — in the database too (134: `ht_can_see_person`) — and through the company-key MCP door only for people an Admin outranks; never in the insurer report. With other phones aboard, only "rode along" miles are noted | — |
 | Tag listener (`/api/ingest/ble-phone`) | on the clock | outside privacy zones | **yes** — on the person's `phone-<uid>` asset | **custody**: they ride WITH the phone (tool_associations + pairing_log name it), exact |
-| Tag listener | on the clock | inside a privacy zone | **no** | **anonymous**, at the zone's centre |
+| Tag listener | on the clock | inside a privacy zone | **no** | **anonymous**, on the 250 m grid cell of the zone's centre (rougher for a bigger zone) |
 | Tag listener | off the clock | anywhere outside zones | **no** — the phone asset is not touched, not even created | **anonymous**, on a ~250 m grid cell |
-| Tag listener | off the clock | inside a privacy zone | **no** | **anonymous**, at the zone's centre |
-| Tag listener, tag's asset **in recovery** | off the clock | outside privacy zones | **no** | **anonymous**, at the **exact** spot |
-| Tag listener, tag's asset in recovery | any | inside a privacy zone | **no** | anonymous, at the zone's centre (the zone wins) |
+| Tag listener | off the clock | inside a privacy zone | **no** | **anonymous**, the zone's rough area (as above) |
+| Tag listener, tag's asset **in recovery** | off the clock | outside privacy zones | **no** | **anonymous**, at the **exact** spot — readable by Admins and the owner only |
+| Tag listener, tag's asset in recovery | any | inside a privacy zone | **no** | anonymous, the zone's rough area (the zone wins) |
 | Go Live (`/track`, Share location) | either | outside privacy zones | **yes** (the person turned it on) | — |
 | Go Live | either | inside a privacy zone | **no** (the row reads "Paused — you're in a privacy zone") | — |
-| Clock-in / clock-out tap | — | anywhere | **yes, exact**, on the time entry (see below) | — |
+| Clock-in / clock-out tap | — | anywhere | **yes, exact**, on the time entry (see below); the map's Field activity layer draws no punch or log pin inside a privacy zone | — |
 | Photos, receipts, daily logs | — | anywhere | yes, where taken/sent (unchanged) | — |
 
 "Anonymous" = a row in `tool_sightings`: the tool, the place, how rough the
-place is on purpose (`precision_m`: 250, a zone's radius, or NULL = exact,
-which only a recovery may carry — a CHECK enforces it), first/last heard and
-a count. **No phone, no person, no user id.** Repeat sightings of one tool at
-one place fold into one row (`anonFold`). Kept 30 days (trimmed whenever a
-company adds a row).
+place is on purpose (`precision_m`: 250, more for a privacy zone bigger than
+the grid, or NULL = exact — only a recovery may carry that, and only Admins
+and the owner read a recovery row: two CHECKs enforce both), first/last heard
+and a count. **No phone, no person, no user id.** Sightings fold per (tool,
+level, reason) (`anonFold`): a moving run moves ONE row (`place_since`), a row
+that sat 10 min or more starts a new one when the tool leaves (so where it
+spent the night stays), and a tool gets at most about one new row per 2 min.
+The map reads the newest row per tool (`ht_tool_sightings_latest`). Kept 30
+days (trimmed whenever a company adds a row).
+
+"Inside a privacy zone" includes its edge: a fix within its own accuracy
+(clamped to 50–150 m) of the outline counts as inside, because GPS scatter
+would otherwise leak a small zone. A fix inside a **site or yard** is always
+kept — work places win over an overlapping private boundary.
 
 "On the clock" = an open `time_entries` row (no `clock_out_at`) — the same
 test the shift recorder's route uses. A failed read counts as OFF the clock
@@ -80,7 +91,8 @@ After:
 - **Map** (`/api/map-data` → `resolveToolLocations(…, anon)`): a tool shows
   at its newest anonymous sighting when that is newer than its custody
   sighting — unless a truck (or on-the-clock phone) heard it near there in
-  the 25 min before (`anonymousWins`: a parked truck re-hearing the tag every
+  the 25 min before (`anonymousWins`, measured against the carrier's LIVE
+  position while custody is fresh: a parked truck re-hearing the tag every
   minute keeps its exact spot instead of flickering to a cell centre). The
   location is marked `raw.anonymous` with `accuracy` = the deliberate
   roughness, and the tool sheet says "Rough area · ~250 m · heard 2 h ago"
@@ -127,19 +139,30 @@ centre would need its own "rough area" wording there). Follow-up, below.
 - **Which zones:** only **Boundary** or **Vendor** zones. Sites and yards are
   where crews work — time cards check the phones there — so the action
   refuses them and the server ignores a flag left on a zone that was later
-  turned into a site (`privacyZonesFromRows`).
+  turned into a site (`privacyZonesFromRows`). The action also refuses a
+  zone that touches a site or yard (within 150 m), naming the site only if
+  the caller can see it.
 - **Who:** Admins and the owner, on the zone page (`PrivacyZoneCard` →
   `setPrivacyZoneAction`, service role after the check). A trigger
   (`ht_guard_privacy_zone`) refuses the column to every session, so the
-  company-wide zone policy cannot be used to flip it through the API.
+  company-wide zone policy cannot be used to flip it through the API. Once a
+  zone is private, only Admins and the owner can redraw it, change its kind,
+  owner or company, or delete it (133: the same trigger + a BEFORE DELETE
+  one; a rename that re-saves the same outline still works — 1e-6° Hausdorff
+  tolerance).
 - **A home or a clinic nobody else should see on the map:** draw it as a
   personal zone ("only me"). Only its maker sees the outline; the server
   still reads it and it still protects every phone.
 - **Effect:** inside one, no shift-recorder point, no tag-listener fix and no
-  Go Live point is kept; tags heard there are placed at the zone's centre
-  (area-weighted, `ringCentre`), roughness = its farthest corner. The server
-  caches a company's zones for 30 s per instance, so a newly marked zone
-  takes effect within half a minute.
+  Go Live point is kept; tags heard there go on the 250 m grid cell of the
+  zone's centre (area-weighted, `ringCentre`), roughness = max(250 m, its
+  farthest corner); a personal zone's rows are stored no lower than its
+  maker's level (an unknown maker = owner-only). "Paused — you're in a
+  privacy zone" shows only for zones the person can see: inside someone
+  else's personal zone nothing is kept and the reply reads like an ordinary
+  one, so the API can't be used to find hidden zones (Go Live 12/min,
+  `/api/clock/fix` 20/min). The server caches a company's zones for 30 s per
+  instance, so a newly marked zone takes effect within half a minute.
 - **Crew see it:** a non-Admin sees a one-line "Privacy zone" note on the
   zone's page.
 
@@ -167,14 +190,21 @@ punch only as **"in a privacy zone"** — never the zone's name or a street
   **Start recovery** (lands on the asset page with the form open and the
   alert id kept for the audit trail).
 - **How long:** 7 days (`RECOVERY_DAYS`), then it ends on its own; **Extend**
-  gives it 7 days from that moment; **Stop — it's found** ends it.
+  gives it 7 days from that moment but never past 30 days from the start
+  (a CHECK; past that, stop it and start a fresh one with a reason);
+  **Stop — it's found** ends it. Never on a person — a personnel asset is
+  refused by the action and by a trigger.
 - **Audit:** `asset_recovery` — started_by/at, reason, expires_at,
   extended_by/at, ended_by/at, alert_event_id. One open row per asset
   (unique index). A row that ran out is closed lazily at its expiry with
-  `ended_by` NULL. Members read (RLS: company + 111 + prospects none); only
-  the server writes.
+  `ended_by` NULL. Members read every column but the **reason** (RLS: company
+  + 111 + prospects none; column grants); the server reads the reason for
+  Admins and the owner. Every extension is its own append-only row in
+  `asset_recovery_extensions` (who, when, expiry before → after). Only the
+  server writes.
 - **While it runs:** phones **off the clock** report that asset's tag at the
-  exact spot (still anonymous); the asset page shows a red **In recovery**
+  exact spot (still anonymous; outside privacy zones; those rows are
+  readable by Admins and the owner only); the asset page shows a red **In recovery**
   banner (who started it, when it ends, last heard, a map link; Admins see
   the reason and the buttons); the map's attention slot shows 🚨 and the
   asset wears the alert ring; the map sheet says "In recovery · until …".
@@ -188,10 +218,24 @@ punch only as **"in a privacy zone"** — never the zone's name or a street
 the page every role can open) and inside the shift recorder's location
 disclosure ("Exactly what HammerTrack records about you", opened in place).
 Every line is what the code does; **change the code and the card in the same
-commit.** The tag-listener switch card (`GatewayToggle`), its first-run
-primer (`PhoneGateway`) and the Tool tags help guide say the same thing in
-fewer words, and the tag listener's status line says which way each report
-was filed ("off the clock — tags' rough area only, nothing of yours kept").
+commit.** The same facts, in fewer words: the shift recorder's disclosure
+(`ShiftTracker` — Play's prominent disclosure; it names the driver safety
+score), the one-time location primer (`LocationPrimer`), the tag-listener
+switch card (`GatewayToggle`) and its first-run primer (`PhoneGateway`), the
+zone page's `PrivacyZoneCard`, the asset page's `RecoveryCard`, the Tool tags
+and Clock in help guides, and the public policy at `/privacy`. The tag
+listener's status line says which way each report was filed ("off the clock
+— tags' rough area (exact for an item in recovery), nothing that says it was
+you").
+
+Two facts every surface keeps straight:
+
+- The phone sends its fix when it hears **any** tag — it cannot tell a
+  company tag from a shop's beacon (`tagShaped` in `lib/ble.ts`) — and off
+  the clock the server keeps nothing for a tag that is not a company tool.
+- A clock-in or clock-out tap, a photo and a receipt keep their spot even
+  inside a privacy zone, so no surface says "nothing is kept" without
+  "automatic" (or "no shift points").
 
 ## Deferred, and why
 
@@ -269,9 +313,11 @@ tracker report faster needs:
 ## Rules for future code
 
 - Any new code that writes a **worker phone's** location must go through
-  `pushPhoneLocation` (it checks privacy zones before it creates or revives
-  the phone asset) or call `loadPrivacyZones` + `privacyZoneAt` itself, and
-  decide on/off the clock with `phoneFixPolicy`.
+  `recordPhoneLocation` (`lib/phone-location.ts` — it checks the `track`
+  level, prospects, the rate limit and privacy zones before it creates or
+  revives the phone asset; `pushPhoneLocation` is now only Go Live's client
+  action on top of it) or call `loadPrivacyZones` + `privacyZoneAt` itself,
+  and decide on/off the clock with `phoneFixPolicy`.
 - A phone may become a **custody gateway** (tool_associations / pairing_log)
   only when `phoneFixPolicy(...).custody` is true.
 - Any new `geofences` column must be appended to `geofences_json`, and any

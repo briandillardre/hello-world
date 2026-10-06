@@ -1,9 +1,10 @@
--- Local harness for migration 132: just enough of Supabase (roles, auth.uid()
--- / auth.role() from the request settings, the company/visibility/prospect
--- helpers of 010/111/118/119) and of the schema (companies, profiles, assets,
--- geofences + 123's geofences_json) for 132 to apply VERBATIM on a plain
--- PostgreSQL 16 — no PostGIS: geometry is a jsonb domain and ST_AsGeoJSON
--- prints it.
+-- Local harness for migrations 132 + 133: just enough of Supabase (roles,
+-- auth.uid() / auth.role() from the request settings, the company/visibility/
+-- prospect helpers of 010/111/118/119) and of the schema (companies,
+-- profiles, assets, geofences + 123's geofences_json) for both to apply
+-- VERBATIM on a plain PostgreSQL 16 — no PostGIS: geometry is a jsonb domain,
+-- ST_AsGeoJSON prints it and ST_HausdorffDistance compares two rings corner
+-- by corner (enough for "did the outline move").
 SET client_min_messages = warning;
 DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;
 DROP SCHEMA IF EXISTS auth CASCADE; CREATE SCHEMA auth;
@@ -12,6 +13,9 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
 END $$;
+-- Roles are cluster-wide: another harness may have made service_role
+-- without BYPASSRLS. Supabase's has it.
+ALTER ROLE service_role BYPASSRLS;
 GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
 -- Supabase's default privileges: every new public table is open to the API
 -- roles until RLS / revokes close it — 132 must not rely on that being off.
@@ -26,6 +30,19 @@ GRANT EXECUTE ON FUNCTION auth.uid(), auth.role() TO anon, authenticated, servic
 
 CREATE DOMAIN geometry AS jsonb;
 CREATE FUNCTION ST_AsGeoJSON(g geometry) RETURNS TEXT LANGUAGE sql IMMUTABLE AS 'SELECT $1::text';
+-- The largest corner-to-corner move between two outlines with the same
+-- corners (1 when the corners differ in number) — PostGIS's is the true
+-- Hausdorff distance; for "a rename re-saved the shape a hair off" the two agree.
+CREATE FUNCTION ST_HausdorffDistance(a geometry, b geometry) RETURNS float8 LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN a::jsonb = b::jsonb THEN 0
+    WHEN jsonb_typeof(a::jsonb->'coordinates'->0) IS DISTINCT FROM 'array' OR jsonb_typeof(b::jsonb->'coordinates'->0) IS DISTINCT FROM 'array' THEN 1
+    WHEN jsonb_array_length(a::jsonb->'coordinates'->0) <> jsonb_array_length(b::jsonb->'coordinates'->0) THEN 1
+    ELSE COALESCE((
+      SELECT max(greatest(abs((pa->>0)::float8 - (pb->>0)::float8), abs((pa->>1)::float8 - (pb->>1)::float8)))
+      FROM jsonb_array_elements(a::jsonb->'coordinates'->0) WITH ORDINALITY AS x(pa, i)
+      JOIN jsonb_array_elements(b::jsonb->'coordinates'->0) WITH ORDINALITY AS y(pb, j) ON i = j), 1)
+  END $$;
 
 CREATE TABLE companies (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT);
 CREATE TABLE profiles (id UUID PRIMARY KEY, company_id UUID, role TEXT);

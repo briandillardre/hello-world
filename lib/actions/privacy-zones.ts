@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { isPrivacyKind } from '@/lib/location-policy'
+import { isPrivacyKind, outerRing, ringsIntersect } from '@/lib/location-policy'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -11,11 +11,16 @@ const isUuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{
 /**
  * Mark a zone private, or not (migration 132). Inside a privacy zone no
  * worker-phone point is kept — the shift recorder's, the tag listener's, Go
- * Live's — and tags heard there sit at the zone's centre. Company trucks and
- * machines are untouched. Admins and the owner only; the column itself is
+ * Live's — and tags heard there land on the 250 m grid cell of the zone's
+ * centre (never finer). Company trucks and machines are untouched. Admins
+ * and the owner only; the column itself is
  * write-locked to the service role (132's trigger), so this is the one door.
- * Only a Boundary or Vendor zone may be private: sites and yards are where
- * crews work, and their time cards are checked against the phones there.
+ * Only a Boundary or Vendor zone may be private, and only one that does not
+ * touch a site or yard (133): crews work there, and their time cards are
+ * checked against the phones there (a private boundary over a site dropped
+ * on-site points and read as "Never on site"). Once a zone is private, only
+ * an Admin or the owner may reshape, re-kind, re-own or delete it (133's
+ * trigger) — any of those used to switch recording back on.
  */
 export async function setPrivacyZoneAction(zoneId: string, on: boolean): Promise<{ ok: boolean; error?: string }> {
   if (isMock) return { ok: false, error: 'Not available in the demo.' }
@@ -30,10 +35,29 @@ export async function setPrivacyZoneAction(zoneId: string, on: boolean): Promise
 
     // The caller's own read: their company, and their own personal zones only.
     const { createClient, createServiceClient } = await import('@/lib/supabase-server')
-    const { data: zone } = await createClient().from('geofences').select('id, company_id, kind').eq('id', zoneId).maybeSingle()
+    const { data: zone } = await createClient().from('geofences_json').select('id, company_id, kind, geometry').eq('id', zoneId).maybeSingle()
     if (!zone || zone.company_id !== real.companyId) return { ok: false, error: 'Zone not found.' }
     if (on && !isPrivacyKind(zone.kind as string | null)) {
       return { ok: false, error: 'Only a Boundary or Vendor zone can be a privacy zone — sites and yards are where crews work, and time cards check phones against them. Draw the private place as its own Boundary zone.' }
+    }
+    if (on) {
+      // Every site and yard in the company (the server's read — a personal
+      // one counts too, but only the caller's own are named).
+      const ring = outerRing(zone.geometry)
+      if (!ring) return { ok: false, error: 'This zone has no outline to protect — redraw it first.' }
+      const { data: work, error: wErr } = await createServiceClient().from('geofences_json')
+        .select('id, name, kind, owner_id, geometry')
+        .eq('company_id', real.companyId).in('kind', ['site', 'yard']).limit(2000)
+      if (wErr) return { ok: false, error: 'Could not check the sites and yards — try again.' }
+      const hit = (work ?? []).find((w) => {
+        const r = outerRing(w.geometry)
+        return !!r && ringsIntersect(ring, r)
+      })
+      if (hit) {
+        const named = !hit.owner_id || hit.owner_id === real.userId
+        const what = named ? `${hit.kind === 'yard' ? 'the yard' : 'the site'} “${String(hit.name ?? '').slice(0, 80)}”` : 'a site or yard'
+        return { ok: false, error: `This zone overlaps ${what} — crews work there, and their time cards check the phones there, so it can’t be private. Redraw this zone so it stays clear of every site and yard, then mark it private.` }
+      }
     }
     const { error } = await createServiceClient().from('geofences')
       .update({ privacy_zone: !!on }).eq('id', zoneId).eq('company_id', real.companyId)

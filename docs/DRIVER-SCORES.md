@@ -27,10 +27,11 @@ to their agent. What an insurer does with it is the insurer's business.
 |---|---|
 | The engine (pure: detection, day rollup, totals, score, data quality, words) | `lib/driving-score.ts` |
 | Storage + builder RPCs | `supabase/migrations/129_driving_scores.sql` |
+| Who reads whose driving (the people ladder in the database) | `supabase/migrations/134_driving_review.sql` |
 | Fetch, build one vehicle-day, read a period | `lib/db/driving.ts` |
 | Hourly builder | `app/api/cron/driving/route.ts` (`35 * * * *` in `vercel.json`) |
 | Fleet / vehicle / driver page | `/reports/safety` (`?days=30\|90\|365`, `?asset=<id>`) |
-| Insurer report (print → PDF) | `/reports/safety/insurer` |
+| Insurer report (print → PDF) | `/reports/safety/insurer` (its CSV + Print buttons: `components/reports/InsurerActions.tsx`) |
 | The report's tables as CSV | `/api/safety/export?kind=vehicles\|months\|events` |
 | Asset page card | `SafetySection` in `app/(dashboard)/assets/[id]/page.tsx` |
 | /reports chips + speeding flags | `app/(dashboard)/reports/page.tsx` |
@@ -42,15 +43,19 @@ to their agent. What an insurer does with it is the insurer's business.
 Harnesses — run both after ANY change to the engine, the migration or the builder:
 
 ```
-node scripts/driving-score-test.mjs                                   # 143 assertions
-PSQL="psql -h localhost -p 5432 -U postgres" bash scripts/driving-sql-test/run.sh   # 51 checks, local PG 16
+node scripts/driving-score-test.mjs                                   # 155 assertions
+PSQL="psql -h localhost -p 5432 -U postgres" bash scripts/driving-sql-test/run.sh   # 77 checks, local PG 16
 ```
 
-The SQL harness applies 129 VERBATIM to a bare PostgreSQL 16 (`setup.sql` stubs the
-Supabase roles, `auth.uid()`, 111's visibility ladder, 115's `ht_safe_tz` and 119's
+The SQL harness applies 129 and 134 VERBATIM (134 twice — it must be idempotent) to
+a bare PostgreSQL 16 (`setup.sql` stubs the Supabase roles, `auth.uid()` /
+`auth.role()`, 111's visibility ladder, 115's `ht_safe_tz` and 119's
 `ht_prospect_lockdown`), feeds the real `driving_day_fixes` answer through the TS
-engine, checks the write, the to-do lists and every read rule, and proves the
-period sums (`driving_rollup`) read exactly like the day rows they sum.
+engine, checks the write, the to-do lists and every read rule — for each rung of the
+ladder (Associate, Foreman, Manager, Admin, owner, a member since removed, a
+Prospective Client, another company, the service role): whose events, sums and
+counts come back — and proves the period sums (`driving_rollup`) read exactly like
+the day rows they sum, for every caller.
 
 ---
 
@@ -104,12 +109,21 @@ period sums (`driving_rollup`) read exactly like the day rows they sum.
   `GPS_RULES` holds every guard (0.8–3 s pairs, ≥ 10 mph, ≤ 1 g, spike/reversal
   checks, speed must agree with the ground covered).
 - **"Accelerometer on"** for a day = that day's fixes carried Green Driving keys
-  (`accel_seen`), or one of the vehicle's days in the last 30 did (`accel_on`). The
-  look-back reads `accel_seen` only, so a unit that is switched off ages out after 30
-  days instead of keeping itself "measured" forever. A crash-detection record alone
-  never counts (it is a separate scenario).
+  (`accel_seen`), or one of the vehicle's 30 days BEFORE it did (`accel_on`,
+  `accelLookback`). The look-back counts back from the day being built, never from
+  today — a re-bank after the unit is switched on must not mark last spring
+  "measured" and throw away its GPS estimates (review, Oct 6) — and reads
+  `accel_seen` only, so a unit that is switched off ages out after 30 days instead of
+  keeping itself "measured" forever. A crash-detection record alone never counts (it
+  is a separate scenario).
 - **Possible impacts** (crash detection, ≥ 1.5 g for 5 ms, AVL 247 = 1 or 6; trace
   records 2–5 ignored) are listed with time and place, **never scored**.
+- **A zero nobody measured is never printed.** Impacts, GPS/cell jamming and towing
+  come from detectors that ship switched off and are pushed on with the
+  accelerometer; until then the pages say "not measured (detection off)" and the CSV
+  cells are blank (`measuredCount`) — a count above zero is shown whatever the
+  switch reads, because the events arrived. The same for harsh-event counts while
+  the accelerometer is off, and for GPS estimates while it is on (they do not run).
 
 ### Speeding
 - **Against a posted limit**, Samsara's tiers: moderate 6–10 mph over held ≥ 60 s,
@@ -161,8 +175,13 @@ A drive is matched to a person only when their phone — clocked in on the app
 (`time_entries`) — rides within 150 m of the moving truck (≥ 5 mph) for five or more
 one-minute bins (holes ≤ 3). Time with two phones aboard is "rode along" (shown,
 never scored); a person's score is their **solo** time, and events are charged only
-to a lone rider. Visibility: yourself, plus people you outrank (`/reports/safety`,
-Ask AI); the company-key MCP door sees everyone (admin-grade, like time cards).
+to a lone rider. A phone the per-asset ladder hides from part of the team (111:
+Managers+, Admins, owner only) still counts as a phone aboard — whoever rode with it
+is never charged alone — but is **never named**: no `drivers` entry, no event charged
+to its person (`RiderTrack.hidden`; naming it would hand the people below that level
+what the mark hides). Visibility: yourself, plus people you outrank — enforced in the
+DATABASE since 134 (`ht_can_see_person`), mirrored by `/reports/safety` and Ask AI for
+view-as; the company-key MCP door sees everyone (admin-grade, like time cards).
 Prospective Clients see no driving data at all (RLS lockdown + the page). **The
 insurer report carries no per-driver data.**
 
@@ -177,13 +196,37 @@ inputs, `accel_on` / `accel_seen`, `drivers` (`{ uid: { s, mi, ss, smi, ns, zm, 
 (`(asset_id, kind, at)` unique). Reads: company members under the 111 ladder;
 prospects locked out (`ht_prospect_lockdown(…, false)`); writes service role only.
 
+**A person's driving follows the people ladder in the database (134, sec-check P1 —
+129 let an Associate's session pull the owner's and Admins' events with time and
+place straight through PostgREST):**
+- `ht_can_see_person(uuid)` (SECURITY DEFINER) mirrors `lib/permissions.ts`
+  `outranks()`: yourself; anyone strictly below you in your own company (Master 4 ·
+  admin 3 · manager 2 · foreman 1 · associate 0); nobody outranks the Master; a
+  Prospective Client answers to the Master alone; someone removed from the team (no
+  profile) is the Master's business only.
+- `driving_events`: a RESTRICTIVE read policy, `person_id IS NULL OR
+  ht_can_see_person(person_id)` — an event charged to someone above you is not
+  readable at all (the vehicle's counts still include it; the in-app list shows the
+  rest). The insurer's event CSV reads with the service role for that reason
+  (`listSafetyEvents`: billing-gated, pinned to the caller's company and visible
+  vehicles, person stripped).
+- `driving_daily.drivers` is not readable by members at all — SELECT is granted
+  column by column, every column but that one. The period sums are the door.
+- `driving_rollup` / `driving_person_events` are SECURITY DEFINER with the rules
+  written out: the caller's own company only (the service role may name any —
+  `ht_caller_is_service()` reads the request's role, which a definer leaves alone), the
+  vehicle under 111, nothing for a Prospective Client, and a person's sums or counts
+  only past `ht_can_see_person` (a riders key that is no uuid never reaches a member).
+  `driving_rollup` also returns `attributed_miles` — every named driver's solo miles,
+  whoever they are — so "miles tied to a named driver" reads the same whoever prints
+  the insurer report (it names nobody).
+
 Pages never page through day rows: `driving_rollup(company, assets, from, to)` sums
 a period in SQL to one row per vehicle per month (with the counts the score needs —
 days reporting, driving days, accelerometer days and their miles — and each rider's
-sums), and `driving_person_events` counts each person's events by kind. Both run as
-the caller (RLS decides). 500 trucks × 12 months = 6,000 rows, not 180,000.
-`sumDaily` / `driverTotals` read a summed row exactly like its days (proven in both
-harnesses).
+sums, as above), and `driving_person_events` counts each person's events by kind.
+500 trucks × 12 months = 6,000 rows, not 180,000. `sumDaily` / `driverTotals` read a
+summed row exactly like its days (proven in both harnesses, for every caller).
 
 `/api/cron/driving` (hourly, fails closed on `CRON_SECRET`):
 1. **Changed days** — `driving_dirty(since)` lists vehicles with fixes that ARRIVED
@@ -193,11 +236,21 @@ harnesses).
    delete + insert in one transaction — twice = once). The watermark
    (`system_state['driving.since']`) moves only when every changed day was handled.
 2. **Backfill** — `driving_backfill_todo` (a loose index scan, one probe per day with
-   data) lists days in the last 90 with fixes and no row at the current
-   `ENGINE_VERSION`, oldest first, ≤ 80 per company per run, inside a 220 s budget.
-   A first deploy catches up over a few hourly runs; **bumping `ENGINE_VERSION`
-   re-banks history the same way** — that is how a method change ships.
-3. Event spots go through the geocode cache (`resolvePlaces`) for the words.
+   data) lists days in the last 90 (`BACKFILL_DAYS`) with fixes and no row at the
+   current `ENGINE_VERSION`, oldest first, ≤ 80 per company per run, inside a 220 s
+   budget. A first deploy catches up over a few hourly runs.
+3. **Re-bank** — **bumping `ENGINE_VERSION` recalculates the insurer report's whole
+   12 months** (`REBANK_DAYS` = 366), not just the backfill's 90 days: stored rows
+   older than the backfill window still at an older version, read straight off
+   `driving_daily` (cheap), oldest first, ≤ 80 per company per run. A stored day whose
+   fixes are gone (moved to another vehicle with its tracker) is dropped, not retried
+   every hour. That is how a method change ships.
+4. Event spots go through the geocode cache (`resolvePlaces`) for the words.
+
+Every day's accelerometer look-back counts back from THAT day (the vehicle's
+`accel_seen` days, read once per run per vehicle and kept current as days are
+rebuilt); a failed read fails the day (retried next run) rather than building it
+"off".
 
 Nothing is built at deploy. Every builder statement is one vehicle-day (≤ 30,000
 fixes) — no whole-history replays.
@@ -285,8 +338,10 @@ through their agent's submission packet: a clean PDF + CSV.
 
 `/reports/safety/insurer` (v1):
 1. **Summary** — fleet score, grade and band, vehicles scored, miles · moving hours ·
-   engine hours, data-quality verdict; the headline rates with counts.
-2. **Monthly trend** — trailing 12 months, score and rates per month.
+   engine hours, data-quality verdict; the headline rates with counts. The header
+   says "trailing 12 months" only when the data reaches back a year, else "N months
+   of data" (`periodWords`, never rounded up to twelve).
+2. **Monthly trend** — up to 12 months, score and rates per month.
 3. **Vehicle schedule and scores** — year / make / model, VIN (from the truck's own
    computer, `vehicle.vin` in 115, else the asset's specs), class, miles, score,
    rates, data.
@@ -302,7 +357,11 @@ is about people inside the company, and this report carries no per-driver data.
 Never in a view-as preview, never for a Prospective Client. CSV:
 `/api/safety/export?kind=vehicles|months|events` (same gate; events carry time,
 vehicle, VIN, kind, severity, source, scored or not, magnitude, site — no people, no
-coordinates).
+coordinates; a count nobody measured is a blank cell). The CSV links and Print / Save
+as PDF need a computer: the Android/iOS shell has no download door and
+`window.print()` does nothing in its WebView, so inside the app the page says "Open
+this page on a computer to print or download it" instead (`InsurerActions`, the Fuel
+check / Time cards pattern).
 
 Not built yet (from §4's fuller list — board items): length-of-haul bands, after-hours
 / weekend miles, coaching log, maintenance & health section (check-engine miles are
@@ -319,10 +378,11 @@ summary, a verify link (`/x/<id>`), a JSON export, driver roster with consent.
 - **Accelerometer off on every pilot unit** — push the config above.
 - **Medium-duty trucks that answer nothing over the OBD port** (F-650/750) read GPS
   speed only; the FMM00A's J1939 mode (board #183) would give them a speedometer.
-- **Per-person reads are page-level, not row-level**: RLS lets any member read the
-  company's `driving_daily.drivers` / `driving_events.person_id`; the outrank rule is
-  enforced in `getSafetyReport` (and the MCP door). A person-level RLS split is a
-  follow-up if a crew login ever gets raw table access beyond the app.
+- **Per-person reads are row-level since 134** (they were page-level in 129 — the
+  P1). What RLS cannot see is a view-as preview (it sees the REAL uid), so
+  `getSafetyReport`'s `driverVisible` still mirrors the rule for previews, like 111.
+  The trade-off of the row policy: a Foreman's event list omits events charged to an
+  Admin or the owner (the vehicle's counts keep them).
 - Following distance and phone use (the heaviest weights in camera-based scores) are
   **not measured** without cameras — say so; never imply.
 

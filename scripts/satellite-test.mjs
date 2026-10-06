@@ -206,11 +206,55 @@ const dist = (a, b) => Math.hypot((a[0] - b[0]) * 111_320 * Math.cos((a[1] * Mat
   ok('Planet: the clearest pass of the day goes first', pdays[0].day === '2026-09-27' && pdays[0].scenes[0].id === '20260927_160455_11_24c1')
 }
 
+// ── What the map shows, which sites are pictured, which id a picture gets ──
+{
+  const disp = await import(transpile('../lib/satellite/display.ts'))
+  const local = (d) => new Date(d + 'T00:00:00').getTime()
+  const P = (id, zoneId, takenOn, satellite = false) => ({ id, zoneId, takenOn, satellite })
+  const live = (photos) => disp.activeSitePhotoIds(photos, Infinity, local).join()
+  ok('map: a satellite frame 9 days after a drone ortho does not replace it on Live (review finding)',
+    live([P('drone', 'z1', '2026-09-27'), P('sat', 'z1', '2026-10-06', true)]) === 'drone')
+  ok('map: …14 days after, still the drone shot', live([P('drone', 'z1', '2026-09-22'), P('sat', 'z1', '2026-10-06', true)]) === 'drone')
+  ok('map: …15 days after, the newer satellite frame takes over', live([P('drone', 'z1', '2026-09-21'), P('sat', 'z1', '2026-10-06', true)]) === 'sat')
+  ok('map: a drone shot always takes over from an older satellite frame', live([P('sat', 'z1', '2026-09-01', true), P('drone', 'z1', '2026-10-01')]) === 'drone')
+  ok('map: same day — the drone shot, whatever the order', live([P('drone', 'z1', '2026-10-01'), P('sat', 'z1', '2026-10-01', true)]) === 'drone'
+    && live([P('sat', 'z1', '2026-10-01', true), P('drone', 'z1', '2026-10-01')]) === 'drone')
+  ok('map: a site with only satellite frames shows its newest', live([P('s1', 'z1', '2026-09-01', true), P('s2', 'z1', '2026-09-20', true)]) === 's2')
+  ok('map: each zone on its own', live([P('drone', 'z1', '2026-09-27'), P('sat', 'z1', '2026-10-06', true), P('sat2', 'z2', '2026-10-06', true)]) === 'drone,sat2')
+  const scrub = [P('d1', 'z1', '2026-09-01'), P('s1', 'z1', '2026-09-10', true), P('s2', 'z1', '2026-09-20', true), P('d2', 'z1', '2026-09-25')]
+  const at = (day) => disp.activeSitePhotoIds(scrub, local(day) + 12 * 3_600_000, local).join()
+  ok('map timeline: Sep 12 — the Sep 10 satellite frame waits behind the Sep 1 drone shot', at('2026-09-12') === 'd1')
+  ok('map timeline: Sep 21 — a satellite frame 19 days newer takes over', at('2026-09-21') === 's2')
+  ok('map timeline: Sep 26 — a new drone shot takes the site back', at('2026-09-26') === 'd2')
+  ok('map timeline: before anything was taken, nothing shows', at('2026-08-20') === '')
+  ok('map: a tie within one kind goes to the later upload (the loader\'s order)', live([P('a', 'z1', '2026-10-01'), P('b', 'z1', '2026-10-01')]) === 'b')
+  ok('map: a photo with no day is never shown', live([P('x', 'z1', '')]) === '')
+
+  const oct6 = Date.parse('2026-10-06T12:00:00Z')
+  ok('finished: a job marked complete is not pictured', /marked complete/.test(sc.siteFinished({ completed_at: '2026-10-01T15:00:00Z' }, oct6) ?? ''))
+  ok('finished: past its active dates it is not pictured; before them it is', /active dates have ended/.test(sc.siteFinished({ active_until: '2026-10-05T00:00:00Z' }, oct6) ?? '')
+    && sc.siteFinished({ active_until: '2026-10-31T00:00:00Z' }, oct6) === null)
+  ok('finished: an open job with no dates is pictured', sc.siteFinished({ completed_at: null, active_until: null }, oct6) === null && sc.siteFinished(null, oct6) === null)
+
+  const SITE1 = '7e1d2c3b-0000-4000-8000-000000000001'
+  const a = await sc.sceneImageryId(SITE1, 'sentinel2', 'S2C_T17SMU_20261002T162316_L2A')
+  ok('picture id: the same scene of the same site is always the same id, a UUID', a === await sc.sceneImageryId(SITE1, 'sentinel2', 'S2C_T17SMU_20261002T162316_L2A')
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(a), a)
+  const others = await Promise.all([
+    sc.sceneImageryId('7e1d2c3b-0000-4000-8000-000000000002', 'sentinel2', 'S2C_T17SMU_20261002T162316_L2A'),
+    sc.sceneImageryId(SITE1, 'planet', 'S2C_T17SMU_20261002T162316_L2A'),
+    sc.sceneImageryId(SITE1, 'sentinel2', 'S2C_T17SLU_20261002T162316_L2A'),
+  ])
+  ok('picture id: another site, feed or scene is another id', new Set([a, ...others]).size === 4)
+}
+
 // ── The cron's runner, against stand-ins (no network) ──────────────────────
 // A tiny in-memory Supabase (just the calls run.ts makes) and a fake Planet
 // API serving a synthetic UTM GeoTIFF: search → site-clear check → order →
 // collect → private picture on the timeline. Proves the Planet path end to end
-// without a key, and the dedupe that keeps a paid order from being placed twice.
+// without a key, the dedupe that keeps a paid order from being placed twice,
+// and (Oct 6 review) that a run cut off anywhere neither saves a picture
+// twice, orders a day twice, nor starts work it can't finish.
 const pngUrl = transpile('../lib/dirt/png.ts')
 const s2Url = transpile('../lib/satellite/sentinel2.ts', { geotiff: npm('geotiff'), '../dirt/png': pngUrl, './geo': geoUrl, './scenes': scenesUrl })
 const planetUrl = transpile('../lib/satellite/planet.ts', { geotiff: npm('geotiff'), '../dirt/png': pngUrl, './geo': geoUrl, './scenes': scenesUrl, './sentinel2': s2Url })
@@ -218,43 +262,78 @@ const runUrl = transpile('../lib/satellite/run.ts', { './geo': geoUrl, './scenes
 {
   const run = await import(runUrl)
   const { writeArrayBuffer } = await import(npm('geotiff'))
-  const tables = { satellite_scenes: [], zone_imagery: [], zone_satellite: [] }
-  const objects = new Map()
-  const fakeDb = {
-    from(table) {
-      const filters = []
-      let op = 'select', payload = null, onConflict = null, limitN = Infinity
-      const exec = () => {
-        const rows = tables[table]
-        const hit = (r) => filters.every((f) => f(r))
-        if (op === 'select') return { data: rows.filter(hit).slice(0, limitN), error: null }
-        if (op === 'insert') { rows.push({ ...payload }); return { data: null, error: null } }
-        if (op === 'update') { for (const r of rows) if (hit(r)) Object.assign(r, payload); return { data: null, error: null } }
-        const keys = onConflict.split(',')
-        const same = rows.find((r) => keys.every((k) => r[k] === payload[k]))
-        if (same) Object.assign(same, payload); else rows.push({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payload })
-        return { data: null, error: null }
-      }
-      const q = {
-        select() { return q }, order() { return q },
-        eq(c, v) { filters.push((r) => r[c] === v); return q },
-        gte(c, v) { filters.push((r) => String(r[c]) >= String(v)); return q },
-        limit(n) { limitN = n; return q },
-        upsert(row, o) { op = 'upsert'; payload = row; onConflict = o.onConflict; return q },
-        insert(row) { op = 'insert'; payload = row; return q },
-        update(row) { op = 'update'; payload = row; return q },
-        maybeSingle() { const r = exec(); return Promise.resolve({ data: r.data?.[0] ?? null, error: r.error }) },
-        then(res, rej) { return Promise.resolve(exec()).then(res, rej) },
-      }
-      return q
-    },
-    storage: {
-      from: (bucket) => ({
-        upload: async (path, bytes) => { objects.set(`${bucket}/${path}`, bytes); return { error: null } },
-        getPublicUrl: (path) => ({ data: { publicUrl: `https://db.example/storage/v1/object/public/${bucket}/${path}` } }),
-        remove: async (paths) => { for (const p of paths) objects.delete(`${bucket}/${p}`); return { error: null } },
-      }),
-    },
+
+  /** A fresh stand-in database. `failNext` makes the next matching write answer an
+   *  error; `beforeInsert` hooks act just before an insert lands (another run racing). */
+  const makeDb = () => {
+    const tables = { satellite_scenes: [], zone_imagery: [], zone_satellite: [] }
+    const objects = new Map()
+    const failNext = []
+    const beforeInsert = []
+    const db = {
+      from(table) {
+        const filters = []
+        let op = 'select', payload = null, onConflict = null, limitN = Infinity
+        const exec = () => {
+          const rows = (tables[table] ??= [])
+          const hit = (r) => filters.every((f) => f(r))
+          if (op !== 'select') {
+            const i = failNext.findIndex((f) => f.table === table && f.op === op && (!f.when || f.when(payload)))
+            if (i >= 0) { failNext.splice(i, 1); return { data: null, error: { code: 'XX000', message: 'injected failure' } } }
+          }
+          if (op === 'select') return { data: rows.filter(hit).slice(0, limitN), error: null }
+          if (op === 'insert') {
+            for (const h of [...beforeInsert]) if (h(table, payload)) beforeInsert.splice(beforeInsert.indexOf(h), 1)
+            if (payload.id && rows.some((r) => r.id === payload.id)) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } }
+            rows.push({ ...payload })
+            return { data: null, error: null }
+          }
+          if (op === 'update') { for (const r of rows) if (hit(r)) Object.assign(r, payload); return { data: null, error: null } }
+          const keys = onConflict.split(',')
+          const same = rows.find((r) => keys.every((k) => r[k] === payload[k]))
+          if (same) Object.assign(same, payload); else rows.push({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payload })
+          return { data: null, error: null }
+        }
+        const q = {
+          select() { return q }, order() { return q },
+          eq(c, v) { filters.push((r) => r[c] === v); return q },
+          is(c, v) { filters.push((r) => (r[c] ?? null) === v); return q },
+          gte(c, v) { filters.push((r) => String(r[c]) >= String(v)); return q },
+          lt(c, v) { filters.push((r) => String(r[c]) < String(v)); return q },
+          limit(n) { limitN = n; return q },
+          upsert(row, o) { op = 'upsert'; payload = row; onConflict = o.onConflict; return q },
+          insert(row) { op = 'insert'; payload = row; return q },
+          update(row) { op = 'update'; payload = row; return q },
+          maybeSingle() { const r = exec(); return Promise.resolve({ data: r.data?.[0] ?? null, error: r.error }) },
+          then(res, rej) { return Promise.resolve(exec()).then(res, rej) },
+        }
+        return q
+      },
+      storage: {
+        from: (bucket) => ({
+          upload: async (path, bytes, o) => {
+            if (!o?.upsert && objects.has(`${bucket}/${path}`)) return { error: { message: 'The resource already exists' } }
+            objects.set(`${bucket}/${path}`, bytes)
+            return { error: null }
+          },
+          getPublicUrl: (path) => ({ data: { publicUrl: `https://db.example/storage/v1/object/public/${bucket}/${path}` } }),
+          remove: async (paths) => { for (const p of paths) objects.delete(`${bucket}/${p}`); return { error: null } },
+        }),
+      },
+    }
+    return { db, tables, objects, failNext, beforeInsert }
+  }
+
+  /** Run `fn` with the clock (Date.now AND new Date()) pinned to `iso`. */
+  const RealDate = Date
+  const withClock = async (iso, fn) => {
+    const pinned = RealDate.parse(iso)
+    class PinnedDate extends RealDate {
+      constructor(...a) { if (a.length) super(...a); else super(pinned) }
+      static now() { return pinned }
+    }
+    globalThis.Date = PinnedDate
+    try { return await fn(pinned) } finally { globalThis.Date = RealDate }
   }
 
   // A 19-acre site in UTM 17N and the clip Planet would send back for it: 3 m RGB, north-up.
@@ -270,16 +349,20 @@ const runUrl = transpile('../lib/satellite/run.ts', { './geo': geoUrl, './scenes
   })
 
   const ORDER = '0b6c1f44-5d7e-4f8a-9b2c-3d4e5f6a7b8c'
-  let polls = 0, orders = 0
+  const SCENE = '20261005_160344_07_24c1'
+  // The fake Planet API. `order`: how the order POST goes — 'ok', 'lost'
+  // (no answer: a timeout or a cut connection) or 'refused' (Planet says 400).
+  const planetApi = { order: 'ok', polls: 0, orders: 0, calls: 0 }
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url)
+    planetApi.calls++
     const auth = init.headers?.authorization
     if (auth !== 'api-key test-key') return new Response('no', { status: 401 })
     if (u.includes('/data/v1/quick-search')) {
       return Response.json({ features: [
         { id: '20261005_152001_11_2479', properties: { acquired: '2026-10-05T15:20:01Z', cloud_cover: 0.2, clear_percent: 80, pixel_resolution: 3, quality_category: 'standard' } },
-        { id: '20261005_160344_07_24c1', properties: { acquired: '2026-10-05T16:03:44Z', cloud_cover: 0.25, clear_percent: 75, pixel_resolution: 3, quality_category: 'standard' } },
+        { id: SCENE, properties: { acquired: '2026-10-05T16:03:44Z', cloud_cover: 0.25, clear_percent: 75, pixel_resolution: 3, quality_category: 'standard' } },
       ] })
     }
     if (u.includes('/coverage?mode=estimate')) {
@@ -287,56 +370,202 @@ const runUrl = transpile('../lib/satellite/run.ts', { './geo': geoUrl, './scenes
       return Response.json({ status: 'complete', clear_percent: u.includes('20261005_152001_11_2479') ? 40 : 97 })
     }
     if (u.endsWith('/compute/ops/orders/v2') && init.method === 'POST') {
-      orders++
+      planetApi.orders++
+      if (planetApi.order === 'lost') throw new TypeError('fetch failed: socket hang up')
+      if (planetApi.order === 'refused') return new Response('{"field":{"Details":["rate limit"]}}', { status: 400 })
       const body = JSON.parse(init.body)
-      if (body.products[0].item_ids[0] !== '20261005_160344_07_24c1' || !body.tools[0].clip.aoi) return new Response('bad order', { status: 400 })
+      if (body.products[0].item_ids[0] !== SCENE || !body.tools[0].clip.aoi) return new Response('bad order', { status: 400 })
       return Response.json({ id: ORDER, state: 'queued' }, { status: 202 })
     }
     if (u.endsWith(`/compute/ops/orders/v2/${ORDER}`)) {
-      polls++
-      if (polls === 1) return Response.json({ id: ORDER, state: 'running', _links: { results: [] } })
+      planetApi.polls++
+      if (planetApi.polls === 1) return Response.json({ id: ORDER, state: 'running', _links: { results: [] } })
       return Response.json({ id: ORDER, state: 'success', _links: { results: [
-        { name: `${ORDER}/PSScene/20261005_160344_07_24c1_metadata.json`, location: 'https://api.planet.com/compute/ops/download/?token=meta' },
-        { name: `${ORDER}/PSScene/20261005_160344_07_24c1_3B_Visual_clip.tif`, location: 'https://api.planet.com/compute/ops/download/?token=visual' },
+        { name: `${ORDER}/PSScene/${SCENE}_metadata.json`, location: 'https://api.planet.com/compute/ops/download/?token=meta' },
+        { name: `${ORDER}/PSScene/${SCENE}_3B_Visual_clip.tif`, location: 'https://api.planet.com/compute/ops/download/?token=visual' },
       ] } })
     }
     if (u === 'https://api.planet.com/compute/ops/download/?token=visual') return new Response(tif)
     return new Response('unexpected ' + u, { status: 404 })
   }
   process.env.PL_API_KEY = 'test-key'
+  const site = { id: '7e1d2c3b-0000-4000-8000-000000000001', companyId: '7e1d2c3b-0000-4000-8000-0000000000c0', ring }
+  const sub = { zone_id: site.id, company_id: site.companyId, provider: 'planet', enabled_at: '2026-10-04T22:35:00Z', last_scene_at: null }
+  // The fake scenes were "acquired" on Oct 5 2026: the runs happen that evening.
+  const EVENING = '2026-10-05T22:35:00Z'
+  const LATER = (min) => Date.now() + min * 60_000
+  const realError = console.error
   try {
-    const site = { id: '7e1d2c3b-0000-4000-8000-000000000001', companyId: '7e1d2c3b-0000-4000-8000-0000000000c0', ring }
-    const sub = { zone_id: site.id, company_id: site.companyId, provider: 'planet', enabled_at: new Date(Date.now() - 86_400_000).toISOString(), last_scene_at: null }
-    // The fake scenes were "acquired" on Oct 5 2026; pin the clock to that evening.
-    const realNow = Date.now
-    Date.now = () => Date.parse('2026-10-05T22:35:00Z')
-    let t1, t2, c1, c2
-    try {
-      sub.enabled_at = new Date(Date.now() - 86_400_000).toISOString()
-      t1 = await run.runPlanetSite(fakeDb, sub, site, Date.now() + 60_000)
-      t2 = await run.runPlanetSite(fakeDb, sub, site, Date.now() + 60_000)
-      c1 = await run.collectPlanetOrders(fakeDb, Date.now() + 60_000)
-      c2 = await run.collectPlanetOrders(fakeDb, Date.now() + 60_000)
-    } finally {
-      Date.now = realNow
+    // 1. The happy path, and the dedupe that keeps a paid order from being placed twice.
+    {
+      const { db, tables, objects } = makeDb()
+      Object.assign(planetApi, { order: 'ok', polls: 0, orders: 0 })
+      const [t1, t2, c1, c2] = await withClock(EVENING, async () => [
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+        await run.collectPlanetOrders(db, LATER(10)),
+        await run.collectPlanetOrders(db, LATER(10)),
+      ])
+      const scene = tables.satellite_scenes[0]
+      ok('Planet: one order, for the scene that is clear over the SITE (not the clearest scene)', t1.ordered === 1 && planetApi.orders === 1 && scene?.scene_id === SCENE && scene?.order_id === ORDER, { t1, orders: planetApi.orders, scene })
+      ok('Planet: the order bills the 1 km² floor at list price', scene?.billed_km2 === 1 && scene?.est_cost_usd === 0.7857 && near(scene?.zone_cloud_pct, 3, 1e-9), scene)
+      ok('Planet: a second run the same day places no second order', t2.ordered === 0 && planetApi.orders === 1, t2)
+      ok('Planet: a running order is left to wait, a finished one collected', c1.waiting === 1 && c1.collected === 0 && c2.collected === 1, { c1, c2 })
+      const img = tables.zone_imagery[0]
+      ok('Planet: the picture is a placed satellite photo on the timeline, behind the signed-in route', img && img.source === 'satellite' && img.kind === 'photo' && img.url === `/api/satellite/image/${img.id}` && img.taken_on === '2026-10-05', img)
+      ok('Planet: the picture is filed under the scene\'s own id', img?.id === await sc.sceneImageryId(site.id, 'planet', SCENE))
+      ok('Planet: the file sits in the PRIVATE bucket at <company>/<site>/<picture>.png', objects.has(`satellite/${site.companyId}/${site.id}/${img?.id}.png`) && scene?.storage_path === `${site.companyId}/${site.id}/${img?.id}.png`, [...objects.keys()])
+      const back = tm.tmForward(p, img.bounds[0][0], img.bounds[0][1])
+      const br = tm.tmForward(p, img.bounds[2][0], img.bounds[2][1])
+      ok('Planet: corners come from the GeoTIFF\'s own grid (TL and BR within 2 cm)', near(back[0], originX, 0.02) && near(back[1], originY, 0.02) && near(br[0], originX + 3 * w, 0.02) && near(br[1], originY - 3 * h, 0.02), [back, br])
+      ok('Planet: caption carries © Planet Labs PBC', /^PlanetScope · Oct 5, 2026 · 3 m · © 2026 Planet Labs PBC$/.test(img?.caption ?? ''), img?.caption)
+      ok('Planet: the scene row says ingested and points at the picture', scene?.status === 'ingested' && scene?.imagery_id === img?.id && scene?.gsd_m === 3)
+      ok('Planet: a download link off planet.com is refused', !(await import(planetUrl)).planetHost('https://evil.example/x.tif') && (await import(planetUrl)).planetHost('https://api.planet.com/compute/ops/download/?token=x'))
     }
-    const scene = tables.satellite_scenes[0]
-    ok('Planet: one order, for the scene that is clear over the SITE (not the clearest scene)', t1.ordered === 1 && orders === 1 && scene?.scene_id === '20261005_160344_07_24c1', { t1, orders, scene })
-    ok('Planet: the order bills the 1 km² floor at list price', scene?.billed_km2 === 1 && scene?.est_cost_usd === 0.7857 && near(scene?.zone_cloud_pct, 3, 1e-9), scene)
-    ok('Planet: a second run the same day places no second order', t2.ordered === 0 && orders === 1, t2)
-    ok('Planet: a running order is left to wait, a finished one collected', c1.waiting === 1 && c1.collected === 0 && c2.collected === 1, { c1, c2 })
-    const img = tables.zone_imagery[0]
-    ok('Planet: the picture is a placed satellite photo on the timeline, behind the signed-in route', img && img.source === 'satellite' && img.kind === 'photo' && img.url === `/api/satellite/image/${img.id}` && img.taken_on === '2026-10-05', img)
-    ok('Planet: the file sits in the PRIVATE bucket at <company>/<site>/<picture>.png', objects.has(`satellite/${site.companyId}/${site.id}/${img?.id}.png`) && scene?.storage_path === `${site.companyId}/${site.id}/${img?.id}.png`, [...objects.keys()])
-    const back = tm.tmForward(p, img.bounds[0][0], img.bounds[0][1])
-    const br = tm.tmForward(p, img.bounds[2][0], img.bounds[2][1])
-    ok('Planet: corners come from the GeoTIFF\'s own grid (TL and BR within 2 cm)', near(back[0], originX, 0.02) && near(back[1], originY, 0.02) && near(br[0], originX + 3 * w, 0.02) && near(br[1], originY - 3 * h, 0.02), [back, br])
-    ok('Planet: caption carries © Planet Labs PBC', /^PlanetScope · Oct 5, 2026 · 3 m · © 2026 Planet Labs PBC$/.test(img?.caption ?? ''), img?.caption)
-    ok('Planet: the scene row says ingested and points at the picture', scene?.status === 'ingested' && scene?.imagery_id === img?.id)
-    ok('Planet: a download link off planet.com is refused', !(await import(planetUrl)).planetHost('https://evil.example/x.tif') && (await import(planetUrl)).planetHost('https://api.planet.com/compute/ops/download/?token=x'))
+
+    // 2. Planet's answer to the order is lost (a timeout, a cut connection, a
+    //    run killed mid-order): the order may exist and be billed, so the day
+    //    is written down BEFORE the order and never ordered again.
+    {
+      const { db, tables } = makeDb()
+      Object.assign(planetApi, { order: 'lost', polls: 0, orders: 0, calls: 0 })
+      const [t1, t2] = await withClock(EVENING, async () => [
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+      ])
+      const row = tables.satellite_scenes[0]
+      ok('lost order answer: the day was written down before the order — pending, no id, the cost on it', row?.status === 'pending' && row?.order_id == null && row?.billed_km2 === 1 && /outcome unknown/.test(row?.detail ?? ''), row)
+      ok('lost order answer: the next run never orders that day again', t1.ordered === 0 && t1.failed === 1 && t2.ordered === 0 && planetApi.orders === 1, { t1, t2, orders: planetApi.orders })
+      const callsBefore = planetApi.calls
+      const c1 = await withClock('2026-10-06T22:35:00Z', () => run.collectPlanetOrders(db, LATER(10)))
+      ok('lost order answer: collection has no id to ask about — it waits, asking Planet nothing', c1.waiting === 1 && planetApi.calls === callsBefore && row.status === 'pending', c1)
+      const c2 = await withClock('2026-10-09T22:40:00Z', () => run.collectPlanetOrders(db, LATER(10)))
+      ok('lost order answer: three days on it is given up — failed, never re-ordered', row.status === 'failed' && row.attempts === 3 && /never re-ordered/.test(row.detail) && c2.collected === 0, row)
+    }
+
+    // 3. Planet REFUSES the order (a 4xx answer): nothing was ordered, so the
+    //    scene is free to be tried again — it is not parked like a lost answer.
+    {
+      const { db, tables } = makeDb()
+      Object.assign(planetApi, { order: 'refused', polls: 0, orders: 0 })
+      const t1 = await withClock(EVENING, () => run.runPlanetSite(db, sub, site, LATER(10)))
+      const row = { ...tables.satellite_scenes[0] }
+      planetApi.order = 'ok'
+      const t2 = await withClock(EVENING, () => run.runPlanetSite(db, sub, site, LATER(10)))
+      ok('refused order: written down as failed with nothing billed', row.status === 'failed' && row.billed_km2 === 0 && row.est_cost_usd === 0 && /answered 400/.test(row.detail) && t1.ordered === 0, row)
+      ok('refused order: the next run orders it', t2.ordered === 1 && planetApi.orders === 2 && tables.satellite_scenes[0].order_id === ORDER && tables.satellite_scenes[0].attempts === 2, tables.satellite_scenes[0])
+    }
+
+    // 4. The order went through but its id could not be written down: the day
+    //    stays settled (pending) — the paid order is never placed a second time.
+    {
+      const { db, tables, failNext } = makeDb()
+      Object.assign(planetApi, { order: 'ok', polls: 0, orders: 0 })
+      const idWrite = { table: 'satellite_scenes', op: 'update', when: (row) => 'order_id' in row }
+      failNext.push(idWrite, { ...idWrite })
+      const logged = []
+      console.error = (...a) => logged.push(a.join(' '))
+      const [t1, t2] = await withClock(EVENING, async () => [
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+        await run.runPlanetSite(db, sub, site, LATER(10)),
+      ])
+      console.error = realError
+      ok('order id not stored: the day stays settled and the order is not placed again', t1.ordered === 1 && t2.ordered === 0 && planetApi.orders === 1
+        && tables.satellite_scenes[0].status === 'pending' && tables.satellite_scenes[0].order_id == null, { t1, t2, row: tables.satellite_scenes[0] })
+      ok('order id not stored: the order id is logged so it can be collected by hand', logged.some((l) => l.includes(ORDER)), logged)
+    }
+
+    // 5. A run saved the picture and was cut off before it marked the order
+    //    collected: the next run finds the picture — no second download, no
+    //    second picture.
+    {
+      const { db, tables, failNext } = makeDb()
+      Object.assign(planetApi, { order: 'ok', polls: 1, orders: 0 }) // the order is already done
+      await withClock(EVENING, () => run.runPlanetSite(db, sub, site, LATER(10)))
+      failNext.push({ table: 'satellite_scenes', op: 'update', when: (row) => row.status === 'ingested' })
+      const c1 = await withClock(EVENING, () => run.collectPlanetOrders(db, LATER(10)))
+      const callsBefore = planetApi.calls
+      const c2 = await withClock(EVENING, () => run.collectPlanetOrders(db, LATER(10)))
+      const row = tables.satellite_scenes[0]
+      ok('cut off after saving: the first collection saved the picture but could not mark it — still pending', c1.collected === 0 && c1.waiting === 1 && tables.zone_imagery.length === 1, c1)
+      ok('cut off after saving: the next one marks it without asking Planet again', c2.collected === 1 && planetApi.calls === callsBefore && row.status === 'ingested' && row.imagery_id === tables.zone_imagery[0].id, { c2, row })
+      ok('cut off after saving: still exactly one picture of that day', tables.zone_imagery.length === 1)
+    }
+
+    // 6. Two runs collect the same order at once: the second insert of the
+    //    scene's picture collides, and the run adopts the first one's picture.
+    {
+      const { db, tables, beforeInsert } = makeDb()
+      Object.assign(planetApi, { order: 'ok', polls: 1, orders: 0 })
+      await withClock(EVENING, () => run.runPlanetSite(db, sub, site, LATER(10)))
+      beforeInsert.push((table, row) => {
+        if (table !== 'zone_imagery') return false
+        tables.zone_imagery.push({ ...row, caption: 'saved by the other run' })
+        return true
+      })
+      const c = await withClock(EVENING, () => run.collectPlanetOrders(db, LATER(10)))
+      ok('racing collections: one picture, and the order marked with it', c.collected === 1 && tables.zone_imagery.length === 1
+        && tables.satellite_scenes[0].imagery_id === tables.zone_imagery[0].id && tables.zone_imagery[0].caption === 'saved by the other run', { c, n: tables.zone_imagery.length })
+    }
+
+    // 7. Never start what can't finish before the run's end (the function is
+    //    killed at 300 s — mid-order is how an order is lost).
+    {
+      const { db, tables } = makeDb()
+      Object.assign(planetApi, { order: 'ok', polls: 0, orders: 0, calls: 0 })
+      const t = await withClock(EVENING, () => run.runPlanetSite(db, sub, site, LATER(70 / 60)))
+      ok('deadline: with 70 s left no scene is judged and nothing is ordered (a day needs 75 s)', t.looked === 0 && planetApi.orders === 0 && tables.satellite_scenes.length === 0, { t, orders: planetApi.orders })
+      const { db: db2, tables: t2 } = makeDb()
+      await withClock(EVENING, () => run.runPlanetSite(db2, sub, site, LATER(10)))
+      planetApi.polls = 1
+      const calls = planetApi.calls
+      const c = await withClock(EVENING, () => run.collectPlanetOrders(db2, LATER(80 / 60)))
+      ok('deadline: with 80 s left no order is polled or downloaded (a collection needs 85 s)', c.collected === 0 && c.waiting === 0 && planetApi.calls === calls && t2.satellite_scenes[0].status === 'pending', c)
+      ok('deadline: the headroom covers each step\'s own timeouts', run.SCENE_HEADROOM_MS >= 25_000 + 40_000 && run.SCENE_HEADROOM_MS >= 3 * 15_000 + 20_000 && run.COLLECT_HEADROOM_MS >= 15_000 + 60_000)
+    }
   } finally {
     globalThis.fetch = realFetch
+    console.error = realError
     delete process.env.PL_API_KEY
+  }
+
+  // 8. Sentinel-2 against the saved Earth Search answer (no COG is ever read here).
+  {
+    const fx = JSON.parse(readFileSync(new URL('./fixtures/satellite/earth-search-overlap.json', import.meta.url), 'utf8'))
+    const days = sc.groupByDay(sc.parseStacSearch(fx), (geo.ringBox(ring).minLng + geo.ringBox(ring).maxLng) / 2)
+    const s2 = { reads: 0 }
+    globalThis.fetch = async (url) => {
+      if (String(url) === 'https://earth-search.aws.element84.com/v1/search') return Response.json(fx)
+      s2.reads++
+      return new Response('no COG reads in this test', { status: 500 })
+    }
+    try {
+      // Every day but Oct 2 is already settled; Oct 2's picture was saved by a
+      // run that was cut off before it wrote the scene down.
+      const { db, tables } = makeDb()
+      const newest = days[0]
+      for (const d of days.slice(1)) tables.satellite_scenes.push({ id: crypto.randomUUID(), zone_id: site.id, provider: 'sentinel2', scene_id: d.scenes[0].id, acquired_on: d.day, status: 'cloudy', attempts: 1 })
+      const id = await sc.sceneImageryId(site.id, 'sentinel2', newest.scenes[0].id)
+      tables.zone_imagery.push({ id, company_id: site.companyId, geofence_id: site.id, source: 'satellite', kind: 'photo', taken_on: newest.day })
+      const t = await withClock('2026-10-06T22:35:00Z', () => run.runSentinelSite(db, site, LATER(10)))
+      const row = tables.satellite_scenes.find((r) => r.scene_id === newest.scenes[0].id)
+      ok('Sentinel-2 cut off after saving: the next run writes the scene down from the saved picture — no re-read, no second picture',
+        t.pictures === 1 && s2.reads === 0 && row?.status === 'ingested' && row?.imagery_id === id && tables.zone_imagery.length === 1, { t, reads: s2.reads, row })
+
+      const { db: db2, tables: t2 } = makeDb()
+      const tFast = await withClock('2026-10-06T22:35:00Z', () => run.runSentinelSite(db2, site, LATER(70 / 60)))
+      ok('Sentinel-2 deadline: with 70 s left no scene is read (one needs 75 s)', tFast.looked === 0 && s2.reads === 0 && t2.satellite_scenes.length === 0, tFast)
+
+      // Another company's photo can never be adopted as this site's picture.
+      const { db: db3, tables: t3 } = makeDb()
+      for (const d of days.slice(1)) t3.satellite_scenes.push({ id: crypto.randomUUID(), zone_id: site.id, provider: 'sentinel2', scene_id: d.scenes[0].id, acquired_on: d.day, status: 'cloudy', attempts: 1 })
+      t3.zone_imagery.push({ id, company_id: '7e1d2c3b-0000-4000-8000-0000000000ff', geofence_id: site.id, source: 'satellite' })
+      const t3r = await withClock('2026-10-06T22:35:00Z', () => run.runSentinelSite(db3, site, LATER(10)))
+      const r3 = t3.satellite_scenes.find((r) => r.scene_id === newest.scenes[0].id)
+      ok('a picture id held by another company\'s photo is refused, never adopted', t3r.pictures === 0 && r3?.status === 'failed' && /already taken/.test(r3?.detail ?? ''), r3)
+    } finally {
+      globalThis.fetch = realFetch
+    }
   }
 }
 

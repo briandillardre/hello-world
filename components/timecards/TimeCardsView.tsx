@@ -361,7 +361,8 @@ function EditEntrySheet({ row, tz, onClose, onSaved }: { row: TimeCardRow; tz: s
           <input type="datetime-local" value={inAt} onChange={(e) => setInAt(e.target.value)} className="mt-1 w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2.5 text-sm text-ink" />
         </label>
         <label className="block">
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Clock out <span className="normal-case tracking-normal">(blank = still open)</span></span>
+          {/* A finished shift is never reopened (133) — blank only means "still open" for an open one. */}
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">Clock out{!row.outAt && <span className="normal-case tracking-normal"> (blank = still open)</span>}</span>
           <input type="datetime-local" value={outAt} onChange={(e) => setOutAt(e.target.value)} className="mt-1 w-full rounded-lg bg-navy-950 border border-navy-700 px-3 py-2.5 text-sm text-ink" />
         </label>
         <div className="grid grid-cols-2 gap-2">

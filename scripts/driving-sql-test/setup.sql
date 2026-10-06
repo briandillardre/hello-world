@@ -1,13 +1,16 @@
--- Just enough of the Supabase schema for migration 129 (driving scores) to
--- apply verbatim on a bare local PostgreSQL 16: the API roles with
--- Supabase's default grants, auth.uid() from a session setting, the company
--- helper, 111's visibility ladder on assets, 118/119's prospect helpers and
--- 115's ht_safe_tz.
+-- Just enough of the Supabase schema for migrations 129 + 134 (driving
+-- scores) to apply verbatim on a bare local PostgreSQL 16: the API roles with
+-- Supabase's default grants, auth.uid() / auth.role() from session settings,
+-- the company helper, 111's visibility ladder on assets, 118/119's prospect
+-- helpers and 115's ht_safe_tz.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role BYPASSRLS; END IF;
 END $$;
+-- Supabase's service role bypasses RLS. Roles are cluster-wide, and another
+-- harness on the same server may have made this one first without it.
+ALTER ROLE service_role BYPASSRLS;
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
@@ -20,6 +23,12 @@ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
 GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
+-- Supabase's own definition (134 reads it to tell the service role from a member).
+CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(NULLIF(current_setting('request.jwt.claim.role', true), ''),
+                  (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'))::text
+$$;
+GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role;
 
 CREATE TABLE companies (id uuid PRIMARY KEY, name text, digest_prefs jsonb);
 CREATE TABLE profiles (id uuid PRIMARY KEY, company_id uuid REFERENCES companies(id), role text, name text);

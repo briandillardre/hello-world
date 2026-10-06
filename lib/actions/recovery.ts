@@ -1,20 +1,24 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { RECOVERY_DAYS } from '@/lib/location-policy'
+import { RECOVERY_DAYS, RECOVERY_MAX_DAYS } from '@/lib/location-policy'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 /**
- * Recovery mode (migration 132): an Admin or the owner, with a reason,
- * authorizes recovery tracking of a missing asset — for RECOVERY_DAYS, then
- * it ends on its own unless someone extends it. While it runs, phones off
- * the clock report that asset's tag at its EXACT spot instead of a ~250 m
- * area (still never whose phone heard it), the asset page wears a red
- * banner and the map a red badge. Every start / extend / stop is a row in
- * `asset_recovery` (who, when, why). Writes go through the service role
- * after these checks — the table has no write policies.
+ * Recovery mode (migrations 132 + 133): an Admin or the owner, with a
+ * reason, authorizes recovery tracking of a missing asset — equipment or a
+ * tool, never a person — for RECOVERY_DAYS, then it ends on its own unless
+ * someone extends it, and never longer than RECOVERY_MAX_DAYS from its start
+ * (after that: stop it and start a fresh one with a reason). While it runs,
+ * phones off the clock report that asset's tag at its EXACT spot instead of
+ * a ~250 m area (still never whose phone heard it; Admins and the owner read
+ * it), the asset page wears a red banner and the map a red badge. Every
+ * start / stop is a row in `asset_recovery` (who, when, why) and every
+ * extension a row in the append-only `asset_recovery_extensions` (133).
+ * Writes go through the service role after these checks — neither table has
+ * write policies.
  */
 
 type Reply = { ok: boolean; error?: string }
@@ -35,11 +39,15 @@ async function gate(): Promise<{ userId: string; companyId: string } | { error: 
 
 /** The asset, read with the caller's own client: RLS = their company and
  *  what they may see (111). Null = not theirs to put in recovery. */
-async function readAsset(assetId: string): Promise<{ id: string; company_id: string } | null> {
+async function readAsset(assetId: string): Promise<{ id: string; company_id: string; type: string | null } | null> {
   const { createClient } = await import('@/lib/supabase-server')
-  const { data } = await createClient().from('assets').select('id, company_id').eq('id', assetId).maybeSingle()
-  return (data as { id: string; company_id: string } | null) ?? null
+  const { data } = await createClient().from('assets').select('id, company_id, type').eq('id', assetId).maybeSingle()
+  return (data as { id: string; company_id: string; type: string | null } | null) ?? null
 }
+
+/** Recovery finds missing equipment. A person's phone is tracked by the time
+ *  clock or by their own choice (Go Live) — never by an Admin's say-so. */
+const PEOPLE_NOT_EQUIPMENT = 'Recovery is for missing equipment and tools — a person can’t be put in recovery.'
 
 function revalidate(assetId: string) {
   revalidatePath(`/assets/${assetId}`)
@@ -57,6 +65,7 @@ export async function startRecoveryAction(input: { assetId: string; reason: stri
     if (reason.length > 300) return { ok: false, error: 'Keep the reason under 300 characters.' }
     const asset = await readAsset(input.assetId)
     if (!asset || asset.company_id !== g.companyId) return { ok: false, error: 'Asset not found.' }
+    if (asset.type === 'personnel') return { ok: false, error: PEOPLE_NOT_EQUIPMENT }
 
     const { createServiceClient, createClient } = await import('@/lib/supabase-server')
     const svc = createServiceClient()
@@ -97,19 +106,41 @@ export async function extendRecoveryAction(assetId: string): Promise<Reply> {
     if (!isUuid(assetId)) return { ok: false, error: 'Asset not found.' }
     const asset = await readAsset(assetId)
     if (!asset || asset.company_id !== g.companyId) return { ok: false, error: 'Asset not found.' }
+    if (asset.type === 'personnel') return { ok: false, error: PEOPLE_NOT_EQUIPMENT }
     const { createServiceClient } = await import('@/lib/supabase-server')
     const svc = createServiceClient()
-    const { data: open } = await svc.from('asset_recovery').select('id, expires_at')
+    const { data: open } = await svc.from('asset_recovery').select('id, started_at, expires_at, extended_by, extended_at')
       .eq('asset_id', asset.id).is('ended_at', null).maybeSingle()
     if (!open || Date.parse(open.expires_at as string) <= Date.now()) {
       return { ok: false, error: 'This recovery already ended — start a new one.' }
     }
+    // RECOVERY_DAYS from now, never past RECOVERY_MAX_DAYS from the start:
+    // a recovery cannot be kept alive forever one extension at a time (133).
     const now = new Date()
-    const { error } = await svc.from('asset_recovery').update({
-      expires_at: new Date(now.getTime() + RECOVERY_DAYS * 86_400_000).toISOString(),
-      extended_by: g.userId, extended_at: now.toISOString(),
-    }).eq('id', open.id).is('ended_at', null)
+    const capMs = Date.parse(open.started_at as string) + RECOVERY_MAX_DAYS * 86_400_000
+    const untilMs = Math.min(now.getTime() + RECOVERY_DAYS * 86_400_000, capMs)
+    const before = open.expires_at as string
+    if (!Number.isFinite(untilMs) || untilMs <= Date.parse(before) + 60_000) {
+      return { ok: false, error: `A recovery runs at most ${RECOVERY_MAX_DAYS} days. If it’s still missing, stop this one and start a new one with a reason.` }
+    }
+    const until = new Date(untilMs).toISOString()
+    // Compare-and-set on the old expiry: two Admins extending at once write one extension.
+    const { data: moved, error } = await svc.from('asset_recovery').update({
+      expires_at: until, extended_by: g.userId, extended_at: now.toISOString(),
+    }).eq('id', open.id).is('ended_at', null).eq('expires_at', before).select('id')
     if (error) return { ok: false, error: 'Could not extend it — try again.' }
+    if (!moved?.length) return { ok: true } // someone else's extension just landed
+    // Every extension is its own row; nobody (the server included) can rewrite one.
+    const { error: logErr } = await svc.from('asset_recovery_extensions').insert({
+      recovery_id: open.id, company_id: g.companyId, asset_id: asset.id,
+      extended_by: g.userId, extended_at: now.toISOString(), expires_before: before, expires_after: until,
+    })
+    if (logErr) {
+      // No unaudited extension: put it back as it was.
+      await svc.from('asset_recovery').update({ expires_at: before, extended_by: open.extended_by ?? null, extended_at: open.extended_at ?? null })
+        .eq('id', open.id).eq('expires_at', until)
+      return { ok: false, error: 'Could not extend it — try again.' }
+    }
     revalidate(asset.id)
     return { ok: true }
   } catch {
