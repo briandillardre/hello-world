@@ -171,6 +171,39 @@ export function daysToCheck(days: SceneDay[], done: DoneRow[], max: number): Sce
   return days.filter((d) => !daySettled(d, done)).slice(0, Math.max(0, max))
 }
 
+/**
+ * The zone_imagery id a scene's picture is filed under — the same every time
+ * for one site, feed and scene (a SHA-256 of the three, laid out as a UUID).
+ * That is what makes a picture idempotent: a run killed between saving the
+ * picture and writing the scene down (or two runs collecting one Planet
+ * order) finds the picture already there instead of saving it twice.
+ */
+export async function sceneImageryId(zoneId: string, provider: Provider, sceneId: string): Promise<string> {
+  const bytes = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(`hammertrack-satellite:${zoneId}:${provider}:${sceneId}`)))
+  bytes[6] = (bytes[6] & 0x0f) | 0x50 // version 5 (name-based, SHA)
+  bytes[8] = (bytes[8] & 0x3f) | 0x80 // RFC 4122 variant
+  const h = Array.from(bytes.slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`
+}
+
+/**
+ * A watched site that is done: the job was marked complete (037), or its
+ * active dates ended (027). The cron stops taking pictures of it and the
+ * site's card says why; reopening the job (or moving the end date) starts
+ * them again. null = still running.
+ */
+export function siteFinished(zone: { completed_at?: string | null; active_until?: string | null } | null | undefined, nowMs: number): string | null {
+  if (!zone) return null
+  if (zone.completed_at && Number.isFinite(Date.parse(zone.completed_at))) {
+    return 'This job is marked complete, so no new satellite pictures are taken. Reopen the job to start them again.'
+  }
+  const until = zone.active_until ? Date.parse(zone.active_until) : NaN
+  if (Number.isFinite(until) && until < nowMs) {
+    return 'This site’s active dates have ended, so no new satellite pictures are taken. Move the end date to start them again.'
+  }
+  return null
+}
+
 /** The caption a satellite shot carries on the timeline: source · date · resolution · attribution. */
 export function captionFor(provider: Provider, day: string, gsdM: number): string {
   const d = new Date(`${day}T12:00:00Z`)

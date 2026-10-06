@@ -12,7 +12,9 @@ implement with per zone cost or whatever makes the most sense there."*
 - **Planet licence.** Planet's **standard licence does not let us show its pictures to our
   customers**. Reselling per site needs a partner agreement with Planet first.
 - **Sentinel-2.** Free and open, and its licence allows showing it to customers. At 10 m it
-  gives a clear picture of a site every few days. That part is built and works today.
+  passes over a site every few days; the clear passes (about weekly in dry weather, fewer in a
+  wet month — 8 clear in 60 days on the test site) become pictures. That part is built and
+  works today.
 
 Price options for a Planet tier went to Brian with this work. No customer price for
 satellite pictures exists anywhere yet. Once Brian picks one, it goes through the pricing
@@ -24,8 +26,10 @@ sync rule in CLAUDE.md.
   *Every few days · 10 m · Sentinel-2* for that site. The option shows only when the company
   has the `satellite` add-on (`company_addons`, the dirt-takeoff pattern; the platform
   owner's company is always on).
-- *Daily · 3 m · Planet* can be picked only when `PL_API_KEY` is set. Until then the card
-  says "ask us to turn it on".
+- *Daily · 3 m · Planet* can be picked only when `PL_API_KEY` is set, and only by someone
+  with the **Billing** permission (every picture is billed to us; `edit` alone — which a
+  Foreman holds — is not enough). Until the key is set the card says "Roadmap — not
+  available yet".
 - **The nightly cron.** `/api/cron/satellite` runs at 22:35 UTC. Sentinel-2 crosses the
   eastern US around 16:20 UTC, and Earth Search lists the pass a few hours later. The cron
   claims each watched site with a compare-and-set, then looks at the newest unchecked passes
@@ -44,8 +48,10 @@ sync rule in CLAUDE.md.
   scrubber picks each zone's newest shot on or before the scrubbed day.
 - **Map loader fixes.** `lib/db/imagery.ts` now loads the **newest** 500 placed photos
   (oldest-first used to freeze the live map once a company passed 500) and loads plan sheets
-  separately. On a day with both a drone shot and a satellite picture, the sharper drone shot
-  wins.
+  separately. Photos carry `satellite`, and the map keeps a sharper drone or site photo up
+  over any satellite picture taken within the 14 days after it — the same day included —
+  (`lib/satellite/display.ts`, asserted in the harness); a satellite picture more than two
+  weeks newer takes the zone over.
 - **The record.** `satellite_scenes` records every pass looked at: picture taken, cloudy, no
   data, failed (retried up to 3 times), or a Planet order still in flight. It is the dedupe
   (one picture per site per day) and the cost record. Members read it company-scoped **without
@@ -57,7 +63,7 @@ sync rule in CLAUDE.md.
   runner took 8 clear pictures from the last 60 days in two runs (Aug 13 → Sep 27), skipped 3
   cloudy passes, and added nothing on a third run. A GSP-airport window came back north-up
   with the runway on its true NE–SW line. Harness: `node scripts/satellite-test.mjs`
-  (82 offline assertions, including the whole Planet path against a stand-in API; `--live`
+  (119 offline assertions, including the whole Planet path against a stand-in API; `--live`
   adds 6 against the real catalog and COGs).
 
 ### Code map
@@ -65,7 +71,8 @@ sync rule in CLAUDE.md.
 |---|---|
 | `lib/satellite/geo.ts` | Pure geometry. UTM pixel windows, corner quads (`lib/dirt/tm.ts`), site cloud from SCL, RGBA, local day. |
 | `lib/satellite/pricing.ts` | Pure cost model. Every constant is a published list price, cited below. |
-| `lib/satellite/scenes.ts` | Pure catalog parsing (Earth Search, Planet), one-picture-per-day selection, captions. |
+| `lib/satellite/scenes.ts` | Pure catalog parsing (Earth Search, Planet), one-picture-per-day selection, captions, the per-scene picture id, finished sites. |
+| `lib/satellite/display.ts` | Pure: which placed photo the map's Site imagery layer shows per zone (the 14-day rule). |
 | `lib/satellite/sentinel2.ts` | Earth Search search, SCL site cover, TCI window → PNG + corners. |
 | `lib/satellite/planet.ts` | Data API quick-search, item coverage estimate, Orders API (visual bundle, clip), download → PNG + corners. Dead without `PL_API_KEY`. |
 | `lib/satellite/run.ts` | The cron's per-site work, storage, `zone_imagery` + `satellite_scenes` writes, Planet order collection. |
@@ -238,6 +245,34 @@ one pixel.
 5. Turn the add-on on for a company:
    `insert into company_addons (company_id, addon, source, note) values ('<company>', 'satellite', 'founder', '…')`
    (service role / SQL editor).
+
+## Review pass (Oct 6, migration 135 — no satellite SQL needed)
+- **The cron never starts what it can't finish.** Every runner gets `endBy` (start + 285 s,
+  under the 300 s limit) and starts a scene only with 75 s left (a Sentinel-2 scene is 25 s
+  of cloud read + 40 s of picture + writes; a Planet day is the site-clear estimates + the
+  order), a Planet collection only with 85 s left (15 s status + 60 s download + writes).
+  It used to start a day's three scenes at 229 s and collections at 279 s.
+- **A Planet order is written down before it is placed.** The day's `satellite_scenes`
+  row goes `pending` (cost on it, no order id) first, then the order, then the id. A run
+  killed in between leaves the day settled, so nothing orders it again. Planet answering
+  4xx means nothing was ordered: the row goes `failed` and may be retried. No answer at all
+  (timeout, cut connection, a 5xx) leaves it pending — it may be billed — and it is given up
+  after three days, never re-ordered. An order whose id can't be stored is logged with the
+  id.
+- **A picture is saved once per scene.** Its `zone_imagery` id is the scene's own
+  (`sceneImageryId`: a SHA-256 of site, feed and scene laid out as a UUID), and so is the
+  file path. A run killed between saving a picture and writing the scene down, a failed
+  "ingested" update, or two runs collecting one order: the next attempt finds the picture
+  (no second read or download) and writes it down. A row under that id that is not this
+  site's satellite photo is refused, never adopted.
+- **Finished sites are skipped.** A job marked complete (`completed_at`) or past its active
+  dates (`active_until`) gets no new pictures; the cron records why and the card says so
+  ("Reopen the job to start them again"). Turning a watch on for one is refused.
+- **Planet spend needs the Billing permission** (above).
+- **Copy.** No surface promises "a clear picture every few days" or offers Planet: the card
+  and the help guide say Sentinel-2 passes every few days and the clear ones land about
+  weekly in dry weather; Planet reads "Roadmap — not available yet"; the add-on's Sentinel
+  line reads "Included with the add-on" (it said "Free").
 
 ## Open items
 - The map shows satellite pictures with no attribution line. Copernicus asks for its notice

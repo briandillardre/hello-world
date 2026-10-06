@@ -397,7 +397,8 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
           <Suspense fallback={null}>
             <ZoneSatelliteSection zoneId={fence.id} companyId={companyId} ring={ring ?? null}
-              canEdit={perms.canEdit && !perms.viewingAs} personal={!!fence.owner_id} />
+              canEdit={perms.canEdit && !perms.viewingAs} canBill={perms.canManageBilling && !perms.viewingAs} personal={!!fence.owner_id}
+              completedAt={fence.completed_at ?? null} activeUntil={fence.active_until ?? null} />
           </Suspense>
         )}
         {!isBoundary && !isVendor && plansAvailable && (

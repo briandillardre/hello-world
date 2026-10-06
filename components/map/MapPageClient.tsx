@@ -40,7 +40,7 @@ interface MapPageClientProps {
    *  flag makes the client pull the recent baseline right after mount. */
   deferHistory?: boolean
   /** Placed drone/site imagery (latest per zone) for the 'Site imagery' layer. */
-  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
+  siteOverlays?: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan'; satellite?: boolean }[]
   earliestMs?: number | null
   tz?: string
   toolGateways: Record<string, { name: string; lastSeen: string }>
@@ -83,7 +83,7 @@ interface MapBootData {
   aboard: Record<string, import('@/lib/tools-resolve').AboardTool[]>
   pairingEpisodes: import('@/lib/db/tools').PairingEpisode[]
   alerts: import('@/lib/types').AlertEvent[]
-  siteOverlays: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan' }[]
+  siteOverlays: { id: string; url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; zoneId: string; takenOn: string; kind?: 'photo' | 'plan'; satellite?: boolean }[]
   earliestMs: number | null
   savedMapViews: { views: unknown[]; defaultId: string | null } | null
   canViewCosts: boolean

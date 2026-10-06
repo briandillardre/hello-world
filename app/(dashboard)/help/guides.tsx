@@ -598,11 +598,14 @@ export const GUIDES: HelpGuide[] = [
         heading: 'Pictures from space',
         body: (
           <P>
-            With the satellite add-on, a site&apos;s page has a <B>Satellite</B> card. Turn it on and a
-            clear Sentinel-2 picture lands on the site&apos;s photo timeline every few days, dated, and
-            on the map&apos;s <B>Site imagery</B> layer — scrub the timeline to watch the site change.
-            At 10 m a picture shows clearing, pads and big grading changes, not machines or stakes;
-            cloudy passes are skipped. Daily 3 m pictures (Planet) need a separate setup — ask us.
+            With the satellite add-on, a site&apos;s page has a <B>Satellite</B> card. Turn it on and
+            Sentinel-2 passes every few days; the clear ones (about weekly in dry weather, fewer in a
+            wet month) land on the site&apos;s photo timeline, dated, and on the map&apos;s <B>Site
+            imagery</B> layer — scrub the timeline to watch the site change. At 10 m a picture shows
+            clearing, pads and big grading changes, not machines or stakes; cloudy passes are skipped.
+            On the map a sharper drone or site photo stays up until a satellite picture more than 14
+            days newer comes in. A job marked complete, or past its active dates, gets no new
+            pictures. Daily 3 m pictures (Planet) are on the roadmap.
           </P>
         ),
       },
