@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getMyPermissions, getRealPermissions } from '@/lib/permissions-server'
+import { normalizeRole, outranks } from '@/lib/permissions'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -14,6 +15,11 @@ const MAX_SHIFT_MS = 24 * 3_600_000
  * ones with who / when / why (migration 103) — payroll can always see what
  * the phone recorded versus what the office decided. Managers = the Team or
  * Billing ability (payroll runs from here); crew cannot edit their own card.
+ *
+ * Strictly down the ladder, or your own entry (133): an open entry is what
+ * switches a person's phone recording on (location privacy, 132), so nobody
+ * may edit the card of someone above them — and a CLOSED entry is never
+ * reopened here (that would restart their phone's recording after the fact).
  */
 export async function adjustTimeEntryAction(input: {
   id: string
@@ -50,13 +56,16 @@ export async function adjustTimeEntryAction(input: {
     .eq('id', input.id).eq('company_id', perms.companyId).maybeSingle()
   if (readErr) return { ok: false, error: /column/i.test(readErr.message) ? 'Deploy the latest build first (migration 103).' : readErr.message }
   if (!cur) return { ok: false, error: 'Entry not found' }
-  // Reopening a closed entry restarts the phone's recording for it — refuse
-  // when the person already has another open shift (two open entries would
-  // both count hours; clock-out closes only the newest).
+  // Down the ladder only, or your own entry.
+  if (cur.user_id !== perms.userId) {
+    const { data: who } = await db.from('profiles').select('id, role').eq('id', cur.user_id).maybeSingle()
+    const target = { role: normalizeRole((who?.role as string | null) ?? null, 'associate'), isMaster: cur.user_id === perms.companyId }
+    if (!outranks(perms, target)) return { ok: false, error: 'You can only correct time cards of people below you on the team.' }
+  }
+  // A closed entry stays closed: reopening it would restart the person's
+  // phone recording (132) for a shift that already ended.
   if (outMs == null && cur.clock_out_at) {
-    const { count } = await db.from('time_entries').select('id', { count: 'exact', head: true })
-      .eq('company_id', perms.companyId).eq('user_id', cur.user_id).is('clock_out_at', null)
-    if ((count ?? 0) > 0) return { ok: false, error: 'This person already has an open shift — close that one before reopening this entry.' }
+    return { ok: false, error: 'A finished shift can’t be reopened — set the right clock-out time instead.' }
   }
 
   const patch: Record<string, unknown> = {

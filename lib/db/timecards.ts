@@ -5,7 +5,7 @@ import { formatPlace, placeKey, type PlaceParts } from '@/lib/place-label'
 import { buildTimeCards, weekStartKey, type FlagPolicy, type PersonCard, type TimeCardEntry, type TimeCardGps } from '@/lib/timecards'
 import { addDaysKey, isDayKey, zonedMidnightMs } from '@/lib/dates'
 import { resolveClockPolicy } from '@/lib/clock-policy'
-import { privacyZonesFromRows } from '@/lib/location-policy'
+import { privacyZoneAt, privacyZonesFromRows, workZonesFromRows, type PrivacyZoneSet } from '@/lib/location-policy'
 import { MASTER_RANK, RANK, type Permissions, type Role } from '@/lib/permissions'
 
 /**
@@ -100,10 +100,12 @@ export async function getTimeCards(db: SupabaseClient, opts: {
   // the card says only that it was in one (132, docs/LOCATION-PRIVACY.md).
   // Every private zone counts, a personal one the viewer cannot see included
   // (that is how a home is kept off the map), so they are read as the server.
-  let privacyRings = privacyZonesFromRows(zoneRows).map((z) => z.ring)
+  // The same test as collection (133): 50 m past the edge counts, and a punch
+  // inside a site or yard is worded by the site.
+  let privacy: PrivacyZoneSet = { zones: privacyZonesFromRows(zoneRows), work: workZonesFromRows(zoneRows) }
   try {
     const [{ createServiceClient }, { loadPrivacyZones }] = await Promise.all([import('@/lib/supabase-server'), import('@/lib/location-privacy')])
-    privacyRings = (await loadPrivacyZones(createServiceClient(), opts.companyId)).map((z) => z.ring)
+    privacy = await loadPrivacyZones(createServiceClient(), opts.companyId)
   } catch { /* the zones this viewer can see, above */ }
   const polys = zoneRows
     .filter((z) => z.kind !== 'boundary' && z.geometry?.type === 'Polygon' && Array.isArray(z.geometry.coordinates?.[0]))
@@ -173,7 +175,7 @@ export async function getTimeCards(db: SupabaseClient, opts: {
     : empty
   const wordsFor = (lat: number | null | undefined, lng: number | null | undefined): string | null => {
     if (lat == null || lng == null) return null
-    if (privacyRings.some((r) => pointInPolygon([lng, lat], r))) return 'in a privacy zone'
+    if (privacyZoneAt({ lat, lng }, privacy)) return 'in a privacy zone'
     const zone = polys.find((z) => pointInPolygon([lng, lat], z.ring))
     if (zone) return `at ${zone.name}`
     return formatPlace(cached[placeKey(lat, lng)]) // already "near …" / "in …"

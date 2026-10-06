@@ -55,6 +55,11 @@ export type { AboardTool } from '../tools-resolve'
  * same ladder for a "view app as" preview (RLS sees the REAL viewer), and
  * picks the newest row the previewed role may read rather than dropping the
  * tool. Last 30 days; empty in demo mode or before 132.
+ *
+ * One row per tool from the database (133's `ht_tool_sightings_latest`,
+ * SECURITY INVOKER — the caller's RLS still decides): the old read took the
+ * company's newest 1,000 rows and deduped here, so one busy tool's moving
+ * rows pushed every quieter tool off the map.
  */
 export async function getAnonToolSightings(companyId: string, maxRank = 4): Promise<Map<string, AnonToolSighting>> {
   const out = new Map<string, AnonToolSighting>()
@@ -62,18 +67,30 @@ export async function getAnonToolSightings(companyId: string, maxRank = 4): Prom
   try {
     const { createClient } = await import('../supabase-server')
     const { ANON_KEEP_MS } = await import('../location-policy')
-    const { data, error } = await createClient()
-      .from('tool_sightings')
-      .select('tool_asset_id, lat, lng, precision_m, reason, first_seen, last_seen, heard_n, visible_rank')
-      .eq('company_id', companyId)
-      .gte('last_seen', new Date(Date.now() - ANON_KEEP_MS).toISOString())
-      .order('last_seen', { ascending: false })
-      .limit(1000)
-    if (error) return out
-    for (const r of (data ?? []) as AnonRaw[]) {
+    const db = createClient()
+    const sinceIso = new Date(Date.now() - ANON_KEEP_MS).toISOString()
+    const rank = Math.max(0, Math.min(4, Math.round(maxRank)))
+    let rows: AnonRaw[] | null = null
+    const rpc = await db.rpc('ht_tool_sightings_latest', { p_company: companyId, p_since: sinceIso, p_max_rank: rank })
+    if (!rpc.error) rows = (rpc.data ?? []) as AnonRaw[]
+    else {
+      // A database before 133: the newest rows, deduped here.
+      const { data, error } = await db
+        .from('tool_sightings')
+        .select('tool_asset_id, lat, lng, precision_m, reason, first_seen, last_seen, heard_n, visible_rank')
+        .eq('company_id', companyId)
+        .lte('visible_rank', rank)
+        .gte('last_seen', sinceIso)
+        .order('last_seen', { ascending: false })
+        .limit(1000)
+      if (error) return out
+      rows = (data ?? []) as AnonRaw[]
+    }
+    for (const r of rows) {
       const s = anonRow(r)
-      if (!s || out.has(s.toolId) || s.visibleRank > maxRank) continue
-      out.set(s.toolId, s)
+      if (!s || s.visibleRank > rank) continue
+      const had = out.get(s.toolId)
+      if (!had || had.seenMs < s.seenMs) out.set(s.toolId, s)
     }
   } catch { /* additive — the map falls back to custody */ }
   return out

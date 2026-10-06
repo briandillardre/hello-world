@@ -3,7 +3,7 @@ import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase-server'
 import { safeTz } from '@/lib/dates'
 import { safeHttps } from '@/lib/safe-url'
-import { getMyPermissions } from '@/lib/permissions-server'
+import { getMyPermissions, getRealPermissions } from '@/lib/permissions-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +11,13 @@ export const dynamic = 'force-dynamic'
  * Field activity for the map layer: crew clock-ins and daily-log submissions
  * with the GPS stamp the phone recorded (migration 059). Last 7 days, RLS-
  * scoped through the caller's session — same window as alert pins.
+ *
+ * Nothing inside a privacy zone is pinned (133): a punch or a log there is
+ * kept on the time card ("in a privacy zone", lib/db/timecards.ts), but a
+ * named pin at the exact spot would put the person's private place on every
+ * crew phone's map. The same test as collection — every private zone, a
+ * personal one the viewer cannot see included, 50 m past its edge, a site
+ * or yard always wins. A zone read that fails shows no pins at all.
  */
 export async function GET() {
   try {
@@ -19,6 +26,13 @@ export async function GET() {
     if (!user) return NextResponse.json({ events: [] })
     // Same view level as /logs and /photos — a role without daily logs gets an empty layer.
     if (!(await getMyPermissions()).features.includes('logs')) return NextResponse.json({ events: [] })
+    const { companyId } = await getRealPermissions()
+    if (!companyId) return NextResponse.json({ events: [] })
+    const [{ createServiceClient }, { loadPrivacyZones }, { privacyZoneAt }] = await Promise.all([
+      import('@/lib/supabase-server'), import('@/lib/location-privacy'), import('@/lib/location-policy'),
+    ])
+    const zones = await loadPrivacyZones(createServiceClient(), companyId) // throws → no pins
+    const isPrivate = (lat: number, lng: number) => !!privacyZoneAt({ lat, lng }, zones)
     const tz = safeTz(cookies().get('ht_tz')?.value)
     const sinceIso = new Date(Date.now() - 7 * 86_400_000).toISOString()
     const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -42,6 +56,7 @@ export async function GET() {
     const events: Ev[] = []
     for (const e of entriesQ.data ?? []) {
       if (typeof e.in_lat !== 'number' || typeof e.in_lng !== 'number') continue
+      if (isPrivate(e.in_lat, e.in_lng)) continue
       events.push({
         kind: 'clockin', lat: e.in_lat, lng: e.in_lng,
         person: (e.person_name as string) || 'Crew',
@@ -52,6 +67,7 @@ export async function GET() {
     }
     for (const l of logsQ.data ?? []) {
       if (typeof l.lat !== 'number' || typeof l.lng !== 'number') continue
+      if (isPrivate(l.lat, l.lng)) continue
       const entry = entryById.get(l.time_entry_id as string)
       const shots = (Array.isArray(l.photos) ? l.photos : []) as { url?: string; kind?: string }[]
       // Member-writable JSON → only https URLs on our storage host reach the popup's <img>/<a>.
