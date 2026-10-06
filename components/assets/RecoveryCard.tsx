@@ -7,7 +7,7 @@ import { Siren } from 'lucide-react'
 import { startRecoveryAction, extendRecoveryAction, stopRecoveryAction } from '@/lib/actions/recovery'
 import { NO_REPLY } from '@/lib/action-reply'
 import { confirmSheet } from '@/components/ui/feedback'
-import { RECOVERY_DAYS } from '@/lib/location-policy'
+import { RECOVERY_DAYS, RECOVERY_MAX_DAYS } from '@/lib/location-policy'
 
 /**
  * Recovery mode on the asset page (132). Everyone who can see the asset sees
@@ -110,7 +110,7 @@ export function RecoveryCard({ assetId, isTool, canManage, active, lastHeard, pa
       </div>
       <p className="text-[12px] text-muted leading-snug">
         {isTool
-          ? `For ${RECOVERY_DAYS} days, crew phones that hear its tag off the clock, outside privacy zones, report the exact spot instead of a rough area — never whose phone — and only Admins see that spot. `
+          ? `For ${RECOVERY_DAYS} days (extendable, ${RECOVERY_MAX_DAYS} at most), crew phones that hear its tag off the clock, outside privacy zones, report the exact spot instead of a rough area — never whose phone — and only Admins see that spot. `
           : `For ${RECOVERY_DAYS} days it is marked as missing here and on the map. `}
         Everyone who can see this asset sees that it&apos;s in recovery and who started it.
       </p>

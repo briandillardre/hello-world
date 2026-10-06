@@ -57,7 +57,7 @@ export function PrivacyZoneCard({ zoneId, on, kind, canManage }: { zoneId: strin
             </p>
           ) : (
             <p className="text-[12px] text-muted leading-snug">
-              Inside it, and near its edge, crew phones keep no automatic location — no shift points, no tag-listener fixes, no Go Live. A tag heard there keeps only its rough area (~{OFF_SHIFT_GRID_M} m). A clock-in or clock-out tap still saves its spot (the time card says only &ldquo;in a privacy zone&rdquo;), and so does a photo or receipt. A zone over a site or yard can&apos;t be made private. Company trucks and machines are tracked as usual.
+              Inside it, and near its edge, crew phones keep no automatic location — no shift points, no tag-listener fixes, no Go Live. A tag heard there keeps only its rough area (~{OFF_SHIFT_GRID_M} m). A clock-in or clock-out tap still saves its spot (the time card says only &ldquo;in a privacy zone&rdquo;), and so does a photo or receipt. A zone over a site or yard can&apos;t be made private, and once private only Admins can redraw or delete it. Company trucks and machines are tracked as usual.
             </p>
           )}
           <p className="mt-1 text-[11.5px] text-faint leading-snug">
