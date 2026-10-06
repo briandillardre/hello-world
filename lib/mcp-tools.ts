@@ -22,6 +22,10 @@ import { getTimeCards, weekOf } from './db/timecards'
 import { FLAG_LABEL, categoryLabel, reviewItems } from './timecards'
 import { assessCtx, describeAll, mergeReadings, notReported, readingsFromRaw, readingsSummary, truckHealth, type Readings } from './telemetry-catalog'
 import { trackerKind } from './devices'
+import {
+  KIND_LABEL, MISSING_LABEL, VERDICT_LABEL, missingTelemetry, pilotMetrics, readStoredChecks,
+  type CheckKind, type MetricException, type MetricTxn, type MissingCode, type Verdict,
+} from './fuel-check'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -148,6 +152,20 @@ export const MCP_TOOLS: McpToolDef[] = [
         week: { type: 'string', description: 'Any date (YYYY-MM-DD) inside the Monday–Sunday pay week wanted; overrides days.' },
         days: { type: 'number', description: 'Rolling window in days ending now (default 7, max 62).' },
         person: { type: 'string', description: 'Only this person (partial name ok). Omit for the whole crew.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fuel_exceptions',
+    description:
+      'The fuel reconciliation pilot (migration 130): every fuel purchase (fleet-card or bank/card exports, card alerts) read against the truck\'s own evidence, and only four exceptions — the assigned vehicle was not at the pump; more gallons than the tank had room for; no fill and no running after the purchase; outside the cardholder\'s shift, the company\'s hours, or anywhere the company works. Each exception carries the plain-words evidence, the dollars at risk, the telemetry that limited it, and the owner\'s verdict (valid / false alarm / unsure). Also the pilot\'s numbers: recoverable dollars (valid verdicts), the false-positive rate (false alarms ÷ decided), how many are classified, the day of the 90-day pilot, and the ranked list of telemetry the checks still need. Nothing is ever declined — these are for a person to decide. Dollar figures. Use for fuel theft, fuel-card misuse, "how is the fuel pilot going", "any fuel exceptions", "what does the fuel check need" questions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'decided', 'all'], description: 'open = waiting for a verdict (default), decided = marked valid or false alarm, all.' },
+        days: { type: 'number', description: 'Purchases in the last N days (default 90, max 120).' },
+        vehicle: { type: 'string', description: 'Only this vehicle (partial name ok).' },
       },
       required: [],
     },
@@ -825,6 +843,91 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
   })
 }
 
+/** The fuel pilot's exceptions and numbers (migration 130, /receipts/fuel). */
+async function runFuelExceptions(companyId: string, args: { status?: unknown; days?: unknown; vehicle?: unknown }, visibleAssetIds: string[] | null): Promise<McpToolResult> {
+  const days = Math.min(120, Math.max(1, Math.round(Number(args.days) || 90)))
+  const status = args.status === 'decided' || args.status === 'all' ? args.status : 'open'
+  const db = await service()
+  const [coRes, pilotRes, assetRes] = await Promise.all([
+    db.from('companies').select('digest_prefs').eq('id', companyId).maybeSingle(),
+    db.from('fuel_pilot').select('started_on').eq('company_id', companyId).maybeSingle(),
+    db.from('assets').select('id, name').eq('company_id', companyId).limit(2000),
+  ])
+  const tzRaw = (coRes.data?.digest_prefs as { tz?: unknown } | null)?.tz
+  const tz = typeof tzRaw === 'string' && tzRaw ? tzRaw : DEFAULT_TZ
+  const todayKey = dayKey(Date.now(), tz)
+  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const { data: txRows, error } = await db.from('fuel_transactions')
+    .select('id, txn_date, txn_at, has_time, merchant, place_label, amount, gallons, gallons_estimated, card_last4, asset_id, excluded, checks')
+    .eq('company_id', companyId).gte('txn_date', since).order('txn_date', { ascending: false }).limit(2000)
+  if (error) return ok({ exceptions: [], note: 'The fuel check is not set up on this account yet.' })
+  const names = new Map(((assetRes.data ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]))
+  const visible = visibleAssetIds ? new Set(visibleAssetIds) : null
+  let txns = ((txRows ?? []) as Record<string, unknown>[]).filter((t) => !t.asset_id || !visible || visible.has(String(t.asset_id)))
+  const vq = typeof args.vehicle === 'string' ? args.vehicle.trim().toLowerCase() : ''
+  if (vq) txns = txns.filter((t) => t.asset_id && (names.get(String(t.asset_id)) ?? '').toLowerCase().includes(vq))
+  const byId = new Map(txns.map((t) => [String(t.id), t]))
+  const exRows: Record<string, unknown>[] = []
+  const ids = Array.from(byId.keys())
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await db.from('fuel_exceptions')
+      .select('transaction_id, kind, severity, evidence, dollars_at_risk, missing, cleared_at, verdict, verdict_note')
+      .eq('company_id', companyId).in('transaction_id', ids.slice(i, i + 300))
+    exRows.push(...((data ?? []) as Record<string, unknown>[]))
+  }
+  const metricTxns: MetricTxn[] = txns.map((t) => ({
+    id: String(t.id), amount: Number(t.amount) || 0, txnDate: String(t.txn_date), hasTime: !!t.has_time, excluded: !!t.excluded,
+    assetId: (t.asset_id as string | null) ?? null, cardLast4: (t.card_last4 as string | null) ?? null, checks: readStoredChecks(t.checks),
+  }))
+  const metricEx: MetricException[] = exRows.map((e) => ({
+    transactionId: String(e.transaction_id), kind: e.kind as CheckKind, dollarsAtRisk: Number(e.dollars_at_risk) || 0,
+    verdict: (e.verdict as Verdict | null) ?? null, clearedAt: (e.cleared_at as string | null) ?? null,
+  }))
+  const m = pilotMetrics(metricTxns, metricEx, { startedOn: (pilotRes.data?.started_on as string | null) ?? null, todayKey })
+  const list = exRows
+    .filter((e) => {
+      const t = byId.get(String(e.transaction_id))
+      if (!t || t.excluded) return false
+      const decided = e.verdict === 'valid' || e.verdict === 'false'
+      return status === 'all' ? (!e.cleared_at || !!e.verdict) : status === 'decided' ? decided : !e.cleared_at && !decided
+    })
+    .map((e) => ({ e, t: byId.get(String(e.transaction_id))! }))
+    .sort((a, b) => String(b.t.txn_date).localeCompare(String(a.t.txn_date)))
+    .slice(0, 40)
+    .map(({ e, t }) => ({
+      date: t.txn_date,
+      time: t.has_time && t.txn_at ? fmtDateTime(Date.parse(String(t.txn_at)), tz) : undefined,
+      station: t.place_label ?? t.merchant,
+      amount: Number(t.amount),
+      gallons: t.gallons != null ? `${Number(t.gallons).toFixed(1)}${t.gallons_estimated ? ' (estimated from $)' : ''}` : undefined,
+      vehicle: t.asset_id ? names.get(String(t.asset_id)) ?? 'a vehicle' : 'none tied to the card',
+      card: t.card_last4 ? `…${t.card_last4}` : undefined,
+      exception: KIND_LABEL[e.kind as CheckKind] ?? String(e.kind),
+      severity: e.severity,
+      evidence: (e.evidence as { text?: string } | null)?.text ?? '',
+      dollarsAtRisk: Number(e.dollars_at_risk) || 0,
+      limitedBy: Array.isArray(e.missing) && e.missing.length ? (e.missing as MissingCode[]).map((c) => MISSING_LABEL[c] ?? c) : undefined,
+      verdict: e.verdict ? VERDICT_LABEL[e.verdict as Verdict] : 'waiting for a verdict',
+      verdictNote: (e.verdict_note as string | null) || undefined,
+      stillFlagged: !e.cleared_at,
+    }))
+  return ok({
+    pilot: {
+      day: m.startedOn ? `${m.daysIn} of ${m.pilotDays}` : 'not started',
+      classificationDaysLeft: m.classifyDaysLeft,
+      purchases: m.transactions, dollars: m.dollars,
+      exceptions: m.exceptions, waitingForAVerdict: m.unclassified,
+      valid: m.valid, falseAlarms: m.falseAlarms, unsure: m.unsure,
+      falsePositiveRate: m.falsePositiveRate == null ? null : `${Math.round(m.falsePositiveRate * 100)}%`,
+      recoverableDollars: m.recoverable, dollarsWaitingForAVerdict: m.awaiting,
+      byKind: Object.fromEntries(Object.entries(m.byKind).map(([k, s]) => [KIND_LABEL[k as CheckKind], { open: s.open, valid: s.valid, falseAlarms: s.false }])),
+    },
+    exceptions: list,
+    missingTelemetry: missingTelemetry(metricTxns, Array.from(names, ([id, name]) => ({ id, name }))).slice(0, 6).map((i) => ({ what: i.text, fix: i.fix, purchases: i.purchases })),
+    note: 'HammerTrack never declines a purchase — exceptions are for a person to decide. Cite the evidence as written.',
+  })
+}
+
 export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
@@ -845,6 +948,7 @@ export async function runMcpTool(
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
+      case 'fuel_exceptions': return runFuelExceptions(companyId, args, opts?.visibleAssetIds ?? null)
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }
