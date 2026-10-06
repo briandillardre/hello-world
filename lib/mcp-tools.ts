@@ -17,7 +17,7 @@ import type { AssetType, Geofence } from './types'
 import { pointInPolygon } from './alerts-engine'
 import { computeStatus, type MaintenanceStatus } from './db/maintenance'
 import { usageFromLedger } from './costs'
-import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ } from './dates'
+import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ, safeTz } from './dates'
 import { getTimeCards, weekOf } from './db/timecards'
 import { FLAG_LABEL, categoryLabel, reviewItems } from './timecards'
 import { assessCtx, describeAll, mergeReadings, notReported, readingsFromRaw, readingsSummary, truckHealth, type Readings } from './telemetry-catalog'
@@ -26,6 +26,8 @@ import {
   KIND_LABEL, MISSING_LABEL, VERDICT_LABEL, missingTelemetry, pilotMetrics, readStoredChecks,
   type CheckKind, type MetricException, type MetricTxn, type MissingCode, type Verdict,
 } from './fuel-check'
+import { getSafetyReport, type DriverScope, type SafetyAsset } from './db/driving'
+import { ENGINE_VERSION, SAFETY_METHOD, type SafetyScore } from './driving-score'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -166,6 +168,19 @@ export const MCP_TOOLS: McpToolDef[] = [
         status: { type: 'string', enum: ['open', 'decided', 'all'], description: 'open = waiting for a verdict (default), decided = marked valid or false alarm, all.' },
         days: { type: 'number', description: 'Purchases in the last N days (default 90, max 120).' },
         vehicle: { type: 'string', description: 'Only this vehicle (partial name ok).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'safety_scores',
+    description:
+      'Driving safety (HammerTrack Safety Score v1, migration 129) for ROAD VEHICLES with a hardware tracker: the fleet\'s and each vehicle\'s 0–100 score, grade and risk band over the last 30, 90 or 365 days, with the raw rates behind it — confirmed hard braking / cornering / launches per 1,000 miles from the truck\'s own accelerometer (null = the accelerometer is OFF, so harsh events were NOT measured: say "not measured", never "zero"), the share of driving time speeding over a site\'s posted limit, top-speed runs (80+ mph, 75 for medium/heavy trucks, held 20 s), late-night driving (midnight–4 AM), miles and hours, what took points off, and a data-quality block (accelerometer on/off, speedometer vs GPS, unplugs, share of driving recorded). Under 250 miles and 10 hours there is no score yet; under 3,000 miles a score is blended toward the fleet. Drivers (matched by their clocked-in phone riding along) appear only for people the asker may see. Pass `vehicle` for that vehicle\'s recent events in words. Never promise or estimate insurance savings. Use for "who drives safest", "any hard braking", "is anyone speeding", "how is the Peterbilt being driven", "what would our insurer see".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days: { type: 'number', description: 'Window in days ending today: 30, 90 (default) or 365.' },
+        vehicle: { type: 'string', description: 'One vehicle (partial name ok) — adds its recent events in words.' },
       },
       required: [],
     },
@@ -928,6 +943,99 @@ async function runFuelExceptions(companyId: string, args: { status?: unknown; da
   })
 }
 
+/** One score, the way an assistant should read it: numbers, what moved it,
+ *  and how far to trust it — never a bare grade. */
+function safetyBrief(s: SafetyScore) {
+  const blended = s.credible && s.z != null && s.z < 1
+  return {
+    score: s.credible ? s.score : null,
+    grade: s.credible ? s.grade : null,
+    riskBand: s.credible ? s.band : null,
+    notScoredBecause: s.credible ? undefined : s.why ?? 'not enough driving',
+    ownScoreBeforeBlending: blended ? s.raw : undefined,
+    credibilityWeight: blended ? Math.round((s.z ?? 0) * 100) / 100 : undefined,
+    miles: Math.round(s.miles),
+    drivingHours: Math.round(s.hours * 10) / 10,
+    engineHours: s.engineHours ? Math.round(s.engineHours) : undefined,
+    per1000Miles: {
+      hardBraking: s.per1000.harsh_brake,
+      hardCornering: s.per1000.harsh_corner,
+      hardLaunches: s.per1000.harsh_accel,
+      note: s.per1000.harsh_brake == null ? 'not measured — the accelerometer is off' : 'confirmed accelerometer events',
+    },
+    gpsEstimatedHardStops: s.counts.est_brake || undefined,
+    speedingPctOfDriving: s.speedPct,
+    topSpeedRuns: s.counts.max_speed,
+    overSiteLimitEvents: s.counts.zone_speeding,
+    lateNightPctOfDriving: s.lateNightPct,
+    possibleImpacts: s.counts.crash || undefined,
+    whatMovedIt: s.components.filter((c) => c.points > 0 || !c.measured).map((c) => ({ what: c.label, points: c.measured ? c.points : 'not measured', detail: c.detail })),
+    coaching: s.coaching,
+    dataQuality: {
+      verdict: s.quality.verdict,
+      accelerometer: s.quality.accelerometer,
+      speedSource: s.quality.speedSource,
+      milesWithKnownLimitPct: s.quality.limitPct,
+      drivingRecordedPct: s.quality.coveragePct,
+      unpluggedOrPowerLost: s.quality.unplugged,
+      notes: s.quality.notes,
+    },
+  }
+}
+
+async function runSafetyScores(
+  companyId: string, args: { days?: unknown; vehicle?: unknown }, visibleIds: string[] | null, drivers: DriverScope,
+): Promise<McpToolResult> {
+  const asked = Math.round(Number(args.days) || 90)
+  const days = asked <= 45 ? 30 : asked <= 180 ? 90 : 365
+  const db = await service()
+  const [{ data: co }, { data: rows }] = await Promise.all([
+    db.from('companies').select('digest_prefs').eq('id', companyId).maybeSingle(),
+    db.from('assets').select('id, name, type, tracker_id, metadata').eq('company_id', companyId).eq('active', true).limit(ASSET_ROW_CAP),
+  ])
+  const tz = safeTz(((co?.digest_prefs ?? null) as { tz?: string } | null)?.tz)
+  let assets = (rows ?? []) as SafetyAsset[]
+  if (visibleIds) {
+    const vis = new Set(visibleIds)
+    assets = assets.filter((a) => vis.has(a.id))
+  }
+  const vehicles = assets.filter((a) => a.type === 'vehicle')
+  const q = typeof args.vehicle === 'string' ? args.vehicle.trim() : ''
+  const picked = q ? matchByName(q, vehicles) : null
+  if (q && !picked) return ok({ vehicles: [], note: `No vehicle matches "${q}". Vehicles: ${vehicles.map((v) => v.name).join(', ') || 'none'}.` })
+  const rep = await getSafetyReport(isMock ? null : db, {
+    companyId, tz, days, assets, drivers,
+    eventsFor: picked?.id ?? null, eventLimit: picked ? 25 : 10, withPrior: days <= 90,
+  })
+  const list = picked ? rep.vehicles.filter((v) => v.assetId === picked.id) : rep.vehicles
+  if (picked && !list.length) return ok({ vehicles: [], note: `${picked.name} is not scored: driving scores need a cellular OBD or wired tracker on a road vehicle.` })
+  const M = SAFETY_METHOD
+  return ok({
+    method: `HammerTrack Safety Score v${ENGINE_VERSION}: 100 minus points for confirmed harsh events per 1,000 miles (braking ${M.eventWeights.harsh_brake}, cornering ${M.eventWeights.harsh_corner}, launches ${M.eventWeights.harsh_accel}; severe counts double), speeding share of driving time (moderate ${M.speedTiers[0].weight}, heavy ${M.speedTiers[1].weight}, severe ${M.speedTiers[2].weight} per 1%) and late-night share (${M.lateNight.weightPerPct} per 1%). Grades A 90+, B 80+, C 70+, D 60+, F below.`,
+    window: { days, from: rep.fromKey, to: rep.toKey, timezone: tz },
+    ...(rep.demo ? { demo: 'Demo data — a fictional fleet.' } : {}),
+    ...(picked ? {} : { fleet: { ...safetyBrief(rep.fleet), changeVsPriorPeriod: rep.fleetTrend ?? undefined } }),
+    vehicles: list.map((v) => ({
+      vehicle: v.name,
+      class: v.vehicleClass === 'heavy' ? 'medium/heavy truck' : 'light vehicle',
+      ...safetyBrief(v.score),
+      changeVsPriorPeriod: v.trend ?? undefined,
+    })),
+    ...(picked
+      ? {
+          recentEvents: rep.events.map((e) => ({
+            when: fmtDateTime(e.at, tz), what: e.words, site: e.zoneName ?? undefined,
+            scored: e.kind === 'max_speed' || e.kind === 'zone_speeding' || (e.source === 'device' && e.kind !== 'crash' && e.confirmed === true),
+          })),
+        }
+      : {
+          drivers: rep.drivers.map((d) => ({ person: d.name, ...safetyBrief(d.score), milesRiddenAlong: d.rodeMiles })),
+          driversNote: 'Drivers are matched by their clocked-in phone riding in the truck; events count against a person only when theirs was the only phone aboard.',
+        }),
+    ...(rep.ready ? {} : { note: 'Driving scores are still being built — try again in an hour.' }),
+  })
+}
+
 export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
@@ -935,7 +1043,7 @@ export async function runMcpTool(
   /** Session-door narrowing (Ask AI): whose time cards the caller may read,
    *  and which assets they may see (111 — this door reads as the service
    *  role, so the ladder is applied here). Absent = the company-key door. */
-  opts?: { userIds?: string[] | null; viewerRank?: number | null; visibleAssetIds?: string[] | null },
+  opts?: { userIds?: string[] | null; viewerRank?: number | null; visibleAssetIds?: string[] | null; viewerUserId?: string | null },
 ): Promise<McpToolResult> {
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
@@ -949,6 +1057,10 @@ export async function runMcpTool(
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
       case 'fuel_exceptions': return runFuelExceptions(companyId, args, opts?.visibleAssetIds ?? null)
+      // Drivers: the company-key door is admin-grade (every driver); the
+      // session door sees the asker and the people they outrank.
+      case 'safety_scores': return runSafetyScores(companyId, args, opts?.visibleAssetIds ?? null,
+        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : 'all')
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

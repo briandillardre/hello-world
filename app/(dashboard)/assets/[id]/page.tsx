@@ -6,7 +6,7 @@ import { getAssetsWithLocations, getAssetPhotos, ensureHeroInGallery } from '@/l
 import { getToolAssociations, resolveToolLocations, getPairingLog, type PairingLogRow } from '@/lib/db/tools'
 import { groupSightings, isInstant, rideKind, rideMetres, rideMiles, rideVerb } from '@/lib/pairing-ride'
 import { toolIsFresh } from '@/lib/tools-resolve'
-import { getCurrentCompanyId } from '@/lib/db/company'
+import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getMyPermissions, requireFeature } from '@/lib/permissions-server'
 import { DivisionPicker } from '@/components/divisions/DivisionBits'
 import { getDivisions } from '@/lib/db/divisions'
@@ -19,7 +19,7 @@ import { TrackerSheet } from '@/components/assets/TrackerSheet'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
 import { VisibilityCard } from '@/components/assets/VisibilityCard'
 import { RecoverySection } from '@/components/assets/RecoverySection'
-import { RANK, rankOf, canSeeAsset, assetVisibility, visibilityLabel } from '@/lib/permissions'
+import { RANK, rankOf, canSeeAsset, assetVisibility, visibilityLabel, isProspect, visibleAssets } from '@/lib/permissions'
 import { trackerKind } from '@/lib/devices'
 import { getTrackerChoices } from '@/lib/db/trackers'
 import { AssetDiagnostics } from '@/components/assets/AssetDiagnostics'
@@ -37,6 +37,9 @@ import { SectionLoading, SweepBar } from '@/components/ui/loading'
 import { TruckData } from '@/components/telemetry/TruckData'
 import { getTruckReadings, getTruckTrend, pickTrendKeys } from '@/lib/db/telemetry'
 import { mergeReadings, readingsFromRaw } from '@/lib/telemetry-catalog'
+import { getVehicleSafety, type SafetyAsset } from '@/lib/db/driving'
+import { resolveDigestPrefs } from '@/lib/weekly-digest'
+import { GradeChip, QualityChip, ScoreDial, TrendTag, WhatMoved } from '@/components/reports/SafetyBits'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -204,6 +207,19 @@ export default async function AssetDetailPage({ params, searchParams }: { params
         {asset.type !== 'tool' && asset.type !== 'personnel' && (
           <Suspense fallback={<SectionLoading label="Truck readings" />}>
             <TruckDataSection asset={asset} tz={tz} />
+          </Suspense>
+        )}
+
+        {/* driving safety (129) — the glance; the whole story is on
+            /reports/safety. Road vehicles only; never for a Prospective
+            Client (driving is people-shaped data). */}
+        {asset.type === 'vehicle' && perms.features.includes('reports') && !isProspect(perms) && (
+          <Suspense fallback={<SectionLoading label="Driving safety" />}>
+            <SafetySection
+              asset={asset}
+              companyId={companyId}
+              fleet={visibleAssets(assets, perms).map((a) => ({ id: a.id, name: a.name, type: a.type, tracker_id: a.tracker_id, metadata: (a.metadata ?? null) as Record<string, unknown> | null }))}
+            />
           </Suspense>
         )}
 
@@ -448,6 +464,54 @@ async function TruckDataSection({ asset, tz }: { asset: AssetWithLocation; tz: s
       <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint mb-2">{isTruck ? 'Truck readings' : 'Tracker readings'}</h2>
       <div className="rounded-xl border border-navy-800 bg-navy-900 p-3.5">
         <TruckData assetId={asset.id} family={family} raw={loc?.raw} rawTimestamp={loc?.timestamp} initialReadings={readings} trend={trend} tz={tz} />
+      </div>
+    </section>
+  )
+}
+
+/** Driving safety (129): this truck's 90-day score next to the fleet's, the
+ *  deductions that moved it, and how far to trust it. Nothing for a truck
+ *  without a hardware tracker (a phone-tracked pickup is not scored). */
+async function SafetySection({ asset, companyId, fleet }: { asset: AssetWithLocation; companyId: string; fleet: SafetyAsset[] }) {
+  const settings = await getCompanySettings()
+  const companyTz = safeTz(resolveDigestPrefs(settings.digest_prefs).tz)
+  let db = null
+  if (!isMockEnv) {
+    const { createClient } = await import('@/lib/supabase-server')
+    db = createClient()
+  }
+  const self: SafetyAsset = { id: asset.id, name: asset.name, type: asset.type, tracker_id: asset.tracker_id, metadata: (asset.metadata ?? null) as Record<string, unknown> | null }
+  const v = await getVehicleSafety(db, { companyId, tz: companyTz, asset: self, fleet, days: 90 })
+  if (!v) return null
+  const s = v.score
+  const has = s.credible && s.score != null
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">Driving safety · 90 days</h2>
+        <Link href={`/reports/safety?days=90&asset=${asset.id}`} className="text-[12px] text-teal hover:underline">Details →</Link>
+      </div>
+      <div className="rounded-xl border border-navy-800 bg-navy-900 p-3.5">
+        <div className="flex items-start gap-3.5">
+          <ScoreDial score={s} size={88} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <GradeChip score={s} />
+              <QualityChip q={s.quality} />
+              {has && <span className="text-[11.5px]"><TrendTag delta={v.trend} /></span>}
+            </div>
+            <p className="text-[13px] text-ink mt-1.5 leading-snug">{has ? s.coaching : `Not scored yet — ${s.why ?? 'not enough driving'}.`}</p>
+            <p className="text-[11.5px] text-faint mt-1">
+              {Math.round(s.miles).toLocaleString()} mi · {Math.round(s.hours)} h driving{s.engineHours ? ` · ${Math.round(s.engineHours)} engine h` : ''}
+              {v.vehicleClass === 'heavy' ? ' · medium/heavy truck thresholds' : ''}
+            </p>
+          </div>
+        </div>
+        {has && s.components.some((c) => c.points > 0 || !c.measured) && (
+          <div className="mt-3 pt-3 border-t border-navy-800">
+            <WhatMoved components={s.components} max={3} />
+          </div>
+        )}
       </div>
     </section>
   )

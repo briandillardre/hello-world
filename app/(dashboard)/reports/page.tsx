@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { requireFeature } from '@/lib/permissions-server'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
-import { Activity, AlertTriangle, Clock, Gauge, Moon, DollarSign } from 'lucide-react'
+import { Activity, AlertTriangle, Clock, Gauge, Moon, DollarSign, ChevronRight } from 'lucide-react'
 import { MOCK_COMPANY, MOCK_EQUIPMENT_RATES, buildMockScorecard } from '@/lib/mock-data'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getGeofences } from '@/lib/db/zones'
@@ -10,15 +10,23 @@ import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getFleetScorecard } from '@/lib/db/scorecard'
 import { getConnectionStatus } from '@/lib/qbo'
 import { fmtClock, type VehicleScore } from '@/lib/scorecard'
-import { rangeWindow, fmtDay, type TimeRangeKey, safeTz } from '@/lib/dates'
+import { rangeWindow, fmtDay, type TimeRangeKey, safeTz, dayKey } from '@/lib/dates'
 import { RANGES } from '@/lib/trails'
 import type { AssetType } from '@/lib/types'
 import { POI_KIND_META } from '@/lib/poi'
 import { CountUp } from '@/components/ui/count-up'
 import { DailyBars, DayStrip, FleetRhythm, SplitBar, StopMixBar, fmtHM } from '@/components/reports/Scorecard'
 import { ScorecardExport } from '@/components/reports/ScorecardExport'
+import { GradeChip, QualityChip, ScoreDial } from '@/components/reports/SafetyBits'
+import { getSafetyReport, type SafetyAsset, type SafetyReport, type SafetyVehicle } from '@/lib/db/driving'
+import { SAFETY_METHOD } from '@/lib/driving-score'
+import { isProspect, visibleAssets } from '@/lib/permissions'
+import { resolveDigestPrefs } from '@/lib/weekly-digest'
 
 export const metadata = { title: 'HammerTrack — Reports' }
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 const TYPE_EMOJI: Record<AssetType, string> = {
   vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧',
@@ -42,8 +50,11 @@ const FLAG_CHIP: Record<FlagKind, { label: string; cls: string }> = {
   speed: { label: 'speeding', cls: 'border-alert/40 text-alert bg-alert/10' },
 }
 
-/** The judgment calls, in one place: what earns a card a callout chip. */
-function flagsFor(s: VehicleScore, workStartMin: number): Flag[] {
+/** The judgment calls, in one place: what earns a card a callout chip.
+ *  `drive` = this vehicle in the driving-safety rollup over the SAME window
+ *  (129) — speeding is read there, against a site's posted limit and the
+ *  sustained 80/75 mph line, never off a single fast GPS reading. */
+function flagsFor(s: VehicleScore, workStartMin: number, drive?: SafetyVehicle): Flag[] {
   const out: Flag[] = []
   if (s.afterHoursMiles >= 10) {
     out.push({ severity: 0, kind: 'after-hours', assetName: s.name, text: `${s.afterHoursMiles} mi outside work hours${s.weekendMiles >= 5 ? ` (${s.weekendMiles} on weekends)` : ''}` })
@@ -66,22 +77,16 @@ function flagsFor(s: VehicleScore, workStartMin: number): Flag[] {
     const top = s.vendorRuns![0]
     out.push({ severity: 2, kind: 'vendor', assetName: s.name, text: `${vendVisits} vendor runs (${top.name} ×${top.visits}) — consolidate trips?` })
   }
-  // Driver safety (speed stream): a top-speed spike or a real share of time
-  // at 80+ is a conversation, not a footnote.
-  if (s.safety && s.safety.maxMph >= 85) {
-    out.push({ severity: 0, kind: 'speed', assetName: s.name, text: `hit ${s.safety.maxMph} mph` })
-  } else if (s.safety && s.safety.over80Pct >= 0.05) {
-    out.push({ severity: 1, kind: 'speed', assetName: s.name, text: `${Math.round(s.safety.over80Pct * 100)}% of drive time over 80 mph` })
+  // Speeding is a conversation, not a footnote: a sustained top-speed run,
+  // else time over a site's own posted limit.
+  const c = drive?.totals
+  if (c && c.maxSpeedN > 0) {
+    const line = drive!.vehicleClass === 'heavy' ? SAFETY_METHOD.maxSpeed.heavy : SAFETY_METHOD.maxSpeed.light
+    out.push({ severity: 0, kind: 'speed', assetName: s.name, text: `${c.maxSpeedN} top-speed run${c.maxSpeedN === 1 ? '' : 's'} — ${line}+ mph for ${SAFETY_METHOD.maxSpeed.minS} s or more` })
+  } else if (c && c.zoneSpeedN > 0) {
+    out.push({ severity: 1, kind: 'speed', assetName: s.name, text: `over a site's posted limit ${c.zoneSpeedN} time${c.zoneSpeedN === 1 ? '' : 's'}` })
   }
   return out
-}
-
-const GRADE_CLS: Record<string, string> = {
-  A: 'border-teal/40 text-teal bg-teal/10',
-  B: 'border-teal/40 text-teal bg-teal/10',
-  C: 'border-amber/40 text-amber bg-amber/10',
-  D: 'border-amber/40 text-amber bg-amber/10',
-  F: 'border-alert/40 text-alert bg-alert/10',
 }
 
 export default async function ReportsPage({ searchParams }: { searchParams?: { range?: string } }) {
@@ -127,8 +132,35 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
   // off the page, not just out of sight.
   const billable = perms.canViewCosts ? Math.round(scores.reduce((s, v) => s + v.activeHrs * rateFor(v.assetId), 0)) : 0
 
+  // Driver safety (129) — the ONE safety score. The 90-day score feeds the
+  // card and the per-vehicle chips; the speeding flags read the same window
+  // as this page. Never for a Prospective Client: driving is people-shaped
+  // data (RLS hides the tables from them anyway).
+  let safety90: SafetyReport | null = null
+  let safetyWin: SafetyReport | null = null
+  if (!isProspect(perms)) {
+    const companyTz = safeTz(resolveDigestPrefs(settings.digest_prefs).tz)
+    const safetyAssets: SafetyAsset[] = visibleAssets(assets, perms)
+      .map((a) => ({ id: a.id, name: a.name, type: a.type, tracker_id: a.tracker_id, metadata: (a.metadata ?? null) as Record<string, unknown> | null }))
+    let db = null
+    if (!isMock) {
+      const { createClient } = await import('@/lib/supabase-server')
+      db = createClient()
+    }
+    const winEnd = dayKey(Math.min(window.to - 1, Date.now()), companyTz)
+    const winDays = Math.max(1, Math.min(365, spanDays))
+    const same = winDays === 90 && winEnd === dayKey(Date.now(), companyTz)
+    ;[safety90, safetyWin] = await Promise.all([
+      getSafetyReport(db, { companyId, tz: companyTz, days: 90, assets: safetyAssets, drivers: 'none' }).catch(() => null),
+      same ? Promise.resolve(null) : getSafetyReport(db, { companyId, tz: companyTz, days: winDays, todayKey: winEnd, assets: safetyAssets, drivers: 'none' }).catch(() => null),
+    ])
+    if (same) safetyWin = safety90
+  }
+  const drive90 = new Map((safety90?.vehicles ?? []).map((v) => [v.assetId, v]))
+  const driveWin = new Map((safetyWin?.vehicles ?? []).map((v) => [v.assetId, v]))
+
   const wsMin = (() => { const [h, m] = work.work_start.split(':').map(Number); return (h || 0) * 60 + (m || 0) })()
-  const allFlags = scores.flatMap((s) => flagsFor(s, wsMin)).sort((a, b) => a.severity - b.severity).slice(0, 4)
+  const allFlags = scores.flatMap((s) => flagsFor(s, wsMin, driveWin.get(s.assetId))).sort((a, b) => a.severity - b.severity).slice(0, 4)
 
   // Zone rollup: hours per job site, with who spent them.
   const zoneMap = new Map<string, { name: string; total: number; byAsset: { name: string; hours: number }[] }>()
@@ -146,6 +178,26 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
   const rangeSub = key === 'today' || key === 'yesterday'
     ? fmtDay(window.from, tz)
     : `${fmtDay(window.from, tz)} – ${fmtDay(Math.min(window.to - 1, Date.now()), tz)}`
+
+  const fleet90 = safety90?.fleet
+  const safetyCard = safety90 && safety90.vehicles.length > 0 && fleet90 ? (
+    <Link href="/reports/safety" className="flex items-center gap-3.5 rounded-2xl border border-navy-800 bg-navy-900 p-4 hover:border-amber/40 transition-colors">
+      <ScoreDial score={fleet90} size={72} />
+      <div className="min-w-0 flex-1">
+        <h2 className="text-sm font-semibold text-faint uppercase tracking-wider">Driver safety · 90 days</h2>
+        <p className="text-[13.5px] text-ink mt-0.5 leading-snug">
+          {fleet90.credible ? fleet90.coaching : `Not scored yet — ${fleet90.why ?? 'not enough driving'}.`}
+        </p>
+        <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[11.5px] text-faint">
+          <span>
+            {safety90.vehicles.filter((v) => v.score.credible).length} of {safety90.vehicles.length} vehicles scored · {Math.round(fleet90.miles).toLocaleString()} mi
+          </span>
+          <QualityChip q={fleet90.quality} />
+        </div>
+      </div>
+      <ChevronRight className="h-5 w-5 text-faint flex-none" aria-hidden />
+    </Link>
+  ) : null
 
   return (
     <div className="h-full overflow-auto pb-[54px] md:pb-20">
@@ -175,11 +227,14 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
 
       <div className="p-4 space-y-6 max-w-2xl lg:max-w-6xl">
         {empty ? (
-          <section className="rounded-2xl border border-navy-800 bg-navy-900 p-6 text-center">
-            <p className="text-4xl mb-2">📊</p>
-            <p className="text-ink font-medium">Nothing tracked in this range</p>
-            <p className="text-sm text-faint mt-1">Once your trackers report movement here, first-move times, working vs idle hours, miles, stop mix, and after-hours use fill in automatically.</p>
-          </section>
+          <>
+            <section className="rounded-2xl border border-navy-800 bg-navy-900 p-6 text-center">
+              <p className="text-4xl mb-2">📊</p>
+              <p className="text-ink font-medium">Nothing tracked in this range</p>
+              <p className="text-sm text-faint mt-1">Once your trackers report movement here, first-move times, working vs idle hours, miles, stop mix, and after-hours use fill in automatically.</p>
+            </section>
+            {safetyCard}
+          </>
         ) : (
           <>
             {/* Fleet pulse — money first */}
@@ -198,6 +253,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
               <StatTile icon={<Clock className="h-4 w-4 text-teal" />} label="Idle share">{idlePct}%</StatTile>
               <StatTile icon={<Moon className={`h-4 w-4 ${totAfter >= 10 ? 'text-alert' : 'text-faint'}`} />} label="After-hours miles">{totAfter.toLocaleString()}</StatTile>
             </section>
+
+            {safetyCard}
 
             {/* Worth a look */}
             {allFlags.length > 0 && (
@@ -226,7 +283,8 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
             {/* Per-vehicle scorecards */}
             <div className="grid gap-4 lg:grid-cols-2">
               {scores.map((s) => {
-                const flags = flagsFor(s, wsMin)
+                const flags = flagsFor(s, wsMin, driveWin.get(s.assetId))
+                const drive = drive90.get(s.assetId)
                 const topStops = [...s.stops].filter((m) => m.topName && m.topMinutes > 0)
                   .sort((a, b) => b.topMinutes - a.topMinutes).slice(0, 3)
                 const personalWork = s.stops
@@ -239,13 +297,11 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { r
                         {TYPE_EMOJI[typeOf(s.assetId)]} {s.name}
                       </Link>
                       <span className="text-[11px] text-faint font-mono">moved {s.daysActive} of {Math.min(s.daysInRange, spanDays)} days</span>
-                      {s.safety && (
-                        <span
-                          className={`text-[10.5px] px-1.5 py-0.5 rounded-full border font-bold ${GRADE_CLS[s.safety.grade]}`}
-                          title={`Driver safety ${s.safety.score}/100 — top speed ${s.safety.maxMph} mph · ${Math.round(s.safety.over70Pct * 100)}% of driving over 70 · ${s.safety.nightMin}m at night (10 PM–4 AM)`}
-                        >
-                          safety {s.safety.grade}
-                        </span>
+                      {drive?.score.credible && (
+                        <Link href={`/reports/safety?days=90&asset=${s.assetId}`} className="inline-flex items-center gap-1" aria-label={`Driving safety ${drive.score.score} out of 100, last 90 days`}>
+                          <span className="text-[10.5px] text-faint">safety</span>
+                          <GradeChip score={drive.score} />
+                        </Link>
                       )}
                       {flags.slice(0, 2).map((f, i) => (
                         <span key={i} className={`text-[10.5px] px-1.5 py-0.5 rounded-full border ${FLAG_CHIP[f.kind].cls}`}>
