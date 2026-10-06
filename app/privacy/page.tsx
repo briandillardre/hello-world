@@ -29,7 +29,13 @@ export default function PrivacyPage() {
               <strong className="text-ink">Asset &amp; location data:</strong> GPS positions, speed,
               heading, battery level, and engine data reported by the trackers you install on your
               vehicles, equipment, and tools, plus the zones and asset records you
-              create. This data exists so we can show it back to you — that&apos;s the product.
+              create and the driving scores built from them. This data exists so we can show it back
+              to you — that&apos;s the product.
+            </p>
+            <p className="mt-2">
+              <strong className="text-ink">Photos &amp; receipts:</strong> pictures you take or attach in the
+              app — job photos (with where they were taken), receipts, asset photos and, if your company
+              turns it on, a photo at clock-in or clock-out (deleted after 90 days).
             </p>
             <p className="mt-2">
               <strong className="text-ink">Usage &amp; billing:</strong> basic product analytics and,
@@ -58,9 +64,12 @@ export default function PrivacyPage() {
           <section>
             <h2>Who can see your data</h2>
             <p className="mt-2">
-              Only users you add to your company account. Our infrastructure providers (hosting,
-              database, SMS/email delivery, payments) process data on our behalf under their own
-              security commitments. We may disclose data if legally required.
+              Only users you add to your company account. Our service providers process data on our
+              behalf under their own security commitments: hosting and database; map, address-lookup,
+              routing, weather and satellite-imagery services (the places being looked up — for an
+              address, a position rounded to about 100 m); AI features (what you ask Ask AI, the fleet
+              data it reads to answer, and the summaries we write for you); SMS/email delivery; and
+              payments. We may disclose data if legally required.
             </p>
           </section>
 
@@ -83,12 +92,14 @@ export default function PrivacyPage() {
             <ul className="mt-2 space-y-1.5 list-disc pl-5">
               <li>
                 <strong className="text-ink">Location</strong> — to show your own phone as a live
-                asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;) and to power zone
-                check-ins. See the location note below.
+                asset when you turn on the crew tracker (&ldquo;Go Live&rdquo;), to record your shift
+                while you are clocked in, to place your company&apos;s tool tags your phone hears, and to
+                power zone check-ins. See the location note below.
               </li>
               <li>
-                <strong className="text-ink">Camera &amp; Photos</strong> — to take or attach asset,
-                VIN/GVWR, and receipt photos.
+                <strong className="text-ink">Camera &amp; Photos</strong> — to scan tracker labels and to
+                take or attach job, asset, VIN/GVWR and receipt photos — and a clock-in or clock-out photo
+                where your company requires one.
               </li>
               <li>
                 <strong className="text-ink">Notifications</strong> — to deliver theft and critical
@@ -148,15 +159,16 @@ export default function PrivacyPage() {
               your company&apos;s time cards, to trigger the alerts your company configures and, when a
               clocked-in person&apos;s phone is the only one riding in a company vehicle, to count that
               vehicle&apos;s driving toward their driver safety score, which only they and the people above them
-              in the company can see. It is never used for advertising and never sold or shared with third
-              parties.
+              in the company can see. It is never used for advertising, never sold, and shared only with
+              the service providers listed above that process it for us.
             </p>
           </section>
 
           <section>
             <h2>Retention &amp; deletion</h2>
             <p className="mt-2">
-              Location history is retained while your account is active. You can export your data at
+              Location history is retained while your account is active; clock-in and clock-out photos
+              are deleted after 90 days. You can export your data at
               any time. To delete your account and all associated data, use the in-app option or
               email us from your account address; we complete deletion within 30 days, except where
               the law requires longer retention.
