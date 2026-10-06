@@ -397,6 +397,7 @@ function buildGeoJSON(assets: AssetWithLocation[], filter: Set<AssetType>, toolC
           // Live unacknowledged alert → red ring + ⚠ in the attention slot
           // (marker grammar, Brian-approved sketch, Aug 22).
           alert: alertIds?.has(a.id) ? 1 : 0,
+          recovery: a.recovery ? 1 : 0,
           idleDays: a.idleDays ?? -1,
           dailyCost: a.daily_cost ?? 0,
           // Four glance-states: moving (fresh fix + speed), idle (device awake
@@ -1517,8 +1518,10 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
       if (!a.kind && (a.rule?.trigger === 'enter' || a.rule?.trigger === 'exit')) continue
       s.add(a.asset_id)
     }
+    // In recovery (132): the same red ring as a live alert, 🚨 in the slot.
+    for (const a of assets) if (a.recovery) s.add(a.id)
     return s
-  }, [alerts])
+  }, [alerts, assets])
   const alertIdsRef = useRef(alertAssetIds)
   alertIdsRef.current = alertAssetIds
   // Per-asset silhouette lookup for the replay heads (tracks don't carry
@@ -6737,7 +6740,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // Zoom ladder: badges wait for town zoom (10) — same tier as the
       // payload count.
       minzoom: 10,
-      layout: { 'text-field': ['case', ['==', ['get', 'alert'], 1], '⚠️', '🛠'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [1.15, -1.15], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
+      layout: { 'text-field': ['case', ['==', ['get', 'recovery'], 1], '🚨', ['==', ['get', 'alert'], 1], '⚠️', '🛠'], 'text-size': ['interpolate', ['linear'], ['zoom'], 9, 9, 12, 11.5, 16, 14], 'text-offset': [1.15, -1.15], 'text-allow-overlap': true, 'text-ignore-placement': true, visibility: trailModeRef.current === 'off' ? 'visible' : 'none' },
     })
   }, [mapReady])
 

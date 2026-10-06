@@ -200,6 +200,8 @@ export interface AssetWithLocation extends Asset {
   maintOverdue?: number
   openWorkOrders?: number
   idleDays?: number | null
+  /** In recovery right now (132) — the map's red badge. */
+  recovery?: { startedAt: string; endsAt: string } | null
 }
 
 /** Pin categories for saved Places — drives glyph + colour on the map. */
@@ -239,6 +241,9 @@ export interface Geofence {
   notes?: string | null
   /** Operating unit (106). NULL = unassigned. */
   division_id?: string | null
+  /** Privacy zone (132): no worker-phone point is kept inside it. Only on
+   *  boundary/vendor zones (inert on a site or yard). Set by an Admin. */
+  privacy_zone?: boolean
   /** Link to the zone's document folder (Dropbox/Drive/…). */
   folder_url?: string | null
   /** Job completed (the DCG "Z flip") — name carries the Z prefix while set. */

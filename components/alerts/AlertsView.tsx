@@ -13,9 +13,11 @@ interface Props {
   geofences: Geofence[]
   assets: AssetWithLocation[]
   editable: boolean
+  /** May start recovery from a theft alert (132). */
+  canRecover?: boolean
 }
 
-export function AlertsView({ alerts: initial, rules, geofences, assets, editable }: Props) {
+export function AlertsView({ alerts: initial, rules, geofences, assets, editable, canRecover = false }: Props) {
   const [tab, setTab] = useState<'activity' | 'rules'>('activity')
   const [alerts, setAlerts] = useState(initial)
   // Every ack revalidates /alerts and the server sends a fresh list — take
@@ -79,7 +81,7 @@ export function AlertsView({ alerts: initial, rules, geofences, assets, editable
             used to show theft as handled until the next reload (ship-check,
             Sep 23). */}
         {tab === 'activity' ? (
-          <AlertList alerts={alerts} onAcknowledge={editable ? acknowledge : undefined} onAcknowledgeMany={editable ? acknowledgeMany : undefined} />
+          <AlertList alerts={alerts} onAcknowledge={editable ? acknowledge : undefined} onAcknowledgeMany={editable ? acknowledgeMany : undefined} canRecover={canRecover} />
         ) : (
           <AlertRulesManager rules={rules} geofences={geofences} assets={assets} editable={editable} />
         )}

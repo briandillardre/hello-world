@@ -1,4 +1,5 @@
 import type { ToolAssociation, AssetWithLocation } from './types'
+import { anonymousWins } from './location-policy'
 
 // A BLE gateway re-reports a tag within range every few minutes. Past this,
 // the tag is NOT confirmed to still be with that gateway — it may have been
@@ -64,6 +65,33 @@ export function toolsAboard(
   return out
 }
 
+/**
+ * A tag heard by a phone whose own fix was NOT kept (132 — off the clock or
+ * inside a privacy zone): the tag's place only, never the person. Its
+ * newest row per tool (lib/db/tools `getAnonToolSightings`).
+ */
+export interface AnonToolSighting {
+  toolId: string
+  lat: number
+  lng: number
+  /** Rough on purpose, metres (250 off the clock, a zone's radius); null = exact (a recovery). */
+  precisionM: number | null
+  reason: 'off_shift' | 'privacy_zone' | 'recovery'
+  firstMs: number
+  seenMs: number
+  heardN: number
+  /** The reporting phone's 111 level — who may read it. */
+  visibleRank: number
+}
+
+/** The tool sheet's "who has it" line. `anon` is set when the map shows the
+ *  tool at an anonymous sighting newer than its custody. */
+export interface ToolGatewayInfo {
+  name: string
+  lastSeen: string
+  anon?: { at: string; reason: AnonToolSighting['reason']; precisionM: number | null } | null
+}
+
 /** A tool↔carrier pairing interval (pairing_log row, times in epoch ms).
  *  Structural twin of lib/db/tools' PairingEpisode so client code can use it
  *  without importing a server module. */
@@ -125,15 +153,32 @@ export function findGatewayForTool(
 /**
  * Tools usually have no GPS of their own — they inherit the location of the
  * gateway (truck/equipment) that currently detects them over Bluetooth.
+ *
+ * `anon` (132): the newest anonymous sighting per tool — a phone off the
+ * clock or inside a privacy zone heard it. It wins when it is newer than the
+ * custody sighting (lib/location-policy `anonymousWins` — a truck parked by
+ * the tag keeps its exact spot), and the tool is placed at it: a ~250 m cell
+ * centre, a privacy zone's centre, or a recovery's exact spot. The location
+ * says so (`raw.anonymous`, `accuracy` = the deliberate roughness), so no
+ * screen mistakes a cell centre for the spot.
  */
 export function resolveToolLocations(
   assets: AssetWithLocation[],
   associations: ToolAssociation[],
-  nowMs: number = Date.now()
+  nowMs: number = Date.now(),
+  anon?: ReadonlyMap<string, AnonToolSighting>,
 ): AssetWithLocation[] {
   return assets.map(asset => {
     if (asset.type !== 'tool') return asset
     const match = findGatewayForTool(asset.id, associations, assets)
+    const a = anon?.get(asset.id)
+    if (a) {
+      const custody = match ? { seenMs: Date.parse(match.assoc.last_seen), lat: match.assoc.last_lat ?? null, lng: match.assoc.last_lng ?? null } : null
+      const ownMs = asset.location ? Date.parse(asset.location.timestamp) : NaN
+      if (anonymousWins(custody, a) && !(Number.isFinite(ownMs) && ownMs >= a.seenMs)) {
+        return { ...asset, location: anonLocation(asset, a) }
+      }
+    }
     if (!match?.gateway.location) return asset
     // A tool can carry a location row of its own (seeded demo fixes; possibly
     // GPS tags someday). Whichever signal is FRESHER wins — a live Bluetooth
@@ -169,4 +214,26 @@ export function resolveToolLocations(
       },
     }
   })
+}
+
+/** A tool's location at an anonymous sighting — marked as such. */
+function anonLocation(asset: AssetWithLocation, a: AnonToolSighting): NonNullable<AssetWithLocation['location']> {
+  return {
+    id: `anon-${asset.id}`,
+    asset_id: asset.id,
+    company_id: asset.company_id,
+    lat: a.lat,
+    lng: a.lng,
+    accuracy: a.precisionM,
+    battery: null,
+    speed: 0,
+    heading: null,
+    timestamp: new Date(a.seenMs).toISOString(),
+    raw: { anonymous: true, reason: a.reason, precision_m: a.precisionM },
+  }
+}
+
+/** True when a resolved location is an anonymous sighting (see above). */
+export function isAnonLocation(loc: AssetWithLocation['location'] | null | undefined): boolean {
+  return !!loc && (loc.raw as { anonymous?: unknown } | null)?.anonymous === true
 }

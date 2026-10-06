@@ -5,6 +5,7 @@ import { formatPlace, placeKey, type PlaceParts } from '@/lib/place-label'
 import { buildTimeCards, weekStartKey, type FlagPolicy, type PersonCard, type TimeCardEntry, type TimeCardGps } from '@/lib/timecards'
 import { addDaysKey, isDayKey, zonedMidnightMs } from '@/lib/dates'
 import { resolveClockPolicy } from '@/lib/clock-policy'
+import { privacyZonesFromRows } from '@/lib/location-policy'
 import { MASTER_RANK, RANK, type Permissions, type Role } from '@/lib/permissions'
 
 /**
@@ -89,10 +90,22 @@ export async function getTimeCards(db: SupabaseClient, opts: {
   const zoneIds = Array.from(new Set(rows.map((r) => r.project_geofence_id).filter((z): z is string => !!z)))
   const [zonesRes, allZonesRes] = await Promise.all([
     zoneIds.length ? db.from('geofences').select('id, name').in('id', zoneIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    db.from('geofences_json').select('id, name, kind, geometry').eq('company_id', opts.companyId).limit(500),
+    db.from('geofences_json').select('id, name, kind, geometry, privacy_zone').eq('company_id', opts.companyId).limit(500),
   ])
   const zoneName = new Map((zonesRes.data ?? []).map((z) => [z.id as string, z.name as string]))
-  const polys = ((allZonesRes.data ?? []) as { id: string; name: string; kind: string | null; geometry: GeoJSON.Polygon | null }[])
+  type ZoneRow = { id: string; name: string; kind: string | null; geometry: GeoJSON.Polygon | null; privacy_zone?: boolean | null }
+  const zoneRows = (allZonesRes.data ?? []) as ZoneRow[]
+  // A punch inside a privacy zone keeps its exact fix (payroll evidence, the
+  // integrity math) but is never worded with the zone's name or a street —
+  // the card says only that it was in one (132, docs/LOCATION-PRIVACY.md).
+  // Every private zone counts, a personal one the viewer cannot see included
+  // (that is how a home is kept off the map), so they are read as the server.
+  let privacyRings = privacyZonesFromRows(zoneRows).map((z) => z.ring)
+  try {
+    const [{ createServiceClient }, { loadPrivacyZones }] = await Promise.all([import('@/lib/supabase-server'), import('@/lib/location-privacy')])
+    privacyRings = (await loadPrivacyZones(createServiceClient(), opts.companyId)).map((z) => z.ring)
+  } catch { /* the zones this viewer can see, above */ }
+  const polys = zoneRows
     .filter((z) => z.kind !== 'boundary' && z.geometry?.type === 'Polygon' && Array.isArray(z.geometry.coordinates?.[0]))
     .map((z) => ({ name: z.name, ring: z.geometry!.coordinates[0] as [number, number][] }))
 
@@ -160,6 +173,7 @@ export async function getTimeCards(db: SupabaseClient, opts: {
     : empty
   const wordsFor = (lat: number | null | undefined, lng: number | null | undefined): string | null => {
     if (lat == null || lng == null) return null
+    if (privacyRings.some((r) => pointInPolygon([lng, lat], r))) return 'in a privacy zone'
     const zone = polys.find((z) => pointInPolygon([lng, lat], z.ring))
     if (zone) return `at ${zone.name}`
     return formatPlace(cached[placeKey(lat, lng)]) // already "near …" / "in …"

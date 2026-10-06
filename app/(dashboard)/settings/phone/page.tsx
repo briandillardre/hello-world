@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { PushPrefs } from '@/components/settings/PushPrefs'
 import { GatewayToggle } from '@/components/tools/GatewayToggle'
+import { WhatWeRecord } from '@/components/settings/WhatWeRecord'
 import { loadMyPushPrefs } from '@/lib/db/person-notify'
 import { getMyPermissions } from '@/lib/permissions-server'
 import { isProspect } from '@/lib/permissions'
@@ -49,6 +50,8 @@ export default async function MyPhonePage() {
         )}
         {/* Bluetooth tag listening: where people look to turn things off (it renders only inside the app). */}
         {perms.features.includes('tags') && perms.features.includes('track') && <GatewayToggle />}
+        {/* Plain words, exactly what the app keeps about the person holding the phone (132). */}
+        {!isProspect(perms) && <WhatWeRecord />}
         {canSeeSettings && (
           <Link href="/settings" className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal hover:underline">
             <ArrowLeft className="h-3.5 w-3.5" /> All settings

@@ -816,6 +816,8 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       const res = await runMcpTool(name, input, ctx.companyId, {
         visibleAssetIds: ctx.assets.map((a) => a.id),
         ...(name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null, viewerRank: ctx.timecardViewerRank ?? null } : {}),
+        // Anonymous tag sightings follow the reporting phone's level (132).
+        ...(name === 'find_tool' ? { viewerRank: ctx.timecardViewerRank ?? null } : {}),
       })
       const text = res.content[0]?.text ?? ''
       if (res.isError) return { error: text || 'tool failed' }

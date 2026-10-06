@@ -3,11 +3,13 @@ import { getAssetsWithLocations, getEarliestLocationTime } from '@/lib/db/assets
 import { getGeofences } from '@/lib/db/zones'
 import { getPlaces } from '@/lib/db/places'
 import { getAlertEvents } from '@/lib/db/alerts'
-import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes } from '@/lib/db/tools'
+import { getToolAssociations, resolveToolLocations, toolsAboard, getPairingEpisodes, getAnonToolSightings } from '@/lib/db/tools'
+import { isAnonLocation, type ToolGatewayInfo } from '@/lib/tools-resolve'
+import { getActiveRecoveries } from '@/lib/db/recovery'
 import { getPlacedSiteOverlays } from '@/lib/db/imagery'
 import { getCurrentCompanyId, getMyMapViews } from '@/lib/db/company'
 import { getMyPermissions } from '@/lib/permissions-server'
-import { visibleAssets } from '@/lib/permissions'
+import { visibleAssets, rankOf } from '@/lib/permissions'
 import { getMaintenanceSchedules, getCurrentReadings, computeStatus } from '@/lib/db/maintenance'
 
 export const dynamic = 'force-dynamic'
@@ -101,7 +103,7 @@ async function getAssetHealth(companyId: string): Promise<AssetHealthMaps> {
 export async function GET() {
   try {
     const companyId = await getCurrentCompanyId()
-    const [perms, savedMapViews, rawAssetsAll, geofences, places, toolAssociationsAll, earliestMs, alertsAll, siteOverlays, health] =
+    const [perms, savedMapViews, rawAssetsAll, geofences, places, toolAssociationsAll, earliestMs, alertsAll, siteOverlays, health, recoveries] =
       await Promise.all([
         getMyPermissions(),
         getMyMapViews(),
@@ -114,6 +116,8 @@ export async function GET() {
         getAlertEvents(companyId),
         getPlacedSiteOverlays(companyId),
         getAssetHealth(companyId),
+        // Assets in recovery (132) — the red badge.
+        getActiveRecoveries(companyId),
       ])
     // The view-levels table can switch the map off for a role (094).
     if (!perms.features.includes('map')) return NextResponse.json({ error: 'not enabled for your role' }, { status: 403 })
@@ -129,7 +133,15 @@ export async function GET() {
       return !id || visibleIds.has(id)
     })
     const now = Date.now()
-    const assets = resolveToolLocations(rawAssets, toolAssociations).map((a) => {
+    const sinceMs = earliestMs ?? Date.now() - 30 * 86_400_000
+    const [pairingEpisodes, anonAll] = await Promise.all([
+      getPairingEpisodes(companyId, new Date(sinceMs).toISOString()),
+      // Tags heard by phones off the clock / in privacy zones (132): the
+      // place only. Read at the viewer's level, so a preview gets its own.
+      getAnonToolSightings(companyId, rankOf(perms)),
+    ])
+    const anon = new Map(Array.from(anonAll).filter(([toolId]) => visibleIds.has(toolId)))
+    const assets = resolveToolLocations(rawAssets, toolAssociations, now, anon).map((a) => {
       const lastMove = health.lastMoveMs.get(a.id)
       return {
         ...a,
@@ -144,15 +156,22 @@ export async function GET() {
         idleDays: a.type === 'tool' || lastMove === undefined
           ? null
           : Math.max(0, Math.floor((now - lastMove) / 86_400_000)),
+        ...(recoveries.has(a.id) ? { recovery: recoveries.get(a.id)! } : {}),
       }
     })
-    const sinceMs = earliestMs ?? Date.now() - 30 * 86_400_000
-    const pairingEpisodes = await getPairingEpisodes(companyId, new Date(sinceMs).toISOString())
 
-    const toolGateways: Record<string, { name: string; lastSeen: string }> = {}
+    const toolGateways: Record<string, ToolGatewayInfo> = {}
     for (const assoc of toolAssociations) {
       const gateway = rawAssets.find((a) => a.id === assoc.gateway_asset_id)
       if (gateway) toolGateways[assoc.tool_asset_id] = { name: gateway.name, lastSeen: assoc.last_seen }
+    }
+    // A tool shown at an anonymous sighting says so on its sheet — never
+    // "with <truck>" when the dot is somewhere a phone heard it later.
+    for (const a of assets) {
+      const s = a.type === 'tool' && isAnonLocation(a.location) ? anon.get(a.id) : undefined
+      if (!s) continue
+      const custody = toolGateways[a.id]
+      toolGateways[a.id] = { name: custody?.name ?? '', lastSeen: custody?.lastSeen ?? '', anon: { at: new Date(s.seenMs).toISOString(), reason: s.reason, precisionM: s.precisionM } }
     }
     const aboard = toolsAboard(rawAssets, toolAssociations)
 

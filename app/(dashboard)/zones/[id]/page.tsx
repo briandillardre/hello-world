@@ -22,7 +22,8 @@ import { ProjectHub } from '@/components/zones/ProjectHub'
 import { ZoneImagery } from '@/components/zones/ZoneImagery'
 import { ZonePlans } from '@/components/zones/ZonePlans'
 import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
-import { isProspect } from '@/lib/permissions'
+import { isProspect, rankOf, RANK } from '@/lib/permissions'
+import { PrivacyZoneCard } from '@/components/zones/PrivacyZoneCard'
 import { Suspense } from 'react'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
@@ -370,6 +371,12 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           <section className="rounded-xl border border-navy-800 bg-navy-900 p-3">
             <DivisionPicker divisions={divisions} table="geofences" rowId={fence.id} value={fence.division_id ?? null} canEdit={perms.canEdit} />
           </section>
+        )}
+
+        {/* Privacy zone (132): no crew-phone point is kept inside it. */}
+        {!isMock && (
+          <PrivacyZoneCard zoneId={fence.id} on={!!fence.privacy_zone} kind={fence.kind ?? null}
+            canManage={rankOf(perms) >= RANK.admin && perms.canEdit && !perms.viewingAs} />
         )}
 
         {/* Notes + folder ride the editor's single Save above. These standalone

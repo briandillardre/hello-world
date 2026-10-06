@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { rideKind, rideMetres } from '@/lib/pairing-ride'
 import { toolIsFresh } from '@/lib/tools-resolve'
+import { getToolAnonHistory } from '@/lib/db/tools'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +17,10 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
  * Auth: caller's Supabase session cookie; RLS scopes both the asset lookup
  * and pairing_log to the caller's company. A tool outside the company (or a
  * bogus id) is a 404, never someone else's history.
+ *
+ * `anon` (132): where phones off the clock or inside privacy zones heard the
+ * tag — its place only (a ~250 m area, a zone's middle, or a recovery's exact
+ * spot), never whose phone. Read at the viewer's own level.
  */
 
 interface Episode {
@@ -39,7 +44,9 @@ interface Episode {
 
 const WINDOW_MS = 30 * 86_400_000
 const EPISODE_CAP = 50
-const EMPTY = { episodes: [] as Episode[], lastSeenMs: null, lastGatewayName: null }
+interface AnonRow { firstMs: number; lastMs: number; reason: 'off_shift' | 'privacy_zone' | 'recovery'; precisionM: number | null; heardN: number }
+
+const EMPTY = { episodes: [] as Episode[], lastSeenMs: null, lastGatewayName: null, anon: [] as AnonRow[] }
 
 export async function GET(req: NextRequest) {
   try {
@@ -117,7 +124,12 @@ export async function GET(req: NextRequest) {
       lastGatewayName = carrierName.get(newest.carrier_asset_id as string) ?? null
     }
 
-    return NextResponse.json({ episodes, lastSeenMs, lastGatewayName })
+    const { getMyPermissions } = await import('@/lib/permissions-server')
+    const { rankOf } = await import('@/lib/permissions')
+    const anon: AnonRow[] = (await getToolAnonHistory(assetId, rankOf(await getMyPermissions()), 20))
+      .map((a) => ({ firstMs: a.firstMs, lastMs: a.seenMs, reason: a.reason, precisionM: a.precisionM, heardN: a.heardN }))
+
+    return NextResponse.json({ episodes, lastSeenMs, lastGatewayName, anon })
   } catch {
     return NextResponse.json(EMPTY)
   }

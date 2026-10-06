@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { isNativeApp, nativePlatform } from '@/lib/native'
+import { WhatWeRecord } from '@/components/settings/WhatWeRecord'
 
 /**
  * Mandatory shift tracking (Brian, Sep 9: "clock in also a must and mandatory
@@ -35,7 +36,12 @@ export const CLOCK_EVENT = 'ht:clock'
 export const SHIFT_STATUS_EVENT = 'ht:shift-status'
 /** Anyone (the clock card on mount) may ask for the current status. */
 export const SHIFT_STATUS_QUERY = 'ht:shift-status?'
-export interface ShiftStatus { open: boolean; engine: 'native' | 'web' | 'off'; fixes: number; denied: boolean; lastFixAt: number | null }
+export interface ShiftStatus {
+  open: boolean; engine: 'native' | 'web' | 'off'; fixes: number; denied: boolean; lastFixAt: number | null
+  /** The newest fix was inside a privacy zone, so it was not kept (132) —
+   *  recording picks back up on its own outside it. */
+  privacyPaused?: boolean
+}
 
 const DISCLOSURE_KEY = 'ht_shift_disclosure_done'
 const WATCHER_KEY = 'ht_shift_watcher'
@@ -55,7 +61,7 @@ interface BgPlugin {
   removeWatcher(opts: { id: string }): Promise<void>
   openSettings(): Promise<void>
 }
-interface NativeHttp { post(opts: { url: string; headers?: Record<string, string>; data?: unknown }): Promise<{ status: number }> }
+interface NativeHttp { post(opts: { url: string; headers?: Record<string, string>; data?: unknown }): Promise<{ status: number; data?: unknown }> }
 interface CapGlobal { isNativePlatform?: () => boolean; Plugins?: { BackgroundGeolocation?: BgPlugin; CapacitorHttp?: NativeHttp } }
 const cap = (): CapGlobal | undefined => (typeof window === 'undefined' ? undefined : (window as unknown as { Capacitor?: CapGlobal }).Capacitor)
 function bgPlugin(): BgPlugin | null {
@@ -99,20 +105,30 @@ async function killOrphanWatcher(plugin: BgPlugin) {
   try { await plugin.removeWatcher({ id }) } catch { /* already gone */ }
   try { localStorage.removeItem(WATCHER_KEY) } catch { /* private mode */ }
 }
+/** What the server said about a batch: how many points it kept, and whether
+ *  the newest one sat inside a privacy zone (132 — kept nothing there). */
+interface PostResult { status: number; saved: number | null; paused: string | null }
+function readPost(status: number, data: unknown): PostResult {
+  let d = data
+  if (typeof d === 'string') { try { d = JSON.parse(d) } catch { d = null } } // native HTTP may hand back the raw text
+  const j = d && typeof d === 'object' ? d as { saved?: unknown; paused?: unknown } : {}
+  return { status, saved: typeof j.saved === 'number' ? j.saved : null, paused: typeof j.paused === 'string' ? j.paused : null }
+}
+
 /** POST a batch; native HTTP first inside the shell (the WebView's fetch is
  *  throttled after ~5 min in the background), the page's fetch otherwise. */
-async function postFixes(batch: Fix[]): Promise<number> {
+async function postFixes(batch: Fix[]): Promise<PostResult> {
   const body = { fixes: batch }
   const c = cap()
   const http = c?.isNativePlatform?.() ? c.Plugins?.CapacitorHttp : undefined
   if (http?.post) {
     try {
       const r = await http.post({ url: `${window.location.origin}/api/clock/fix`, headers: { 'content-type': 'application/json' }, data: body })
-      if (typeof r?.status === 'number' && r.status !== 401) return r.status // 401 = the native jar lacks the session cookie → use the WebView
+      if (typeof r?.status === 'number' && r.status !== 401) return readPost(r.status, r.data) // 401 = the native jar lacks the session cookie → use the WebView
     } catch { /* fall through to fetch */ }
   }
   const r = await fetch('/api/clock/fix', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true })
-  return r.status
+  return readPost(r.status, await r.json().catch(() => null))
 }
 
 export function ShiftTracker() {
@@ -123,6 +139,7 @@ export function ShiftTracker() {
   const [declined, setDeclined] = useState(false)
   const [denied, setDenied] = useState(false)
   const [fixes, setFixes] = useState(0)
+  const [privacyPaused, setPrivacyPaused] = useState(false)
   const engineRef = useRef<'native' | 'web' | 'off'>('off')
   const lastFixRef = useRef<number | null>(null)
   const lastOpenRef = useRef(false)
@@ -168,9 +185,9 @@ export function ShiftTracker() {
   }, [])
 
   const publish = useCallback(() => {
-    const detail: ShiftStatus = { open: !!open, engine: engineRef.current, fixes, denied, lastFixAt: lastFixRef.current }
+    const detail: ShiftStatus = { open: !!open, engine: engineRef.current, fixes, denied, lastFixAt: lastFixRef.current, privacyPaused }
     window.dispatchEvent(new CustomEvent(SHIFT_STATUS_EVENT, { detail }))
-  }, [open, fixes, denied])
+  }, [open, fixes, denied, privacyPaused])
   useEffect(() => { publish() }, [publish])
   useEffect(() => {
     const h = () => publish()
@@ -214,12 +231,18 @@ export function ShiftTracker() {
       flushing = true
       const batch = pending.splice(0, 50)
       try {
-        const status = await postFixes(batch)
+        const res = await postFixes(batch)
+        const status = res.status
         if (status === 401 || status === 403) { pending.length = 0 } // signed out / no view level — nothing to keep
         else if (status === 409) { pending.length = 0; lastOpenRef.current = false; setOpen(null) } // clocked out elsewhere — stop
         else if (status === 429) { pending.unshift(...batch); retryNotBefore = Date.now() + 5 * 60_000 } // over the hourly cap — keep them, try later
         else if (status < 200 || status >= 300) { pending.unshift(...batch) }
-        else { setFixes((n) => n + batch.length); lastFixRef.current = Date.now() }
+        else {
+          // Points inside a privacy zone are not kept (132): count what was.
+          const kept = res.saved ?? batch.length
+          if (kept > 0) { setFixes((n) => n + kept); lastFixRef.current = Date.now() }
+          setPrivacyPaused(res.paused === 'privacy_zone')
+        }
       } catch {
         pending.unshift(...batch) // dead zone — try again with the next fix
       } finally {
@@ -346,12 +369,21 @@ export function ShiftTracker() {
     <>
       {askConsent && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-3" role="dialog" aria-modal="true" aria-labelledby="shift-disclosure-title">
-          <div className="w-full max-w-md rounded-2xl border border-navy-700 bg-navy-900 p-5 shadow-panel" style={{ marginBottom: 'calc(var(--ht-safe-bottom, 0px) + 8px)' }}>
+          <div className="w-full max-w-md max-h-[calc(88dvh-var(--ht-safe-bottom,0px))] overflow-y-auto rounded-2xl border border-navy-700 bg-navy-900 p-5 shadow-panel" style={{ marginBottom: 'calc(var(--ht-safe-bottom, 0px) + 8px)' }}>
             <p className="text-2xl mb-1">📍</p>
             <h2 id="shift-disclosure-title" className="font-display font-bold text-lg text-ink">Location while you&apos;re on the clock</h2>
             <p className="mt-2 text-[13.5px] text-muted leading-relaxed">
-              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card and show you on the crew map. A notification shows the whole time a shift is recording, and it stops when you clock out. Never sold, never used for ads.
+              HammerTrack collects this phone&apos;s location <span className="text-ink font-semibold">while you are clocked in — including when the app is closed or not in use</span> — to record where your shift happens, verify your time card and show you on the crew map. A notification shows the whole time a shift is recording, and it stops when you clock out. Nothing is kept inside a privacy zone your company has marked. Never sold, never used for ads.
             </p>
+            {/* The whole list, in plain words (132) — opened in place: a link
+                would leave this sheet sitting over the page it opened. */}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[12.5px] font-semibold text-teal">Exactly what HammerTrack records about you</summary>
+              <div className="mt-2 rounded-lg border border-navy-800 bg-navy-950/60 p-3">
+                <WhatWeRecord compact />
+                <p className="mt-2 text-[11px] text-faint">The same list is on My phone, any time.</p>
+              </div>
+            </details>
             <p className="mt-2 text-[12px] text-faint">Next, your phone asks for location permission — choose <span className="text-ink font-semibold">While using the app</span>. That is all the shift recorder needs.</p>
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={decline} className="flex-1 rounded-xl border border-navy-700 py-3 text-sm font-semibold text-muted">Not now</button>

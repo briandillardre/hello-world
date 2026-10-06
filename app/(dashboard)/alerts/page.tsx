@@ -4,9 +4,12 @@ import { getGeofences } from '@/lib/db/zones'
 import { getAssetsWithLocations } from '@/lib/db/assets'
 import { getCurrentCompanyId } from '@/lib/db/company'
 import { requireFeature } from '@/lib/permissions-server'
-import { scopeFleet } from '@/lib/permissions'
+import { scopeFleet, rankOf, RANK } from '@/lib/permissions'
 
 export const metadata = { title: 'HammerTrack — Alerts' }
+
+const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
 export default async function AlertsPage() {
   const companyId = await getCurrentCompanyId()
@@ -23,6 +26,8 @@ export default async function AlertsPage() {
   const { assets, alerts } = scopeFleet(perms, assetsAll, [], alertsAll)
 
   return (
-    <AlertsView alerts={alerts} rules={rules} geofences={geofences} assets={assets} editable={canEdit} />
+    <AlertsView alerts={alerts} rules={rules} geofences={geofences} assets={assets} editable={canEdit}
+      // A theft alert's "Start recovery" (132) — Admins and the owner, outside a preview.
+      canRecover={!isMock && rankOf(perms) >= RANK.admin && canEdit && !perms.viewingAs} />
   )
 }

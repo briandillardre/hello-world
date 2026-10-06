@@ -36,8 +36,14 @@ export interface PhoneFix {
  * the Supabase session cookie (no API key exposed to the browser); on first use
  * it provisions a personnel "phone" asset for the user, then appends a location.
  * The main map picks it up like any other tracker.
+ *
+ * Privacy zones (132): a fix inside a zone an Admin marked private is never
+ * kept — whoever sent it (Go Live, the shift recorder, the tag listener). The
+ * reply says `withheld: 'privacy_zone'` with ok: true, so a sharing screen can
+ * say recording paused rather than look broken. Checked BEFORE the phone
+ * asset is created or revived: nothing about the person moves while inside.
  */
-export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; assetId?: string; reason?: string }> {
+export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; assetId?: string; reason?: string; withheld?: 'privacy_zone' }> {
   const { lat, lng } = fix
   if (typeof lat !== 'number' || typeof lng !== 'number' || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return { ok: false, reason: 'coords' }
@@ -54,6 +60,15 @@ export async function pushPhoneLocation(fix: PhoneFix): Promise<{ ok: boolean; a
   const trackerId = phoneTracker(user.id)
 
   const svc = createServiceClient()
+  // Inside a privacy zone nothing is kept. A zone read that fails keeps
+  // nothing either — the next fix tries again.
+  try {
+    const { loadPrivacyZones } = await import('@/lib/location-privacy')
+    const { privacyZoneAt } = await import('@/lib/location-policy')
+    if (privacyZoneAt({ lat, lng }, await loadPrivacyZones(svc, companyId))) return { ok: true, withheld: 'privacy_zone' }
+  } catch {
+    return { ok: false, reason: 'privacy_check' }
+  }
   // Find or (re)create the phone asset — reactivated if a prior share stopped it.
   const { data: existing } = await svc
     .from('assets')

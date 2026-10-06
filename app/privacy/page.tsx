@@ -119,6 +119,18 @@ export default function PrivacyPage() {
               you so.
             </p>
             <p className="mt-2">
+              <strong className="text-ink">Bluetooth tool tags:</strong> while the app is open it can listen for
+              your company&apos;s Bluetooth tool tags (switch it off under My phone). On the clock, the tools your
+              phone hears are shown with you. Off the clock, your phone&apos;s location is sent only so the tag can
+              be placed: HammerTrack keeps the tag&apos;s rough area (about 250 m) and nothing that identifies you
+              or your phone — or, for an item your company has put in recovery as missing, the tag&apos;s exact spot.
+            </p>
+            <p className="mt-2">
+              <strong className="text-ink">Privacy zones:</strong> inside a place your company marks as a privacy
+              zone, the app keeps no automatic location — no shift recording, no tag-listener location, no Go Live.
+              A clock-in or clock-out you make there still records where you tapped, as every clock-in does.
+            </p>
+            <p className="mt-2">
               Location is used solely to display your fleet and crew on your company&apos;s map, to build
               your company&apos;s time cards and to trigger the alerts your company configures — it is never
               used for advertising and never sold or shared with third parties.

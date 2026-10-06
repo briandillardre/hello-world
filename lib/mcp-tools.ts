@@ -109,7 +109,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'find_tool',
     description:
-      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway last detected it, when, its last known coordinates, its last real ride, and its recent history. Each history entry says whether the tool RODE WITH that gateway (the gateway travelled at least half a mile while hearing it — miles given) or was only SEEN BY it (heard nearby, went nowhere together). Only call something a ride when the entry says so. Tools have no GPS of their own — they inherit the location of whatever detected them.',
+      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway last detected it, when, its last known coordinates, its last real ride, and its recent history. Each history entry says whether the tool RODE WITH that gateway (the gateway travelled at least half a mile while hearing it — miles given) or was only SEEN BY it (heard nearby, went nowhere together). Only call something a ride when the entry says so. Tools have no GPS of their own — they inherit the location of whatever detected them. `heardOffTheClock` lists places where a crew phone heard the tag while its owner was off the clock or inside a privacy zone: the TAG\'s place only, rough on purpose (to about 250 m, or a privacy zone\'s middle; exact only for an asset in recovery) — those records never say whose phone, so never guess who. `bestPosition` is the place the map shows.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -576,7 +576,7 @@ async function runMaintenanceStatus(companyId: string, visibleIds: string[] | nu
   })
 }
 
-async function runFindTool(companyId: string, args: { name?: unknown }, visibleIds: string[] | null = null): Promise<McpToolResult> {
+async function runFindTool(companyId: string, args: { name?: unknown }, visibleIds: string[] | null = null, viewerRank: number | null = null): Promise<McpToolResult> {
   const q = typeof args.name === 'string' ? args.name : ''
   // The session door (Ask AI) passes what the asker may see (111's ladder —
   // this door reads with the service role, so RLS cannot do it here). A tag
@@ -603,7 +603,8 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
   }
 
   const sb = await service()
-  const [assocRes, logRes] = await Promise.all([
+  const { ANON_KEEP_MS, anonymousWins, anonPlaceWords } = await import('./location-policy')
+  const [assocRes, logRes, anonRes] = await Promise.all([
     sb.from('tool_associations')
       .select('gateway_asset_id, last_seen, last_lat, last_lng, attached_since, tag_battery, rssi')
       .eq('company_id', companyId)
@@ -618,6 +619,17 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
       .eq('member_asset_id', tool.id)
       .order('started_at', { ascending: false })
       .limit(10),
+    // Heard by phones off the clock / in privacy zones (132) — the tag's place
+    // only. The session door reads at the asker's level (the reporting
+    // phone's visibility, 111); the company-key door is admin-grade.
+    sb.from('tool_sightings')
+      .select('lat, lng, precision_m, reason, first_seen, last_seen, heard_n')
+      .eq('company_id', companyId)
+      .eq('tool_asset_id', tool.id)
+      .lte('visible_rank', viewerRank ?? 4)
+      .gte('last_seen', new Date(Date.now() - ANON_KEEP_MS).toISOString())
+      .order('last_seen', { ascending: false })
+      .limit(5),
   ])
   const rawAssoc = assocRes.error ? null : assocRes.data
   const assoc = rawAssoc && canSee(rawAssoc.gateway_asset_id as string) ? rawAssoc : null
@@ -629,6 +641,14 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
   const kinds = history.map((h) => rideKind(h.span_m as number | null))
   const milesOf = (h: (typeof history)[number]) => rideMiles(rideMetres({ span_m: h.span_m as number | null, moved_m: h.moved_m as number | null }))
   const lastRideAt = kinds.indexOf('rode')
+  const anon = anonRes.error ? [] : (anonRes.data ?? [])
+  const newestAnon = anon[0]
+    ? { seenMs: Date.parse(anon[0].last_seen as string), lat: Number(anon[0].lat), lng: Number(anon[0].lng), precisionM: anon[0].precision_m == null ? null : Number(anon[0].precision_m) }
+    : null
+  const anonFirst = !!newestAnon && anonymousWins(
+    assoc?.last_seen ? { seenMs: Date.parse(assoc.last_seen as string), lat: (assoc.last_lat as number | null) ?? null, lng: (assoc.last_lng as number | null) ?? null } : null,
+    newestAnon,
+  )
 
   return ok({
     tool: tool.name,
@@ -656,11 +676,26 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
       to: fmtDateTime(Date.parse((h.ended_at ?? h.last_seen) as string), DEFAULT_TZ),
       ongoing: h.ended_at == null,
     })),
+    heardOffTheClock: anon.map((a) => ({
+      where: { lat: Number(a.lat), lng: Number(a.lng) },
+      roughToMetres: a.precision_m == null ? 0 : Number(a.precision_m),
+      why: anonPlaceWords(String(a.reason), a.precision_m == null ? null : Number(a.precision_m)).long,
+      from: fmtDateTime(Date.parse(a.first_seen as string), DEFAULT_TZ),
+      to: fmtDateTime(Date.parse(a.last_seen as string), DEFAULT_TZ),
+      timesHeard: Number(a.heard_n) || 1,
+    })),
+    bestPosition: anonFirst && newestAnon
+      ? { lat: newestAnon.lat, lng: newestAnon.lng, at: fmtDateTime(newestAnon.seenMs, DEFAULT_TZ), from: 'heard off the clock — the tag\'s place only', roughToMetres: newestAnon.precisionM ?? 0 }
+      : assoc?.last_lat != null
+        ? { lat: assoc.last_lat as number, lng: assoc.last_lng as number, at: fmtDateTime(Date.parse(assoc.last_seen as string), DEFAULT_TZ), from: `its carrier ${nameOf(assoc.gateway_asset_id as string)}`, roughToMetres: 0 }
+        : null,
     note: assoc
-      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.'
-      : rawAssoc
-        ? 'No sighting of this tool that this user can see.'
-        : 'This tool\'s tag has never been detected by a gateway yet.',
+      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.' + (anon.length ? ' heardOffTheClock entries never say whose phone heard the tag — do not guess.' : '')
+      : anon.length
+        ? 'Only heard by phones off the clock or inside privacy zones (heardOffTheClock): the tag\'s place, rough on purpose, never whose phone — do not guess.'
+        : rawAssoc
+          ? 'No sighting of this tool that this user can see.'
+          : 'This tool\'s tag has never been detected by a gateway yet.',
   })
 }
 
@@ -806,7 +841,7 @@ export async function runMcpTool(
       case 'get_zone_costs': return runGetZoneCosts(companyId, args)
       case 'list_alerts': return runListAlerts(companyId, args)
       case 'maintenance_status': return runMaintenanceStatus(companyId, opts?.visibleAssetIds ?? null)
-      case 'find_tool': return runFindTool(companyId, args, opts?.visibleAssetIds ?? null)
+      case 'find_tool': return runFindTool(companyId, args, opts?.visibleAssetIds ?? null, opts?.viewerRank ?? null)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)

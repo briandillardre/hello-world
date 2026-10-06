@@ -1,6 +1,7 @@
 import type { ToolAssociation } from '../types'
 import { MOCK_TOOL_ASSOCIATIONS } from '../mock-data'
 import type { EpisodePlaces } from '../pairing-ride'
+import type { AnonToolSighting } from '../tools-resolve'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -45,6 +46,80 @@ export async function getToolAssociations(companyId: string): Promise<ToolAssoci
 
 export { findGatewayForTool, resolveToolLocations, toolsAboard } from '../tools-resolve'
 export type { AboardTool } from '../tools-resolve'
+
+/**
+ * The newest anonymous sighting per tool (132, `tool_sightings`): a tag heard
+ * by a phone off the clock or inside a privacy zone — its place only, never
+ * whose phone. Read with the caller's own client, so RLS already applies the
+ * company, the tool's visibility and the reporting phone's; `maxRank` is the
+ * same ladder for a "view app as" preview (RLS sees the REAL viewer), and
+ * picks the newest row the previewed role may read rather than dropping the
+ * tool. Last 30 days; empty in demo mode or before 132.
+ */
+export async function getAnonToolSightings(companyId: string, maxRank = 4): Promise<Map<string, AnonToolSighting>> {
+  const out = new Map<string, AnonToolSighting>()
+  if (isMock) return out
+  try {
+    const { createClient } = await import('../supabase-server')
+    const { ANON_KEEP_MS } = await import('../location-policy')
+    const { data, error } = await createClient()
+      .from('tool_sightings')
+      .select('tool_asset_id, lat, lng, precision_m, reason, first_seen, last_seen, heard_n, visible_rank')
+      .eq('company_id', companyId)
+      .gte('last_seen', new Date(Date.now() - ANON_KEEP_MS).toISOString())
+      .order('last_seen', { ascending: false })
+      .limit(1000)
+    if (error) return out
+    for (const r of (data ?? []) as AnonRaw[]) {
+      const s = anonRow(r)
+      if (!s || out.has(s.toolId) || s.visibleRank > maxRank) continue
+      out.set(s.toolId, s)
+    }
+  } catch { /* additive — the map falls back to custody */ }
+  return out
+}
+
+/** One tool's anonymous sightings, newest first (the custody card, the
+ *  recovery banner, Ask AI's find_tool on the session door). Same rules as
+ *  getAnonToolSightings. */
+export async function getToolAnonHistory(toolId: string, maxRank = 4, limit = 20): Promise<AnonToolSighting[]> {
+  if (isMock) return []
+  try {
+    const { createClient } = await import('../supabase-server')
+    const { ANON_KEEP_MS } = await import('../location-policy')
+    const { data, error } = await createClient()
+      .from('tool_sightings')
+      .select('tool_asset_id, lat, lng, precision_m, reason, first_seen, last_seen, heard_n, visible_rank')
+      .eq('tool_asset_id', toolId)
+      .lte('visible_rank', maxRank)
+      .gte('last_seen', new Date(Date.now() - ANON_KEEP_MS).toISOString())
+      .order('last_seen', { ascending: false })
+      .limit(limit)
+    if (error) return []
+    return ((data ?? []) as AnonRaw[]).map(anonRow).filter((s): s is AnonToolSighting => !!s)
+  } catch {
+    return []
+  }
+}
+
+type AnonRaw = {
+  tool_asset_id: string; lat: number; lng: number; precision_m: number | null; reason: string
+  first_seen: string; last_seen: string; heard_n: number | null; visible_rank: number | null
+}
+function anonRow(r: AnonRaw): AnonToolSighting | null {
+  const seenMs = Date.parse(r.last_seen)
+  if (!Number.isFinite(seenMs)) return null
+  return {
+    toolId: r.tool_asset_id,
+    lat: Number(r.lat), lng: Number(r.lng),
+    precisionM: r.precision_m == null ? null : Number(r.precision_m),
+    reason: r.reason as AnonToolSighting['reason'],
+    firstMs: Date.parse(r.first_seen),
+    seenMs,
+    heardN: Number(r.heard_n) || 1,
+    visibleRank: Number(r.visible_rank) || 0,
+  }
+}
 
 /** A pairing episode + where its sightings happened (122) — rideKind(span_m)
  *  in lib/pairing-ride.ts turns that into "rode with" / "seen by". */

@@ -74,6 +74,8 @@ export function TrackerClient() {
   const [share, setShare] = useState(false)
   const [signedIn, setSignedIn] = useState<boolean | null>(null)
   const [liveConfirmed, setLiveConfirmed] = useState(false)
+  // Inside a privacy zone (132) nothing is kept — the row says so instead of "Live".
+  const [privacyPaused, setPrivacyPaused] = useState(false)
   const shareRef = useRef(false); shareRef.current = share
   const signedInRef = useRef<boolean | null>(null); signedInRef.current = signedIn
   const lastPush = useRef(0)
@@ -174,8 +176,10 @@ export function TrackerClient() {
         lastPush.current = now
         pushPhoneLocation({ lat, lng, speed, accuracy, heading: p.coords.heading ?? null })
           .then((r) => {
-            if (r.ok) setLiveConfirmed(true)
-            else if (r.reason === 'auth') { setSignedIn(false); setShare(false); setLiveConfirmed(false) }
+            // A reply that never arrived is undefined (lib/action-reply.ts) — the next fix retries.
+            if (r?.withheld === 'privacy_zone') { setPrivacyPaused(true); return }
+            if (r?.ok) { setPrivacyPaused(false); setLiveConfirmed(true) }
+            else if (r?.reason === 'auth') { setSignedIn(false); setShare(false); setLiveConfirmed(false) }
           })
           .catch(() => { /* transient network — next fix retries */ })
       }
@@ -293,7 +297,7 @@ export function TrackerClient() {
               <Stat icon={<Gauge className="h-3.5 w-3.5" />} label="Speed" value={`${pos?.speed ?? 0}`} unit="mph" />
               <Stat icon={<Crosshair className="h-3.5 w-3.5" />} label="Accuracy" value={pos?.accuracy ? `${pos.accuracy}` : '—'} unit={pos?.accuracy ? 'm' : undefined} />
             </div>
-            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
+            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} paused={privacyPaused} />
             <button
               onClick={async () => {
                 const ok = await confirmSheet({
@@ -334,7 +338,7 @@ export function TrackerClient() {
               enterKeyHint="done"
               className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-3 text-ink placeholder:text-faint outline-none focus:border-amber/50"
             />
-            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} />
+            <ShareRow signedIn={signedIn} share={share} onToggle={toggleShare} live={liveConfirmed} paused={privacyPaused} />
             <button onClick={clockIn} className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber text-[#1a1100] font-display font-bold py-3.5 hover:brightness-110 transition">
               <Play className="h-5 w-5" /> Start tracking
             </button>
@@ -352,7 +356,7 @@ export function TrackerClient() {
 
 /** "Show me on the fleet map" toggle. Only actionable when signed in — a field
  *  worker who isn't gets a sign-in link instead of a dead switch. */
-function ShareRow({ signedIn, share, onToggle, live }: { signedIn: boolean | null; share: boolean; onToggle: () => void; live: boolean }) {
+function ShareRow({ signedIn, share, onToggle, live, paused = false }: { signedIn: boolean | null; share: boolean; onToggle: () => void; live: boolean; paused?: boolean }) {
   if (signedIn === false) {
     return (
       <a
@@ -374,7 +378,9 @@ function ShareRow({ signedIn, share, onToggle, live }: { signedIn: boolean | nul
     >
       <span className="flex items-center gap-2 text-[13px] font-semibold text-ink">
         <Radio className={'h-4 w-4 ' + (share ? 'text-teal' : 'text-faint')} />
-        {share ? (live ? 'Live on the fleet map' : 'Sharing — waiting for GPS…') : 'Show me on the fleet map'}
+        {share
+          ? paused ? 'Paused — you’re in a privacy zone' : live ? 'Live on the fleet map' : 'Sharing — waiting for GPS…'
+          : 'Show me on the fleet map'}
       </span>
       <span className={'w-9 h-5 rounded-full transition-colors relative flex-none ' + (share ? 'bg-teal/40' : 'bg-navy-700')}>
         <span className={'absolute top-0.5 w-4 h-4 rounded-full bg-ink transition-all ' + (share ? 'left-[18px]' : 'left-0.5')} />

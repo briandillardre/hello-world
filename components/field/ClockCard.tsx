@@ -479,6 +479,8 @@ export function ClockCard({ openEntry, zones, available, personName, demo = fals
         <span aria-hidden>📍</span>
         {shift?.denied
           ? 'Location is off — your shift is not being recorded. Turn it on to keep your time card GPS-verified.'
+          : shift?.privacyPaused
+            ? 'Paused — you’re in a privacy zone, so nothing is kept here. Recording picks back up when you leave it.'
           : shift?.engine === 'native'
             ? `Shift tracking on, even with the app closed${shift.fixes ? ` · ${shift.fixes} fixes this session` : ''}`
             : shift?.engine === 'web'

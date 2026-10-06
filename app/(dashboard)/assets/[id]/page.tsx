@@ -18,6 +18,7 @@ import { AssetActions } from '@/components/assets/AssetActions'
 import { TrackerSheet } from '@/components/assets/TrackerSheet'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
 import { VisibilityCard } from '@/components/assets/VisibilityCard'
+import { RecoverySection } from '@/components/assets/RecoverySection'
 import { RANK, rankOf, canSeeAsset, assetVisibility, visibilityLabel } from '@/lib/permissions'
 import { trackerKind } from '@/lib/devices'
 import { getTrackerChoices } from '@/lib/db/trackers'
@@ -69,7 +70,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   }
 }
 
-export default async function AssetDetailPage({ params }: { params: { id: string } }) {
+export default async function AssetDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { recovery?: string; alert?: string } }) {
   await requireFeature('assets')
   const [companyId, perms] = await Promise.all([getCurrentCompanyId(), getMyPermissions()])
   const canEdit = perms.canEdit
@@ -178,6 +179,20 @@ export default async function AssetDetailPage({ params }: { params: { id: string
       </div>
 
       <div className="p-4 max-w-3xl space-y-5">
+        {/* Recovery (132): the red banner while one runs; Admins + owner start it here
+            (a theft alert's "Start recovery" lands with ?recovery=start). */}
+        {asset.type !== 'personnel' && (
+          <Suspense fallback={null}>
+            <RecoverySection
+              assetId={asset.id} isTool={asset.type === 'tool'} tz={tz}
+              canManage={rankOf(perms) >= RANK.admin && perms.canEdit && !perms.viewingAs}
+              viewerRank={rankOf(perms)}
+              startOpen={searchParams?.recovery === 'start'}
+              alertEventId={typeof searchParams?.alert === 'string' ? searchParams.alert : null}
+            />
+          </Suspense>
+        )}
+
         {/* current status + drive history — needs the 7-day ping scan, so it
             streams in behind a skeleton that mirrors the finished card */}
         <Suspense fallback={<StatusSkeleton showDriveStats={showDriveStats} isVehicle={asset.type === 'vehicle'} loc={loc ?? null} />}>

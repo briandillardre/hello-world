@@ -4,7 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Battery, Zap, Clock, Wifi, ArrowRight, Crosshair, MapPin, Wrench, ChevronRight, Copy } from 'lucide-react'
 import type { AssetWithLocation, AssetType } from '@/lib/types'
-import { toolIsFresh, type AboardTool } from '@/lib/tools-resolve'
+import { toolIsFresh, isAnonLocation, type AboardTool, type ToolGatewayInfo } from '@/lib/tools-resolve'
+import { anonPlaceWords } from '@/lib/location-policy'
 import { POI_KIND_META, type PoiKind } from '@/lib/poi'
 import { formatRelativeTime } from '@/lib/utils'
 import { vehiclePower } from '@/lib/vehicle-power'
@@ -155,7 +156,7 @@ export interface PanelStop {
 
 interface AssetPanelProps {
   asset: AssetWithLocation
-  gateway?: { name: string; lastSeen: string }
+  gateway?: ToolGatewayInfo
   /** Tools riding with this asset right now (trucks/equipment). */
   aboard?: AboardTool[]
   /** Jump the panel to another asset (tap a tool in the on-board list). */
@@ -193,7 +194,7 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
   asset: AssetWithLocation
   loc: AssetWithLocation['location']
   d: Derived
-  gateway?: { name: string; lastSeen: string }
+  gateway?: ToolGatewayInfo
   aboard?: AboardTool[]
   travelingWith?: { id: string; name: string; type: AssetType }[]
   isolated: boolean
@@ -241,8 +242,24 @@ function AssetPeek({ asset, loc, d, gateway, aboard, travelingWith, isolated, on
         </p>
       )}
 
-      {/* A tool's truth is who is carrying it. */}
-      {isTool && gateway && (
+      {/* In recovery (132): who can do something about it is one tap away. */}
+      {asset.recovery && (
+        <Link href={`/assets/${asset.id}#recovery`} className="flex items-center gap-1.5 text-[12.5px] leading-snug text-alert font-semibold">
+          <span aria-hidden>🚨</span> In recovery
+          <span className="font-normal text-alert/80" suppressHydrationWarning>· until {new Date(asset.recovery.endsAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+        </Link>
+      )}
+
+      {/* A tool's truth is who is carrying it — or, heard by a phone off the
+          clock / in a privacy zone, only where (132): never who. */}
+      {isTool && gateway?.anon && (
+        <p className="text-[12.5px] leading-snug">
+          <MapPin className="inline h-3.5 w-3.5 text-amber mr-1 -mt-0.5" />
+          <span className="text-amber font-semibold">{anonPlaceWords(gateway.anon.reason, gateway.anon.precisionM).short}</span>
+          <span className="text-faint"> · heard {formatRelativeTime(gateway.anon.at)}</span>
+        </p>
+      )}
+      {isTool && gateway && !gateway.anon && (
         <p className="text-[12.5px] leading-snug">
           {toolIsFresh(gateway.lastSeen)
             ? <><Wifi className="inline h-3.5 w-3.5 text-[#60a5fa] mr-1 -mt-0.5" /><span className="text-[#93c5fd]">With </span><span className="font-semibold text-[#93c5fd]">{gateway.name}</span><span className="text-faint"> · {formatRelativeTime(gateway.lastSeen)}</span></>
@@ -328,7 +345,9 @@ export function AssetPanel({ asset, gateway, aboard, onPick, isolated = false, o
   const meta = asset.metadata ?? {}
 
   const place = usePlaceName(loc?.lat, loc?.lng)
-  const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2)
+  // An anonymous sighting's place is a cell or zone centre on purpose (132):
+  // naming the business nearest that point would claim a precision it lacks.
+  const poi = usePoiName(loc?.lat, loc?.lng, (loc?.speed ?? 0) < 2 && !isAnonLocation(loc))
   // Range mileage table — vehicles/equipment from their own pings; tools get
   // the same numbers server-stitched from whichever truck carried them.
   const stats = useAssetStats(asset.id, asset.type === 'vehicle' || asset.type === 'equipment' || asset.type === 'tool')
@@ -450,7 +469,7 @@ function AssetDetails({
   loc: AssetWithLocation['location']
   meta: Record<string, unknown>
   d: Derived
-  gateway?: { name: string; lastSeen: string }
+  gateway?: ToolGatewayInfo
   aboard?: AboardTool[]
   onPick?: (assetId: string) => void
   isolated: boolean
@@ -518,7 +537,19 @@ function AssetDetails({
           <TruckPowerNote raw={loc?.raw} battery={loc?.battery} />
         </div>
       )}
-      {asset.type === 'tool' && gateway && (
+      {asset.type === 'tool' && gateway?.anon && (
+        <div className="bg-amber/10 border border-amber/30 rounded-lg p-3 flex items-start gap-2">
+          <MapPin className="h-4 w-4 text-amber flex-none mt-0.5" />
+          <div className="text-sm min-w-0">
+            <span className="text-amber font-semibold">{anonPlaceWords(gateway.anon.reason, gateway.anon.precisionM).short}</span>
+            <span className="block text-[12px] text-muted">
+              {anonPlaceWords(gateway.anon.reason, gateway.anon.precisionM).long} Heard {formatRelativeTime(gateway.anon.at)}.
+              {gateway.name ? <> Last with <span className="font-semibold">{gateway.name}</span> {formatRelativeTime(gateway.lastSeen)}.</> : null}
+            </span>
+          </div>
+        </div>
+      )}
+      {asset.type === 'tool' && gateway && !gateway.anon && (
         toolIsFresh(gateway.lastSeen) ? (
           <div className="bg-[#60a5fa]/15 border border-[#60a5fa]/30 rounded-lg p-3 flex items-center gap-2">
             <Wifi className="h-4 w-4 text-[#60a5fa] flex-shrink-0" />
@@ -936,6 +967,8 @@ function StatTile({ icon, label, value }: { icon: ReactNode; label: string; valu
 }
 
 type CustodyEp = { carrierId: string; carrierName: string; startMs: number; endMs: number | null; open: boolean; lastMs?: number; live?: boolean; kind?: 'rode' | 'seen'; movedM?: number }
+/** A tag heard by a phone off the clock / in a privacy zone (132): place only, never whose phone. */
+type CustodyAnon = { firstMs: number; lastMs: number; reason: 'off_shift' | 'privacy_zone' | 'recovery'; precisionM: number | null; heardN: number }
 
 /** Custody trail for a BLE tool — the pairing episodes from
  *  /api/tool-custody, newest first ("who had it last", Aug 12). Each row
@@ -944,18 +977,20 @@ type CustodyEp = { carrierId: string; carrierName: string; startMs: number; endM
  *  nothing until data lands, or when the tag has no history. */
 function ToolCustody({ assetId }: { assetId: string }) {
   const [eps, setEps] = useState<CustodyEp[] | null>(null)
+  const [anon, setAnon] = useState<CustodyAnon[]>([])
   useEffect(() => {
     let alive = true
     setEps(null)
+    setAnon([])
     fetch(`/api/tool-custody?assetId=${assetId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j: { episodes?: CustodyEp[] } | null) => {
-        if (alive) setEps(j?.episodes ?? [])
+      .then((j: { episodes?: CustodyEp[]; anon?: CustodyAnon[] } | null) => {
+        if (alive) { setEps(j?.episodes ?? []); setAnon(j?.anon ?? []) }
       })
       .catch(() => { if (alive) setEps([]) })
     return () => { alive = false }
   }, [assetId])
-  if (!eps || eps.length === 0) return null
+  if (!eps || (eps.length === 0 && anon.length === 0)) return null
   const fmt = (ms: number) => new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' })
   const span = (e: CustodyEp) => {
     // "→ now" only while the tag is still being heard — an open episode
@@ -969,11 +1004,31 @@ function ToolCustody({ assetId }: { assetId: string }) {
     const mi = m / 1609.344
     return `${mi >= 10 ? Math.round(mi) : mi.toFixed(1)} mi`
   }
+  // Rides and anonymous sightings in one newest-first list.
+  type Row = { at: number; ep?: CustodyEp; anon?: CustodyAnon }
+  const rows: Row[] = [
+    ...eps.map((ep) => ({ at: ep.lastMs ?? ep.endMs ?? ep.startMs, ep })),
+    ...anon.map((a) => ({ at: a.lastMs, anon: a })),
+  ].sort((a, b) => b.at - a.at).slice(0, 6)
   return (
     <div className="bg-navy-800 rounded-lg px-3 py-2.5">
       <p className="font-mono text-[9px] uppercase tracking-wider text-faint mb-1.5">Rides &amp; sightings · last 30 days</p>
       <div className="space-y-1">
-        {eps.slice(0, 6).map((e, i) => {
+        {rows.map((row, i) => {
+          if (row.anon) {
+            const a = row.anon
+            const w = anonPlaceWords(a.reason, a.precisionM)
+            const d0 = fmt(a.firstMs), d1 = fmt(a.lastMs)
+            return (
+              <div key={i} className="flex items-center gap-2 text-[12px]" title={w.long}>
+                <span className={'w-1.5 h-1.5 rounded-full flex-none ' + (a.reason === 'recovery' ? 'bg-alert' : 'border border-dashed border-amber/70')} />
+                <span className="truncate flex-1 text-muted">{a.reason === 'off_shift' ? 'Heard off the clock' : a.reason === 'privacy_zone' ? 'Heard in a privacy zone' : 'Heard in recovery'}</span>
+                <span className={'flex-none text-[10.5px] ' + (a.reason === 'recovery' ? 'text-alert font-semibold' : 'text-amber')}>{a.reason === 'recovery' ? 'exact' : a.reason === 'privacy_zone' ? 'zone' : `~${a.precisionM ?? 250} m`}{a.heardN > 1 ? ` ×${a.heardN}` : ''}</span>
+                <span className="text-faint font-mono text-[10.5px] flex-none">{d0 === d1 ? d1 : `${d0}–${d1}`}</span>
+              </div>
+            )
+          }
+          const e = row.ep!
           const rode = e.kind === 'rode'
           return (
             <div key={i} className="flex items-center gap-2 text-[12px]">
