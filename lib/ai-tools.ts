@@ -42,6 +42,9 @@ export interface AiToolCtx {
   timecardUserIds?: string[] | null
   /** The asker's rank on the ladder — people above them read as hours only (see getTimeCards). */
   timecardViewerRank?: number | null
+  /** The asker (or the person a view-as previews) — `safety_scores` shows
+   *  them their own driving plus the people they outrank. */
+  viewerUserId?: string | null
 }
 
 // ── Shared MCP registry (task #28: one brain, three doors) ──────────────────
@@ -50,10 +53,11 @@ export interface AiToolCtx {
 // (fleet_snapshot ⊇ list_assets, recent_alerts ⊇ list_alerts), so an answer
 // in the app and an answer through a customer's own AI come from the same
 // executors and the same house math.
-const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_status', 'find_tool', 'whats_worth_a_look', 'time_cards']
+const SHARED_MCP_TOOLS: readonly string[] = ['get_zone_costs', 'maintenance_status', 'find_tool', 'whats_worth_a_look', 'time_cards', 'fuel_exceptions', 'safety_scores']
 /** Tools that return dollars — hidden AND refused for non-cost roles.
- *  whats_worth_a_look is here because most insight rows carry money. */
-const COST_GATED_TOOLS = new Set(['get_zone_costs', 'whats_worth_a_look'])
+ *  whats_worth_a_look is here because most insight rows carry money;
+ *  fuel_exceptions is card spend from top to bottom. */
+const COST_GATED_TOOLS = new Set(['get_zone_costs', 'whats_worth_a_look', 'fuel_exceptions'])
 
 /** Anthropic-format defs for the shared MCP tools this user may call. */
 export function sharedMcpToolDefs(canViewCosts: boolean, features?: string[]) {
@@ -61,6 +65,8 @@ export function sharedMcpToolDefs(canViewCosts: boolean, features?: string[]) {
     .filter((t) => SHARED_MCP_TOOLS.includes(t.name))
     .filter((t) => canViewCosts || !COST_GATED_TOOLS.has(t.name))
     .filter((t) => t.name !== 'time_cards' || !features || features.includes('clock'))
+    .filter((t) => t.name !== 'fuel_exceptions' || !features || features.includes('receipts'))
+    .filter((t) => t.name !== 'safety_scores' || !features || features.includes('reports'))
     .map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
 }
 
@@ -810,12 +816,23 @@ export async function runAiTool(name: string, input: Record<string, unknown>, ct
       if (name === 'time_cards' && ctx.features && !ctx.features.includes('clock')) {
         return { error: 'This user does not have the Time clock view level — do not report time cards.' }
       }
+      if (name === 'fuel_exceptions' && ctx.features && !ctx.features.includes('receipts')) {
+        return { error: 'This user does not have the Receipts view level — do not report fuel purchases.' }
+      }
+      if (name === 'safety_scores' && ctx.features && !ctx.features.includes('reports')) {
+        return { error: 'This user does not have the Reports view level — do not report driving scores.' }
+      }
       // This door reads as the service role, so what the asker may see (111)
       // rides along: ctx.assets is their own RLS-read (and view-as filtered)
       // list — a tag, a truck or a service schedule outside it stays hidden.
       const res = await runMcpTool(name, input, ctx.companyId, {
         visibleAssetIds: ctx.assets.map((a) => a.id),
         ...(name === 'time_cards' ? { userIds: ctx.timecardUserIds ?? null, viewerRank: ctx.timecardViewerRank ?? null } : {}),
+        // Anonymous tag sightings follow the reporting phone's level (132).
+        ...(name === 'find_tool' ? { viewerRank: ctx.timecardViewerRank ?? null } : {}),
+        // Driving scores: the asker's own driving and the people they outrank
+        // (no rank known = no one's but their own, never everyone's).
+        ...(name === 'safety_scores' ? { viewerRank: ctx.timecardViewerRank ?? -1, viewerUserId: ctx.viewerUserId ?? null } : {}),
       })
       const text = res.content[0]?.text ?? ''
       if (res.isError) return { error: text || 'tool failed' }

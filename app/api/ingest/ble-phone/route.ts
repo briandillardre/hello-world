@@ -10,15 +10,24 @@ const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
 
 /**
  * A crew phone as a BLE gateway (Brian, Sep 9: "phone as ble gateway is a
- * must"). The app scans while it is open and, every ~20 s, posts the tags it
- * heard with the phone's fix. The phone IS an asset (the same `phone-<uid>`
- * personnel asset the Share-location page uses), so the tools it hears ride
- * with the person on the map exactly the way they ride with a truck — same
- * matcher, same strongest-signal arbitration, same custody history.
+ * must"). The app scans while it is open and posts the tags it heard with
+ * the phone's fix. What happens next depends on WHERE and WHEN (location
+ * privacy, migration 132 — lib/location-policy.ts):
+ *
+ *  • On the clock, outside privacy zones: the fix lands on the person's own
+ *    `phone-<uid>` asset and the tools it hears ride WITH it — the same
+ *    matcher, strongest-signal arbitration and custody history as a truck.
+ *  • Off the clock, or inside a privacy zone: nothing of the person is kept.
+ *    The phone asset is not touched (not even created); each tag it heard is
+ *    filed anonymously in `tool_sightings` — on a ~250 m grid cell, at the
+ *    privacy zone's centre, or at its exact spot when its asset is in
+ *    recovery. "Stop sharing" still means the phone reports nothing.
  *
  * Auth = the user's own session. Body: { beacons: [{ id, rssi }], lat, lng,
  * accuracy?, heading?, battery? }. Ids are the Tag scanner's own forms
  * (UUID:major:minor decimal, or a MAC); the matcher tolerates both.
+ * Reply: { ok, matched, holding, mode: 'custody' | 'anonymous', withheld? }
+ * — the phone's status line says which, so the person can see it.
  */
 export async function POST(req: NextRequest) {
   if (isMock) return NextResponse.json({ ok: true, mode: 'demo', matched: 0, holding: 0 })
@@ -29,7 +38,7 @@ export async function POST(req: NextRequest) {
   // the signed-in person's, a view-as preview is irrelevant here.
   const { getRealPermissions } = await import('@/lib/permissions-server')
   const perms = await getRealPermissions()
-  if (!perms.userId) return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
+  if (!perms.userId || !perms.companyId) return NextResponse.json({ ok: false, error: 'sign in' }, { status: 401 })
   if (!perms.features.includes('tags') || !perms.features.includes('track')) {
     return NextResponse.json({ ok: false, error: 'not allowed' }, { status: 403 })
   }
@@ -63,28 +72,72 @@ export async function POST(req: NextRequest) {
     .map((b) => ({ id: String(b.id ?? '').trim().slice(0, 80), rssi: num(b.rssi, -127, -20) }))
     .filter((b) => /^[0-9A-Za-z:_-]{4,80}$/.test(b.id))
 
-  // The fix lands on the phone's own asset first (creates/reactivates it and
-  // enforces the session); that asset is the gateway.
-  const fix = await pushPhoneLocation({
-    lat, lng, accuracy, heading: num(body.heading, 0, 360), battery: num(body.battery, 0, 100),
-    source: 'gateway',
-    // Never revives a stopped share — the gateway is not a way back onto the map.
-    reactivate: false,
-  })
-  if (!fix.ok || !fix.assetId) {
-    if (fix.reason === 'sharing_off') {
-      return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
-    }
-    return NextResponse.json({ ok: false, error: fix.reason === 'auth' ? 'sign in' : 'could not record the phone fix' }, { status: fix.reason === 'auth' ? 401 : 500 })
-  }
-  if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0 })
-
+  const companyId = perms.companyId
+  const userId = perms.userId
   const { createServiceClient } = await import('@/lib/supabase-server')
   const svc = createServiceClient()
-  const { data: gw } = await svc.from('assets').select('id, company_id').eq('id', fix.assetId).maybeSingle()
-  if (!gw) return NextResponse.json({ ok: false, error: 'gateway asset missing' }, { status: 500 })
-  // The phone writes iBeacon major/minor in DECIMAL (parseIBeacon) — the
-  // matcher must not also run the hex reading of the same digits.
-  const out = await recordBeaconSightings(svc, gw, { lat, lng, timestamp: new Date().toISOString() }, beacons, { reportedAs: 'dec' })
-  return NextResponse.json({ ok: true, ...out })
+  const { loadPrivacyZones, isOnShift, activeRecoveryIds, recordAnonymousSightings } = await import('@/lib/location-privacy')
+  const { phoneFixPolicy, privacyZoneAt, reporterRank } = await import('@/lib/location-policy')
+
+  // Where the person is in the policy. A privacy-zone read that fails keeps
+  // nothing and asks the phone to try again — never "keep it, probably fine".
+  let zones: Awaited<ReturnType<typeof loadPrivacyZones>>
+  try { zones = await loadPrivacyZones(svc, companyId) } catch {
+    return NextResponse.json({ ok: false, error: 'could not check privacy zones — will retry' }, { status: 503 })
+  }
+  let zone = privacyZoneAt({ lat, lng }, zones)
+  const onShift = zone ? false : await isOnShift(svc, companyId, userId)
+  const policy = phoneFixPolicy({ source: 'gateway', onShift, privacyZone: zone })
+
+  if (policy.custody) {
+    // The fix lands on the phone's own asset first (creates/reactivates it and
+    // enforces the session); that asset is the gateway.
+    const fix = await pushPhoneLocation({
+      lat, lng, accuracy, heading: num(body.heading, 0, 360), battery: num(body.battery, 0, 100),
+      source: 'gateway',
+      // Never revives a stopped share — the gateway is not a way back onto the map.
+      reactivate: false,
+    })
+    if (fix.withheld === 'privacy_zone') {
+      // A zone marked private between the two reads — file anonymously below,
+      // at that zone's centre; without it, ask the phone to try again.
+      zone = privacyZoneAt({ lat, lng }, await loadPrivacyZones(svc, companyId).catch(() => []))
+      if (!zone) return NextResponse.json({ ok: false, error: 'could not check privacy zones — will retry' }, { status: 503 })
+    } else {
+      if (!fix.ok || !fix.assetId) {
+        if (fix.reason === 'sharing_off') {
+          return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
+        }
+        return NextResponse.json({ ok: false, error: fix.reason === 'auth' ? 'sign in' : 'could not record the phone fix' }, { status: fix.reason === 'auth' ? 401 : 500 })
+      }
+      if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0, mode: 'custody' })
+      const { data: gw } = await svc.from('assets').select('id, company_id').eq('id', fix.assetId).maybeSingle()
+      if (!gw) return NextResponse.json({ ok: false, error: 'gateway asset missing' }, { status: 500 })
+      // The phone writes iBeacon major/minor in DECIMAL (parseIBeacon) — the
+      // matcher must not also run the hex reading of the same digits.
+      const out = await recordBeaconSightings(svc, gw, { lat, lng, timestamp: new Date().toISOString() }, beacons, { reportedAs: 'dec' })
+      return NextResponse.json({ ok: true, ...out, mode: 'custody' })
+    }
+  }
+
+  // Off the clock or inside a privacy zone: the person's fix is not kept and
+  // their phone asset is not touched. "Stop sharing" still means it — a phone
+  // whose share was stopped reports nothing at all (ship-check, Sep 12).
+  const withheld = zone ? 'privacy_zone' : 'off_shift'
+  const { data: phone } = await svc.from('assets').select('active, metadata')
+    .eq('company_id', companyId).eq('tracker_id', `phone-${userId}`).maybeSingle()
+  if (phone && phone.active === false) {
+    return NextResponse.json({ ok: false, error: 'location sharing is off' }, { status: 409 })
+  }
+  if (!beacons.length) return NextResponse.json({ ok: true, matched: 0, holding: 0, mode: 'anonymous', withheld })
+  // The sighting says nothing of whose phone heard it, but it is read at the
+  // phone's own visibility level (111): the owner's hidden phone stays hidden.
+  const { visibilityRank, assetVisibility } = await import('@/lib/permissions')
+  const visibleRank = reporterRank(phone ? visibilityRank(assetVisibility(phone.metadata)) : null, { isMaster: perms.isMaster, role: perms.role })
+  const recovery = await activeRecoveryIds(svc, companyId)
+  const out = await recordAnonymousSightings(svc, companyId, beacons,
+    { lat, lng, timestamp: new Date().toISOString() },
+    { privacyZone: zone, recovery, visibleRank },
+    { reportedAs: 'dec' })
+  return NextResponse.json({ ok: true, matched: out.matched, holding: 0, placed: out.placed, mode: 'anonymous', withheld })
 }

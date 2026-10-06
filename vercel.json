@@ -63,6 +63,18 @@
     {
       "path": "/api/cron/airport-board",
       "schedule": "*/20 * * * *"
+    },
+    {
+      "path": "/api/cron/satellite",
+      "schedule": "35 22 * * *"
+    },
+    {
+      "path": "/api/cron/fuel-check",
+      "schedule": "35 9 * * *"
+    },
+    {
+      "path": "/api/cron/driving",
+      "schedule": "35 * * * *"
     }
   ]
 }

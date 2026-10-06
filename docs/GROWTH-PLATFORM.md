@@ -96,6 +96,19 @@ Shopify Capital, Square → Square Loans. All started as ops tools.)
   customers = carrier loves us.
 - Gates: 12+ months of fleet loss/recovery data, meaningful customer count,
   partner-first; revisit at Founding-25 full.
+- **Oct 6 2026 research — `docs/INSURANCE-TELEMATICS.md`** (sources inside):
+  small-fleet telematics credits run 3–10% (the 20–30% headlines are
+  trucking insurtechs); only ~30% of fleets share data with their insurer and
+  79% of the rest were never asked; carriers integrate with the big trackers
+  and reach small ones through aggregators (CMT DriveWell Fleet, Draivn,
+  Terminal); telematics vendors earn from insurer SUBSIDIES, not commissions
+  or data sales — selling driver data has drawn the FTC, FCRA suits and a
+  state AG, so it is a liability, never a revenue line. In SC an unlicensed
+  company may only take fees that don't depend on a sale; the agency license
+  is cheap (~$40 + one licensed producer). Step (a) is now concrete: the
+  Safety Score + 12-month insurer report shipped Oct 6 (board #194) — a
+  customer hands it to their own agent (board #202); next an aggregator
+  listing (board #207).
 
 ## THE AI ADVISOR — the thread through all five ("what lever next")
 Grounded in telemetry + QBO + benchmarks, proactive not reactive:

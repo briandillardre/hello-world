@@ -35,7 +35,7 @@ export function GatewayToggle() {
           <p className="font-display font-bold text-sm text-ink">This phone hears tags</p>
           <p className="text-[12px] text-muted leading-snug">
             {on
-              ? 'On by default. While the app is open, the tools near you show on the map as riding with you — the way they ride with a truck. It listens a few seconds at a time — every 20 seconds while it hears tags, easing off to every 1–2 minutes when it hears none or nothing new — only checks where you are when it hears a tag it hasn’t just reported, and rests below 15% battery. Nothing runs with the app closed.'
+              ? 'On by default. While the app is open it listens for your company’s tool tags. On the clock, the tools near you show on the map riding with you — the way they ride with a truck. Off the clock, or inside a privacy zone, HammerTrack keeps only the tag’s place (a rough ~250 m area off the clock) — not where you were, and not that it was your phone. It listens a few seconds at a time — every 20 seconds while it hears tags, easing off to every 1–2 minutes when it hears none or nothing new — only checks where you are when it hears a tag it hasn’t just reported, and rests below 15% battery. Nothing runs with the app closed.'
               : 'Off on this phone — no Bluetooth listening at all. The tools near you will only show on the map when a truck with a tracker hears them.'}
           </p>
         </div>
@@ -51,7 +51,11 @@ export function GatewayToggle() {
         <p className="text-[11.5px] font-mono text-faint">
           {st?.error ? <span className="text-alert">{st.error}</span>
             : st?.paused ? st.paused
-            : st?.reportedAt ? `heard ${st.heard} tag${st.heard === 1 ? '' : 's'} · ${st.matched} known tool${st.matched === 1 ? '' : 's'} · holding ${st.holding} · reported ${ago}s ago${st.everyS ? ` · listening every ${st.everyS < 60 ? `${st.everyS}s` : `${st.everyS / 60} min`}` : ''}`
+            : st?.reportedAt ? `heard ${st.heard} tag${st.heard === 1 ? '' : 's'} · ${st.matched} known tool${st.matched === 1 ? '' : 's'} · ${
+              st.mode === 'anonymous'
+                ? st.withheld === 'privacy_zone' ? 'in a privacy zone — tags placed at its middle, nothing of yours kept' : 'off the clock — tags’ rough area only, nothing of yours kept'
+                : `holding ${st.holding}`
+            } · reported ${ago}s ago${st.everyS ? ` · listening every ${st.everyS < 60 ? `${st.everyS}s` : `${st.everyS / 60} min`}` : ''}`
             : st ? `listening${st.everyS ? ` every ${st.everyS < 60 ? `${st.everyS}s` : `${st.everyS / 60} min`}` : ''}… heard ${st.heard} tag${st.heard === 1 ? '' : 's'} so far` : 'starting…'}
         </p>
       )}

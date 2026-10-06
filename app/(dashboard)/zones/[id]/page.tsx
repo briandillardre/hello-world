@@ -22,7 +22,9 @@ import { ProjectHub } from '@/components/zones/ProjectHub'
 import { ZoneImagery } from '@/components/zones/ZoneImagery'
 import { ZonePlans } from '@/components/zones/ZonePlans'
 import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
-import { isProspect } from '@/lib/permissions'
+import { isProspect, rankOf, RANK } from '@/lib/permissions'
+import { PrivacyZoneCard } from '@/components/zones/PrivacyZoneCard'
+import { ZoneSatelliteSection } from '@/components/zones/ZoneSatelliteSection'
 import { Suspense } from 'react'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
@@ -372,6 +374,12 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
           </section>
         )}
 
+        {/* Privacy zone (132): no crew-phone point is kept inside it. */}
+        {!isMock && (
+          <PrivacyZoneCard zoneId={fence.id} on={!!fence.privacy_zone} kind={fence.kind ?? null}
+            canManage={rankOf(perms) >= RANK.admin && perms.canEdit && !perms.viewingAs} />
+        )}
+
         {/* Notes + folder ride the editor's single Save above. These standalone
             cards remain ONLY for a zone whose ring is too degenerate to edit —
             otherwise the page had three separate Save buttons for one zone. */}
@@ -384,6 +392,13 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
         {!isBoundary && imageryAvailable && (
           <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} ring={ring ?? null} />
+        )}
+        {/* Satellite pictures of the site (131) — they land on the timeline above. */}
+        {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
+          <Suspense fallback={null}>
+            <ZoneSatelliteSection zoneId={fence.id} companyId={companyId} ring={ring ?? null}
+              canEdit={perms.canEdit && !perms.viewingAs} personal={!!fence.owner_id} />
+          </Suspense>
         )}
         {!isBoundary && !isVendor && plansAvailable && (
           <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />

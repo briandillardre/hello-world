@@ -48,6 +48,8 @@ interface AlertListProps {
   onAcknowledge?: (id: string) => void
   /** Ack a specific id set — a line, a machine, or "Mark all" on a tab. */
   onAcknowledgeMany?: (ids: string[]) => void
+  /** Offer "Start recovery" on a theft / left-site card (132). */
+  canRecover?: boolean
 }
 
 type SortKey = 'newest' | 'asset' | 'type' | 'zone'
@@ -84,7 +86,7 @@ function readSnoozes(): Record<string, string> {
   try { return JSON.parse(localStorage.getItem(SNOOZE_KEY) ?? '{}') as Record<string, string> } catch { return {} }
 }
 
-export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertListProps) {
+export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany, canRecover = false }: AlertListProps) {
   const [sort, setSort] = useState<SortKey>('newest')
   // Alert-fatigue split: routine enter/exit crossings are the ZONE LOG,
   // everything else needs attention. Two tabs, needs-attention first.
@@ -321,6 +323,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
                 onAcknowledge={onAcknowledge}
                 onAcknowledgeMany={onAcknowledgeMany}
                 onSnooze={g.critical ? undefined : () => setSnooze(g.assetId, nextMorning())}
+                canRecover={canRecover}
               />
             ))}
             {snoozedGroups.length > 0 && mounted && (
@@ -381,8 +384,9 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany }: AlertLis
 
 /** One asset's card: name up top, every open issue as a coalesced line.
  *  Theft-bearing cards wear the red treatment and refuse snooze. */
-function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze }: {
+function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze, canRecover = false }: {
   group: AssetGroup
+  canRecover?: boolean
   onAcknowledge?: (id: string) => void
   onAcknowledgeMany?: (ids: string[]) => void
   onSnooze?: () => void
@@ -395,6 +399,15 @@ function GroupCard({ group: g, onAcknowledge, onAcknowledgeMany, onSnooze }: {
           {g.assetName}
         </Link>
         <span className="ml-auto flex items-center gap-2 flex-none">
+          {/* Theft or left-site: put it in recovery from here (132). */}
+          {canRecover && g.critical && (() => {
+            const ev = g.lines.find((l) => l.critical)?.newest
+            return ev ? (
+              <Link href={`/assets/${g.assetId}?recovery=start&alert=${ev.id}#recovery`} className="rounded-lg border border-alert/50 px-2 py-1 text-[11px] font-semibold text-alert hover:bg-alert/10">
+                Start recovery
+              </Link>
+            ) : null
+          })()}
           {onSnooze && (
             <button onClick={onSnooze} className="p-1.5 text-faint hover:text-ink rounded-lg" title="Snooze this machine until 6 AM (theft is never snoozed)">
               <Moon className="h-4 w-4" />

@@ -67,7 +67,14 @@ export const GATEWAY_EVENT = 'ht:phone-gateway'
 export const GATEWAY_STATUS_EVENT = 'ht:phone-gateway-status'
 /** A status line that opens mid-window asks; the gateway answers with publish(). */
 export const GATEWAY_STATUS_QUERY = 'ht:phone-gateway-status-query'
-export interface GatewayStatus { on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null; paused?: string | null; everyS?: number }
+export interface GatewayStatus {
+  on: boolean; heard: number; matched: number; holding: number; reportedAt: number | null; error: string | null; paused?: string | null; everyS?: number
+  /** How the last report was filed (132): 'custody' = on the clock, the tags
+   *  ride with this phone; 'anonymous' = off the clock or in a privacy zone,
+   *  only the tags' places were kept — nothing about the person. */
+  mode?: 'custody' | 'anonymous' | null
+  withheld?: 'off_shift' | 'privacy_zone' | null
+}
 
 function stored(): '1' | '0' | null {
   try { const v = localStorage.getItem(KEY); return v === '1' || v === '0' ? v : null } catch { return null }
@@ -306,9 +313,11 @@ export function PhoneGateway({ allowed = true }: {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ beacons: fresh.map((b) => ({ id: b.id, rssi: b.rssi })), lat: fix.lat, lng: fix.lng, accuracy: fix.acc, heading: fix.heading }),
         })
-        const j = await res.json().catch(() => ({})) as { ok?: boolean; matched?: number; holding?: number; error?: string }
+        const j = await res.json().catch(() => ({})) as { ok?: boolean; matched?: number; holding?: number; error?: string; mode?: string; withheld?: string }
         if (res.ok && j.ok) {
           status.matched = j.matched ?? 0; status.holding = j.holding ?? 0; status.reportedAt = now; status.error = null
+          status.mode = j.mode === 'anonymous' || j.mode === 'custody' ? j.mode : null
+          status.withheld = j.withheld === 'off_shift' || j.withheld === 'privacy_zone' ? j.withheld : null
           sent = { at: now, lat: fix.lat, lng: fix.lng, tags }
         } else if (res.status === 403) {
           // View levels changed under us (Tag scanner / Share location turned
@@ -378,9 +387,10 @@ export function PhoneGateway({ allowed = true }: {
           <p className="text-[15px] font-bold text-ink leading-snug">Let this phone find your tool tags</p>
         </div>
         <p className="text-[13px] text-muted leading-relaxed">
-          While the app is open, HammerTrack listens for the Bluetooth tags on your tools so
-          whatever you&apos;re carrying shows on the map as riding with you — the way tools ride
-          with a truck. It only listens for tags; it never connects to anything else.
+          While the app is open, HammerTrack listens for the Bluetooth tags on your company&apos;s
+          tools. On the clock, the tools near you show on the map riding with you — the way tools
+          ride with a truck. Off the clock it keeps only a tag&apos;s rough area, never where you
+          are. It only listens for tags; it never connects to anything else.
         </p>
         <div className="mt-4 flex gap-2">
           <button onClick={() => setPhoneGateway(true)} className="flex-1 rounded-lg bg-amber text-[#1a1100] font-display font-bold text-sm py-2.5 hover:bg-amber-600 transition-colors">

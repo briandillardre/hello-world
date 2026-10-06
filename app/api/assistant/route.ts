@@ -303,6 +303,7 @@ export async function POST(request: NextRequest) {
     features: perms.features,
     timecardUserIds: timecardScope(perms, userId).userIds,
     timecardViewerRank: rankOf(perms),
+    viewerUserId: perms.viewingAs?.id ?? userId,
   }
   // One brain, three doors (task #28): the in-app assistant serves the shared
   // MCP registry too — zone costs (cost-permission gated), maintenance, tool

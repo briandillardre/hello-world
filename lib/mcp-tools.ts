@@ -17,11 +17,17 @@ import type { AssetType, Geofence } from './types'
 import { pointInPolygon } from './alerts-engine'
 import { computeStatus, type MaintenanceStatus } from './db/maintenance'
 import { usageFromLedger } from './costs'
-import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ } from './dates'
+import { dayKey, fmtDateTime, isDayKey, DEFAULT_TZ, safeTz } from './dates'
 import { getTimeCards, weekOf } from './db/timecards'
 import { FLAG_LABEL, categoryLabel, reviewItems } from './timecards'
 import { assessCtx, describeAll, mergeReadings, notReported, readingsFromRaw, readingsSummary, truckHealth, type Readings } from './telemetry-catalog'
 import { trackerKind } from './devices'
+import {
+  KIND_LABEL, MISSING_LABEL, VERDICT_LABEL, missingTelemetry, pilotMetrics, readStoredChecks,
+  type CheckKind, type MetricException, type MetricTxn, type MissingCode, type Verdict,
+} from './fuel-check'
+import { getSafetyReport, type DriverScope, type SafetyAsset } from './db/driving'
+import { ENGINE_VERSION, SAFETY_METHOD, type SafetyScore } from './driving-score'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -109,7 +115,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: 'find_tool',
     description:
-      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway last detected it, when, its last known coordinates, its last real ride, and its recent history. Each history entry says whether the tool RODE WITH that gateway (the gateway travelled at least half a mile while hearing it — miles given) or was only SEEN BY it (heard nearby, went nowhere together). Only call something a ride when the entry says so. Tools have no GPS of their own — they inherit the location of whatever detected them.',
+      'Locate a Bluetooth-tagged tool by name: which truck/equipment gateway last detected it, when, its last known coordinates, its last real ride, and its recent history. Each history entry says whether the tool RODE WITH that gateway (the gateway travelled at least half a mile while hearing it — miles given) or was only SEEN BY it (heard nearby, went nowhere together). Only call something a ride when the entry says so. Tools have no GPS of their own — they inherit the location of whatever detected them. `heardOffTheClock` lists places where a crew phone heard the tag while its owner was off the clock or inside a privacy zone: the TAG\'s place only, rough on purpose (to about 250 m, or a privacy zone\'s middle; exact only for an asset in recovery) — those records never say whose phone, so never guess who. `bestPosition` is the place the map shows.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -148,6 +154,33 @@ export const MCP_TOOLS: McpToolDef[] = [
         week: { type: 'string', description: 'Any date (YYYY-MM-DD) inside the Monday–Sunday pay week wanted; overrides days.' },
         days: { type: 'number', description: 'Rolling window in days ending now (default 7, max 62).' },
         person: { type: 'string', description: 'Only this person (partial name ok). Omit for the whole crew.' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fuel_exceptions',
+    description:
+      'The fuel reconciliation pilot (migration 130): every fuel purchase (fleet-card or bank/card exports, card alerts) read against the truck\'s own evidence, and only four exceptions — the assigned vehicle was not at the pump; more gallons than the tank had room for; no fill and no running after the purchase; outside the cardholder\'s shift, the company\'s hours, or anywhere the company works. Each exception carries the plain-words evidence, the dollars at risk, the telemetry that limited it, and the owner\'s verdict (valid / false alarm / unsure). Also the pilot\'s numbers: recoverable dollars (valid verdicts), the false-positive rate (false alarms ÷ decided), how many are classified, the day of the 90-day pilot, and the ranked list of telemetry the checks still need. Nothing is ever declined — these are for a person to decide. Dollar figures. Use for fuel theft, fuel-card misuse, "how is the fuel pilot going", "any fuel exceptions", "what does the fuel check need" questions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['open', 'decided', 'all'], description: 'open = waiting for a verdict (default), decided = marked valid or false alarm, all.' },
+        days: { type: 'number', description: 'Purchases in the last N days (default 90, max 120).' },
+        vehicle: { type: 'string', description: 'Only this vehicle (partial name ok).' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'safety_scores',
+    description:
+      'Driving safety (HammerTrack Safety Score v1, migration 129) for ROAD VEHICLES with a hardware tracker: the fleet\'s and each vehicle\'s 0–100 score, grade and risk band over the last 30, 90 or 365 days, with the raw rates behind it — confirmed hard braking / cornering / launches per 1,000 miles from the truck\'s own accelerometer (null = the accelerometer is OFF, so harsh events were NOT measured: say "not measured", never "zero"), the share of driving time speeding over a site\'s posted limit, top-speed runs (80+ mph, 75 for medium/heavy trucks, held 20 s), late-night driving (midnight–4 AM), miles and hours, what took points off, and a data-quality block (accelerometer on/off, speedometer vs GPS, unplugs, share of driving recorded). Under 250 miles and 10 hours there is no score yet; under 3,000 miles a score is blended toward the fleet. Drivers (matched by their clocked-in phone riding along) appear only for people the asker may see. Pass `vehicle` for that vehicle\'s recent events in words. Never promise or estimate insurance savings. Use for "who drives safest", "any hard braking", "is anyone speeding", "how is the Peterbilt being driven", "what would our insurer see".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        days: { type: 'number', description: 'Window in days ending today: 30, 90 (default) or 365.' },
+        vehicle: { type: 'string', description: 'One vehicle (partial name ok) — adds its recent events in words.' },
       },
       required: [],
     },
@@ -576,7 +609,7 @@ async function runMaintenanceStatus(companyId: string, visibleIds: string[] | nu
   })
 }
 
-async function runFindTool(companyId: string, args: { name?: unknown }, visibleIds: string[] | null = null): Promise<McpToolResult> {
+async function runFindTool(companyId: string, args: { name?: unknown }, visibleIds: string[] | null = null, viewerRank: number | null = null): Promise<McpToolResult> {
   const q = typeof args.name === 'string' ? args.name : ''
   // The session door (Ask AI) passes what the asker may see (111's ladder —
   // this door reads with the service role, so RLS cannot do it here). A tag
@@ -603,7 +636,8 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
   }
 
   const sb = await service()
-  const [assocRes, logRes] = await Promise.all([
+  const { ANON_KEEP_MS, anonymousWins, anonPlaceWords } = await import('./location-policy')
+  const [assocRes, logRes, anonRes] = await Promise.all([
     sb.from('tool_associations')
       .select('gateway_asset_id, last_seen, last_lat, last_lng, attached_since, tag_battery, rssi')
       .eq('company_id', companyId)
@@ -618,6 +652,17 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
       .eq('member_asset_id', tool.id)
       .order('started_at', { ascending: false })
       .limit(10),
+    // Heard by phones off the clock / in privacy zones (132) — the tag's place
+    // only. The session door reads at the asker's level (the reporting
+    // phone's visibility, 111); the company-key door is admin-grade.
+    sb.from('tool_sightings')
+      .select('lat, lng, precision_m, reason, first_seen, last_seen, heard_n')
+      .eq('company_id', companyId)
+      .eq('tool_asset_id', tool.id)
+      .lte('visible_rank', viewerRank ?? 4)
+      .gte('last_seen', new Date(Date.now() - ANON_KEEP_MS).toISOString())
+      .order('last_seen', { ascending: false })
+      .limit(5),
   ])
   const rawAssoc = assocRes.error ? null : assocRes.data
   const assoc = rawAssoc && canSee(rawAssoc.gateway_asset_id as string) ? rawAssoc : null
@@ -629,6 +674,14 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
   const kinds = history.map((h) => rideKind(h.span_m as number | null))
   const milesOf = (h: (typeof history)[number]) => rideMiles(rideMetres({ span_m: h.span_m as number | null, moved_m: h.moved_m as number | null }))
   const lastRideAt = kinds.indexOf('rode')
+  const anon = anonRes.error ? [] : (anonRes.data ?? [])
+  const newestAnon = anon[0]
+    ? { seenMs: Date.parse(anon[0].last_seen as string), lat: Number(anon[0].lat), lng: Number(anon[0].lng), precisionM: anon[0].precision_m == null ? null : Number(anon[0].precision_m) }
+    : null
+  const anonFirst = !!newestAnon && anonymousWins(
+    assoc?.last_seen ? { seenMs: Date.parse(assoc.last_seen as string), lat: (assoc.last_lat as number | null) ?? null, lng: (assoc.last_lng as number | null) ?? null } : null,
+    newestAnon,
+  )
 
   return ok({
     tool: tool.name,
@@ -656,11 +709,26 @@ async function runFindTool(companyId: string, args: { name?: unknown }, visibleI
       to: fmtDateTime(Date.parse((h.ended_at ?? h.last_seen) as string), DEFAULT_TZ),
       ongoing: h.ended_at == null,
     })),
+    heardOffTheClock: anon.map((a) => ({
+      where: { lat: Number(a.lat), lng: Number(a.lng) },
+      roughToMetres: a.precision_m == null ? 0 : Number(a.precision_m),
+      why: anonPlaceWords(String(a.reason), a.precision_m == null ? null : Number(a.precision_m)).long,
+      from: fmtDateTime(Date.parse(a.first_seen as string), DEFAULT_TZ),
+      to: fmtDateTime(Date.parse(a.last_seen as string), DEFAULT_TZ),
+      timesHeard: Number(a.heard_n) || 1,
+    })),
+    bestPosition: anonFirst && newestAnon
+      ? { lat: newestAnon.lat, lng: newestAnon.lng, at: fmtDateTime(newestAnon.seenMs, DEFAULT_TZ), from: 'heard off the clock — the tag\'s place only', roughToMetres: newestAnon.precisionM ?? 0 }
+      : assoc?.last_lat != null
+        ? { lat: assoc.last_lat as number, lng: assoc.last_lng as number, at: fmtDateTime(Date.parse(assoc.last_seen as string), DEFAULT_TZ), from: `its carrier ${nameOf(assoc.gateway_asset_id as string)}`, roughToMetres: 0 }
+        : null,
     note: assoc
-      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.'
-      : rawAssoc
-        ? 'No sighting of this tool that this user can see.'
-        : 'This tool\'s tag has never been detected by a gateway yet.',
+      ? 'Tools have no GPS — position is the carrier gateway\'s fix at the last Bluetooth sighting. "rode with" = heard at places at least half a mile apart; "seen by" = heard in one spot.' + (anon.length ? ' heardOffTheClock entries never say whose phone heard the tag — do not guess.' : '')
+      : anon.length
+        ? 'Only heard by phones off the clock or inside privacy zones (heardOffTheClock): the tag\'s place, rough on purpose, never whose phone — do not guess.'
+        : rawAssoc
+          ? 'No sighting of this tool that this user can see.'
+          : 'This tool\'s tag has never been detected by a gateway yet.',
   })
 }
 
@@ -790,6 +858,184 @@ async function runTimeCards(companyId: string, args: { week?: unknown; days?: un
   })
 }
 
+/** The fuel pilot's exceptions and numbers (migration 130, /receipts/fuel). */
+async function runFuelExceptions(companyId: string, args: { status?: unknown; days?: unknown; vehicle?: unknown }, visibleAssetIds: string[] | null): Promise<McpToolResult> {
+  const days = Math.min(120, Math.max(1, Math.round(Number(args.days) || 90)))
+  const status = args.status === 'decided' || args.status === 'all' ? args.status : 'open'
+  const db = await service()
+  const [coRes, pilotRes, assetRes] = await Promise.all([
+    db.from('companies').select('digest_prefs').eq('id', companyId).maybeSingle(),
+    db.from('fuel_pilot').select('started_on').eq('company_id', companyId).maybeSingle(),
+    db.from('assets').select('id, name').eq('company_id', companyId).limit(2000),
+  ])
+  const tzRaw = (coRes.data?.digest_prefs as { tz?: unknown } | null)?.tz
+  const tz = typeof tzRaw === 'string' && tzRaw ? tzRaw : DEFAULT_TZ
+  const todayKey = dayKey(Date.now(), tz)
+  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const { data: txRows, error } = await db.from('fuel_transactions')
+    .select('id, txn_date, txn_at, has_time, merchant, place_label, amount, gallons, gallons_estimated, card_last4, asset_id, excluded, checks')
+    .eq('company_id', companyId).gte('txn_date', since).order('txn_date', { ascending: false }).limit(2000)
+  if (error) return ok({ exceptions: [], note: 'The fuel check is not set up on this account yet.' })
+  const names = new Map(((assetRes.data ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]))
+  const visible = visibleAssetIds ? new Set(visibleAssetIds) : null
+  let txns = ((txRows ?? []) as Record<string, unknown>[]).filter((t) => !t.asset_id || !visible || visible.has(String(t.asset_id)))
+  const vq = typeof args.vehicle === 'string' ? args.vehicle.trim().toLowerCase() : ''
+  if (vq) txns = txns.filter((t) => t.asset_id && (names.get(String(t.asset_id)) ?? '').toLowerCase().includes(vq))
+  const byId = new Map(txns.map((t) => [String(t.id), t]))
+  const exRows: Record<string, unknown>[] = []
+  const ids = Array.from(byId.keys())
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await db.from('fuel_exceptions')
+      .select('transaction_id, kind, severity, evidence, dollars_at_risk, missing, cleared_at, verdict, verdict_note')
+      .eq('company_id', companyId).in('transaction_id', ids.slice(i, i + 300))
+    exRows.push(...((data ?? []) as Record<string, unknown>[]))
+  }
+  const metricTxns: MetricTxn[] = txns.map((t) => ({
+    id: String(t.id), amount: Number(t.amount) || 0, txnDate: String(t.txn_date), hasTime: !!t.has_time, excluded: !!t.excluded,
+    assetId: (t.asset_id as string | null) ?? null, cardLast4: (t.card_last4 as string | null) ?? null, checks: readStoredChecks(t.checks),
+  }))
+  const metricEx: MetricException[] = exRows.map((e) => ({
+    transactionId: String(e.transaction_id), kind: e.kind as CheckKind, dollarsAtRisk: Number(e.dollars_at_risk) || 0,
+    verdict: (e.verdict as Verdict | null) ?? null, clearedAt: (e.cleared_at as string | null) ?? null,
+  }))
+  const m = pilotMetrics(metricTxns, metricEx, { startedOn: (pilotRes.data?.started_on as string | null) ?? null, todayKey })
+  const list = exRows
+    .filter((e) => {
+      const t = byId.get(String(e.transaction_id))
+      if (!t || t.excluded) return false
+      const decided = e.verdict === 'valid' || e.verdict === 'false'
+      return status === 'all' ? (!e.cleared_at || !!e.verdict) : status === 'decided' ? decided : !e.cleared_at && !decided
+    })
+    .map((e) => ({ e, t: byId.get(String(e.transaction_id))! }))
+    .sort((a, b) => String(b.t.txn_date).localeCompare(String(a.t.txn_date)))
+    .slice(0, 40)
+    .map(({ e, t }) => ({
+      date: t.txn_date,
+      time: t.has_time && t.txn_at ? fmtDateTime(Date.parse(String(t.txn_at)), tz) : undefined,
+      station: t.place_label ?? t.merchant,
+      amount: Number(t.amount),
+      gallons: t.gallons != null ? `${Number(t.gallons).toFixed(1)}${t.gallons_estimated ? ' (estimated from $)' : ''}` : undefined,
+      vehicle: t.asset_id ? names.get(String(t.asset_id)) ?? 'a vehicle' : 'none tied to the card',
+      card: t.card_last4 ? `…${t.card_last4}` : undefined,
+      exception: KIND_LABEL[e.kind as CheckKind] ?? String(e.kind),
+      severity: e.severity,
+      evidence: (e.evidence as { text?: string } | null)?.text ?? '',
+      dollarsAtRisk: Number(e.dollars_at_risk) || 0,
+      limitedBy: Array.isArray(e.missing) && e.missing.length ? (e.missing as MissingCode[]).map((c) => MISSING_LABEL[c] ?? c) : undefined,
+      verdict: e.verdict ? VERDICT_LABEL[e.verdict as Verdict] : 'waiting for a verdict',
+      verdictNote: (e.verdict_note as string | null) || undefined,
+      stillFlagged: !e.cleared_at,
+    }))
+  return ok({
+    pilot: {
+      day: m.startedOn ? `${m.daysIn} of ${m.pilotDays}` : 'not started',
+      classificationDaysLeft: m.classifyDaysLeft,
+      purchases: m.transactions, dollars: m.dollars,
+      exceptions: m.exceptions, waitingForAVerdict: m.unclassified,
+      valid: m.valid, falseAlarms: m.falseAlarms, unsure: m.unsure,
+      falsePositiveRate: m.falsePositiveRate == null ? null : `${Math.round(m.falsePositiveRate * 100)}%`,
+      recoverableDollars: m.recoverable, dollarsWaitingForAVerdict: m.awaiting,
+      byKind: Object.fromEntries(Object.entries(m.byKind).map(([k, s]) => [KIND_LABEL[k as CheckKind], { open: s.open, valid: s.valid, falseAlarms: s.false }])),
+    },
+    exceptions: list,
+    missingTelemetry: missingTelemetry(metricTxns, Array.from(names, ([id, name]) => ({ id, name }))).slice(0, 6).map((i) => ({ what: i.text, fix: i.fix, purchases: i.purchases })),
+    note: 'HammerTrack never declines a purchase — exceptions are for a person to decide. Cite the evidence as written.',
+  })
+}
+
+/** One score, the way an assistant should read it: numbers, what moved it,
+ *  and how far to trust it — never a bare grade. */
+function safetyBrief(s: SafetyScore) {
+  const blended = s.credible && s.z != null && s.z < 1
+  return {
+    score: s.credible ? s.score : null,
+    grade: s.credible ? s.grade : null,
+    riskBand: s.credible ? s.band : null,
+    notScoredBecause: s.credible ? undefined : s.why ?? 'not enough driving',
+    ownScoreBeforeBlending: blended ? s.raw : undefined,
+    credibilityWeight: blended ? Math.round((s.z ?? 0) * 100) / 100 : undefined,
+    miles: Math.round(s.miles),
+    drivingHours: Math.round(s.hours * 10) / 10,
+    engineHours: s.engineHours ? Math.round(s.engineHours) : undefined,
+    per1000Miles: {
+      hardBraking: s.per1000.harsh_brake,
+      hardCornering: s.per1000.harsh_corner,
+      hardLaunches: s.per1000.harsh_accel,
+      note: s.per1000.harsh_brake == null ? 'not measured — the accelerometer is off' : 'confirmed accelerometer events',
+    },
+    gpsEstimatedHardStops: s.counts.est_brake || undefined,
+    speedingPctOfDriving: s.speedPct,
+    topSpeedRuns: s.counts.max_speed,
+    overSiteLimitEvents: s.counts.zone_speeding,
+    lateNightPctOfDriving: s.lateNightPct,
+    possibleImpacts: s.counts.crash || undefined,
+    whatMovedIt: s.components.filter((c) => c.points > 0 || !c.measured).map((c) => ({ what: c.label, points: c.measured ? c.points : 'not measured', detail: c.detail })),
+    coaching: s.coaching,
+    dataQuality: {
+      verdict: s.quality.verdict,
+      accelerometer: s.quality.accelerometer,
+      speedSource: s.quality.speedSource,
+      milesWithKnownLimitPct: s.quality.limitPct,
+      drivingRecordedPct: s.quality.coveragePct,
+      unpluggedOrPowerLost: s.quality.unplugged,
+      notes: s.quality.notes,
+    },
+  }
+}
+
+async function runSafetyScores(
+  companyId: string, args: { days?: unknown; vehicle?: unknown }, visibleIds: string[] | null, drivers: DriverScope,
+): Promise<McpToolResult> {
+  const asked = Math.round(Number(args.days) || 90)
+  const days = asked <= 45 ? 30 : asked <= 180 ? 90 : 365
+  const db = await service()
+  const [{ data: co }, { data: rows }] = await Promise.all([
+    db.from('companies').select('digest_prefs').eq('id', companyId).maybeSingle(),
+    db.from('assets').select('id, name, type, tracker_id, metadata').eq('company_id', companyId).eq('active', true).limit(ASSET_ROW_CAP),
+  ])
+  const tz = safeTz(((co?.digest_prefs ?? null) as { tz?: string } | null)?.tz)
+  let assets = (rows ?? []) as SafetyAsset[]
+  if (visibleIds) {
+    const vis = new Set(visibleIds)
+    assets = assets.filter((a) => vis.has(a.id))
+  }
+  const vehicles = assets.filter((a) => a.type === 'vehicle')
+  const q = typeof args.vehicle === 'string' ? args.vehicle.trim() : ''
+  const picked = q ? matchByName(q, vehicles) : null
+  if (q && !picked) return ok({ vehicles: [], note: `No vehicle matches "${q}". Vehicles: ${vehicles.map((v) => v.name).join(', ') || 'none'}.` })
+  const rep = await getSafetyReport(isMock ? null : db, {
+    companyId, tz, days, assets, drivers,
+    eventsFor: picked?.id ?? null, eventLimit: picked ? 25 : 10, withPrior: days <= 90,
+  })
+  const list = picked ? rep.vehicles.filter((v) => v.assetId === picked.id) : rep.vehicles
+  if (picked && !list.length) return ok({ vehicles: [], note: `${picked.name} is not scored: driving scores need a cellular OBD or wired tracker on a road vehicle.` })
+  const M = SAFETY_METHOD
+  return ok({
+    method: `HammerTrack Safety Score v${ENGINE_VERSION}: 100 minus points for confirmed harsh events per 1,000 miles (braking ${M.eventWeights.harsh_brake}, cornering ${M.eventWeights.harsh_corner}, launches ${M.eventWeights.harsh_accel}; severe counts double), speeding share of driving time (moderate ${M.speedTiers[0].weight}, heavy ${M.speedTiers[1].weight}, severe ${M.speedTiers[2].weight} per 1%) and late-night share (${M.lateNight.weightPerPct} per 1%). Grades A 90+, B 80+, C 70+, D 60+, F below.`,
+    window: { days, from: rep.fromKey, to: rep.toKey, timezone: tz },
+    ...(rep.demo ? { demo: 'Demo data — a fictional fleet.' } : {}),
+    ...(picked ? {} : { fleet: { ...safetyBrief(rep.fleet), changeVsPriorPeriod: rep.fleetTrend ?? undefined } }),
+    vehicles: list.map((v) => ({
+      vehicle: v.name,
+      class: v.vehicleClass === 'heavy' ? 'medium/heavy truck' : 'light vehicle',
+      ...safetyBrief(v.score),
+      changeVsPriorPeriod: v.trend ?? undefined,
+    })),
+    ...(picked
+      ? {
+          recentEvents: rep.events.map((e) => ({
+            when: fmtDateTime(e.at, tz), what: e.words, site: e.zoneName ?? undefined,
+            scored: e.kind === 'max_speed' || e.kind === 'zone_speeding' || (e.source === 'device' && e.kind !== 'crash' && e.confirmed === true),
+          })),
+        }
+      : {
+          drivers: rep.drivers.map((d) => ({ person: d.name, ...safetyBrief(d.score), milesRiddenAlong: d.rodeMiles })),
+          driversNote: 'Drivers are matched by their clocked-in phone riding in the truck; events count against a person only when theirs was the only phone aboard.',
+        }),
+    ...(rep.ready ? {} : { note: 'Driving scores are still being built — try again in an hour.' }),
+  })
+}
+
 export async function runMcpTool(
   name: string,
   args: Record<string, unknown>,
@@ -797,7 +1043,7 @@ export async function runMcpTool(
   /** Session-door narrowing (Ask AI): whose time cards the caller may read,
    *  and which assets they may see (111 — this door reads as the service
    *  role, so the ladder is applied here). Absent = the company-key door. */
-  opts?: { userIds?: string[] | null; viewerRank?: number | null; visibleAssetIds?: string[] | null },
+  opts?: { userIds?: string[] | null; viewerRank?: number | null; visibleAssetIds?: string[] | null; viewerUserId?: string | null },
 ): Promise<McpToolResult> {
   const run = async (): Promise<McpToolResult> => {
     switch (name) {
@@ -806,10 +1052,15 @@ export async function runMcpTool(
       case 'get_zone_costs': return runGetZoneCosts(companyId, args)
       case 'list_alerts': return runListAlerts(companyId, args)
       case 'maintenance_status': return runMaintenanceStatus(companyId, opts?.visibleAssetIds ?? null)
-      case 'find_tool': return runFindTool(companyId, args, opts?.visibleAssetIds ?? null)
+      case 'find_tool': return runFindTool(companyId, args, opts?.visibleAssetIds ?? null, opts?.viewerRank ?? null)
       case 'whats_worth_a_look': return runWorthALook(companyId)
       case 'recent_photos': return runRecentPhotos(companyId, args)
       case 'time_cards': return runTimeCards(companyId, args, opts?.userIds ?? null, opts?.viewerRank ?? null)
+      case 'fuel_exceptions': return runFuelExceptions(companyId, args, opts?.visibleAssetIds ?? null)
+      // Drivers: the company-key door is admin-grade (every driver); the
+      // session door sees the asker and the people they outrank.
+      case 'safety_scores': return runSafetyScores(companyId, args, opts?.visibleAssetIds ?? null,
+        opts?.viewerRank != null ? { viewerRank: opts.viewerRank, viewerId: opts.viewerUserId ?? null } : 'all')
       default: return fail(`Unknown tool "${name}". Available: ${MCP_TOOLS.map((t) => t.name).join(', ')}`)
     }
   }

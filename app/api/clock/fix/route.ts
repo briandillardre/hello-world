@@ -67,12 +67,28 @@ export async function POST(req: NextRequest) {
   // Oldest first so the asset's last-seen ends on the newest; fixes closer
   // than the tracker's own move cadence to the previous one are dropped.
   fixes.sort((a, b) => (a.at ? Date.parse(a.at) : Infinity) - (b.at ? Date.parse(b.at) : Infinity))
-  const spaced: Fix[] = []
+  const spacedAll: Fix[] = []
   for (const f of fixes) {
-    const prev = spaced[spaced.length - 1]
+    const prev = spacedAll[spacedAll.length - 1]
     if (prev && f.at && prev.at && Date.parse(f.at) - Date.parse(prev.at) < MIN_GAP_MS) continue
-    spaced.push(f)
+    spacedAll.push(f)
   }
+  // Privacy zones (132): a point inside a zone an Admin marked private is not
+  // kept, on the clock or not. A zone read that fails keeps nothing and asks
+  // the phone to send the batch again (it holds it until a 2xx). `paused`
+  // says the NEWEST fix was inside one, so the clock card can say recording
+  // stopped there — and why.
+  const { loadPrivacyZones } = await import('@/lib/location-privacy')
+  const { privacyZoneAt } = await import('@/lib/location-policy')
+  let zones: Awaited<ReturnType<typeof loadPrivacyZones>>
+  try { zones = await loadPrivacyZones(svc, perms.companyId) } catch {
+    return NextResponse.json({ ok: false, error: 'could not check privacy zones — will retry' }, { status: 503 })
+  }
+  const spaced = spacedAll.filter((f) => !privacyZoneAt(f, zones))
+  const withheld = spacedAll.length - spaced.length
+  const newest = spacedAll[spacedAll.length - 1]
+  const paused = newest && privacyZoneAt(newest, zones) ? 'privacy_zone' : null
+  if (!spaced.length) return NextResponse.json({ ok: true, saved: 0, withheld, paused })
   // One round trip per batch, not four per fix (a 50-fix dead-zone batch used
   // to be ~200 queries inside maxDuration): the phone asset is created (or
   // reactivated) through pushPhoneLocation for the FIRST fix when it does not
@@ -107,5 +123,5 @@ export async function POST(req: NextRequest) {
     else if (!saved) return NextResponse.json({ ok: false, error: 'could not record the fixes' }, { status: 500 })
   }
   if (saved) { const { revalidatePath } = await import('next/cache'); revalidatePath('/map') }
-  return NextResponse.json({ ok: saved > 0, saved })
+  return NextResponse.json({ ok: saved > 0, saved, withheld, paused })
 }

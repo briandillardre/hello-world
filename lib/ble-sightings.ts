@@ -81,9 +81,46 @@ export function beaconCandidates(id: string, reportedAs: BeaconNumbering = 'hex'
 }
 
 /**
+ * The company's tools, loaded ONCE, as a matcher: a tag's candidate ids →
+ * the tool it is, or null. Null when the company has no tagged tools. Shared
+ * by custody (below) and the anonymous off-the-clock path
+ * (lib/location-privacy.ts) so both match tags the same way.
+ *
+ * A phone hears every advertiser in range (watches, earbuds, cars —
+ * randomized MACs that churn every window), so matching each id against the
+ * database cost 1–5 round trips plus a full tool scan per unknown id, × 60
+ * ids, × every 20 s, × every phone (sec-check P2, Sep 9). In memory it is
+ * the same test the old ilike/bare pair ran: exact case-insensitive first,
+ * then separator-insensitive. TOOLS only — the ilike phase used to match ANY
+ * asset, so a posted truck IMEI or a colleague's phone id could be filed as
+ * a tool riding with you.
+ */
+export async function toolMatcher(db: SupabaseClient, companyId: string): Promise<((candidates: string[]) => string | null) | null> {
+  const { data: toolRows } = await db
+    .from('assets').select('id, tracker_id')
+    .eq('company_id', companyId).eq('type', 'tool').eq('active', true).not('tracker_id', 'is', null)
+  const tools = (toolRows ?? []).map((t) => ({ id: t.id as string, exact: String(t.tracker_id).toLowerCase(), bare: strip(String(t.tracker_id)) }))
+  if (!tools.length) return null
+  return (candidates: string[]): string | null => {
+    for (const cand of candidates) {
+      const lc = cand.toLowerCase()
+      const hit = tools.find((t) => t.exact === lc)
+      if (hit) return hit.id
+    }
+    const bare = candidates.map(strip).filter((s) => s.length >= 8)
+    if (!bare.length) return null
+    return tools.find((t) => bare.includes(t.bare))?.id ?? null
+  }
+}
+
+/**
  * Record what `gateway` heard at `fix`. Returns how many tags matched a tool
  * and how many of those the gateway now holds. Never throws — custody is
  * additive and must not break the caller's ingest.
+ *
+ * Custody NAMES the gateway: a phone may only be one while its trail is kept
+ * (on the clock, outside privacy zones — lib/location-policy.ts). Anything
+ * else a phone hears goes through lib/location-privacy.ts instead.
  */
 export async function recordBeaconSightings(
   db: SupabaseClient,
@@ -97,29 +134,8 @@ export async function recordBeaconSightings(
   const seenMs = Date.parse(fix.timestamp)
   const reportedAs = opts.reportedAs ?? 'hex'
 
-  // The company's tools, ONCE per call. A phone hears every advertiser in
-  // range (watches, earbuds, cars — randomized MACs that churn every window),
-  // so matching each id against the database cost 1–5 round trips plus a
-  // full tool scan per unknown id, × 60 ids, × every 20 s, × every phone
-  // (sec-check P2, Sep 9). In memory it is the same test the old ilike/bare
-  // pair ran: exact case-insensitive first, then separator-insensitive.
-  // TOOLS only — the ilike phase used to match ANY asset, so a posted truck
-  // IMEI or a colleague's phone id could be filed as a tool riding with you.
-  const { data: toolRows } = await db
-    .from('assets').select('id, tracker_id')
-    .eq('company_id', gateway.company_id).eq('type', 'tool').eq('active', true).not('tracker_id', 'is', null)
-  const tools = (toolRows ?? []).map((t) => ({ id: t.id as string, exact: String(t.tracker_id).toLowerCase(), bare: strip(String(t.tracker_id)) }))
-  if (!tools.length) return { matched, holding }
-  const findTool = (candidates: string[]): string | null => {
-    for (const cand of candidates) {
-      const lc = cand.toLowerCase()
-      const hit = tools.find((t) => t.exact === lc)
-      if (hit) return hit.id
-    }
-    const bare = candidates.map(strip).filter((s) => s.length >= 8)
-    if (!bare.length) return null
-    return tools.find((t) => bare.includes(t.bare))?.id ?? null
-  }
+  const findTool = await toolMatcher(db, gateway.company_id)
+  if (!findTool) return { matched, holding }
 
   for (const beacon of beacons) {
     if (!beacon?.id) continue
