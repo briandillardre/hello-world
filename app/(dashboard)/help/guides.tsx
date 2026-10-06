@@ -588,6 +588,18 @@ export const GUIDES: HelpGuide[] = [
           </P>
         ),
       },
+      {
+        heading: 'Pictures from space',
+        body: (
+          <P>
+            With the satellite add-on, a site&apos;s page has a <B>Satellite</B> card. Turn it on and a
+            clear Sentinel-2 picture lands on the site&apos;s photo timeline every few days, dated, and
+            on the map&apos;s <B>Site imagery</B> layer — scrub the timeline to watch the site change.
+            At 10 m a picture shows clearing, pads and big grading changes, not machines or stakes;
+            cloudy passes are skipped. Daily 3 m pictures (Planet) need a separate setup — ask us.
+          </P>
+        ),
+      },
     ],
   },
   {

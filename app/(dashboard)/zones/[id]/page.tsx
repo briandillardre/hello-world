@@ -24,6 +24,7 @@ import { ZonePlans } from '@/components/zones/ZonePlans'
 import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { PrivacyZoneCard } from '@/components/zones/PrivacyZoneCard'
+import { ZoneSatelliteSection } from '@/components/zones/ZoneSatelliteSection'
 import { Suspense } from 'react'
 import type { ZoneImage } from '@/lib/actions/imagery'
 import { getProjectHubData } from '@/lib/db/projects'
@@ -391,6 +392,13 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
         {!isBoundary && imageryAvailable && (
           <ZoneImagery zoneId={fence.id} initial={zoneImages} canEdit={!isMock} ring={ring ?? null} />
+        )}
+        {/* Satellite pictures of the site (131) — they land on the timeline above. */}
+        {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
+          <Suspense fallback={null}>
+            <ZoneSatelliteSection zoneId={fence.id} companyId={companyId} ring={ring ?? null}
+              canEdit={perms.canEdit && !perms.viewingAs} personal={!!fence.owner_id} />
+          </Suspense>
         )}
         {!isBoundary && !isVendor && plansAvailable && (
           <ZonePlans zoneId={fence.id} initial={zonePlans} canEdit={!isMock} ring={ring ?? null} />
