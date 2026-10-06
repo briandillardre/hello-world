@@ -30,7 +30,9 @@
 --
 -- Reads: the company's members, under the per-asset visibility ladder (111)
 -- like every asset-keyed table. Driver behaviour is people-shaped data:
--- Prospective Clients read none of it (119's lockdown). Writes: service role.
+-- Prospective Clients read none of it (119's lockdown). Pages sum a period
+-- in SQL (driving_rollup: one row per vehicle-month; driving_person_events),
+-- never by paging day rows. Writes: service role.
 --
 -- Frozen once pushed (CLAUDE.md) — fix-ups go in a new file.
 
@@ -353,6 +355,117 @@ BEGIN
     version = EXCLUDED.version, updated_at = now();
 END $$;
 
+-- ── The readers' sums ───────────────────────────────────────────────────────
+-- A period summed IN SQL, one row per vehicle per calendar month (the days
+-- are company-local already), so a page never pages through day rows: 500
+-- trucks × 12 months is 6,000 rows, not 180,000. The counts the score needs
+-- ride along (days reporting, driving days, accelerometer days and their
+-- miles), and `drivers` sums each person's minutes per vehicle-month with
+-- theirs (nd days aboard, dd days driving alone, ad of those with the
+-- accelerometer on, a = solo miles on those days). lib/driving-score
+-- sumDaily / driverTotals read these exactly like day rows.
+-- SECURITY INVOKER: a member's call sees only what RLS lets them read (111's
+-- ladder, 119's lockdown); p_company is a filter, never a grant.
+CREATE OR REPLACE FUNCTION public.driving_jnum(j JSONB, k TEXT)
+RETURNS NUMERIC
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE WHEN jsonb_typeof(j->k) = 'number' THEN (j->>k)::numeric ELSE 0 END
+$$;
+
+CREATE OR REPLACE FUNCTION public.driving_rollup(p_company UUID, p_assets UUID[], p_from DATE, p_to DATE)
+RETURNS TABLE (
+  asset_id UUID, month TEXT, n_days INT, n_driving INT, n_accel INT, accel_miles REAL, updated_at TIMESTAMPTZ,
+  miles REAL, moving_s BIGINT, engine_s BIGINT, night_s BIGINT, evening_s BIGINT, max_mph INT, limit_miles REAL,
+  zone_mod_s BIGINT, zone_heavy_s BIGINT, zone_sev_s BIGINT, max_sev_s BIGINT, zone_speed_n INT, max_speed_n INT,
+  brake_mod INT, brake_sev INT, accel_mod INT, accel_sev INT, corner_mod INT, corner_sev INT, unconfirmed_n INT,
+  brake_est INT, accel_est INT, crashes INT, fixes BIGINT, obd_s BIGINT, dense_s BIGINT, gap_s BIGINT,
+  longest_gap_s INT, power_lost INT, unplug_n INT, jamming_n INT, towing_n INT, rejects_n INT, drivers JSONB)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+  WITH d AS (
+    SELECT x.*, to_char(x.day, 'YYYY-MM') AS mon
+    FROM driving_daily x
+    WHERE x.company_id = p_company AND x.asset_id = ANY(p_assets) AND x.day >= p_from AND x.day <= p_to
+  ),
+  people AS (
+    SELECT d.asset_id, d.mon, p.key AS pid,
+           count(*) AS nd,
+           count(*) FILTER (WHERE driving_jnum(p.value, 'ss') > 0) AS dd,
+           count(*) FILTER (WHERE driving_jnum(p.value, 'ss') > 0 AND d.accel_on) AS ad,
+           sum(driving_jnum(p.value, 's')) AS s, sum(driving_jnum(p.value, 'mi')) AS mi,
+           sum(driving_jnum(p.value, 'ss')) AS ss, sum(driving_jnum(p.value, 'smi')) AS smi,
+           sum(driving_jnum(p.value, 'ns')) AS ns, sum(driving_jnum(p.value, 'zm')) AS zm,
+           sum(driving_jnum(p.value, 'zh')) AS zh, sum(driving_jnum(p.value, 'zs')) AS zs,
+           COALESCE(sum(driving_jnum(p.value, 'smi')) FILTER (WHERE d.accel_on AND driving_jnum(p.value, 'ss') > 0), 0) AS a
+    FROM d CROSS JOIN LATERAL jsonb_each(d.drivers) p
+    WHERE jsonb_typeof(p.value) = 'object'
+    GROUP BY d.asset_id, d.mon, p.key
+  ),
+  ppl AS (
+    SELECT asset_id, mon, jsonb_object_agg(pid, jsonb_build_object(
+             'nd', nd, 'dd', dd, 'ad', ad, 's', s, 'mi', mi, 'ss', ss, 'smi', smi,
+             'ns', ns, 'zm', zm, 'zh', zh, 'zs', zs, 'a', a)) AS drivers
+    FROM people
+    GROUP BY asset_id, mon
+  ),
+  sums AS (
+    SELECT d.asset_id, d.mon,
+           count(*)::int AS n_days,
+           (count(*) FILTER (WHERE d.moving_s > 0))::int AS n_driving,
+           (count(*) FILTER (WHERE d.moving_s > 0 AND d.accel_on))::int AS n_accel,
+           COALESCE(sum(d.miles) FILTER (WHERE d.moving_s > 0 AND d.accel_on), 0)::real AS accel_miles,
+           max(d.updated_at) AS updated_at,
+           sum(d.miles)::real AS miles, sum(d.moving_s)::bigint AS moving_s, sum(d.engine_s)::bigint AS engine_s,
+           sum(d.night_s)::bigint AS night_s, sum(d.evening_s)::bigint AS evening_s, max(d.max_mph)::int AS max_mph,
+           sum(d.limit_miles)::real AS limit_miles, sum(d.zone_mod_s)::bigint AS zone_mod_s,
+           sum(d.zone_heavy_s)::bigint AS zone_heavy_s, sum(d.zone_sev_s)::bigint AS zone_sev_s,
+           sum(d.max_sev_s)::bigint AS max_sev_s, sum(d.zone_speed_n)::int AS zone_speed_n,
+           sum(d.max_speed_n)::int AS max_speed_n, sum(d.brake_mod)::int AS brake_mod, sum(d.brake_sev)::int AS brake_sev,
+           sum(d.accel_mod)::int AS accel_mod, sum(d.accel_sev)::int AS accel_sev, sum(d.corner_mod)::int AS corner_mod,
+           sum(d.corner_sev)::int AS corner_sev, sum(d.unconfirmed_n)::int AS unconfirmed_n,
+           sum(d.brake_est)::int AS brake_est, sum(d.accel_est)::int AS accel_est, sum(d.crashes)::int AS crashes,
+           sum(d.fixes)::bigint AS fixes, sum(d.obd_s)::bigint AS obd_s, sum(d.dense_s)::bigint AS dense_s,
+           sum(d.gap_s)::bigint AS gap_s, max(d.longest_gap_s)::int AS longest_gap_s,
+           sum(d.power_lost)::int AS power_lost, sum(d.unplug_n)::int AS unplug_n, sum(d.jamming_n)::int AS jamming_n,
+           sum(d.towing_n)::int AS towing_n, sum(d.rejects_n)::int AS rejects_n
+    FROM d
+    GROUP BY d.asset_id, d.mon
+  )
+  SELECT s.asset_id, s.mon, s.n_days, s.n_driving, s.n_accel, s.accel_miles, s.updated_at,
+         s.miles, s.moving_s, s.engine_s, s.night_s, s.evening_s, s.max_mph, s.limit_miles,
+         s.zone_mod_s, s.zone_heavy_s, s.zone_sev_s, s.max_sev_s, s.zone_speed_n, s.max_speed_n,
+         s.brake_mod, s.brake_sev, s.accel_mod, s.accel_sev, s.corner_mod, s.corner_sev, s.unconfirmed_n,
+         s.brake_est, s.accel_est, s.crashes, s.fixes, s.obd_s, s.dense_s, s.gap_s,
+         s.longest_gap_s, s.power_lost, s.unplug_n, s.jamming_n, s.towing_n, s.rejects_n,
+         COALESCE(ppl.drivers, '{}'::jsonb)
+  FROM sums s
+  LEFT JOIN ppl ON ppl.asset_id = s.asset_id AND ppl.mon = s.mon
+  ORDER BY s.mon, s.asset_id
+$$;
+
+-- Each person's events in a period, counted by what they were — a driver's
+-- score never pages through raw events.
+CREATE OR REPLACE FUNCTION public.driving_person_events(p_company UUID, p_assets UUID[], p_from TIMESTAMPTZ, p_to TIMESTAMPTZ)
+RETURNS TABLE (person_id UUID, kind TEXT, severity TEXT, source TEXT, confirmed BOOLEAN, n INT)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+  SELECT e.person_id, e.kind, e.severity, e.source, e.confirmed, count(*)::int
+  FROM driving_events e
+  WHERE e.company_id = p_company AND e.asset_id = ANY(p_assets) AND e.person_id IS NOT NULL
+    AND e.at >= p_from AND e.at < p_to
+  GROUP BY e.person_id, e.kind, e.severity, e.source, e.confirmed
+  ORDER BY e.person_id, e.kind, e.severity, e.source, e.confirmed
+$$;
+
 -- Service role only: every builder function reads or writes across the
 -- company boundary by design.
 DO $$
@@ -370,5 +483,19 @@ GRANT EXECUTE ON FUNCTION public.driving_phone_fixes(UUID[], TIMESTAMPTZ, TIMEST
 GRANT EXECUTE ON FUNCTION public.driving_dirty(TIMESTAMPTZ, UUID[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.driving_backfill_todo(UUID[], DATE, DATE, TEXT, INT, INT) TO service_role;
 GRANT EXECUTE ON FUNCTION public.driving_put_day(UUID, DATE, JSONB, JSONB) TO service_role;
+
+-- The readers' sums run as the caller (RLS decides): members and the service
+-- role, never anon.
+DO $$
+BEGIN
+  REVOKE ALL ON FUNCTION public.driving_rollup(UUID, UUID[], DATE, DATE) FROM PUBLIC, anon;
+  REVOKE ALL ON FUNCTION public.driving_person_events(UUID, UUID[], TIMESTAMPTZ, TIMESTAMPTZ) FROM PUBLIC, anon;
+  REVOKE ALL ON FUNCTION public.driving_jnum(JSONB, TEXT) FROM PUBLIC, anon;
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE NOTICE '129: driving reader grants left as-is (%)', SQLERRM;
+END $$;
+GRANT EXECUTE ON FUNCTION public.driving_jnum(JSONB, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.driving_rollup(UUID, UUID[], DATE, DATE) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.driving_person_events(UUID, UUID[], TIMESTAMPTZ, TIMESTAMPTZ) TO authenticated, service_role;
 
 NOTIFY pgrst, 'reload schema';

@@ -42,14 +42,15 @@ to their agent. What an insurer does with it is the insurer's business.
 Harnesses — run both after ANY change to the engine, the migration or the builder:
 
 ```
-node scripts/driving-score-test.mjs                                   # 137 assertions
-PSQL="psql -h localhost -p 5432 -U postgres" bash scripts/driving-sql-test/run.sh   # 42 checks, local PG 16
+node scripts/driving-score-test.mjs                                   # 140 assertions
+PSQL="psql -h localhost -p 5432 -U postgres" bash scripts/driving-sql-test/run.sh   # 51 checks, local PG 16
 ```
 
 The SQL harness applies 129 VERBATIM to a bare PostgreSQL 16 (`setup.sql` stubs the
 Supabase roles, `auth.uid()`, 111's visibility ladder, 115's `ht_safe_tz` and 119's
 `ht_prospect_lockdown`), feeds the real `driving_day_fixes` answer through the TS
-engine, and checks the write, the to-do lists and every read rule.
+engine, checks the write, the to-do lists and every read rule, and proves the
+period sums (`driving_rollup`) read exactly like the day rows they sum.
 
 ---
 
@@ -167,6 +168,14 @@ inputs, `accel_on` / `accel_seen`, `drivers` (`{ uid: { s, mi, ss, smi, ns, zm, 
 — `ss`… = solo), `version`. `driving_events` — the events behind the counts
 (`(asset_id, kind, at)` unique). Reads: company members under the 111 ladder;
 prospects locked out (`ht_prospect_lockdown(…, false)`); writes service role only.
+
+Pages never page through day rows: `driving_rollup(company, assets, from, to)` sums
+a period in SQL to one row per vehicle per month (with the counts the score needs —
+days reporting, driving days, accelerometer days and their miles — and each rider's
+sums), and `driving_person_events` counts each person's events by kind. Both run as
+the caller (RLS decides). 500 trucks × 12 months = 6,000 rows, not 180,000.
+`sumDaily` / `driverTotals` read a summed row exactly like its days (proven in both
+harnesses).
 
 `/api/cron/driving` (hourly, fails closed on `CRON_SECRET`):
 1. **Changed days** — `driving_dirty(since)` lists vehicles with fixes that ARRIVED

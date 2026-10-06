@@ -85,11 +85,25 @@ check "backfill: the limit holds" "$(qa "SELECT count(*) FROM driving_backfill_t
 check "backfill: a bad zone name falls back to Eastern" "$(qa "SELECT count(*) FROM driving_backfill_todo(ARRAY['$TRUCK']::uuid[], '2026-10-01', '2026-10-07', 'Not/AZone', 1, 50)")" "2"
 check "dirty: rows that arrived since the watermark, per vehicle" "$(qa "SELECT count(*) FROM driving_dirty(now() - interval '1 hour', ARRAY['$TRUCK','$HIDDEN']::uuid[])")" "2"
 
+# ── the readers' sums ───────────────────────────────────────────────────────
+TRUCK2=00000000-0000-4000-8000-0000000000c4
+qa "SELECT json_agg(d ORDER BY d.day) FROM driving_daily d WHERE asset_id = '$TRUCK2'" > "$TMP/days.json"
+qa "SELECT json_agg(r) FROM driving_rollup('$COA', ARRAY['$TRUCK2']::uuid[], '2026-08-01', '2026-10-31') r" > "$TMP/rollup.json"
+check "rollup: one row per vehicle-month, summed = the TS fold of its days (totals, riders, score)" "$(node gen.mjs sums "$TMP")" "ok"
+check "rollup: the window's edges hold" "$(qa "SELECT string_agg(month || ':' || n_days, ',' ORDER BY month) FROM driving_rollup('$COA', ARRAY['$TRUCK2']::uuid[], '2026-09-01', '2026-09-29')")" "2026-09:2"
+check "rollup: another company's id filters to nothing" "$(qa "SELECT count(*) FROM driving_rollup('$COB', ARRAY['$TRUCK2']::uuid[], '2026-08-01', '2026-10-31')")" "0"
+check "person events: counted by person and kind" "$(qa "SELECT string_agg(severity || ':' || n, ',' ORDER BY severity) FROM driving_person_events('$COA', ARRAY['$TRUCK2']::uuid[], '2026-09-01', '2026-10-01') WHERE person_id = '00000000-0000-4000-8000-0000000000a1'")" "moderate:1,severe:1"
+check "a crew member's sums skip the owner-only truck" "$(as 00000000-0000-4000-8000-0000000000a1 "SELECT count(*) FROM driving_rollup('$COA', ARRAY['$HIDDEN']::uuid[], '2026-01-01', '2026-12-31')")" "0"
+check "…but see their own company's" "$(as 00000000-0000-4000-8000-0000000000a1 "SELECT sum(n_days) FROM driving_rollup('$COA', ARRAY['$TRUCK2']::uuid[], '2026-01-01', '2026-12-31')")" "4"
+check "a Prospective Client's sums are empty" "$(as 00000000-0000-4000-8000-0000000000e1 "SELECT count(*) FROM driving_rollup('$COA', ARRAY['$TRUCK2']::uuid[], '2026-01-01', '2026-12-31')")" "0"
+check "…and so are their event counts" "$(as 00000000-0000-4000-8000-0000000000e1 "SELECT count(*) FROM driving_person_events('$COA', ARRAY['$TRUCK2']::uuid[], '2026-01-01', '2027-01-01')")" "0"
+check "anon cannot run the sums" "$(qa "SET ROLE anon; SELECT count(*) FROM driving_rollup('$COA', ARRAY['$TRUCK2']::uuid[], '2026-01-01', '2026-12-31')" 2>&1 | grep -c 'permission denied')" "1"
+
 # ── who reads ───────────────────────────────────────────────────────────────
-check "a crew member reads their company's scores" "$(as 00000000-0000-4000-8000-0000000000a1 "SELECT count(*) FROM driving_daily")" "1"
+check "a crew member reads their company's scores" "$(as 00000000-0000-4000-8000-0000000000a1 "SELECT count(DISTINCT asset_id) FROM driving_daily")" "2"
 check "…but not the owner-only truck's" "$(as 00000000-0000-4000-8000-0000000000a1 "SELECT count(*) FROM driving_daily WHERE asset_id = '$HIDDEN'")" "0"
 check "…nor its events" "$(as 00000000-0000-4000-8000-0000000000f1 "SELECT count(*) FROM driving_events WHERE asset_id = '$HIDDEN'")" "0"
-check "the owner reads both trucks" "$(as $COA "SELECT count(*) FROM driving_daily")" "2"
+check "the owner reads every truck, the owner-only one too" "$(as $COA "SELECT count(DISTINCT asset_id) FROM driving_daily")" "3"
 check "nobody reads another company's" "$(as $COB "SELECT count(*) FROM driving_daily WHERE company_id = '$COA'")" "0"
 check "a Prospective Client reads no scores" "$(as 00000000-0000-4000-8000-0000000000e1 "SELECT count(*) FROM driving_daily")" "0"
 check "…and no events" "$(as 00000000-0000-4000-8000-0000000000e1 "SELECT count(*) FROM driving_events")" "0"

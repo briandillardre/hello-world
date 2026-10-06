@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   const { createServiceClient } = await import('@/lib/supabase-server')
   const { readState, writeState } = await import('@/lib/system-state')
   const { resolveDigestPrefs } = await import('@/lib/weekly-digest')
-  const { buildVehicleDay, classOfAsset, daysBetween, isScoredAsset, loadCompanyCtx } = await import('@/lib/db/driving')
+  const { buildVehicleDay, classOfAsset, daysBetween, idChunks, isScoredAsset, loadCompanyCtx } = await import('@/lib/db/driving')
   const { ENGINE_VERSION } = await import('@/lib/driving-score')
   const { addDaysKey, dayKey, safeTz, zonedMidnightMs } = await import('@/lib/dates')
   const db = createServiceClient()
@@ -86,9 +86,10 @@ export async function GET(req: NextRequest) {
   }
   // Yesterday, for any truck whose yesterday was last built before the day ended.
   const yKeys = new Map<string, string>(companyIds.map((id) => [id, addDaysKey(dayKey(started, tzOf.get(id) ?? 'America/New_York'), -1)]))
-  const { data: yRows } = await db.from('driving_daily').select('asset_id, day, updated_at')
-    .in('asset_id', assets.map((a) => a.id)).in('day', Array.from(new Set(yKeys.values())))
-  const yBuilt = new Map(((yRows ?? []) as { asset_id: string; day: string; updated_at: string }[]).map((r) => [`${r.asset_id}|${r.day}`, Date.parse(r.updated_at)]))
+  const yGot = await Promise.all(idChunks(assets.map((a) => a.id)).map((chunk) => db.from('driving_daily').select('asset_id, day, updated_at')
+    .in('asset_id', chunk).in('day', Array.from(new Set(yKeys.values())))))
+  const yRows = yGot.flatMap((g) => g.data ?? []) as { asset_id: string; day: string; updated_at: string }[]
+  const yBuilt = new Map(yRows.map((r) => [`${r.asset_id}|${r.day}`, Date.parse(r.updated_at)]))
   for (const a of assets) {
     const y = yKeys.get(a.company_id)
     if (!y) continue

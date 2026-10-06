@@ -220,6 +220,13 @@ export interface RiderDay {
   zm: number
   zh: number
   zs: number
+  /** Only on a period SUM (driving_rollup), never on a day: days aboard,
+   *  days driving alone, of those with the accelerometer on, and the solo
+   *  miles on them. */
+  nd?: number
+  dd?: number
+  ad?: number
+  a?: number
 }
 
 /** One vehicle-day — the driving_daily row (snake_case = the column names). */
@@ -1070,16 +1077,25 @@ export function emptyTotals(): DrivingTotals {
   }
 }
 
-export type RowLike = Partial<Omit<DailyRow, 'day' | 'tz' | 'vclass' | 'version'>>
+/** A day row — or a period already summed in SQL (driving_rollup, one row
+ *  per vehicle-month), which carries the counts a day row implies: days
+ *  reporting, driving days, accelerometer days and the miles on them. */
+export type RowLike = Partial<Omit<DailyRow, 'day' | 'tz' | 'vclass' | 'version'>> & {
+  n_days?: number
+  n_driving?: number
+  n_accel?: number
+  accel_miles?: number
+}
 
 export function sumDaily(rows: RowLike[], periodDays: number | null = null): DrivingTotals {
   const t = emptyTotals()
   t.periodDays = periodDays
   const n = (x: unknown) => Number(x) || 0
   for (const r of rows) {
-    t.days++
+    const summed = r.n_days != null
+    t.days += summed ? n(r.n_days) : 1
     const driving = n(r.moving_s) > 0
-    if (driving) t.drivingDays++
+    t.drivingDays += summed ? n(r.n_driving) : driving ? 1 : 0
     const miles = n(r.miles)
     t.miles += miles
     t.movingS += n(r.moving_s)
@@ -1114,7 +1130,8 @@ export function sumDaily(rows: RowLike[], periodDays: number | null = null): Dri
     t.jamming += n(r.jamming_n)
     t.towing += n(r.towing_n)
     t.rejects += n(r.rejects_n)
-    if (driving && r.accel_on) { t.accelDays++; t.accelMiles += miles }
+    if (summed) { t.accelDays += n(r.n_accel); t.accelMiles += n(r.accel_miles) }
+    else if (driving && r.accel_on) { t.accelDays++; t.accelMiles += miles }
     for (const d of Object.values(r.drivers ?? {})) t.attributedMiles += n(d?.smi)
   }
   t.miles = round1(t.miles)
@@ -1137,12 +1154,20 @@ export function driverTotals(
   for (const r of rows) {
     const d = r.drivers?.[personId]
     if (!d) continue
-    t.days++
     rode += Number(d.mi) || 0
     const smi = Number(d.smi) || 0
-    if ((d.ss || 0) > 0) {
-      t.drivingDays++
-      if (r.accel_on) { t.accelDays++; t.accelMiles += smi }
+    if (d.nd != null) {
+      // A period summed in SQL: the counts come with it.
+      t.days += Number(d.nd) || 0
+      t.drivingDays += Number(d.dd) || 0
+      t.accelDays += Number(d.ad) || 0
+      t.accelMiles += Number(d.a) || 0
+    } else {
+      t.days++
+      if ((d.ss || 0) > 0) {
+        t.drivingDays++
+        if (r.accel_on) { t.accelDays++; t.accelMiles += smi }
+      }
     }
     t.miles += smi
     t.movingS += d.ss || 0

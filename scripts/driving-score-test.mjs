@@ -359,6 +359,24 @@ const pair = (moderate, severe = 0) => ({ moderate, severe })
   ok('…accelerometer miles only from accelerometer days', t.accelDays === 1 && t.accelMiles === 60 && t.harsh_brake.severe === 2 && t.estBrake === 1, t)
   const months = D.byMonth([{ day: '2026-09-30' }, { day: '2026-10-01' }, { day: '2026-10-06' }])
   ok('byMonth groups the insurer\'s 12-month series', months.get('2026-09').length === 1 && months.get('2026-10').length === 2)
+
+  // A period already summed in SQL (driving_rollup) reads exactly like its days.
+  const P = (o) => ({ s: 0, mi: 0, ss: 0, smi: 0, ns: 0, zm: 0, zh: 0, zs: 0, ...o })
+  const days = [
+    r({ miles: 40, moving_s: 3600, accel_on: true, brake_mod: 1, drivers: { p1: P({ s: 3600, mi: 40, ss: 3600, smi: 40, zm: 30 }) } }),
+    r({ miles: 25, moving_s: 1800, accel_on: false, drivers: { p1: P({ s: 1800, mi: 25, ss: 0, smi: 0 }), p2: P({ s: 1800, mi: 25 }) } }),
+    r({ miles: 0, moving_s: 0, accel_on: true }),
+  ]
+  const summed = {
+    ...r({}), n_days: 3, n_driving: 2, n_accel: 1, accel_miles: 40, miles: 65, moving_s: 5400, brake_mod: 1, accel_on: false,
+    drivers: { p1: P({ nd: 2, dd: 1, ad: 1, a: 40, s: 5400, mi: 65, ss: 3600, smi: 40, zm: 30 }), p2: P({ nd: 1, dd: 0, ad: 0, a: 0, s: 1800, mi: 25 }) },
+  }
+  const a1 = D.sumDaily(days, 90), a2 = D.sumDaily([summed], 90)
+  ok('a SQL-summed period = its day rows (days, driving days, accelerometer miles, attribution)',
+    ['days', 'drivingDays', 'accelDays', 'accelMiles', 'miles', 'movingS', 'attributedMiles'].every((k) => a1[k] === a2[k]) && a1.harsh_brake.moderate === a2.harsh_brake.moderate, [a1, a2])
+  const d1 = D.driverTotals(days, [], 'p1'), d2 = D.driverTotals([summed], [], 'p1')
+  ok('…and a driver\'s slice of it too', ['days', 'drivingDays', 'accelDays', 'accelMiles', 'miles', 'movingS', 'zoneModS', 'rodeMiles'].every((k) => d1[k] === d2[k]), [d1, d2])
+  ok('…and the score with it', JSON.stringify(D.scoreTotals(a1)) === JSON.stringify(D.scoreTotals(a2)))
 }
 
 // ── Words + CSV + the one constant ──────────────────────────────────────────

@@ -26,6 +26,14 @@ import { MASTER_RANK, RANK, type Role } from '../permissions'
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
 
+/** `.in()` lists ride in the request URL: cut them so a big fleet never
+ *  builds a URL past the proxy's limit (~150 ids ≈ 6 KB). */
+export function idChunks(ids: string[], size = 150): string[][] {
+  const out: string[][] = []
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size))
+  return out
+}
+
 /** Read this far either side of a day, so a drive across midnight is whole. */
 const EDGE_MS = 10 * 60_000
 /** Look-back for "this truck's accelerometer events are on". */
@@ -296,9 +304,25 @@ export interface SafetyOpts {
   todayKey?: string
 }
 
-const DAILY_COLS = 'asset_id, day, vclass, miles, moving_s, engine_s, night_s, evening_s, max_mph, limit_miles, zone_mod_s, zone_heavy_s, zone_sev_s, max_sev_s, zone_speed_n, max_speed_n, brake_mod, brake_sev, accel_mod, accel_sev, corner_mod, corner_sev, unconfirmed_n, brake_est, accel_est, crashes, fixes, obd_s, dense_s, gap_s, longest_gap_s, power_lost, unplug_n, jamming_n, towing_n, rejects_n, accel_on, drivers, updated_at'
-
+/** One vehicle-MONTH of a period, summed in SQL (driving_rollup). `day` is
+ *  the month's first day so byMonth() groups it like day rows. */
 export type DbDaily = RowLike & { asset_id: string; day: string; vclass?: VehicleClass; updated_at?: string }
+
+/** A period [from, to] (company-local days) summed per vehicle-month in SQL —
+ *  ≤ vehicles × 13 rows however long the period, never the day rows. Runs
+ *  as the caller (RLS: company, 111's ladder, 119's lockdown). null = the
+ *  read failed (never a partial answer). */
+async function rollup(db: SupabaseClient, companyId: string, ids: string[], from: string, to: string): Promise<DbDaily[] | null> {
+  const out: DbDaily[] = []
+  for (let page = 0; page < 20; page++) {
+    const { data, error } = await db.rpc('driving_rollup', { p_company: companyId, p_assets: ids, p_from: from, p_to: to })
+      .range(page * 1000, page * 1000 + 999)
+    if (error) return null
+    for (const r of (data ?? []) as (DbDaily & { month: string })[]) out.push({ ...r, day: `${r.month}-01` })
+    if (!data || data.length < 1000) return out
+  }
+  return null // 20,000 vehicle-months: refuse rather than answer short
+}
 interface DbEvent {
   id: number | string; asset_id: string; at: string; kind: EventKind; severity: Severity; source: 'device' | 'gps'; confirmed: boolean | null
   value: number | null; speed_mph: number | null; duration_s: number | null; limit_mph: number | null; zone_id: string | null
@@ -337,24 +361,16 @@ export async function getSafetyReport(db: SupabaseClient | null, opts: SafetyOpt
   })
   if (!ids.length) return empty(true)
 
-  // The period (and the one before, for the trend) — paged past the API's row cap.
-  const rows: DbDaily[] = []
-  const from = opts.withPrior ? priorFrom : fromKey
-  for (let page = 0; page < 60; page++) {
-    const { data, error } = await db.from('driving_daily').select(DAILY_COLS)
-      .eq('company_id', opts.companyId).in('asset_id', ids)
-      .gte('day', from).lte('day', toKey)
-      .order('day', { ascending: true }).order('asset_id', { ascending: true })
-      .range(page * 1000, page * 1000 + 999)
-    if (error) return empty(false)
-    rows.push(...((data ?? []) as DbDaily[]))
-    if (!data || data.length < 1000) break
-  }
-  const { data: firstRow } = await db.from('driving_daily').select('day').eq('company_id', opts.companyId).in('asset_id', ids)
-    .order('day', { ascending: true }).limit(1).maybeSingle()
-  const cur = rows.filter((r) => r.day >= fromKey)
-  const prior = rows.filter((r) => r.day < fromKey)
-  const builtAt = rows.reduce<string | null>((m, r) => (r.updated_at && (!m || r.updated_at > m) ? r.updated_at : m), null)
+  // The period (and the one before, for the trend), summed in SQL.
+  const [cur, prior, { data: firstRow }] = await Promise.all([
+    rollup(db, opts.companyId, ids, fromKey, toKey),
+    opts.withPrior ? rollup(db, opts.companyId, ids, priorFrom, addDaysKey(fromKey, -1)) : Promise.resolve([] as DbDaily[]),
+    // How much history the company has (any vehicle this viewer can read).
+    db.from('driving_daily').select('day').eq('company_id', opts.companyId)
+      .order('day', { ascending: true }).limit(1).maybeSingle(),
+  ])
+  if (!cur || !prior) return empty(false)
+  const builtAt = cur.reduce<string | null>((m, r) => (r.updated_at && (!m || r.updated_at > m) ? r.updated_at : m), null)
   const firstDay = (firstRow as { day?: string } | null)?.day ?? null
   // Uptime is judged over the days each vehicle could have reported.
   const periodFor = () => (firstDay ? Math.min(days, spanDays(firstDay > fromKey ? firstDay : fromKey, toKey)) : days)
@@ -363,8 +379,8 @@ export async function getSafetyReport(db: SupabaseClient | null, opts: SafetyOpt
   // VIN from what the truck's own computer reported (115).
   const vins = new Map<string, string>()
   if (opts.withVin) {
-    const { data } = await db.from('asset_telemetry_latest').select('asset_id, readings').in('asset_id', ids)
-    for (const r of (data ?? []) as { asset_id: string; readings: Record<string, { v?: unknown }> | null }[]) {
+    const got = await Promise.all(idChunks(ids).map((chunk) => db.from('asset_telemetry_latest').select('asset_id, readings').in('asset_id', chunk)))
+    for (const r of got.flatMap((g) => (g.data ?? [])) as { asset_id: string; readings: Record<string, { v?: unknown }> | null }[]) {
       const v = r.readings?.['vehicle.vin']?.v
       if (typeof v === 'string' && /^[A-HJ-NPR-Z0-9]{11,17}$/i.test(v.trim())) vins.set(r.asset_id, v.trim().toUpperCase())
     }
@@ -405,16 +421,21 @@ export async function getSafetyReport(db: SupabaseClient | null, opts: SafetyOpt
     }
     const visible = Array.from(people.values()).filter((p) => driverVisible(scope, p))
     if (visible.length) {
-      const evRows: { kind: EventKind; severity: Severity; source: 'device' | 'gps'; confirmed: boolean | null; person_id: string }[] = []
+      // Each person's events counted in SQL, then expanded for driverTotals.
+      const seen = new Set(visible.map((p) => p.id))
+      const counted: { person_id: string; kind: EventKind; severity: Severity; source: 'device' | 'gps'; confirmed: boolean | null; n: number }[] = []
       for (let page = 0; page < 10; page++) {
-        const { data } = await db.from('driving_events').select('kind, severity, source, confirmed, person_id')
-          .eq('company_id', opts.companyId).in('person_id', visible.map((p) => p.id)).in('asset_id', ids)
-          .gte('at', new Date(fromMs).toISOString()).lt('at', new Date(toMs).toISOString())
-          .range(page * 1000, page * 1000 + 999)
-        evRows.push(...((data ?? []) as typeof evRows))
+        const { data } = await db.rpc('driving_person_events', {
+          p_company: opts.companyId, p_assets: ids, p_from: new Date(fromMs).toISOString(), p_to: new Date(toMs).toISOString(),
+        }).range(page * 1000, page * 1000 + 999)
+        counted.push(...((data ?? []) as typeof counted))
         if (!data || data.length < 1000) break
       }
-      const evs = evRows.map((e) => ({ kind: e.kind, severity: e.severity, source: e.source, confirmed: e.confirmed, personId: e.person_id }))
+      const evs: { kind: EventKind; severity: Severity; source: 'device' | 'gps'; confirmed: boolean | null; personId: string }[] = []
+      for (const e of counted) {
+        if (!seen.has(e.person_id)) continue
+        for (let i = 0; i < Math.min(100_000, Number(e.n) || 0); i++) evs.push({ kind: e.kind, severity: e.severity, source: e.source, confirmed: e.confirmed, personId: e.person_id })
+      }
       const selfId = typeof scope === 'object' ? scope.viewerId : null
       drivers = visible.map((p) => {
         const t = driverTotals(cur, evs, p.id)
@@ -429,11 +450,14 @@ export async function getSafetyReport(db: SupabaseClient | null, opts: SafetyOpt
   const limit = Math.max(0, Math.min(200, opts.eventLimit ?? 0))
   const evAssets = opts.eventsFor ? (ids.includes(opts.eventsFor) ? [opts.eventsFor] : []) : ids
   if (limit && evAssets.length) {
-    const { data } = await db.from('driving_events').select('id, asset_id, at, kind, severity, source, confirmed, value, speed_mph, duration_s, limit_mph, zone_id, lat, lng, person_id')
-      .eq('company_id', opts.companyId).in('asset_id', evAssets)
+    // The newest `limit` per chunk, then the newest `limit` of those.
+    const got = await Promise.all(idChunks(evAssets).map((chunk) => db.from('driving_events')
+      .select('id, asset_id, at, kind, severity, source, confirmed, value, speed_mph, duration_s, limit_mph, zone_id, lat, lng, person_id')
+      .eq('company_id', opts.companyId).in('asset_id', chunk)
       .gte('at', new Date(fromMs).toISOString()).lt('at', new Date(toMs).toISOString())
-      .order('at', { ascending: false }).limit(limit)
-    events = await wordEvents(db, opts.companyId, (data ?? []) as DbEvent[], scored, people, scope, !!opts.withPlaces)
+      .order('at', { ascending: false }).limit(limit)))
+    const newest = (got.flatMap((g) => g.data ?? []) as DbEvent[]).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, limit)
+    events = await wordEvents(db, opts.companyId, newest, scored, people, scope, !!opts.withPlaces)
   }
 
   return { ready: true, demo: false, days, fromKey, toKey, firstDay, fleet, fleetTotals, fleetTrend, vehicles, drivers, events, months, builtAt }
@@ -524,17 +548,20 @@ export async function listSafetyEvents(db: SupabaseClient | null, opts: { compan
   const fromIso = new Date(zonedMidnightMs(opts.fromKey, opts.tz)).toISOString()
   const toIso = new Date(zonedMidnightMs(addDaysKey(opts.toKey, 1), opts.tz)).toISOString()
   const rows: DbEvent[] = []
-  for (let page = 0; page < 20; page++) {
-    const { data, error } = await db.from('driving_events').select('id, asset_id, at, kind, severity, source, confirmed, value, speed_mph, duration_s, limit_mph, zone_id, lat, lng, person_id')
-      .eq('company_id', opts.companyId).in('asset_id', ids)
-      .gte('at', fromIso).lt('at', toIso)
-      .order('at', { ascending: true }).order('id', { ascending: true })
-      .range(page * 1000, page * 1000 + 999)
-    if (error) break
-    rows.push(...((data ?? []) as DbEvent[]))
-    if (!data || data.length < 1000) break
+  for (const chunk of idChunks(ids)) {
+    for (let page = 0; page < 20 && rows.length < 20_000; page++) {
+      const { data, error } = await db.from('driving_events').select('id, asset_id, at, kind, severity, source, confirmed, value, speed_mph, duration_s, limit_mph, zone_id, lat, lng, person_id')
+        .eq('company_id', opts.companyId).in('asset_id', chunk)
+        .gte('at', fromIso).lt('at', toIso)
+        .order('at', { ascending: true }).order('id', { ascending: true })
+        .range(page * 1000, page * 1000 + 999)
+      if (error) break
+      rows.push(...((data ?? []) as DbEvent[]))
+      if (!data || data.length < 1000) break
+    }
   }
-  return wordEvents(db, opts.companyId, rows.map((r) => ({ ...r, person_id: null })), scored, new Map(), 'none', false)
+  rows.sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  return wordEvents(db, opts.companyId, rows.slice(0, 20_000).map((r) => ({ ...r, person_id: null })), scored, new Map(), 'none', false)
 }
 
 /** Is there enough history for an insurer report (≥ 90 days, ≥ 3 scored vehicles)? */
