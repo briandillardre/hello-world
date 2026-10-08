@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Home, MapPin, Search, Star, Check, Wind } from 'lucide-react'
 import { fetchConditions, type Conditions } from '@/lib/weather'
 import { WeatherIcon, weatherWords } from './WeatherIcon'
@@ -38,6 +39,21 @@ export function TopBarWeather({
   const [label, setLabel] = useState<string | null>(place)
   const [at, setAt] = useState<{ lat: number; lng: number } | null>(coords)
   const [open, setOpen] = useState(false)
+  // The panel is portalled to <body> at a fixed spot under the chip: on
+  // desktop an ancestor of the top bar clips overflow, so an absolutely
+  // placed dropdown opened invisibly (Brian, Oct 8: "pulldown not visible on pc").
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const place = () => {
+      const r = wrapRef.current?.getBoundingClientRect()
+      if (r) setAnchor({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open])
   const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -73,7 +89,9 @@ export function TopBarWeather({
   useEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t) || panelRef.current?.contains(t)) return
+      setOpen(false)
     }
     window.addEventListener('pointerdown', onDown)
     return () => window.removeEventListener('pointerdown', onDown)
@@ -146,8 +164,8 @@ export function TopBarWeather({
         <ChevronDown className={'h-3 w-3 text-faint transition-transform ' + (open ? 'rotate-180' : '')} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-[264px] z-[60] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
+      {open && anchor && typeof document !== 'undefined' && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: anchor.top, right: anchor.right }} className="w-[264px] z-[1000] rounded-xl bg-navy-950/95 backdrop-blur border border-navy-700 shadow-panel overflow-hidden">
           {/* current conditions, spelled out */}
           <div className="px-3 py-2.5 border-b border-navy-800">
             <div className="flex items-baseline gap-2">
@@ -232,7 +250,8 @@ export function TopBarWeather({
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
