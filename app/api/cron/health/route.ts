@@ -497,5 +497,13 @@ export async function GET(req: NextRequest) {
     } catch (err) { out.scheduleWorkOrders = err instanceof Error ? err.message : 'failed' }
   }
 
+  // 9 — flespi devices (board #199): every OBD / FMM650 unit registered as a
+  // flespi device and given the Green Driving settings once.
+  try {
+    const { syncFlespiDevices } = await import('@/lib/flespi-devices')
+    const { createServiceClient: svcClient } = await import('@/lib/supabase-server')
+    out.flespi = await syncFlespiDevices(svcClient())
+  } catch (err) { out.flespi = err instanceof Error ? err.message : 'failed' }
+
   return NextResponse.json({ ok: true, at: new Date().toISOString(), ...out })
 }

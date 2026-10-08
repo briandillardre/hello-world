@@ -280,6 +280,7 @@ const TAC_HINTS: [string, DeviceModel][] = [
   ['86081307', 'FMM650'],
   ['86345208', 'FMM00A'],
   ['86249408', 'FMM00A'],
+  ['86899606', 'FMM00A'], // the Hologram pilot units (T1-a/b)
   ['86926707', 'TAT141'],
 ]
 /** A Teltonika EYE Beacon's MAC starts with this OUI. */
