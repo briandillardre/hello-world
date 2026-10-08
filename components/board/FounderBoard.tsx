@@ -599,7 +599,8 @@ export function FounderBoard({ live }: { live: BoardLive }) {
           </div>
           <div className="font-mono text-[11px] text-faint text-right leading-relaxed">
             Stage 0 · pre-revenue<br />
-            {c.open} open · {c.done} shipped
+            {c.open} open · {c.done} shipped<br />
+            <Link href="/admin/devices" className="text-amber hover:underline">All-clients devices ›</Link>
           </div>
         </div>
 

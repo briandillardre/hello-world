@@ -24,7 +24,12 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: 'not found' }, { status: 404 })
   if (!token()) return NextResponse.json({ ok: false, error: 'FLESPI_COMMAND_TOKEN not set' }, { status: 503 })
-  const body = await req.json().catch(() => null) as { imei?: unknown; text?: unknown } | null
+  const body = await req.json().catch(() => null) as { imei?: unknown; text?: unknown; action?: unknown } | null
+  if (body?.action === 'sync') {
+    const { syncFlespiDevices } = await import('@/lib/flespi-devices')
+    const { createServiceClient } = await import('@/lib/supabase-server')
+    return NextResponse.json({ ok: true, ...(await syncFlespiDevices(createServiceClient())) })
+  }
   const imei = typeof body?.imei === 'string' ? body.imei.trim() : ''
   const text = typeof body?.text === 'string' ? body.text.trim() : ''
   if (!/^\d{15}$/.test(imei)) return NextResponse.json({ ok: false, error: 'imei must be 15 digits' }, { status: 400 })
