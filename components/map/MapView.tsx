@@ -9023,12 +9023,12 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           visibility: railTabOffset == null && !railHidden ? 'hidden' : undefined,
           transition: 'right .25s ease, color .15s ease',
         }}
-        className="absolute z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-navy-950/80 backdrop-blur border border-navy-700 py-2.5 px-1 text-faint hover:text-ink touch-none"
+        className="absolute z-20 flex flex-col items-center gap-1.5 rounded-l-lg bg-teal shadow-panel border border-teal py-2.5 px-1 text-navy-950 hover:brightness-110 touch-none"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
-        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Map tools</span>
+        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-navy-950" style={{ writingMode: 'vertical-rl' }}>Map tools</span>
       </button>
 
       {/* LEFT tray handle — the layers entry on /map AND /command (Brian,
@@ -9064,14 +9064,14 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // phones via .is-open (Brian, Sep 9: parked at the screen edge it sat
         // ON the drawer's own switches, "blocking things"; MAP TOOLS already
         // travels with its pullout). Same handle opens and closes it.
-        className={`ht-layers-tab ${layersOpen ? 'is-open' : ''} absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors touch-none`}
+        className={`ht-layers-tab ${layersOpen ? 'is-open' : ''} absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} flex flex-col items-center gap-1.5 rounded-r-lg bg-teal shadow-panel border border-teal border-l-0 py-2.5 px-1 text-navy-950 hover:brightness-110 transition-colors touch-none`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           {layersOpen ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
         </svg>
         {/* Same tray-tab language as TIMELINE at the bottom (Brian, Aug 22:
             "left, right and timeline… feel similar"): teal mono label. */}
-        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Layers</span>
+        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-navy-950" style={{ writingMode: 'vertical-rl' }}>Layers</span>
       </button>
 
       {/* Search box: top-center overlay, opened from the rail's search
