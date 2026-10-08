@@ -91,7 +91,10 @@ export function SocialAuth({ next = '/map' }: { next?: string }) {
   if (isMock) return null
 
   const appleOn = process.env.NEXT_PUBLIC_AUTH_APPLE === '1'
-  const providers = PROVIDERS.filter((p) => (p.id === 'apple' ? appleOn : !native))
+  // Google is OFF in Supabase Auth (Oct 8 2026: /auth/v1/settings external.google = false, so the button
+  // only produced an error). It shows again once the provider is configured and NEXT_PUBLIC_AUTH_GOOGLE=1.
+  const googleOn = process.env.NEXT_PUBLIC_AUTH_GOOGLE === '1'
+  const providers = PROVIDERS.filter((p) => (p.id === 'apple' ? appleOn : p.id === 'google' ? googleOn && !native : !native))
 
   const signIn = async (provider: ProviderId) => {
     setBusy(provider); setError('')
