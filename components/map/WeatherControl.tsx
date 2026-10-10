@@ -531,14 +531,40 @@ export function WeatherControl({ base, onBase, threeD, onThreeD, terrain3d = fal
     // 4:04 AM — flipping a switch must not move the row); an ON advanced row
     // still renders while the section is collapsed, but stays below the
     // expander in its own slot. Never hide state.
-    const everyday = rows.filter((d) => !d.advanced)
-    const advanced = rows.filter((d) => d.advanced)
+    const everyday = rows.filter((d) => !d.advanced && !d.pickOne)
+    const advanced = rows.filter((d) => d.advanced && !d.pickOne)
+    // Mutually exclusive whole-map shades sit together under one heading
+    // (Brian, Oct 10: "group all the 'pick 1' weather items together").
+    // Collapsed by default like the old expander; the ON one always shows.
+    const pickOne = rows.filter((d) => d.pickOne)
+    const pickOpen = moreRows.has(gid)
+    const pickVisible = pickOpen ? pickOne : pickOne.filter((d) => isOn(d.id))
     const showAll = moreRows.has(gid)
     const advVisible = showAll ? advanced : advanced.filter((d) => isOn(d.id))
     const tucked = advanced.length - advVisible.length
     return (
       <>
         {everyday.map(renderRow)}
+        {pickOne.length > 0 && (
+          <>
+            <button
+              onClick={() => setMoreRows((m) => { const n = new Set(m); if (n.has(gid)) n.delete(gid); else n.add(gid); return n })}
+              aria-expanded={pickOpen}
+              className="w-full flex items-center gap-1.5 px-3 py-2 border-t border-navy-800 text-left"
+            >
+              <ChevronDown className={'h-3 w-3 flex-none text-faint transition-transform ' + (pickOpen ? '' : '-rotate-90')} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11.5px] font-semibold text-muted">Shade the map by</span>
+                <span className="block font-mono text-[9.5px] uppercase tracking-wide text-faint">
+                  pick one{pickOpen ? ' — turning one on turns the others off' : ` · ${pickOne.length} choices`}
+                </span>
+              </span>
+            </button>
+            <div className="ml-3 border-l-2 border-teal/30">
+              {pickVisible.map(renderRow)}
+            </div>
+          </>
+        )}
         {advanced.length > 0 && (
           <button
             onClick={() => setMoreRows((m) => { const n = new Set(m); if (n.has(gid)) n.delete(gid); else n.add(gid); return n })}

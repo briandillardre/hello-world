@@ -86,32 +86,37 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     maxzoom: 16,
     opacity: 0.55,
   },
+  // Temperature / Feels like / Wind speed — OUR tiles (/api/wx-surface),
+  // interpolated from ~2,000 NWS surface stations. nowCOAST removed its RTMA
+  // layers (GetMap → LayerNotDefined, seen Oct 10 2026) and the NWS NDFD_temp
+  // ArcGIS service is frozen at Aug 2025. Live only: the source keeps no
+  // history, so MapView hides these during replays. Relative path — MapView
+  // prefixes the page origin.
   {
     key: 'temp',
     label: 'Temperature',
-    note: 'NOAA RTMA surface temp · hourly · CONUS',
-    // nowCOAST GeoServer WMS — free/keyless government service, ~2.5 km grid.
-    tiles: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    note: 'NWS surface observations · hourly · CONUS',
+    tiles: '/api/wx-surface/temp/{z}/{x}/{y}.png',
     minzoom: 0,
-    maxzoom: 10,
+    maxzoom: 7,
     opacity: 0.5,
   },
   {
     key: 'feels',
     label: 'Feels like',
-    note: 'NOAA apparent temp — heat index / wind chill',
-    tiles: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=apparent_air_temperature&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    note: 'heat index / wind chill from NWS surface observations',
+    tiles: '/api/wx-surface/feels/{z}/{x}/{y}.png',
     minzoom: 0,
-    maxzoom: 10,
+    maxzoom: 7,
     opacity: 0.5,
   },
   {
     key: 'wind',
     label: 'Wind speed',
-    note: 'NOAA RTMA sustained wind · hourly',
-    tiles: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=wind_speed&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
+    note: 'sustained wind from NWS surface observations',
+    tiles: '/api/wx-surface/wind/{z}/{x}/{y}.png',
     minzoom: 0,
-    maxzoom: 10,
+    maxzoom: 7,
     opacity: 0.55,
   },
   {
@@ -119,7 +124,7 @@ export const MAP_OVERLAYS: OverlayDef[] = [
     label: 'Lightning',
     note: 'GOES GLM strike density · ~10 min',
     // LAYERS= placeholder — the real workspace-qualified name is discovered
-    // from GetCapabilities at runtime (/api/rtma-layers), same as temp/wind.
+    // from GetCapabilities at runtime (/api/rtma-layers).
     tiles: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=lightning_strike_density&STYLES=&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
     minzoom: 0,
     maxzoom: 10,

@@ -31,6 +31,10 @@ export interface LayerRowDef {
    *  group (Aug 22 declutter) — everyday rows stay one tap away. An advanced
    *  row that's ON always renders, expander or not (never hide live state). */
   advanced?: boolean
+  /** Whole-map shading layers that are mutually exclusive (turning one on
+   *  turns the rest off — MapView's soloWeather). They render together under
+   *  one "Shade the map by — pick one" heading (Brian, Oct 10). */
+  pickOne?: boolean
 }
 
 // Every group starts collapsed (owner ask, Jul 14; re-confirmed in the Aug 16
@@ -205,18 +209,20 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation (NOAA MRMS, cleaned of birds, bugs and ground clutter) · loops on Live, scrubs with replays · ⚡ real satellite-detected strikes ride on top (live only, ~8km precision)' },
   { id: 'nwswarn', label: 'Storm warnings', group: 'weather', status: 'live', isLive: true, hint: 'CURRENT warnings solid (tornado red · t-storm orange · flood green) · watch boxes dashed · ONLY LIVE — hides during replays' },
   { id: 'pourcast', label: 'Work-window planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad weather day — rain ≥60%, gusts ≥25 mph or ≤35°F: bad for pours, lifts, spraying and seeding' },
-  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'surface temp shading · hourly · replays show the scrubbed hour (~1 day back)' },
-  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'heat index / wind chill · hourly · replays show the scrubbed hour (~1 day back)' },
-  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'sustained wind shading · hourly · replays show the scrubbed hour (~1 day back)' },
-  // Nested display row directly under Wind speed (Aug 16 reorg) — same
-  // persisted id as always, only the label carries the "↳" nesting mark.
-  { id: 'windanim', label: '↳ Wind flow', group: 'weather', status: 'live', advanced: true, isLive: true, hint: 'animated wind — live view only' },
-  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
-  // Layer name discovered live from NOAA's server (like temp/feels/wind) —
-  // GOES lightning mapper strike density. Row reports if NOAA drops it.
-  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'GOES strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
-  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', advanced: true, hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
-  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', advanced: true, hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
+  // Animated wind particles stack on anything — an everyday row beside Radar
+  // (Brian, Oct 10: "move wind flow to the normal weather section").
+  { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
+  // ── "Shade the map by — pick one" (Brian, Oct 10): these all paint the
+  // whole ground/sky, so only one can be on (soloWeather in MapView).
+  { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'air temperature from ~2,000 NWS weather stations · refreshed hourly · LIVE ONLY — hides during replays (the source keeps no history)' },
+  { id: 'feels', label: 'Feels like', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'heat index / wind chill from NWS weather stations · LIVE ONLY — hides during replays' },
+  { id: 'wind', label: 'Wind speed', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'sustained wind from NWS weather stations · LIVE ONLY — hides during replays' },
+  { id: 'precip', label: 'Rain totals', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'rainfall accumulated up to RIGHT NOW — pick the period · ONLY LIVE, not historical' },
+  // Layer name discovered live from NOAA's server — GOES/ground lightning
+  // strike density. Row reports if NOAA drops it.
+  { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
+  { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
+  { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', pickOne: true, hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
   { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, hint: 'community stations · tap for readings' },
 
   // ── Roads & travel ────────────────────────────────────────────────────────
