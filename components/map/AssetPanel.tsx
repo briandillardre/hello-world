@@ -13,6 +13,8 @@ import { toast } from '@/components/ui/feedback'
 import { deriveLiveStatus } from '@/lib/live-status'
 import { shortTracker, trackerKind } from '@/lib/devices'
 import { TruckData } from '@/components/telemetry/TruckData'
+import { DrivingCard } from '@/components/reports/SafetyBits'
+import type { DrivingGlance } from '@/lib/driving-score'
 import { TrackerBadge } from '@/components/assets/TrackerBadge'
 import { LiveStatusBadge, TruckPowerNote } from '@/components/assets/LiveStatus'
 import { Badge } from '@/components/ui/badge'
@@ -663,6 +665,10 @@ function AssetDetails({
         />
       )}
 
+      {asset.type === 'vehicle' && ['obd', 'wired', 'gps'].includes(trackerKind(asset.tracker_id).key) && (
+        <DrivingGlanceCard key={`drv-${asset.id}`} assetId={asset.id} />
+      )}
+
       <SpecSheet meta={meta} mpg={stats?.mpg} />
 
       {typeof meta.notes === 'string' && meta.notes.trim() !== '' && (
@@ -818,6 +824,23 @@ function SpecSheet({ meta, mpg }: { meta: Record<string, unknown>; mpg?: number 
  *  supplier run vs DMV morning vs two-hour lunch, at a glance. Publishes its
  *  stops to the map (numbered pins) and leads with a plain-English recap of
  *  the day: miles, drive time, roads taken, places visited. */
+/** Driving safety glance (last 30 days) — /api/safety/asset answers null for
+ *  anyone without the reports view level, a prospect, or a hidden vehicle. */
+function DrivingGlanceCard({ assetId }: { assetId: string }) {
+  const [g, setG] = useState<DrivingGlance | null>(null)
+  useEffect(() => {
+    const ctrl = new AbortController()
+    setG(null)
+    fetch(`/api/safety/asset/${assetId}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { glance?: DrivingGlance | null } | null) => setG(j?.glance ?? null))
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [assetId])
+  if (!g) return null
+  return <DrivingCard g={g} days={30} assetId={assetId} compact />
+}
+
 function StopsCard({ assetId, onStops, onFocusStop }: {
   assetId: string
   onStops?: (stops: PanelStop[]) => void

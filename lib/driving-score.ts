@@ -1560,3 +1560,52 @@ export function csvCell(v: unknown): string {
 export function toCsv(head: string[], rows: unknown[][]): string {
   return [head, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
 }
+
+/**
+ * The asset glance (Oct 10 — Brian: "Add safe driving stats for all obd
+ * assets"): one vehicle's period in plain counts, for every OBD / wired
+ * vehicle whether or not it has a score yet. Pure read of the totals and the
+ * score this module already computed — no second set of math.
+ */
+export interface DrivingGlance {
+  score: SafetyScore
+  /** Not scored yet: how far along the credibility line it is. */
+  building: { miles: number; hours: number; needMiles: number; needHours: number } | null
+  miles: number
+  hours: number
+  /** The accelerometer (Green Driving) reported on at least one driving day. */
+  sensorOn: boolean
+  hardBrakes: number
+  hardAccel: number
+  hardCorners: number
+  /** Minutes at or over the 80 mph line (75 heavy), and over a site's own limit. */
+  overMaxMin: number
+  maxLineMph: number
+  overZoneMin: number
+  lateNightHours: number
+  lateNightPct: number
+  topMph: number
+  crashes: number
+}
+
+export function drivingGlance(totals: DrivingTotals, score: SafetyScore, vclass: VehicleClass): DrivingGlance {
+  const C = SAFETY_METHOD.credibility
+  const pair = (p: SevPair) => p.moderate + p.severe
+  return {
+    score,
+    building: score.credible ? null : { miles: Math.round(score.miles), hours: Math.round(score.hours), needMiles: C.minMiles, needHours: C.minHours },
+    miles: Math.round(totals.miles),
+    hours: Math.round((totals.movingS / 3600) * 10) / 10,
+    sensorOn: totals.accelDays > 0,
+    hardBrakes: pair(totals.harsh_brake),
+    hardAccel: pair(totals.harsh_accel),
+    hardCorners: pair(totals.harsh_corner),
+    overMaxMin: Math.round(totals.maxSevS / 60),
+    maxLineMph: vclass === 'heavy' ? SAFETY_METHOD.maxSpeed.heavy : SAFETY_METHOD.maxSpeed.light,
+    overZoneMin: Math.round((totals.zoneModS + totals.zoneHeavyS + totals.zoneSevS) / 60),
+    lateNightHours: Math.round((totals.nightS / 3600) * 10) / 10,
+    lateNightPct: score.lateNightPct,
+    topMph: Math.round(totals.maxMph),
+    crashes: totals.crashes,
+  }
+}

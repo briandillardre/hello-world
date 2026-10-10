@@ -8,7 +8,7 @@ import { getCurrentCompanyId, getCompanySettings } from '@/lib/db/company'
 import { getAssets } from '@/lib/db/assets'
 import { getSafetyReport, isScoredAsset, safetyDays, SAFETY_PERIODS } from '@/lib/db/driving'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
-import { SAFETY_METHOD } from '@/lib/driving-score'
+import { drivingGlance, SAFETY_METHOD } from '@/lib/driving-score'
 import { fmtDay, safeTz, zonedMidnightMs } from '@/lib/dates'
 import { EventList, GradeChip, QualityChip, QualityGrid, QualityNotes, ScoreDial, TrendTag, WhatMoved, pct, rate } from '@/components/reports/SafetyBits'
 
@@ -132,6 +132,9 @@ export default async function SafetyPage({ searchParams }: { searchParams?: { da
                     <th className="py-1.5 px-2 font-medium text-right" title="Confirmed hard launches per 1,000 miles">Launches</th>
                     <th className="py-1.5 px-2 font-medium text-right" title="Share of driving in severe / heavy / moderate speeding">Speeding</th>
                     <th className="py-1.5 px-2 font-medium text-right" title="Share of driving midnight–4 AM">Late night</th>
+                    <th className="py-1.5 px-2 font-medium text-right" title="Confirmed hard brakes / launches / corners in the period (accelerometer); 'sensor off' until Green Driving reports">Brake / accel / corner</th>
+                    <th className="py-1.5 px-2 font-medium text-right" title="Minutes over 80 mph (75 heavy) / over a site's own limit">Speeding min</th>
+                    <th className="py-1.5 px-2 font-medium text-right">Top mph</th>
                     <th className="py-1.5 px-2 font-medium">Trend</th>
                     <th className="py-1.5 pl-2 font-medium">Data</th>
                   </tr>
@@ -139,13 +142,14 @@ export default async function SafetyPage({ searchParams }: { searchParams?: { da
                 <tbody>
                   {report.vehicles.map((v) => {
                     const est = v.score.counts.est_brake + v.score.counts.est_accel
+                    const g = drivingGlance(v.totals, v.score, v.vehicleClass)
                     return (
                       <tr key={v.assetId} className={`border-b border-navy-800/60 text-muted ${v.assetId === pick ? 'bg-navy-800/40' : ''}`}>
                         <td className="py-1.5 pr-3 text-ink font-medium">
                           <Link href={`/reports/safety?days=${days}&asset=${v.assetId}`} className="hover:text-amber">{v.name}</Link>
                           {v.vehicleClass === 'heavy' && <span className="ml-1.5 text-[10px] text-faint font-normal" title="Medium/heavy thresholds">heavy</span>}
                         </td>
-                        <td className="py-1.5 px-2"><GradeChip score={v.score} /></td>
+                        <td className="py-1.5 px-2"><GradeChip score={v.score} />{g.building && <span className="ml-1.5 text-[10px] text-faint">{g.building.miles}/{g.building.needMiles} mi · {g.building.hours}/{g.building.needHours} h</span>}</td>
                         <td className="py-1.5 px-2 font-mono text-right">{Math.round(v.score.miles).toLocaleString()}</td>
                         <td className="py-1.5 px-2 font-mono text-right" title={est ? `${est} estimated from GPS (not scored)` : undefined}>
                           {rate(v.score.per1000.harsh_brake)}{v.score.per1000.harsh_brake == null && v.score.counts.est_brake ? <span className="text-faint"> · est {v.score.counts.est_brake}</span> : null}
@@ -154,6 +158,9 @@ export default async function SafetyPage({ searchParams }: { searchParams?: { da
                         <td className="py-1.5 px-2 font-mono text-right">{rate(v.score.per1000.harsh_accel)}</td>
                         <td className="py-1.5 px-2 font-mono text-right">{pct(v.score.speedPct.severe)} / {pct(v.score.speedPct.heavy)} / {pct(v.score.speedPct.moderate)}</td>
                         <td className="py-1.5 px-2 font-mono text-right">{pct(v.score.lateNightPct)}</td>
+                        <td className="py-1.5 px-2 font-mono text-right">{g.sensorOn ? `${g.hardBrakes} / ${g.hardAccel} / ${g.hardCorners}` : <span className="text-faint">sensor off</span>}</td>
+                        <td className="py-1.5 px-2 font-mono text-right">{g.overMaxMin} / {g.overZoneMin}</td>
+                        <td className="py-1.5 px-2 font-mono text-right">{g.topMph || '—'}</td>
                         <td className="py-1.5 px-2 font-mono"><TrendTag delta={v.trend} /></td>
                         <td className="py-1.5 pl-2"><QualityChip q={v.score.quality} /></td>
                       </tr>
