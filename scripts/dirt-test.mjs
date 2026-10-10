@@ -31,7 +31,11 @@ const tkUrl = transpile('../lib/dirt/takeoff.ts', { earcut: npm('earcut'), './tm
 const heatUrl = transpile('../lib/dirt/heat.ts', { './takeoff': tkUrl, './geom': geomUrl })
 const featUrl = transpile('../lib/dirt/features.ts', { './takeoff': tkUrl })
 const schemaUrl = transpile('../lib/dirt/schema.ts', { zod: npm('zod'), './takeoff': tkUrl, './limits': transpile('../lib/dirt/limits.ts') })
+const pileUrl = transpile('../lib/dirt/stockpile.ts', { './geom': geomUrl, './surface': surfUrl, './tm': tmUrl })
+const histUrl = transpile('../lib/dirt/pile-history.ts')
 const tm = await import(tmUrl)
+const hist = await import(histUrl)
+const pile = await import(pileUrl)
 const geom = await import(geomUrl)
 const surf = await import(surfUrl)
 const tk = await import(tkUrl)
@@ -440,6 +444,109 @@ const design = (features, extra = {}) => ({ v: 1, features, existing: { source: 
   const sc = schema.checkDesign(far)
   ok('Schema: traces spread over more than ~5 km are refused', !sc.ok && /5 km/.test(sc.error), sc)
   ok('Schema: a normal design passes', schema.checkDesign(d).ok)
+}
+
+
+// ── Stockpiles ─────────────────────────────────────────────────────────────
+{
+  // A synthetic DSM: dx-spaced grid, z = f(x, y).
+  const grid = (x0, y0, nx, ny, dx, f) => {
+    const z = new Float64Array(nx * ny)
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) z[j * nx + i] = f(x0 + i * dx, y0 + j * dx)
+    return new surf.GridSurface({ x0, y0, dx, dy: dx, nx, ny, z })
+  }
+  const circle = (r, n = 96) => { const p = []; for (let i = 0; i < n; i++) { const a = (2 * Math.PI * i) / n; p.push(r * Math.cos(a), r * Math.sin(a)) } return p }
+  const square = (h) => [-h, -h, h, -h, h, h, -h, h]
+
+  // Cone R = 10 m, h = 5 m on flat ground at 100 m: V = πR²h/3 = 523.6 m³.
+  const R = 10, H = 5
+  const cone = (x, y) => 100 + Math.max(0, H * (1 - Math.hypot(x, y) / R))
+  const g = grid(-15, -15, 301, 301, 0.1, cone)
+  const exact = Math.PI * R * R * H / 3
+  const m = pile.measurePile(circle(12), g, 'tin', 1, { sampleM: 0.5 })
+  ok('Stockpile: cone on flat ground, TIN base → πR²h/3 within 1%', Math.abs(m.volumeM3 - exact) / exact < 0.01, [m.volumeM3, exact])
+  ok('Stockpile: cone max height 5 m (±5 cm)', near(m.maxHeightM, H, 0.05), m.maxHeightM)
+  ok('Stockpile: cone toe area = the drawn circle, nothing below the base', near(m.areaM2, pile.measurePile(circle(12), g, 'lowest', 1, { sampleM: 0.5 }).areaM2, 1e-6) && m.belowM3 < 1e-6 && m.coverage > 0.999, [m.areaM2, m.belowM3])
+  const ml = pile.measurePile(circle(12), g, 'lowest', 1, { sampleM: 0.5 })
+  ok('Stockpile: flat ground → lowest-point base = TIN base', near(ml.volumeM3, m.volumeM3, 1e-6), [ml.volumeM3, m.volumeM3])
+
+  // Square pyramid 20 × 20 m, 6 m tall, its ridges on grid nodes → V = a²h/3 = 800 m³ exactly.
+  const pyr = (x, y) => 50 + Math.max(0, 6 * (1 - Math.max(Math.abs(x), Math.abs(y)) / 10))
+  const gp = grid(-12, -12, 25, 25, 1, pyr)
+  const mp = pile.measurePile(square(11), gp, 'tin', 1, { sampleM: 1 })
+  ok('Stockpile: square pyramid → a²h/3 = 800 m³ (within 1%)', Math.abs(mp.volumeM3 - 800) / 800 < 0.01, mp.volumeM3)
+
+  // The same cone on a slope: the TIN base follows the slope, so V is the cone's;
+  // the lowest-point base adds the wedge under the toe square.
+  const tilt = (x, y) => cone(x, y) + 0.1 * x
+  const gt = grid(-16, -16, 321, 321, 0.1, tilt)
+  const ms = pile.measurePile(square(15), gt, 'tin', 1, { sampleM: 0.25 })
+  ok('Stockpile: cone on a 10% slope, TIN base → the cone alone (1%)', Math.abs(ms.volumeM3 - exact) / exact < 0.01, [ms.volumeM3, exact])
+  const mls = pile.measurePile(square(15), gt, 'lowest', 1, { sampleM: 0.25 })
+  ok('Stockpile: same, lowest-point base → cone + the 1,350 m³ wedge (1%)', Math.abs(mls.volumeM3 - (exact + 1350)) / (exact + 1350) < 0.01, mls.volumeM3)
+
+  // Frame scale: k = 0.9996 shrinks true area and volume by k².
+  const mk = pile.measurePile(square(11), gp, 'tin', 0.9996, { sampleM: 1 })
+  ok('Stockpile: volume ÷ k²', near(mk.volumeM3, mp.volumeM3 / 0.9996 ** 2, 1e-6), mk.volumeM3)
+
+  // A hole inside the toe is reported apart, never netted off the pile.
+  const pit = (x, y) => 10 - Math.max(0, 2 * (1 - Math.hypot(x, y) / 5))
+  const mh = pile.measurePile(circle(8), grid(-10, -10, 201, 201, 0.1, pit), 'tin', 1, { sampleM: 0.5 })
+  ok('Stockpile: a pit → volume 0, below-base ≈ π·25·2/3', mh.volumeM3 < 0.01 && Math.abs(mh.belowM3 - Math.PI * 25 * 2 / 3) / (Math.PI * 50 / 3) < 0.01 && mh.warnings.length > 0, [mh.volumeM3, mh.belowM3])
+
+  // Results: CY, tons by density, feet.
+  const pr = pile.pileResults(m, { base: 'tin', densityTCy: pile.materialDensity('gravel'), source: { kind: 'dsm', detail: 't', resolutionM: 0.1 } })
+  ok('Stockpile: CY = m³ ÷ 0.7646, tons = CY × 1.5 (gravel)', near(pr.cy, m.volumeM3 / 0.764554857984, 1e-9) && near(pr.tons, pr.cy * 1.5, 1e-9), pr)
+  ok('Stockpile: max height in feet', near(pr.maxHeightFt, m.maxHeightM / 0.3048, 1e-9))
+
+  // Refusals.
+  let msg = ''
+  try { pile.measurePile([0, 0, 10, 10, 10, 0, 0, 10], g, 'tin', 1, { sampleM: 1 }) } catch (e) { msg = e.message }
+  ok('Stockpile: a bowtie toe is refused', /crosses itself/.test(msg), msg)
+  msg = ''
+  try { pile.measurePile([100, 100, 120, 100, 120, 120], g, 'tin', 1, { sampleM: 1 }) } catch (e) { msg = e.message }
+  ok('Stockpile: a toe off the survey is refused', /doesn’t cover/.test(msg), msg)
+  ok('Stockpile: parseToe closes / validates', pile.parseToe([[0, 0], [1, 0], [1, 1], [0, 0]])?.length === 3 && pile.parseToe([[0, 0], [1, 0]]) === null && pile.parseToe([[0, 0], [1, 'x'], [1, 1]]) === null)
+
+  // GeoKeys → CRS and units.
+  const u17 = pile.dsmCrs({ ProjectedCSTypeGeoKey: 32617 })
+  ok('DSM: WGS84 UTM 17N in metres', u17.ok && u17.crs.kind === 'utm' && u17.crs.zone === 17 && u17.zScaleM === 1, u17)
+  const nad = pile.dsmCrs({ ProjectedCSTypeGeoKey: 6346, ProjLinearUnitsGeoKey: 9003 })
+  ok('DSM: NAD83(2011) UTM 17N in US feet → heights in feet too', nad.ok && nad.crs.zone === 17 && near(nad.crs.unitM, 1200 / 3937, 1e-12) && near(nad.zScaleM, 1200 / 3937, 1e-12), nad)
+  const geo = pile.dsmCrs({ GTModelTypeGeoKey: 2, GeographicTypeGeoKey: 4326, VerticalUnitsGeoKey: 9002 })
+  ok('DSM: lng/lat with heights in feet', geo.ok && geo.crs.kind === 'geo' && near(geo.zScaleM, 0.3048, 1e-12), geo)
+  ok('DSM: a state-plane survey is refused with the export to ask for', !pile.dsmCrs({ ProjectedCSTypeGeoKey: 3361 }).ok)
+  ok('DSM: no geokeys is refused', !pile.dsmCrs({}).ok)
+  ok('DSM: the user can override the height unit', pile.dsmCrs({ ProjectedCSTypeGeoKey: 32617 }, 'ft').zScaleM === 0.3048)
+
+  // Resampling a UTM DSM (in feet) onto the frame reproduces the cone's volume.
+  const frame = tm.makeFrame(-82.4, 34.85, 17)
+  const crs = { kind: 'utm', epsg: 6346, zone: 17, south: false, unitM: 1200 / 3937 }
+  const resFt = 0.5
+  const ox = (frame.e0 - 20) / crs.unitM, oy = (frame.n0 + 20) / crs.unitM
+  const W = Math.ceil(40 / crs.unitM / resFt), Hh = W
+  const geoT = { originX: ox, originY: oy, resX: resFt, resY: -resFt, width: W, height: Hh }
+  const data = new Float32Array(W * Hh)
+  for (let r = 0; r < Hh; r++) for (let c = 0; c < W; c++) {
+    const e = (ox + (c + 0.5) * resFt) * crs.unitM - frame.e0, n = (oy - (r + 0.5) * resFt) * crs.unitM - frame.n0
+    data[r * W + c] = cone(e, n) / crs.unitM
+  }
+  const ringF = circle(12)
+  const plan = pile.planPileGrid(ringF, pile.srcResM(crs, geoT, 34.85))
+  const win = pile.sourceWindow(frame, plan, crs, geoT)
+  ok('DSM: the window covers the toe inside the file', !!win && win[0] >= 0 && win[2] <= W, win)
+  const [c0, r0, c1, r1] = win
+  const sub = new Float32Array((c1 - c0) * (r1 - r0))
+  for (let r = r0; r < r1; r++) for (let c = c0; c < c1; c++) sub[(r - r0) * (c1 - c0) + (c - c0)] = data[r * W + c]
+  const { surface } = pile.sampleToFrame(frame, plan, crs, geoT, { c0, r0, w: c1 - c0, h: r1 - r0, data: sub, nodata: null }, crs.unitM)
+  const mr = pile.measurePile(ringF, surface, 'tin', 1, { sampleM: 0.5 })
+  const hs = hist.pileHistory([
+    { id: 'a', name: 'North gravel', measuredOn: '2026-10-01', results: { cy: 900 } },
+    { id: 'b', name: 'north  Gravel ', measuredOn: '2026-10-08', results: { cy: 750 } },
+    { id: 'c', name: 'Sand', measuredOn: '2026-10-05', results: { cy: 300 } },
+  ])
+  ok('Stockpile history: same name (case/spaces) groups, newest first, change −150 CY', hs.length === 2 && hs[0].latest.id === 'b' && hs[0].changeCy === -150 && hs[0].prevOn === '2026-10-01' && hs[1].changeCy === null, hs)
+  ok('DSM: a cone surveyed in UTM feet, resampled to the frame → πR²h/3 within 1%', Math.abs(mr.volumeM3 - exact) / exact < 0.01, [mr.volumeM3, exact])
 }
 
 console.log(`dirt takeoff: ${pass} passed, ${fail} failed`)

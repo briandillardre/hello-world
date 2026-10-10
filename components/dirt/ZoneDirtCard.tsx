@@ -8,14 +8,15 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Lock, Mountain, Plus } from 'lucide-react'
+import { Lock, Mountain, Plus, Triangle } from 'lucide-react'
 import { createTakeoffAction } from '@/lib/actions/dirt'
 import { NO_REPLY } from '@/lib/action-reply'
-import type { TakeoffSummary } from '@/lib/db/dirt'
+import type { StockpileSummary, TakeoffSummary } from '@/lib/db/dirt'
+import { pileHistory } from '@/lib/dirt/pile-history'
 
 const n0 = (v: number | undefined) => Math.round(Number(v) || 0).toLocaleString()
 
-export function ZoneDirtCard({ zoneId, takeoffs, addon, canEdit }: { zoneId: string; takeoffs: TakeoffSummary[]; addon: boolean; canEdit: boolean }) {
+export function ZoneDirtCard({ zoneId, takeoffs, piles = [], addon, canEdit }: { zoneId: string; takeoffs: TakeoffSummary[]; piles?: StockpileSummary[]; addon: boolean; canEdit: boolean }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -70,6 +71,24 @@ export function ZoneDirtCard({ zoneId, takeoffs, addon, canEdit }: { zoneId: str
               </button>
             )}
             {err && <p className="text-xs text-amber">{err}</p>}
+            <div className="border-t border-navy-800 pt-3">
+              <div className="mb-2 text-xs font-semibold text-ink">Stockpiles</div>
+              {pileHistory(piles).slice(0, 8).map(h => (
+                <div key={h.latest.id} className="flex items-center gap-3 py-1 text-xs">
+                  <Triangle className="h-3.5 w-3.5 shrink-0 text-amber" />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-ink">{h.name}</span>
+                    <span className="text-muted"> · {n0(h.latest.results.cy)} CY · {n0(h.latest.results.tons)} tons · {h.latest.measuredOn}</span>
+                    {h.changeCy !== null && <span className={h.changeCy >= 0 ? 'text-teal' : 'text-amber'}> · {h.changeCy >= 0 ? '+' : '−'}{n0(Math.abs(h.changeCy))} CY since {h.prevOn}</span>}
+                    {h.latest.source === 'lidar' && <span className="text-amber"> · old lidar</span>}
+                  </div>
+                </div>
+              ))}
+              {!piles.length && <p className="text-xs text-muted">Draw a pile&apos;s toe over this site&apos;s drone survey to get its volume and tons.</p>}
+              <Link href={`/dirt/stockpiles/${zoneId}`} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-navy-700 px-3 py-1.5 text-sm text-ink hover:bg-navy-800">
+                <Triangle className="h-4 w-4" /> {canEdit ? 'Measure a stockpile' : 'Stockpiles'}
+              </Link>
+            </div>
           </>
         )}
       </div>
