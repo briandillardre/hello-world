@@ -28,7 +28,7 @@ BEGIN
   IF def IS NULL THEN
     vals := ARRAY['dirt', 'satellite'];
   ELSE
-    SELECT array_agg(DISTINCT m[1]) INTO vals FROM regexp_matches(def, '''([^'']+)''', 'g') AS m;
+    SELECT array_agg(DISTINCT m[1]) INTO vals FROM regexp_matches(def, '''([a-z_]+)''', 'g') AS m;
   END IF;
   IF NOT ('site_takeoff' = ANY (vals)) THEN
     vals := vals || 'site_takeoff'::text;
