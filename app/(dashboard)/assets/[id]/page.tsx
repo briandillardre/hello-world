@@ -37,9 +37,9 @@ import { SectionLoading, SweepBar } from '@/components/ui/loading'
 import { TruckData } from '@/components/telemetry/TruckData'
 import { getTruckReadings, getTruckTrend, pickTrendKeys } from '@/lib/db/telemetry'
 import { mergeReadings, readingsFromRaw } from '@/lib/telemetry-catalog'
-import { getVehicleSafety, type SafetyAsset } from '@/lib/db/driving'
+import { getVehicleGlance, getVehicleSafety, type SafetyAsset } from '@/lib/db/driving'
 import { resolveDigestPrefs } from '@/lib/weekly-digest'
-import { GradeChip, QualityChip, ScoreDial, TrendTag, WhatMoved } from '@/components/reports/SafetyBits'
+import { DrivingCard, GradeChip, QualityChip, ScoreDial, TrendTag, WhatMoved } from '@/components/reports/SafetyBits'
 
 const TYPE_EMOJI: Record<AssetType, string> = { vehicle: '🚛', equipment: '🏗️', personnel: '👷', tool: '🔧' }
 const TYPE_LABEL: Record<AssetType, string> = { vehicle: 'Vehicle', equipment: 'Equipment', personnel: 'Personnel', tool: 'Small Tool' }
@@ -481,7 +481,10 @@ async function SafetySection({ asset, companyId, fleet }: { asset: AssetWithLoca
     db = createClient()
   }
   const self: SafetyAsset = { id: asset.id, name: asset.name, type: asset.type, tracker_id: asset.tracker_id, metadata: (asset.metadata ?? null) as Record<string, unknown> | null }
-  const v = await getVehicleSafety(db, { companyId, tz: companyTz, asset: self, fleet, days: 90 })
+  const [v, glance] = await Promise.all([
+    getVehicleSafety(db, { companyId, tz: companyTz, asset: self, fleet, days: 90 }),
+    getVehicleGlance(db, { companyId, tz: companyTz, asset: self, fleet, days: 30 }),
+  ])
   if (!v) return null
   const s = v.score
   const has = s.credible && s.score != null
@@ -513,6 +516,7 @@ async function SafetySection({ asset, companyId, fleet }: { asset: AssetWithLoca
           </div>
         )}
       </div>
+      {glance && <div className="mt-2"><DrivingCard g={glance} days={30} assetId={asset.id} /></div>}
     </section>
   )
 }

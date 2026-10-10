@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  accelLookback, ACCEL_LOOKBACK_DAYS, analyzeDay, byMonth, decodeFix, driverTotals, emptyTotals, ENGINE_VERSION, eventWords,
+  accelLookback, ACCEL_LOOKBACK_DAYS, analyzeDay, byMonth, decodeFix, driverTotals, drivingGlance, emptyTotals, type DrivingGlance, ENGINE_VERSION, eventWords,
   SAFETY_METHOD, scoreTotals, sumDaily, vehicleClassOf, type DailyRow, type DrivingEvent, type DrivingFix, type DrivingTotals,
   type EventKind, type RiderTrack, type RowLike, type SafetyScore, type Severity, type VehicleClass, type ZoneLimit,
 } from '../driving-score'
@@ -600,6 +600,13 @@ export async function getVehicleSafety(db: SupabaseClient | null, opts: { compan
   if (!isMock && !isScoredAsset(opts.asset)) return null
   const rep = await getSafetyReport(db, { companyId: opts.companyId, tz: opts.tz, days: opts.days ?? 90, assets: opts.fleet, drivers: 'none', withPrior: true })
   return rep.vehicles.find((v) => v.assetId === opts.asset.id) ?? null
+}
+
+/** The asset glance (asset page + map panel): the last `days` for one OBD /
+ *  wired vehicle in plain counts, score or not. null = not a scored vehicle. */
+export async function getVehicleGlance(db: SupabaseClient | null, opts: { companyId: string; tz: string; asset: SafetyAsset; fleet: SafetyAsset[]; days?: number }): Promise<DrivingGlance | null> {
+  const v = await getVehicleSafety(db, { ...opts, days: opts.days ?? 30 })
+  return v ? drivingGlance(v.totals, v.score, v.vehicleClass) : null
 }
 
 /**

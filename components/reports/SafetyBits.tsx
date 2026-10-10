@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { measuredCount, type DataQuality, type Grade, type SafetyScore, type ScoreComponent } from '@/lib/driving-score'
+import { measuredCount, type DrivingGlance, type DataQuality, type Grade, type SafetyScore, type ScoreComponent } from '@/lib/driving-score'
 import type { SafetyEvent } from '@/lib/db/driving'
 import { fmtDateTime } from '@/lib/dates'
 
@@ -178,3 +178,52 @@ export function EventList({ events, tz, showAsset = true, empty }: { events: Saf
 /** "1.2" per 1,000 mi; "—" for none; "n/a" when not measured. */
 export const rate = (x: number | null) => (x == null ? 'n/a' : x > 0 ? (x >= 10 ? Math.round(x).toString() : x.toFixed(1)) : '—')
 export const pct = (x: number) => (x > 0 ? `${x < 1 ? x.toFixed(1) : Math.round(x)}%` : '—')
+
+/**
+ * The compact "Driving" card for one OBD / wired vehicle — the asset page and
+ * the map panel. Shown for EVERY such vehicle: a score once credible, else how
+ * far it is along the 250 mi / 10 h line; the period's raw counts either way.
+ */
+export function DrivingCard({ g, days, assetId, compact = false }: { g: DrivingGlance; days: number; assetId: string; compact?: boolean }) {
+  const s = g.score
+  const has = s.credible && s.score != null
+  const harsh = (n: number) => (g.sensorOn ? n.toLocaleString() : 'sensor off')
+  const cells: { label: string; value: string; title?: string }[] = [
+    { label: 'Miles', value: g.miles.toLocaleString() },
+    { label: 'Top speed', value: g.topMph ? `${g.topMph} mph` : '—' },
+    { label: 'Hard brakes', value: harsh(g.hardBrakes), title: 'Confirmed by the truck’s accelerometer' },
+    { label: 'Hard accel', value: harsh(g.hardAccel), title: 'Confirmed by the truck’s accelerometer' },
+    { label: 'Hard corners', value: harsh(g.hardCorners), title: 'Confirmed by the truck’s accelerometer' },
+    { label: `Over ${g.maxLineMph} mph`, value: `${g.overMaxMin} min` },
+    { label: 'Over site limits', value: `${g.overZoneMin} min` },
+    { label: 'Late night', value: g.lateNightHours ? `${g.lateNightHours} h` : '—', title: 'Driving midnight–4 AM' },
+  ]
+  return (
+    <div className={compact ? 'bg-navy-800 rounded-lg p-3' : 'rounded-xl border border-navy-800 bg-navy-900 p-3.5'}>
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <p className="text-xs font-semibold text-faint uppercase tracking-wider">Driving · {days} days</p>
+        <Link href={`/reports/safety?days=${days <= 30 ? 30 : 90}&asset=${assetId}`} className="text-[12px] text-teal hover:underline">Safety report →</Link>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <GradeChip score={s} />
+        <span className="text-[12.5px] text-ink">
+          {has ? s.coaching : g.building
+            ? `Building a score: ${g.building.miles.toLocaleString()} of ${g.building.needMiles} mi · ${g.building.hours} of ${g.building.needHours} h`
+            : 'Not scored yet'}
+        </span>
+      </div>
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1.5 mt-2.5">
+        {cells.map((c) => (
+          <div key={c.label} title={c.title}>
+            <dt className="text-[10.5px] text-faint uppercase tracking-wide">{c.label}</dt>
+            <dd className={`font-mono text-[12.5px] ${c.value === 'sensor off' ? 'text-faint' : 'text-ink'}`}>{c.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {!g.sensorOn && (
+        <p className="text-[11px] text-faint mt-2">Hard brakes, launches and corners count only when the tracker&apos;s accelerometer (Green Driving) reports — none yet in this period.</p>
+      )}
+      {g.crashes > 0 && <p className="text-[11.5px] text-alert mt-1.5">{g.crashes} possible {g.crashes === 1 ? 'impact' : 'impacts'} recorded — see the report.</p>}
+    </div>
+  )
+}
