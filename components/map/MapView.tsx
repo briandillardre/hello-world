@@ -29,6 +29,7 @@ import { PROJECTS, periodCost, RANGE_COST_LABEL } from '@/lib/projects'
 import { PARCEL_SERVICE_URL, PARCEL_MIN_ZOOM, PARCEL_LABEL_MIN_ZOOM, fetchParcels } from '@/lib/parcels'
 import { zoneCostAt, buildCostCurve, zoneCostsFromHistory } from '@/lib/costs'
 import { MAP_OVERLAYS } from '@/lib/overlays'
+import { surfaceLegend } from '@/lib/wx-surface'
 import { twilightBands, sunAt } from '@/lib/terminator'
 import { startWindParticles, type WindField } from '@/lib/wind-particles'
 import { allViews, loadLocalViews, saveLocalViews, type MapViewsState, type SavedMapView } from '@/lib/map-views'
@@ -4512,7 +4513,11 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
   // trusted from our hardcoded guesses — a wrong/renamed LAYERS= draws
   // nothing, silently. null = not fetched yet; {} = discovery failed, use
   // the configured defaults.
-  const RTMA_KEYS = useMemo(() => ['temp', 'feels', 'wind', 'lightning'] as const, [])
+  // Temperature / Feels like / Wind speed left nowCOAST (Oct 2026 — NOAA
+  // removed the RTMA layers) for our own /api/wx-surface tiles; only the
+  // lightning layer still needs its name discovered.
+  const RTMA_KEYS = useMemo(() => ['lightning'] as const, [])
+  const SURFACE_WX_KEYS = useMemo(() => ['temp', 'feels', 'wind'] as const, [])
   type RtmaDiscovered = { temp?: string | null; feels?: string | null; wind?: string | null; lightning?: string | null }
   const [rtmaNames, setRtmaNames] = useState<RtmaDiscovered | null>(null)
   const rtmaWanted = RTMA_KEYS.some((k) => overlaysOn[k])
@@ -4541,7 +4546,7 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
       // the right LAYERS= the first time (effect re-runs when names arrive).
       if (on && isRtma && rtmaNames === null) continue
       if (on && !m.getSource(srcId)) {
-        let tiles = o.tiles
+        let tiles = o.tiles.startsWith('/') ? `${window.location.origin}${o.tiles}` : o.tiles
         if (isRtma) {
           const real = rtmaNames?.[o.key as 'temp' | 'feels' | 'wind' | 'lightning']
           if (real) tiles = tiles.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(real)}`)
@@ -4563,10 +4568,26 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
           beforeId
         )
       }
-      if (m.getLayer(layerId)) m.setLayoutProperty(layerId, 'visibility', on ? 'visible' : 'none')
+      // Surface weather is LIVE ONLY (the NWS observation service keeps no
+      // history) — hidden during a replay, never shown as if it were then.
+      const liveOnlyHidden = pbActive && (SURFACE_WX_KEYS as readonly string[]).includes(o.key)
+      if (m.getLayer(layerId)) m.setLayoutProperty(layerId, 'visibility', on && !liveOnlyHidden ? 'visible' : 'none')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, overlaysOn, rtmaNames])
+  }, [mapReady, overlaysOn, rtmaNames, pbActive])
+
+  const surfaceReplayNoted = useRef(false)
+  useEffect(() => {
+    if (!pbActive || surfaceReplayNoted.current) return
+    const on = SURFACE_WX_KEYS.filter((k) => overlaysOn[k])
+    if (!on.length) return
+    surfaceReplayNoted.current = true
+    for (const k of on) {
+      window.dispatchEvent(new CustomEvent('ht:layer-error', {
+        detail: { key: k, msg: 'live only — NWS observations keep no history, so it hides during replays' },
+      }))
+    }
+  }, [pbActive, overlaysOn, SURFACE_WX_KEYS])
 
   // ── Placed site imagery (052/053/055): drone shots + plan sheets pinned to
   // ground corners. Photos follow the TIMELINE: at any scrub position each
@@ -7923,7 +7944,8 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
     return () => { alive = false; clearInterval(id) }
   }, [mapReady, radarOn, pbActive])
 
-  // Temperature / feels-like / wind / lightning FOLLOW THE SCRUBBER too
+  // Lightning FOLLOWS THE SCRUBBER too (temp/feels/wind did until NOAA pulled
+  // RTMA from nowCOAST, Oct 2026 — they are live-only now, see above)
   // (Brian, Aug 10): RTMA publishes hourly analyses and nowcoast retains
   // roughly the last day, so within that window a replay shows the ACTUAL
   // hour's shading via WMS TIME= — floored to the hour, so sweeping a day is
@@ -9153,13 +9175,28 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
               </span>
             </button>
           ))}
-          {(['temp', 'feels', 'wind', 'lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
-            const name = rtmaNames?.[k] ?? (k === 'temp' ? 'air_temperature' : k === 'feels' ? 'apparent_air_temperature' : k === 'wind' ? 'wind_speed' : null)
+          {!pbActive && SURFACE_WX_KEYS.filter((k) => !!overlaysOn[k]).map((k) => {
+            const lg = surfaceLegend(k)
+            return (
+              <div key={k} className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5 w-40">
+                <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">
+                  {k === 'temp' ? 'Temperature °F' : k === 'feels' ? 'Feels like °F' : 'Wind mph'}
+                </p>
+                <div className="h-2.5 rounded-sm" style={{ background: lg.gradient }} />
+                <div className="flex justify-between font-mono text-[8.5px] text-faint mt-0.5">
+                  <span>{lg.lo}</span><span>{lg.hi}</span>
+                </div>
+                <p className="font-mono text-[8px] text-faint mt-0.5">NWS stations · live</p>
+              </div>
+            )
+          })}
+          {(['lightning'] as const).filter((k) => !!overlaysOn[k]).map((k) => {
+            const name = rtmaNames?.[k] ?? null
             if (!name) return null
             return (
               <div key={k} className="rounded-lg bg-navy-950/85 backdrop-blur border border-navy-700 p-1.5">
                 <p className="font-mono text-[9px] uppercase tracking-wide text-faint mb-1">
-                  {k === 'temp' ? 'Temperature °F' : k === 'feels' ? 'Feels like °F' : k === 'wind' ? 'Wind mph' : 'Lightning · strikes'}
+                  Lightning · strikes
                 </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img

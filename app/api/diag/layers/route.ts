@@ -30,24 +30,6 @@ const CHECKS: { key: string; label: string; url: string; kind: 'image' | 'json' 
     kind: 'json',
   },
   {
-    key: 'rtma-temp',
-    label: 'Temperature (NOAA RTMA WMS)',
-    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
-    kind: 'image',
-  },
-  {
-    key: 'rtma-feels',
-    label: 'Feels like (NOAA RTMA apparent temp)',
-    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=apparent_air_temperature&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
-    kind: 'image',
-  },
-  {
-    key: 'rtma-wind',
-    label: 'Wind speed (NOAA RTMA WMS)',
-    url: 'https://nowcoast.noaa.gov/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=wind_speed&STYLES=&SRS=EPSG:3857&BBOX=-9200000,4100000,-9100000,4200000&WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE',
-    kind: 'image',
-  },
-  {
     key: 'night-base',
     label: 'Night basemap (VIIRS Black Marble)',
     url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/default/GoogleMapsCompatible_Level8/5/12/8.png',
@@ -124,6 +106,15 @@ export async function GET(req: NextRequest) {
     // First hit may fetch the model upstream — allow the route's full budget.
     timeout: 25_000,
   }
+  // Temperature / Feels like / Wind speed: our own tiles, rendered from NWS
+  // surface observations (nowCOAST dropped its RTMA layers, Oct 2026).
+  const selfSurface = (['temp', 'feels', 'wind'] as const).map((k) => ({
+    key: `wx-${k}`,
+    label: `${k === 'temp' ? 'Temperature' : k === 'feels' ? 'Feels like' : 'Wind speed'} (our /api/wx-surface tiles · NWS surface obs)`,
+    url: `${req.nextUrl.origin}/api/wx-surface/${k}/5/8/12.png`,
+    kind: 'image' as const,
+    timeout: 55_000,
+  }))
   const selfWatches = {
     key: 'api-watches',
     label: 'SPC watch boxes (our /api/watches route)',
@@ -131,26 +122,9 @@ export async function GET(req: NextRequest) {
     kind: 'json' as const,
     timeout: 25_000,
   }
-  // The RTMA rows test the names the MAP actually uses: ask our discovery
-  // route first, fall back to the hardcoded guesses if it has nothing.
-  let checks = [...CHECKS]
-  try {
-    const r = await fetch(`${req.nextUrl.origin}/api/rtma-layers`, { signal: AbortSignal.timeout(25_000), cache: 'no-store' })
-    if (r.ok) {
-      const names = await r.json() as { temp?: string | null; feels?: string | null; wind?: string | null }
-      const sub = (key: string, name: string | null | undefined) => {
-        if (!name) return
-        checks = checks.map((c) => c.key === key
-          ? { ...c, label: `${c.label} → ${name}`, url: c.url.replace(/LAYERS=[^&]+/, `LAYERS=${encodeURIComponent(name)}`) }
-          : c)
-      }
-      sub('rtma-temp', names.temp)
-      sub('rtma-feels', names.feels)
-      sub('rtma-wind', names.wind)
-    }
-  } catch { /* discovery down — rows test the defaults */ }
+  const checks = [...CHECKS]
   const results = await Promise.all(
-    [...checks, selfWind, selfWatches].map(async (c) => {
+    [...checks, ...selfSurface, selfWind, selfWatches].map(async (c) => {
       try {
         const res = await fetch(c.url, {
           signal: AbortSignal.timeout((c as { timeout?: number }).timeout ?? 8000),

@@ -8,6 +8,7 @@
  */
 import type { DirtDesign, DirtResults } from '@/lib/dirt/takeoff'
 import type { LngLatBox } from '@/lib/dirt/ground-box'
+import type { PileResults } from '@/lib/dirt/stockpile'
 
 const isMock = !process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://your-project.supabase.co'
@@ -175,6 +176,57 @@ export async function getPlanSheets(geofenceId: string): Promise<PlanSheet[]> {
         corners: r.bounds as [number, number][],
         active: !!r.map_active,
       }))
+  } catch {
+    return []
+  }
+}
+
+// ── Stockpiles (migration 136) ──────────────────────────────────────────────
+
+export interface StockpileSummary {
+  id: string
+  name: string
+  material: string
+  measuredOn: string
+  source: 'dsm' | 'lidar'
+  toe: [number, number][]
+  results: PileResults
+}
+
+export interface SurfaceSummary { id: string; name: string; flownOn: string; words: string; resM: number | null }
+
+/** A site's measured piles, newest survey first (RLS: the caller's company, never a prospect). */
+export async function listStockpiles(geofenceId: string, limit = 200): Promise<StockpileSummary[]> {
+  if (isMock || !/^[0-9a-f-]{36}$/i.test(geofenceId)) return []
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data, error } = await createClient().from('dirt_stockpiles')
+      .select('id, name, material, measured_on, source, toe, results')
+      .eq('geofence_id', geofenceId).is('deleted_at', null)
+      .order('measured_on', { ascending: false }).order('created_at', { ascending: false }).limit(limit)
+    if (error || !data) return []
+    return data.map(r => ({
+      id: r.id as string, name: r.name as string, material: r.material as string, measuredOn: r.measured_on as string,
+      source: r.source as 'dsm' | 'lidar', toe: r.toe as [number, number][], results: r.results as PileResults,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/** A site's ready drone surveys, newest flight first. */
+export async function listSurfaces(geofenceId: string): Promise<SurfaceSummary[]> {
+  if (isMock || !/^[0-9a-f-]{36}$/i.test(geofenceId)) return []
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const { data, error } = await createClient().from('dirt_surfaces')
+      .select('id, name, flown_on, info').eq('geofence_id', geofenceId).eq('status', 'ready').is('deleted_at', null)
+      .order('flown_on', { ascending: false }).limit(60)
+    if (error || !data) return []
+    return data.map(r => {
+      const info = (r.info ?? {}) as { words?: string; resM?: number }
+      return { id: r.id as string, name: r.name as string, flownOn: r.flown_on as string, words: info.words ?? '', resM: Number.isFinite(info.resM) ? Number(info.resM) : null }
+    })
   } catch {
     return []
   }

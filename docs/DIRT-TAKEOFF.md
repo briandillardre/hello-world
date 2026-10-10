@@ -250,3 +250,14 @@ picture — every contour, label and spot comes out as geometry:
    bends (spot grades at peaks and low points cover it for now).
 5. Validate against one of DCG's real Kubla takeoffs (board #184); the rest of
    phase 2 is board #186.
+
+## Stockpiles (migration 136, Oct 2026)
+
+Brian: a stockpile option like Propeller's — "point, click and calculate from current drone survey data". Same add-on gate (`dirtAddonActive`).
+
+- **Where:** site page → Dirt takeoff card → *Measure a stockpile* → `/dirt/stockpiles/<zoneId>`.
+- **Surface:** a drone survey's elevation export (DSM GeoTIFF, one band, ≤ 50 MB) uploaded straight to the private `dirt` bucket on a signed URL; `finalizeSurfaceAction` opens it by range requests and reads its GeoKeys (`dsmCrs`: WGS84 / NAD83 / NAD83(2011) UTM, or lng/lat; metres, feet or US survey feet; heights by `VerticalUnitsGeoKey`, else the ground unit, else metres — the uploader can override). State plane is refused with the export to ask for. Fallback: USGS lidar (`groundCached`) with a warning on every result that lidar is years old and not today's pile.
+- **Math** (`lib/dirt/stockpile.ts`, pure): the survey under the toe is resampled onto a frame grid (`planPileGrid` / `sourceWindow` / `sampleToFrame`, ≤ 600k nodes); base = constrained TIN through toe heights (`buildTin`) or a flat floor at the lowest toe height; integrated exactly like the takeoff (top triangle ∩ base triangle, cut along toe edges, `polyPosNeg`), ÷ k². Below-base volume is reported apart. CY, m³, tons (editable density per material), area, max height.
+- **Over time:** each measurement is a row dated by the survey's flight; the same pile name groups them (`lib/dirt/pile-history.ts`) and shows the change.
+- **Tables:** `dirt_surfaces`, `dirt_stockpiles` — company read (live rows only), service-role writes, `ht_prospect_lockdown(…, false)`. Not yet: purging soft-deleted rows/files in the health cron, deleting a survey from the UI.
+- Harness: `node scripts/dirt-test.mjs` (cone / pyramid / sloped base / pit / k² / UTM-feet resample / GeoKeys).
