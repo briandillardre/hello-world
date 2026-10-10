@@ -22,6 +22,7 @@ import { ProjectHub } from '@/components/zones/ProjectHub'
 import { ZoneImagery } from '@/components/zones/ZoneImagery'
 import { ZonePlans } from '@/components/zones/ZonePlans'
 import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
+import { ZoneSiteTakeoffSection } from '@/components/site-takeoff/ZoneSiteTakeoffSection'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { PrivacyZoneCard } from '@/components/zones/PrivacyZoneCard'
 import { ZoneSatelliteSection } from '@/components/zones/ZoneSatelliteSection'
@@ -407,6 +408,12 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
         {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
           <Suspense fallback={null}>
             <ZoneDirtSection zoneId={fence.id} companyId={companyId} canEdit={perms.canEdit && !perms.viewingAs} />
+          </Suspense>
+        )}
+        {/* Paving + landscaping quantities on the site's own drone shot (137). */}
+        {!isBoundary && !isVendor && !isMock && !isProspect(perms) && (
+          <Suspense fallback={null}>
+            <ZoneSiteTakeoffSection zoneId={fence.id} companyId={companyId} canEdit={perms.canEdit && !perms.viewingAs} />
           </Suspense>
         )}
 
