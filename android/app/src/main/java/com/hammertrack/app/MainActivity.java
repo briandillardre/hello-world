@@ -1,5 +1,6 @@
 package com.hammertrack.app;
 
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -8,6 +9,8 @@ import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+
+import androidx.activity.OnBackPressedCallback;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
@@ -51,6 +54,26 @@ public class MainActivity extends BridgeActivity {
             // can't see 404s on purpose, an expired share link 404s, and the
             // app's own page says so. Only a 5xx falls through to the offline
             // page (ship-check, Oct 4, before 1.5.3 reached a phone).
+            // Back button (Brian, Oct 15): back to the page before; with no
+            // page before, back to the map; on the map, tuck the app away
+            // (like Home) instead of closing it. Without this Android finishes
+            // the activity on the first Back from any page, and reopening the
+            // app reloads it from scratch.
+            getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    WebView wv = bridge.getWebView();
+                    if (wv == null) { moveTaskToBack(true); return; }
+                    if (wv.canGoBack()) { wv.goBack(); return; }
+                    String url = wv.getUrl();
+                    Uri u = url == null ? null : Uri.parse(url);
+                    String path = u == null ? null : u.getPath();
+                    boolean onMap = path != null && (path.equals("/map") || path.startsWith("/map/"));
+                    boolean ours = u != null && u.getHost() != null && u.getHost().endsWith("hammertrack.ai");
+                    if (ours && !onMap) { wv.loadUrl("https://hammertrack.ai/map"); return; }
+                    moveTaskToBack(true);
+                }
+            });
             bridge.setWebViewClient(new BridgeWebViewClient(bridge) {
                 @Override
                 public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
