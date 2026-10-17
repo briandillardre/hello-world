@@ -2118,8 +2118,20 @@ export function MapView({ assets, geofences, places = [], onPlacesChanged, track
 
     // "Show your location" follows the convention every Google Maps user
     // already knows: the moment you locate, the map goes north-up, no tilt.
-    const geoCtrl = new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true })
-    geoCtrl.on('trackuserlocationstart', () => map.current?.easeTo({ bearing: 0, pitch: 0, duration: 600 }))
+    const geoCtrl = new maplibregl.GeolocateControl({
+      // The options object REPLACES MapLibre's defaults (no merge), so the
+      // old `{ enableHighAccuracy }` alone dropped the timeout: indoors or in
+      // a cab the phone could wait on a GPS lock forever with the button
+      // spinning. A fix up to 15 s old answers at once; the watch refines it.
+      positionOptions: { enableHighAccuracy: true, maximumAge: 15_000, timeout: 15_000 },
+      trackUserLocation: true,
+    })
+    // The north-up move must carry `geolocateSource`: any other camera move
+    // tells the control the user panned away, and it drops out of follow
+    // BEFORE the first fix — the button lit up and the map never came to
+    // you (Brian, Oct 17: "zoom to me button is not working"). Instant, so
+    // the control's own glide to the fix starts from north-up.
+    geoCtrl.on('trackuserlocationstart', () => map.current?.jumpTo({ bearing: 0, pitch: 0 }, { geolocateSource: true }))
     map.current.addControl(geoCtrl, ctrlCorner)
 
     // Zoom-to-all control (sits below the geolocate button)
