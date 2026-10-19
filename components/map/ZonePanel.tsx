@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { CameraButtons } from '@/components/zones/ZoneCameras'
+import type { ZoneCamera } from '@/lib/zone-cameras'
 import Link from 'next/link'
 import { Pencil, Check, Trash2, X, PenTool } from 'lucide-react'
 import { MapSheet, SparkBars } from './MapSheet'
@@ -59,6 +61,16 @@ export function ZonePanel({
   const [name, setName] = useState(fence.name)
   const [color, setColor] = useState(fence.color)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [cameras, setCameras] = useState<ZoneCamera[]>([])
+  useEffect(() => {
+    let live = true
+    setCameras([])
+    fetch(`/api/zone-cameras?zone=${encodeURIComponent(fence.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (live && Array.isArray(j?.cameras)) setCameras(j.cameras) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [fence.id])
 
   const save = () => {
     const n = name.trim()
@@ -225,6 +237,8 @@ export function ZonePanel({
               </div>
             )
           })()}
+
+          <CameraButtons cameras={cameras} compact />
 
           {canEdit && (
             <button

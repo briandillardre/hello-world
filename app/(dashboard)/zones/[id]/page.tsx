@@ -25,6 +25,8 @@ import { ZoneDirtSection } from '@/components/dirt/ZoneDirtSection'
 import { ZoneSiteTakeoffSection } from '@/components/site-takeoff/ZoneSiteTakeoffSection'
 import { isProspect, rankOf, RANK } from '@/lib/permissions'
 import { PrivacyZoneCard } from '@/components/zones/PrivacyZoneCard'
+import { ZoneCameras } from '@/components/zones/ZoneCameras'
+import type { ZoneCamera } from '@/lib/zone-cameras'
 import { ZoneSatelliteSection } from '@/components/zones/ZoneSatelliteSection'
 import { Suspense } from 'react'
 import type { ZoneImage } from '@/lib/actions/imagery'
@@ -62,6 +64,14 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
     getDivisions(companyId),
   ])
   if (!fence) notFound()
+  let zoneCameras: ZoneCamera[] = []
+  if (!isMock) {
+    try {
+      const { createClient } = await import('@/lib/supabase-server')
+      const { data } = await createClient().from('zone_cameras').select('id, name, kind, url').eq('geofence_id', fence.id).order('created_at')
+      zoneCameras = (data ?? []) as ZoneCamera[]
+    } catch { /* pre-138 DB */ }
+  }
 
   // Vercel renders in UTC — format times in the viewer's zone (ht_tz cookie).
   const tz = safeTz(cookies().get('ht_tz')?.value)
@@ -366,6 +376,11 @@ export default async function GeofenceDetailPage({ params }: { params: { id: str
 
         {visits !== null && (
           <ZoneVisits visits={visits} assetMeta={assetMeta} days={USAGE_DAYS} zoneName={fence.name} tz={tz} />
+        )}
+
+        {/* Site cameras (138): one tap to the camera's live view. */}
+        {!isMock && !isProspect(perms) && (
+          <ZoneCameras zoneId={fence.id} initial={zoneCameras} canEdit={perms.canEdit && !perms.viewingAs} />
         )}
 
         {/* Which half of the business this site belongs to (106). */}
