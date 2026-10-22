@@ -15,6 +15,19 @@ import {
   type ParentSession,
 } from '@/lib/game/sync'
 import type { KidProfile } from '@/lib/game/types'
+import { isNativeApp } from '@/lib/native'
+
+/** Google blocks OAuth inside embedded in-app browsers (Gmail, Facebook,
+ *  Instagram WebViews) with a dead-end "403: disallowed_useragent" page —
+ *  same detection the login page uses. */
+function inAppBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return (
+    /\bwv\b|FBAN|FBAV|Instagram|Line\/|GSA\/|Gmail/i.test(ua) ||
+    (/Android/i.test(ua) && /Version\/[\d.]+ Chrome\/[\d.]+ Mobile/i.test(ua) && !/Safari/i.test(ua))
+  )
+}
 
 interface AccountSyncProps {
   profiles: KidProfile[]
@@ -31,6 +44,12 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [synced, setSynced] = useState<'idle' | 'syncing' | 'done'>('idle')
+  // Google stays hidden until the provider is actually enabled (same flag as
+  // the login page — showing it earlier just produced a raw Supabase error),
+  // and never inside the Capacitor shell (OAuth dead-ends in web views).
+  const [native, setNative] = useState(true)
+  useEffect(() => setNative(isNativeApp()), [])
+  const googleOn = process.env.NEXT_PUBLIC_AUTH_GOOGLE === '1' && !native
 
   useEffect(() => {
     let alive = true
@@ -106,16 +125,24 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
       </p>
       <p className="text-xs text-slate-500 font-semibold mb-3">Sign in to back up progress and sync across phones & tablets.</p>
       {error && <p className="text-xs font-bold text-red-500 mb-2">{error}</p>}
-      <button
-        onClick={async () => {
-          setError('')
-          const err = await signInWithGoogle()
-          if (err) setError(err)
-        }}
-        className="w-full rounded-xl bg-white border-2 border-slate-300 font-extrabold text-slate-700 px-4 py-2.5 mb-2 flex items-center justify-center gap-2 active:scale-95"
-      >
-        <GoogleG /> Continue with Google
-      </button>
+      {googleOn && (
+        <button
+          onClick={async () => {
+            setError('')
+            if (inAppBrowser()) {
+              setError(
+                'Google blocks sign-in inside this app’s built-in browser. Tap ⋮ (or the share button) and choose “Open in Chrome/Safari”, then try again — or use email + password below.'
+              )
+              return
+            }
+            const err = await signInWithGoogle()
+            if (err) setError(err)
+          }}
+          className="w-full rounded-xl bg-white border-2 border-slate-300 font-extrabold text-slate-700 px-4 py-2.5 mb-2 flex items-center justify-center gap-2 active:scale-95"
+        >
+          <GoogleG /> Continue with Google
+        </button>
+      )}
       <form
         onSubmit={async (e) => {
           e.preventDefault()

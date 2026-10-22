@@ -39,16 +39,22 @@ export async function getParentSession(): Promise<ParentSession | null> {
 export async function signInWithGoogle(): Promise<string | null> {
   const supabase = await getSupabase()
   if (!supabase) return 'Cloud accounts are not connected yet.'
+  pushUnlockedFor = null // a different account may come back — require a fresh pull
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: `${window.location.origin}/play` },
   })
-  return error ? error.message : null
+  if (!error) return null
+  // raw Supabase provider errors read as gibberish to a parent
+  return /not enabled|unsupported provider/i.test(error.message)
+    ? 'Google sign-in isn’t switched on yet — use your email and a password below instead.'
+    : error.message
 }
 
 export async function signInWithEmail(email: string, password: string, create: boolean): Promise<string | null> {
   const supabase = await getSupabase()
   if (!supabase) return 'Cloud accounts are not connected yet.'
+  pushUnlockedFor = null // switching accounts must re-earn the push lock
   const { error } = create
     ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/play` } })
     : await supabase.auth.signInWithPassword({ email, password })
@@ -56,17 +62,19 @@ export async function signInWithEmail(email: string, password: string, create: b
 }
 
 export async function signOut(): Promise<void> {
+  pushUnlockedFor = null
   const supabase = await getSupabase()
   await supabase?.auth.signOut()
 }
 
 // ------------------------------------------------------------------ profiles
 
-// Pushing is locked until a successful cloud READ has happened this session.
-// Without this, a signed-in device with empty localStorage (new phone, post-
-// OAuth redirect, transient fetch error) would upsert fresh default profiles
-// over the family's real backup.
-let pushUnlocked = false
+// Pushing is locked until the SAME signed-in user has had a successful cloud
+// READ this session. Without this, a signed-in device with empty localStorage
+// (new phone, post-OAuth redirect, transient fetch error) — or a push timer
+// racing an account switch — would upsert the wrong profiles over a family's
+// real backup.
+let pushUnlockedFor: string | null = null
 
 export interface CloudFetch {
   /** true only when the query succeeded (profiles may still be null = no row yet) */
@@ -81,17 +89,16 @@ export async function fetchCloudProfiles(): Promise<CloudFetch> {
   if (!session) return { ok: false, profiles: null }
   const { data, error } = await supabase.from('brainball_profiles').select('payload').eq('user_id', session.userId).maybeSingle()
   if (error) return { ok: false, profiles: null }
-  pushUnlocked = true
+  pushUnlockedFor = session.userId
   const profiles = (data?.payload as { profiles?: KidProfile[] } | null)?.profiles ?? null
   return { ok: true, profiles }
 }
 
 export async function pushCloudProfiles(profiles: KidProfile[]): Promise<boolean> {
-  if (!pushUnlocked) return false
   const supabase = await getSupabase()
   if (!supabase) return false
   const session = await getParentSession()
-  if (!session) return false
+  if (!session || session.userId !== pushUnlockedFor) return false
   const { error } = await supabase
     .from('brainball_profiles')
     .upsert({ user_id: session.userId, payload: { profiles }, updated_at: new Date().toISOString() })
