@@ -109,6 +109,7 @@ re-audits the splash claims in the same commit.
 - `marketing/ad-variants.md` — Google Search, dealer, cold email ad copy
 - `docs/BUSINESS-PLAN.md` — full operating plan: pricing, phases, hires, cash curve, exit scenarios (update at phase gates)
 - `tools/foreclosures/` — Brian's SIDE TOOL (not HammerTrack product): SC Master-in-Equity foreclosure crawler (Upstate 4 + Horry/Charleston/Georgetown live, Beaufort/Berkeley/Dorchester/Colleton via statewide rosters) — sale lists → Notice of Sale → Order/Form 4 judgment $ → property card → report. Runs on Brian's PC (court index/qPublic block cloud IPs). `tools/foreclosures/README.md`
+- `app/play/page.tsx` + `components/game/` + `lib/game/` — Brain Ball, kids' adaptive learning game (Brian's kids; unlisted; local-first + parent cloud sync via `supabase/migrations/139_brainball.sql`; packaging plan in docs/BRAIN_BALL.md)
 - `supabase/migrations/001_initial.sql` — full schema with PostGIS + RLS
 - `supabase/migrations/002_v2.sql` — tool_associations, maintenance, QBO tables
 - `supabase/migrations/077_trail_daily.sql` + `078_trail_perf.sql` — pre-rolled daily map trails (the 500-device scale fix, Aug 25): see Features Built
