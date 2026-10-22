@@ -5,7 +5,7 @@
 
 ## What This Is
 (One paragraph: what the app does, who it's for.)
-Owner: Brian Dillard (briandillardre@gmail.com), Nashville TN.
+Owner: Brian Dillard.
 
 ## Workflow — how Brian works (do not deviate)
 - **Push straight to `master`.** No pull requests unless Brian asks for a
