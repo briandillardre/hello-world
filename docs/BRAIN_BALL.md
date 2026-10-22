@@ -1,6 +1,6 @@
 # Brain Ball 🧠⚽ — Kids' Adaptive Learning Game
 
-Live at **https://hammertrackai.com/play** (unlisted — not indexed, not linked from the site).
+Live at **https://hammertrack.ai/play** (unlisted — not indexed, not linked from the site).
 
 Built for Marshall (b. 2020-09-15) and Lincoln (b. 2022-02-10). Roll a smiley ball into the
 right answer bubble and it eats it and grows (hole.io style). Wrong answers gently reveal the
@@ -90,7 +90,7 @@ the main app — see CLAUDE.md):
   (`brainball_profiles`), RLS locked to `auth.uid()`.
 - **Google provider setup (one-time):** create an OAuth client at console.cloud.google.com with
   redirect `https://<project-ref>.supabase.co/auth/v1/callback`, paste ID + secret into Supabase →
-  Authentication → Providers → Google, and add `https://hammertrackai.com/play` to the auth
+  Authentication → Providers → Google, and add `https://hammertrack.ai/play` to the auth
   redirect allow-list. (Steps also in the migration file header.)
 - **Demo mode:** without env vars the card explains sync is coming and play stays local-only.
 

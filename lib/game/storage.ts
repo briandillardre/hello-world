@@ -53,8 +53,8 @@ function makeKid(id: string, name: string, birthdate: string, avatar: string, op
 
 export function defaultProfiles(): KidProfile[] {
   return [
-    makeKid('marshall', 'Marshall', '2020-09-15', '🦖'),
-    makeKid('lincoln', 'Lincoln', '2022-02-10', '🦁'),
+    makeKid('marshall', 'Marshall', '2020-09-01', '🦖'),
+    makeKid('lincoln', 'Lincoln', '2022-02-01', '🦁'),
     // grown-up testers: separate scores, questions start much harder,
     // age-norm percentiles suppressed in the report
     makeKid('brian', 'Brian', '1984-06-15', '🛠️', { tester: true, startTheta: 60 }),
