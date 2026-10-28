@@ -82,6 +82,8 @@ export interface RoundResult {
   speedBonuses?: number
   /** count of 📖 answered-before-the-voice reading bonuses this round */
   readBonuses?: number
+  /** 🏈 touchdowns scored (football mode only) */
+  touchdowns?: number
 }
 
 export interface ReviewItem {
@@ -116,6 +118,12 @@ export interface KidProfile {
   personality?: import('./personality').PersonalityState
   /** grown-up test profile: separate scores, no age-norm percentiles */
   isTester?: boolean
+  /** version stamp of the last real-world assessment seed applied (see storage.ts) */
+  seedVersion?: string
+  /** real-world assessment summary shown on the grown-ups report */
+  assessment?: { date: string; title: string; summary: string; focus: string[] }
+  /** which game renders the round: classic rolling ball or football drive */
+  gameMode?: 'ball' | 'football'
 }
 
 export interface BallSkin {

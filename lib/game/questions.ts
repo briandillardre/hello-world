@@ -441,6 +441,76 @@ const RHYMES: Array<{ target: string; match: string; misses: string[] }> = [
   { target: 'mouse', match: 'house', misses: ['cheese', 'trap'] },
 ]
 
+// consonant blends — Marshall's school reading check asked for "sc"/"sk"
+// practice by name (scoot, school, scum, scrape, skill, skip, skin, skid),
+// so those words are here verbatim, padded with the other common s-blends
+const BLEND_WORDS: Array<{ blend: string; word: string }> = [
+  { blend: 'sc', word: 'scoot' }, { blend: 'sc', word: 'school' }, { blend: 'sc', word: 'scum' }, { blend: 'sc', word: 'scrape' },
+  { blend: 'sk', word: 'skill' }, { blend: 'sk', word: 'skip' }, { blend: 'sk', word: 'skin' }, { blend: 'sk', word: 'skid' },
+  { blend: 'st', word: 'stop' }, { blend: 'st', word: 'star' },
+  { blend: 'sl', word: 'slide' }, { blend: 'sl', word: 'sleep' },
+  { blend: 'sn', word: 'snack' }, { blend: 'sn', word: 'snow' },
+  { blend: 'sp', word: 'spin' }, { blend: 'sp', word: 'spot' },
+  { blend: 'sw', word: 'swim' }, { blend: 'sw', word: 'swing' },
+]
+const BLENDS = ['sc', 'sk', 'st', 'sl', 'sn', 'sp', 'sw']
+
+function genBlend(d: number): Question {
+  const w = pick(BLEND_WORDS)
+  if (Math.random() < 0.5) {
+    // which two letters start the word — the sc/sk confusable is ALWAYS a choice
+    const partner = w.blend === 'sc' ? 'sk' : w.blend === 'sk' ? 'sc' : pick(BLENDS.filter((b) => b !== w.blend))
+    const third = pick(BLENDS.filter((b) => b !== w.blend && b !== partner))
+    const opts = shuffle([w.blend, partner, third])
+    return {
+      skill: 'sounds',
+      difficulty: d,
+      prompt: `Which two letters start "${w.word}"?`,
+      speech: `${w.word}. Which two letters does ${w.word} start with?`,
+      choices: opts,
+      answer: opts.indexOf(w.blend),
+      explain: `Say it slowly — ${w.blend}, ${w.word}. "${w.word}" starts with ${w.blend.toUpperCase()}.`,
+    }
+  }
+  const others = shuffle(BLEND_WORDS.filter((x) => x.blend !== w.blend)).slice(0, 2)
+  const opts = shuffle([w, ...others])
+  return {
+    skill: 'sounds',
+    difficulty: d,
+    prompt: `Which word starts with "${w.blend}"?`,
+    speech: `Which word starts with the letters ${w.blend.split('').join(', ')}?`,
+    choices: opts.map((o) => o.word),
+    answer: opts.indexOf(w),
+    explain: `"${w.word}" starts with ${w.blend} — ${others.map((o) => `${o.word} starts with ${o.blend}`).join(' and ')}.`,
+  }
+}
+
+// finish-the-rhyme couplets — the report's cadence & rhyming-poem tip
+const POEMS: Array<{ line: string; answer: string; misses: [string, string] }> = [
+  { line: 'The frog sat on a log, right next to a sleepy ___', answer: 'dog', misses: ['cat', 'fish'] },
+  { line: 'I skip and I hop, then I spin like a ___', answer: 'top', misses: ['ball', 'kite'] },
+  { line: 'The star shines so bright, all through the ___', answer: 'night', misses: ['day', 'rain'] },
+  { line: 'The goat in the boat began to ___', answer: 'float', misses: ['sink', 'run'] },
+  { line: 'The snail on the trail picked up the ___', answer: 'mail', misses: ['leaf', 'rock'] },
+  { line: 'The bear on the chair had leaves in his ___', answer: 'hair', misses: ['paws', 'hat'] },
+  { line: 'The whale with the tail blew wind in the ___', answer: 'sail', misses: ['water', 'sky'] },
+  { line: 'The pig in a wig did a silly little ___', answer: 'jig', misses: ['nap', 'song'] },
+]
+
+function genPoem(d: number): Question {
+  const p = pick(POEMS)
+  const opts = shuffle([p.answer, ...p.misses])
+  return {
+    skill: 'sounds',
+    difficulty: d,
+    prompt: `Finish the rhyme: "${p.line}"`,
+    speech: `Finish the rhyme! ${p.line.replace('___', 'what?')}`,
+    choices: opts,
+    answer: opts.indexOf(p.answer),
+    explain: `"${p.answer}" keeps the rhyme going — read the line out loud and hear how it bounces!`,
+  }
+}
+
 function genSounds(d: number): Question {
   if (d < 40) {
     const w = pick(PHONICS)
@@ -470,7 +540,7 @@ function genSounds(d: number): Question {
       explain: `${w.word} starts with ${w.first} — say it slowly: ${w.first}-${w.first}-${w.word}.`,
     }
   }
-  if (d < 85) {
+  if (d < 78) {
     const r = pick(RHYMES)
     const opts = shuffle([r.match, ...r.misses])
     return {
@@ -483,6 +553,10 @@ function genSounds(d: number): Question {
       explain: `${r.target} and ${r.match} rhyme — their endings sound the same. ${r.target}… ${r.match}!`,
     }
   }
+  // top band: blends, finish-the-rhyme poems, and ending sounds
+  const roll = Math.random()
+  if (d >= 86 && roll < 0.35) return genPoem(d)
+  if (roll < 0.7) return genBlend(d)
   const w = pick(PHONICS)
   const { choices, answer } = makeChoices(w.last, letterDistractors(w.last))
   return {
@@ -617,6 +691,7 @@ function genShapes(d: number): Question {
 const SIGHT_1 = ['a', 'I', 'the', 'to', 'and', 'go', 'we', 'my', 'see', 'in', 'it', 'up', 'me', 'at', 'am', 'is', 'can', 'you']
 const SIGHT_2 = ['he', 'she', 'was', 'are', 'they', 'said', 'have', 'like', 'this', 'for', 'play', 'with', 'went', 'her', 'him', 'get', 'not', 'all']
 const SIGHT_3 = ['what', 'when', 'out', 'some', 'come', 'here', 'want', 'good', 'little', 'down', 'look', 'jump', 'where', 'there', 'because', 'again', 'every', 'about']
+const SIGHT_4 = ['before', 'together', 'around', 'another', 'thought', 'should', 'right', 'their', 'would', 'which', 'found', 'always', 'both', 'does', 'pretty', 'under', 'very', 'enough']
 const CVC: Array<{ word: string; emoji: string; misses: string[] }> = [
   { word: 'cat', emoji: '🐱', misses: ['cot', 'cut'] },
   { word: 'dog', emoji: '🐶', misses: ['dig', 'dug'] },
@@ -637,9 +712,70 @@ const CVC: Array<{ word: string; emoji: string; misses: string[] }> = [
 
 const spellOut = (w: string) => w.toUpperCase().split('').join('-')
 
+// blend-word spelling reads: the right spelling vs its sc/sk (and similar)
+// confusions — the exact practice Marshall's reading check asked for
+const BLEND_READ: Array<{ word: string; emoji: string; misses: [string, string] }> = [
+  { word: 'school', emoji: '🏫', misses: ['skool', 'shcool'] },
+  { word: 'scoot', emoji: '🛴', misses: ['skoot', 'soot'] },
+  { word: 'skip', emoji: '🤸', misses: ['scip', 'skep'] },
+  { word: 'skid', emoji: '🛞', misses: ['scid', 'sked'] },
+  { word: 'skin', emoji: '🖐️', misses: ['scin', 'sken'] },
+  { word: 'skill', emoji: '🎯', misses: ['scill', 'skil'] },
+  { word: 'scrape', emoji: '🩹', misses: ['skrape', 'scape'] },
+  { word: 'snake', emoji: '🐍', misses: ['snack', 'sneak'] },
+  { word: 'swing', emoji: '🛝', misses: ['sweng', 'sving'] },
+  { word: 'storm', emoji: '⛈️', misses: ['strom', 'storn'] },
+]
+
+// story settings — the report's tip #1: name WHERE and WHEN a story happens
+const STORY_SETTINGS: Array<{ story: string; ask: 'where' | 'when'; answer: string; misses: [string, string]; clue: string }> = [
+  { story: 'Sam built a sandcastle while seagulls flew over the waves.', ask: 'where', answer: 'at the beach', misses: ['in the woods', 'at school'], clue: 'sandcastle, seagulls and waves' },
+  { story: 'Mia zipped her coat as snowflakes landed on her sled.', ask: 'when', answer: 'in winter', misses: ['in summer', 'in spring'], clue: 'snowflakes and a sled' },
+  { story: 'The owls hooted and the stars came out while Max brushed his teeth.', ask: 'when', answer: 'at night', misses: ['in the morning', 'at lunch'], clue: 'owls and stars' },
+  { story: 'Leo picked a pumpkin and crunched through the fallen leaves.', ask: 'when', answer: 'in the fall', misses: ['in winter', 'in spring'], clue: 'pumpkins and fallen leaves' },
+  { story: 'Ava fed the goats and gathered warm eggs from the hens.', ask: 'where', answer: 'on a farm', misses: ['at the mall', 'on the moon'], clue: 'goats and hens' },
+  { story: 'Ben floated past clownfish and waved at a sea turtle.', ask: 'where', answer: 'under the sea', misses: ['in the desert', 'on a mountain'], clue: 'clownfish and a sea turtle' },
+  { story: 'The campers roasted marshmallows while crickets chirped in the dark trees.', ask: 'where', answer: 'at a campsite', misses: ['at the library', 'in a pool'], clue: 'a campfire and crickets' },
+  { story: 'Everyone went quiet as the lights dimmed and the curtain rose.', ask: 'where', answer: 'at a show', misses: ['on a bus', 'at the dentist'], clue: 'dimming lights and a curtain' },
+  { story: 'Jack yawned, poured milk on his cereal, and watched the sun come up.', ask: 'when', answer: 'in the morning', misses: ['at midnight', 'at dinner'], clue: 'cereal and the sunrise' },
+  { story: 'The astronauts bounced slowly past their flag in the gray dust.', ask: 'where', answer: 'on the moon', misses: ['at the beach', 'in a cave'], clue: 'astronauts bouncing in gray dust' },
+  { story: 'Rosa hung her backpack on its hook and sat criss-cross on the rug for circle time.', ask: 'where', answer: 'at school', misses: ['at home', 'at the zoo'], clue: 'a backpack hook and circle time' },
+  { story: 'The fireflies blinked over the yard as Dad lit the grill for burgers.', ask: 'when', answer: 'on a summer evening', misses: ['on a snowy day', 'early in the morning'], clue: 'fireflies and grilling' },
+]
+
+function genSetting(d: number): Question {
+  const s = pick(STORY_SETTINGS)
+  const opts = shuffle([s.answer, ...s.misses])
+  const askLine = s.ask === 'where' ? 'WHERE does this story happen?' : 'WHEN does this story happen?'
+  return {
+    skill: 'words',
+    difficulty: d,
+    prompt: `${s.story} — ${askLine}`,
+    speech: `Listen to this little story. ${s.story} ${s.ask === 'where' ? 'Where does this story happen?' : 'When does this story happen?'}`,
+    choices: opts,
+    answer: opts.indexOf(s.answer),
+    explain: `The setting is where and when a story happens. The clues — ${s.clue} — tell you it happens ${s.answer}.`,
+  }
+}
+
+function genBlendRead(d: number): Question {
+  const c = pick(BLEND_READ)
+  const opts = shuffle([c.word, ...c.misses])
+  return {
+    skill: 'words',
+    difficulty: d,
+    prompt: 'Which word is spelled right?',
+    speech: `Which one spells ${c.word}?`,
+    visual: c.emoji,
+    choices: opts,
+    answer: opts.indexOf(c.word),
+    explain: `${spellOut(c.word)} spells "${c.word}" — watch the first two letters, they do the tricky work!`,
+  }
+}
+
 function genWords(d: number): Question {
-  if (d < 75) {
-    const list = d < 30 ? SIGHT_1 : d < 55 ? SIGHT_2 : SIGHT_3
+  if (d < 70) {
+    const list = d < 28 ? SIGHT_1 : d < 46 ? SIGHT_2 : d < 60 ? SIGHT_3 : SIGHT_4
     const w = pick(list)
     const { choices, answer } = makeChoices(w, list.filter((x) => x !== w))
     return {
@@ -652,6 +788,13 @@ function genWords(d: number): Question {
       explain: `${spellOut(w)} spells "${w}" — it's a super-common word, you'll see it everywhere!`,
     }
   }
+  // top bands for strong readers: blend spellings, then story settings
+  if (d >= 90) return Math.random() < 0.6 ? genSetting(d) : genBlendRead(d)
+  if (d >= 80) return Math.random() < 0.6 ? genBlendRead(d) : genCvcRead(d)
+  return genCvcRead(d)
+}
+
+function genCvcRead(d: number): Question {
   const c = pick(CVC)
   const opts = shuffle([c.word, ...c.misses])
   return {

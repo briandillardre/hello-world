@@ -199,6 +199,22 @@ export function ParentDashboard({
         </div>
       )}
 
+      {/* real-world assessment (seeded from school reports — see storage.ts) */}
+      {!kid.isTester && kid.assessment && (
+        <div className="rounded-2xl bg-white border-2 border-green-200 shadow p-4 mb-4">
+          <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-1">
+            🏫 {kid.assessment.title} · {kid.assessment.date}
+          </p>
+          <p className="text-sm font-bold text-green-700">{kid.assessment.summary}</p>
+          <p className="text-xs text-slate-500 font-semibold mt-1.5">
+            Practice focus (now built into {kid.name}&apos;s questions): {kid.assessment.focus.join(' · ')}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {kid.name}&apos;s reading questions start at this level and adapt from there — the percentile curves below still track in-game play only.
+          </p>
+        </div>
+      )}
+
       {/* strengths & focus */}
       {strongest && (
         <div className="rounded-2xl bg-white border-2 border-slate-200 shadow p-4 mb-4">
