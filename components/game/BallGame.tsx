@@ -37,6 +37,8 @@ interface BallGameProps {
   skill: SkillId | 'mix'
   /** first round of the day pays double coins */
   dailyDouble?: boolean
+  /** 🏈 football mode: same questions & rewards, rendered as a drive downfield */
+  football?: boolean
   onAnswer: (delta: AnswerDelta) => void
   onComplete: (result: RoundResult) => void
   onQuit: () => void
@@ -96,14 +98,18 @@ type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'redeem' | 'done'
 
 const CONFETTI = ['#f97316', '#22c55e', '#3b82f6', '#eab308', '#ec4899', '#a855f7']
 const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!', 'Go Whalehogs!', 'Whalehog smart!']
+const FOOTBALL_PRAISE = ['First down!', 'Great run!', 'Big gain!', 'What a play!', 'He could go all the way!', 'Go Whalehogs!']
 const ENCOURAGE = ['Good try!', 'Almost!', 'Keep going!', "You'll get it!", "We don't say can't!", 'Whalehogs never quit!']
+
+/** football drives start at your own 20-yard line */
+const DRIVE_START = 20
 
 /** round-local copy of skill states (one level deep is all SkillState needs) */
 function cloneSkills(skills: Record<SkillId, SkillState>): Record<SkillId, SkillState> {
   return Object.fromEntries(Object.entries(skills).map(([k, s]) => [k, { ...s }])) as Record<SkillId, SkillState>
 }
 
-export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComplete, onQuit }: BallGameProps) {
+export function BallGame({ profile, skill, dailyDouble = false, football = false, onAnswer, onComplete, onQuit }: BallGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -114,6 +120,8 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   const [results, setResults] = useState<boolean[]>([])
   const [muted, setMuted] = useState(false)
   const [isBonus, setIsBonus] = useState(false)
+  const [yards, setYards] = useState(DRIVE_START)
+  const [tds, setTds] = useState(0)
 
   // mutable game world (never triggers React renders)
   const world = useRef({
@@ -132,13 +140,17 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
     shake: 0,
     tappedIndex: -1,
     t: 0,
+    /** football mode: current yard line (TD at 100, drive resets to 20) */
+    yards: DRIVE_START,
+    /** 1→0 end-zone flash after a touchdown */
+    tdFlash: 0,
   })
   const skillsRef = useRef<Record<SkillId, SkillState>>(cloneSkills(profile.skills))
   const startThetasRef = useRef<Record<SkillId, number>>(
     Object.fromEntries(Object.entries(profile.skills).map(([k, s]) => [k, s.theta])) as Record<SkillId, number>
   )
   const questionRef = useRef<Question | null>(null)
-  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0, speedBonuses: 0, readBonuses: 0 })
+  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0, speedBonuses: 0, readBonuses: 0, touchdowns: 0 })
   const missesRef = useRef<MissedQuestion[]>([])
   const qStartRef = useRef(0)
   const spokeRef = useRef(false)
@@ -207,6 +219,14 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
   const playNom = useCallback(() => {
     tone(392, 0, 0.06, 'sine', 0.08)
     tone(262, 0.07, 0.1, 'sine', 0.09)
+  }, [tone])
+  /** stadium fanfare for a touchdown */
+  const playTouchdown = useCallback(() => {
+    tone(392, 0, 0.12, 'triangle')
+    tone(523, 0.12, 0.12, 'triangle')
+    tone(659, 0.24, 0.12, 'triangle')
+    tone(784, 0.36, 0.4, 'triangle', 0.14)
+    tone(1047, 0.52, 0.5, 'sine', 0.1)
   }, [tone])
 
   /** after the right answer is eaten, vacuum the rest of the board in too */
@@ -392,13 +412,44 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         }
         w.rings.push({ x: b.x, y: b.y, r: b.r * 0.5, life: 1, color: bonusRef.current ? '#eab308' : '#22c55e' })
         w.floaters.push({ x: b.x, y: b.y - b.r, text: `+${coinsDelta} 🪙${multiplier > 1 ? ` ×${multiplier}!` : ''}`, life: 1.2, color: '#eab308' })
+        const praise = football ? FOOTBALL_PRAISE : PRAISE
         w.floaters.push({
           x: w.w / 2,
           y: w.h * 0.55,
-          text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : PRAISE[Math.floor(Math.random() * PRAISE.length)],
+          text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : praise[Math.floor(Math.random() * praise.length)],
           life: 1.4,
           color: '#16a34a',
         })
+        if (football) {
+          // every right answer gains yards; hot streaks run farther
+          const gain = w.streak >= 3 ? 15 : 10
+          w.yards += gain
+          w.floaters.push({ x: w.w / 2, y: w.h * 0.42, text: `🏈 +${gain} yards!`, life: 1.3, color: '#92400e' })
+          if (w.yards >= 100) {
+            // TOUCHDOWN — celebrate big, then start a fresh drive from the 20
+            stats.touchdowns += 1
+            w.yards = DRIVE_START
+            w.tdFlash = 1
+            w.shake = 18
+            for (let i = 0; i < 60; i++) {
+              w.particles.push({
+                x: w.w / 2,
+                y: w.h * 0.16,
+                vx: (Math.random() - 0.5) * 14,
+                vy: (Math.random() - 0.3) * 11,
+                life: 1.1,
+                color: CONFETTI[i % CONFETTI.length],
+                size: 4 + Math.random() * 7,
+              })
+            }
+            w.rings.push({ x: w.w / 2, y: w.h * 0.16, r: 20, life: 1, color: '#eab308' })
+            w.floaters.push({ x: w.w / 2, y: w.h * 0.3, text: '🏈 TOUCHDOWN!!!', life: 2, color: '#ca8a04' })
+            playTouchdown()
+            speak('TOUCHDOWN!')
+            setTds(stats.touchdowns)
+          }
+          setYards(w.yards)
+        }
         playCorrect(w.streak)
         setStreak(w.streak)
         setCoins(stats.coins)
@@ -441,7 +492,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       scheduleAdvance(correct ? 1350 : 3200)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onAnswer, nextQuestion, playCorrect, playWrong, skill, dailyDouble]
+    [onAnswer, nextQuestion, playCorrect, playWrong, playTouchdown, skill, dailyDouble, football]
   )
 
   const scheduleAdvance = useCallback(
@@ -475,6 +526,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
             reviewQueue: queueRef.current,
             speedBonuses: stats.speedBonuses,
             readBonuses: stats.readBonuses,
+            touchdowns: stats.touchdowns,
           })
         } else {
           nextQuestion(idx)
@@ -632,31 +684,73 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       }
 
       // ---------- background
-      if (!skyCacheRef.current.grad) {
-        const sky = ctx.createLinearGradient(0, 0, 0, w.h)
-        sky.addColorStop(0, '#bfe6ff')
-        sky.addColorStop(0.55, '#dff2ff')
-        sky.addColorStop(0.56, '#bbe98d')
-        sky.addColorStop(1, '#8fd15f')
-        skyCacheRef.current.grad = sky
-      }
-      ctx.fillStyle = skyCacheRef.current.grad
-      ctx.fillRect(-20, -20, w.w + 40, w.h + 40)
-      // sun
-      ctx.fillStyle = 'rgba(255, 220, 100, 0.9)'
-      ctx.beginPath()
-      ctx.arc(w.w * 0.88, w.h * 0.08, 22, 0, Math.PI * 2)
-      ctx.fill()
-      // drifting clouds
-      ctx.fillStyle = 'rgba(255,255,255,0.8)'
-      for (let i = 0; i < 3; i++) {
-        const cx = ((w.t * (0.2 + i * 0.08) + i * 200) % (w.w + 120)) - 60
-        const cy = w.h * (0.07 + i * 0.05)
+      if (football) {
+        // stadium field: striped turf, yard lines, end zone up top
+        const zoneH = w.h * 0.12
+        const fieldH = w.h - zoneH
+        const stripes = 8
+        for (let i = 0; i < stripes; i++) {
+          ctx.fillStyle = i % 2 === 0 ? '#16a34a' : '#15803d'
+          ctx.fillRect(-20, zoneH + (fieldH * i) / stripes, w.w + 40, fieldH / stripes + 1)
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+        ctx.lineWidth = 2
+        for (let i = 0; i <= stripes; i++) {
+          const y = zoneH + (fieldH * i) / stripes
+          ctx.beginPath()
+          ctx.moveTo(-20, y)
+          ctx.lineTo(w.w + 20, y)
+          ctx.stroke()
+        }
+        // end zone — flashes gold after a touchdown
+        if (w.tdFlash > 0) w.tdFlash = Math.max(0, w.tdFlash - 0.012)
+        const flashOn = w.tdFlash > 0 && Math.sin(w.t * 0.4) > 0
+        ctx.fillStyle = flashOn ? '#eab308' : '#1d4ed8'
+        ctx.fillRect(-20, -20, w.w + 40, zoneH + 20)
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'
+        ctx.font = `900 ${Math.round(zoneH * 0.4)}px system-ui`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(w.tdFlash > 0 ? '🏈 TOUCHDOWN!' : 'WHALEHOGS', w.w / 2, zoneH * 0.45)
+        // drive marker: the ball climbs the left sideline toward the end zone
+        const trackTop = zoneH + 10
+        const trackBot = w.h - 16
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+        ctx.lineWidth = 3
         ctx.beginPath()
-        ctx.arc(cx, cy, 14, 0, Math.PI * 2)
-        ctx.arc(cx + 16, cy + 4, 11, 0, Math.PI * 2)
-        ctx.arc(cx - 16, cy + 4, 11, 0, Math.PI * 2)
+        ctx.moveTo(14, trackTop)
+        ctx.lineTo(14, trackBot)
+        ctx.stroke()
+        const my = trackBot - (trackBot - trackTop) * Math.min(1, w.yards / 100)
+        ctx.font = '16px system-ui'
+        ctx.fillText('🏈', 14, my)
+      } else {
+        if (!skyCacheRef.current.grad) {
+          const sky = ctx.createLinearGradient(0, 0, 0, w.h)
+          sky.addColorStop(0, '#bfe6ff')
+          sky.addColorStop(0.55, '#dff2ff')
+          sky.addColorStop(0.56, '#bbe98d')
+          sky.addColorStop(1, '#8fd15f')
+          skyCacheRef.current.grad = sky
+        }
+        ctx.fillStyle = skyCacheRef.current.grad
+        ctx.fillRect(-20, -20, w.w + 40, w.h + 40)
+        // sun
+        ctx.fillStyle = 'rgba(255, 220, 100, 0.9)'
+        ctx.beginPath()
+        ctx.arc(w.w * 0.88, w.h * 0.08, 22, 0, Math.PI * 2)
         ctx.fill()
+        // drifting clouds
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'
+        for (let i = 0; i < 3; i++) {
+          const cx = ((w.t * (0.2 + i * 0.08) + i * 200) % (w.w + 120)) - 60
+          const cy = w.h * (0.07 + i * 0.05)
+          ctx.beginPath()
+          ctx.arc(cx, cy, 14, 0, Math.PI * 2)
+          ctx.arc(cx + 16, cy + 4, 11, 0, Math.PI * 2)
+          ctx.arc(cx - 16, cy + 4, 11, 0, Math.PI * 2)
+          ctx.fill()
+        }
       }
 
       // ---------- bubbles
@@ -747,7 +841,9 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         const parts = b.text.includes(' ') ? b.text.split(' ') : [b.text]
-        if (parts.length > 1) {
+        // emoji-led pairs ("🐱 cat") keep the big-picture layout; plain words don't
+        const emojiTop = parts.length > 1 && parts[0].charCodeAt(0) > 255
+        if (emojiTop) {
           const top = parts[0]
           const bottom = parts.slice(1).join(' ')
           ctx.font = `${Math.round(b.r * 0.62)}px system-ui`
@@ -755,6 +851,16 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
           const size = Math.min(b.r * 0.42, (b.r * 1.6) / Math.max(bottom.length * 0.55, 1))
           ctx.font = `700 ${Math.round(size)}px system-ui`
           ctx.fillText(bottom, 0, b.r * 0.36)
+        } else if (parts.length > 1) {
+          // plain multi-word choice (e.g. "at the beach"): two balanced lines
+          const mid = Math.ceil(parts.length / 2)
+          const l1 = parts.slice(0, mid).join(' ')
+          const l2 = parts.slice(mid).join(' ')
+          const longest = Math.max(l1.length, l2.length)
+          const size = Math.min(b.r * 0.45, (b.r * 1.7) / Math.max(longest * 0.55, 1))
+          ctx.font = `800 ${Math.round(size)}px system-ui`
+          ctx.fillText(l1, 0, -b.r * 0.24)
+          ctx.fillText(l2, 0, b.r * 0.24)
         } else {
           const txt = parts[0]
           const size = Math.min(b.r * 0.85, (b.r * 1.7) / Math.max(txt.length * 0.58, 1))
@@ -805,32 +911,71 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       ball.sx += (1 - ball.sx) * 0.18
       ball.sy += (1 - ball.sy) * 0.18
       ctx.scale(ball.sx, ball.sy)
-      // body
-      const bodyGrad = ctx.createRadialGradient(-ball.r * 0.3, -ball.r * 0.3, ball.r * 0.15, 0, 0, ball.r)
-      bodyGrad.addColorStop(0, activeSkin.colors[0])
-      bodyGrad.addColorStop(1, activeSkin.colors[1])
-      ctx.fillStyle = bodyGrad
-      ctx.beginPath()
-      ctx.arc(0, 0, ball.r, 0, Math.PI * 2)
-      ctx.fill()
-      // rolling stripe
-      ctx.save()
-      ctx.rotate(ball.rot)
-      ctx.strokeStyle = 'rgba(255,255,255,0.45)'
-      ctx.lineWidth = ball.r * 0.18
-      ctx.beginPath()
-      ctx.arc(0, 0, ball.r * 0.62, 0.3, 1.6)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.arc(0, 0, ball.r * 0.62, Math.PI + 0.3, Math.PI + 1.6)
-      ctx.stroke()
-      if (activeSkin.emoji) {
-        ctx.font = `${Math.round(ball.r * 0.9)}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(activeSkin.emoji, 0, 0)
+      if (football) {
+        // the football: brown pointed ellipse with laces, wobbling as it runs
+        ctx.save()
+        ctx.rotate(Math.sin(ball.rot * 1.4) * 0.1)
+        const fg = ctx.createRadialGradient(-ball.r * 0.3, -ball.r * 0.3, ball.r * 0.15, 0, 0, ball.r * 1.2)
+        fg.addColorStop(0, '#b45309')
+        fg.addColorStop(1, '#7c2d12')
+        ctx.fillStyle = fg
+        ctx.beginPath()
+        ctx.ellipse(0, 0, ball.r * 1.16, ball.r * 0.86, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = '#451a03'
+        ctx.lineWidth = Math.max(2, ball.r * 0.06)
+        ctx.stroke()
+        // tip stripes + laces
+        ctx.strokeStyle = '#fef3c7'
+        ctx.lineWidth = Math.max(2, ball.r * 0.08)
+        ctx.beginPath()
+        ctx.moveTo(-ball.r * 0.8, -ball.r * 0.32)
+        ctx.quadraticCurveTo(-ball.r * 0.96, 0, -ball.r * 0.8, ball.r * 0.32)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(ball.r * 0.8, -ball.r * 0.32)
+        ctx.quadraticCurveTo(ball.r * 0.96, 0, ball.r * 0.8, ball.r * 0.32)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(-ball.r * 0.42, -ball.r * 0.52)
+        ctx.lineTo(ball.r * 0.42, -ball.r * 0.52)
+        ctx.stroke()
+        for (let i = 0; i < 4; i++) {
+          const lx = -ball.r * 0.3 + i * ball.r * 0.2
+          ctx.beginPath()
+          ctx.moveTo(lx, -ball.r * 0.62)
+          ctx.lineTo(lx, -ball.r * 0.42)
+          ctx.stroke()
+        }
+        ctx.restore()
+      } else {
+        // body
+        const bodyGrad = ctx.createRadialGradient(-ball.r * 0.3, -ball.r * 0.3, ball.r * 0.15, 0, 0, ball.r)
+        bodyGrad.addColorStop(0, activeSkin.colors[0])
+        bodyGrad.addColorStop(1, activeSkin.colors[1])
+        ctx.fillStyle = bodyGrad
+        ctx.beginPath()
+        ctx.arc(0, 0, ball.r, 0, Math.PI * 2)
+        ctx.fill()
+        // rolling stripe
+        ctx.save()
+        ctx.rotate(ball.rot)
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+        ctx.lineWidth = ball.r * 0.18
+        ctx.beginPath()
+        ctx.arc(0, 0, ball.r * 0.62, 0.3, 1.6)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(0, 0, ball.r * 0.62, Math.PI + 0.3, Math.PI + 1.6)
+        ctx.stroke()
+        if (activeSkin.emoji) {
+          ctx.font = `${Math.round(ball.r * 0.9)}px system-ui`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(activeSkin.emoji, 0, 0)
+        }
+        ctx.restore()
       }
-      ctx.restore()
       // face (always upright)
       const happy = w.phase === 'celebrate'
       const eyeY = -ball.r * 0.18
@@ -950,7 +1095,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [activeSkin, resolveAnswer])
+  }, [activeSkin, football, resolveAnswer])
 
   // ------------------------------------------------------------- UI
   const skillMeta = question ? SKILLS.find((s) => s.id === question.skill) : null
@@ -977,6 +1122,11 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {football && (
+            <span className="text-[10px] font-extrabold text-amber-100 bg-green-700 border border-green-800 rounded-full px-2 py-0.5 whitespace-nowrap">
+              🏈 {yards} yd{tds > 0 ? ` · TD×${tds}` : ''}
+            </span>
+          )}
           {dailyDouble && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 border border-orange-300 rounded-full px-2 py-0.5">🌅 2×</span>}
           {streak >= 3 && <span className="text-sm font-extrabold text-orange-500">🔥{streak}</span>}
           <span className="text-sm font-extrabold text-yellow-600 bg-yellow-100 border border-yellow-300 rounded-full px-2 py-0.5">
@@ -1035,7 +1185,7 @@ export function BallGame({ profile, skill, dailyDouble = false, onAnswer, onComp
       </div>
 
       <div className="px-4 pb-3 flex items-center justify-between text-xs text-slate-400">
-        <span>Tap the answer — the ball rolls over and eats it!</span>
+        <span>{football ? 'Tap the answer — run it downfield for yards!' : 'Tap the answer — the ball rolls over and eats it!'}</span>
         <button
           onClick={() =>
             setMuted((m) => {

@@ -16,7 +16,7 @@ unlockable Whalehog ball skin in the shop.
 
 | Piece | File | What it does |
 |---|---|---|
-| Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards |
+| Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards. **🏈 Football mode** (per-kid toggle on the home screen): same questions & rewards rendered as a drive — striped field, WHALEHOGS end zone, +10 yards per correct (+15 on a hot streak), TOUCHDOWN fanfare at 100 then a fresh drive from the 20 |
 | App shell | `components/game/PlayApp.tsx` | Picker → GREAT DAY ritual → home (quests, streaks) → game → spoken summary; shop; review; grown-ups gate |
 | Miss review | `components/game/MissReview.tsx` | Missed questions replayed one at a time, read aloud, with the "why" spoken on success |
 | Personality quiz | `components/game/PersonalityQuiz.tsx` | "Who Am I?" four-temperaments animals, saved with history |
@@ -33,6 +33,15 @@ shapes & patterns, sight words / CVC reading.
 **Adaptive:** every answer updates a 1–99 ability estimate (`theta`) per skill; the next question is
 drawn near it (with periodic easy confidence questions). Correct on hard questions moves theta up
 fast; the game gets harder or easier automatically.
+
+**Real-world assessment seeds** (`ASSESSMENT_SEEDS` in `lib/game/storage.ts`): when a kid brings home
+a real assessment, a version-stamped, floor-only seed starts their abilities where they actually are
+(applied once per profile, never lowers an earned level, re-applied after cloud merges). Marshall's
+Oct 2026 school reading check (99th percentile across all six reading areas, ~2 grade levels ahead)
+seeds letters/sounds/words to 88–92, and its three practice tips became question content: **"sc"/"sk"
+blend words** (scoot, school, skill, skip… as sound and spelling questions), **story settings**
+(where/when mini-stories at the top of the words band), and **finish-the-rhyme poem couplets**. The
+grown-ups report shows the assessment on a card above the curves.
 
 **Bell curve:** the grown-ups report converts theta to a percentile against heuristic age
 expectations (age 4 ≈ 30, age 5 ≈ 50, age 6 ≈ 70, SD 15) computed from each kid's exact birthdate.

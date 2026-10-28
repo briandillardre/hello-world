@@ -8,7 +8,7 @@ import { ArrowLeft, Lock } from 'lucide-react'
 import { ageLabel, brainLevel } from '@/lib/game/adaptive'
 import { skillDisplayName, SKILLS } from '@/lib/game/questions'
 import { speak } from '@/lib/game/speech'
-import { BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
+import { applyAssessmentSeeds, BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { MissReview } from './MissReview'
@@ -53,8 +53,11 @@ export function PlayApp() {
       if (!cloudEnabled) return
       const merged = await syncWithCloud(local).catch(() => null)
       if (merged) {
-        setProfiles(merged)
-        saveProfiles(merged)
+        // re-apply assessment seeds — a cloud copy from before a seed existed
+        // would otherwise win the merge unseeded
+        const seeded = applyAssessmentSeeds(merged)
+        setProfiles(seeded)
+        saveProfiles(seeded)
       }
     })
   }, [])
@@ -262,6 +265,7 @@ export function PlayApp() {
           key={gameKey}
           profile={kid}
           skill={gameSkill}
+          football={(kid.gameMode ?? 'ball') === 'football'}
           dailyDouble={isDailyDouble}
           onAnswer={handleAnswer}
           onComplete={handleComplete}
@@ -311,6 +315,9 @@ export function PlayApp() {
             <span className="opacity-20">{'⭐'.repeat(3 - r.stars)}</span>
           </div>
           <div className="rounded-2xl bg-white border-2 border-yellow-200 shadow p-4 mb-2">
+            {(r.touchdowns ?? 0) > 0 && (
+              <p className="text-lg font-black text-green-700">🏈 TOUCHDOWN{(r.touchdowns ?? 0) > 1 ? `S ×${r.touchdowns}` : ''}!</p>
+            )}
             <p className="text-lg font-extrabold text-yellow-600">+{r.coinsEarned + (r.questBonus ?? 0)} 🪙 coins earned</p>
             {r.dailyDouble && <p className="text-sm font-bold text-orange-500 mt-1">🌅 Daily Double — first round today paid 2×!</p>}
             {(r.chestBonus ?? 0) > 0 && <p className="text-sm font-bold text-purple-600 mt-1">🎁 Mystery chest: +{r.chestBonus} bonus coins!</p>}
@@ -451,8 +458,9 @@ export function PlayApp() {
           profiles={profiles}
           onBack={() => setScreen('home')}
           onRestore={(merged) => {
-            setProfiles(merged)
-            saveProfiles(merged)
+            const seeded = applyAssessmentSeeds(merged)
+            setProfiles(seeded)
+            saveProfiles(seeded)
           }}
         />
       </Shell>
@@ -513,6 +521,30 @@ export function PlayApp() {
               🔥 {dayStreak}-day
             </span>
           )}
+        </div>
+
+        {/* game-mode picker: classic rolling ball vs football drive */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {(
+            [
+              { id: 'ball' as const, label: '⚽ Brain Ball', blurb: 'Roll & eat answers' },
+              { id: 'football' as const, label: '🏈 Football', blurb: 'Drive for touchdowns' },
+            ]
+          ).map((m) => {
+            const active = (kid.gameMode ?? 'ball') === m.id
+            return (
+              <button
+                key={m.id}
+                onClick={() => updateKid(kid.id, (k) => ({ ...k, gameMode: m.id }))}
+                className={`rounded-2xl border-2 p-2.5 text-center active:scale-95 transition-transform ${
+                  active ? 'bg-green-600 border-green-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600'
+                }`}
+              >
+                <span className="block font-extrabold text-sm">{m.label}</span>
+                <span className={`block text-[10px] font-semibold ${active ? 'text-green-100' : 'text-slate-400'}`}>{m.blurb}</span>
+              </button>
+            )
+          })}
         </div>
 
         <BigButton color="green" onClick={() => startGame('mix')}>

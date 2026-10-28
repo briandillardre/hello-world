@@ -62,13 +62,52 @@ export function defaultProfiles(): KidProfile[] {
   ]
 }
 
+// ------------------------------------------------- real-world assessment seeds
+// When a kid brings home a real assessment, we seed their ability floors so the
+// game starts where they actually are instead of making them re-climb from
+// pre-K. Floor-only (never lowers an earned level), version-stamped so each
+// seed applies exactly once per profile — after that, play moves theta freely.
+const ASSESSMENT_SEEDS: Array<{
+  kidId: string
+  version: string
+  floors: Partial<Record<SkillId, number>>
+  assessment: NonNullable<KidProfile['assessment']>
+}> = [
+  {
+    // Marshall's school reading check (Oct 2026): better than 99% of students
+    // in all six reading areas, reading about two grade levels ahead.
+    kidId: 'marshall',
+    version: 'reading-2026-10',
+    floors: { letters: 90, sounds: 88, words: 92 },
+    assessment: {
+      date: 'Oct 2026',
+      title: 'School reading check',
+      summary: 'Scored better than 99% of students in all six reading areas — reading like a 2nd grader.',
+      focus: ['"sc" / "sk" words (school, scoot, skill, skip)', 'story settings — where & when', 'rhymes, cadence & poems'],
+    },
+  },
+]
+
+/** apply any unapplied assessment seeds — pure + idempotent, safe to run on every load/merge */
+export function applyAssessmentSeeds(profiles: KidProfile[]): KidProfile[] {
+  return profiles.map((p) => {
+    const seed = ASSESSMENT_SEEDS.find((s) => s.kidId === p.id && p.seedVersion !== s.version)
+    if (!seed) return p
+    const skills = { ...p.skills }
+    for (const [id, floor] of Object.entries(seed.floors) as Array<[SkillId, number]>) {
+      if (skills[id] && skills[id].theta < floor) skills[id] = { ...skills[id], theta: floor }
+    }
+    return { ...p, skills, seedVersion: seed.version, assessment: seed.assessment }
+  })
+}
+
 export function loadProfiles(): KidProfile[] {
-  if (typeof window === 'undefined') return defaultProfiles()
+  if (typeof window === 'undefined') return applyAssessmentSeeds(defaultProfiles())
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaultProfiles()
+    if (!raw) return applyAssessmentSeeds(defaultProfiles())
     const parsed = JSON.parse(raw) as { profiles: KidProfile[] }
-    if (!Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return defaultProfiles()
+    if (!Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return applyAssessmentSeeds(defaultProfiles())
     // merge any newly-added skills into stored profiles
     const stored = parsed.profiles.map((p) => ({
       ...p,
@@ -77,9 +116,9 @@ export function loadProfiles(): KidProfile[] {
     }))
     // append default profiles added after this device first saved (e.g. testers)
     const have = new Set(stored.map((p) => p.id))
-    return [...stored, ...defaultProfiles().filter((d) => !have.has(d.id))]
+    return applyAssessmentSeeds([...stored, ...defaultProfiles().filter((d) => !have.has(d.id))])
   } catch {
-    return defaultProfiles()
+    return applyAssessmentSeeds(defaultProfiles())
   }
 }
 
