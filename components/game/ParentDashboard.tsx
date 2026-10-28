@@ -210,7 +210,8 @@ export function ParentDashboard({
             Practice focus (now built into {kid.name}&apos;s questions): {kid.assessment.focus.join(' · ')}
           </p>
           <p className="text-[11px] text-slate-400 mt-1">
-            {kid.name}&apos;s reading questions start at this level and adapt from there — the percentile curves below still track in-game play only.
+            {kid.name}&apos;s reading levels below start from this report (a head start, not play), then adapt with every answer — so the reading
+            curves reflect the school result until play refines them.
           </p>
         </div>
       )}

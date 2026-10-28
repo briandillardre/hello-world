@@ -41,6 +41,9 @@ export function PlayApp() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [screen, setScreen] = useState<Screen>('pick')
   const [gameSkill, setGameSkill] = useState<SkillId | 'mix'>('mix')
+  // latched at round start — a cloud sync resolving mid-round must not flip the
+  // field out from under the kid (the live-derived prop restarted the canvas)
+  const [gameFootball, setGameFootball] = useState(false)
   const [lastResult, setLastResult] = useState<RoundResult | null>(null)
   const [gameKey, setGameKey] = useState(0)
 
@@ -53,11 +56,13 @@ export function PlayApp() {
       if (!cloudEnabled) return
       const merged = await syncWithCloud(local).catch(() => null)
       if (merged) {
-        // re-apply assessment seeds — a cloud copy from before a seed existed
-        // would otherwise win the merge unseeded
-        const seeded = applyAssessmentSeeds(merged)
-        setProfiles(seeded)
-        saveProfiles(seeded)
+        // merge against the CURRENT state, not the mount snapshot — taps made
+        // while the sync was in flight (mode toggle, answers) must not revert.
+        // Seeds re-apply here because a cloud copy from before a seed existed
+        // would otherwise win the merge unseeded. Persistence is handled by
+        // the debounced save/push effects.
+        const { mergeProfiles } = await import('@/lib/game/sync')
+        setProfiles((prev) => applyAssessmentSeeds(prev.length > 0 ? mergeProfiles(prev, merged) : merged))
       }
     })
   }, [])
@@ -176,6 +181,7 @@ export function PlayApp() {
 
   const startGame = (skillChoice: SkillId | 'mix') => {
     setGameSkill(skillChoice)
+    setGameFootball((kid?.gameMode ?? 'ball') === 'football')
     setGameKey((k) => k + 1)
     setScreen('game')
   }
@@ -265,7 +271,7 @@ export function PlayApp() {
           key={gameKey}
           profile={kid}
           skill={gameSkill}
-          football={(kid.gameMode ?? 'ball') === 'football'}
+          football={gameFootball}
           dailyDouble={isDailyDouble}
           onAnswer={handleAnswer}
           onComplete={handleComplete}
