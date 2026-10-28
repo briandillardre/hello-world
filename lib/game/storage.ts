@@ -88,11 +88,14 @@ const ASSESSMENT_SEEDS: Array<{
   },
 ]
 
-/** apply any unapplied assessment seeds — pure + idempotent, safe to run on every load/merge */
+/** apply any unapplied assessment seeds — pure + idempotent, safe to run on every load/merge.
+ *  Only the LAST entry per kid ever applies (a newer seed replaces the older one for that kid) —
+ *  matching against "any entry whose version differs" would re-apply two seeds alternately forever. */
 export function applyAssessmentSeeds(profiles: KidProfile[]): KidProfile[] {
   return profiles.map((p) => {
-    const seed = ASSESSMENT_SEEDS.find((s) => s.kidId === p.id && p.seedVersion !== s.version)
-    if (!seed) return p
+    const mine = ASSESSMENT_SEEDS.filter((s) => s.kidId === p.id)
+    const seed = mine.length > 0 ? mine[mine.length - 1] : undefined
+    if (!seed || p.seedVersion === seed.version) return p
     const skills = { ...p.skills }
     for (const [id, floor] of Object.entries(seed.floors) as Array<[SkillId, number]>) {
       if (skills[id] && skills[id].theta < floor) skills[id] = { ...skills[id], theta: floor }
