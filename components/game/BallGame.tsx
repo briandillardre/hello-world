@@ -349,6 +349,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
       if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
       cancelSpeech()
+      // iOS caps live AudioContexts (~4) — leaking one per round kills sound
+      audioRef.current?.close().catch(() => {})
+      audioRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

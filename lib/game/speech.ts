@@ -63,13 +63,22 @@ export function warmVoices(): void {
 }
 
 /** split narration into sentence-sized utterances so prosody resets naturally.
- *  Quoted words and spelled-out letters stay glued to their sentence. */
+ *  Decimals ("3.5") and single spelled-out letters ("C. A. T.") are re-glued;
+ *  abbreviations like "Mr." are NOT handled — keep them out of speech strings. */
 export function splitSentences(text: string): string[] {
   // no lookbehind — it throws at parse time on older iOS Safari
   const matches = text.match(/[^.!?…]+[.!?…]+["”’)]?|[^.!?…]+$/g)
   if (!matches) return [text]
-  const out: string[] = []
+  const merged: string[] = []
   for (const m of matches) {
+    const prev = merged.length > 0 ? merged[merged.length - 1] : undefined
+    const decimal = prev !== undefined && /\d\.$/.test(prev) && /^\d/.test(m)
+    const spelled = prev !== undefined && /(^|[\s("“‘'])[A-Z]\.$/.test(prev)
+    if (decimal || spelled) merged[merged.length - 1] = prev + m
+    else merged.push(m)
+  }
+  const out: string[] = []
+  for (const m of merged) {
     const t = m.trim()
     if (t.length > 0) out.push(t)
   }

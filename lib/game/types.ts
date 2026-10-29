@@ -128,6 +128,8 @@ export interface KidProfile {
   gameMode?: 'ball' | 'football'
   /** banked 🎮 Fun Zone seconds — earned by correct answers, spent free-playing */
   playSeconds?: number
+  /** lifetime 🎮 seconds spent — monotonic, feeds the cloud-merge play signal so a spend can't resurrect */
+  playSecondsSpent?: number
 }
 
 export interface BallSkin {

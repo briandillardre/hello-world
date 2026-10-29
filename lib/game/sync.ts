@@ -117,9 +117,15 @@ export async function syncWithCloud(local: KidProfile[]): Promise<KidProfile[] |
 /**
  * "More play recorded" signal for merges. Total attempts is monotonic and
  * NOT capped (unlike history, which trims to 500 and made length comparisons
- * meaningless once both sides saturated); xp breaks ties.
+ * meaningless once both sides saturated); xp breaks ties; lifetime Fun Zone
+ * seconds SPENT breaks xp ties (also monotonic — without it, a device that
+ * spent the bank tied with a stale copy still holding it, local won, and the
+ * sync pushed the spent seconds back to the cloud: infinite play time with a
+ * phone + a tablet). Spent is clamped below one xp step so it can only ever
+ * break exact ties, never outrank real answering.
  */
-const playSignal = (p: KidProfile) => Object.values(p.skills).reduce((a, s) => a + s.attempts, 0) * 10000 + p.xp
+const playSignal = (p: KidProfile) =>
+  Object.values(p.skills).reduce((a, s) => a + s.attempts, 0) * 10_000_000 + p.xp * 1000 + Math.min(999, p.playSecondsSpent ?? 0)
 
 /** merge local + cloud per kid: the copy with more recorded play wins (local on ties) */
 export function mergeProfiles(local: KidProfile[], cloud: KidProfile[]): KidProfile[] {
