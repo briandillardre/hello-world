@@ -7,7 +7,11 @@ import { useEffect, useState } from 'react'
 import { Cloud, LogOut } from 'lucide-react'
 import {
   cloudEnabled,
+  EMAIL_RE,
+  fetchReportEmails,
   getParentSession,
+  REPORT_EMAILS_MAX,
+  saveReportEmails,
   signInWithEmail,
   signInWithGoogle,
   signOut,
@@ -114,6 +118,7 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
             <LogOut className="w-3.5 h-3.5" /> Sign out
           </button>
         </div>
+        <ReportEmails />
       </div>
     )
   }
@@ -189,6 +194,71 @@ export function AccountSync({ profiles, onRestore }: AccountSyncProps) {
         {create ? 'Have an account? Sign in' : 'New here? Create an account'}
       </button>
     </div>
+  )
+}
+
+/** who gets the daily email report — comma-separated, saved on the account's own row */
+function ReportEmails() {
+  const [value, setValue] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  useEffect(() => {
+    let alive = true
+    fetchReportEmails().then((emails) => {
+      if (!alive) return
+      if (emails) setValue(emails.join(', '))
+      setLoaded(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+  if (!loaded) return null
+  const parts = value.split(',').map((e) => e.trim()).filter(Boolean)
+  const bad = parts.filter((e) => !EMAIL_RE.test(e))
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault()
+        setState('saving')
+        const ok = await saveReportEmails(parts)
+        setState(ok ? 'saved' : 'error')
+      }}
+      className="mt-3 pt-3 border-t border-slate-100"
+    >
+      <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mb-1">📬 Daily report goes to</p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          inputMode="email"
+          placeholder="you@example.com, grandma@example.com"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value)
+            setState('idle')
+          }}
+          className="flex-1 min-w-0 rounded-xl border-2 border-slate-200 px-3 py-2 text-sm font-semibold"
+        />
+        <button
+          type="submit"
+          disabled={state === 'saving' || bad.length > 0 || parts.length > REPORT_EMAILS_MAX}
+          className="shrink-0 rounded-xl bg-blue-600 text-white font-extrabold px-4 py-2 text-sm active:scale-95 disabled:opacity-50"
+        >
+          {state === 'saving' ? '…' : 'Save'}
+        </button>
+      </div>
+      <p className="text-[11px] font-semibold mt-1.5 text-slate-400">
+        {bad.length > 0
+          ? `Check: ${bad.join(', ')} doesn't look like an email`
+          : parts.length > REPORT_EMAILS_MAX
+          ? `Up to ${REPORT_EMAILS_MAX} addresses`
+          : state === 'saved'
+          ? '✓ Saved — the next report goes to everyone listed'
+          : state === 'error'
+          ? 'Couldn’t save — try again'
+          : `Comma-separated, up to ${REPORT_EMAILS_MAX}. Empty = just ${'this account’s email'}. One email a day, only on days the kids play.`}
+      </p>
+    </form>
   )
 }
 

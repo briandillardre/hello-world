@@ -67,6 +67,38 @@ export async function signOut(): Promise<void> {
   await supabase?.auth.signOut()
 }
 
+// ------------------------------------------------------- daily report emails
+
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const REPORT_EMAILS_MAX = 5
+
+/** read the signed-in account's daily-report recipient list (null = signed out / error) */
+export async function fetchReportEmails(): Promise<string[] | null> {
+  const supabase = await getSupabase()
+  if (!supabase) return null
+  const session = await getParentSession()
+  if (!session) return null
+  const { data, error } = await supabase.from('brainball_profiles').select('report_emails').eq('user_id', session.userId).maybeSingle()
+  if (error) return null
+  return ((data?.report_emails as string[] | null) ?? []).filter((e) => typeof e === 'string')
+}
+
+/** save the daily-report recipient list on the signed-in account's own row */
+export async function saveReportEmails(emails: string[]): Promise<boolean> {
+  const supabase = await getSupabase()
+  if (!supabase) return false
+  const session = await getParentSession()
+  if (!session) return false
+  const clean = Array.from(new Set(emails.map((e) => e.trim().toLowerCase()).filter((e) => EMAIL_RE.test(e)))).slice(0, REPORT_EMAILS_MAX)
+  // the row may not exist yet (nothing pushed from this account) — update
+  // first, insert on a miss (payload defaults to '{}', never clobbered)
+  const { data, error } = await supabase.from('brainball_profiles').update({ report_emails: clean }).eq('user_id', session.userId).select('user_id')
+  if (error) return false
+  if (data && data.length > 0) return true
+  const { error: insErr } = await supabase.from('brainball_profiles').insert({ user_id: session.userId, report_emails: clean })
+  return !insErr
+}
+
 // ------------------------------------------------------------------ profiles
 
 // Pushing is locked until the SAME signed-in user has had a successful cloud

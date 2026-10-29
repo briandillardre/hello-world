@@ -4,10 +4,12 @@
 // answer bubble and grow). Canvas render loop + DOM question banner.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Volume2, X } from 'lucide-react'
+import { Mic, Volume2, X } from 'lucide-react'
 import { ADULT_THETA_CAP, nextDifficulty, pickMixSkill, updateTheta } from '@/lib/game/adaptive'
 import { generateQuestion, skillDisplayName, SKILLS } from '@/lib/game/questions'
 import { cancelSpeech, speak as speakText, warmVoices } from '@/lib/game/speech'
+import { matchSpoken, voiceable } from '@/lib/game/voice-answer'
+import { SPEECH_UPDATE_HINT, speechDoor, startSpeech, type SpeechDoor, type SpeechSession } from '@/lib/speech-input'
 import { BALL_SKINS } from '@/lib/game/storage'
 import type { KidProfile, MissedQuestion, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
 
@@ -122,6 +124,12 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   const [isBonus, setIsBonus] = useState(false)
   const [yards, setYards] = useState(DRIVE_START)
   const [tds, setTds] = useState(0)
+  // answering out loud: the mic door is decided once (browser vs native vs
+  // needs-the-app-update), the session lives in a ref
+  const [micDoor, setMicDoor] = useState<SpeechDoor>('none')
+  const [listening, setListening] = useState(false)
+  const micSessionRef = useRef<SpeechSession | null>(null)
+  useEffect(() => setMicDoor(speechDoor()), [])
 
   // mutable game world (never triggers React renders)
   const world = useRef({
@@ -311,6 +319,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         sk = skill === 'mix' ? pickMixSkill(skillsRef.current, profile.isTester ? undefined : profile.birthdate) : skill
         difficulty = nextDifficulty(skillsRef.current[sk], index, world.current.streak)
       }
+      // a mic left listening across questions would answer the wrong one
+      micSessionRef.current?.stop()
       const q = generateQuestion(sk, difficulty, !!profile.isTester)
       questionRef.current = q
       setQuestion(q)
@@ -339,11 +349,66 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     [skill, layoutBubbles, speak, profile.birthdate, profile.isTester]
   )
 
+  /** roll to a bubble programmatically — the voice path into the same answer flow a tap takes */
+  const pickBubble = useCallback((i: number) => {
+    const w = world.current
+    if (w.phase !== 'idle') return
+    const b = w.bubbles[i]
+    if (!b || b.eaten) return
+    w.phase = 'rolling'
+    w.tappedIndex = i
+    w.ball.target = { x: b.x, y: b.y }
+  }, [])
+
+  const onMic = useCallback(() => {
+    if (micDoor === 'update') {
+      // the installed app predates the speech plugin — say so instead of blinking
+      world.current.floaters.push({ x: world.current.w / 2, y: world.current.h * 0.55, text: '🎤 Needs the app update', life: 1.6, color: '#64748b' })
+      speak(SPEECH_UPDATE_HINT)
+      return
+    }
+    if (listening) {
+      micSessionRef.current?.stop()
+      return
+    }
+    // never transcribe our own narration
+    if (autoReadTimerRef.current !== null) {
+      window.clearTimeout(autoReadTimerRef.current)
+      autoReadTimerRef.current = null
+    }
+    cancelSpeech()
+    setListening(true)
+    micSessionRef.current = startSpeech({
+      onPartial: () => {},
+      onFinal: (text) => {
+        const q = questionRef.current
+        const w = world.current
+        if (!q || w.phase !== 'idle') return
+        const idx = matchSpoken(text, q.choices)
+        if (idx !== null) {
+          w.floaters.push({ x: w.w / 2, y: w.h * 0.62, text: `🎤 “${text.slice(0, 24)}”`, life: 1.2, color: '#2563eb' })
+          pickBubble(idx)
+        } else {
+          w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: '🎤 Say the answer again?', life: 1.4, color: '#64748b' })
+        }
+      },
+      onEnd: () => {
+        micSessionRef.current = null
+        setListening(false)
+      },
+      onError: (m) => {
+        world.current.floaters.push({ x: world.current.w / 2, y: world.current.h * 0.55, text: `🎤 ${m.slice(0, 48)}`, life: 1.8, color: '#64748b' })
+      },
+    })
+    if (!micSessionRef.current) setListening(false)
+  }, [micDoor, listening, pickBubble, speak])
+
   // start round
   useEffect(() => {
     nextQuestion(0)
     warmVoices()
     return () => {
+      micSessionRef.current?.stop()
       // stop everything scheduled — a pending advance firing after quit would
       // yank the user to the summary screen out of nowhere
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
@@ -1173,6 +1238,17 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           >
             <Volume2 className="w-5 h-5" />
           </button>
+          {micDoor !== 'none' && question && voiceable(question.choices) && (
+            <button
+              onClick={onMic}
+              aria-label={listening ? 'Stop listening' : 'Say your answer'}
+              className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow active:scale-95 ${
+                listening ? 'bg-red-500 text-white animate-pulse' : micDoor === 'update' ? 'bg-slate-200 text-slate-400' : 'bg-green-500 text-white'
+              }`}
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+          )}
         </div>
         {question?.visual && (
           <p className="mt-1 text-3xl leading-relaxed whitespace-pre-wrap break-words">{question.visual}</p>

@@ -67,7 +67,11 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
   for (const p of profiles) {
     if (!p || p.isTester || !p.birthdate || !Array.isArray(p.history) || !p.skills) continue
     const cutoff = now.getTime() + 60_000
-    const windowAnswers = p.history.filter((h) => h && typeof h.t === 'number' && h.t >= sinceMs && h.t <= cutoff)
+    // belts on cloud-shaped data: the honest client caps history at 500 and
+    // names are short — a hand-crafted payload must not burn the cron's CPU
+    // or smuggle novels into mail (sec-check)
+    const history = p.history.slice(-2000)
+    const windowAnswers = history.filter((h) => h && typeof h.t === 'number' && h.t >= sinceMs && h.t <= cutoff)
     if (windowAnswers.length === 0) continue
     const correct = windowAnswers.filter((a) => a.correct).length
     let bestStreak = 0
@@ -89,15 +93,15 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
         percentile: percentileForSkill(st.theta, p.birthdate).percentile,
         sc: percentileVsBenchmark(st.theta, p.birthdate, BENCHMARKS[1].z),
         global: percentileVsBenchmark(st.theta, p.birthdate, BENCHMARKS[2].z),
-        trend: trend(p.history, meta.id),
+        trend: trend(history, meta.id),
         early: st.attempts < FIRM_MIN,
       })
     }
     skills.sort((a, b) => b.percentile - a.percentile)
     const overallPct = skills.length > 0 ? Math.round(skills.reduce((a, s) => a + s.percentile, 0) / skills.length) : null
     const base = {
-      name: p.name,
-      avatar: p.avatar,
+      name: String(p.name ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 40),
+      avatar: String(p.avatar ?? '').slice(0, 8),
       age: ageLabel(p.birthdate, now),
       answered: windowAnswers.length,
       correct,
@@ -220,7 +224,7 @@ function kidHtml(r: KidReport): string {
   const name = escapeHtml(r.name)
   return `
   <div style="max-width:520px;margin:0 auto 16px;background:#ffffff;border:1px solid #dbe4ec;border-radius:14px;padding:22px">
-    <h2 style="margin:0 0 2px;font-size:18px;color:#0f172a">${r.avatar} ${name} <span style="font-size:12px;color:#94a3b8;font-weight:600">· ${escapeHtml(r.age)}</span></h2>
+    <h2 style="margin:0 0 2px;font-size:18px;color:#0f172a">${escapeHtml(r.avatar)} ${name} <span style="font-size:12px;color:#94a3b8;font-weight:600">· ${escapeHtml(r.age)}</span></h2>
     <p style="margin:0 0 12px;font-size:13px;color:#475569;font-weight:600">
       Today: ${r.answered} questions · ${r.accuracy}% right${r.bestStreak >= 3 ? ` · 🔥 best streak ${r.bestStreak}` : ''}
       ${r.overallPct !== null ? `<br>Overall: scored better than <b>~${r.overallPct}%</b> of kids their age (across ${r.skills.length} skills)` : ''}
@@ -247,7 +251,11 @@ function kidHtml(r: KidReport): string {
 /** the email — AMIRA-style per-skill standings, one card per kid who played */
 export function renderReportEmail(reports: KidReport[], now: Date, tz: string): { subject: string; html: string } {
   const dateLabel = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' }).format(now)
-  const names = reports.map((r) => r.name).join(' & ')
+  // subject text is user-named — strip control chars and clamp (sec-check)
+  const names = reports
+    .map((r) => r.name.replace(/[<>&"\r\n\t]/g, '').trim().slice(0, 24) || 'A kid')
+    .join(' & ')
+    .slice(0, 80)
   const subject = `🧠 Brain Ball — ${names} played today (${dateLabel})`
   const html = `
   <div style="background:#eef4f9;padding:28px 14px;font-family:system-ui,-apple-system,Segoe UI,sans-serif">
