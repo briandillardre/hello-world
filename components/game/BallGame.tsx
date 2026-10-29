@@ -150,7 +150,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     Object.fromEntries(Object.entries(profile.skills).map(([k, s]) => [k, s.theta])) as Record<SkillId, number>
   )
   const questionRef = useRef<Question | null>(null)
-  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0, speedBonuses: 0, readBonuses: 0, touchdowns: 0 })
+  const statsRef = useRef({ correct: 0, coins: 0, bestStreak: 0, answered: 0, speedBonuses: 0, readBonuses: 0, touchdowns: 0, playSeconds: 0 })
   const missesRef = useRef<MissedQuestion[]>([])
   const qStartRef = useRef(0)
   const spokeRef = useRef(false)
@@ -258,9 +258,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     }
   }, [])
 
-  const speak = useCallback((text: string) => {
+  const speak = useCallback((text: string, excited = false) => {
     if (mutedRef.current) return
-    speakText(text, { rate: 0.97 })
+    speakText(text, excited ? { excited: true } : { rate: 0.97 })
   }, [])
 
   // ------------------------------------------------------------- questions
@@ -390,6 +390,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           stats.readBonuses += 1
           w.floaters.push({ x: w.w * 0.75, y: w.h * 0.48, text: '📖 Read it! +2', life: 1.2, color: '#3b82f6' })
         }
+        // 🎮 earned play time: every correct answer banks Fun Zone seconds
+        // (speed answers bank extra) — the better you score, the more you play
+        stats.playSeconds += 5 + (speedBoost > 0 ? 2 : 0)
         stats.coins += coinsDelta
         w.grow += 1
         w.phase = 'celebrate'
@@ -445,7 +448,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             w.rings.push({ x: w.w / 2, y: w.h * 0.16, r: 20, life: 1, color: '#eab308' })
             w.floaters.push({ x: w.w / 2, y: w.h * 0.3, text: '🏈 TOUCHDOWN!!!', life: 2, color: '#ca8a04' })
             playTouchdown()
-            speak('TOUCHDOWN!')
+            speak('TOUCHDOWN!', true)
             setTds(stats.touchdowns)
           }
           setYards(w.yards)
@@ -509,6 +512,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           const accuracy = stats.correct / ROUND_LENGTH
           const stars: 1 | 2 | 3 = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : 1
           const chestBonus = stars === 3 ? 5 + Math.floor(Math.random() * 11) : 0
+          if (stats.correct === ROUND_LENGTH) stats.playSeconds += 15 // perfect round: extra Fun Zone time
           const deltas = (Object.keys(skillsRef.current) as SkillId[])
             .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
             .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
@@ -527,6 +531,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             speedBonuses: stats.speedBonuses,
             readBonuses: stats.readBonuses,
             touchdowns: stats.touchdowns,
+            playSecondsEarned: stats.playSeconds,
           })
         } else {
           nextQuestion(idx)
