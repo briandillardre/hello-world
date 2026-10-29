@@ -84,6 +84,8 @@ export interface RoundResult {
   readBonuses?: number
   /** 🏈 touchdowns scored (football mode only) */
   touchdowns?: number
+  /** 🎮 Fun Zone seconds earned this round (banked on the profile, capped) */
+  playSecondsEarned?: number
 }
 
 export interface ReviewItem {
@@ -124,6 +126,8 @@ export interface KidProfile {
   assessment?: { date: string; title: string; summary: string; focus: string[] }
   /** which game renders the round: classic rolling ball or football drive */
   gameMode?: 'ball' | 'football'
+  /** banked 🎮 Fun Zone seconds — earned by correct answers, spent free-playing */
+  playSeconds?: number
 }
 
 export interface BallSkin {

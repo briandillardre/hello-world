@@ -11,12 +11,13 @@ import { speak } from '@/lib/game/speech'
 import { applyAssessmentSeeds, BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
+import { FunZone } from './FunZone'
 import { MissReview } from './MissReview'
 import { ParentDashboard } from './ParentDashboard'
 import { PersonalityQuiz } from './PersonalityQuiz'
 import { retakeDue, TEMPERAMENTS, type PersonalityResult } from '@/lib/game/personality'
 
-type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents' | 'whoami' | 'review'
+type Screen = 'pick' | 'greatday' | 'home' | 'game' | 'summary' | 'shop' | 'parents' | 'whoami' | 'review' | 'funzone'
 
 /** local calendar day as YYYY-MM-DD */
 const localDay = (d = new Date()) => d.toLocaleDateString('en-CA')
@@ -28,6 +29,9 @@ const yesterdayDay = () => {
 }
 const QUEST_ROUNDS = 3
 const QUEST_BONUS = 15
+/** Fun Zone bank ceiling (seconds) — earned play time caps at 6 minutes */
+const PLAY_BANK_CAP = 360
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}`
 
 /** single source of truth for the habit-loop numbers (round completion + home screen) */
 function dailyStatus(k: KidProfile, today = localDay()) {
@@ -136,6 +140,7 @@ export function PlayApp() {
       updateKid(activeId, (k) => ({
         ...k,
         // round-end bonuses (per-answer coins already applied)
+        playSeconds: Math.min(PLAY_BANK_CAP, (k.playSeconds ?? 0) + (result.playSecondsEarned ?? 0)),
         coins: k.coins + result.stars * 5 + (result.chestBonus ?? 0) + questBonus,
         stars: k.stars + result.stars,
         roundsPlayed: k.roundsPlayed + 1,
@@ -299,6 +304,18 @@ export function PlayApp() {
     )
   }
 
+  if (screen === 'funzone') {
+    return (
+      <Shell noPad>
+        <FunZone
+          profile={kid}
+          onSpend={(remaining) => updateKid(kid.id, (k) => ({ ...k, playSeconds: Math.max(0, Math.min(k.playSeconds ?? 0, remaining)) }))}
+          onExit={() => setScreen('home')}
+        />
+      </Shell>
+    )
+  }
+
   if (screen === 'whoami') {
     return (
       <Shell>
@@ -328,6 +345,9 @@ export function PlayApp() {
             {r.dailyDouble && <p className="text-sm font-bold text-orange-500 mt-1">🌅 Daily Double — first round today paid 2×!</p>}
             {(r.chestBonus ?? 0) > 0 && <p className="text-sm font-bold text-purple-600 mt-1">🎁 Mystery chest: +{r.chestBonus} bonus coins!</p>}
             {(r.questBonus ?? 0) > 0 && <p className="text-sm font-bold text-blue-600 mt-1">🎯 Daily quest complete: +{r.questBonus} coins!</p>}
+            {(r.playSecondsEarned ?? 0) > 0 && (
+              <p className="text-sm font-bold text-purple-600 mt-1">🎮 +{r.playSecondsEarned}s of Fun Zone play time earned!</p>
+            )}
             {(r.speedBonuses ?? 0) > 0 && <p className="text-sm font-bold text-amber-600 mt-1">⚡ Lightning answers: {r.speedBonuses}</p>}
             {(r.readBonuses ?? 0) > 0 && <p className="text-sm font-bold text-blue-500 mt-1">📖 Read it yourself: {r.readBonuses} — that&apos;s reading!</p>}
             {r.bestStreak >= 3 && <p className="text-sm font-bold text-orange-500 mt-1">🔥 Best streak: {r.bestStreak} in a row!</p>}
@@ -396,6 +416,11 @@ export function PlayApp() {
             {r.misses && r.misses.length > 0 && (
               <BigButton color="orange" onClick={() => setScreen('review')}>
                 🔁 Fix the tricky ones <span className="block text-xs font-semibold opacity-80">Hear each one & try again (+1 🪙 each)</span>
+              </BigButton>
+            )}
+            {(kid.playSeconds ?? 0) >= 1 && (
+              <BigButton color="purple" onClick={() => setScreen('funzone')}>
+                🎮 Fun Zone! <span className="block text-xs font-semibold opacity-80">{mmss(kid.playSeconds ?? 0)} of play time banked — go spend it!</span>
               </BigButton>
             )}
             <BigButton color="green" onClick={() => startGame(gameSkill)}>
@@ -556,6 +581,20 @@ export function PlayApp() {
         <BigButton color="green" onClick={() => startGame('mix')}>
           🎲 Mix it up! <span className="block text-xs font-semibold opacity-80">A little of everything{roundsToday === 0 ? ' · 🌅 2× coins!' : ''}</span>
         </BigButton>
+
+        {/* 🎮 earned play time — right answers are the arcade's coin slot */}
+        <div className="mt-3">
+          {(kid.playSeconds ?? 0) >= 1 ? (
+            <BigButton color="purple" onClick={() => setScreen('funzone')}>
+              🎮 Fun Zone! <span className="block text-xs font-semibold opacity-80">⏱ {mmss(kid.playSeconds ?? 0)} of play time banked</span>
+            </BigButton>
+          ) : (
+            <div className="w-full rounded-2xl border-2 border-dashed border-purple-200 bg-purple-50/60 px-4 py-3 text-center">
+              <p className="font-extrabold text-purple-400 text-sm">🎮 Fun Zone — locked</p>
+              <p className="text-[11px] font-semibold text-purple-400/80">Every right answer earns 5 seconds of free play. Go score!</p>
+            </div>
+          )}
+        </div>
 
         <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mt-5 mb-2">Or pick a challenge</p>
         <div className="grid grid-cols-2 gap-3">
@@ -724,12 +763,13 @@ function Header({ title, coins, onBack }: { title: string; coins?: number; onBac
   )
 }
 
-function BigButton({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color: 'green' | 'blue' | 'slate' | 'orange' }) {
+function BigButton({ children, onClick, color }: { children: React.ReactNode; onClick: () => void; color: 'green' | 'blue' | 'slate' | 'orange' | 'purple' }) {
   const styles = {
     green: 'bg-gradient-to-b from-green-400 to-green-600 text-white border-green-700',
     blue: 'bg-gradient-to-b from-blue-400 to-blue-600 text-white border-blue-700',
     slate: 'bg-white text-slate-600 border-slate-200',
     orange: 'bg-gradient-to-b from-orange-400 to-orange-600 text-white border-orange-700',
+    purple: 'bg-gradient-to-b from-purple-400 to-purple-600 text-white border-purple-700',
   }[color]
   return (
     <button onClick={onClick} className={`w-full rounded-2xl border-b-4 shadow-lg px-4 py-3.5 text-lg font-extrabold active:scale-95 active:border-b-2 transition-all ${styles}`}>

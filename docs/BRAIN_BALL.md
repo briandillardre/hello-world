@@ -18,13 +18,14 @@ unlockable Whalehog ball skin in the shop.
 |---|---|---|
 | Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards. **🏈 Football mode** (per-kid toggle on the home screen): same questions & rewards rendered as a drive — striped field, WHALEHOGS end zone, +10 yards per correct (+15 on a hot streak), TOUCHDOWN fanfare at 100 then a fresh drive from the 20 |
 | App shell | `components/game/PlayApp.tsx` | Picker → GREAT DAY ritual → home (quests, streaks) → game → spoken summary; shop; review; grown-ups gate |
+| Fun Zone | `components/game/FunZone.tsx` | **Earned free play** — right answers bank play-time seconds (5s each, +2s for speed, +15s perfect round, 6-min cap); the Fun Zone is a no-questions arcade where the ball chases the kid's finger and gobbles snacks against that countdown. Time's up → "earn more by playing a round." The learning loop is the arcade's coin slot. |
 | Miss review | `components/game/MissReview.tsx` | Missed questions replayed one at a time, read aloud, with the "why" spoken on success |
 | Personality quiz | `components/game/PersonalityQuiz.tsx` | "Who Am I?" four-temperaments animals, saved with history |
 | Parent dashboard | `components/game/ParentDashboard.tsx` | Kids: age-norm bell curves + US/TN/Global benchmarks. Adults: IQ-style 3-signal scores, consistency, speed |
 | Parent accounts | `components/game/AccountSync.tsx` + `lib/game/sync.ts` | Google/email sign-in, cloud profile sync (Supabase) |
 | Question banks | `lib/game/questions.ts` | Kid bank (7 skills, pre-K→1st) + adult bank (mental math, sequences, vocab, analogies, logic, spelling) |
 | Adaptive engine | `lib/game/adaptive.ts` | Elo/IRT ability per skill (kids cap 99, adults 120), speed-weighted updates, age norms, adult adjusted scores |
-| Speech | `lib/game/speech.ts` | Best-available voice ranking (novelty voices blacklisted), natural rate |
+| Speech | `lib/game/speech.ts` | Best-available voice ranking (novelty voices blacklisted, network/natural voices preferred), natural rate, **sentence-by-sentence utterances with slight pitch drift** so long lines don't flatten into monotone, excited prosody for celebrations |
 | Persistence | `lib/game/storage.ts` | localStorage profiles (Marshall, Lincoln + Brian/Leslie testers), review queue, habit-loop fields |
 
 **Skills:** counting, numbers, math (add/subtract/missing addend), letters, sounds (phonics/rhymes),
