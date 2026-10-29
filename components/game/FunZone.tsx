@@ -74,6 +74,8 @@ export function FunZone({ profile, onSpend, onExit }: FunZoneProps) {
   })
   const startRef = useRef({ at: Date.now(), bank: Math.max(0, Math.floor(profile.playSeconds ?? 0)) })
   const remainingRef = useRef(startRef.current.bank)
+  /** moment the app went hidden (clock pauses until the shift lands) */
+  const hiddenAtRef = useRef<number | null>(null)
   const overRef = useRef(over)
   overRef.current = over
   const audioRef = useRef<AudioContext | null>(null)
@@ -96,18 +98,54 @@ export function FunZone({ profile, onSpend, onExit }: FunZoneProps) {
   }
 
   // persist the remaining bank every few seconds and once on the way out
+  // (stops once the clock hit zero — that moment already persisted 0, and an
+  // idle overlay must not keep writing localStorage + cloud every 5 s)
   useEffect(() => {
+    if (over) return
     const iv = window.setInterval(() => onSpendRef.current(remainingRef.current), 5000)
     return () => {
       window.clearInterval(iv)
       onSpendRef.current(remainingRef.current)
     }
+  }, [over])
+
+  // PLAY time, not wall time: while the app is hidden (screen lock, a call,
+  // a switch away) the clock pauses — a kid's tablet auto-locks constantly,
+  // and burning the whole bank against a dark screen is theft, not a timer
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        if (hiddenAtRef.current === null) hiddenAtRef.current = Date.now()
+      } else if (hiddenAtRef.current !== null) {
+        startRef.current.at += Date.now() - hiddenAtRef.current
+        hiddenAtRef.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
+
+  // a cloud merge can raise the bank mid-session (slow sync resolving after
+  // the kid already opened the Fun Zone) — fold the raise in instead of
+  // letting the floor-only persist clamp those seconds away
+  useEffect(() => {
+    const incoming = Math.max(0, Math.floor(profile.playSeconds ?? 0))
+    if (incoming > remainingRef.current) {
+      startRef.current = { at: Date.now(), bank: incoming }
+      remainingRef.current = incoming
+      setSecondsLeft(incoming)
+      if (incoming >= 1) setOver(false)
+    }
+  }, [profile.playSeconds])
 
   // the 1 Hz clock (display + game-over), separate from the render loop
   useEffect(() => {
     if (over) return
     const iv = window.setInterval(() => {
+      // paused while hidden — and while the return-to-foreground shift is
+      // still pending (a tick racing the visibilitychange handler must not
+      // charge the hidden span and slam the clock to zero)
+      if (document.hidden || hiddenAtRef.current !== null) return
       const left = Math.max(0, startRef.current.bank - Math.floor((Date.now() - startRef.current.at) / 1000))
       remainingRef.current = left
       setSecondsLeft(left)
@@ -422,6 +460,9 @@ export function FunZone({ profile, onSpend, onExit }: FunZoneProps) {
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      // iOS caps live AudioContexts (~4) — leaking one per visit kills sound
+      audioRef.current?.close().catch(() => {})
+      audioRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

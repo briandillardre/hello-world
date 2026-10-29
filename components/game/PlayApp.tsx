@@ -309,7 +309,18 @@ export function PlayApp() {
       <Shell noPad>
         <FunZone
           profile={kid}
-          onSpend={(remaining) => updateKid(kid.id, (k) => ({ ...k, playSeconds: Math.max(0, Math.min(k.playSeconds ?? 0, remaining)) }))}
+          onSpend={(remaining) =>
+            updateKid(kid.id, (k) => {
+              // floor-only (a stale timer can never refill the bank), no-op when
+              // unchanged (an idle overlay must not churn localStorage + cloud),
+              // and the spend is COUNTED — playSecondsSpent feeds the merge
+              // signal so a spend on this device beats a stale bank elsewhere
+              const cur = Math.max(0, k.playSeconds ?? 0)
+              const next = Math.max(0, Math.min(cur, remaining))
+              if (next === cur) return k
+              return { ...k, playSeconds: next, playSecondsSpent: (k.playSecondsSpent ?? 0) + (cur - next) }
+            })
+          }
           onExit={() => setScreen('home')}
         />
       </Shell>
