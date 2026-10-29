@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
   const db = createServiceClient()
   const { data: rows, error } = await db
     .from('brainball_profiles')
-    .select('user_id, payload, last_report_at, report_optout')
+    .select('user_id, payload, last_report_at, report_optout, report_emails')
+    // least-recently-served first, never-served before that — a flood of new
+    // rows can't squat the cap and starve a real family (sec-check)
+    .order('last_report_at', { ascending: true, nullsFirst: true })
     .limit(200)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -63,9 +66,24 @@ export async function GET(req: NextRequest) {
       const reports = buildDailyReports(profiles, sinceMs, now)
       if (reports.length === 0) continue // nobody played — no email
 
+      // recipients: the account's saved list (validated + capped), else the
+      // account's own login email — never anyone outside this family's row
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      let recipients = Array.from(
+        new Set(
+          ((row.report_emails as string[] | null) ?? [])
+            .filter((e) => typeof e === 'string')
+            .map((e) => e.trim().toLowerCase())
+            .filter((e) => EMAIL_RE.test(e) && e.length <= 254)
+        )
+      ).slice(0, 5)
+      // the owner must be a real, confirmed account before our verified sender
+      // mails anything on their behalf (sec-check: an unconfirmed signup must
+      // not turn team@ into a relay)
       const { data: user } = await db.auth.admin.getUserById(row.user_id)
-      const email = user?.user?.email
-      if (!email) continue
+      const owner = user?.user
+      if (!owner?.email || !owner.email_confirmed_at) continue
+      if (recipients.length === 0) recipients = [owner.email]
 
       // claim BEFORE sending (compare-and-set on the previous stamp) — a run
       // crashing after the send, or two overlapping runners, must not double-send
@@ -75,8 +93,12 @@ export async function GET(req: NextRequest) {
       if (!claimed || claimed.length === 0) continue // another runner got it
 
       const { subject, html } = renderReportEmail(reports, now, REPORT_TZ)
-      const sent = await sendEmail(email, subject, html)
-      results.push({ user: tag, kids: reports.map((r) => r.name), sent: sent.ok, ...(sent.ok ? {} : { error: sent.error }) })
+      let okCount = 0
+      for (const to of recipients) {
+        const sent = await sendEmail(to, subject, html)
+        if (sent.ok) okCount++
+      }
+      results.push({ user: tag, kids: reports.map((r) => r.name), sent: okCount > 0, ...(okCount === recipients.length ? {} : { error: `sent ${okCount}/${recipients.length}` }) })
     } catch (err) {
       console.error('brainball report failed for', tag, err)
       results.push({ user: tag, error: 'failed' })
