@@ -75,6 +75,10 @@
     {
       "path": "/api/cron/driving",
       "schedule": "35 * * * *"
+    },
+    {
+      "path": "/api/cron/brainball-report",
+      "schedule": "10 * * * *"
     }
   ]
 }

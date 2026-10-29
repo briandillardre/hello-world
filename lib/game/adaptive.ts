@@ -121,13 +121,15 @@ export function percentileForSkill(theta: number, birthdate: string): { percenti
 
 /**
  * Peer-group benchmarks, expressed as z-offsets from the US-national age
- * norm. Modeled from published kindergarten-readiness distributions (TN
+ * norm. Modeled from published kindergarten-readiness distributions (SC
  * readiness rates run slightly below national; global early-childhood
  * composites slightly below that) — estimates for context, not live data.
+ * (Was "Tennessee" until Oct 2026 — a leftover from the Nashville demo
+ * fiction; the kids are in South Carolina.)
  */
 export const BENCHMARKS = [
   { key: 'us', label: 'US national', flag: '🇺🇸', z: 0 },
-  { key: 'tn', label: 'Tennessee', flag: '🎸', z: -0.08 },
+  { key: 'sc', label: 'South Carolina', flag: '🌴', z: -0.08 },
   { key: 'global', label: 'Global', flag: '🌍', z: -0.18 },
 ] as const
 

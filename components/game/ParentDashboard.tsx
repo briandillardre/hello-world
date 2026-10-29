@@ -326,7 +326,7 @@ export function ParentDashboard({
       <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
         {kid.isTester
           ? `Adult scores are a three-signal composite — ability level reached by the adaptive engine (up to 120), recent accuracy vs its 75% target, and median response speed vs an 8s reference — mapped to an IQ-style scale (mean 100, SD 15) against modeled adult norms. Directionally meaningful and great for comparing skills or tracking growth; still not a clinical IQ assessment.`
-          : `Percentiles are in-game estimates comparing ${kid.name}'s adaptive skill level to typical pre-K → kindergarten expectations for their exact age (${ageLabel(kid.birthdate)}). The US / Tennessee / Global markers are modeled from published kindergarten-readiness distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.`}
+          : `Percentiles are in-game estimates comparing ${kid.name}'s adaptive skill level to typical pre-K → kindergarten expectations for their exact age (${ageLabel(kid.birthdate)}). The US / South Carolina / Global markers are modeled from published kindergarten-readiness distributions — context for framing, not live national data, and not a clinical assessment. Difficulty auto-adjusts every answer to keep kids around a 70–80% success rate: hard enough to learn, easy enough to stay fun.`}
       </p>
       <p className="text-center text-xs font-extrabold text-blue-500 mt-3">Go Whalehogs 🐋🐗 — we don&apos;t say can&apos;t!</p>
     </div>
