@@ -31,7 +31,13 @@ unlockable Whalehog ball skin in the shop.
 | Persistence | `lib/game/storage.ts` | localStorage profiles (Marshall, Lincoln + Brian/Leslie testers), review queue, habit-loop fields |
 
 **Skills:** counting, numbers, math (add/subtract/missing addend), letters, sounds (phonics/rhymes),
-shapes & patterns, sight words / CVC reading.
+shapes & patterns, sight words / CVC reading, and **science** (Nov 2 — Brian: "latest physics, quantum,
+ai, biology, medicine… I want my boys prepared for the world of the singularity"): banded from age-4
+senses/animals up through the body, space and germs to a kid-honest frontier — atoms, DNA, cells,
+vaccines/mRNA, CRISPR, AI that learns from examples, qubits, fusion, gravity on the Moon. Every fact
+real, words small. Adults get their own **Science & frontier** bank (relativity, entanglement,
+transformers/hallucinations, AlphaFold, Higgs, immunotherapy, LIGO…). New skills added to the list
+auto-appear on stored/cloud profiles via the normalize step in `applyAssessmentSeeds`.
 
 **Adaptive:** every answer updates a 1–99 ability estimate (`theta`) per skill; the next question is
 drawn near it (with periodic easy confidence questions). Correct on hard questions moves theta up

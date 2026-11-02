@@ -12,6 +12,7 @@ export const SKILLS: SkillMeta[] = [
   { id: 'sounds', name: 'Sounds', emoji: '👂', blurb: 'First sounds & rhymes' },
   { id: 'shapes', name: 'Shapes', emoji: '🔺', blurb: 'Shapes, colors & patterns' },
   { id: 'words', name: 'Words', emoji: '📖', blurb: 'Sight words & first reading' },
+  { id: 'science', name: 'Science', emoji: '🔬', blurb: 'How the world works' },
 ]
 
 const ri = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
@@ -809,6 +810,93 @@ function genCvcRead(d: number): Question {
   }
 }
 
+// ---------------------------------------------------------------- science
+// How the world works (Brian, Nov 2: "Make sure we have latest physics,
+// quantum, ai, biology, medicine… I want my boys prepared for the world of
+// the singularity that is coming"). Banded from age-4 senses-and-animals up
+// to a kid-honest frontier: atoms, DNA, vaccines, AI that learns from
+// examples, qubits that can be two ways at once. Every fact is real; the
+// words are small.
+const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, string]; why: string; pic?: string }> = [
+  // t1 — senses, animals, weather (~age 4)
+  { t: 1, q: 'What do you SEE with?', a: 'eyes', m: ['ears', 'feet'], why: 'Your eyes catch light and send pictures to your brain.', pic: '👀' },
+  { t: 1, q: 'What do you HEAR with?', a: 'ears', m: ['nose', 'hands'], why: 'Your ears catch sounds — even tiny quiet ones.', pic: '👂' },
+  { t: 1, q: 'Which one is ALIVE?', a: 'puppy', m: ['rock', 'truck'], why: 'Living things grow, eat and move on their own — a puppy does all three!', pic: '🐶' },
+  { t: 1, q: 'Where does rain fall from?', a: 'clouds', m: ['trees', 'roads'], why: 'Clouds are made of tiny water drops — when they get heavy, down comes the rain.', pic: '🌧️' },
+  { t: 1, q: 'Which animal has feathers?', a: 'bird', m: ['dog', 'fish'], why: 'Birds are the only animals with feathers — they help them fly and stay warm.', pic: '🐦' },
+  { t: 1, q: 'What melts in the warm sun?', a: 'ice', m: ['rocks', 'spoons'], why: 'Warm sunshine turns ice back into water — that’s melting.', pic: '🧊' },
+  { t: 1, q: 'What lights up the sky at NIGHT?', a: 'the Moon', m: ['the Sun', 'a lamp'], why: 'The Moon shines at night — the Sun lights up the day.', pic: '🌙' },
+  { t: 1, q: 'What do plants grow from?', a: 'seeds', m: ['rocks', 'candy'], why: 'A tiny seed holds a whole baby plant inside, waiting for water and sun.', pic: '🌱' },
+  { t: 1, q: 'Which one is HOT?', a: 'fire', m: ['ice', 'snow'], why: 'Fire is hot — never touch! Ice and snow are cold.', pic: '🔥' },
+  { t: 1, q: 'What do cows give us?', a: 'milk', m: ['eggs', 'honey'], why: 'Cows make milk — hens lay the eggs and bees make the honey.', pic: '🐄' },
+  // t2 — nature + first physics
+  { t: 2, q: 'What do plants need to grow?', a: 'sun and water', m: ['candy and toys', 'blankets and shoes'], why: 'Plants drink water and use sunlight to make their own food.', pic: '🌻' },
+  { t: 2, q: 'A magnet sticks to things made of…', a: 'metal', m: ['wood', 'paper'], why: 'Magnets pull on metal like steel — wood and paper don’t feel the pull at all.', pic: '🧲' },
+  { t: 2, q: 'When ice warms up, it turns into…', a: 'water', m: ['smoke', 'sand'], why: 'Ice is frozen water — warm it up and it melts right back.', pic: '💧' },
+  { t: 2, q: 'Why is the daytime bright?', a: 'the Sun', m: ['the Moon', 'flashlights'], why: 'Our Sun lights up the whole daytime sky.', pic: '☀️' },
+  { t: 2, q: 'Which one SINKS in water?', a: 'a rock', m: ['a leaf', 'a beach ball'], why: 'Heavy-for-its-size things sink; light ones like leaves and beach balls float.', pic: '🪨' },
+  { t: 2, q: 'A baby frog is called a…', a: 'tadpole', m: ['puppy', 'cub'], why: 'Tadpoles hatch in the water with tails — then they grow legs and become frogs!', pic: '🐸' },
+  { t: 2, q: 'How many legs does a spider have?', a: '8', m: ['4', '100'], why: 'Spiders have 8 legs — insects like ants have 6. Count next time!', pic: '🕷️' },
+  { t: 2, q: 'What covers MOST of planet Earth?', a: 'water', m: ['sand', 'grass'], why: 'Oceans cover most of the Earth — that’s why it looks blue from space.', pic: '🌍' },
+  { t: 2, q: 'What comes right before thunder?', a: 'lightning', m: ['rainbows', 'snow'], why: 'Lightning makes the thunder — you see the flash first, then hear the boom.', pic: '⚡' },
+  { t: 2, q: 'What do bees make?', a: 'honey', m: ['milk', 'cheese'], why: 'Bees collect nectar from flowers and turn it into honey in their hive.', pic: '🐝' },
+  // t3 — the body, space, germs
+  { t: 3, q: 'Which part of you pumps blood?', a: 'heart', m: ['brain', 'tummy'], why: 'Your heart is a pump — it pushes blood all around your body, every second.', pic: '❤️' },
+  { t: 3, q: 'What do you breathe with?', a: 'lungs', m: ['heart', 'bones'], why: 'Your lungs fill with air like balloons and take the oxygen your body needs.', pic: '🫁' },
+  { t: 3, q: 'What thinks and tells your body what to do?', a: 'brain', m: ['knees', 'hair'], why: 'Your brain is the boss — it thinks, remembers and runs your whole body.', pic: '🧠' },
+  { t: 3, q: 'The Earth goes around the…', a: 'Sun', m: ['Moon', 'clouds'], why: 'Earth circles the Sun once a year — that trip is what a YEAR is!', pic: '☀️' },
+  { t: 3, q: 'Why do we wash our hands?', a: 'to wash away germs', m: ['to get taller', 'to stay sleepy'], why: 'Germs are too tiny to see, but soap and water wash them away so you stay healthy.', pic: '🧼' },
+  { t: 3, q: 'When water gets really hot, it becomes…', a: 'steam', m: ['ice', 'mud'], why: 'Boiling water turns into steam — the same water, floating as a gas!', pic: '♨️' },
+  { t: 3, q: 'What goes around the Earth?', a: 'the Moon', m: ['the Sun', 'the stars'], why: 'The Moon circles the Earth about once a month — that’s why it changes shape in the sky.', pic: '🌙' },
+  { t: 3, q: 'What holds your body up from the inside?', a: 'bones', m: ['water', 'air'], why: 'Your bones make a skeleton — a strong frame your muscles pull on.', pic: '🦴' },
+  { t: 3, q: 'A caterpillar grows up to become a…', a: 'butterfly', m: ['bird', 'worm'], why: 'It wraps up in a chrysalis and transforms — that’s called metamorphosis!', pic: '🦋' },
+  { t: 3, q: 'How do plants make their food?', a: 'from sunlight', m: ['from candy', 'from dirt only'], why: 'Leaves catch sunlight and use it to make food — no kitchen needed.', pic: '🍃' },
+  { t: 3, q: 'Which is faster — light or sound?', a: 'light', m: ['sound', 'they tie'], why: 'Light wins every race — that’s why you SEE lightning before you HEAR the thunder.', pic: '⚡' },
+  { t: 3, q: 'Doctors give you a shot called a vaccine to…', a: 'help you fight germs', m: ['make you sleepy', 'make you taller'], why: 'A vaccine shows your body a practice germ so it learns to win the real fight.', pic: '💉' },
+  // t4 — atoms, DNA, AI, planets
+  { t: 4, q: 'EVERYTHING is made of tiny pieces called…', a: 'atoms', m: ['crumbs', 'pixels'], why: 'Atoms are so small you can’t see them — but rocks, water, air and YOU are all made of them.', pic: '⚛️' },
+  { t: 4, q: 'The instruction book inside your body is called…', a: 'DNA', m: ['WiFi', 'ABC'], why: 'DNA is a tiny code in every cell that says how to build YOU — eye color and all.', pic: '🧬' },
+  { t: 4, q: 'Your body is built from trillions of tiny…', a: 'cells', m: ['bricks', 'buttons'], why: 'Cells are the tiny living blocks your whole body is made of.', pic: '🔬' },
+  { t: 4, q: 'A robot’s "brain" is a…', a: 'computer', m: ['sandwich', 'balloon'], why: 'Robots follow instructions from a computer — people write and train those instructions.', pic: '🤖' },
+  { t: 4, q: 'AI gets smart by studying lots of…', a: 'examples', m: ['naps', 'snacks'], why: 'AI learns from millions of examples — like you learning words by hearing them again and again.', pic: '🤖' },
+  { t: 4, q: 'Gravity pulls everything…', a: 'down', m: ['up', 'sideways'], why: 'Gravity is the Earth pulling on you — it’s why dropped things always fall DOWN.', pic: '🍎' },
+  { t: 4, q: 'The Sun is really a giant…', a: 'star', m: ['lamp', 'planet'], why: 'Our Sun is a star — it just looks huge because it’s the closest one.', pic: '☀️' },
+  { t: 4, q: 'Messages zip around your brain through tiny cells called…', a: 'neurons', m: ['balloons', 'pebbles'], why: 'Billions of neurons pass messages at lightning speed — that’s thinking!', pic: '🧠' },
+  { t: 4, q: 'Which planet is called the Red Planet?', a: 'Mars', m: ['Earth', 'Jupiter'], why: 'Mars looks red because its dirt is rusty — robots are driving around on it right now!', pic: '🔴' },
+  { t: 4, q: 'Doctors see your bones with a special picture called an…', a: 'X-ray', m: ['selfie', 'painting'], why: 'X-rays pass through skin but not bone, so the picture shows your skeleton.', pic: '🩻' },
+  { t: 4, q: 'Germs that make you sick are fought off by your…', a: 'immune system', m: ['shoes', 'hair'], why: 'Your immune system is your body’s army — it remembers germs and beats them faster next time.', pic: '🛡️' },
+  { t: 4, q: 'What does a scientist do FIRST?', a: 'ask a question', m: ['give up', 'guess the answer is magic'], why: 'Science starts with a question, then a guess, then a TEST to see if the guess was right.', pic: '🔬' },
+  // t5 — the frontier, kid-honest (quantum, AI, medicine, space)
+  { t: 5, q: 'A quantum computer uses tiny things that can be two ways AT ONCE, called…', a: 'qubits', m: ['pixels', 'legos'], why: 'A normal computer bit is 1 OR 0. A qubit can be kind of BOTH until you look — that’s quantum!', pic: '⚛️' },
+  { t: 5, q: 'Light acts like a wave AND a tiny…', a: 'particle', m: ['puddle', 'pancake'], why: 'Light is both at once — scientists call the particles photons. The tiny world plays by strange rules!', pic: '💡' },
+  { t: 5, q: 'Scientists can fix broken DNA with an editing tool called…', a: 'CRISPR', m: ['scissors app', 'glue gun'], why: 'CRISPR works like find-and-replace for DNA — doctors already use it to fix some sicknesses.', pic: '🧬' },
+  { t: 5, q: 'Medicine called antibiotics kills…', a: 'bacteria', m: ['viruses', 'robots'], why: 'Antibiotics only beat bacteria. Colds come from viruses, so rest and your immune system do that job.', pic: '💊' },
+  { t: 5, q: 'On the Moon you could jump super high because gravity there is…', a: 'weaker', m: ['stronger', 'sideways'], why: 'The Moon is smaller than Earth, so it pulls less — astronauts bounce like kangaroos!', pic: '🌙' },
+  { t: 5, q: 'The fastest thing in the whole universe is…', a: 'light', m: ['a rocket', 'a cheetah'], why: 'Nothing beats light — it could zoom around the Earth 7 times in ONE second.', pic: '🚀' },
+  { t: 5, q: 'What sits in the middle of every atom?', a: 'the nucleus', m: ['a seed', 'air'], why: 'The nucleus is the atom’s tiny center, with electrons buzzing around it.', pic: '⚛️' },
+  { t: 5, q: 'A computer that chats and writes learned how by reading tons of…', a: 'words and books', m: ['minds', 'fortune cookies'], why: 'Chatbot AIs studied mountains of writing to learn how words fit together. Smart helpers — but YOU still check their answers!', pic: '🤖' },
+  { t: 5, q: 'The Sun makes its energy by squishing tiny atoms together — that’s called…', a: 'fusion', m: ['frying', 'mixing'], why: 'Fusion smashes hydrogen atoms into helium and lets out huge energy — scientists are building fusion machines on Earth too.', pic: '☀️' },
+  { t: 5, q: 'Some vaccines now work by giving your cells a RECIPE to practice with, written in…', a: 'mRNA', m: ['crayon', 'binary'], why: 'mRNA is a tiny recipe card — your cells make one harmless germ piece, and your immune system trains on it.', pic: '💉' },
+  { t: 5, q: 'Starlight from far away takes YEARS to reach us — so looking up is looking…', a: 'back in time', m: ['underwater', 'into mirrors'], why: 'Some stars you see tonight sent that light before you were born. Telescopes are time machines!', pic: '🌟' },
+  { t: 5, q: 'When an AI practices something over and over to get better, that’s called…', a: 'training', m: ['napping', 'downloading luck'], why: 'AI gets good the same way you do — practice, mistakes, and trying again. We don’t say can’t!', pic: '🤖' },
+]
+
+function genScience(d: number): Question {
+  const t = d < 25 ? 1 : d < 50 ? 2 : d < 75 ? 3 : d < 90 ? 4 : 5
+  const f = pick(SCIENCE.filter((x) => x.t === t))
+  const opts = shuffle([f.a, ...f.m])
+  return {
+    skill: 'science',
+    difficulty: d,
+    prompt: f.q,
+    speech: f.q,
+    visual: f.pic,
+    choices: opts,
+    answer: opts.indexOf(f.a),
+    explain: f.why,
+  }
+}
+
 // ================================================================ ADULT BANK
 // Genuinely hard content for the grown-up tester profiles — same skill ids,
 // entirely different generators: mental math, sequences, number sense,
@@ -1166,6 +1254,49 @@ function genAdultSpelling(d: number): Question {
   }
 }
 
+// ---- science → modern science & frontier (physics, quantum, AI, bio, medicine)
+const ADULT_SCI: Array<{ tier: 1 | 2 | 3; q: string; a: string; m: [string, string]; why: string }> = [
+  { tier: 1, q: 'Antibiotics are effective against…', a: 'bacteria only', m: ['viruses only', 'both equally'], why: 'Antibiotics disrupt bacterial machinery; viruses hijack your own cells, so antivirals and vaccines handle those.' },
+  { tier: 1, q: 'The fastest possible speed in the universe is the speed of…', a: 'light', m: ['sound', 'neutrinos'], why: 'Light in a vacuum (~186,000 mi/s) is the universal speed limit set by relativity.' },
+  { tier: 1, q: 'DNA’s famous shape is a…', a: 'double helix', m: ['triple knot', 'flat ladder'], why: 'Two strands twist around each other — Watson, Crick and Franklin’s 1953 discovery.' },
+  { tier: 1, q: 'The Sun produces energy by…', a: 'nuclear fusion', m: ['combustion', 'fission'], why: 'Hydrogen nuclei fuse into helium, converting mass to energy per E=mc².' },
+  { tier: 1, q: 'Which organ consumes ~20% of your body’s energy?', a: 'the brain', m: ['the heart', 'the skin'], why: 'About a fifth of your calories feed roughly 86 billion neurons.' },
+  { tier: 1, q: 'E = mc² says mass can be converted into…', a: 'energy', m: ['momentum', 'gravity'], why: 'A tiny amount of mass equals enormous energy — c² is a huge multiplier.' },
+  { tier: 2, q: 'A qubit differs from a bit because it can be…', a: 'in superposition of 0 and 1', m: ['only faster', 'only smaller'], why: 'Until measured, a qubit holds a blend of both states — the source of quantum computing’s power.' },
+  { tier: 2, q: 'Einstein called quantum entanglement…', a: 'spooky action at a distance', m: ['the hidden ladder', 'God’s dice'], why: 'Entangled particles show correlated results instantly at any distance — verified by the 2022 Nobel-winning experiments.' },
+  { tier: 2, q: 'Neural networks are loosely modeled on…', a: 'brain neurons', m: ['ant colonies', 'circuit breakers'], why: 'Layers of simple units with weighted connections, tuned by training — a cartoon of real neurons.' },
+  { tier: 2, q: 'mRNA vaccines work by…', a: 'giving cells a protein recipe', m: ['injecting antibodies', 'weakening live virus'], why: 'Your cells briefly manufacture one harmless viral protein; your immune system trains on it.' },
+  { tier: 2, q: 'CRISPR is best described as…', a: 'a programmable DNA editor', m: ['a cloning vat', 'an X-ray scope'], why: 'A guide RNA steers the Cas9 protein to a DNA address to cut or rewrite it — first approved therapies arrived in 2023.' },
+  { tier: 2, q: 'Entropy in a closed system tends to…', a: 'increase', m: ['decrease', 'oscillate'], why: 'The second law of thermodynamics: disorder wins without energy input — why engines waste heat and ice melts.' },
+  { tier: 2, q: 'Most of the universe’s matter appears to be…', a: 'dark matter', m: ['hydrogen', 'black holes'], why: 'Galaxies spin as if ~5× more mass is there than we can see; its identity is still unknown.' },
+  { tier: 2, q: '"Training" vs "inference" in AI: inference is when the model…', a: 'answers using what it learned', m: ['updates its weights', 'collects data'], why: 'Training adjusts billions of weights from examples; inference runs the frozen model to produce answers.' },
+  { tier: 3, q: 'The breakthrough architecture behind modern chatbots is the…', a: 'transformer', m: ['perceptron', 'decision tree'], why: '"Attention is All You Need" (2017): attention layers let models weigh every word against every other, at scale.' },
+  { tier: 3, q: 'An AI "hallucination" is…', a: 'a confident false output', m: ['a training crash', 'an overheated GPU'], why: 'Language models predict plausible text, not verified truth — fluent and wrong is a failure mode to check for.' },
+  { tier: 3, q: 'AlphaFold’s landmark achievement was predicting…', a: 'protein structures', m: ['earthquakes', 'stock prices'], why: 'It solved 50 years of protein-folding grand challenge — 2024 chemistry Nobel; now a standard biology tool.' },
+  { tier: 3, q: 'The Higgs field is what gives fundamental particles…', a: 'mass', m: ['charge', 'spin'], why: 'Confirmed at CERN in 2012 — particles interacting with the field resist acceleration, which is mass.' },
+  { tier: 3, q: 'Quantum tunneling lets particles…', a: 'cross barriers they lack energy for', m: ['exceed light speed', 'duplicate themselves'], why: 'Wavefunctions leak through barriers — it’s why the Sun fuses and flash memory works.' },
+  { tier: 3, q: 'In 2022 fusion researchers at NIF first achieved…', a: 'ignition (more energy out than laser energy in)', m: ['a stable tokamak grid', 'room-temp fusion'], why: 'A milestone, not a power plant — the facility still drew far more wall power than the target released.' },
+  { tier: 3, q: 'Telomeres are…', a: 'protective chromosome end-caps', m: ['immune cells', 'brain folds'], why: 'They shorten with each cell division — one of the clocks of aging and a target of longevity research.' },
+  { tier: 3, q: 'Cancer immunotherapy works by…', a: 'unleashing your immune system on tumors', m: ['replacing chemotherapy with heat', 'blocking all cell division'], why: 'Checkpoint inhibitors and CAR-T cells remove the brakes or retarget T-cells — a Nobel-winning revolution in oncology.' },
+  { tier: 3, q: 'Heisenberg’s uncertainty principle limits knowing…', a: 'position and momentum together', m: ['mass and charge together', 'time and temperature together'], why: 'Sharpen one and you blur the other — not a measurement flaw, a property of nature.' },
+  { tier: 3, q: 'LIGO detects black-hole mergers by measuring…', a: 'gravitational waves', m: ['radio bursts', 'neutrino showers'], why: 'Ripples in spacetime stretch its 4-km laser arms by less than a proton’s width — first heard in 2015.' },
+]
+
+function genAdultScience(d: number): Question {
+  const tier = d < 35 ? 1 : d < 70 ? 2 : 3
+  const f = pick(ADULT_SCI.filter((x) => x.tier === tier))
+  const opts = shuffle([f.a, ...f.m])
+  return {
+    skill: 'science',
+    difficulty: d,
+    prompt: f.q,
+    speech: f.q,
+    choices: opts,
+    answer: opts.indexOf(f.a),
+    explain: f.why,
+  }
+}
+
 const GENERATORS: Record<SkillId, (d: number) => Question> = {
   counting: genCounting,
   numbers: genNumbers,
@@ -1174,6 +1305,7 @@ const GENERATORS: Record<SkillId, (d: number) => Question> = {
   sounds: genSounds,
   shapes: genShapes,
   words: genWords,
+  science: genScience,
 }
 
 const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
@@ -1184,6 +1316,7 @@ const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
   sounds: genAdultAnalogy,
   shapes: genAdultLogic,
   words: genAdultSpelling,
+  science: genAdultScience,
 }
 
 /** adult display names for the same skill slots */
@@ -1195,6 +1328,7 @@ export const ADULT_SKILL_NAMES: Record<SkillId, string> = {
   sounds: 'Analogies',
   shapes: 'Logic patterns',
   words: 'Spelling',
+  science: 'Science & frontier',
 }
 
 /** one rule for kid-vs-adult skill labels (was copy-pasted at five call sites) */

@@ -20,7 +20,7 @@ export const BALL_SKINS: BallSkin[] = [
   { id: 'rocket', name: 'Rocket', cost: 550, colors: ['#94a3b8', '#1e293b'], emoji: '🚀' },
 ]
 
-const SKILL_IDS: SkillId[] = ['counting', 'numbers', 'addition', 'letters', 'sounds', 'shapes', 'words']
+const SKILL_IDS: SkillId[] = ['counting', 'numbers', 'addition', 'letters', 'sounds', 'shapes', 'words', 'science']
 
 function freshSkillState(startTheta = START_THETA): SkillState {
   return { theta: startTheta, attempts: 0, correct: 0, bestStreak: 0 }
@@ -89,10 +89,15 @@ const ASSESSMENT_SEEDS: Array<{
 ]
 
 /** apply any unapplied assessment seeds — pure + idempotent, safe to run on every load/merge.
- *  Only the LAST entry per kid ever applies (a newer seed replaces the older one for that kid) —
- *  matching against "any entry whose version differs" would re-apply two seeds alternately forever. */
+ *  Also merges in any skills ADDED since a profile was stored (a cloud copy
+ *  from before a new skill existed must not crash the screens that read it).
+ *  Only the LAST seed entry per kid ever applies (a newer seed replaces the
+ *  older one for that kid) — matching against "any entry whose version
+ *  differs" would re-apply two seeds alternately forever. */
 export function applyAssessmentSeeds(profiles: KidProfile[]): KidProfile[] {
-  return profiles.map((p) => {
+  return profiles.map((raw) => {
+    if (!raw) return raw
+    const p = { ...raw, skills: { ...freshSkills(raw.isTester ? 60 : START_THETA), ...raw.skills } }
     const mine = ASSESSMENT_SEEDS.filter((s) => s.kidId === p.id)
     const seed = mine.length > 0 ? mine[mine.length - 1] : undefined
     if (!seed || p.seedVersion === seed.version) return p
