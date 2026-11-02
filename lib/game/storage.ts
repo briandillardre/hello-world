@@ -98,6 +98,13 @@ export function applyAssessmentSeeds(profiles: KidProfile[]): KidProfile[] {
   return profiles.map((raw) => {
     if (!raw) return raw
     const p = { ...raw, skills: { ...freshSkills(raw.isTester ? 60 : START_THETA), ...raw.skills } }
+    // heal a tester skill a non-tester-aware merge already parked at the kid
+    // floor: UNPLAYED (zero attempts) tester skills start at 60, always
+    if (p.isTester) {
+      for (const [id, st] of Object.entries(p.skills) as Array<[SkillId, (typeof p.skills)[SkillId]]>) {
+        if (st && st.attempts === 0 && st.theta < 60) p.skills[id] = { ...st, theta: 60 }
+      }
+    }
     const mine = ASSESSMENT_SEEDS.filter((s) => s.kidId === p.id)
     const seed = mine.length > 0 ? mine[mine.length - 1] : undefined
     if (!seed || p.seedVersion === seed.version) return p
@@ -116,10 +123,11 @@ export function loadProfiles(): KidProfile[] {
     if (!raw) return applyAssessmentSeeds(defaultProfiles())
     const parsed = JSON.parse(raw) as { profiles: KidProfile[] }
     if (!Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return applyAssessmentSeeds(defaultProfiles())
-    // merge any newly-added skills into stored profiles
+    // merge any newly-added skills into stored profiles — tester-aware, or a
+    // grown-up's new skill is born at the kid floor and persisted that way
     const stored = parsed.profiles.map((p) => ({
       ...p,
-      skills: { ...freshSkills(), ...p.skills },
+      skills: { ...freshSkills(p.isTester ? 60 : START_THETA), ...p.skills },
       ownedSkins: p.ownedSkins?.length ? p.ownedSkins : ['classic'],
     }))
     // append default profiles added after this device first saved (e.g. testers)
