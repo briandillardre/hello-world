@@ -70,6 +70,18 @@ export function spokenNumber(tokens: string[]): number | null {
   return null
 }
 
+/** what recognizers actually transcribe for frontier science words — keyed by
+ *  the NORMALIZED choice text, values are normalized phrases to accept */
+const CHOICE_ALIASES: Record<string, string[]> = {
+  qubits: ['cubits', 'cubit', 'q bits', 'q bit', 'kyu bits', 'cue bits'],
+  crispr: ['crisper', 'crispier', 'crispr'],
+  mrna: ['m rna', 'em rna', 'm r n a', 'em are en a'],
+  dna: ['d n a', 'dee en a'],
+  'an x ray': ['x ray', 'xray', 'x rays'],
+  'the nucleus': ['nucleus'],
+  superposition: ['super position'],
+}
+
 /** a question is voice-answerable only when EVERY choice has sayable text
  *  (a row of emoji groups can't be matched by a transcript) */
 export function voiceable(choices: string[]): boolean {
@@ -109,9 +121,16 @@ export function matchSpoken(transcript: string, choices: string[]): number | nul
     // the whole choice phrase appears in what was said
     if ((' ' + t + ' ').indexOf(' ' + cand + ' ') >= 0) return 90
     const candTokens = cand.split(' ')
+    // a known recognizer spelling of this choice ("crisper" → CRISPR)
+    const aliases = CHOICE_ALIASES[cand]
+    if (aliases && aliases.some((a) => (' ' + t + ' ').indexOf(' ' + a + ' ') >= 0)) return 85
     // all content words of the choice were said ("the beach" → "at the beach")
     const content = candTokens.filter((w) => !STOP.has(w))
     if (content.length > 0 && content.every((w) => tokens.indexOf(w) >= 0)) return 80
+    // SOME content words were said ("germs" → "to wash away germs") — a natural
+    // partial answer; the tie rule below still refuses it when two choices share
+    // the spoken word
+    if (content.length > 1 && content.some((w) => tokens.indexOf(w) >= 0)) return 60
     // a single letter, said by name ("why" → Y)
     if (cand.length === 1 && /[a-z]/.test(cand) && tokens.some((tk) => letterTokenMatches(cand, tk))) return 70
     // a number, said in words ("twenty one" → 21)

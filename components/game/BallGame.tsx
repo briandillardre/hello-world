@@ -925,11 +925,22 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           ctx.font = `700 ${Math.round(size)}px system-ui`
           ctx.fillText(bottom, 0, b.r * 0.36)
         } else if (parts.length > 1) {
-          // plain multi-word choice (e.g. "at the beach"): two balanced lines
-          const mid = Math.ceil(parts.length / 2)
-          const l1 = parts.slice(0, mid).join(' ')
-          const l2 = parts.slice(mid).join(' ')
-          const longest = Math.max(l1.length, l2.length)
+          // plain multi-word choice (e.g. "at the beach"): two lines, split at
+          // the point that balances CHARACTERS (a word-count split put three
+          // words on one line and shrank the font past legible)
+          let l1 = parts[0]
+          let l2 = parts.slice(1).join(' ')
+          let best = Math.max(l1.length, l2.length)
+          for (let cut = 2; cut < parts.length; cut++) {
+            const a = parts.slice(0, cut).join(' ')
+            const b = parts.slice(cut).join(' ')
+            if (Math.max(a.length, b.length) < best) {
+              best = Math.max(a.length, b.length)
+              l1 = a
+              l2 = b
+            }
+          }
+          const longest = best
           const size = Math.min(b.r * 0.45, (b.r * 1.7) / Math.max(longest * 0.55, 1))
           ctx.font = `800 ${Math.round(size)}px system-ui`
           ctx.fillText(l1, 0, -b.r * 0.24)

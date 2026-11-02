@@ -55,6 +55,18 @@ ok('blend by word', m('sc', ['sc', 'sk', 'st']) === 0)
 ok('blend spelled out (ess see)', m('ess see', ['sc', 'sk', 'st']) === 0)
 ok('blend spelled out (ess kay)', m('s kay', ['sc', 'sk', 'st']) === 1)
 
+// science & frontier words — recognizer spellings and natural partial answers
+ok('crisper → CRISPR', m('crisper', ['CRISPR', 'scissors app', 'glue gun']) === 0)
+ok('cubits → qubits', m('cubits', ['qubits', 'pixels', 'legos']) === 0)
+ok('m rna → mRNA', m('m rna', ['mRNA', 'crayon', 'binary']) === 0)
+ok('x ray → an X-ray', m('x-ray', ['an X-ray', 'a selfie', 'a painting']) === 0)
+ok('nucleus → the nucleus', m('nucleus', ['the nucleus', 'a seed', 'air']) === 0)
+ok('partial: germs → to wash away germs', m('germs', ['to wash away germs', 'to get taller', 'to stay sleepy']) === 0)
+ok('partial: sunlight → from sunlight', m('sunlight', ['from sunlight', 'from candy', 'from dirt only']) === 0)
+ok('partial: sun → sun and water', m('sun', ['sun and water', 'candy and toys', 'blankets and shoes']) === 0)
+ok('partial shared by two choices → null', m('from', ['from sunlight', 'from candy', 'rocks']) === null)
+ok('the Moon vs the Sun stay distinct', m('the moon', ['the Moon', 'the Sun', 'a lamp']) === 0)
+
 // refusals — never guess
 ok('gibberish → null', m('banana sandwich', ['5', '7', '9']) === null)
 ok('empty → null', m('', ['a', 'b']) === null)
