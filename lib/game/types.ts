@@ -8,6 +8,7 @@ export type SkillId =
   | 'sounds'
   | 'shapes'
   | 'words'
+  | 'science'
 
 export interface SkillMeta {
   id: SkillId
