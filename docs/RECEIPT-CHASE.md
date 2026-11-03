@@ -20,19 +20,18 @@ and categorized for job costing. "This would solve 90% of the receipt problem."*
    - admin-defined list (Settings → Receipt categories), or
    - synced QuickBooks chart/classes/projects once QBO is connected —
      so the choice the employee makes IS the job-cost line.
-5. **The nag ladder** (BUILT Sep 9 2026, migration 099 — runs every 15 min):
-   - T+15 min: push (rung 2)
-   - T+1 h: push + text to the cardholder's cell (rung 3, `profiles.phone`)
-   - T+4 h: push + text, sharper (rung 4)
-   - T+24 h: push + text, AND the owner/admins get one push + the office line
-     one text ("Trey hasn't snapped the $312 Home Depot receipt from Tue")
-     (rung 5, `expenses.escalated_at`)
-   - Then 7 AM and 5 PM company-local, every day, for two weeks; after that the
-     nightly digest carries it like any aging charge
+5. **The reminder ladder** (BUILT Sep 9 2026, migration 099; made GENTLE Nov 3 2026 —
+   Brian: the old one was "annoying as hell for employees once card is run"):
+   - The swipe itself is the first push (rung 1)
+   - Then ONE push a day at 5 PM company-local (≥ 2 h after the swipe), three
+     days at most (rungs 2–4) — push only, NO texts
+   - Day 3+, at 5 PM: the owner/admins get one push + the office line one text
+     (rung 5, `expenses.escalated_at`); the cardholder hears nothing more
+   - After that the nightly digest carries it like any aging charge
    - Every push carries the capture link as its TAP TARGET (FCM `data.url`,
      opened by the app) — one tap lands on the camera
    - In between, the in-app bar (`components/receipts/ReceiptNagBar.tsx`)
-     rides EVERY screen the cardholder opens: "2 receipts need your photo ·
+     rides every screen the cardholder opens ("Later" shrinks it to a pill until tomorrow morning): "2 receipts need your photo ·
      $402" → Snap (camera right there, same /api/r/<token> door) · No receipt
      (closes with the person's reason) · Later (shrinks to a pill for 10 min,
      never goes away)

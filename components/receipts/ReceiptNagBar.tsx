@@ -8,8 +8,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * photo, an amber bar rides EVERY screen — on the map it floats under the top
  * bar, elsewhere it sits above the page. "Snap" opens the camera right here
  * (same door as the magic link: /api/r/<token>), "No receipt" closes a charge
- * with a reason the office sees. "Later" only shrinks it to a pill for ten
- * minutes; it never goes away while a receipt is owed.
+ * with a reason the office sees. "Later" shrinks it to a small pill until
+ * tomorrow morning (Nov 3: the full bar on every screen was too much).
  */
 type Charge = { id: string; merchant: string | null; amount: number; txn_date: string; last4: string | null; token: string | null; nag_level: number; created_at: string }
 type Fix = { lat: number; lng: number; acc: number | null }
@@ -54,7 +54,7 @@ export function ReceiptNagBar({ edge }: { edge: boolean }) {
     window.addEventListener('ht:receipt-captured', load)
     return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', vis); window.removeEventListener('ht:receipt-captured', load) }
   }, [load, owed])
-  useEffect(() => { try { setSnoozeUntil(Number(sessionStorage.getItem(SNOOZE_KEY) ?? 0)) } catch { /* private mode */ } }, [])
+  useEffect(() => { try { setSnoozeUntil(Number(localStorage.getItem(SNOOZE_KEY) ?? 0)) } catch { /* private mode */ } }, [])
   // A fix for the photo pin — asked only once the sheet is open, never on
   // every page paint.
   useEffect(() => {
@@ -71,9 +71,10 @@ export function ReceiptNagBar({ edge }: { edge: boolean }) {
   const snoozed = Date.now() < snoozeUntil && !open
 
   const snooze = () => {
-    const until = Date.now() + 10 * 60_000
+    const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(6, 0, 0, 0)
+    const until = t.getTime()
     setSnoozeUntil(until)
-    try { sessionStorage.setItem(SNOOZE_KEY, String(until)) } catch { /* private mode */ }
+    try { localStorage.setItem(SNOOZE_KEY, String(until)) } catch { /* private mode */ }
     setOpen(false)
   }
 
@@ -149,7 +150,7 @@ export function ReceiptNagBar({ edge }: { edge: boolean }) {
             <button type="button" onClick={() => setOpen((o) => !o)} className="rounded-lg bg-[#1a1100] text-amber font-display font-bold text-[12px] px-3 py-1.5 active:scale-95">
               {open ? 'Close' : 'Snap'}
             </button>
-            <button type="button" onClick={snooze} aria-label="Hide for ten minutes" className="text-[11px] font-semibold opacity-70 hover:opacity-100 px-1">
+            <button type="button" onClick={snooze} aria-label="Hide until tomorrow" className="text-[11px] font-semibold opacity-70 hover:opacity-100 px-1">
               Later
             </button>
           </div>
