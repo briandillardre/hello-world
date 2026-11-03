@@ -87,6 +87,8 @@ export interface RoundResult {
   touchdowns?: number
   /** 🎮 Fun Zone seconds earned this round (banked on the profile, capped) */
   playSecondsEarned?: number
+  /** 🏈 Game Day final score (Whalehogs vs Robots) */
+  footballScore?: { us: number; them: number }
 }
 
 export interface ReviewItem {
@@ -125,8 +127,8 @@ export interface KidProfile {
   seedVersion?: string
   /** real-world assessment summary shown on the grown-ups report */
   assessment?: { date: string; title: string; summary: string; focus: string[] }
-  /** which game renders the round: classic rolling ball or football drive */
-  gameMode?: 'ball' | 'football'
+  /** which game renders the round: rolling ball, quick football drive, or full-rules Game Day */
+  gameMode?: 'ball' | 'football' | 'gameday'
   /** banked 🎮 Fun Zone seconds — earned by correct answers, spent free-playing */
   playSeconds?: number
   /** lifetime 🎮 seconds spent — monotonic, feeds the cloud-merge play signal so a spend can't resurrect */

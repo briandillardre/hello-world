@@ -48,6 +48,7 @@ export function PlayApp() {
   // latched at round start — a cloud sync resolving mid-round must not flip the
   // field out from under the kid (the live-derived prop restarted the canvas)
   const [gameFootball, setGameFootball] = useState(false)
+  const [gameDayLatch, setGameDayLatch] = useState(false)
   const [lastResult, setLastResult] = useState<RoundResult | null>(null)
   const [gameKey, setGameKey] = useState(0)
 
@@ -185,8 +186,10 @@ export function PlayApp() {
   }, [screen])
 
   const startGame = (skillChoice: SkillId | 'mix') => {
+    const mode = kid?.gameMode ?? 'ball'
     setGameSkill(skillChoice)
-    setGameFootball((kid?.gameMode ?? 'ball') === 'football')
+    setGameFootball(mode !== 'ball')
+    setGameDayLatch(mode === 'gameday')
     setGameKey((k) => k + 1)
     setScreen('game')
   }
@@ -277,6 +280,7 @@ export function PlayApp() {
           profile={kid}
           skill={gameSkill}
           football={gameFootball}
+          gameday={gameDayLatch}
           dailyDouble={isDailyDouble}
           onAnswer={handleAnswer}
           onComplete={handleComplete}
@@ -349,7 +353,19 @@ export function PlayApp() {
             <span className="opacity-20">{'⭐'.repeat(3 - r.stars)}</span>
           </div>
           <div className="rounded-2xl bg-white border-2 border-yellow-200 shadow p-4 mb-2">
-            {(r.touchdowns ?? 0) > 0 && (
+            {r.footballScore && (
+              <p className="text-lg font-black text-slate-800">
+                🏟️ Final: 🐋🐗 {r.footballScore.us} — {r.footballScore.them} 🤖
+                <span className={`block text-sm ${r.footballScore.us > r.footballScore.them ? 'text-green-600' : r.footballScore.us === r.footballScore.them ? 'text-slate-500' : 'text-orange-500'}`}>
+                  {r.footballScore.us > r.footballScore.them
+                    ? 'WHALEHOGS WIN! 🏆'
+                    : r.footballScore.us === r.footballScore.them
+                    ? "It's a tie — rematch!"
+                    : 'The Robots got this one — rematch!'}
+                </span>
+              </p>
+            )}
+            {(r.touchdowns ?? 0) > 0 && !r.footballScore && (
               <p className="text-lg font-black text-green-700">🏈 TOUCHDOWN{(r.touchdowns ?? 0) > 1 ? `S ×${r.touchdowns}` : ''}!</p>
             )}
             <p className="text-lg font-extrabold text-yellow-600">+{r.coinsEarned + (r.questBonus ?? 0)} 🪙 coins earned</p>
@@ -565,12 +581,13 @@ export function PlayApp() {
           )}
         </div>
 
-        {/* game-mode picker: classic rolling ball vs football drive */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* game-mode picker: rolling ball, quick football drive, or full-rules Game Day */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
           {(
             [
               { id: 'ball' as const, label: '⚽ Brain Ball', blurb: 'Roll & eat answers' },
-              { id: 'football' as const, label: '🏈 Football', blurb: 'Drive for touchdowns' },
+              { id: 'football' as const, label: '🏈 Quick Drive', blurb: 'Race for touchdowns' },
+              { id: 'gameday' as const, label: '🏟️ Game Day', blurb: 'Downs, kicks & defense!' },
             ]
           ).map((m) => {
             const active = (kid.gameMode ?? 'ball') === m.id
@@ -578,12 +595,12 @@ export function PlayApp() {
               <button
                 key={m.id}
                 onClick={() => updateKid(kid.id, (k) => ({ ...k, gameMode: m.id }))}
-                className={`rounded-2xl border-2 p-2.5 text-center active:scale-95 transition-transform ${
+                className={`rounded-2xl border-2 p-2 text-center active:scale-95 transition-transform ${
                   active ? 'bg-green-600 border-green-700 text-white shadow' : 'bg-white border-slate-200 text-slate-600'
                 }`}
               >
-                <span className="block font-extrabold text-sm">{m.label}</span>
-                <span className={`block text-[10px] font-semibold ${active ? 'text-green-100' : 'text-slate-400'}`}>{m.blurb}</span>
+                <span className="block font-extrabold text-[13px] leading-tight">{m.label}</span>
+                <span className={`block text-[10px] font-semibold leading-tight mt-0.5 ${active ? 'text-green-100' : 'text-slate-400'}`}>{m.blurb}</span>
               </button>
             )
           })}
