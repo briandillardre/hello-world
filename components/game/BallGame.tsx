@@ -460,6 +460,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       const w = world.current
       const correct = bubbleIndex === q.answer
       const elapsed = Date.now() - qStartRef.current
+      // the streak the play-call button PROMISED with — captured before the
+      // increment below, so "+7" never quietly delivers +10 (ship-check)
+      const streakBefore = world.current.streak
       const speedBoost = elapsed <= FAST_MS ? 1 : elapsed <= QUICK_MS ? 0.5 : 0
       const state = skillsRef.current[q.skill]
       const newTheta = updateTheta(state, q.difficulty, correct, speedBoost, profile.isTester ? ADULT_THETA_CAP : 99)
@@ -514,14 +517,21 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         }
         w.rings.push({ x: b.x, y: b.y, r: b.r * 0.5, life: 1, color: bonusRef.current ? '#eab308' : '#22c55e' })
         w.floaters.push({ x: b.x, y: b.y - b.r, text: `+${coinsDelta} 🪙${multiplier > 1 ? ` ×${multiplier}!` : ''}`, life: 1.2, color: '#eab308' })
+        // Game Day's engine events say exactly what happened — a random
+        // "First down!" over a tackle undoes the teaching (ship-check), so
+        // gameday only keeps the honest streak shout
         const praise = football ? FOOTBALL_PRAISE : PRAISE
-        w.floaters.push({
-          x: w.w / 2,
-          y: w.h * 0.55,
-          text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : praise[Math.floor(Math.random() * praise.length)],
-          life: 1.4,
-          color: '#16a34a',
-        })
+        if (!gameday) {
+          w.floaters.push({
+            x: w.w / 2,
+            y: w.h * 0.55,
+            text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : praise[Math.floor(Math.random() * praise.length)],
+            life: 1.4,
+            color: '#16a34a',
+          })
+        } else if (w.streak >= 5) {
+          w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: `🔥 ${w.streak} IN A ROW!`, life: 1.4, color: '#16a34a' })
+        }
         if (football && !gameday) {
           // every right answer gains yards; hot streaks run farther
           const gain = w.streak >= 3 ? 15 : 10
@@ -582,7 +592,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       if (gameday) {
         // 🏈 Game Day: the drive engine decides what this answer MEANT on the
         // field (downs, scores, turnovers, the defense stand) — lib/game/football.ts
-        const res = applyPlay(driveRef.current, pendingCallRef.current, correct, w.streak)
+        const res = applyPlay(driveRef.current, pendingCallRef.current, correct, streakBefore)
         driveRef.current = res.next
         setDrive(res.next)
         let fy = w.h * 0.4
@@ -1361,7 +1371,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           <X className="w-5 h-5" />
         </button>
         <div className="flex gap-1.5" aria-label="Round progress">
-          {Array.from({ length: ROUND_LENGTH }).map((_, i) => (
+          {/* the XP kick is an 11th answer — the dots row grows with it */}
+          {Array.from({ length: Math.max(ROUND_LENGTH, results.length, qIndex + 1) }).map((_, i) => (
             <span
               key={i}
               className={`w-2.5 h-2.5 rounded-full transition-colors ${
@@ -1397,12 +1408,12 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             {skillMeta.emoji} {skillDisplayName(skillMeta, !!profile.isTester)}
           </span>
         )}
-        {question && (
+        {question && !(gameday && picking) && (
           <span className="absolute -top-2.5 right-3 text-[10px] font-extrabold bg-purple-500 text-white rounded-full px-2 py-0.5">
             ⚡ Level {question.difficulty}
           </span>
         )}
-        {isBonus && (
+        {isBonus && !(gameday && picking) && (
           <span className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 text-[11px] font-extrabold bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-full px-3 py-0.5 animate-bounce shadow">
             ✨ BONUS — 2× coins!
           </span>
@@ -1433,14 +1444,16 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             </button>
           )}
         </div>
-        {question?.visual && (
+        {question?.visual && !(gameday && picking) && (
           <p className="mt-1 text-3xl leading-relaxed whitespace-pre-wrap break-words">{question.visual}</p>
         )}
         {/* ⚡ speed window: answer while the bar still glows for bonus coins */}
         <div className={`mt-2 flex items-center gap-1.5 ${gameday && picking ? 'invisible' : ''}`}>
           <span className="text-[10px]">⚡</span>
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-            <div key={qIndex} className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" style={{ animation: `bb-speedbar ${QUICK_MS}ms linear forwards` }} />
+            {/* keyed on picking too — gameday's first question otherwise reuses
+                the bar that started draining while the play-call sheet was up */}
+            <div key={`${qIndex}-${picking ? 'pick' : 'q'}`} className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" style={{ animation: `bb-speedbar ${QUICK_MS}ms linear forwards` }} />
           </div>
         </div>
         <style>{`@keyframes bb-speedbar { from { width: 100% } to { width: 0% } }`}</style>
