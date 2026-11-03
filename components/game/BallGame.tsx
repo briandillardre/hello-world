@@ -9,6 +9,16 @@ import { ADULT_THETA_CAP, nextDifficulty, pickMixSkill, updateTheta } from '@/li
 import { generateQuestion, skillDisplayName, SKILLS } from '@/lib/game/questions'
 import { cancelSpeech, speak as speakText, warmVoices } from '@/lib/game/speech'
 import { matchSpoken, voiceable } from '@/lib/game/voice-answer'
+import {
+  applyPlay,
+  availableCalls,
+  describeCall,
+  downWords,
+  newGame,
+  spotWords,
+  type GameState,
+  type PlayCall,
+} from '@/lib/game/football'
 import { SPEECH_UPDATE_HINT, speechDoor, startSpeech, type SpeechDoor, type SpeechSession } from '@/lib/speech-input'
 import { BALL_SKINS } from '@/lib/game/storage'
 import type { KidProfile, MissedQuestion, Question, RoundResult, SkillId, SkillState } from '@/lib/game/types'
@@ -41,6 +51,8 @@ interface BallGameProps {
   dailyDouble?: boolean
   /** 🏈 football mode: same questions & rewards, rendered as a drive downfield */
   football?: boolean
+  /** 🏈 Game Day: full rules — call the play, downs, kicks, defense, a scoreboard */
+  gameday?: boolean
   onAnswer: (delta: AnswerDelta) => void
   onComplete: (result: RoundResult) => void
   onQuit: () => void
@@ -111,7 +123,7 @@ function cloneSkills(skills: Record<SkillId, SkillState>): Record<SkillId, Skill
   return Object.fromEntries(Object.entries(skills).map(([k, s]) => [k, { ...s }])) as Record<SkillId, SkillState>
 }
 
-export function BallGame({ profile, skill, dailyDouble = false, football = false, onAnswer, onComplete, onQuit }: BallGameProps) {
+export function BallGame({ profile, skill, dailyDouble = false, football = false, gameday = false, onAnswer, onComplete, onQuit }: BallGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -124,6 +136,12 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   const [isBonus, setIsBonus] = useState(false)
   const [yards, setYards] = useState(DRIVE_START)
   const [tds, setTds] = useState(0)
+  // 🏈 Game Day: the drive state (ref = truth for the loop, state = UI mirror)
+  // and the play-call picker that sits between questions
+  const driveRef = useRef<GameState>(newGame())
+  const [drive, setDrive] = useState<GameState>(driveRef.current)
+  const [picking, setPicking] = useState(gameday)
+  const pendingCallRef = useRef<PlayCall>('run')
   // answering out loud: the mic door is decided once (browser vs native vs
   // needs-the-app-update), the session lives in a ref
   const [micDoor, setMicDoor] = useState<SpeechDoor>('none')
@@ -152,6 +170,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     yards: DRIVE_START,
     /** 1→0 end-zone flash after a touchdown */
     tdFlash: 0,
+    /** Game Day: a kick in flight (FG / extra point), drawn as a parabola */
+    kick: null as null | { t0: number; x0: number; y0: number; good: boolean },
   })
   const skillsRef = useRef<Record<SkillId, SkillState>>(cloneSkills(profile.skills))
   const startThetasRef = useRef<Record<SkillId, number>>(
@@ -403,9 +423,20 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     if (!micSessionRef.current) setListening(false)
   }, [micDoor, listening, pickBubble, speak])
 
-  // start round
+  /** Game Day: the play was called — now the question IS the play */
+  const callPlay = useCallback(
+    (call: PlayCall) => {
+      pendingCallRef.current = call
+      setPicking(false)
+      nextQuestion(statsRef.current.answered)
+    },
+    [nextQuestion]
+  )
+
+  // start round — Game Day opens on the play-call sheet instead of a question
   useEffect(() => {
-    nextQuestion(0)
+    if (gameday) setPicking(true)
+    else nextQuestion(0)
     warmVoices()
     return () => {
       micSessionRef.current?.stop()
@@ -491,7 +522,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           life: 1.4,
           color: '#16a34a',
         })
-        if (football) {
+        if (football && !gameday) {
           // every right answer gains yards; hot streaks run farther
           const gain = w.streak >= 3 ? 15 : 10
           w.yards += gain
@@ -548,6 +579,50 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         playWrong()
         setStreak(0)
       }
+      if (gameday) {
+        // 🏈 Game Day: the drive engine decides what this answer MEANT on the
+        // field (downs, scores, turnovers, the defense stand) — lib/game/football.ts
+        const res = applyPlay(driveRef.current, pendingCallRef.current, correct, w.streak)
+        driveRef.current = res.next
+        setDrive(res.next)
+        let fy = w.h * 0.4
+        let said = false
+        for (const ev of res.events) {
+          w.floaters.push({ x: w.w / 2, y: fy, text: ev.text, life: ev.kind === 'touchdown' ? 2 : 1.5, color: ev.excited ? '#16a34a' : ev.kind.startsWith('they') || ev.kind === 'intercepted' || ev.kind === 'defGain' ? '#dc2626' : '#92400e' })
+          fy -= 26
+          if (ev.say && !said) {
+            said = true
+            speak(ev.say, !!ev.excited)
+          }
+          if (ev.kind === 'touchdown') {
+            stats.touchdowns += 1
+            setTds(stats.touchdowns)
+            w.tdFlash = 1
+            w.shake = 18
+            for (let i = 0; i < 60; i++) {
+              w.particles.push({ x: w.w / 2, y: w.h * 0.16, vx: (Math.random() - 0.5) * 14, vy: (Math.random() - 0.3) * 11, life: 1.1, color: CONFETTI[i % CONFETTI.length], size: 4 + Math.random() * 7 })
+            }
+            playTouchdown()
+          }
+          if (ev.kind === 'firstDown') {
+            tone(659, 0, 0.12, 'triangle', 0.1)
+            tone(880, 0.12, 0.25, 'triangle', 0.1)
+          }
+          if (ev.kind === 'fgGood' || ev.kind === 'fgMiss' || ev.kind === 'xpGood' || ev.kind === 'xpMiss') {
+            const good = ev.kind === 'fgGood' || ev.kind === 'xpGood'
+            w.kick = { t0: w.t, x0: w.w / 2, y0: w.h * 0.72, good }
+            if (good) playTouchdown()
+          }
+          if (ev.kind === 'theyTD') {
+            w.shake = 10
+            tone(220, 0, 0.3, 'sawtooth', 0.06)
+            tone(185, 0.25, 0.4, 'sawtooth', 0.06)
+          }
+        }
+        // mirror for the classic drive marker (0..100 ball spot drives the track)
+        w.yards = res.next.phase === 'defense' ? w.yards : res.next.ball
+        setYards(w.yards)
+      }
       setResults((r) => [...r, correct])
       onAnswer({
         skill: q.skill,
@@ -563,7 +638,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       scheduleAdvance(correct ? 1350 : 3200)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onAnswer, nextQuestion, playCorrect, playWrong, playTouchdown, skill, dailyDouble, football]
+    [onAnswer, nextQuestion, playCorrect, playWrong, playTouchdown, skill, dailyDouble, football, gameday]
   )
 
   const scheduleAdvance = useCallback(
@@ -575,18 +650,21 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         const stats = statsRef.current
         w.ball.target = { x: w.w / 2, y: w.h * 0.78 }
         const idx = stats.answered
-        if (idx >= ROUND_LENGTH) {
+        // a touchdown on the last question still earns its extra-point try —
+        // the XP kick is untimed in real football too (one extra question max)
+        const extendForXp = gameday && driveRef.current.phase === 'xp' && idx < ROUND_LENGTH + 1
+        if (idx >= ROUND_LENGTH && !extendForXp) {
           w.phase = 'done'
-          const accuracy = stats.correct / ROUND_LENGTH
+          const accuracy = stats.correct / stats.answered
           const stars: 1 | 2 | 3 = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : 1
           const chestBonus = stars === 3 ? 5 + Math.floor(Math.random() * 11) : 0
-          if (stats.correct === ROUND_LENGTH) stats.playSeconds += 15 // perfect round: extra Fun Zone time
+          if (stats.correct === stats.answered) stats.playSeconds += 15 // perfect round: extra Fun Zone time
           const deltas = (Object.keys(skillsRef.current) as SkillId[])
             .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
             .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
           onComplete({
             skill,
-            total: ROUND_LENGTH,
+            total: stats.answered,
             correct: stats.correct,
             coinsEarned: stats.coins + stars * 5 + chestBonus,
             stars,
@@ -600,13 +678,16 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             readBonuses: stats.readBonuses,
             touchdowns: stats.touchdowns,
             playSecondsEarned: stats.playSeconds,
+            ...(gameday ? { footballScore: { us: driveRef.current.us, them: driveRef.current.them } } : {}),
           })
+        } else if (gameday) {
+          setPicking(true) // call the next play first; the question follows the call
         } else {
           nextQuestion(idx)
         }
       }, delay)
     },
-    [onComplete, nextQuestion, skill, dailyDouble]
+    [onComplete, nextQuestion, skill, dailyDouble, gameday]
   )
 
   // ------------------------------------------------------------- input
@@ -778,25 +859,109 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         // end zone — flashes gold after a touchdown
         if (w.tdFlash > 0) w.tdFlash = Math.max(0, w.tdFlash - 0.012)
         const flashOn = w.tdFlash > 0 && Math.sin(w.t * 0.4) > 0
+        const gd = gameday ? driveRef.current : null
         ctx.fillStyle = flashOn ? '#eab308' : '#1d4ed8'
         ctx.fillRect(-20, -20, w.w + 40, zoneH + 20)
         ctx.fillStyle = 'rgba(255,255,255,0.92)'
         ctx.font = `900 ${Math.round(zoneH * 0.4)}px system-ui`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText(w.tdFlash > 0 ? '🏈 TOUCHDOWN!' : 'WHALEHOGS', w.w / 2, zoneH * 0.45)
-        // drive marker: the ball climbs the left sideline toward the end zone
+        ctx.fillText(w.tdFlash > 0 ? '🏈 TOUCHDOWN!' : gd ? `🐋🐗 ${gd.us} — ${gd.them} 🤖` : 'WHALEHOGS', w.w / 2, zoneH * 0.45)
         const trackTop = zoneH + 10
         const trackBot = w.h - 16
+        const spotY = (v: number) => trackBot - (trackBot - trackTop) * Math.max(0, Math.min(1, v / 100))
+        if (gd) {
+          // goalposts in the end zone — field goals and extra points aim here
+          const gx = w.w / 2
+          const gw = w.w * 0.13
+          ctx.strokeStyle = '#fde047'
+          ctx.lineWidth = 4
+          ctx.beginPath()
+          ctx.moveTo(gx - gw, zoneH * 0.9)
+          ctx.lineTo(gx + gw, zoneH * 0.9)
+          ctx.moveTo(gx - gw, zoneH * 0.9)
+          ctx.lineTo(gx - gw, zoneH * 0.25)
+          ctx.moveTo(gx + gw, zoneH * 0.9)
+          ctx.lineTo(gx + gw, zoneH * 0.25)
+          ctx.stroke()
+        }
+        if (gd && gd.phase !== 'defense') {
+          // TV grammar: blue line = where the ball is, yellow line = first down
+          const scrimY = spotY(gd.ball)
+          ctx.strokeStyle = 'rgba(59,130,246,0.8)'
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.moveTo(-20, scrimY)
+          ctx.lineTo(w.w + 20, scrimY)
+          ctx.stroke()
+          if (gd.phase === 'offense' && gd.lineToGain < 100) {
+            const lineY = spotY(gd.lineToGain)
+            ctx.strokeStyle = 'rgba(250,204,21,0.9)'
+            ctx.lineWidth = 4
+            ctx.beginPath()
+            ctx.moveTo(-20, lineY)
+            ctx.lineTo(w.w + 20, lineY)
+            ctx.stroke()
+            // the defense waits at the line
+            ctx.font = '15px system-ui'
+            ctx.fillText('🤖', w.w * 0.3, lineY - 10)
+            ctx.fillText('🤖', w.w * 0.7, lineY - 10)
+          }
+        }
+        if (gd && gd.phase === 'defense') {
+          // the Robots' runner charges toward YOUR goal line (the bottom)
+          const ry = trackTop + (trackBot - trackTop) * (1 - gd.oppBall / 60)
+          const pulse = 1 + Math.sin(w.t * 0.15) * 0.12
+          ctx.strokeStyle = 'rgba(220,38,38,0.8)'
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.arc(w.w / 2, ry, 16 * pulse, 0, Math.PI * 2)
+          ctx.stroke()
+          ctx.font = '22px system-ui'
+          ctx.fillText('🤖', w.w / 2, ry)
+          ctx.font = '800 11px system-ui'
+          ctx.fillStyle = 'rgba(220,38,38,0.9)'
+          ctx.fillText(`${gd.oppBall} yds from your goal!`, w.w / 2, ry + 26)
+        }
+        // drive marker: the ball climbs the left sideline toward the end zone
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'
         ctx.strokeStyle = 'rgba(255,255,255,0.45)'
         ctx.lineWidth = 3
         ctx.beginPath()
         ctx.moveTo(14, trackTop)
         ctx.lineTo(14, trackBot)
         ctx.stroke()
-        const my = trackBot - (trackBot - trackTop) * Math.min(1, w.yards / 100)
         ctx.font = '16px system-ui'
-        ctx.fillText('🏈', 14, my)
+        ctx.fillText('🏈', 14, spotY(gd && gd.phase === 'defense' ? 0 : w.yards))
+        // a kick in flight: parabola from the ball spot toward the goalposts
+        if (w.kick) {
+          const k = w.kick
+          const p = (w.t - k.t0) / 55
+          if (p >= 1) {
+            for (let i = 0; i < (k.good ? 26 : 10); i++) {
+              w.particles.push({ x: w.w / 2 + (k.good ? 0 : -w.w * 0.3), y: zoneH * 0.5, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.4) * 7, life: 0.9, color: k.good ? '#fde047' : '#94a3b8', size: 3 + Math.random() * 5 })
+            }
+            w.kick = null
+          } else {
+            const tx = k.good ? w.w / 2 : w.w / 2 - w.w * 0.3 // misses sail wide left
+            const kx = k.x0 + (tx - k.x0) * p
+            const ky = k.y0 + (zoneH * 0.45 - k.y0) * p - Math.sin(p * Math.PI) * w.h * 0.18
+            ctx.save()
+            ctx.translate(kx, ky)
+            ctx.rotate(p * 9)
+            ctx.fillStyle = '#92400e'
+            ctx.beginPath()
+            ctx.ellipse(0, 0, 10, 6.5, 0, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.strokeStyle = '#fef3c7'
+            ctx.lineWidth = 1.5
+            ctx.beginPath()
+            ctx.moveTo(-4, 0)
+            ctx.lineTo(4, 0)
+            ctx.stroke()
+            ctx.restore()
+          }
+        }
       } else {
         if (!skyCacheRef.current.grad) {
           const sky = ctx.createLinearGradient(0, 0, 0, w.h)
@@ -1179,7 +1344,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [activeSkin, football, resolveAnswer])
+  }, [activeSkin, football, gameday, resolveAnswer])
 
   // ------------------------------------------------------------- UI
   const skillMeta = question ? SKILLS.find((s) => s.id === question.skill) : null
@@ -1208,7 +1373,13 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         <div className="flex items-center gap-2">
           {football && (
             <span className="text-[10px] font-extrabold text-amber-100 bg-green-700 border border-green-800 rounded-full px-2 py-0.5 whitespace-nowrap">
-              🏈 {yards} yd{tds > 0 ? ` · TD×${tds}` : ''}
+              {gameday
+                ? drive.phase === 'offense'
+                  ? `🏈 ${downWords(drive)}`
+                  : drive.phase === 'xp'
+                  ? '🦵 XP kick'
+                  : '🛡️ DEFENSE'
+                : `🏈 ${yards} yd${tds > 0 ? ` · TD×${tds}` : ''}`}
             </span>
           )}
           {dailyDouble && <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100 border border-orange-300 rounded-full px-2 py-0.5">🌅 2×</span>}
@@ -1237,10 +1408,11 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           </span>
         )}
         <div className="flex items-center justify-center gap-2">
-          <p className="text-lg font-extrabold text-slate-800 leading-snug">{question?.prompt}</p>
+          <p className="text-lg font-extrabold text-slate-800 leading-snug">{gameday && picking ? '📣 Call your play!' : question?.prompt}</p>
           <button
             onClick={() => {
               ensureAudio()
+              if (gameday && picking) return // the stale question must not read over the play call
               spokeRef.current = true // asked for the voice — no reading bonus
               if (question) speak(question.speech)
             }}
@@ -1249,7 +1421,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           >
             <Volume2 className="w-5 h-5" />
           </button>
-          {micDoor !== 'none' && question && voiceable(question.choices) && (
+          {micDoor !== 'none' && question && voiceable(question.choices) && !(gameday && picking) && (
             <button
               onClick={onMic}
               aria-label={listening ? 'Stop listening' : 'Say your answer'}
@@ -1265,7 +1437,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           <p className="mt-1 text-3xl leading-relaxed whitespace-pre-wrap break-words">{question.visual}</p>
         )}
         {/* ⚡ speed window: answer while the bar still glows for bonus coins */}
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className={`mt-2 flex items-center gap-1.5 ${gameday && picking ? 'invisible' : ''}`}>
           <span className="text-[10px]">⚡</span>
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
             <div key={qIndex} className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-500" style={{ animation: `bb-speedbar ${QUICK_MS}ms linear forwards` }} />
@@ -1277,10 +1449,59 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       {/* Game canvas */}
       <div ref={wrapRef} className="relative flex-1 min-h-[320px] mx-3 mb-3 rounded-2xl overflow-hidden shadow-inner border-2 border-green-200">
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full touch-none" />
+        {gameday && picking && (
+          <div className="absolute inset-0 z-10 bg-slate-900/50 flex items-end justify-center p-3 pb-4">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl">
+              <p className="text-center text-sm font-black text-slate-800">
+                {drive.phase === 'offense'
+                  ? `${downWords(drive)} · ball on ${spotWords(drive)}`
+                  : drive.phase === 'xp'
+                  ? '🏈 TOUCHDOWN — now the extra point!'
+                  : '🤖 The Robots have the ball!'}
+              </p>
+              <p className="text-center text-[11px] font-bold text-slate-400 mb-3">
+                {drive.phase === 'offense'
+                  ? drive.down === 4
+                    ? '⚠️ 4th down — make it, kick it, or the Robots take over!'
+                    : 'Pick a play — then answer the question to run it!'
+                  : drive.phase === 'xp'
+                  ? 'Answer right to kick it through for 1 more point'
+                  : 'Answer right to TACKLE the runner!'}
+              </p>
+              <div className="grid gap-2">
+                {availableCalls(drive).map((c) => {
+                  const d = describeCall(c, drive, streak)
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => callPlay(c)}
+                      className={`w-full rounded-2xl border-b-4 px-4 py-3 text-left active:scale-95 active:border-b-2 transition-all ${
+                        c === 'tackle' || c === 'xp' || (c === 'fg' && drive.down === 4)
+                          ? 'bg-gradient-to-b from-amber-400 to-orange-500 border-orange-700 text-white'
+                          : 'bg-gradient-to-b from-green-500 to-green-700 border-green-800 text-white'
+                      }`}
+                    >
+                      <span className="block text-base font-black">
+                        {d.emoji} {d.name}
+                      </span>
+                      <span className="block text-[11px] font-semibold opacity-90">{d.blurb}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="px-4 pb-3 flex items-center justify-between text-xs text-slate-400">
-        <span>{football ? 'Tap the answer — run it downfield for yards!' : 'Tap the answer — the ball rolls over and eats it!'}</span>
+        <span>
+          {gameday
+            ? 'Call a play — the question is how you run it!'
+            : football
+            ? 'Tap the answer — run it downfield for yards!'
+            : 'Tap the answer — the ball rolls over and eats it!'}
+        </span>
         <button
           onClick={() =>
             setMuted((m) => {
