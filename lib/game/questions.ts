@@ -829,6 +829,8 @@ const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, s
   { t: 1, q: 'What do plants grow from?', a: 'seeds', m: ['rocks', 'candy'], why: 'A tiny seed holds a whole baby plant inside, waiting for water and sun.', pic: '🌱' },
   { t: 1, q: 'Which one is HOT?', a: 'fire', m: ['ice', 'snow'], why: 'Fire is hot — never touch! Ice and snow are cold.', pic: '🔥' },
   { t: 1, q: 'What do cows give us?', a: 'milk', m: ['eggs', 'honey'], why: 'Cows make milk — hens lay the eggs and bees make the honey.', pic: '🐄' },
+  { t: 1, q: 'Which one flies in the sky?', a: 'an airplane', m: ['a boat', 'a train'], why: 'Airplanes fly — boats float on water and trains stay on their tracks.', pic: '✈️' },
+  { t: 1, q: 'What do you feel on a windy day?', a: 'air moving', m: ['the ground moving', 'rocks moving'], why: 'Wind is just air in a hurry!', pic: '💨' },
   // t2 — nature + first physics
   { t: 2, q: 'What do plants need to grow?', a: 'sun and water', m: ['candy and toys', 'blankets and shoes'], why: 'Plants drink water and use sunlight to make their own food.', pic: '🌻' },
   { t: 2, q: 'A magnet sticks to things made of…', a: 'metal', m: ['wood', 'paper'], why: 'Magnets pull on metal like steel — wood and paper don’t feel the pull at all.', pic: '🧲' },
@@ -840,6 +842,10 @@ const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, s
   { t: 2, q: 'What covers MOST of planet Earth?', a: 'water', m: ['sand', 'grass'], why: 'Oceans cover most of the Earth — that’s why it looks blue from space.', pic: '🌍' },
   { t: 2, q: 'What comes right before thunder?', a: 'lightning', m: ['rainbows', 'snow'], why: 'Lightning makes the thunder — you see the flash first, then hear the boom.', pic: '⚡' },
   { t: 2, q: 'What do bees make?', a: 'honey', m: ['milk', 'cheese'], why: 'Bees collect nectar from flowers and turn it into honey in their hive.', pic: '🐝' },
+  { t: 2, q: 'What makes a kite fly?', a: 'the wind', m: ['magic', 'music'], why: 'Moving air pushes the kite up — no wind, no kite!', pic: '🪁' },
+  { t: 2, q: 'What makes a flashlight turn on?', a: 'batteries', m: ['water', 'sand'], why: 'Batteries store electricity and feed it to the little bulb.', pic: '🔦' },
+  { t: 2, q: 'Lightning is a giant spark of…', a: 'electricity', m: ['water', 'glitter'], why: 'Lightning is electricity jumping from the clouds — the biggest spark there is!', pic: '⚡' },
+  { t: 2, q: 'Storm clouds look…', a: 'tall and dark', m: ['thin and wispy', 'pink and tiny'], why: 'Big tall dark clouds mean a thunderstorm is building — time to head inside.', pic: '⛈️' },
   // t3 — the body, space, germs
   { t: 3, q: 'Which part of you pumps blood?', a: 'heart', m: ['brain', 'tummy'], why: 'Your heart is a pump — it pushes blood all around your body, every second.', pic: '❤️' },
   { t: 3, q: 'What do you breathe with?', a: 'lungs', m: ['heart', 'bones'], why: 'Your lungs fill with air like balloons and take the oxygen your body needs.', pic: '🫁' },
@@ -853,6 +859,11 @@ const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, s
   { t: 3, q: 'How do plants make their food?', a: 'from sunlight', m: ['from candy', 'from dirt only'], why: 'Leaves catch sunlight and use it to make food — no kitchen needed.', pic: '🍃' },
   { t: 3, q: 'Which is faster — light or sound?', a: 'light', m: ['sound', 'they tie'], why: 'Light wins every race — that’s why you SEE lightning before you HEAR the thunder.', pic: '⚡' },
   { t: 3, q: 'Doctors give you a shot called a vaccine to…', a: 'help you fight germs', m: ['make you sleepy', 'make you taller'], why: 'A vaccine shows your body a practice germ so it learns to win the real fight.', pic: '💉' },
+  { t: 3, q: 'What part of a plane lifts it into the sky?', a: 'the wings', m: ['the wheels', 'the seats'], why: 'Air rushing over the wings pulls the plane UP — pilots call that lift.', pic: '✈️' },
+  { t: 3, q: 'What spins to pull a small plane forward?', a: 'the propeller', m: ['the wings', 'the tail'], why: 'The propeller is a spinning fan that pulls the plane through the air — that pull is called thrust.', pic: '🛩️' },
+  { t: 3, q: 'Electricity travels through wires in a loop called a…', a: 'circuit', m: ['circle dance', 'tunnel'], why: 'A circuit is the loop electricity runs around — break the loop and the light goes out.', pic: '🔌' },
+  { t: 3, q: 'What does a light switch really do?', a: 'opens or closes the loop', m: ['makes new power', 'cools the room'], why: 'The switch connects or breaks the circuit — that’s the whole trick of on and off.', pic: '💡' },
+  { t: 3, q: 'Where does wind come from?', a: 'warm and cool air swap', m: ['trees waving', 'cars driving'], why: 'The sun heats some air more than other air, and the moving swap is wind. Trees don’t make wind — wind moves the trees!', pic: '💨' },
   // t4 — atoms, DNA, AI, planets
   { t: 4, q: 'EVERYTHING is made of tiny pieces called…', a: 'atoms', m: ['crumbs', 'pixels'], why: 'Atoms are so small you can’t see them — but rocks, water, air and YOU are all made of them.', pic: '⚛️' },
   { t: 4, q: 'The instruction book inside your body is called…', a: 'DNA', m: ['WiFi', 'ABC'], why: 'DNA is a tiny code in every cell that says how to build YOU — eye color and all.', pic: '🧬' },
@@ -866,6 +877,11 @@ const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, s
   { t: 4, q: 'Doctors see your bones with a special picture called…', a: 'an X-ray', m: ['a selfie', 'a painting'], why: 'X-rays pass through skin but not bone, so the picture shows your skeleton.', pic: '🩻' },
   { t: 4, q: 'Germs that make you sick are fought off by your…', a: 'immune system', m: ['shoes', 'hair'], why: 'Your immune system is your body’s army — it remembers germs and beats them faster next time.', pic: '🛡️' },
   { t: 4, q: 'What does a scientist do FIRST?', a: 'ask a question', m: ['give up', 'say it’s magic'], why: 'Science starts with a question, then a guess, then a TEST to see if the guess was right.', pic: '🔬' },
+  { t: 4, q: 'The four forces on an airplane are lift, weight, thrust and…', a: 'drag', m: ['sparkle', 'bounce'], why: 'Drag is the air pushing back. Lift fights weight, thrust fights drag — balance them and you FLY.', pic: '✈️' },
+  { t: 4, q: 'A pilot reads the altimeter to know the plane’s…', a: 'height', m: ['snacks', 'song'], why: 'The altimeter feels the air pressure to show how high the plane is flying.', pic: '🛩️' },
+  { t: 4, q: 'Before every flight, a pilot ALWAYS checks the…', a: 'weather', m: ['movie times', 'snack bar'], why: 'Pilots study the wind and clouds before takeoff — the weather decides if it’s a good day to fly.', pic: '🧑‍✈️' },
+  { t: 4, q: 'Rubbing a balloon on your hair makes…', a: 'static electricity', m: ['heat rays', 'glue'], why: 'Tiny electrons hop onto the balloon and make it cling — that little zap is static electricity.', pic: '🎈' },
+  { t: 4, q: 'A thunderstorm is coming — the safest place is…', a: 'inside a building', m: ['under a tall tree', 'in the pool'], why: 'Lightning loves tall trees and water. Get inside and count the thunder until it passes.', pic: '⛈️' },
   // t5 — the frontier, kid-honest (quantum, AI, medicine, space)
   { t: 5, q: 'A quantum computer uses tiny things that can be two ways AT ONCE, called…', a: 'qubits', m: ['pixels', 'legos'], why: 'A normal computer bit is 1 OR 0. A qubit can be kind of BOTH until you look — that’s quantum!', pic: '⚛️' },
   { t: 5, q: 'Light acts like a wave AND a tiny…', a: 'particle', m: ['puddle', 'pancake'], why: 'Light is both at once — scientists call the particles photons. The tiny world plays by strange rules!', pic: '💡' },
@@ -879,6 +895,12 @@ const SCIENCE: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, s
   { t: 5, q: 'Some vaccines now work by giving your cells a RECIPE to practice with, written in…', a: 'mRNA', m: ['crayon', 'binary'], why: 'mRNA is a tiny recipe card — your cells make one harmless germ piece, and your immune system trains on it.', pic: '💉' },
   { t: 5, q: 'Starlight from far away takes YEARS to reach us — so looking up is looking…', a: 'back in time', m: ['underwater', 'into mirrors'], why: 'Some stars you see tonight sent that light before you were born. Telescopes are time machines!', pic: '🌟' },
   { t: 5, q: 'When an AI practices something over and over to get better, that’s called…', a: 'training', m: ['napping', 'downloading luck'], why: 'AI gets good the same way you do — practice, mistakes, and trying again. We don’t say can’t!', pic: '🤖' },
+  { t: 5, q: 'A wing makes lift by…', a: 'pushing air down', m: ['getting hot', 'flapping hard'], why: 'The wing bends the air downward, and the air pushes the wing up — Newton’s law, in the sky!', pic: '✈️' },
+  { t: 5, q: 'Point the nose up TOO steeply and the air lets go of the wing — that’s a…', a: 'stall', m: ['turbo', 'bounce'], why: 'Tilt the wing too far and the smooth air peels away. Pilots lower the nose to catch the air again.', pic: '🛩️' },
+  { t: 5, q: 'Planes take off INTO the wind because it…', a: 'gives extra lift', m: ['smells better', 'is quieter'], why: 'A headwind means more air flowing over the wings — the plane can lift off sooner and slower.', pic: '🛫' },
+  { t: 5, q: 'Runway numbers like 22 tell pilots…', a: 'which way it points', m: ['how long it is', 'its price'], why: 'Runway 22 points about 220 degrees on the compass — pilots line it up with the wind.', pic: '🛫' },
+  { t: 5, q: 'Volts are the PUSH of electricity — the flow is measured in…', a: 'amps', m: ['pounds', 'miles'], why: 'Volts push, amps flow — like water pressure and how much water is moving in the hose.', pic: '🔋' },
+  { t: 5, q: 'Warm wet air crashing into cold air can build a…', a: 'thunderstorm', m: ['rainbow only', 'sandstorm'], why: 'The warm air rockets up over the cold and stacks those giant storm clouds miles high.', pic: '⛈️' },
 ]
 
 function genScience(d: number): Question {
@@ -1262,6 +1284,9 @@ const ADULT_SCI: Array<{ tier: 1 | 2 | 3; q: string; a: string; m: [string, stri
   { tier: 1, q: 'The Sun produces energy by…', a: 'nuclear fusion', m: ['combustion', 'fission'], why: 'Hydrogen nuclei fuse into helium, converting mass to energy per E=mc².' },
   { tier: 1, q: 'Which organ consumes ~20% of your body’s energy?', a: 'the brain', m: ['the heart', 'the skin'], why: 'About a fifth of your calories feed roughly 86 billion neurons.' },
   { tier: 1, q: 'E = mc² says mass can be converted into…', a: 'energy', m: ['momentum', 'gravity'], why: 'A tiny amount of mass equals enormous energy — c² is a huge multiplier.' },
+  { tier: 1, q: 'The four forces of flight are lift, weight, thrust and…', a: 'drag', m: ['torque', 'friction'], why: 'Straight-and-level flight is lift balancing weight while thrust balances drag.' },
+  { tier: 1, q: 'Ohm’s law relates voltage, current and…', a: 'resistance', m: ['capacitance', 'frequency'], why: 'V = I × R — the push, the flow, and what resists it.' },
+  { tier: 1, q: 'Clouds form when air cools to its…', a: 'dew point', m: ['boiling point', 'freezing core'], why: 'At the dew point the air is saturated, and water vapor condenses into droplets.' },
   { tier: 2, q: 'A qubit can be 0 and 1 at the same time — a state called…', a: 'superposition', m: ['interpolation', 'oscillation'], why: 'Until measured, a qubit holds a blend of both states — the source of quantum computing’s power.' },
   { tier: 2, q: 'Einstein called quantum entanglement…', a: 'spooky action at a distance', m: ['the hidden ladder', 'God’s dice'], why: 'Entangled particles show correlated results instantly at any distance — verified by the 2022 Nobel-winning experiments.' },
   { tier: 2, q: 'Neural networks are loosely modeled on…', a: 'brain neurons', m: ['ant colonies', 'circuit breakers'], why: 'Layers of simple units with weighted connections, tuned by training — a cartoon of real neurons.' },
@@ -1270,6 +1295,11 @@ const ADULT_SCI: Array<{ tier: 1 | 2 | 3; q: string; a: string; m: [string, stri
   { tier: 2, q: 'Entropy in a closed system tends to…', a: 'increase', m: ['decrease', 'oscillate'], why: 'The second law of thermodynamics: disorder wins without energy input — why engines waste heat and ice melts.' },
   { tier: 2, q: 'Most of the universe’s matter appears to be…', a: 'dark matter', m: ['hydrogen', 'black holes'], why: 'Galaxies spin as if ~5× more mass is there than we can see; its identity is still unknown.' },
   { tier: 2, q: '"Training" vs "inference" in AI: inference is when the model…', a: 'answers questions', m: ['updates its weights', 'collects data'], why: 'Training adjusts billions of weights from examples; inference runs the frozen model to produce answers.' },
+  { tier: 2, q: 'A wing stalls when it exceeds its critical…', a: 'angle of attack', m: ['airspeed', 'altitude'], why: 'A stall is about ANGLE, not speed — exceed the critical angle of attack and the airflow separates, at any airspeed.' },
+  { tier: 2, q: 'Hot, high and humid (high density altitude) makes an airplane…', a: 'perform worse', m: ['perform better', 'use less runway'], why: 'Thin air means less lift and less engine power — longer takeoff rolls, the mountain-airport trap.' },
+  { tier: 2, q: 'Pilots take off and land INTO the wind because it…', a: 'shortens the roll', m: ['cools the engine', 'saves fuel'], why: 'A headwind gives the wings airflow for free, so the plane flies at a lower ground speed — shorter rolls both ways.' },
+  { tier: 2, q: 'A falling barometer usually means…', a: 'worsening weather', m: ['clearing skies', 'colder nights only'], why: 'Falling pressure marks an approaching low — clouds, wind and precipitation ride with it.' },
+  { tier: 2, q: 'Household AC differs from a battery’s DC because AC…', a: 'reverses direction', m: ['has no voltage', 'is always safer'], why: 'Alternating current flips back and forth (60 times a second in the US); direct current flows one way.' },
   { tier: 3, q: 'The breakthrough architecture behind modern chatbots is the…', a: 'transformer', m: ['perceptron', 'decision tree'], why: '"Attention is All You Need" (2017): attention layers let models weigh every word against every other, at scale.' },
   { tier: 3, q: 'An AI "hallucination" is…', a: 'a confident false output', m: ['a training crash', 'an overheated GPU'], why: 'Language models predict plausible text, not verified truth — fluent and wrong is a failure mode to check for.' },
   { tier: 3, q: 'AlphaFold’s landmark achievement was predicting…', a: 'protein structures', m: ['earthquakes', 'stock prices'], why: 'It solved 50 years of protein-folding grand challenge — 2024 chemistry Nobel; now a standard biology tool.' },
@@ -1280,6 +1310,12 @@ const ADULT_SCI: Array<{ tier: 1 | 2 | 3; q: string; a: string; m: [string, stri
   { tier: 3, q: 'Cancer immunotherapy works by…', a: 'arming your immune system', m: ['heat instead of chemo', 'blocking cell division'], why: 'Checkpoint inhibitors and CAR-T cells remove the brakes or retarget T-cells against tumors — a Nobel-winning revolution in oncology.' },
   { tier: 3, q: 'Heisenberg’s uncertainty principle limits knowing…', a: 'position and momentum', m: ['mass and charge', 'time and temperature'], why: 'Sharpen one and you blur the other — not a measurement flaw, a property of nature.' },
   { tier: 3, q: 'LIGO detects black-hole mergers by measuring…', a: 'gravitational waves', m: ['radio bursts', 'neutrino showers'], why: 'Ripples in spacetime stretch its 4-km laser arms by less than a proton’s width — first heard in 2015.' },
+  { tier: 3, q: 'A METAR is…', a: 'an airport weather report', m: ['a radio beacon', 'an engine gauge'], why: 'The coded hourly surface observation pilots read before every flight — wind, visibility, clouds, pressure.' },
+  { tier: 3, q: 'Carburetor ice can form even on a 70°F day when…', a: 'humidity is high', m: ['fuel is cold', 'skies are clear'], why: 'Fuel vaporization chills the carburetor 20°C or more — moist air can ice the venturi in summer.' },
+  { tier: 3, q: 'Wake turbulence behind a big jet is worst when it’s…', a: 'slow, heavy, clean', m: ['fast and light', 'descending empty'], why: 'Wingtip vortices are fiercest at high angle of attack — small planes stay at or above its path and land beyond its touchdown point.' },
+  { tier: 3, q: 'A cold front typically brings…', a: 'short, violent storms', m: ['days of drizzle', 'steady warm rain'], why: 'A cold front shoves warm air up fast — brief intense weather, then clearing. Warm fronts bring the long gray drizzle.' },
+  { tier: 3, q: 'A circuit breaker protects the wiring by…', a: 'opening on overload', m: ['boosting voltage', 'storing charge'], why: 'Too many amps overheat wires — the breaker opens the loop before the wiring does it the hard way.' },
+  { tier: 3, q: 'Flying VFR means navigating by…', a: 'looking outside', m: ['instruments only', 'autopilot'], why: 'Visual Flight Rules: see and avoid, with minimums for visibility and cloud clearance. IFR is the instrument world.' },
 ]
 
 function genAdultScience(d: number): Question {
