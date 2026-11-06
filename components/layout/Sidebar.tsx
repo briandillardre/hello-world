@@ -95,10 +95,11 @@ export function Sidebar({ companyName = 'HammerTrack Demo', userName, logoUrl = 
         onClick={onToggle}
         title="Menu"
         aria-label="Expand sidebar"
-        className="fixed left-0 top-[64px] z-[48] flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+        className="ht-edge-tab is-left fixed left-0 top-[64px] z-[48]"
       >
+        <span className="grip" aria-hidden />
         <ChevronRight className="h-3 w-3" />
-        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Menu</span>
+        <span className="lbl">Menu</span>
       </button>
     )
   }

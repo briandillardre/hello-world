@@ -506,10 +506,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
         <button
           onClick={() => setMany(LEFT_KEYS, 'open')}
           aria-label="Show instrument panels"
-          className="ht-cc-rail-tab absolute left-0 top-[120px] z-[46] hidden xl:flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+          className="ht-edge-tab is-left ht-cc-rail-tab absolute left-0 top-[120px] z-[46] hidden xl:flex"
         >
+          <span className="grip" aria-hidden />
           <ChevronRight className="h-3 w-3" />
-          <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Panels</span>
+          <span className="lbl">Panels</span>
         </button>
       ))}
 
@@ -542,10 +543,11 @@ export function CommandCenter({ assets, geofences, tracks, historyRows = null, e
       <button
         onClick={() => setPhonePanels(true)}
         aria-label="Show instrument panels"
-        className="xl:hidden absolute left-0 top-[61%] z-[46] flex flex-col items-center gap-1.5 rounded-r-lg bg-navy-950/80 backdrop-blur border border-navy-700 border-l-0 py-2.5 px-1 text-faint hover:text-ink transition-colors"
+        className="ht-edge-tab is-left xl:hidden absolute left-0 top-[61%] z-[46]"
       >
+        <span className="grip" aria-hidden />
         <ChevronRight className="h-3 w-3" />
-        <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-teal" style={{ writingMode: 'vertical-rl' }}>Panels</span>
+        <span className="lbl">Panels</span>
       </button>
       {phonePanels && (
         <div className="xl:hidden fixed inset-0 z-[60]" onClick={() => setPhonePanels(false)}>
