@@ -16,7 +16,6 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/map', label: 'Live Map', icon: Map },
     { href: '/command', label: 'Command Center', icon: MonitorPlay },
     { href: '/alerts', label: 'Alerts', icon: Bell },
-    { href: '/aircraft', label: 'Flight log', icon: Plane },
   ]},
   { title: 'Field', items: [
     { href: '/clock', label: 'Time clock', icon: Clock },
@@ -25,17 +24,10 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/photos', label: 'Photos', icon: Camera },
     { href: '/assets', label: 'Assets', icon: Package },
     { href: '/zones', label: 'Zones', icon: Hexagon },
-    { href: '/measurements', label: 'Measurements', icon: Ruler },
-    { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
-    { href: '/maintenance', label: 'Maintenance', icon: Wrench },
   ]},
   { title: 'Office', items: [
     { href: '/reports', label: 'Reports', icon: BarChart3 },
-    { href: '/accounting', label: 'Accounting', icon: Calculator },
-    { href: '/receipts', label: 'Receipts', icon: Receipt },
-    { href: '/finance', label: 'Financials', icon: Scale },
     { href: '/team', label: 'Team', icon: Users },
-    { href: '/activity', label: 'Team activity', icon: Activity },
   ]},
   { title: 'Setup', items: [
     { href: '/trackers', label: 'Trackers', icon: Satellite },
@@ -44,6 +36,17 @@ const navSections: { title: string | null; items: { href: string; label: string;
     { href: '/settings/phone', label: 'My phone', icon: BellRing },
     { href: '/welcome', label: 'Getting started', icon: Rocket },
     { href: '/help', label: 'Help', icon: HelpCircle },
+  ]},
+  // Useful but rarely opened — same list as the phone drawer's Advanced group.
+  { title: 'Advanced', items: [
+    { href: '/measurements', label: 'Measurements', icon: Ruler },
+    { href: '/tags', label: 'Tag scanner', icon: Bluetooth },
+    { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+    { href: '/accounting', label: 'Accounting', icon: Calculator },
+    { href: '/receipts', label: 'Receipts', icon: Receipt },
+    { href: '/finance', label: 'Financials', icon: Scale },
+    { href: '/activity', label: 'Team activity', icon: Activity },
+    { href: '/aircraft', label: 'Flight log', icon: Plane },
   ]},
 ]
 
