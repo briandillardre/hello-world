@@ -81,23 +81,24 @@ Already in place:
 - Safe-area insets + `viewport-fit=cover` for notched phones
 - Works offline after first load except fonts (add a service worker at packaging time if desired)
 
-### Google Play (easiest, do first)
-1. Use **Bubblewrap** (`npm i -g @bubblewrap/cli`) or https://pwabuilder.com against
-   `https://hammertrackai.com/brainball.webmanifest` to generate a **Trusted Web Activity** APK/AAB.
-2. Host the generated `assetlinks.json` at `https://hammertrackai.com/.well-known/assetlinks.json`.
-3. Play Console: one-time $25 developer fee, fill Data Safety form per the note above,
-   target audience = kids → complete the Families policy questionnaire.
+### ✅ The wrapper EXISTS (Nov 6 — `brainball-app/`, its own Capacitor app like HammerTrack's)
+Separate shell, same architecture as the HammerTrack app: loads the live
+`https://hammertrack.ai/play`, so web deploys update installed apps instantly.
+`com.hammertrack.brainball` · portrait-locked · StatusBar is the ONLY native plugin
+(no push/location/BLE/camera — the Kids Category posture) · kid-worded offline page
+(`shell/index.html`, auto-reconnect) · icons + splashes generated for BOTH platforms
+from `public/icons/brainball-512.png` · Android committed with versionCode 1 /
+1.0.0 and the same `ANDROID_KEYSTORE_*` signing envs (one upload keystore signs
+both apps) · iOS project committed, waits on the Apple enrollment like HammerTrack.
+Release = the **`brainball-android-release`** workflow (bump versionCode first).
+**One-time for Brian** (Play's API can't create apps): create "Brain Ball" in the
+existing Play org account, fill Data Safety per the note above + the Families
+questionnaire, upload the first AAB by hand (workflow artifact), grant the Play
+service account access — hands-off after that. Full steps: `brainball-app/README.md`.
 
-### Apple App Store
-Apple doesn't accept plain PWAs; wrap with **Capacitor** in a separate repo:
-1. `npm create @capacitor/app brain-ball` → point it at the deployed URL (or export `/play`
-   statically and bundle it for full offline).
-2. `npx cap add ios`, set bundle id (e.g. `com.hammertrack.brainball`), icons from
-   `public/icons/brainball-512.png`.
-3. Apple Developer Program $99/yr; for the **Kids Category**: no third-party ads/analytics
-   (we have none), parental gate before external links (the grown-ups math gate already exists).
-4. Native niceties to add inside the wrapper later: haptics on correct answers, App Store
-   in-app-purchase if the coin shop ever goes paid.
+### Native niceties later
+Haptics on correct answers, App Store in-app-purchase if the coin shop ever goes
+paid, recorded narration for store builds.
 
 ## Parent accounts & cloud sync
 

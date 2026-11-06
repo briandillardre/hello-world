@@ -1,0 +1,107 @@
+# Brain Ball — Play Store release build (separate app from HammerTrack).
+#
+# Mirrors android-release.yml but builds brainball-app/ and uploads to
+# com.hammertrack.brainball. Reuses the SAME four signing secrets (one upload
+# keystore can sign any number of our apps — Play App Signing holds the real
+# key per app) and the same PLAY_SERVICE_ACCOUNT_JSON (grant that service
+# account access to the Brain Ball app in Play Console → Users and
+# permissions once the app exists).
+#
+# ONE-TIME before the first run can upload: Play's API cannot CREATE an app.
+# Brian creates "Brain Ball" in Play Console (same org account), fills the
+# Data safety + Families questionnaires per docs/BRAIN_BALL.md, and uploads
+# the FIRST AAB by hand (download it from this workflow's artifact). Every
+# release after that is hands-off.
+name: brainball-android-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Play track to upload to (needs PLAY_SERVICE_ACCOUNT_JSON + the app created in the console)'
+        type: choice
+        default: internal
+        options: [production, internal]
+      status:
+        description: 'completed = roll it out · draft = park the build in the console'
+        type: choice
+        default: completed
+        options: [completed, draft]
+      upload:
+        description: 'Upload to Play (set false for the very first build — Play needs the app created + first AAB uploaded by hand)'
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: play
+    permissions:
+      contents: read
+    env:
+      HAS_PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+    steps:
+      - name: Guard — signing secrets present?
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "::error::ANDROID_KEYSTORE_B64 not set — add the 4 signing secrets (see keystore-secrets.txt in Brian's password manager)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci --ignore-scripts
+        working-directory: brainball-app
+
+      - run: npx cap sync android
+        working-directory: brainball-app
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > /tmp/upload-keystore.jks
+
+      - name: Build signed release AAB + APK
+        env:
+          ANDROID_KEYSTORE_PATH: /tmp/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: cd brainball-app/android && ./gradlew bundleRelease assembleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brainball-release
+          path: |
+            brainball-app/android/app/build/outputs/bundle/release/app-release.aab
+            brainball-app/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 90
+
+      - name: Name the Play release after the app version
+        id: ver
+        run: echo "name=$(sed -n 's/^ *versionName "\(.*\)"/\1/p' brainball-app/android/app/build.gradle | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Play — skips until the app exists + service-account secret set
+        if: ${{ env.HAS_PLAY_SA == 'true' && inputs.upload }}
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.hammertrack.brainball
+          releaseFiles: brainball-app/android/app/build/outputs/bundle/release/app-release.aab
+          releaseName: ${{ steps.ver.outputs.name }}
+          track: ${{ inputs.track || 'internal' }}
+          status: ${{ inputs.status || 'completed' }}
+
+      - name: Note the manual step when Play upload was skipped
+        if: ${{ env.HAS_PLAY_SA != 'true' || !inputs.upload }}
+        run: echo "::notice::Signed AAB built but NOT uploaded — first release goes up by hand in Play Console (create the Brain Ball app, Families + Data safety forms per docs/BRAIN_BALL.md, upload this artifact)."

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Brain Ball</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: grid; place-items: center;
+      background: linear-gradient(#bfe6ff 0%, #dff2ff 55%, #bbe98d 56%, #8fd15f 100%);
+      color: #1e293b;
+      font: 16px/1.6 system-ui, -apple-system, sans-serif;
+      text-align: center; padding: max(24px, env(safe-area-inset-top)) 24px 24px;
+    }
+    .card { max-width: 320px; }
+    .ball {
+      width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fde68a, #f59e0b);
+      display: grid; place-items: center; font-size: 44px;
+      box-shadow: 0 10px 30px rgba(245,158,11,0.35);
+      animation: bounce 1.6s ease-in-out infinite;
+    }
+    @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    @media (prefers-reduced-motion: reduce) { .ball { animation: none; } }
+    h1 { font-size: 22px; margin: 0 0 8px; font-weight: 900; }
+    p { color: #475569; margin: 0 0 22px; font-weight: 600; }
+    button {
+      background: #22c55e; color: #fff; border: 0; border-radius: 14px;
+      font-weight: 800; font-size: 16px; padding: 14px 32px;
+      box-shadow: 0 4px 0 #15803d;
+    }
+    button:active { transform: translateY(2px); box-shadow: 0 2px 0 #15803d; }
+    .hint { color: #64748b; font-size: 12px; margin-top: 16px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <!-- Shown when the game can't load (server.errorPath): no internet, or the
+       site not answering. Progress is saved on the device, nothing is lost. -->
+  <div class="card">
+    <div class="ball">🙂</div>
+    <h1 id="t">Brain Ball needs internet</h1>
+    <p id="m">Your stars and coins are safe — we'll roll again as soon as you're connected!</p>
+    <button onclick="go()">Try again</button>
+    <p class="hint" id="h">Reconnecting automatically…</p>
+  </div>
+  <script>
+    function say() {
+      var off = navigator.onLine === false
+      document.getElementById('t').textContent = off ? 'No internet right now' : "Can't reach Brain Ball"
+      document.getElementById('h').textContent = off ? 'Reconnecting as soon as there is signal…' : 'Trying again by itself…'
+    }
+    say()
+    window.addEventListener('offline', say)
+    function go() { location.href = 'https://hammertrack.ai/play' }
+    // Back the instant the device is online again.
+    window.addEventListener('online', go)
+    // And keep trying on a doubling wait (5s → 60s, remembered for 10 min),
+    // so a long outage isn't a reload every 5 seconds.
+    var KEY = 'bb_retry', st = {}, now = Date.now()
+    try { st = JSON.parse(sessionStorage.getItem(KEY) || '{}') } catch (e) {}
+    var wait = st.at && now - st.at < 600000 ? Math.min((st.wait || 5000) * 2, 60000) : 5000
+    try { sessionStorage.setItem(KEY, JSON.stringify({ at: now, wait: wait })) } catch (e) {}
+    setTimeout(function () { if (navigator.onLine !== false) go() }, wait)
+  </script>
+</body>
+</html>
