@@ -20,7 +20,11 @@ export const BALL_SKINS: BallSkin[] = [
   { id: 'rocket', name: 'Rocket', cost: 550, colors: ['#94a3b8', '#1e293b'], emoji: '🚀' },
 ]
 
-const SKILL_IDS: SkillId[] = ['counting', 'numbers', 'addition', 'letters', 'sounds', 'shapes', 'words', 'science', 'machines']
+const SKILL_IDS: SkillId[] = [
+  'counting', 'numbers', 'addition', 'letters', 'sounds', 'shapes', 'words',
+  'science', 'machines', 'history', 'geography', 'geology', 'astronomy', 'business',
+  'truth', 'heart', 'logic',
+]
 
 function freshSkillState(startTheta = START_THETA): SkillState {
   return { theta: startTheta, attempts: 0, correct: 0, bestStreak: 0 }

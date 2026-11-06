@@ -238,9 +238,19 @@ export function ParentDashboard({
       {/* personality */}
       <PersonalityCard kid={kid} />
 
-      {/* per-skill cards */}
+      {/* per-skill cards — subjects not started yet fold into one line so 17
+          skills don't pad the report with empty cards */}
+      {SKILLS.some((s) => (kid.skills[s.id]?.attempts ?? 0) === 0) && (
+        <p className="rounded-2xl bg-white/70 border-2 border-dashed border-slate-200 px-4 py-2.5 mb-3 text-xs font-semibold text-slate-500">
+          <span className="font-extrabold text-slate-600">Not started yet:</span>{' '}
+          {SKILLS.filter((s) => (kid.skills[s.id]?.attempts ?? 0) === 0)
+            .map((s) => `${s.emoji} ${skillDisplayName(s, !!kid.isTester)}`)
+            .join(' · ')}
+          <span className="block text-[11px] text-slate-400 mt-0.5">Mix rounds bring these in automatically.</span>
+        </p>
+      )}
       <div className="grid gap-3">
-        {SKILLS.map((s) => {
+        {SKILLS.filter((s) => (kid.skills[s.id]?.attempts ?? 0) > 0).map((s) => {
           const st = kid.skills[s.id]
           const played = st.attempts > 0
           const calibrated = st.attempts >= CALIBRATION_MIN

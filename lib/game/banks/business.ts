@@ -1,0 +1,95 @@
+import type { AdultFact, KidFact } from './types'
+
+export const KID: KidFact[] = [
+  // t1 — coins, stores, needs vs wants (~age 4)
+  { t: 1, q: 'What do we use to buy things at a store?', a: 'money', m: ['leaves', 'rocks'], why: 'Stores trade their things for money — leaves and rocks won’t work!', pic: '💵' },
+  { t: 1, q: 'Where can you save your coins at home?', a: 'piggy bank', m: ['trash can', 'bathtub'], why: 'A piggy bank keeps your coins safe until you’re ready to use them.', pic: '🐷' },
+  { t: 1, q: 'Which one is a NEED?', a: 'water', m: ['candy', 'a toy'], why: 'Your body needs water every day. Candy and toys are fun, but they’re wants.', pic: '💧' },
+  { t: 1, q: 'Which one is a WANT, not a need?', a: 'a new toy', m: ['water', 'a warm coat'], why: 'We can live without a new toy — but we need water and a coat when it’s cold.', pic: '🧸' },
+  { t: 1, q: 'Which one is money?', a: 'a coin', m: ['a button', 'a cookie'], why: 'Coins are money you can spend. Buttons and cookies are not.', pic: '🪙' },
+  { t: 1, q: 'When you buy something, you give the store…', a: 'money', m: ['a hug', 'your shoes'], why: 'You give money, and the store gives you what you bought.', pic: '🛒' },
+  { t: 1, q: 'When you share your snack, your friend feels…', a: 'happy', m: ['angry', 'sleepy'], why: 'Sharing is kind, and kindness makes people smile.', pic: '🤝' },
+  { t: 1, q: 'Which coin is worth the MOST?', a: 'quarter', m: ['penny', 'nickel'], why: 'A quarter is 25 cents — more than a nickel (5) or a penny (1).', pic: '🪙' },
+  { t: 1, q: 'Where do families buy food?', a: 'grocery store', m: ['library', 'fire station'], why: 'The grocery store sells food. The library lends books, and the fire station fights fires.', pic: '🥕' },
+  { t: 1, q: 'Which one costs the most money?', a: 'a bicycle', m: ['a pencil', 'a sticker'], why: 'A bicycle takes lots of parts and work to make, so it costs a lot more.', pic: '🚲' },
+  { t: 1, q: 'A penny is worth…', a: '1 cent', m: ['5 cents', '10 cents'], why: 'A penny is the smallest coin — just one cent.', pic: '🟤' },
+
+  // t2 — earning, saving, trading (~age 5)
+  { t: 2, q: 'Grown-ups earn money by…', a: 'working', m: ['sleeping', 'wishing'], why: 'People do a job, and they get paid for their work.', pic: '👷' },
+  { t: 2, q: 'At a lemonade stand, you trade lemonade for…', a: 'money', m: ['homework', 'socks'], why: 'Customers give you money, and you give them a cold cup of lemonade.', pic: '🍋' },
+  { t: 2, q: 'To buy a toy that costs a lot, you can…', a: 'save up', m: ['yell', 'hide'], why: 'Put a little money away each time, and soon you’ll have enough!', pic: '🎯' },
+  { t: 2, q: 'You give a friend a card and get one back. That’s…', a: 'trading', m: ['stealing', 'sleeping'], why: 'Trading means you each give something and each get something.', pic: '🃏' },
+  { t: 2, q: 'How many pennies make one dime?', a: '10', m: ['5', '100'], why: 'A dime is worth 10 cents, so it takes 10 pennies.', pic: '🪙' },
+  { t: 2, q: 'How many cents are in one dollar?', a: '100', m: ['10', '50'], why: 'One dollar equals 100 cents — that’s 100 pennies!', pic: '💵' },
+  { t: 2, q: 'A nickel is worth…', a: '5 cents', m: ['10 cents', '25 cents'], why: 'A nickel is 5 cents. A dime is 10, and a quarter is 25.', pic: '🪙' },
+  { t: 2, q: 'To make lemonade to sell, you need…', a: 'lemons', m: ['rocks', 'crayons'], why: 'Lemons, water and sugar — those are the supplies for your stand.', pic: '🍋' },
+  { t: 2, q: 'Builders get paid for…', a: 'building things', m: ['napping', 'watching TV'], why: 'Builders and their crews get paid for building houses, roads and more.', pic: '🏗️' },
+  { t: 2, q: 'If you spend all your money today, tomorrow you have…', a: 'none left', m: ['more', 'double'], why: 'Money you spend is gone — that’s why saving some is smart.', pic: '👛' },
+  { t: 2, q: 'Four quarters make…', a: 'one dollar', m: ['one dime', 'one penny'], why: '25 + 25 + 25 + 25 = 100 cents, which is one dollar.', pic: '💲' },
+
+  // t3 — price, cost, profit, customers (~age 6–7)
+  { t: 3, q: 'Money left over after paying your costs is called…', a: 'profit', m: ['a tip', 'a loan'], why: 'Profit is what the business keeps after paying for everything it used.', pic: '💰' },
+  { t: 3, q: 'A person who buys from a business is a…', a: 'customer', m: ['teacher', 'pilot'], why: 'Customers are the people a business serves — keep them happy!', pic: '🛍️' },
+  { t: 3, q: 'A plan for how to spend and save money is a…', a: 'budget', m: ['recipe', 'map'], why: 'A budget tells your money where to go before you spend it.', pic: '📝' },
+  { t: 3, q: 'A bank keeps your money…', a: 'safe', m: ['wet', 'hidden forever'], why: 'Banks keep money safe, and you can take it out when you need it.', pic: '🏦' },
+  { t: 3, q: 'The amount you pay for something is its…', a: 'price', m: ['color', 'size'], why: 'The price tag tells you how much money it costs.', pic: '🏷️' },
+  { t: 3, q: 'Lemons cost 2 dollars and you sell lemonade for 5. Your profit is…', a: '3 dollars', m: ['7 dollars', '2 dollars'], why: '5 minus 2 is 3 — that’s the money you keep.', pic: '🍋' },
+  { t: 3, q: 'The person who starts and runs a business is the…', a: 'owner', m: ['customer', 'mail carrier'], why: 'The owner makes the big choices and takes care of the business.', pic: '🧑‍💼' },
+  { t: 3, q: 'Money a business spends to make its product is a…', a: 'cost', m: ['profit', 'gift'], why: 'Cups, lemons and sugar are costs — you pay them before you sell.', pic: '🧾' },
+  { t: 3, q: 'A company that builds houses and roads is a…', a: 'construction company', m: ['bakery', 'toy store'], why: 'Construction companies use crews and big machines to build things — like Dad’s company!', pic: '🚧' },
+  { t: 3, q: 'The money you get back when you pay too much is your…', a: 'change', m: ['profit', 'allowance'], why: 'Pay with a dollar for a 75-cent snack, and you get 25 cents in change.', pic: '🪙' },
+  { t: 3, q: 'Customers come back again when a business is…', a: 'helpful and fair', m: ['rude', 'always closed'], why: 'People return to businesses that treat them well.', pic: '😊' },
+
+  // t4 — supply and demand, interest, loans (~age 8–9)
+  { t: 4, q: 'Lots of people want something, but there’s only a little. The price…', a: 'goes up', m: ['goes down', 'disappears'], why: 'That’s supply and demand — when lots of people want a few things, the price rises.', pic: '📈' },
+  { t: 4, q: 'When a bank pays you extra for saving, that’s called…', a: 'interest', m: ['a fine', 'a refund'], why: 'The bank uses your savings and pays you a little extra, called interest.', pic: '🏦' },
+  { t: 4, q: 'When you borrow money, you must…', a: 'pay it back', m: ['keep it', 'hide it'], why: 'Borrowed money isn’t yours to keep — you pay it back, usually with interest.', pic: '🔁' },
+  { t: 4, q: 'Someone who starts a brand-new business is an…', a: 'entrepreneur', m: ['astronaut', 'referee'], why: 'Entrepreneurs take a big idea and turn it into a real business.', pic: '🚀' },
+  { t: 4, q: 'Telling people about your product with signs and videos is…', a: 'advertising', m: ['recycling', 'sleeping'], why: 'Ads let customers know your product exists and why it’s great.', pic: '📣' },
+  { t: 4, q: 'People who work for a business are called…', a: 'employees', m: ['customers', 'landlords'], why: 'Employees do the work and get paid by the business.', pic: '👷‍♀️' },
+  { t: 4, q: 'Money you borrow from a bank is called a…', a: 'loan', m: ['gift', 'profit'], why: 'A loan helps you buy something now — like a big truck — and pay over time.', pic: '🚚' },
+  { t: 4, q: 'The best new inventions usually…', a: 'solve a problem', m: ['cost the most', 'are loudest'], why: 'People buy things that make their lives easier or better.', pic: '💡' },
+  { t: 4, q: 'There’s a huge pile of something and few people want it. The price…', a: 'goes down', m: ['goes up', 'doubles'], why: 'When there’s too much and not enough buyers, stores lower the price.', pic: '📉' },
+  { t: 4, q: 'A crew sharing jobs to finish a build faster is using…', a: 'teamwork', m: ['homework', 'fireworks'], why: 'When everyone does their part, big jobs get done faster.', pic: '🤝' },
+  { t: 4, q: 'Money a worker earns for each hour of work is their…', a: 'hourly wage', m: ['tax refund', 'profit'], why: 'A wage is how much you’re paid for every hour you work.', pic: '⏱️' },
+
+  // t5 — big money ideas (frontier)
+  { t: 5, q: 'Earning interest on your interest, too, is called…', a: 'compound interest', m: ['simple interest', 'double dipping'], why: 'Your money grows, then the growth grows too — like a snowball rolling downhill.', pic: '⛄' },
+  { t: 5, q: 'Owning a share of stock means you own…', a: 'part of a company', m: ['the whole bank', 'one store toy'], why: 'A share is a tiny slice of a company. If it does well, your slice is worth more.', pic: '📊' },
+  { t: 5, q: 'A chance to win something big usually comes with bigger…', a: 'risk', m: ['naps', 'lines'], why: 'Risk and reward go together — the bigger the possible win, the bigger the chance to lose.', pic: '🎲' },
+  { t: 5, q: 'When two stores compete, customers often get…', a: 'better prices', m: ['fewer choices', 'nothing'], why: 'Each store tries to be better and cheaper so you’ll pick them.', pic: '🏁' },
+  { t: 5, q: 'Saving money while you’re young helps, because it has more…', a: 'time to grow', m: ['colors', 'noise'], why: 'With compound interest, the longer money grows, the faster it grows.', pic: '🌱' },
+  { t: 5, q: 'A tool like AI can help a small team…', a: 'do more work', m: ['stop thinking', 'lose money'], why: 'Smart tools take care of busy work so people can focus on big ideas.', pic: '🤖' },
+  { t: 5, q: 'A great business idea starts with a…', a: 'real problem', m: ['fancy logo', 'big office'], why: 'Find something people need help with, and solve it really well.', pic: '🔍' },
+  { t: 5, q: 'Spreading your savings over many investments is called…', a: 'diversifying', m: ['borrowing', 'spending'], why: 'Don’t put all your eggs in one basket — if one drops, the others are safe.', pic: '🧺' },
+  { t: 5, q: 'When prices of most things slowly rise over the years, that’s…', a: 'inflation', m: ['recycling', 'gravity'], why: 'Inflation means a dollar buys a little less as time goes by.', pic: '🎈' },
+  { t: 5, q: 'Buying a big excavator helps a builder earn more because it…', a: 'does more work', m: ['looks shiny', 'is yellow'], why: 'A machine can dig in an hour what would take a crew with shovels days.', pic: '🚜' },
+  { t: 5, q: 'Selling your products to people in other countries is called…', a: 'exporting', m: ['importing', 'camping'], why: 'Exports go OUT to other countries; imports come IN.', pic: '🚢' },
+]
+
+export const ADULT: AdultFact[] = [
+  { tier: 1, q: 'Opportunity cost is the value of the…', a: 'next-best option', m: ['cheapest option', 'option you chose'], why: 'It is what you give up by choosing — the best alternative forgone, not the price paid.' },
+  { tier: 1, q: 'Gross margin subtracts only…', a: 'cost of goods sold', m: ['all expenses', 'taxes and interest'], why: 'Gross profit = revenue − COGS; operating expenses, interest and taxes come out further down.' },
+  { tier: 1, q: 'At 8% a year, money roughly doubles in about…', a: '9 years', m: ['12 years', '6 years'], why: 'Rule of 72: 72 ÷ 8 ≈ 9.' },
+  { tier: 1, q: 'A cost already incurred that cannot be recovered is a…', a: 'sunk cost', m: ['fixed cost', 'marginal cost'], why: 'Sunk costs should not drive future decisions — only incremental costs and benefits should.' },
+  { tier: 1, q: 'Assets equal liabilities plus…', a: 'equity', m: ['revenue', 'net income'], why: 'The accounting identity behind every balance sheet.' },
+  { tier: 1, q: 'Comparative advantage was formalized by…', a: 'David Ricardo', m: ['Adam Smith', 'John M. Keynes'], why: 'Ricardo’s 1817 wine-and-cloth example; Smith argued from absolute advantage.' },
+  { tier: 1, q: 'EBITDA excludes interest, taxes, depreciation and…', a: 'amortization', m: ['dividends', 'payroll'], why: 'Earnings Before Interest, Taxes, Depreciation and Amortization.' },
+
+  { tier: 2, q: 'Network effects mean a product gains value as…', a: 'more people use it', m: ['prices rise', 'costs fall'], why: 'Each user makes it more useful to the others — telephones, marketplaces, social networks.' },
+  { tier: 2, q: 'Net profit margin is net income divided by…', a: 'revenue', m: ['total assets', 'equity'], why: 'Net income ÷ assets is ROA; ÷ equity is ROE.' },
+  { tier: 2, q: 'A price elasticity of demand above 1 in absolute value means demand is…', a: 'elastic', m: ['inelastic', 'unit elastic'], why: 'Quantity responds more than proportionally to price, so a price cut raises total revenue.' },
+  { tier: 2, q: 'In perfect competition, long-run economic profit tends toward…', a: 'zero', m: ['its maximum', 'negative'], why: 'Free entry competes away excess returns until price equals minimum average cost.' },
+  { tier: 2, q: 'Working capital is current assets minus…', a: 'current liabilities', m: ['fixed assets', 'long-term debt'], why: 'It measures the short-term liquidity cushion funding day-to-day operations.' },
+  { tier: 2, q: 'A P/E ratio compares share price to…', a: 'earnings per share', m: ['book value', 'dividends'], why: 'Price ÷ EPS; price ÷ book value is P/B, and dividends ÷ price is yield.' },
+  { tier: 2, q: 'In the indirect cash flow method, depreciation is…', a: 'added back', m: ['subtracted', 'ignored'], why: 'It reduced net income without using cash, so it is added back to reach operating cash flow.' },
+
+  { tier: 3, q: 'Under Modigliani–Miller with no taxes, capital structure affects firm value…', a: 'not at all', m: ['strongly', 'only via debt'], why: 'In frictionless markets, how a firm is financed does not change its value; taxes and distress costs break this.' },
+  { tier: 3, q: 'Gresham’s law says bad money drives out…', a: 'good money', m: ['inflation', 'bad debt'], why: 'When two currencies share a legal value, people hoard the more valuable one and spend the debased one.' },
+  { tier: 3, q: 'The Jevons paradox: efficiency gains can raise total…', a: 'consumption', m: ['unemployment', 'tax revenue'], why: 'Jevons saw more efficient steam engines increase Britain’s coal use by making it cheaper to use.' },
+  { tier: 3, q: 'WACC blends the cost of equity with the after-tax cost of…', a: 'debt', m: ['goods sold', 'revenue'], why: 'Weighted average cost of capital, with interest’s tax shield reducing the debt cost.' },
+  { tier: 3, q: 'Goodhart’s law: when a measure becomes a target, it ceases to be a good…', a: 'measure', m: ['incentive', 'price'], why: 'Optimizing for the metric itself distorts the behavior it was meant to reflect.' },
+  { tier: 3, q: 'In DuPont analysis, ROE is net margin times asset turnover times…', a: 'equity multiplier', m: ['current ratio', 'P/E ratio'], why: 'Equity multiplier = assets ÷ equity — the leverage component.' },
+  { tier: 3, q: 'For a Giffen good, a price rise makes quantity demanded…', a: 'rise', m: ['fall', 'stay flat'], why: 'A strong income effect on a staple outweighs substitution — a rare exception to the law of demand.' },
+  { tier: 3, q: 'The Macaulay duration of a zero-coupon bond equals its…', a: 'maturity', m: ['coupon rate', 'yield'], why: 'All its cash arrives at maturity, so the weighted-average time to cash flow is the maturity itself.' },
+]

@@ -5,9 +5,13 @@
 // question is drawn near theta so kids sit in the ~70–80% success zone
 // (hard enough to learn, easy enough to stay fun).
 
-import type { AnswerRecord, KidProfile, SkillId, SkillState } from './types'
+import { SKILLS } from './questions'
+import type { AnswerRecord, KidProfile, SkillGroup, SkillId, SkillState } from './types'
 
 export const START_THETA = 30
+
+/** share of a Mix round each skill group gets (renormalized over groups present) */
+export const MIX_SHARE: Record<SkillGroup, number> = { core: 0.5, world: 0.35, life: 0.15 }
 
 /** logistic expected P(correct) given ability vs difficulty */
 export function pCorrect(theta: number, difficulty: number): number {
@@ -59,13 +63,28 @@ export function nextDifficulty(state: SkillState, questionIndex: number, streak 
  */
 export function pickMixSkill(skills: Record<SkillId, SkillState>, birthdate?: string): SkillId {
   const ids = Object.keys(skills) as SkillId[]
-  const weights = ids.map((id) => {
+  const raw = ids.map((id) => {
     let w = 1 / (1 + skills[id].attempts / 10)
     if (birthdate && skills[id].attempts >= 3) {
       const { percentile } = percentileForSkill(skills[id].theta, birthdate)
       w *= 1 + Math.max(0, 60 - percentile) / 60 // up to 2× weight for lagging skills
     }
     return w
+  })
+  // Group shares (Nov 6): with 17 skills, "least practiced" alone would let
+  // eight brand-new subjects take over every Mix round. Reading & math keep
+  // half of Mix; the world subjects and the think/heart skills share the rest.
+  // Within a group the old rule still steers toward gaps.
+  const groupOf = (id: SkillId): SkillGroup => SKILLS.find((s) => s.id === id)?.group ?? 'world'
+  const groupTotals: Partial<Record<SkillGroup, number>> = {}
+  ids.forEach((id, i) => {
+    const g = groupOf(id)
+    groupTotals[g] = (groupTotals[g] ?? 0) + raw[i]
+  })
+  const present = (Object.keys(groupTotals) as SkillGroup[]).reduce((a, g) => a + MIX_SHARE[g], 0)
+  const weights = ids.map((id, i) => {
+    const g = groupOf(id)
+    return (MIX_SHARE[g] / present) * (raw[i] / (groupTotals[g] || 1))
   })
   const total = weights.reduce((a, b) => a + b, 0)
   let r = Math.random() * total

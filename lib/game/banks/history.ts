@@ -1,0 +1,95 @@
+import type { AdultFact, KidFact } from './types'
+
+export const KID: KidFact[] = [
+  // t1 — long ago vs today (~age 4)
+  { t: 1, q: 'Long ago, people lit their homes at night with…', a: 'candles', m: ['phones', 'TVs'], why: 'Before electric lights, people used little flames from candles to see at night.', pic: '🕯️' },
+  { t: 1, q: 'Long ago, before cars, how did people travel?', a: 'on horses', m: ['by rocket', 'by robot'], why: 'Horses carried people and pulled wagons for thousands of years before cars came along.', pic: '🐴' },
+  { t: 1, q: 'Which lived long, long before people?', a: 'dinosaurs', m: ['puppies', 'kittens'], why: 'Dinosaurs lived millions of years before the very first people.', pic: '🦕' },
+  { t: 1, q: 'Where did knights and kings live long ago?', a: 'a castle', m: ['an igloo', 'a treehouse'], why: 'Castles had thick stone walls to keep the people inside safe.', pic: '🏰' },
+  { t: 1, q: 'What did kids long ago NOT have?', a: 'tablets', m: ['toys', 'books'], why: 'Kids long ago played with toys and read books, but tablets and screens are brand new.', pic: '📱' },
+  { t: 1, q: 'Knights wore suits made of…', a: 'metal armor', m: ['pajamas', 'paper'], why: 'Shiny metal armor helped protect knights — it was heavy, too!', pic: '🛡️' },
+  { t: 1, q: 'Long ago, people got water from a…', a: 'well', m: ['phone', 'TV'], why: 'People dug deep holes called wells and pulled water up in a bucket.', pic: '🪣' },
+  { t: 1, q: 'The pyramids are made of big…', a: 'stone blocks', m: ['candy bars', 'pillows'], why: 'People stacked giant stone blocks, one on top of another, to build the pyramids.', pic: '🔺' },
+  { t: 1, q: 'What did a cowboy wear on his head?', a: 'a cowboy hat', m: ['a crown', 'a diaper'], why: 'A wide cowboy hat kept the sun and rain off while riding the range.', pic: '🤠' },
+  { t: 1, q: 'Long ago, people cooked food over a…', a: 'fire', m: ['microwave', 'computer'], why: 'There were no microwaves long ago — people cooked over a crackling fire.', pic: '🔥' },
+  { t: 1, q: 'Which one is very, very OLD?', a: 'a dinosaur bone', m: ['a new toy', 'your shoes'], why: 'Dinosaur bones have been in the ground for millions of years!', pic: '🦴' },
+
+  // t2 — inventions and long ago (~age 5)
+  { t: 2, q: 'Who built and flew the first airplane?', a: 'Wright brothers', m: ['Mario brothers', 'Grimm brothers'], why: 'Orville and Wilbur Wright flew the first airplane in 1903.', pic: '✈️' },
+  { t: 2, q: 'Thomas Edison worked hard to make a long-lasting…', a: 'light bulb', m: ['cookie', 'rocket'], why: 'Edison tried thousands of ideas until his light bulb glowed for hours and hours.', pic: '💡' },
+  { t: 2, q: 'Did dinosaurs and people live at the same time?', a: 'no', m: ['yes', 'sometimes'], why: 'Dinosaurs were gone millions of years before the first people — no one ever rode one!', pic: '🦖' },
+  { t: 2, q: 'The most famous pyramids were built long ago in…', a: 'Egypt', m: ['Antarctica', 'the Moon'], why: 'The great pyramids of Egypt are over 4,000 years old.', pic: '🐪' },
+  { t: 2, q: 'Long ago, people wrote with a feather pen called a…', a: 'quill', m: ['crayon', 'marker'], why: 'A quill is a bird feather dipped in ink — they had to dip it again and again.', pic: '🪶' },
+  { t: 2, q: 'Before fridges, people kept food cold with…', a: 'blocks of ice', m: ['sunshine', 'blankets'], why: 'People put big blocks of ice in a wooden box called an icebox.', pic: '🧊' },
+  { t: 2, q: 'Who were the first people to live in America?', a: 'Native Americans', m: ['Pilgrims', 'cowboys'], why: 'Native Americans lived here for thousands of years before anyone sailed over from Europe.', pic: '🏞️' },
+  { t: 2, q: 'Alexander Graham Bell invented the…', a: 'telephone', m: ['bicycle', 'pizza'], why: 'Bell’s telephone let people talk to each other from far away for the first time.', pic: '☎️' },
+  { t: 2, q: 'Long ago, people painted pictures because there were no…', a: 'cameras', m: ['colors', 'people'], why: 'Before cameras, an artist had to paint what they saw by hand.', pic: '🎨' },
+  { t: 2, q: 'A knight rode a horse and carried a…', a: 'shield', m: ['laptop', 'phone'], why: 'A knight held up a strong shield to block things coming at him.', pic: '🐎' },
+
+  // t3 — US basics, inventors, ancient worlds (~age 6–7)
+  { t: 3, q: 'Who was the first president of the United States?', a: 'George Washington', m: ['Abraham Lincoln', 'Ben Franklin'], why: 'George Washington led the army and then became our very first president.', pic: '🇺🇸' },
+  { t: 3, q: 'America’s birthday, Independence Day, is on…', a: 'July 4th', m: ['Christmas', 'May 1st'], why: 'On July 4th, 1776, America said it would be its own free country — fireworks!', pic: '🎆' },
+  { t: 3, q: 'The Pilgrims sailed to America on a ship called the…', a: 'Mayflower', m: ['Titanic', 'Santa Maria'], why: 'The Mayflower carried the Pilgrims across the ocean in 1620.', pic: '⛵' },
+  { t: 3, q: 'The Statue of Liberty was a gift from…', a: 'France', m: ['Japan', 'Brazil'], why: 'France gave the statue to America as a sign of friendship and freedom.', pic: '🗽' },
+  { t: 3, q: 'The Wright brothers’ first flight happened in…', a: 'North Carolina', m: ['Florida', 'Texas'], why: 'They flew near Kitty Hawk, North Carolina — just next door to South Carolina!', pic: '🛩️' },
+  { t: 3, q: 'The first person to walk on the Moon was…', a: 'Neil Armstrong', m: ['Buzz Lightyear', 'Ben Franklin'], why: 'In 1969 Neil Armstrong stepped onto the Moon and said, “one small step for man.”', pic: '👨‍🚀' },
+  { t: 3, q: 'Ben Franklin flew a kite in a storm to learn about…', a: 'electricity', m: ['rainbows', 'birds'], why: 'Franklin showed that lightning is a kind of electricity.', pic: '🪁' },
+  { t: 3, q: 'The Great Wall was built long ago in…', a: 'China', m: ['Italy', 'Canada'], why: 'The Great Wall stretches for thousands of miles across China.', pic: '🧱' },
+  { t: 3, q: 'The Colosseum, a giant old stone arena, is in…', a: 'Rome', m: ['Paris', 'Tokyo'], why: 'Ancient Romans built the Colosseum almost 2,000 years ago, and it’s still standing.', pic: '🏟️' },
+  { t: 3, q: 'Kings of ancient Egypt were called…', a: 'pharaohs', m: ['presidents', 'sheriffs'], why: 'Pharaohs ruled Egypt, and some were buried inside the pyramids.', pic: '👑' },
+  { t: 3, q: 'The Liberty Bell in Philadelphia is famous for its…', a: 'big crack', m: ['gold roof', 'blue bow'], why: 'The Liberty Bell cracked long ago, and people kept it as a symbol of freedom.', pic: '🔔' },
+
+  // t4 — SC flavor, leaders, big moments (~age 8–9)
+  { t: 4, q: 'The Civil War began at Fort Sumter, in the harbor of…', a: 'Charleston', m: ['Savannah', 'Boston'], why: 'Fort Sumter sits in Charleston harbor, right here in South Carolina.', pic: '🏴' },
+  { t: 4, q: 'South Carolina’s nickname is the…', a: 'Palmetto State', m: ['Sunshine State', 'Peach State'], why: 'The palmetto tree is on our state flag — Florida is the Sunshine State and Georgia the Peach State.', pic: '🌴' },
+  { t: 4, q: 'Abraham Lincoln was which number president?', a: '16th', m: ['1st', '30th'], why: 'Lincoln was our 16th president — and he shares a name with Lincoln in your family!', pic: '🎩' },
+  { t: 4, q: 'President Abraham Lincoln worked to end…', a: 'slavery', m: ['baseball', 'the circus'], why: 'Lincoln believed no person should own another, and the country ended slavery.', pic: '⛓️' },
+  { t: 4, q: 'Martin Luther King Jr. gave a famous speech called…', a: 'I Have a Dream', m: ['Let It Go', 'Just Do It'], why: 'Dr. King dreamed of a day when everyone is treated fairly, no matter their skin color.', pic: '✊' },
+  { t: 4, q: 'Columbus sailed across the Atlantic Ocean in…', a: '1492', m: ['1776', '1969'], why: '“In fourteen hundred ninety-two, Columbus sailed the ocean blue.”', pic: '🌊' },
+  { t: 4, q: 'Gutenberg’s printing press made it easy to copy…', a: 'books', m: ['shoes', 'houses'], why: 'Before the press, books were copied by hand — now lots of people could own them.', pic: '📖' },
+  { t: 4, q: 'Lewis and Clark explored the American…', a: 'West', m: ['Moon', 'South Pole'], why: 'They traveled all the way to the Pacific Ocean, mapping rivers and mountains.', pic: '🧭' },
+  { t: 4, q: 'The rulebook for how the US government works is the…', a: 'Constitution', m: ['Dictionary', 'Menu'], why: 'The Constitution, written in 1787, sets the rules for our government.', pic: '📜' },
+  { t: 4, q: 'Greenville’s Falls Park sits along which river?', a: 'Reedy River', m: ['Nile River', 'Amazon River'], why: 'The Reedy River tumbles over the falls right in downtown Greenville.', pic: '🌉' },
+  { t: 4, q: 'The Declaration of Independence was signed in…', a: '1776', m: ['1492', '1865'], why: 'In 1776 the colonies declared they were free from the king of England.', pic: '🖋️' },
+
+  // t5 — big-idea history (frontier)
+  { t: 5, q: 'Why was inventing writing such a big deal?', a: 'ideas could last', m: ['it was colorful', 'it made noise'], why: 'Writing lets ideas travel to people far away and to kids born hundreds of years later.', pic: '✍️' },
+  { t: 5, q: 'In the Industrial Revolution, people began using…', a: 'factory machines', m: ['stone tools', 'bows and arrows'], why: 'Machines in factories could make things much faster than hands alone.', pic: '🏭' },
+  { t: 5, q: 'Democracy, where citizens vote, began long ago in…', a: 'Athens', m: ['Tokyo', 'Chicago'], why: 'In ancient Athens, Greece, citizens gathered to vote on their city’s choices.', pic: '🏛️' },
+  { t: 5, q: 'The first computers were so big they filled a whole…', a: 'room', m: ['shoe', 'pocket'], why: 'Early computers filled whole rooms — now a phone in your pocket is far more powerful.', pic: '🖥️' },
+  { t: 5, q: 'The Renaissance was a time when art and science…', a: 'bloomed again', m: ['were banned', 'disappeared'], why: 'Renaissance means “rebirth” — artists and thinkers like Leonardo da Vinci made amazing new things.', pic: '🖼️' },
+  { t: 5, q: 'The internet changed history by letting people…', a: 'share ideas fast', m: ['stop talking', 'fly'], why: 'With the internet, an idea can reach the whole world in seconds.', pic: '🌐' },
+  { t: 5, q: 'The steam engine helped power the first…', a: 'trains', m: ['smartphones', 'rockets'], why: 'Boiling water made steam that pushed the wheels of trains and factory machines.', pic: '🚂' },
+  { t: 5, q: 'How do we learn about people who lived before writing?', a: 'things they left', m: ['their videos', 'their emails'], why: 'Scientists dig up tools, bones and cave paintings to learn how people lived.', pic: '⛏️' },
+  { t: 5, q: 'Ancient Egyptians wrote with picture symbols called…', a: 'hieroglyphs', m: ['emojis', 'barcodes'], why: 'Hieroglyphs used little pictures like birds and eyes as their writing.', pic: '🏺' },
+  { t: 5, q: 'Farming changed history because people could…', a: 'stay in one place', m: ['fly to space', 'skip eating'], why: 'Growing food meant people could settle down and build villages, then cities.', pic: '🌾' },
+  { t: 5, q: 'The Magna Carta said even the king must follow the…', a: 'law', m: ['jester', 'weather'], why: 'It was a big idea: nobody, not even a king, is above the rules.', pic: '📜' },
+]
+
+export const ADULT: AdultFact[] = [
+  { tier: 1, q: 'The Magna Carta was sealed in the year…', a: '1215', m: ['1066', '1492'], why: 'King John sealed it at Runnymede in 1215, limiting royal power and seeding the idea of due process.' },
+  { tier: 1, q: 'The Berlin Wall fell in…', a: '1989', m: ['1991', '1961'], why: 'It opened on 9 November 1989; it went up in 1961, and the USSR dissolved in 1991.' },
+  { tier: 1, q: 'The first Roman emperor was…', a: 'Augustus', m: ['Julius Caesar', 'Nero'], why: 'Caesar was dictator but never emperor; his heir Octavian became Augustus in 27 BC.' },
+  { tier: 1, q: 'The Battle of Hastings took place in…', a: '1066', m: ['1215', '1415'], why: 'William of Normandy defeated Harold II in 1066; 1415 is Agincourt.' },
+  { tier: 1, q: 'The principal drafter of the Declaration of Independence was…', a: 'Thomas Jefferson', m: ['John Adams', 'James Madison'], why: 'Jefferson wrote the draft; Adams and Franklin edited it. Madison is the Constitution’s chief architect.' },
+  { tier: 1, q: 'The capital of the Byzantine Empire was…', a: 'Constantinople', m: ['Alexandria', 'Antioch'], why: 'Founded by Constantine on the site of Byzantium, today’s Istanbul.' },
+  { tier: 1, q: 'The Rosetta Stone was key to deciphering…', a: 'hieroglyphs', m: ['cuneiform', 'Linear B'], why: 'Its parallel Greek text let Champollion crack Egyptian hieroglyphs in 1822.' },
+
+  { tier: 2, q: 'The Peace of Westphalia in 1648 ended the…', a: 'Thirty Years’ War', m: ['Hundred Years’ War', 'Seven Years’ War'], why: 'Westphalia closed the Thirty Years’ War and is often cited as the origin of modern state sovereignty.' },
+  { tier: 2, q: 'Japan’s Meiji Restoration began in…', a: '1868', m: ['1853', '1912'], why: 'Imperial rule was restored in 1868; 1853 is Perry’s arrival, 1912 the Meiji emperor’s death.' },
+  { tier: 2, q: 'The 1944 Bretton Woods conference created the…', a: 'IMF and World Bank', m: ['United Nations', 'NATO'], why: 'Bretton Woods set up the IMF and IBRD and a dollar-gold exchange system; the UN came in 1945, NATO in 1949.' },
+  { tier: 2, q: 'The United States bought the Louisiana Territory from…', a: 'France', m: ['Spain', 'Britain'], why: 'Napoleon sold it in 1803, shortly after reacquiring it from Spain.' },
+  { tier: 2, q: 'The Ottomans conquered Constantinople in…', a: '1453', m: ['1204', '1517'], why: 'Mehmed II took the city in 1453; 1204 was the Fourth Crusade’s sack.' },
+  { tier: 2, q: 'The Edict of Nantes granted toleration to the…', a: 'Huguenots', m: ['Lutherans', 'Anabaptists'], why: 'Henry IV’s 1598 edict protected French Calvinists; Louis XIV revoked it in 1685.' },
+  { tier: 2, q: 'The first emperor of a unified China was…', a: 'Qin Shi Huang', m: ['Kublai Khan', 'Sun Yat-sen'], why: 'He unified China in 221 BC and standardized script, weights and coinage.' },
+
+  { tier: 3, q: 'The 1494 Treaty of Tordesillas divided new lands between…', a: 'Spain and Portugal', m: ['Spain and France', 'England and France'], why: 'A meridian west of Cape Verde split claims — which is why Brazil speaks Portuguese.' },
+  { tier: 3, q: 'The Congress of Vienna redrew Europe after the defeat of…', a: 'Napoleon', m: ['Louis XIV', 'Frederick the Great'], why: 'In 1814–15 the great powers rebuilt a balance of power that largely held until 1914.' },
+  { tier: 3, q: 'The Battle of Lepanto in 1571 was primarily a…', a: 'naval battle', m: ['siege', 'cavalry charge'], why: 'The Holy League’s galleys defeated the Ottoman fleet off western Greece.' },
+  { tier: 3, q: 'The Code of Hammurabi comes from ancient…', a: 'Babylon', m: ['Assyria', 'Persia'], why: 'Hammurabi of Babylon issued it around 1754 BC — one of the oldest written law codes.' },
+  { tier: 3, q: 'The Smoot–Hawley Act of 1930 sharply raised…', a: 'tariffs', m: ['income taxes', 'interest rates'], why: 'Its tariff hikes triggered retaliation and deepened the collapse in world trade.' },
+  { tier: 3, q: 'Mansa Musa, famed for his wealth, ruled the…', a: 'Mali Empire', m: ['Songhai Empire', 'Aksumite Empire'], why: 'His 1324 pilgrimage to Mecca spent so much gold it depressed prices in Cairo.' },
+  { tier: 3, q: 'The Glorious Revolution of 1688 replaced James II with…', a: 'William and Mary', m: ['Charles II', 'George I'], why: 'Parliament invited William of Orange and Mary; the 1689 Bill of Rights followed.' },
+  { tier: 3, q: 'The Treaty of Nanking in 1842 ceded Hong Kong to…', a: 'Britain', m: ['Portugal', 'France'], why: 'It ended the First Opium War; Portugal held nearby Macau.' },
+  { tier: 3, q: 'The Council of Nicaea in 325 was convened by…', a: 'Constantine', m: ['Justinian', 'Theodosius'], why: 'Constantine called the bishops together, producing the Nicene Creed.' },
+]

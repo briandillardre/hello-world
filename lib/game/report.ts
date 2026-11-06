@@ -57,6 +57,8 @@ export interface KidReport {
   strongest?: string
   focus?: string
   assessment?: KidProfile['assessment']
+  /** 🔨 real-world missions a grown-up confirmed inside the window */
+  missions: string[]
   /** the narrated writeup: where they are and what's known vs peers, in plain English */
   story: string
 }
@@ -112,6 +114,12 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
       strongest: skills.length > 0 ? skills[0].name : undefined,
       focus: skills.length > 1 ? skills[skills.length - 1].name : undefined,
       assessment: p.assessment,
+      // days are the kid's local (Eastern) days — count any mission confirmed
+      // on or after the day the window opened
+      missions: (Array.isArray(p.missionLog) ? p.missionLog : [])
+        .filter((m) => m && typeof m.day === 'string' && m.day >= new Date(sinceMs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }))
+        .map((m) => String(m.title ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 80))
+        .slice(-5),
     }
     const temperament = p.personality?.current?.primary ? TEMPERAMENTS[p.personality.current.primary] : undefined
     out.push({ ...base, story: buildNarrative(base, temperament ? `the ${temperament.title} ${temperament.animal}` : undefined) })
@@ -233,6 +241,11 @@ function kidHtml(r: KidReport): string {
     ${
       r.assessment
         ? `<p style="margin:0 0 12px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;font-size:12px;color:#166534;font-weight:600">🏫 ${escapeHtml(r.assessment.title)} (${escapeHtml(r.assessment.date)}): ${escapeHtml(r.assessment.summary)}</p>`
+        : ''
+    }
+    ${
+      r.missions.length > 0
+        ? `<p style="margin:0 0 12px;padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12px;color:#92400e;font-weight:600">🔨 Real-world mission${r.missions.length > 1 ? 's' : ''} done (a grown-up confirmed): ${r.missions.map(escapeHtml).join(' · ')}</p>`
         : ''
     }
     ${
