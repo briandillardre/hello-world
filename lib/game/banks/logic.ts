@@ -48,7 +48,7 @@ export const KID: KidFact[] = [
   { t: 4, q: 'Your job is to clean your whole messy room. What is a smart way to start?', a: 'break it into steps', m: ['give up', 'cry about it'], why: 'Big jobs get easy when you do one small part at a time — toys, then clothes, then books.', pic: '🧺' },
   { t: 4, q: 'You sort toys by color AND size. Which goes in the big red pile?', a: 'a big red truck', m: ['a small red car', 'a big blue ball'], why: 'It has to match BOTH rules: big and red.', pic: '🚒' },
   { t: 4, q: 'You ask a helper, “Get me that thing,” and it brings the wrong thing. Why?', a: 'unclear words', m: ['it was tired', 'bad luck'], why: 'Clear words get better results — from people and from computers.', pic: '❓' },
-  { t: 4, q: 'Put on helmet, ride bike, get bike out. Which step is in the wrong place?', a: 'get bike out', m: ['put on helmet', 'ride bike'], why: 'You can’t ride before you get the bike out! That step belongs before riding.', pic: '🚲' },
+  { t: 4, q: 'Ride bike, put on helmet, get bike out. Which step should come LAST?', a: 'ride bike', m: ['put on helmet', 'get bike out'], why: 'Helmet on and bike out first — riding comes last, once you’re ready and safe!', pic: '🚲' },
   { t: 4, q: 'Ann is taller than Bo. Bo is taller than Cy. Who is the shortest?', a: 'Cy', m: ['Ann', 'Bo'], why: 'Ann is tallest, then Bo, then Cy at the bottom.', pic: '📏' },
   { t: 4, q: 'When you tell an AI helper exactly what you want, you usually get…', a: 'better answers', m: ['worse answers', 'no answers'], why: 'AI follows your words, so clear, detailed words help it help you.', pic: '💬' },
 

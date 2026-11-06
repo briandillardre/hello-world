@@ -34,7 +34,7 @@ import { BackButton } from './BackButton'
 /** median answer time (ms) over the last n timed answers (skill null = all skills) */
 function medianMs(history: KidProfile['history'], skill: string | null, n = 20): number | null {
   const times = history
-    .filter((h) => (skill === null || h.skill === skill) && typeof h.ms === 'number')
+    .filter((h) => (skill === null || h.skill === skill) && typeof h.ms === 'number' && !h.coached)
     .slice(-n)
     .map((h) => h.ms as number)
     .sort((a, b) => a - b)

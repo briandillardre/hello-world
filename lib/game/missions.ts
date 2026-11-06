@@ -94,15 +94,32 @@ export function missionPool(kid: Pick<KidProfile, 'birthdate' | 'isTester'>, now
   return MISSIONS.filter((m) => m.for === 'any' || m.for === (big ? 'big' : 'little'))
 }
 
+/** whole local days since 1970 (DST-proof: built from the calendar date) */
+function dayNumber(d: Date): number {
+  return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000)
+}
+
+/** the kid's own shuffled order of the pool (seeded by kid + pool size) */
+function kidOrder(kidId: string, n: number): number[] {
+  const order = Array.from({ length: n }, (_, i) => i)
+  let seed = hash(`${kidId}:${n}`) || 1
+  for (let i = n - 1; i > 0; i--) {
+    seed = Math.imul(seed ^ (seed >>> 15), 2246822519) >>> 0
+    const j = seed % (i + 1)
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  return order
+}
+
 /**
- * Today's mission — the same all day for one kid (deterministic by kid + day),
- * different for each brother, and never the same one two days running.
+ * Today's mission — the same all day for one kid, different order for each
+ * brother. Each kid walks their OWN shuffled cycle one step a day, so the
+ * same mission can never land two days running and every mission comes
+ * round before any repeats (the old "bump if equal to yesterday's raw pick"
+ * could still repeat when yesterday had been bumped — ship-check).
  */
 export function missionFor(kid: Pick<KidProfile, 'id' | 'birthdate' | 'isTester'>, now = new Date()): Mission {
   const pool = missionPool(kid, now)
-  const today = hash(`${kid.id}:${dayKey(now)}`) % pool.length
-  const y = new Date(now)
-  y.setDate(y.getDate() - 1)
-  const yest = hash(`${kid.id}:${dayKey(y)}`) % pool.length
-  return pool[today === yest ? (today + 1) % pool.length : today]
+  const order = kidOrder(kid.id, pool.length)
+  return pool[order[((dayNumber(now) % pool.length) + pool.length) % pool.length]]
 }

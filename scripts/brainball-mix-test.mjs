@@ -89,6 +89,15 @@ const ok = (name, cond, extra = '') => {
   ok('4-year-old never gets a big-kid mission', missionPool(lincoln, day).every((m) => m.for !== 'big'))
   ok('6-year-old never gets a little-kid mission', missionPool(marshall, day).every((m) => m.for !== 'little'))
   ok('mission ids unique', new Set(MISSIONS.map((m) => m.id)).size === MISSIONS.length)
+  // a full cycle shows every mission once before any repeat
+  const n = missionPool(marshall, day).length
+  const seen = new Set()
+  for (let i = 0; i < n; i++) seen.add(missionFor(marshall, new Date(2026, 11, 1 + i, 12)).id)
+  ok('one cycle covers every mission exactly once', seen.size === n, `${seen.size}/${n}`)
+  // 2 years of days: never back-to-back, including across DST changes
+  let backToBack = 0
+  for (let i = 1; i < 730; i++) if (missionFor(lincoln, new Date(2026, 0, 1 + i, 12)).id === missionFor(lincoln, new Date(2026, 0, i, 12)).id) backToBack++
+  ok('two years without a back-to-back repeat', backToBack === 0, `${backToBack}`)
   ok('dayKey is local YYYY-MM-DD', dayKey(day) === '2026-11-06')
 }
 
