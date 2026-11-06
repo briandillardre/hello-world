@@ -178,6 +178,11 @@ function fieldGeom(w: { w: number; h: number }) {
   return { zoneH, trackTop, trackBot, spotY, oppY, pxPerYd: (trackBot - trackTop) / 100 }
 }
 
+/** where mid-board messages float — below the lowest bubble on tall phones */
+function midY(w: { w: number; h: number }) {
+  return w.h > w.w * 1.25 ? w.h * 0.66 : w.h * 0.55
+}
+
 /** a plain football (no face) — the teed/kicked ball in the swing mini-game */
 function drawPigskin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number) {
   ctx.save()
@@ -376,10 +381,14 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   /** shared geometry for initial layout AND resize — one source of truth */
   const positionBubbles = useCallback(() => {
     const w = world.current
-    const r = Math.min(w.w, w.h) * 0.135
     const two = w.bubbles.length === 2
-    const xs = two ? [0.3, 0.7] : [0.2, 0.5, 0.8]
-    const ys = two ? [0.27, 0.27] : [0.3, 0.24, 0.3]
+    // portrait phones (Nov 6 playtest): the old single row left the bottom
+    // ~40% of the board empty and the bubbles ~50 px — a triangle uses the
+    // field and lets each bubble grow to a 4-year-old's fingertip
+    const tall = w.h > w.w * 1.25
+    const r = tall ? Math.min(w.w * 0.165, w.h * 0.11) : Math.min(w.w, w.h) * 0.135
+    const xs = two ? [0.3, 0.7] : tall ? [0.26, 0.74, 0.5] : [0.2, 0.5, 0.8]
+    const ys = two ? (tall ? [0.3, 0.3] : [0.27, 0.27]) : tall ? [0.2, 0.2, 0.47] : [0.3, 0.24, 0.3]
     w.bubbles.forEach((b, i) => {
       b.x = w.w * xs[i % xs.length]
       b.y = w.h * ys[i % ys.length]
@@ -437,6 +446,16 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       qStartRef.current = Date.now()
       spokeRef.current = false
       if (autoReadTimerRef.current !== null) window.clearTimeout(autoReadTimerRef.current)
+      if (q.listen) {
+        // a listening question has nothing on screen to read — say it now
+        // (no quiet window, no 📖 bonus: the voice IS the question)
+        spokeRef.current = true
+        autoReadTimerRef.current = window.setTimeout(() => {
+          autoReadTimerRef.current = null
+          if (questionRef.current === q) speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
+        }, 450)
+        return
+      }
       autoReadTimerRef.current = window.setTimeout(() => {
         autoReadTimerRef.current = null
         // skip if the kid already asked for the voice — restarting a
@@ -464,7 +483,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   const onMic = useCallback(() => {
     if (micDoor === 'update') {
       // the installed app predates the speech plugin — say so instead of blinking
-      world.current.floaters.push({ x: world.current.w / 2, y: world.current.h * 0.55, text: '🎤 Needs the app update', life: 1.6, color: '#64748b' })
+      world.current.floaters.push({ x: world.current.w / 2, y: midY(world.current), text: '🎤 Needs the app update', life: 1.6, color: '#64748b' })
       speak(SPEECH_UPDATE_HINT)
       return
     }
@@ -490,7 +509,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           w.floaters.push({ x: w.w / 2, y: w.h * 0.62, text: `🎤 “${text.slice(0, 24)}”`, life: 1.2, color: '#2563eb' })
           pickBubble(idx)
         } else {
-          w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: '🎤 Say the answer again?', life: 1.4, color: '#64748b' })
+          w.floaters.push({ x: w.w / 2, y: midY(w), text: '🎤 Say the answer again?', life: 1.4, color: '#64748b' })
         }
       },
       onEnd: () => {
@@ -498,7 +517,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         setListening(false)
       },
       onError: (m) => {
-        world.current.floaters.push({ x: world.current.w / 2, y: world.current.h * 0.55, text: `🎤 ${m.slice(0, 48)}`, life: 1.8, color: '#64748b' })
+        world.current.floaters.push({ x: world.current.w / 2, y: midY(world.current), text: `🎤 ${m.slice(0, 48)}`, life: 1.8, color: '#64748b' })
       },
     })
     if (!micSessionRef.current) setListening(false)
@@ -643,13 +662,13 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         if (!gameday) {
           w.floaters.push({
             x: w.w / 2,
-            y: w.h * 0.55,
+            y: midY(w),
             text: w.streak >= 5 ? `🔥 ${w.streak} IN A ROW!` : praise[Math.floor(Math.random() * praise.length)],
             life: 1.4,
             color: '#16a34a',
           })
         } else if (w.streak >= 5) {
-          w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: `🔥 ${w.streak} IN A ROW!`, life: 1.4, color: '#16a34a' })
+          w.floaters.push({ x: w.w / 2, y: midY(w), text: `🔥 ${w.streak} IN A ROW!`, life: 1.4, color: '#16a34a' })
         }
         if (football && !gameday) {
           // every right answer gains yards; hot streaks run farther
@@ -700,7 +719,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         queueRef.current = [...queueRef.current, { skill: q.skill, difficulty: q.difficulty }].slice(-12)
         w.floaters.push({
           x: w.w / 2,
-          y: w.h * 0.55,
+          y: midY(w),
           text: ENCOURAGE[Math.floor(Math.random() * ENCOURAGE.length)],
           life: 1.4,
           color: '#f97316',
@@ -1088,7 +1107,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
                 life: 1, color: CONFETTI[i % CONFETTI.length], size: 3 + Math.random() * 5,
               })
             }
-            w.floaters.push({ x: w.w / 2, y: w.h * 0.55, text: 'Now you got it! 🎉', life: 1.3, color: '#16a34a' })
+            w.floaters.push({ x: w.w / 2, y: midY(w), text: 'Now you got it! 🎉', life: 1.3, color: '#16a34a' })
             playCorrect(0)
             w.phase = 'celebrate'
             scheduleAdvance(800)

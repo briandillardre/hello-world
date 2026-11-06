@@ -3,18 +3,41 @@
 // prompt, and a kid-friendly `explain` for the end-of-round miss review.
 
 import type { Question, SkillId, SkillMeta } from './types'
+import type { AdultFact, KidFact } from './banks/types'
+import * as HISTORY from './banks/history'
+import * as GEOGRAPHY from './banks/geography'
+import * as GEOLOGY from './banks/geology'
+import * as ASTRONOMY from './banks/astronomy'
+import * as BUSINESS from './banks/business'
+import * as TRUTH from './banks/truth'
+import * as HEART from './banks/heart'
+import * as LOGIC from './banks/logic'
 
 export const SKILLS: SkillMeta[] = [
-  { id: 'counting', name: 'Counting', emoji: '🐤', blurb: 'How many do you see?' },
-  { id: 'numbers', name: 'Numbers', emoji: '🔢', blurb: 'Find, compare & order numbers' },
-  { id: 'addition', name: 'Math', emoji: '➕', blurb: 'Adding & taking away' },
-  { id: 'letters', name: 'Letters', emoji: '🔤', blurb: 'Big & little letters' },
-  { id: 'sounds', name: 'Sounds', emoji: '👂', blurb: 'First sounds & rhymes' },
-  { id: 'shapes', name: 'Shapes', emoji: '🔺', blurb: 'Shapes, colors & patterns' },
-  { id: 'words', name: 'Words', emoji: '📖', blurb: 'Sight words & first reading' },
-  { id: 'science', name: 'Science', emoji: '🔬', blurb: 'How the world works' },
-  { id: 'machines', name: 'Machines', emoji: '⚙️', blurb: 'Gears, pulleys & how things are built' },
+  { id: 'counting', name: 'Counting', emoji: '🐤', blurb: 'How many do you see?', group: 'core' },
+  { id: 'numbers', name: 'Numbers', emoji: '🔢', blurb: 'Find, compare & order numbers', group: 'core' },
+  { id: 'addition', name: 'Math', emoji: '➕', blurb: 'Adding & taking away', group: 'core' },
+  { id: 'letters', name: 'Letters', emoji: '🔤', blurb: 'Big & little letters', group: 'core' },
+  { id: 'sounds', name: 'Sounds', emoji: '👂', blurb: 'First sounds & rhymes', group: 'core' },
+  { id: 'shapes', name: 'Shapes', emoji: '🔺', blurb: 'Shapes, colors & patterns', group: 'core' },
+  { id: 'words', name: 'Words', emoji: '📖', blurb: 'Sight words & first reading', group: 'core' },
+  { id: 'science', name: 'Science', emoji: '🔬', blurb: 'How the world works', group: 'world' },
+  { id: 'machines', name: 'Machines', emoji: '⚙️', blurb: 'Gears, pulleys & how things are built', group: 'world' },
+  { id: 'astronomy', name: 'Space', emoji: '🔭', blurb: 'Planets, stars & rockets', group: 'world' },
+  { id: 'geography', name: 'Geography', emoji: '🌎', blurb: 'Maps, places & our world', group: 'world' },
+  { id: 'geology', name: 'Rocks & Earth', emoji: '🪨', blurb: 'Rocks, volcanoes & dirt', group: 'world' },
+  { id: 'history', name: 'History', emoji: '🏛️', blurb: 'Long ago & how we got here', group: 'world' },
+  { id: 'business', name: 'Money & Business', emoji: '💼', blurb: 'Earning, saving & building', group: 'world' },
+  { id: 'truth', name: 'Is It True?', emoji: '🤖', blurb: 'Check the robot, spot mistakes', group: 'life' },
+  { id: 'logic', name: 'Logic & Steps', emoji: '🧭', blurb: 'Clear steps & smart thinking', group: 'life' },
+  { id: 'heart', name: 'Heart', emoji: '❤️', blurb: 'Feelings, kindness & grit', group: 'life' },
 ]
+
+export const SKILL_GROUP_LABELS: Record<SkillMeta['group'], string> = {
+  core: 'Reading & math',
+  world: 'Our world',
+  life: 'Think smart · big heart',
+}
 
 const ri = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
 const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]
@@ -333,8 +356,9 @@ function genLetters(d: number): Question {
     return {
       skill: 'letters',
       difficulty: d,
-      prompt: 'Find the CAPITAL letter:',
+      prompt: '👂 Listen! Find the CAPITAL letter',
       speech: `Find the big capital letter ${c}`,
+      listen: true,
       choices,
       answer,
       explain: `This is the capital (big) letter ${c}. Capital letters start names — like the M in Marshall!`,
@@ -348,8 +372,9 @@ function genLetters(d: number): Question {
     return {
       skill: 'letters',
       difficulty: d,
-      prompt: 'Find the little (lowercase) letter:',
+      prompt: '👂 Listen! Find the little letter',
       speech: `Find the little lowercase letter ${c} — not the big one!`,
+      listen: true,
       choices,
       answer,
       explain: `Little ${c} is the small one. Big ${c.toUpperCase()} and little ${c} are the same letter, just different sizes.`,
@@ -994,6 +1019,41 @@ function genMachines(d: number): Question {
   }
 }
 
+// ---------------------------------------------------------------- fact-bank skills
+// History, geography, geology, space, business, "is it true?", heart and
+// logic (Brian, Nov 6: "I want them to be very well versed") all share one
+// shape — see lib/game/banks/. Same five difficulty bands as science; a
+// recently-seen fact is skipped so a round doesn't repeat itself.
+const recentFacts: string[] = []
+
+function pickFresh<T extends { q: string }>(pool: T[]): T {
+  const fresh = pool.filter((f) => !recentFacts.includes(f.q))
+  const f = pick(fresh.length ? fresh : pool)
+  recentFacts.push(f.q)
+  if (recentFacts.length > 40) recentFacts.shift()
+  return f
+}
+
+function kidFactGen(skill: SkillId, bank: KidFact[]) {
+  return (d: number): Question => {
+    const t = d < 25 ? 1 : d < 50 ? 2 : d < 75 ? 3 : d < 90 ? 4 : 5
+    const tier = bank.filter((x) => x.t === t)
+    const f = pickFresh(tier.length ? tier : bank)
+    const opts = shuffle([f.a, ...f.m])
+    return { skill, difficulty: d, prompt: f.q, speech: f.q, visual: f.pic, choices: opts, answer: opts.indexOf(f.a), explain: f.why }
+  }
+}
+
+function adultFactGen(skill: SkillId, bank: AdultFact[]) {
+  return (d: number): Question => {
+    const tier = d < 35 ? 1 : d < 70 ? 2 : 3
+    const pool = bank.filter((x) => x.tier === tier)
+    const f = pickFresh(pool.length ? pool : bank)
+    const opts = shuffle([f.a, ...f.m])
+    return { skill, difficulty: d, prompt: f.q, speech: f.q, choices: opts, answer: opts.indexOf(f.a), explain: f.why }
+  }
+}
+
 // ================================================================ ADULT BANK
 // Genuinely hard content for the grown-up tester profiles — same skill ids,
 // entirely different generators: mental math, sequences, number sense,
@@ -1456,6 +1516,14 @@ const GENERATORS: Record<SkillId, (d: number) => Question> = {
   words: genWords,
   science: genScience,
   machines: genMachines,
+  history: kidFactGen('history', HISTORY.KID),
+  geography: kidFactGen('geography', GEOGRAPHY.KID),
+  geology: kidFactGen('geology', GEOLOGY.KID),
+  astronomy: kidFactGen('astronomy', ASTRONOMY.KID),
+  business: kidFactGen('business', BUSINESS.KID),
+  truth: kidFactGen('truth', TRUTH.KID),
+  heart: kidFactGen('heart', HEART.KID),
+  logic: kidFactGen('logic', LOGIC.KID),
 }
 
 const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
@@ -1468,6 +1536,14 @@ const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
   words: genAdultSpelling,
   science: genAdultScience,
   machines: genAdultMachines,
+  history: adultFactGen('history', HISTORY.ADULT),
+  geography: adultFactGen('geography', GEOGRAPHY.ADULT),
+  geology: adultFactGen('geology', GEOLOGY.ADULT),
+  astronomy: adultFactGen('astronomy', ASTRONOMY.ADULT),
+  business: adultFactGen('business', BUSINESS.ADULT),
+  truth: adultFactGen('truth', TRUTH.ADULT),
+  heart: adultFactGen('heart', HEART.ADULT),
+  logic: adultFactGen('logic', LOGIC.ADULT),
 }
 
 /** adult display names for the same skill slots */
@@ -1481,6 +1557,14 @@ export const ADULT_SKILL_NAMES: Record<SkillId, string> = {
   words: 'Spelling',
   science: 'Science & frontier',
   machines: 'Mechanical design',
+  history: 'History',
+  geography: 'Geography',
+  geology: 'Earth science',
+  astronomy: 'Astrophysics',
+  business: 'Business & finance',
+  truth: 'Critical thinking',
+  heart: 'Psychology & leadership',
+  logic: 'Logic & computing',
 }
 
 /** one rule for kid-vs-adult skill labels (was copy-pasted at five call sites) */

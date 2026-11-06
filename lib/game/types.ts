@@ -10,12 +10,28 @@ export type SkillId =
   | 'words'
   | 'science'
   | 'machines'
+  | 'history'
+  | 'geography'
+  | 'geology'
+  | 'astronomy'
+  | 'business'
+  | 'truth'
+  | 'heart'
+  | 'logic'
+
+/**
+ * Where a skill sits on the home screen AND how much of a Mix round it gets:
+ * core = reading & math (the foundation, half of every Mix), world = how the
+ * world works, life = thinking & character for an AI world.
+ */
+export type SkillGroup = 'core' | 'world' | 'life'
 
 export interface SkillMeta {
   id: SkillId
   name: string
   emoji: string
   blurb: string
+  group: SkillGroup
 }
 
 export interface Question {
@@ -28,6 +44,9 @@ export interface Question {
   speech: string
   /** big emoji/object row shown under the prompt (e.g. things to count) */
   visual?: string
+  /** the target is only SPOKEN (a letter by name) — read it aloud at once,
+   *  never after the readers' quiet window, or the screen asks for nothing */
+  listen?: boolean
   choices: string[]
   answer: number
   /** kid-friendly "here's why" for the end-of-round miss review */
@@ -134,6 +153,12 @@ export interface KidProfile {
   playSeconds?: number
   /** lifetime 🎮 seconds spent — monotonic, feeds the cloud-merge play signal so a spend can't resurrect */
   playSecondsSpent?: number
+  /** 🔨 real-world mission: local YYYY-MM-DD it was last confirmed by a grown-up */
+  missionDoneDay?: string
+  /** lifetime count of confirmed real-world missions */
+  missionsDone?: number
+  /** the last few confirmed missions (newest last) for the grown-ups report */
+  missionLog?: Array<{ day: string; id: string; title: string }>
 }
 
 export interface BallSkin {

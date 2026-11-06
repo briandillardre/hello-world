@@ -7,26 +7,9 @@
  * and HTML escaping of kid names. Run it after ANY change to
  * lib/game/report.ts or the norms in lib/game/adaptive.ts.
  */
-import { readFileSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { importTs } from './lib/ts-import.mjs'
 
-const require = createRequire(import.meta.url)
-const ts = require('typescript')
-
-const transpile = (rel) => {
-  const src = readFileSync(new URL(rel, import.meta.url), 'utf8')
-  return ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText
-}
-const toDataUrl = (js) => 'data:text/javascript;base64,' + Buffer.from(js).toString('base64')
-
-const adaptiveUrl = toDataUrl(transpile('../lib/game/adaptive.ts'))
-const questionsUrl = toDataUrl(transpile('../lib/game/questions.ts'))
-const personalityUrl = toDataUrl(transpile('../lib/game/personality.ts'))
-const reportJs = transpile('../lib/game/report.ts')
-  .replace("'./adaptive'", JSON.stringify(adaptiveUrl))
-  .replace("'./questions'", JSON.stringify(questionsUrl))
-  .replace("'./personality'", JSON.stringify(personalityUrl))
-const { buildDailyReports, renderReportEmail } = await import(toDataUrl(reportJs))
+const { buildDailyReports, renderReportEmail } = await importTs('../lib/game/report.ts', import.meta.url)
 
 let pass = 0
 let fail = 0
@@ -165,6 +148,23 @@ const answers = (n, { skill = 'words', correctPattern = () => true, startMs = T0
 {
   const reports = buildDailyReports([null, {}, kid({ history: [{ bogus: true }, null, ...answers(2)] })], T0 - 86400_000, NOW)
   ok('malformed profiles/answers are skipped, valid ones counted', reports.length === 1 && reports[0].answered === 2)
+}
+
+// ---- 🔨 real-world missions a grown-up confirmed ride into the email (escaped)
+{
+  const withMission = kid({
+    history: answers(5),
+    missionLog: [
+      { day: '2026-10-20', id: 'old', title: 'Old mission from last week' },
+      { day: '2026-10-29', id: 'tower', title: 'Build a tower <b>that</b> holds a book' },
+    ],
+  })
+  const [r] = buildDailyReports([withMission], T0 - 86400_000, NOW)
+  ok('only missions inside the window are reported', r.missions.length === 1 && r.missions[0].startsWith('Build a tower'))
+  const { html } = renderReportEmail([r], NOW, 'America/New_York')
+  ok('mission line renders escaped', html.includes('Real-world mission') && html.includes('&lt;b&gt;that&lt;/b&gt;') && !html.includes('<b>that</b>'))
+  const [none] = buildDailyReports([kid({ history: answers(3) })], T0 - 86400_000, NOW)
+  ok('no missions = no mission line', none.missions.length === 0 && !renderReportEmail([none], NOW, 'America/New_York').html.includes('Real-world mission'))
 }
 
 console.log(fail === 0 ? `brainball-report: ${pass} assertions pass` : `${fail} FAILURES (${pass} passed)`)

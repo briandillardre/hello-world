@@ -6,12 +6,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Lock } from 'lucide-react'
 import { ageLabel, brainLevel } from '@/lib/game/adaptive'
-import { skillDisplayName, SKILLS } from '@/lib/game/questions'
+import { SKILL_GROUP_LABELS, skillDisplayName, SKILLS } from '@/lib/game/questions'
 import { speak } from '@/lib/game/speech'
 import { applyAssessmentSeeds, BALL_SKINS, HISTORY_CAP, loadProfiles, saveProfiles } from '@/lib/game/storage'
 import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { FunZone } from './FunZone'
+import { MissionCard } from './MissionCard'
+import { MISSION_COINS } from '@/lib/game/missions'
 import { MissReview } from './MissReview'
 import { ParentDashboard } from './ParentDashboard'
 import { PersonalityQuiz } from './PersonalityQuiz'
@@ -609,6 +611,22 @@ export function PlayApp() {
           )}
         </div>
 
+        {/* 🔨 one off-screen mission a day, confirmed by a grown-up */}
+        {!kid.isTester && (
+          <MissionCard
+            kid={kid}
+            onConfirm={(m) =>
+              updateKid(kid.id, (k) => ({
+                ...k,
+                coins: k.coins + MISSION_COINS,
+                missionDoneDay: today,
+                missionsDone: (k.missionsDone ?? 0) + 1,
+                missionLog: [...(k.missionLog ?? []), { day: today, id: m.id, title: m.title }].slice(-14),
+              }))
+            }
+          />
+        )}
+
         {/* game-mode picker: rolling ball, quick football drive, or full-rules Game Day */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           {(
@@ -652,26 +670,42 @@ export function PlayApp() {
           )}
         </div>
 
-        <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mt-5 mb-2">Or pick a challenge</p>
-        <div className="grid grid-cols-2 gap-3">
-          {SKILLS.map((s) => {
-            const st = kid.skills[s.id]
-            return (
-              <button
-                key={s.id}
-                onClick={() => startGame(s.id)}
-                className="rounded-2xl bg-white border-2 border-slate-200 shadow p-3 text-left active:scale-95 transition-transform"
-              >
-                <div className="text-2xl">{s.emoji}</div>
-                <div className="font-extrabold text-slate-700">{skillDisplayName(s, !!kid.isTester)}</div>
-                <div className="text-[11px] text-slate-400 font-semibold leading-tight">{kid.isTester ? 'Adult challenge' : s.blurb}</div>
-                <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-green-400" style={{ width: `${st.theta}%` }} />
-                </div>
-              </button>
-            )
-          })}
-        </div>
+        <p className="text-xs font-extrabold text-slate-400 uppercase tracking-wide mt-5 mb-1">Or pick a challenge</p>
+        {/* 17 subjects read as three shelves, not one wall (Nov 6) — compact
+            3-across cards, a NEW tag until a subject has been tried */}
+        {(['core', 'world', 'life'] as const).map((g) => (
+          <div key={g} className="mt-3">
+            <p className={`text-[11px] font-black uppercase tracking-widest mb-1.5 ${g === 'core' ? 'text-blue-500' : g === 'world' ? 'text-emerald-600' : 'text-rose-500'}`}>
+              {g === 'core' ? '📚' : g === 'world' ? '🌍' : '💡'} {SKILL_GROUP_LABELS[g]}
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {SKILLS.filter((s) => s.group === g).map((s) => {
+                const st = kid.skills[s.id]
+                const fresh = (st?.attempts ?? 0) === 0
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => startGame(s.id)}
+                    className={`relative rounded-2xl bg-white border-2 shadow px-2 pt-2.5 pb-2 text-center active:scale-95 transition-transform ${
+                      g === 'core' ? 'border-blue-100' : g === 'world' ? 'border-emerald-100' : 'border-rose-100'
+                    }`}
+                  >
+                    {fresh && (
+                      <span className="absolute -top-2 -right-1 text-[9px] font-black bg-orange-500 text-white rounded-full px-1.5 py-0.5 shadow">NEW</span>
+                    )}
+                    <div className="text-2xl leading-none">{s.emoji}</div>
+                    <div className="mt-1 font-extrabold text-slate-700 text-[12px] leading-tight min-h-[2rem] flex items-center justify-center">
+                      {skillDisplayName(s, !!kid.isTester)}
+                    </div>
+                    <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-green-400" style={{ width: `${Math.min(100, st?.theta ?? 0)}%` }} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
 
         {/* Who Am I? quiz */}
         <button
