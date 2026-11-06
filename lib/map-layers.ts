@@ -194,16 +194,16 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // last-session snapshots are unaffected.)
   // ── The money layers (Aug 12 brainstorm — "where is my money and my day") ──
   { id: 'burnmap', label: 'Burn Map', group: 'jobs', status: 'live', isLive: true, hint: 'zones shade by today’s spend vs budget · live $ chips tick as machines run · needs cost rates on assets' },
-  { id: 'idledollars', label: 'Idle $ rings', group: 'jobs', status: 'live', hint: 'parked machines grow a ring of accruing ownership cost · needs $/day on assets' },
+  { id: 'idledollars', advanced: true, label: 'Idle $ rings', group: 'jobs', status: 'live', hint: 'parked machines grow a ring of accruing ownership cost · needs $/day on assets' },
   { id: 'alertpins', label: 'Alert pins', group: 'jobs', status: 'live', isLive: true, hint: 'where alerts fired · follows the timeline: Live shows today, replays reveal pins as the scrubber passes them' },
   { id: 'nightwatch', label: 'Night Watch', group: 'jobs', status: 'live', hint: 'where the fleet sleeps · teal = tucked in a yard/site · amber = out in the open' },
-  { id: 'fieldops', label: 'Field activity', group: 'jobs', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
+  { id: 'fieldops', advanced: true, label: 'Field activity', group: 'jobs', status: 'live', isLive: true, hint: 'crew clock-ins & daily logs, pinned where the phone was · last 7 days · tap a pin' },
   { id: 'photos', label: 'Photos', group: 'jobs', status: 'live', hint: 'every geotagged job photo — heat where the crew shoots from county zoom, the pictures themselves as you zoom into a site · tap one to open it · follows the timeline (Live = last 30 days) · the 📷 rail button takes a new one' },
-  { id: 'receipts', label: 'Receipts', group: 'jobs', status: 'live', isLive: true, hint: 'every card swipe, pinned where the truck was — red = still needs a photo (tap: Snap now), teal = captured (tap: see it) · follows the timeline · needs the costs permission' },
+  { id: 'receipts', advanced: true, label: 'Receipts', group: 'jobs', status: 'live', isLive: true, hint: 'every card swipe, pinned where the truck was — red = still needs a photo (tap: Snap now), teal = captured (tap: see it) · follows the timeline · needs the costs permission' },
   { id: 'siteimg', label: 'Site imagery', group: 'jobs', status: 'live', hasOpacity: true, hint: 'placed drone and satellite shots pinned to the ground · follows the timeline — scrub to see the site that day' },
-  { id: 'siteplans', label: 'Scaled plans', group: 'jobs', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
-  { id: 'dirt', label: 'Cut / fill', group: 'jobs', status: 'live', hasOpacity: true, hint: 'each site’s saved dirt takeoff where its grading plan puts it — red = cut, blue = fill, deeper = darker · yards on the label from street zoom · the dirt takeoff add-on' },
-  { id: 'measures', label: 'Measurements', group: 'jobs', status: 'live', hint: 'saved points, lines & areas — tap one on the map to open, edit, or delete it' },
+  { id: 'siteplans', advanced: true, label: 'Scaled plans', group: 'jobs', status: 'live', hasOpacity: true, hint: 'the plan sheet marked “show on map” on each site page — siteplan, utilities, grading…' },
+  { id: 'dirt', advanced: true, label: 'Cut / fill', group: 'jobs', status: 'live', hasOpacity: true, hint: 'each site’s saved dirt takeoff where its grading plan puts it — red = cut, blue = fill, deeper = darker · yards on the label from street zoom · the dirt takeoff add-on' },
+  { id: 'measures', advanced: true, label: 'Measurements', group: 'jobs', status: 'live', hint: 'saved points, lines & areas — tap one on the map to open, edit, or delete it' },
 
   // ── Weather ───────────────────────────────────────────────────────────────
   { id: 'radar', label: 'Radar', group: 'weather', status: 'live', isLive: true, hasOpacity: true, hint: 'precipitation (NOAA MRMS, cleaned of birds, bugs and ground clutter) · loops on Live, scrubs with replays · ⚡ real satellite-detected strikes ride on top (live only, ~8km precision)' },
@@ -211,7 +211,7 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'pourcast', label: 'Work-window planner', group: 'weather', status: 'live', isLive: true, hint: 'each site flags its next bad weather day — rain ≥60%, gusts ≥25 mph or ≤35°F: bad for pours, lifts, spraying and seeding' },
   // Animated wind particles stack on anything — an everyday row beside Radar
   // (Brian, Oct 10: "move wind flow to the normal weather section").
-  { id: 'windanim', label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
+  { id: 'windanim', advanced: true, label: 'Wind flow', group: 'weather', status: 'live', isLive: true, hint: 'animated wind — live view only' },
   // ── "Shade the map by — pick one" (Brian, Oct 10): these all paint the
   // whole ground/sky, so only one can be on (soloWeather in MapView).
   { id: 'temp', label: 'Temperature', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'air temperature from ~2,000 NWS weather stations · refreshed hourly · LIVE ONLY — hides during replays (the source keeps no history)' },
@@ -223,12 +223,12 @@ export const LAYER_ROWS: LayerRowDef[] = [
   { id: 'lightning', label: 'Lightning', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'strike density · ~10 min · replays show the scrubbed hour (~1 day back)' },
   { id: 'stormtops', label: 'Storm tops (IR)', group: 'weather', status: 'live', pickOne: true, hasOpacity: true, hint: 'rainbow cores = violent cells · gray = ordinary cloud · ONLY LIVE — hides during replays' },
   { id: 'clouds', label: 'Clouds', group: 'weather', status: 'live', pickOne: true, hint: 'satellite cloud cover · ~10 min · ONLY LIVE — hides during replays' },
-  { id: 'pwsnet', label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, hint: 'community stations · tap for readings' },
+  { id: 'pwsnet', advanced: true, label: 'Weather stations', group: 'weather', status: 'live', isLive: true, minZoom: 8, hint: 'community stations · tap for readings' },
 
   // ── Roads & travel ────────────────────────────────────────────────────────
   { id: 'traffic', label: 'Traffic', group: 'roads', status: process.env.NEXT_PUBLIC_TOMTOM_KEY ? 'live' : 'coming-soon', hasOpacity: true, hint: 'live congestion — green flows, red crawls' },
   { id: 'closures', label: 'Road closures', group: 'roads', status: 'live', isLive: true, hint: 'DOT incidents, closures & work zones · tap a cone' },
-  { id: 'webcams', label: 'Webcams', group: 'roads', status: 'live', isLive: true, minZoom: 8, hint: 'public traffic & area cams · tap for the picture' },
+  { id: 'webcams', advanced: true, label: 'Webcams', group: 'roads', status: 'live', isLive: true, minZoom: 8, hint: 'public traffic & area cams · tap for the picture' },
 
   // ── Land check: walk a lot before you bid ─────────────────────────────────
   // Honest gating: without the county service URL the toggle was a silent
@@ -241,22 +241,22 @@ export const LAYER_ROWS: LayerRowDef[] = [
   // minZoom mirrors the overlay def in lib/overlays.ts (FEMA draws layer 28
   // only at 1:36k and closer) — this row drives the "(zoom in)" chip.
   { id: 'flood', label: 'Flood zones', group: 'land', status: 'live', hasOpacity: true, minZoom: 15, hint: 'FEMA flood hazard areas · zoom to street level' },
-  { id: 'wetlands', label: 'Wetlands', group: 'land', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },
-  { id: 'soils', label: 'Soils', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'soil survey map units' },
-  { id: 'topo', label: 'Topo lines', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'elevation contours' },
-  { id: 'streams', label: 'Streams', group: 'land', status: 'live', hasOpacity: true, hint: 'rivers & creeks (national hydrography)' },
-  { id: 'gauges', label: 'Stream gauges', group: 'land', status: 'live', isLive: true, minZoom: 9, hint: 'live gage height · tap a dot' },
+  { id: 'wetlands', advanced: true, label: 'Wetlands', group: 'land', status: 'live', hasOpacity: true, minZoom: 11, hint: 'national wetlands inventory' },
+  { id: 'soils', advanced: true, label: 'Soils', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'soil survey map units' },
+  { id: 'topo', advanced: true, label: 'Topo lines', group: 'land', status: 'live', hasOpacity: true, minZoom: 12, hint: 'elevation contours' },
+  { id: 'streams', advanced: true, label: 'Streams', group: 'land', status: 'live', hasOpacity: true, hint: 'rivers & creeks (national hydrography)' },
+  { id: 'gauges', advanced: true, label: 'Stream gauges', group: 'land', status: 'live', isLive: true, minZoom: 9, hint: 'live gage height · tap a dot' },
 
   // ── Sky & extras: the planetarium & spectacle layers — fun on a TV wall,
   //    noise on a Tuesday. Lives at the bottom, collapsed. ──────────────────
-  { id: 'planes', label: 'Aircraft (live)', group: 'sky', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details · a plane you SAVE (from its card or the flight log) flies red and blinking wherever it is in the air, with a chip at the top-left that jumps to it' },
-  { id: 'planes-ground', label: 'Aircraft on the ground', group: 'sky', status: 'live', isLive: true, minZoom: 11, hint: 'taxiing, rolling and parked aircraft at the airfields in view · draws from airport zoom in, on its own or alongside Aircraft (live) · we show what is TRANSMITTING, so a tied-down aircraft with its avionics off sends nothing and cannot appear — a quiet field at 3 AM is honest, not broken' },
-  { id: 'airspace3d', label: 'Airspace 3D', group: 'sky', status: 'live', isLive: true, hasOpacity: true, minZoom: 6, hint: 'Class B/C/D shelves at their charted altitudes — the upside-down cake · TILT the map · tap a shelf for floor/ceiling · FAA data' },
-  { id: 'satellites', label: 'Satellites & sky (live)', group: 'sky', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
-  { id: 'satswarm', label: '↳ 11k satellites', group: 'sky', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
+  { id: 'planes', advanced: true, label: 'Aircraft (live)', group: 'sky', status: 'live', isLive: true, hint: 'live air traffic near your view at true altitude · tilt the map to see them overhead · tap one for flight details · a plane you SAVE (from its card or the flight log) flies red and blinking wherever it is in the air, with a chip at the top-left that jumps to it' },
+  { id: 'planes-ground', advanced: true, label: 'Aircraft on the ground', group: 'sky', status: 'live', isLive: true, minZoom: 11, hint: 'taxiing, rolling and parked aircraft at the airfields in view · draws from airport zoom in, on its own or alongside Aircraft (live) · we show what is TRANSMITTING, so a tied-down aircraft with its avionics off sends nothing and cannot appear — a quiet field at 3 AM is honest, not broken' },
+  { id: 'airspace3d', advanced: true, label: 'Airspace 3D', group: 'sky', status: 'live', isLive: true, hasOpacity: true, minZoom: 6, hint: 'Class B/C/D shelves at their charted altitudes — the upside-down cake · TILT the map · tap a shelf for floor/ceiling · FAA data' },
+  { id: 'satellites', advanced: true, label: 'Satellites & sky (live)', group: 'sky', status: 'live', isLive: true, hint: 'real orbits at TRUE altitude — plus the sun, moon (real phase), and stars in their actual positions · zoom way out' },
+  { id: 'satswarm', advanced: true, label: '↳ 11k satellites', group: 'sky', status: 'live', isLive: true, requiresLayer: 'satellites', hint: 'EVERY tracked satellite as an ambient field · heavier on older phones' },
   // Ex-"Night effects" sub-group (killed Aug 16) — now an ordinary row; its
   // gating still flows through rowState like every other row.
-  { id: 'daynight', label: 'Daylight & night (real sun)', group: 'sky', status: 'live', hint: 'the sun’s light as it is right now — or at the replay moment on Today · Yesterday · 7d · 30d (the ☀ chip in the timeline is this same switch) · golden hour, dusk fading to night, real cities glowing after dark' },
+  { id: 'daynight', advanced: true, label: 'Daylight & night (real sun)', group: 'sky', status: 'live', hint: 'the sun’s light as it is right now — or at the replay moment on Today · Yesterday · 7d · 30d (the ☀ chip in the timeline is this same switch) · golden hour, dusk fading to night, real cities glowing after dark' },
   // ('nightlights' promoted to the 'night' BASEMAP Aug 11 — saved views that
   // still carry the overlay key are silently ignored.)
 ]
