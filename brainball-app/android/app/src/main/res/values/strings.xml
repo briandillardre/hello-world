@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Brain Ball</string>
+    <string name="title_activity_main">Brain Ball</string>
+    <string name="package_name">com.hammertrack.brainball</string>
+    <string name="custom_url_scheme">com.hammertrack.brainball</string>
+</resources>

@@ -17,7 +17,7 @@ unlockable Whalehog ball skin in the shop.
 | Piece | File | What it does |
 |---|---|---|
 | Game canvas | `components/game/BallGame.tsx` | 10-question rounds: chomping ball eats the answer then vacuums the board, combo audio, streak gear, bonus/speed/read rewards. **🏈 Quick Drive** (per-kid mode): same questions rendered as a drive — striped field, WHALEHOGS end zone, +10 yards per correct (+15 hot), TOUCHDOWN at 100 then a fresh drive |
-| 🏟️ Game Day | `lib/game/football.ts` (pure drive engine) + the play-call sheet in `BallGame.tsx` | **Real football rules, kid-sized** (Nov 3 — "help the boys understand rules of football"): call the play before every question — 🏃 Run (+7 safe, +10 behind hot blockers), 🎯 Pass (+15/+20 but a miss is INTERCEPTED), 🦵 Field Goal when the kick ≤ 55 yds (+3) — against real downs ("2nd & 4", TV-style yellow first-down line + blue scrimmage line, turnover on downs), TD = 6 + an extra-point kick question (the XP extends the round by one question when the TD lands on Q10), and every change of possession flips to a 2-play 🛡️ DEFENSE stand: 2 tackles = they punt, 1 = Robots field goal (+3 them), 0 = Robots TD (+7 them). Scoreboard Whalehogs vs Robots in the end zone, goalposts + kick-arc animation (misses sail wide left / get blocked), win/tie/lose on the summary. Harness `node scripts/football-test.mjs` (33 assertions incl. a 500-play fuzz) — run it after ANY change to the engine |
+| 🏟️ Game Day | `lib/game/football.ts` (pure drive engine) + the play-call sheet & mini-games in `BallGame.tsx` | **Real football rules, kid-sized AND hands-on** (Nov 3 "help the boys understand rules of football"; Nov 6 "needs to be interactive … pull back and swing method like golf games"): call the play, answer the question to EARN it, then **run it with a finger** — 🏃 Run / 🎯 Pass = drag the smiley carrier past four chasing robot tacklers (the yards you steer are the yards the drive gets; a pass is caught 15 deep but a wrong answer is INTERCEPTED), 🛡️ defense = drag your ball to CATCH the Robots' weaving runner before the dashed breakaway line, 🦵 FG/XP = **pull the teed ball back and let go** (pull length = power with a live yardage readout, direction = aim; short is short, wide is wide). Wrong answers blow the play up at the snap (sack / INT / blocked kick). Engine takes the mini-game's outcome (`applyPlay(state, call, {correct, yards, made, tackled})`) and owns real downs ("2nd & 4", yellow first-down + blue scrimmage lines, turnover on downs), TD = 6 + XP (extends the round by one when the TD lands on Q10), 2-play DEFENSE stands (2 tackles = punt, 1 = Robots FG, 0 = Robots TD), scoreboard in the end zone, win/tie/lose on the summary. One `fieldGeom()` mapping + canvas-scaled glyphs keep it right on phones. Harness `node scripts/football-test.mjs` (39 assertions incl. a 500-play fuzz) — run it after ANY change to the engine |
 | App shell | `components/game/PlayApp.tsx` | Picker → GREAT DAY ritual → home (quests, streaks) → game → spoken summary; shop; review; grown-ups gate |
 | Fun Zone | `components/game/FunZone.tsx` | **Earned free play** — right answers bank play-time seconds (5s each, +2s for speed, +15s perfect round, 6-min cap); the Fun Zone is a no-questions arcade where the ball chases the kid's finger and gobbles snacks against that countdown. Time's up → "earn more by playing a round." The learning loop is the arcade's coin slot. |
 | Voice answers | `lib/game/voice-answer.ts` + the 🎤 in `BallGame.tsx` | **Kids answer out loud**: tap the mic, say it, the ball rolls to the match — letter names ("why" → Y), number words ("twenty one" → 21), sight/CVC words, multi-word settings ("the beach"), spelled blends ("ess see" → sc). Ambiguity (b vs B) refuses and asks for a tap — never a guess. Rides `lib/speech-input.ts` (browser recognizer / native plugin / honest "needs the app update"); mic hidden on emoji-only boards. Harness `node scripts/voice-answer-test.mjs` — run after ANY change to the matcher |
@@ -32,7 +32,11 @@ unlockable Whalehog ball skin in the shop.
 | Persistence | `lib/game/storage.ts` | localStorage profiles (Marshall, Lincoln + Brian/Leslie testers), review queue, habit-loop fields |
 
 **Skills:** counting, numbers, math (add/subtract/missing addend), letters, sounds (phonics/rhymes),
-shapes & patterns, sight words / CVC reading, and **science** (Nov 2 — Brian: "latest physics, quantum,
+shapes & patterns, sight words / CVC reading, **machines** (Nov 6 — Brian: "think mechanical design —
+how gears work how pulleys work": wheels/ramps → levers & fulcrums, pulleys, gears mesh opposite +
+gear ratios, hydraulics = excavator arms, triangles in bridges, bearings, torque, CAD top/side views,
+3D printing layers & honeycomb infill, simulation; adults get a **Mechanical design** bank — lever
+classes, mechanical advantage, tolerances/fits, fatigue, GD&T), and **science** (Nov 2 — Brian: "latest physics, quantum,
 ai, biology, medicine… I want my boys prepared for the world of the singularity"): banded from age-4
 senses/animals up through the body, space and germs to a kid-honest frontier — atoms, DNA, cells,
 vaccines/mRNA, CRISPR, AI that learns from examples, qubits, fusion, gravity on the Moon. Every fact
@@ -77,23 +81,24 @@ Already in place:
 - Safe-area insets + `viewport-fit=cover` for notched phones
 - Works offline after first load except fonts (add a service worker at packaging time if desired)
 
-### Google Play (easiest, do first)
-1. Use **Bubblewrap** (`npm i -g @bubblewrap/cli`) or https://pwabuilder.com against
-   `https://hammertrackai.com/brainball.webmanifest` to generate a **Trusted Web Activity** APK/AAB.
-2. Host the generated `assetlinks.json` at `https://hammertrackai.com/.well-known/assetlinks.json`.
-3. Play Console: one-time $25 developer fee, fill Data Safety form per the note above,
-   target audience = kids → complete the Families policy questionnaire.
+### ✅ The wrapper EXISTS (Nov 6 — `brainball-app/`, its own Capacitor app like HammerTrack's)
+Separate shell, same architecture as the HammerTrack app: loads the live
+`https://hammertrack.ai/play`, so web deploys update installed apps instantly.
+`com.hammertrack.brainball` · portrait-locked · StatusBar is the ONLY native plugin
+(no push/location/BLE/camera — the Kids Category posture) · kid-worded offline page
+(`shell/index.html`, auto-reconnect) · icons + splashes generated for BOTH platforms
+from `public/icons/brainball-512.png` · Android committed with versionCode 1 /
+1.0.0 and the same `ANDROID_KEYSTORE_*` signing envs (one upload keystore signs
+both apps) · iOS project committed, waits on the Apple enrollment like HammerTrack.
+Release = the **`brainball-android-release`** workflow (bump versionCode first).
+**One-time for Brian** (Play's API can't create apps): create "Brain Ball" in the
+existing Play org account, fill Data Safety per the note above + the Families
+questionnaire, upload the first AAB by hand (workflow artifact), grant the Play
+service account access — hands-off after that. Full steps: `brainball-app/README.md`.
 
-### Apple App Store
-Apple doesn't accept plain PWAs; wrap with **Capacitor** in a separate repo:
-1. `npm create @capacitor/app brain-ball` → point it at the deployed URL (or export `/play`
-   statically and bundle it for full offline).
-2. `npx cap add ios`, set bundle id (e.g. `com.hammertrack.brainball`), icons from
-   `public/icons/brainball-512.png`.
-3. Apple Developer Program $99/yr; for the **Kids Category**: no third-party ads/analytics
-   (we have none), parental gate before external links (the grown-ups math gate already exists).
-4. Native niceties to add inside the wrapper later: haptics on correct answers, App Store
-   in-app-purchase if the coin shop ever goes paid.
+### Native niceties later
+Haptics on correct answers, App Store in-app-purchase if the coin shop ever goes
+paid, recorded narration for store builds.
 
 ## Parent accounts & cloud sync
 
