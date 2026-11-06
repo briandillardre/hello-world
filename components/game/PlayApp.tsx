@@ -213,50 +213,78 @@ export function PlayApp() {
 
   // ---------------------------------------------------------- screens
   if (screen === 'pick' || !kid) {
+    // phone-first picker (Brian, Nov 6: "Need better formatting" of a screen
+    // that was a small cluster floating over empty gradient): the layout fills
+    // the viewport, the BOYS get the big hero cards, the grown-up testers sit
+    // in a slim row underneath where the kids never aim
+    const pickPlayer = (p: KidProfile) => {
+      setActiveId(p.id)
+      if (p.isTester) {
+        // grown-ups skip the kids' ritual (and "Dada says" would be
+        // odd for Leslie) — straight to the menu
+        setScreen('home')
+        return
+      }
+      setScreen('greatday')
+      // speak inside the tap gesture so mobile browsers allow it
+      speak("Dada says: Today's going to be a…", { rate: 0.97 })
+    }
+    const kidProfiles = profiles.filter((p) => !p.isTester)
+    const testers = profiles.filter((p) => p.isTester)
+    const KID_CARD_STYLES = [
+      'from-sky-50 to-blue-100 border-blue-300',
+      'from-amber-50 to-orange-100 border-orange-300',
+      'from-green-50 to-emerald-100 border-emerald-300',
+      'from-fuchsia-50 to-purple-100 border-purple-300',
+    ]
     return (
       <Shell>
-        <div className="text-center pt-10 pb-6">
-          <span className="inline-block text-xs font-extrabold uppercase tracking-widest bg-blue-600 text-white rounded-full px-3 py-1 mb-3">
-            🐋🐗 A Whalehogs Game
-          </span>
-          <div className="text-6xl mb-2">🧠⚽</div>
-          <h1 className="text-4xl font-black text-slate-800">Brain Ball</h1>
-          <p className="text-slate-500 font-semibold mt-1">Roll. Answer. Grow your ball!</p>
-        </div>
-        <p className="text-center text-sm font-bold text-slate-400 uppercase tracking-wide mb-3">Which Whalehog is playing?</p>
-        <div className="grid grid-cols-2 gap-4 px-6 max-w-md mx-auto">
-          {profiles.map((p) => {
-            const lvl = brainLevel(p)
-            return (
-              <button
-                key={p.id}
-                onClick={() => {
-                  setActiveId(p.id)
-                  if (p.isTester) {
-                    // grown-ups skip the kids' ritual (and "Dada says" would be
-                    // odd for Leslie) — straight to the menu
-                    setScreen('home')
-                    return
-                  }
-                  setScreen('greatday')
-                  // speak inside the tap gesture so mobile browsers allow it
-                  speak("Dada says: Today's going to be a…", { rate: 0.97 })
-                }}
-                className="rounded-3xl bg-white border-2 border-blue-200 shadow-lg p-5 flex flex-col items-center gap-1 active:scale-95 transition-transform"
-              >
-                <span className="text-5xl">{p.avatar}</span>
-                <span className="text-xl font-extrabold text-slate-800">{p.name}</span>
-                {p.isTester ? (
-                  <span className="text-[10px] font-extrabold uppercase tracking-wide bg-slate-200 text-slate-500 rounded-full px-2 py-0.5">
-                    Grown-up tester
-                  </span>
-                ) : (
-                  <span className="text-xs font-bold text-blue-500">Brain Level {lvl.level}</span>
-                )}
-                <span className="text-xs font-semibold text-yellow-600">🪙 {p.coins} · ⭐ {p.stars}</span>
-              </button>
-            )
-          })}
+        <div className="min-h-[calc(100dvh-24px)] max-w-md mx-auto px-5 py-6 flex flex-col justify-center">
+          <div className="text-center mb-7">
+            <span className="inline-block text-xs font-extrabold uppercase tracking-widest bg-blue-600 text-white rounded-full px-3.5 py-1.5 mb-4 shadow">
+              🐋🐗 A Whalehogs Game
+            </span>
+            <div className="text-7xl mb-2 leading-none">🧠⚽</div>
+            <h1 className="text-5xl font-black text-slate-800 tracking-tight">Brain Ball</h1>
+            <p className="text-slate-500 font-bold mt-2">Roll. Answer. Grow your ball!</p>
+          </div>
+          <p className="text-center text-sm font-extrabold text-slate-400 uppercase tracking-widest mb-4">Who&apos;s playing today?</p>
+          <div className="grid grid-cols-2 gap-4">
+            {kidProfiles.map((p, i) => {
+              const lvl = brainLevel(p)
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => pickPlayer(p)}
+                  className={`rounded-[2rem] bg-gradient-to-b border-[3px] shadow-xl px-4 pt-6 pb-5 flex flex-col items-center gap-1.5 active:scale-95 transition-transform ${KID_CARD_STYLES[i % KID_CARD_STYLES.length]}`}
+                >
+                  <span className="text-[4.5rem] leading-none drop-shadow-sm">{p.avatar}</span>
+                  <span className="text-2xl font-black text-slate-800 mt-1">{p.name}</span>
+                  <span className="text-xs font-extrabold text-white bg-blue-500 rounded-full px-2.5 py-0.5 shadow-sm">🧠 Level {lvl.level}</span>
+                  <span className="text-sm font-bold text-yellow-700">🪙 {p.coins} · ⭐ {p.stars}</span>
+                  <span className="mt-1.5 text-sm font-black text-green-700 bg-white/80 border-2 border-green-300 rounded-full px-5 py-1.5 shadow-sm">▶ PLAY</span>
+                </button>
+              )
+            })}
+          </div>
+          {testers.length > 0 && (
+            <div className="mt-7">
+              <p className="text-center text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-2.5">Grown-up testers</p>
+              <div className="grid grid-cols-2 gap-3">
+                {testers.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => pickPlayer(p)}
+                    className="rounded-2xl bg-white/80 border-2 border-slate-200 shadow px-3 py-2.5 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                  >
+                    <span className="text-2xl">{p.avatar}</span>
+                    <span className="text-base font-extrabold text-slate-700">{p.name}</span>
+                    <span className="text-[11px] font-semibold text-yellow-600">🪙 {p.coins}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Shell>
     )

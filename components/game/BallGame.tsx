@@ -126,6 +126,8 @@ type Mini =
       /** pass only: frames left in the throw animation before the catch */
       throwT: number
       finger: { x: number; y: number } | null
+      /** the pointer steering right now — a resting palm can't hijack */
+      pid?: number
       bots: Array<{ x: number; y: number; vx: number; vy: number }>
       /** bots speed up over time so every play ends */
       heat: number
@@ -137,6 +139,7 @@ type Mini =
       runner: { x: number; y: number; tx: number }
       startOpp: number
       finger: { x: number; y: number } | null
+      pid?: number
       jukeT: number
       age: number
     }
@@ -145,7 +148,7 @@ type Mini =
       /** yards this kick needs to reach the posts */
       need: number
       tee: { x: number; y: number }
-      drag: null | { x0: number; y0: number; x: number; y: number }
+      drag: null | { x0: number; y0: number; x: number; y: number; pid: number }
       flight: null | { t: number; dur: number; endX: number; endY: number; arc: number; good: boolean }
       age: number
     }
@@ -825,8 +828,16 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       const bots: Array<{ x: number; y: number; vx: number; vy: number }> = []
       for (let i = 0; i < 4; i++) {
         const f = 0.3 + (i * 0.55) / 3
-        const y = Math.min(startY - u * 0.18, startY + (goalY - startY) * f)
-        bots.push({ x: w.w * (0.15 + Math.random() * 0.7), y: Math.max(goalY - u * 0.02, y), vx: 0, vy: 0 })
+        const y = Math.max(goalY - u * 0.02, Math.min(startY - u * 0.18, startY + (goalY - startY) * f))
+        let x = w.w * (0.15 + Math.random() * 0.7)
+        // goal-to-go snaps squeeze every bot onto the goal line (ship-check
+        // P1: a four-bot wall right on top of the carrier) — when a bot can't
+        // get vertical room, it lines up OFF to the side instead
+        if (Math.hypot(x - w.w / 2, y - startY) < u * 0.2) {
+          x = w.w / 2 + (i % 2 === 0 ? -1 : 1) * (u * 0.26 + Math.random() * u * 0.12)
+          x = Math.max(w.w * 0.08, Math.min(w.w * 0.92, x))
+        }
+        bots.push({ x, y, vx: 0, vy: 0 })
       }
       w.mini = { kind: 'carry', call, startBall: s.ball, throwT: call === 'pass' ? 36 : 0, finger: null, bots, heat: 0, age: 0 }
       speak(call === 'pass' ? 'Caught it! Now drag your ball and dodge the tacklers!' : 'Hand-off! Drag your ball — dodge the tacklers!')
@@ -865,9 +876,11 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         } catch {}
         const p = toWorld(e)
         if (w.mini.kind === 'kick') {
-          if (!w.mini.flight) w.mini.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y }
+          // one finger owns the swing — a second touch can't reset the pull
+          if (!w.mini.flight && !w.mini.drag) w.mini.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y, pid: e.pointerId }
         } else {
-          w.mini.finger = p
+          if (w.mini.pid === undefined) w.mini.pid = e.pointerId
+          if (w.mini.pid === e.pointerId) w.mini.finger = p
         }
         return
       }
@@ -900,21 +913,36 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       if (e.pointerType === 'mouse' && e.buttons === 0) return
       const p = toWorld(e)
       if (w.mini.kind === 'kick') {
-        if (w.mini.drag) {
+        if (w.mini.drag && w.mini.drag.pid === e.pointerId) {
           w.mini.drag.x = p.x
           w.mini.drag.y = p.y
         }
-      } else {
+      } else if (w.mini.pid === e.pointerId) {
         w.mini.finger = p
       }
     }
-    const onUp = () => {
+    const onCancel = (e: PointerEvent) => {
+      // an OS-stolen gesture (notification swipe, palm rejection) DROPS the
+      // pull — it must never launch a kick the kid didn't release
       const w = world.current
       if (w.phase !== 'mini' || !w.mini) return
+      if (w.mini.kind === 'kick') {
+        if (w.mini.drag?.pid === e.pointerId) w.mini.drag = null
+      } else if (w.mini.pid === e.pointerId) {
+        w.mini.pid = undefined
+      }
+    }
+    const onUp = (e: PointerEvent) => {
+      const w = world.current
+      if (w.phase !== 'mini' || !w.mini) return
+      if (w.mini.kind !== 'kick' && w.mini.pid === e.pointerId) {
+        w.mini.pid = undefined // the carrier keeps running to the last spot; the next touch re-grabs
+        return
+      }
       const k = w.mini
       if (k.kind !== 'kick' || k.flight) return
       const d = k.drag
-      if (!d) return
+      if (!d || d.pid !== e.pointerId) return
       // the swing: pull back (down), let go — power from the pull length,
       // aim from the pull direction, exactly like a golf-game drive
       k.drag = null
@@ -926,7 +954,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         return
       }
       const power = Math.min(1, len / (w.h * 0.34))
-      const kickYd = power * 65
+      // rounded exactly like the on-screen readout — the green arrow and the
+      // scoring must never disagree (ship-check)
+      const kickYd = Math.round(power * 65)
       const g = fieldGeom(w)
       const postY = g.zoneH * 0.5
       const slope = -px / py // launch = the pull, mirrored
@@ -940,12 +970,12 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     canvas.addEventListener('pointerdown', onPointer)
     canvas.addEventListener('pointermove', onMove)
     canvas.addEventListener('pointerup', onUp)
-    canvas.addEventListener('pointercancel', onUp)
+    canvas.addEventListener('pointercancel', onCancel)
     return () => {
       canvas.removeEventListener('pointerdown', onPointer)
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerup', onUp)
-      canvas.removeEventListener('pointercancel', onUp)
+      canvas.removeEventListener('pointercancel', onCancel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -976,6 +1006,39 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         w.ball.x *= sx
         w.ball.y *= sy
         positionBubbles()
+        // a rotation/keyboard resize mid-play rescales the live play too —
+        // otherwise the tee, tacklers and flight sit at the old canvas's pixels
+        const m = w.mini
+        if (m) {
+          if (m.kind === 'carry') {
+            for (const b of m.bots) {
+              b.x *= sx
+              b.y *= sy
+            }
+          } else if (m.kind === 'chase') {
+            m.runner.x *= sx
+            m.runner.y *= sy
+            m.runner.tx *= sx
+          } else {
+            m.tee.x *= sx
+            m.tee.y *= sy
+            if (m.drag) {
+              m.drag.x0 *= sx
+              m.drag.y0 *= sy
+              m.drag.x *= sx
+              m.drag.y *= sy
+            }
+            if (m.flight) {
+              m.flight.endX *= sx
+              m.flight.endY *= sy
+              m.flight.arc *= sy
+            }
+          }
+          if (m.kind !== 'kick' && m.finger) {
+            m.finger.x *= sx
+            m.finger.y *= sy
+          }
+        }
       }
       skyCacheRef.current.grad = null // gradient is sized to the canvas
     }
@@ -1225,7 +1288,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
               const yards = Math.floor((scrimY - ball.y) / g.pxPerYd)
               if (ball.y <= goalY + 1) {
                 finishPlayRef.current({ correct: true, yards: 100 - mini.startBall })
-              } else if (mini.age > 30 && mini.bots.some((b) => Math.hypot(b.x - ball.x, b.y - ball.y) < ball.r * 0.8 + botR * 0.65)) {
+              } else if (live && mini.age > 30 && mini.bots.some((b) => Math.hypot(b.x - ball.x, b.y - ball.y) < ball.r * 0.8 + botR * 0.65)) {
                 w.shake = 8
                 finishPlayRef.current({ correct: true, yards: Math.max(0, yards) })
               } else if (mini.finger && yards > 0) {
@@ -1803,7 +1866,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           <button
             onClick={() => {
               ensureAudio()
-              if (gameday && picking) return // the stale question must not read over the play call
+              // the stale question must not read over the play call OR the live play
+              if (gameday && (picking || miniOn)) return
               spokeRef.current = true // asked for the voice — no reading bonus
               if (question) speak(question.speech)
             }}
@@ -1812,7 +1876,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           >
             <Volume2 className="w-5 h-5" />
           </button>
-          {micDoor !== 'none' && question && voiceable(question.choices) && !(gameday && picking) && (
+          {micDoor !== 'none' && question && voiceable(question.choices) && !(gameday && (picking || miniOn)) && (
             <button
               onClick={onMic}
               aria-label={listening ? 'Stop listening' : 'Say your answer'}
