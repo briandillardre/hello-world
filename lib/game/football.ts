@@ -1,20 +1,33 @@
 // Brain Ball — 🏈 Game Day: the drive engine (pure).
 //
-// Brian (Nov 3): "add an option to play the current game OR play a passing
-// game OR a tackling, blocking, running, or Fieldgoal game … This should help
-// the boys understand rules of football - first downs, touchdowns, extra
-// points etc."
+// Brian (Nov 3): "This should help the boys understand rules of football -
+// first downs, touchdowns, extra points etc." Then (Nov 6): "Needs to be
+// interactive with the boys moving the ball or player trying not to be
+// tackled. Same with having to tackle the other teams player. Fieldgoal
+// needs to be a pull back and swing method something like golf games do."
 //
-// Game Day is real football, kid-sized: you CALL THE PLAY before every
-// question — Run (safe), Pass (big but intercept-able), Field Goal (3 when in
-// range) — against real downs and a first-down line. Touchdowns are 6 plus an
-// extra-point kick; every change of possession flips you onto DEFENSE for a
-// two-play stand where tackles decide whether the Robots punt, kick a field
-// goal, or score. Blocking is the run game's muscle ("great block springs him
-// loose") and what happens to bad kicks. The questions stay the learning
-// engine; this module only decides what each answer means on the field.
+// So Game Day is now TWO beats per play: the QUESTION earns the play (wrong
+// answer = the play is blown up at the snap — sacked, intercepted, blocked),
+// and then the kid RUNS it with their finger: steer the ball-carrier past
+// the robot tacklers (yards = how far they really get), drag your own
+// tackler to catch the Robots' runner on defense, and pull-back-and-release
+// to swing a kick through the uprights. This module stays pure: the
+// mini-games in BallGame.tsx hand it a PlayOutcome and it decides what that
+// outcome MEANS on the field — downs, scores, turnovers, the defense stand.
 
 export type PlayCall = 'run' | 'pass' | 'fg' | 'xp' | 'tackle'
+
+/** what actually happened on the field — the mini-game's result */
+export interface PlayOutcome {
+  /** the question: wrong = the play never gets off the ground */
+  correct: boolean
+  /** run/pass: yards the carrier really gained before being tackled */
+  yards?: number
+  /** fg/xp: the swung kick went through the uprights */
+  made?: boolean
+  /** defense: your tackler caught the Robots' runner before he broke loose */
+  tackled?: boolean
+}
 
 export interface GameState {
   phase: 'offense' | 'xp' | 'defense'
@@ -59,14 +72,13 @@ export interface FbEvent {
 }
 
 export const KICKOFF_SPOT = 20
-export const RUN_GAIN = 7
-export const RUN_HOT = 10
-export const PASS_GAIN = 15
-export const PASS_HOT = 20
+/** a completed pass is caught this far downfield — the head start a pass buys */
+export const PASS_AIR_YARDS = 15
 /** longest makeable kick (distance = 100 − ball + 17 for the end zone + holder) */
 export const FG_MAX_KICK = 55
 /** the Robots start a drive this far from your goal line */
 export const DEF_START = 60
+/** the Robots' runner breaks the stand open if he gains this many yards */
 export const DEF_GAIN = 30
 export const DEF_LOSS = 2
 export const STAND_PLAYS = 2
@@ -136,32 +148,38 @@ function toDefense(s: GameState): GameState {
 }
 
 /**
- * Resolve one play. `correct` is whether the question was answered right —
- * the player EXECUTES the play they called by being right.
+ * Resolve one play. The question earns the play (`outcome.correct`); the
+ * mini-game says how it really went (`yards` / `made` / `tackled`).
  */
-export function applyPlay(state: GameState, call: PlayCall, correct: boolean, streak = 0): { next: GameState; events: FbEvent[] } {
+export function applyPlay(state: GameState, call: PlayCall, outcome: PlayOutcome): { next: GameState; events: FbEvent[] } {
   const events: FbEvent[] = []
   const s = { ...state }
+  const { correct } = outcome
 
   if (s.phase === 'xp' || call === 'xp') {
-    if (correct) {
+    if (!correct) {
+      events.push({ kind: 'xpMiss', text: '🦵 The kick is BLOCKED!', say: 'Oh no, the kick got blocked — still six points. We don’t say can’t!' })
+    } else if (outcome.made) {
       s.us += 1
       events.push({ kind: 'xpGood', text: '🦵 Extra point is GOOD! +1', say: 'The kick is good! Seven points!', excited: true })
     } else {
-      events.push({ kind: 'xpMiss', text: '🦵 The kick is BLOCKED!', say: 'Oh no, the kick got blocked — still six points. We don’t say can’t!' })
+      events.push({ kind: 'xpMiss', text: '🦵 The kick sails wide!', say: 'The kick missed — still six points. We don’t say can’t!' })
     }
     return { next: toDefense(s), events }
   }
 
   if (s.phase === 'defense' || call === 'tackle') {
     s.defPlays += 1
-    if (correct) {
+    if (correct && outcome.tackled) {
       s.defStops += 1
       s.oppBall = Math.min(DEF_START, s.oppBall + DEF_LOSS)
       events.push({ kind: 'defStop', text: '🛡️ TACKLE! Great stop!', say: s.defPlays === 1 ? 'Tackle! What a stop!' : undefined, excited: true })
     } else {
       s.oppBall -= DEF_GAIN
-      events.push({ kind: 'defGain', text: `🤖 They gained ${DEF_GAIN} yards!` })
+      events.push({
+        kind: 'defGain',
+        text: correct ? `🤖 He got away! +${DEF_GAIN} yards` : `🤖 He broke free! +${DEF_GAIN} yards`,
+      })
     }
     if (s.oppBall <= 0) {
       s.them += 7
@@ -182,47 +200,48 @@ export function applyPlay(state: GameState, call: PlayCall, correct: boolean, st
 
   // ---------------- offense
   if (call === 'fg') {
-    if (correct) {
+    if (!correct) {
+      events.push({ kind: 'fgMiss', text: '🦵 The kick is BLOCKED!', say: 'The kick got blocked — no points this time. The Robots get the ball.' })
+    } else if (outcome.made) {
       s.us += 3
       events.push({ kind: 'fgGood', text: `🦵 ${kickDistance(s)}-yd FIELD GOAL! +3`, say: 'The field goal is GOOD! Three points!', excited: true })
     } else {
-      events.push({ kind: 'fgMiss', text: '🦵 WIDE LEFT — no good!', say: 'The kick missed — no points this time. The Robots get the ball.' })
+      events.push({ kind: 'fgMiss', text: '🦵 No good — wide!', say: 'The kick missed — no points this time. The Robots get the ball.' })
     }
     return { next: toDefense(s), events }
   }
 
   if (correct) {
-    const hot = streak >= 3
-    const gain = call === 'pass' ? (hot ? PASS_HOT : PASS_GAIN) : hot ? RUN_HOT : RUN_GAIN
-    s.ball = Math.min(100, s.ball + gain)
-    events.push({
-      kind: 'gain',
-      gain,
-      text:
-        call === 'pass'
-          ? `🎯 Complete! +${gain} yards`
-          : hot
-          ? `💪 HUGE block! He’s loose! +${gain}`
-          : `🏃 Great block! +${gain} yards`,
-    })
-    if (s.ball >= 100) {
-      s.us += 6
-      s.phase = 'xp'
-      events.push({ kind: 'touchdown', text: '🏈 TOUCHDOWN! +6', say: 'TOUCHDOWN! Six points! Now kick the extra point!', excited: true })
-      return { next: s, events }
-    }
-    if (s.ball >= s.lineToGain) {
-      s.down = 1
-      s.lineToGain = Math.min(100, s.ball + 10)
-      events.push({ kind: 'firstDown', text: '🟨 FIRST DOWN!', say: 'First down! Four fresh tries!', excited: true })
-      return { next: s, events }
+    // the kid RAN this play — the yards are whatever they really got
+    const gain = Math.max(0, Math.min(100 - s.ball, Math.round(outcome.yards ?? 0)))
+    if (gain === 0) {
+      events.push({ kind: 'tackledNoGain', text: '🤖 Tackled at the line — no gain!' })
+    } else {
+      s.ball += gain
+      events.push({
+        kind: 'gain',
+        gain,
+        text: gain >= 20 ? `💨 HUGE run! +${gain} yards` : call === 'pass' ? `🎯 Complete! +${gain} yards` : `🏃 +${gain} yards!`,
+      })
+      if (s.ball >= 100) {
+        s.us += 6
+        s.phase = 'xp'
+        events.push({ kind: 'touchdown', text: '🏈 TOUCHDOWN! +6', say: 'TOUCHDOWN! Six points! Now kick the extra point!', excited: true })
+        return { next: s, events }
+      }
+      if (s.ball >= s.lineToGain) {
+        s.down = 1
+        s.lineToGain = Math.min(100, s.ball + 10)
+        events.push({ kind: 'firstDown', text: '🟨 FIRST DOWN!', say: 'First down! Four fresh tries!', excited: true })
+        return { next: s, events }
+      }
     }
   } else {
     if (call === 'pass') {
       events.push({ kind: 'intercepted', text: '🤖 INTERCEPTED!', say: 'Intercepted! The Robots caught it. We don’t say can’t — go play defense!' })
       return { next: toDefense(s), events }
     }
-    events.push({ kind: 'tackledNoGain', text: '🤖 Tackled — no gain!' })
+    events.push({ kind: 'tackledNoGain', text: '🤖 Sacked — no gain!' })
   }
 
   // the play used a down
@@ -235,18 +254,17 @@ export function applyPlay(state: GameState, call: PlayCall, correct: boolean, st
 }
 
 /** play-call button copy — what each play IS, in kid words */
-export function describeCall(call: PlayCall, s: GameState, streak = 0): { emoji: string; name: string; blurb: string } {
-  const hot = streak >= 3
+export function describeCall(call: PlayCall, s: GameState): { emoji: string; name: string; blurb: string } {
   switch (call) {
     case 'run':
-      return { emoji: '🏃', name: 'Run', blurb: hot ? `Blockers are fired up — +${RUN_HOT} yards!` : `Safe behind the blockers — +${RUN_GAIN} yards` }
+      return { emoji: '🏃', name: 'Run', blurb: 'Answer right, then DODGE the tacklers — run as far as you can!' }
     case 'pass':
-      return { emoji: '🎯', name: 'Pass', blurb: `+${hot ? PASS_HOT : PASS_GAIN} yards… but a miss can be INTERCEPTED!` }
+      return { emoji: '🎯', name: 'Pass', blurb: `Catch it ${PASS_AIR_YARDS} yards deep and run… but a wrong answer is INTERCEPTED!` }
     case 'fg':
-      return { emoji: '🦵', name: 'Field Goal', blurb: `A ${kickDistance(s)}-yard kick for 3 points` }
+      return { emoji: '🦵', name: 'Field Goal', blurb: `Pull back and swing — a ${kickDistance(s)}-yard kick for 3 points` }
     case 'xp':
-      return { emoji: '🦵', name: 'Extra Point', blurb: 'Kick it through for 1 more point!' }
+      return { emoji: '🦵', name: 'Extra Point', blurb: 'Pull back and swing it through for 1 more point!' }
     case 'tackle':
-      return { emoji: '🛡️', name: 'TACKLE!', blurb: 'Stop the Robots’ runner!' }
+      return { emoji: '🛡️', name: 'TACKLE!', blurb: 'Answer right, then chase him down with your finger!' }
   }
 }

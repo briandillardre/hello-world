@@ -14,10 +14,13 @@ import {
   availableCalls,
   describeCall,
   downWords,
+  kickDistance,
   newGame,
+  PASS_AIR_YARDS,
   spotWords,
   type GameState,
   type PlayCall,
+  type PlayOutcome,
 } from '@/lib/game/football'
 import { SPEECH_UPDATE_HINT, speechDoor, startSpeech, type SpeechDoor, type SpeechSession } from '@/lib/speech-input'
 import { BALL_SKINS } from '@/lib/game/storage'
@@ -108,7 +111,44 @@ interface Floater {
   color: string
 }
 
-type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'redeem' | 'done'
+type Phase = 'idle' | 'rolling' | 'celebrate' | 'reveal' | 'redeem' | 'mini' | 'done'
+
+// 🏈 Game Day mini-games — the kid RUNS the play after earning it:
+// carry = drag to steer the ball-carrier past the robot tacklers,
+// chase = drag your tackler to catch the Robots' runner,
+// kick = pull back and release, golf-swing style.
+type Mini =
+  | {
+      kind: 'carry'
+      call: 'run' | 'pass'
+      /** scrimmage when the play started (yards gained measure from here) */
+      startBall: number
+      /** pass only: frames left in the throw animation before the catch */
+      throwT: number
+      finger: { x: number; y: number } | null
+      bots: Array<{ x: number; y: number; vx: number; vy: number }>
+      /** bots speed up over time so every play ends */
+      heat: number
+      age: number
+    }
+  | {
+      kind: 'chase'
+      /** the Robots' runner the kid has to catch */
+      runner: { x: number; y: number; tx: number }
+      startOpp: number
+      finger: { x: number; y: number } | null
+      jukeT: number
+      age: number
+    }
+  | {
+      kind: 'kick'
+      /** yards this kick needs to reach the posts */
+      need: number
+      tee: { x: number; y: number }
+      drag: null | { x0: number; y0: number; x: number; y: number }
+      flight: null | { t: number; dur: number; endX: number; endY: number; arc: number; good: boolean }
+      age: number
+    }
 
 const CONFETTI = ['#f97316', '#22c55e', '#3b82f6', '#eab308', '#ec4899', '#a855f7']
 const PRAISE = ['Great job!', 'You got it!', 'Awesome!', 'Super smart!', 'Nice one!', 'Wow!', 'Go Whalehogs!', 'Whalehog smart!']
@@ -121,6 +161,39 @@ const DRIVE_START = 20
 /** round-local copy of skill states (one level deep is all SkillState needs) */
 function cloneSkills(skills: Record<SkillId, SkillState>): Record<SkillId, SkillState> {
   return Object.fromEntries(Object.entries(skills).map(([k, s]) => [k, { ...s }])) as Record<SkillId, SkillState>
+}
+
+/** 🏈 ONE field mapping shared by the field drawing and the mini-games —
+ *  the end zone is clamped so it stays readable on short phone canvases */
+function fieldGeom(w: { w: number; h: number }) {
+  const zoneH = Math.max(44, Math.min(84, w.h * 0.12))
+  const trackTop = zoneH + 10
+  const trackBot = w.h - 16
+  const spotY = (v: number) => trackBot - (trackBot - trackTop) * Math.max(0, Math.min(1, v / 100))
+  /** defense: the Robots' runner's spot, oppBall yards from YOUR goal (60 = far) */
+  const oppY = (v: number) => trackTop + (trackBot - trackTop) * (1 - Math.max(0, Math.min(60, v)) / 60)
+  return { zoneH, trackTop, trackBot, spotY, oppY, pxPerYd: (trackBot - trackTop) / 100 }
+}
+
+/** a plain football (no face) — the teed/kicked ball in the swing mini-game */
+function drawPigskin(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rot)
+  ctx.fillStyle = '#92400e'
+  ctx.beginPath()
+  ctx.ellipse(0, 0, r * 1.45, r, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#451a03'
+  ctx.lineWidth = Math.max(1.5, r * 0.12)
+  ctx.stroke()
+  ctx.strokeStyle = '#fef3c7'
+  ctx.lineWidth = Math.max(1.5, r * 0.16)
+  ctx.beginPath()
+  ctx.moveTo(-r * 0.6, 0)
+  ctx.lineTo(r * 0.6, 0)
+  ctx.stroke()
+  ctx.restore()
 }
 
 export function BallGame({ profile, skill, dailyDouble = false, football = false, gameday = false, onAnswer, onComplete, onQuit }: BallGameProps) {
@@ -142,12 +215,17 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   const [drive, setDrive] = useState<GameState>(driveRef.current)
   const [picking, setPicking] = useState(gameday)
   const pendingCallRef = useRef<PlayCall>('run')
+  /** UI mirror of world.mini — swaps the banner to "run the play" copy */
+  const [miniOn, setMiniOn] = useState(false)
   // answering out loud: the mic door is decided once (browser vs native vs
   // needs-the-app-update), the session lives in a ref
   const [micDoor, setMicDoor] = useState<SpeechDoor>('none')
   const [listening, setListening] = useState(false)
   const micSessionRef = useRef<SpeechSession | null>(null)
   useEffect(() => setMicDoor(speechDoor()), [])
+  // the mini-games live in the draw loop; these refs carry fresh closures in
+  const startMiniRef = useRef<(call: PlayCall) => void>(() => {})
+  const finishPlayRef = useRef<(o: PlayOutcome) => void>(() => {})
 
   // mutable game world (never triggers React renders)
   const world = useRef({
@@ -170,8 +248,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     yards: DRIVE_START,
     /** 1→0 end-zone flash after a touchdown */
     tdFlash: 0,
-    /** Game Day: a kick in flight (FG / extra point), drawn as a parabola */
-    kick: null as null | { t0: number; x0: number; y0: number; good: boolean },
+    /** Game Day: the interactive play in progress (drag-to-run / chase / swing-kick) */
+    mini: null as Mini | null,
   })
   const skillsRef = useRef<Record<SkillId, SkillState>>(cloneSkills(profile.skills))
   const startThetasRef = useRef<Record<SkillId, number>>(
@@ -453,6 +531,47 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
   }, [])
 
   // ------------------------------------------------------------- answer resolution
+  /** 🏈 Game Day: paint + speak what the engine said the play MEANT on the field */
+  const applyFieldEvents = (res: ReturnType<typeof applyPlay>) => {
+    const w = world.current
+    const stats = statsRef.current
+    driveRef.current = res.next
+    setDrive(res.next)
+    let fy = w.h * 0.4
+    let said = false
+    for (const ev of res.events) {
+      w.floaters.push({ x: w.w / 2, y: fy, text: ev.text, life: ev.kind === 'touchdown' ? 2 : 1.5, color: ev.excited ? '#16a34a' : ev.kind.startsWith('they') || ev.kind === 'intercepted' || ev.kind === 'defGain' ? '#dc2626' : '#92400e' })
+      fy -= 26
+      if (ev.say && !said) {
+        said = true
+        speak(ev.say, !!ev.excited)
+      }
+      if (ev.kind === 'touchdown') {
+        stats.touchdowns += 1
+        setTds(stats.touchdowns)
+        w.tdFlash = 1
+        w.shake = 18
+        for (let i = 0; i < 60; i++) {
+          w.particles.push({ x: w.w / 2, y: w.h * 0.16, vx: (Math.random() - 0.5) * 14, vy: (Math.random() - 0.3) * 11, life: 1.1, color: CONFETTI[i % CONFETTI.length], size: 4 + Math.random() * 7 })
+        }
+        playTouchdown()
+      }
+      if (ev.kind === 'firstDown') {
+        tone(659, 0, 0.12, 'triangle', 0.1)
+        tone(880, 0.12, 0.25, 'triangle', 0.1)
+      }
+      if (ev.kind === 'fgGood' || ev.kind === 'xpGood') playTouchdown()
+      if (ev.kind === 'theyTD') {
+        w.shake = 10
+        tone(220, 0, 0.3, 'sawtooth', 0.06)
+        tone(185, 0.25, 0.4, 'sawtooth', 0.06)
+      }
+    }
+    // mirror for the classic drive marker (0..100 ball spot drives the track)
+    w.yards = res.next.phase === 'defense' ? w.yards : res.next.ball
+    setYards(w.yards)
+  }
+
   const resolveAnswer = useCallback(
     (bubbleIndex: number) => {
       const q = questionRef.current
@@ -460,9 +579,6 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       const w = world.current
       const correct = bubbleIndex === q.answer
       const elapsed = Date.now() - qStartRef.current
-      // the streak the play-call button PROMISED with — captured before the
-      // increment below, so "+7" never quietly delivers +10 (ship-check)
-      const streakBefore = world.current.streak
       const speedBoost = elapsed <= FAST_MS ? 1 : elapsed <= QUICK_MS ? 0.5 : 0
       const state = skillsRef.current[q.skill]
       const newTheta = updateTheta(state, q.difficulty, correct, speedBoost, profile.isTester ? ADULT_THETA_CAP : 99)
@@ -590,48 +706,22 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         setStreak(0)
       }
       if (gameday) {
-        // 🏈 Game Day: the drive engine decides what this answer MEANT on the
-        // field (downs, scores, turnovers, the defense stand) — lib/game/football.ts
-        const res = applyPlay(driveRef.current, pendingCallRef.current, correct, streakBefore)
-        driveRef.current = res.next
-        setDrive(res.next)
-        let fy = w.h * 0.4
-        let said = false
-        for (const ev of res.events) {
-          w.floaters.push({ x: w.w / 2, y: fy, text: ev.text, life: ev.kind === 'touchdown' ? 2 : 1.5, color: ev.excited ? '#16a34a' : ev.kind.startsWith('they') || ev.kind === 'intercepted' || ev.kind === 'defGain' ? '#dc2626' : '#92400e' })
-          fy -= 26
-          if (ev.say && !said) {
-            said = true
-            speak(ev.say, !!ev.excited)
-          }
-          if (ev.kind === 'touchdown') {
-            stats.touchdowns += 1
-            setTds(stats.touchdowns)
-            w.tdFlash = 1
-            w.shake = 18
-            for (let i = 0; i < 60; i++) {
-              w.particles.push({ x: w.w / 2, y: w.h * 0.16, vx: (Math.random() - 0.5) * 14, vy: (Math.random() - 0.3) * 11, life: 1.1, color: CONFETTI[i % CONFETTI.length], size: 4 + Math.random() * 7 })
-            }
-            playTouchdown()
-          }
-          if (ev.kind === 'firstDown') {
-            tone(659, 0, 0.12, 'triangle', 0.1)
-            tone(880, 0.12, 0.25, 'triangle', 0.1)
-          }
-          if (ev.kind === 'fgGood' || ev.kind === 'fgMiss' || ev.kind === 'xpGood' || ev.kind === 'xpMiss') {
-            const good = ev.kind === 'fgGood' || ev.kind === 'xpGood'
-            w.kick = { t0: w.t, x0: w.w / 2, y0: w.h * 0.72, good }
-            if (good) playTouchdown()
-          }
-          if (ev.kind === 'theyTD') {
-            w.shake = 10
-            tone(220, 0, 0.3, 'sawtooth', 0.06)
-            tone(185, 0.25, 0.4, 'sawtooth', 0.06)
-          }
+        if (correct) {
+          // the question EARNED the play — after the gulp, the kid RUNS it
+          // with their finger (dodge / chase / swing the kick)
+          if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current)
+          advanceTimerRef.current = window.setTimeout(() => {
+            advanceTimerRef.current = null
+            startMiniRef.current(pendingCallRef.current)
+          }, 950)
+        } else {
+          // a wrong answer blows the play up at the snap — no mini-game
+          const res = applyPlay(driveRef.current, pendingCallRef.current, { correct: false })
+          applyFieldEvents(res)
+          scheduleAdvance(3200)
         }
-        // mirror for the classic drive marker (0..100 ball spot drives the track)
-        w.yards = res.next.phase === 'defense' ? w.yards : res.next.ball
-        setYards(w.yards)
+      } else {
+        scheduleAdvance(correct ? 1350 : 3200)
       }
       setResults((r) => [...r, correct])
       onAnswer({
@@ -644,8 +734,6 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         newBestStreak: state.bestStreak,
         ms: elapsed,
       })
-
-      scheduleAdvance(correct ? 1350 : 3200)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [onAnswer, nextQuestion, playCorrect, playWrong, playTouchdown, skill, dailyDouble, football, gameday]
@@ -700,18 +788,91 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
     [onComplete, nextQuestion, skill, dailyDouble, gameday]
   )
 
+  // ------------------------------------------------------------- 🏈 the live play
+  // The kid RUNS the play they earned: drag to dodge, drag to chase, or
+  // pull-back-and-release to swing a kick. Assigned every render so the draw
+  // loop always calls a fresh closure.
+  startMiniRef.current = (call: PlayCall) => {
+    const w = world.current
+    const s = driveRef.current
+    const g = fieldGeom(w)
+    const u = Math.min(w.w, w.h)
+    w.bubbles = []
+    w.crumbs = []
+    w.ball.target = null
+    w.phase = 'mini'
+    if (call === 'fg' || call === 'xp') {
+      const tee = { x: w.w / 2, y: w.h * 0.72 }
+      w.mini = { kind: 'kick', need: call === 'xp' ? 33 : kickDistance(s), tee, drag: null, flight: null, age: 0 }
+      // the smiley stands beside the tee as the kicker
+      w.ball.x = Math.min(w.w - w.ball.r, tee.x + u * 0.13)
+      w.ball.y = tee.y + u * 0.015
+      speak('Pull the ball back, then let go to kick!')
+    } else if (call === 'tackle') {
+      const startY = g.oppY(s.oppBall)
+      w.mini = { kind: 'chase', runner: { x: w.w / 2, y: startY, tx: w.w / 2 }, startOpp: s.oppBall, finger: null, jukeT: 20, age: 0 }
+      w.ball.x = w.w * 0.3
+      w.ball.y = Math.min(g.trackBot - u * 0.05, startY + (g.trackBot - startY) * 0.45)
+      speak('Here he comes! Drag your ball and tackle the runner!')
+    } else {
+      const carryStart = call === 'pass' ? Math.min(100, s.ball + PASS_AIR_YARDS) : s.ball
+      const startY = g.spotY(carryStart)
+      const goalY = g.spotY(100)
+      w.ball.x = w.w / 2
+      w.ball.y = call === 'pass' ? g.spotY(s.ball) : startY
+      // tacklers wait between the carrier and the end zone — never right on
+      // top of him (goal-line snaps get a cleared pocket)
+      const bots: Array<{ x: number; y: number; vx: number; vy: number }> = []
+      for (let i = 0; i < 4; i++) {
+        const f = 0.3 + (i * 0.55) / 3
+        const y = Math.min(startY - u * 0.18, startY + (goalY - startY) * f)
+        bots.push({ x: w.w * (0.15 + Math.random() * 0.7), y: Math.max(goalY - u * 0.02, y), vx: 0, vy: 0 })
+      }
+      w.mini = { kind: 'carry', call, startBall: s.ball, throwT: call === 'pass' ? 36 : 0, finger: null, bots, heat: 0, age: 0 }
+      speak(call === 'pass' ? 'Caught it! Now drag your ball and dodge the tacklers!' : 'Hand-off! Drag your ball — dodge the tacklers!')
+    }
+    setMiniOn(true)
+  }
+
+  finishPlayRef.current = (outcome: PlayOutcome) => {
+    const w = world.current
+    if (w.phase !== 'mini') return
+    w.mini = null
+    w.phase = 'celebrate'
+    setMiniOn(false)
+    const res = applyPlay(driveRef.current, pendingCallRef.current, outcome)
+    applyFieldEvents(res)
+    scheduleAdvance(res.events.some((e) => e.kind === 'touchdown') ? 2400 : 2000)
+  }
+
   // ------------------------------------------------------------- input
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const toWorld = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      const w = world.current
+      return { x: ((e.clientX - rect.left) / rect.width) * w.w, y: ((e.clientY - rect.top) / rect.height) * w.h }
+    }
     const onPointer = (e: PointerEvent) => {
       ensureAudio()
       audioRef.current?.resume().catch(() => {})
       const w = world.current
+      // 🏈 live play: the finger steers (or pulls back the kick)
+      if (w.phase === 'mini' && w.mini) {
+        try {
+          canvas.setPointerCapture(e.pointerId)
+        } catch {}
+        const p = toWorld(e)
+        if (w.mini.kind === 'kick') {
+          if (!w.mini.flight) w.mini.drag = { x0: p.x, y0: p.y, x: p.x, y: p.y }
+        } else {
+          w.mini.finger = p
+        }
+        return
+      }
       if (w.phase !== 'idle' && w.phase !== 'reveal') return
-      const rect = canvas.getBoundingClientRect()
-      const x = ((e.clientX - rect.left) / rect.width) * w.w
-      const y = ((e.clientY - rect.top) / rect.height) * w.h
+      const { x, y } = toWorld(e)
       for (let i = 0; i < w.bubbles.length; i++) {
         const b = w.bubbles[i]
         const dist = Math.hypot(x - b.x, y - b.y)
@@ -733,8 +894,60 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         }
       }
     }
+    const onMove = (e: PointerEvent) => {
+      const w = world.current
+      if (w.phase !== 'mini' || !w.mini) return
+      if (e.pointerType === 'mouse' && e.buttons === 0) return
+      const p = toWorld(e)
+      if (w.mini.kind === 'kick') {
+        if (w.mini.drag) {
+          w.mini.drag.x = p.x
+          w.mini.drag.y = p.y
+        }
+      } else {
+        w.mini.finger = p
+      }
+    }
+    const onUp = () => {
+      const w = world.current
+      if (w.phase !== 'mini' || !w.mini) return
+      const k = w.mini
+      if (k.kind !== 'kick' || k.flight) return
+      const d = k.drag
+      if (!d) return
+      // the swing: pull back (down), let go — power from the pull length,
+      // aim from the pull direction, exactly like a golf-game drive
+      k.drag = null
+      const px = d.x - d.x0
+      const py = d.y - d.y0
+      const len = Math.hypot(px, py)
+      if (len < w.h * 0.05 || py < len * 0.35) {
+        w.floaters.push({ x: w.w / 2, y: w.h * 0.5, text: '👆 Pull the ball DOWN, then let go!', life: 1.4, color: '#f8fafc' })
+        return
+      }
+      const power = Math.min(1, len / (w.h * 0.34))
+      const kickYd = power * 65
+      const g = fieldGeom(w)
+      const postY = g.zoneH * 0.5
+      const slope = -px / py // launch = the pull, mirrored
+      const frac = Math.min(1, kickYd / k.need)
+      const endY = k.tee.y - (k.tee.y - postY) * frac
+      const endX = k.tee.x + slope * (k.tee.y - endY)
+      const good = kickYd >= k.need && Math.abs(endX - w.w / 2) <= w.w * 0.17
+      k.flight = { t: 0, dur: 52, endX, endY, arc: Math.min(w.w, w.h) * (0.22 + power * 0.25), good }
+      tone(300, 0, 0.09, 'triangle', 0.12) // the thump off the tee
+    }
     canvas.addEventListener('pointerdown', onPointer)
-    return () => canvas.removeEventListener('pointerdown', onPointer)
+    canvas.addEventListener('pointermove', onMove)
+    canvas.addEventListener('pointerup', onUp)
+    canvas.addEventListener('pointercancel', onUp)
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointer)
+      canvas.removeEventListener('pointermove', onMove)
+      canvas.removeEventListener('pointerup', onUp)
+      canvas.removeEventListener('pointercancel', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ------------------------------------------------------------- render loop
@@ -849,8 +1062,11 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
 
       // ---------- background
       if (football) {
-        // stadium field: striped turf, yard lines, end zone up top
-        const zoneH = w.h * 0.12
+        // stadium field: striped turf, yard lines, end zone up top — every
+        // glyph scales off the canvas so phones read right
+        const g = fieldGeom(w)
+        const { zoneH, trackTop, trackBot, spotY } = g
+        const u = Math.min(w.w, w.h)
         const fieldH = w.h - zoneH
         const stripes = 8
         for (let i = 0; i < stripes; i++) {
@@ -870,32 +1086,30 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         if (w.tdFlash > 0) w.tdFlash = Math.max(0, w.tdFlash - 0.012)
         const flashOn = w.tdFlash > 0 && Math.sin(w.t * 0.4) > 0
         const gd = gameday ? driveRef.current : null
+        const mini = gameday && w.phase === 'mini' ? w.mini : null
         ctx.fillStyle = flashOn ? '#eab308' : '#1d4ed8'
         ctx.fillRect(-20, -20, w.w + 40, zoneH + 20)
         ctx.fillStyle = 'rgba(255,255,255,0.92)'
-        ctx.font = `900 ${Math.round(zoneH * 0.4)}px system-ui`
+        ctx.font = `900 ${Math.round(Math.min(zoneH * 0.42, w.w * 0.075))}px system-ui`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(w.tdFlash > 0 ? '🏈 TOUCHDOWN!' : gd ? `🐋🐗 ${gd.us} — ${gd.them} 🤖` : 'WHALEHOGS', w.w / 2, zoneH * 0.45)
-        const trackTop = zoneH + 10
-        const trackBot = w.h - 16
-        const spotY = (v: number) => trackBot - (trackBot - trackTop) * Math.max(0, Math.min(1, v / 100))
         if (gd) {
           // goalposts in the end zone — field goals and extra points aim here
           const gx = w.w / 2
-          const gw = w.w * 0.13
+          const gw = w.w * 0.17
           ctx.strokeStyle = '#fde047'
-          ctx.lineWidth = 4
+          ctx.lineWidth = Math.max(4, u * 0.013)
           ctx.beginPath()
-          ctx.moveTo(gx - gw, zoneH * 0.9)
-          ctx.lineTo(gx + gw, zoneH * 0.9)
-          ctx.moveTo(gx - gw, zoneH * 0.9)
-          ctx.lineTo(gx - gw, zoneH * 0.25)
-          ctx.moveTo(gx + gw, zoneH * 0.9)
-          ctx.lineTo(gx + gw, zoneH * 0.25)
+          ctx.moveTo(gx - gw, zoneH * 0.92)
+          ctx.lineTo(gx + gw, zoneH * 0.92)
+          ctx.moveTo(gx - gw, zoneH * 0.92)
+          ctx.lineTo(gx - gw, zoneH * 0.2)
+          ctx.moveTo(gx + gw, zoneH * 0.92)
+          ctx.lineTo(gx + gw, zoneH * 0.2)
           ctx.stroke()
         }
-        if (gd && gd.phase !== 'defense') {
+        if (gd && gd.phase !== 'defense' && (!mini || mini.kind === 'carry')) {
           // TV grammar: blue line = where the ball is, yellow line = first down
           const scrimY = spotY(gd.ball)
           ctx.strokeStyle = 'rgba(59,130,246,0.8)'
@@ -912,64 +1126,230 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             ctx.moveTo(-20, lineY)
             ctx.lineTo(w.w + 20, lineY)
             ctx.stroke()
-            // the defense waits at the line
-            ctx.font = '15px system-ui'
-            ctx.fillText('🤖', w.w * 0.3, lineY - 10)
-            ctx.fillText('🤖', w.w * 0.7, lineY - 10)
+            if (!mini) {
+              // the defense waits at the line (the live play draws real chasers)
+              ctx.font = `${Math.round(Math.max(16, u * 0.055))}px system-ui`
+              ctx.fillText('🤖', w.w * 0.3, lineY - u * 0.03)
+              ctx.fillText('🤖', w.w * 0.7, lineY - u * 0.03)
+            }
           }
         }
-        if (gd && gd.phase === 'defense') {
-          // the Robots' runner charges toward YOUR goal line (the bottom)
-          const ry = trackTop + (trackBot - trackTop) * (1 - gd.oppBall / 60)
+        if (gd && gd.phase === 'defense' && !mini) {
+          // the Robots' runner waits to charge YOUR goal line (the bottom)
+          const ry = g.oppY(gd.oppBall)
           const pulse = 1 + Math.sin(w.t * 0.15) * 0.12
           ctx.strokeStyle = 'rgba(220,38,38,0.8)'
           ctx.lineWidth = 3
           ctx.beginPath()
-          ctx.arc(w.w / 2, ry, 16 * pulse, 0, Math.PI * 2)
+          ctx.arc(w.w / 2, ry, u * 0.05 * pulse, 0, Math.PI * 2)
           ctx.stroke()
-          ctx.font = '22px system-ui'
+          ctx.font = `${Math.round(Math.max(22, u * 0.07))}px system-ui`
           ctx.fillText('🤖', w.w / 2, ry)
-          ctx.font = '800 11px system-ui'
-          ctx.fillStyle = 'rgba(220,38,38,0.9)'
-          ctx.fillText(`${gd.oppBall} yds from your goal!`, w.w / 2, ry + 26)
+          ctx.font = `800 ${Math.round(Math.max(12, u * 0.035))}px system-ui`
+          ctx.fillStyle = 'rgba(255,255,255,0.95)'
+          ctx.fillText(`${gd.oppBall} yds from your goal!`, w.w / 2, ry + u * 0.08)
         }
-        // drive marker: the ball climbs the left sideline toward the end zone
-        ctx.fillStyle = 'rgba(255,255,255,0.92)'
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)'
-        ctx.lineWidth = 3
-        ctx.beginPath()
-        ctx.moveTo(14, trackTop)
-        ctx.lineTo(14, trackBot)
-        ctx.stroke()
-        ctx.font = '16px system-ui'
-        ctx.fillText('🏈', 14, spotY(gd && gd.phase === 'defense' ? 0 : w.yards))
-        // a kick in flight: parabola from the ball spot toward the goalposts
-        if (w.kick) {
-          const k = w.kick
-          const p = (w.t - k.t0) / 55
-          if (p >= 1) {
-            for (let i = 0; i < (k.good ? 26 : 10); i++) {
-              w.particles.push({ x: w.w / 2 + (k.good ? 0 : -w.w * 0.3), y: zoneH * 0.5, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.4) * 7, life: 0.9, color: k.good ? '#fde047' : '#94a3b8', size: 3 + Math.random() * 5 })
+        if (!mini) {
+          // drive marker: the ball climbs the left sideline toward the end zone
+          ctx.fillStyle = 'rgba(255,255,255,0.92)'
+          ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.moveTo(14, trackTop)
+          ctx.lineTo(14, trackBot)
+          ctx.stroke()
+          ctx.font = `${Math.round(Math.max(16, u * 0.045))}px system-ui`
+          ctx.fillText('🏈', 14, spotY(gd && gd.phase === 'defense' ? 0 : w.yards))
+        }
+
+        // ---------- 🏈 the live play: the kid runs what they earned
+        if (mini) {
+          mini.age++
+          const botR = u * 0.048
+          const hintFont = `800 ${Math.round(Math.max(15, u * 0.042))}px system-ui`
+          if (mini.kind === 'carry') {
+            const goalY = spotY(100)
+            const scrimY = spotY(mini.startBall)
+            if (mini.throwT > 0) {
+              // the pass hangs in the air on its way to the catch point
+              mini.throwT--
+              const catchY = spotY(Math.min(100, mini.startBall + PASS_AIR_YARDS))
+              const p = 1 - mini.throwT / 36
+              ball.x = w.w / 2
+              ball.y = scrimY + (catchY - scrimY) * p - Math.sin(p * Math.PI) * u * 0.16
+              if (mini.throwT === 0) {
+                ball.y = catchY
+                w.floaters.push({ x: w.w / 2, y: catchY - u * 0.08, text: '🙌 CAUGHT!', life: 0.9, color: '#ffffff' })
+              }
+            } else {
+              // steer the carrier toward the finger
+              if (mini.finger) {
+                const dx = mini.finger.x - ball.x
+                const dy = mini.finger.y - ball.y
+                const dist = Math.hypot(dx, dy)
+                if (dist > 2) {
+                  const step = Math.min(dist, Math.max(3.4, u * 0.0105))
+                  ball.x += (dx / dist) * step
+                  ball.y += (dy / dist) * step
+                  ball.rot += step / ball.r
+                }
+              }
+              ball.x = Math.max(ball.r * 0.8, Math.min(w.w - ball.r * 0.8, ball.x))
+              ball.y = Math.max(goalY, Math.min(trackBot, ball.y))
+              // tacklers hunt with momentum — they overshoot a good juke —
+              // and heat up over time so every play ends; the grace beat
+              // gives little fingers time to grab on
+              const live = mini.age > 85 || mini.finger !== null
+              if (live) mini.heat = Math.min(1.8, mini.heat + 0.0022)
+              for (const b of mini.bots) {
+                if (live) {
+                  const dx = ball.x - b.x
+                  const dy = ball.y - b.y
+                  const dist = Math.hypot(dx, dy) || 1
+                  const acc = (0.13 + mini.heat * 0.12) * (u / 500)
+                  b.vx += (dx / dist) * acc
+                  b.vy += (dy / dist) * acc
+                  const cap = (1.8 + mini.heat * 1.5) * (u / 500)
+                  const v = Math.hypot(b.vx, b.vy)
+                  if (v > cap) {
+                    b.vx = (b.vx / v) * cap
+                    b.vy = (b.vy / v) * cap
+                  }
+                  b.x += b.vx
+                  b.y += b.vy
+                }
+                ctx.font = `${Math.round(botR * 1.8)}px system-ui`
+                ctx.textAlign = 'center'
+                ctx.fillText('🤖', b.x, b.y)
+              }
+              const yards = Math.floor((scrimY - ball.y) / g.pxPerYd)
+              if (ball.y <= goalY + 1) {
+                finishPlayRef.current({ correct: true, yards: 100 - mini.startBall })
+              } else if (mini.age > 30 && mini.bots.some((b) => Math.hypot(b.x - ball.x, b.y - ball.y) < ball.r * 0.8 + botR * 0.65)) {
+                w.shake = 8
+                finishPlayRef.current({ correct: true, yards: Math.max(0, yards) })
+              } else if (mini.finger && yards > 0) {
+                // live yardage readout while he runs
+                ctx.font = `900 ${Math.round(Math.max(14, u * 0.04))}px system-ui`
+                ctx.fillStyle = 'rgba(255,255,255,0.9)'
+                ctx.fillText(`+${yards} yd`, Math.min(w.w - u * 0.08, ball.x + ball.r + u * 0.07), ball.y)
+              }
+              if (!mini.finger) {
+                ctx.font = hintFont
+                ctx.fillStyle = 'rgba(255,255,255,0.95)'
+                ctx.fillText('👆 Drag to run — dodge the 🤖!', w.w / 2, Math.min(trackBot - u * 0.03, ball.y + ball.r + u * 0.08))
+              }
             }
-            w.kick = null
-          } else {
-            const tx = k.good ? w.w / 2 : w.w / 2 - w.w * 0.3 // misses sail wide left
-            const kx = k.x0 + (tx - k.x0) * p
-            const ky = k.y0 + (zoneH * 0.45 - k.y0) * p - Math.sin(p * Math.PI) * w.h * 0.18
-            ctx.save()
-            ctx.translate(kx, ky)
-            ctx.rotate(p * 9)
-            ctx.fillStyle = '#92400e'
+          } else if (mini.kind === 'chase') {
+            // the Robots' runner breaks loose at the dashed line — catch him first
+            const escY = Math.min(trackBot, g.oppY(mini.startOpp - 30))
+            ctx.strokeStyle = 'rgba(220,38,38,0.85)'
+            ctx.lineWidth = 3
+            ctx.setLineDash([10, 8])
             ctx.beginPath()
-            ctx.ellipse(0, 0, 10, 6.5, 0, 0, Math.PI * 2)
-            ctx.fill()
-            ctx.strokeStyle = '#fef3c7'
-            ctx.lineWidth = 1.5
-            ctx.beginPath()
-            ctx.moveTo(-4, 0)
-            ctx.lineTo(4, 0)
+            ctx.moveTo(-20, escY)
+            ctx.lineTo(w.w + 20, escY)
             ctx.stroke()
-            ctx.restore()
+            ctx.setLineDash([])
+            const r = mini.runner
+            if (mini.age > 70) {
+              mini.jukeT--
+              if (mini.jukeT <= 0) {
+                mini.jukeT = 28 + Math.floor(Math.random() * 40)
+                r.tx = w.w * (0.14 + Math.random() * 0.72)
+              }
+              const spd = Math.max(2.6, u * 0.008)
+              r.y += spd * 0.74
+              r.x += Math.max(-spd, Math.min(spd, (r.tx - r.x) * 0.07))
+            }
+            if (mini.finger) {
+              const dx = mini.finger.x - ball.x
+              const dy = mini.finger.y - ball.y
+              const dist = Math.hypot(dx, dy)
+              if (dist > 2) {
+                const step = Math.min(dist, Math.max(3.4, u * 0.0105))
+                ball.x += (dx / dist) * step
+                ball.y += (dy / dist) * step
+                ball.rot += step / ball.r
+              }
+            }
+            ball.x = Math.max(ball.r * 0.8, Math.min(w.w - ball.r * 0.8, ball.x))
+            ball.y = Math.max(trackTop, Math.min(trackBot, ball.y))
+            const pulse = 1 + Math.sin(w.t * 0.15) * 0.12
+            ctx.strokeStyle = 'rgba(220,38,38,0.8)'
+            ctx.lineWidth = 3
+            ctx.beginPath()
+            ctx.arc(r.x, r.y, botR * 1.2 * pulse, 0, Math.PI * 2)
+            ctx.stroke()
+            ctx.font = `${Math.round(botR * 2)}px system-ui`
+            ctx.textAlign = 'center'
+            ctx.fillText('🤖', r.x, r.y)
+            if (Math.hypot(r.x - ball.x, r.y - ball.y) < ball.r * 0.85 + botR * 0.8) {
+              w.shake = 9
+              finishPlayRef.current({ correct: true, tackled: true })
+            } else if (r.y >= escY) {
+              finishPlayRef.current({ correct: true, tackled: false })
+            } else if (!mini.finger) {
+              ctx.font = hintFont
+              ctx.fillStyle = 'rgba(255,255,255,0.95)'
+              ctx.fillText('👆 Drag your ball — CATCH him!', w.w / 2, Math.min(trackBot - u * 0.03, ball.y + ball.r + u * 0.08))
+            }
+          } else {
+            // ⛳-style kick: pull back, let go
+            const k = mini
+            if (k.flight) {
+              const f = k.flight
+              f.t++
+              const p = f.t / f.dur
+              if (p >= 1) {
+                for (let i = 0; i < (f.good ? 26 : 10); i++) {
+                  w.particles.push({ x: f.endX, y: f.endY, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.4) * 7, life: 0.9, color: f.good ? '#fde047' : '#94a3b8', size: 3 + Math.random() * 5 })
+                }
+                finishPlayRef.current({ correct: true, made: f.good })
+              } else {
+                const x = k.tee.x + (f.endX - k.tee.x) * p
+                const y = k.tee.y + (f.endY - k.tee.y) * p - Math.sin(p * Math.PI) * f.arc
+                drawPigskin(ctx, x, y, u * 0.032, p * 9)
+              }
+            } else {
+              drawPigskin(ctx, k.tee.x, k.tee.y, u * 0.04, -0.5)
+              if (k.drag) {
+                const d = k.drag
+                const px = d.x - d.x0
+                const py = d.y - d.y0
+                const len = Math.hypot(px, py)
+                const power = Math.min(1, len / (w.h * 0.34))
+                const kickYd = Math.round(power * 65)
+                const enough = kickYd >= k.need && py > len * 0.35
+                if (len > 10 && py > 0) {
+                  // the aim arrow mirrors the pull — like lining up a putt
+                  const ax = k.tee.x - (px / len) * power * w.h * 0.3
+                  const ay = k.tee.y - (py / len) * power * w.h * 0.3
+                  ctx.strokeStyle = enough ? 'rgba(74,222,128,0.95)' : 'rgba(251,191,36,0.95)'
+                  ctx.lineWidth = Math.max(4, u * 0.012)
+                  ctx.setLineDash([8, 7])
+                  ctx.beginPath()
+                  ctx.moveTo(k.tee.x, k.tee.y)
+                  ctx.lineTo(ax, ay)
+                  ctx.stroke()
+                  ctx.setLineDash([])
+                  ctx.fillStyle = enough ? '#4ade80' : '#fbbf24'
+                  ctx.beginPath()
+                  ctx.arc(ax, ay, Math.max(5, u * 0.014), 0, Math.PI * 2)
+                  ctx.fill()
+                  ctx.font = `900 ${Math.round(Math.max(15, u * 0.045))}px system-ui`
+                  ctx.textAlign = 'center'
+                  ctx.fillText(`${kickYd} yds`, k.tee.x, k.tee.y + u * 0.1)
+                }
+              } else {
+                ctx.font = hintFont
+                ctx.fillStyle = 'rgba(255,255,255,0.95)'
+                ctx.textAlign = 'center'
+                ctx.fillText('👆 Pull the ball back… let go to KICK!', w.w / 2, k.tee.y + u * 0.12)
+                ctx.font = `800 ${Math.round(Math.max(12, u * 0.034))}px system-ui`
+                ctx.fillText(`${k.need} yards to the posts`, w.w / 2, k.tee.y + u * 0.12 + Math.max(16, u * 0.05))
+              }
+            }
           }
         }
       } else {
@@ -1335,7 +1715,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         f.y -= 0.8
         f.life -= 0.016
         ctx.globalAlpha = Math.max(0, Math.min(1, f.life))
-        ctx.font = '800 22px system-ui'
+        ctx.font = `800 ${Math.round(Math.max(17, Math.min(26, w.w * 0.058)))}px system-ui`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.strokeStyle = 'rgba(255,255,255,0.9)'
@@ -1419,7 +1799,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           </span>
         )}
         <div className="flex items-center justify-center gap-2">
-          <p className="text-lg font-extrabold text-slate-800 leading-snug">{gameday && picking ? '📣 Call your play!' : question?.prompt}</p>
+          <p className="text-lg font-extrabold text-slate-800 leading-snug">{gameday && picking ? '📣 Call your play!' : miniOn ? '🏈 RUN THE PLAY!' : question?.prompt}</p>
           <button
             onClick={() => {
               ensureAudio()
@@ -1444,11 +1824,11 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
             </button>
           )}
         </div>
-        {question?.visual && !(gameday && picking) && (
+        {question?.visual && !(gameday && (picking || miniOn)) && (
           <p className="mt-1 text-3xl leading-relaxed whitespace-pre-wrap break-words">{question.visual}</p>
         )}
         {/* ⚡ speed window: answer while the bar still glows for bonus coins */}
-        <div className={`mt-2 flex items-center gap-1.5 ${gameday && picking ? 'invisible' : ''}`}>
+        <div className={`mt-2 flex items-center gap-1.5 ${gameday && (picking || miniOn) ? 'invisible' : ''}`}>
           <span className="text-[10px]">⚡</span>
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
             {/* keyed on picking too — gameday's first question otherwise reuses
@@ -1463,8 +1843,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       <div ref={wrapRef} className="relative flex-1 min-h-[320px] mx-3 mb-3 rounded-2xl overflow-hidden shadow-inner border-2 border-green-200">
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full touch-none" />
         {gameday && picking && (
-          <div className="absolute inset-0 z-10 bg-slate-900/50 flex items-end justify-center p-3 pb-4">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl">
+          <div className="absolute inset-0 z-10 bg-slate-900/50 flex items-end justify-center p-2 pb-3 overflow-y-auto">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-3 shadow-2xl">
               <p className="text-center text-sm font-black text-slate-800">
                 {drive.phase === 'offense'
                   ? `${downWords(drive)} · ball on ${spotWords(drive)}`
@@ -1483,7 +1863,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
               </p>
               <div className="grid gap-2">
                 {availableCalls(drive).map((c) => {
-                  const d = describeCall(c, drive, streak)
+                  const d = describeCall(c, drive)
                   return (
                     <button
                       key={c}
@@ -1510,7 +1890,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       <div className="px-4 pb-3 flex items-center justify-between text-xs text-slate-400">
         <span>
           {gameday
-            ? 'Call a play — the question is how you run it!'
+            ? miniOn
+              ? '👆 Drag on the field — YOU are running the play!'
+              : 'Call it, answer it, then RUN it with your finger!'
             : football
             ? 'Tap the answer — run it downfield for yards!'
             : 'Tap the answer — the ball rolls over and eats it!'}

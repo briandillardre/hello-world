@@ -13,6 +13,7 @@ export const SKILLS: SkillMeta[] = [
   { id: 'shapes', name: 'Shapes', emoji: '🔺', blurb: 'Shapes, colors & patterns' },
   { id: 'words', name: 'Words', emoji: '📖', blurb: 'Sight words & first reading' },
   { id: 'science', name: 'Science', emoji: '🔬', blurb: 'How the world works' },
+  { id: 'machines', name: 'Machines', emoji: '⚙️', blurb: 'Gears, pulleys & how things are built' },
 ]
 
 const ri = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1))
@@ -919,6 +920,80 @@ function genScience(d: number): Question {
   }
 }
 
+// ---------------------------------------------------------------- machines
+// ⚙️ Mechanical design (Brian, Nov 6: "think mechanical design - how gears
+// work how pulleys work, etc."): simple machines up through gears, pulleys,
+// levers, hydraulics, structures, and the 3D-design way of SEEING parts —
+// top/side views, strong shapes, CAD, 3D printing. Every fact real, words
+// small. The `pic` diagrams are the 3D element: look at the shape and think.
+const MACHINES: Array<{ t: 1 | 2 | 3 | 4 | 5; q: string; a: string; m: [string, string]; why: string; pic?: string }> = [
+  // t1 — wheels, ramps, what simple tools do (~age 4)
+  { t: 1, q: 'What makes a wagon ROLL?', a: 'wheels', m: ['ropes', 'windows'], why: 'Wheels spin round and round, so the wagon rolls instead of drags.', pic: '🛞' },
+  { t: 1, q: 'A slide at the park is really a…', a: 'ramp', m: ['wheel', 'rope'], why: 'A ramp is a tilted road — slides, wheelchair ramps and loading ramps are all the same machine!', pic: '🛝' },
+  { t: 1, q: 'Which part of a bike do you push with your FEET?', a: 'the pedals', m: ['the bell', 'the seat'], why: 'Your feet push the pedals, the pedals spin the chain, and the chain spins the wheel.', pic: '🚲' },
+  { t: 1, q: 'What do you twist into wood to hold boards together?', a: 'a screw', m: ['a spoon', 'a crayon'], why: 'A screw twists in and GRIPS the wood — that’s why it holds better than pushing.', pic: '🪛' },
+  { t: 1, q: 'Which machine DIGS big holes?', a: 'an excavator', m: ['a toaster', 'a piano'], why: 'An excavator’s long arm and bucket scoop dirt — Dada’s machines dig with them!', pic: '🚜' },
+  { t: 1, q: 'Scissors CUT because their edges are…', a: 'sharp', m: ['soft', 'wet'], why: 'A sharp edge is thin like a wedge — it pushes the paper apart.', pic: '✂️' },
+  { t: 1, q: 'Which one SPINS round and round?', a: 'a fan', m: ['a pillow', 'a book'], why: 'A fan spins its blades to push the air — spinning is how lots of machines work.', pic: '🪭' },
+  { t: 1, q: 'What do you pull to raise a flag up the pole?', a: 'the rope', m: ['the grass', 'a ladder'], why: 'The rope runs over a little wheel at the top — pull down and the flag goes UP!', pic: '🚩' },
+  // t2 — levers, ramps, pulleys, wedges
+  { t: 2, q: 'A seesaw is a kind of simple machine called a…', a: 'lever', m: ['pulley', 'spring'], why: 'A lever is a board that tips on a balance point — seesaws, crowbars and shovels are all levers.', pic: '🎢' },
+  { t: 2, q: 'The balance point a seesaw tips on is called the…', a: 'fulcrum', m: ['bumper', 'pedal'], why: 'Every lever turns on its fulcrum — move it and the lever gets easier or harder to push.', pic: '⚖️' },
+  { t: 2, q: 'A ramp makes heavy things easier to…', a: 'push up', m: ['hear', 'smell'], why: 'Rolling up a long ramp takes less push than lifting straight up — the trade is a longer path.', pic: '📦' },
+  { t: 2, q: 'A pulley is a wheel with a ___ running over it.', a: 'rope', m: ['pillow', 'puddle'], why: 'The rope rides in the wheel’s groove — pull one end and the other end lifts your load.', pic: '🪝' },
+  { t: 2, q: 'You pull a pulley rope DOWN — the flag goes…', a: 'up', m: ['down', 'sideways'], why: 'The pulley wheel turns your pull around! Pulling down is easier because you can hang on the rope.', pic: '🚩' },
+  { t: 2, q: 'An axe splits wood because its edge is a…', a: 'wedge', m: ['wheel', 'magnet'], why: 'A wedge is two ramps back to back — it turns a chop into a sideways PUSH that splits the log.', pic: '🪓' },
+  { t: 2, q: 'A screw is really a ramp…', a: 'wrapped around a pole', m: ['folded in half', 'made of rubber'], why: 'Look close at the threads — it’s a tiny ramp spiraling around. Twisting walks it up the ramp!', pic: '🔩' },
+  { t: 2, q: 'Gears are wheels with ___ around the edge.', a: 'teeth', m: ['feathers', 'buttons'], why: 'The teeth of one gear fit between the teeth of the next, so one wheel can turn another.', pic: '⚙️' },
+  { t: 2, q: 'Which is EASIER for moving a heavy box up high?', a: 'rolling it up a ramp', m: ['throwing it', 'lifting it straight up'], why: 'The ramp spreads the work out over a longer path — same work, smaller push.', pic: '📦' },
+  // t3 — gears mesh, hydraulics, structures, bearings
+  { t: 3, q: 'Two gears with their teeth together spin in ___ directions.', a: 'opposite', m: ['the same', 'no'], why: 'Watch the teeth: when one gear turns right, it pushes the next gear left. Every pair flips!', pic: '⚙️⚙️' },
+  { t: 3, q: 'A BIG gear turns a SMALL gear — the small one spins…', a: 'faster', m: ['slower', 'backward only'], why: 'The small gear has fewer teeth, so it has to spin extra turns to keep up — that’s how bikes go fast.', pic: '⚙️▸⚙️' },
+  { t: 3, q: 'An excavator’s arm pushes with oil squeezed in tubes — that’s…', a: 'hydraulics', m: ['magnetics', 'elastics'], why: 'Liquid won’t squish! Pump oil into a tube and it shoves a piston with giant force — that’s how diggers lift.', pic: '🚜' },
+  { t: 3, q: 'Which shape makes bridges and cranes extra STRONG?', a: 'the triangle', m: ['the circle', 'the heart'], why: 'A triangle can’t change shape without bending a side — look for triangles in every bridge and crane!', pic: '🌉' },
+  { t: 3, q: 'Tiny rolling balls that help a wheel spin smoothly are called…', a: 'bearings', m: ['marbles', 'bubbles'], why: 'Ball bearings turn rubbing into rolling — skateboard wheels spin on them.', pic: '🛹' },
+  { t: 3, q: 'A bike chain connects the pedals to the…', a: 'back wheel', m: ['handlebars', 'kickstand'], why: 'The chain carries your pedal power back to the wheel — it’s a loop of tiny metal links.', pic: '🚲' },
+  { t: 3, q: 'More pulleys working together make a heavy load feel…', a: 'lighter', m: ['heavier', 'hotter'], why: 'Each extra rope line shares the weight — cranes use blocks of pulleys to lift cars like toys.', pic: '🏗️' },
+  { t: 3, q: 'The pointy end of a nail is a tiny…', a: 'wedge', m: ['pulley', 'gear'], why: 'The point pushes the wood apart a little at a time — a wedge doing quiet work.', pic: '🔨' },
+  { t: 3, q: 'Look at a ball from ANY side — what shape do you see?', a: 'a circle', m: ['a square', 'a triangle'], why: 'A sphere looks like a circle from every direction — it’s the same all the way around.', pic: '⚽' },
+  // t4 — engineering views, 3D printing, CAD, design thinking
+  { t: 4, q: 'Look straight DOWN at a soup can — what shape do you see?', a: 'a circle', m: ['a rectangle', 'a star'], why: 'From the top a cylinder is a circle; from the side it’s a rectangle. Engineers draw BOTH views!', pic: '🥫' },
+  { t: 4, q: 'Look at a soup can from the SIDE — what shape now?', a: 'a rectangle', m: ['a circle', 'a triangle'], why: 'Same can, different view! Drawing a part from the top, front and side shows its whole 3D shape.', pic: '🥫' },
+  { t: 4, q: 'Engineers design parts on a computer first, using…', a: 'CAD', m: ['TV remotes', 'calculators only'], why: 'CAD means computer-aided design — you build the part on screen, spin it around, and fix it before it’s real.', pic: '💻' },
+  { t: 4, q: 'A 3D printer builds a part by…', a: 'stacking thin layers', m: ['carving a big block', 'melting it whole'], why: 'It draws one thin slice at a time, layer on layer, until the whole 3D shape stands there.', pic: '🖨️' },
+  { t: 4, q: 'A wheelbarrow is secretly a LEVER — its fulcrum is the…', a: 'wheel', m: ['handles', 'bucket'], why: 'The wheel is the turning point, the load sits close to it, and your long handles get the easy job.', pic: '🛒' },
+  { t: 4, q: 'To lift a heavy rock with a lever, put the fulcrum…', a: 'close to the rock', m: ['close to your hands', 'far from everything'], why: 'A long arm for YOU and a short arm for the rock — that trade is what makes levers strong.', pic: '🪨' },
+  { t: 4, q: 'Why do tall cranes have big heavy blocks on their short end?', a: 'so they don’t tip over', m: ['to look cool', 'to go faster'], why: 'The counterweight balances the load — like a friend sitting on the other end of the seesaw.', pic: '🏗️' },
+  { t: 4, q: 'An engine’s pistons pump up and down — the crankshaft turns that into…', a: 'spinning', m: ['light', 'steam'], why: 'The crankshaft is a bent bar: push its elbows in turn and it spins, like pedaling a bike with your hands.', pic: '🏎️' },
+  { t: 4, q: 'Which beam shape holds the MOST weight for its metal?', a: 'an I-shape', m: ['a flat plank', 'a round noodle'], why: 'An I-beam puts its metal at the top and bottom, right where bending pulls hardest — look for the letter I under bridges!', pic: '🏗️' },
+  // t5 — gear ratios, torque, strong shapes, simulation
+  { t: 5, q: 'A 30-tooth gear turns a 10-tooth gear. One big turn spins the little one…', a: '3 times', m: ['once', 'half a turn'], why: '30 teeth must pass, and the little gear only holds 10 — so it spins 3 whole turns. That’s a gear ratio!', pic: '⚙️' },
+  { t: 5, q: 'A small gear driving a BIG gear trades speed for…', a: 'turning power', m: ['nothing', 'noise'], why: 'Gearing down spins slower but twists harder — it’s how a little motor moves a huge machine.', pic: '⚙️' },
+  { t: 5, q: 'The twisting force of a wrench is called…', a: 'torque', m: ['volume', 'voltage'], why: 'Torque is twist-force. A longer wrench means more torque — that’s why cheater bars work.', pic: '🔧' },
+  { t: 5, q: 'Two pulleys cut your pull in HALF — but you must pull the rope…', a: 'twice as far', m: ['half as far', 'the same'], why: 'Machines never give free work: half the force, double the rope. The work stays the same!', pic: '🪝' },
+  { t: 5, q: 'Which shape is strongest for a tank holding air pressure?', a: 'a sphere', m: ['a cube', 'a pyramid'], why: 'Pressure pushes the same everywhere, and a sphere has no corners to rip — that’s why tanks are round.', pic: '🎈' },
+  { t: 5, q: '3D printers make parts strong but light by filling the inside with…', a: 'honeycomb patterns', m: ['solid gold', 'water'], why: 'Honeycomb infill is mostly air but holds huge loads — bees figured it out first!', pic: '🐝' },
+  { t: 5, q: 'A robot arm bends like your arm, with a motor at every…', a: 'joint', m: ['finger nail', 'sticker'], why: 'Shoulder, elbow, wrist — each joint gets its own motor, and a computer moves them together.', pic: '🦾' },
+  { t: 5, q: 'Before building a part, engineers crash-test it ON THE COMPUTER — that’s a…', a: 'simulation', m: ['cartoon', 'guess'], why: 'A simulation bends and breaks the pretend part first, so the real one is built right the first time.', pic: '💻' },
+  { t: 5, q: 'Ball bearings make machines spin easily by turning sliding into…', a: 'rolling', m: ['bouncing', 'melting'], why: 'Rolling fights friction far less than sliding — that’s the whole secret of the wheel, shrunk tiny.', pic: '🛞' },
+]
+
+function genMachines(d: number): Question {
+  const t = d < 25 ? 1 : d < 50 ? 2 : d < 75 ? 3 : d < 90 ? 4 : 5
+  const f = pick(MACHINES.filter((x) => x.t === t))
+  const opts = shuffle([f.a, ...f.m])
+  return {
+    skill: 'machines',
+    difficulty: d,
+    prompt: f.q,
+    speech: f.q,
+    visual: f.pic,
+    choices: opts,
+    answer: opts.indexOf(f.a),
+    explain: f.why,
+  }
+}
+
 // ================================================================ ADULT BANK
 // Genuinely hard content for the grown-up tester profiles — same skill ids,
 // entirely different generators: mental math, sequences, number sense,
@@ -1333,6 +1408,44 @@ function genAdultScience(d: number): Question {
   }
 }
 
+// ---- machines → mechanical design (adult)
+const ADULT_MACH: Array<{ tier: 1 | 2 | 3; q: string; a: string; m: [string, string]; why: string }> = [
+  { tier: 1, q: 'A class 1 lever (like a seesaw) has the fulcrum…', a: 'between load and effort', m: ['at the load end', 'at the effort end'], why: 'Class 1 = fulcrum in the middle (seesaw, crowbar); class 2 = load in the middle (wheelbarrow); class 3 = effort in the middle (tweezers).' },
+  { tier: 1, q: 'A ramp 4 m long rising 1 m gives an ideal mechanical advantage of…', a: '4', m: ['1/4', '5'], why: 'MA of an inclined plane = length ÷ rise: push 4× as far, with ¼ the force.' },
+  { tier: 1, q: 'Torque equals force times…', a: 'lever-arm distance', m: ['velocity', 'mass'], why: 'τ = F × r. Same bolt, longer wrench, more torque — distance is a force multiplier.' },
+  { tier: 1, q: 'Meshed gears of 20 and 60 teeth give a ratio of…', a: '3:1', m: ['2:1', '9:1'], why: '60 ÷ 20 = 3 — the small gear turns three times per revolution of the large one.' },
+  { tier: 1, q: 'A movable pulley’s main gift is…', a: 'halving the needed force', m: ['reversing rotation', 'adding speed'], why: 'Two rope segments share the load — you pull twice the rope at half the force.' },
+  { tier: 1, q: 'Hydraulic systems multiply force because liquids are…', a: 'incompressible', m: ['magnetic', 'weightless'], why: 'Pascal’s principle: pressure applied to a confined fluid transmits everywhere — small piston in, big piston out.' },
+  { tier: 2, q: 'An I-beam resists bending efficiently because its flanges…', a: 'sit far from the neutral axis', m: ['are magnetized', 'flex like springs'], why: 'Bending stress peaks at the extremes; putting material there maximizes the second moment of area per pound.' },
+  { tier: 2, q: 'A worm gear drive typically cannot be back-driven, which is useful for…', a: 'holding loads in place', m: ['higher top speed', 'reversing instantly'], why: 'The shallow helix self-locks: the gear can’t turn the worm. Hoists and tuning pegs exploit exactly that.' },
+  { tier: 2, q: 'In CAD, a dimension marked with a tolerance like 10 ± 0.1 mm specifies…', a: 'the allowed size range', m: ['the surface color', 'the print speed'], why: 'No part is exact — tolerances say how far off is still acceptable, and tighter costs more to machine.' },
+  { tier: 2, q: 'A clearance fit between shaft and hole means the shaft is always…', a: 'slightly smaller', m: ['slightly larger', 'exactly equal'], why: 'Clearance fits slide and spin; interference (press) fits grip. The tolerance bands decide which you get.' },
+  { tier: 2, q: 'FDM 3D printing parts are weakest…', a: 'between layers', m: ['along the extrusion lines', 'at the corners'], why: 'Layer adhesion is weaker than the continuous filament — orient the print so loads don’t peel layers apart.' },
+  { tier: 2, q: 'A four-bar linkage converts rotation into…', a: 'a designed repeating motion', m: ['pure heat', 'random chaos'], why: 'Four links, four pivots — windshield wipers, bike suspension, piston pumps: pick link lengths, choose the path.' },
+  { tier: 2, q: 'Compound gear trains multiply stages, so 3:1 then 4:1 gives…', a: '12:1', m: ['7:1', '1:1'], why: 'Ratios in series multiply — two cheap stages beat one huge gear.' },
+  { tier: 3, q: 'Stress is force per area; strain is…', a: 'deformation per length', m: ['energy per volume', 'mass per area'], why: 'Stress (σ) loads the material, strain (ε) is its stretch response — their slope is Young’s modulus.' },
+  { tier: 3, q: 'A part that survives one big load may still fail later from…', a: 'fatigue', m: ['annealing', 'quenching'], why: 'Repeated small cycles grow microcracks — most real mechanical failures are fatigue, not overload.' },
+  { tier: 3, q: 'A factor of safety of 2 means the design should withstand…', a: 'twice the expected load', m: ['half the expected load', 'two failures'], why: 'Margin for the loads, materials and math you got slightly wrong — critical parts carry bigger factors.' },
+  { tier: 3, q: 'GD&T exists because coordinate dimensions alone can’t control…', a: 'form and fit between features', m: ['paint thickness', 'part cost'], why: 'Geometric dimensioning and tolerancing constrains flatness, position, perpendicularity — what assembly actually needs.' },
+  { tier: 3, q: 'CNC machining is subtractive; 3D printing is…', a: 'additive', m: ['abrasive', 'reductive'], why: 'One carves material away from a block; the other adds it layer by layer — opposite roads to the same part.' },
+  { tier: 3, q: 'Stress concentrates at sharp inside corners, so designers add…', a: 'fillets', m: ['more paint', 'decals'], why: 'A radius spreads the stress lines — cracked parts almost always start at a sharp notch.' },
+]
+
+function genAdultMachines(d: number): Question {
+  const tier = d < 35 ? 1 : d < 70 ? 2 : 3
+  const f = pick(ADULT_MACH.filter((x) => x.tier === tier))
+  const opts = shuffle([f.a, ...f.m])
+  return {
+    skill: 'machines',
+    difficulty: d,
+    prompt: f.q,
+    speech: f.q,
+    choices: opts,
+    answer: opts.indexOf(f.a),
+    explain: f.why,
+  }
+}
+
 const GENERATORS: Record<SkillId, (d: number) => Question> = {
   counting: genCounting,
   numbers: genNumbers,
@@ -1342,6 +1455,7 @@ const GENERATORS: Record<SkillId, (d: number) => Question> = {
   shapes: genShapes,
   words: genWords,
   science: genScience,
+  machines: genMachines,
 }
 
 const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
@@ -1353,6 +1467,7 @@ const ADULT_GENERATORS: Record<SkillId, (d: number) => Question> = {
   shapes: genAdultLogic,
   words: genAdultSpelling,
   science: genAdultScience,
+  machines: genAdultMachines,
 }
 
 /** adult display names for the same skill slots */
@@ -1365,6 +1480,7 @@ export const ADULT_SKILL_NAMES: Record<SkillId, string> = {
   shapes: 'Logic patterns',
   words: 'Spelling',
   science: 'Science & frontier',
+  machines: 'Mechanical design',
 }
 
 /** one rule for kid-vs-adult skill labels (was copy-pasted at five call sites) */
