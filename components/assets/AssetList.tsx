@@ -43,6 +43,8 @@ interface AssetListProps {
    *  geocode cache already knew at render ("near 304 N Church St, Greenville"
    *  / "in Greenville, SC"). Rows missing here are asked for client-side. */
   placeNames?: Record<string, string>
+  /** Road vehicles: miles today and over the last 7 days (driving_daily). */
+  miles?: Record<string, { today: number; week: number }>
   /** Company divisions (106) — enables the filter + the per-row chip. Empty
    *  for a company that hasn't created any, which renders nothing at all. */
   divisions?: import('@/lib/types').Division[]
@@ -88,7 +90,7 @@ const needsAttention = (a: AssetWithLocation) =>
   rowStatus(a).key === 'offline' ||
   (a.location?.battery != null && a.location.battery < 15)
 
-export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames, divisions = [], onAdd }: AssetListProps) {
+export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames, miles, divisions = [], onAdd }: AssetListProps) {
   const router = useRouter()
   const [divFilter, setDivFilter] = useDivisionFilter('assets')
   const [query, setQuery] = useState('')
@@ -312,6 +314,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
               carrier={carriers?.[asset.id]}
               division={divOf(asset)}
               where={whereOf(asset)}
+              miles={miles?.[asset.id]}
             />
           ))
         )}
@@ -334,7 +337,7 @@ export function AssetList({ assets, toolCounts, carriers, zoneNames, placeNames,
 const crewOf = (a: { metadata?: Record<string, unknown> | null }): string | null =>
   typeof a.metadata?.crew === 'string' && a.metadata.crew ? (a.metadata.crew as string) : null
 
-function AssetRow({ asset, toolCount, carrier, where, division }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; where: string | null; division?: import('@/lib/types').Division | null }) {
+function AssetRow({ asset, toolCount, carrier, where, division, miles }: { asset: AssetWithLocation; toolCount?: number; carrier?: { name: string; lastSeen: string }; where: string | null; miles?: { today: number; week: number }; division?: import('@/lib/types').Division | null }) {
   const status = rowStatus(asset)
   const battery = asset.location?.battery
   const fixIso = asset.location?.timestamp
@@ -385,6 +388,11 @@ function AssetRow({ asset, toolCount, carrier, where, division }: { asset: Asset
           <p className="flex items-center gap-1 mt-0.5 text-[12px] leading-snug text-ink/90 min-w-0">
             <MapPin className="h-3 w-3 text-teal flex-shrink-0" />
             <span className="truncate">{where}</span>
+          </p>
+        )}
+        {miles && (
+          <p className="mt-0.5 text-[12px] leading-snug text-ink/90 font-mono tabular-nums">
+            {Math.round(miles.today)} mi today <span className="text-faint">· {Math.round(miles.week)} mi this week</span>
           </p>
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[11px] leading-snug text-faint min-w-0">

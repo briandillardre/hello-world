@@ -7,7 +7,14 @@ import type { Asset, AssetLocation, AlertRule, Geofence, Company } from './types
  *  the bell said 9 — logged-in review, Aug 26). System alerts carry `kind`
  *  instead of a rule, so they're always actionable. Typed structurally so
  *  slim digest queries (kind + rule.trigger only) can use it too. */
+/** Routine events: logged, never on the bell. Zone crossings, plus low fuel
+ *  and a tracker's own low battery (Nov 6 — Brian: the app has to be a daily
+ *  helper; 77 open fuel/battery rows buried the five that matter: theft,
+ *  left site, lost truck power, check engine, a tracker gone dark). They
+ *  still land in the Log tab and the morning briefing. */
+const ROUTINE_KINDS = new Set(['fuel_low', 'battery_low'])
 export function isZoneLogEvent(e: { kind?: string | null; rule?: { trigger?: string | null } | null }): boolean {
+  if (e.kind && ROUTINE_KINDS.has(e.kind)) return true
   return !e.kind && (e.rule?.trigger === 'enter' || e.rule?.trigger === 'exit')
 }
 

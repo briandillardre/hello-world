@@ -15,7 +15,7 @@ import { normalizeRole, type Role } from './permissions'
  * company, which is exactly the grain we need.
  */
 
-export const PUSH_KINDS = ['alerts', 'evening', 'monday', 'nag', 'receipts', 'shares'] as const
+export const PUSH_KINDS = ['alerts', 'briefing', 'evening', 'monday', 'nag', 'receipts', 'shares'] as const
 export type PushKind = (typeof PUSH_KINDS)[number]
 
 export type PersonNotifyPrefs = Record<PushKind, boolean>
@@ -31,6 +31,7 @@ export interface PushKindMeta {
 export const PUSH_KIND_META: PushKindMeta[] = [
   { key: 'alerts', label: 'Theft & alerts', blurb: 'A machine moving after hours, leaving a site, or a tracker going quiet.', serious: true },
   { key: 'receipts', label: 'Missing receipts', blurb: 'Only for cards mapped to this person. Stops the moment the photo is in.' },
+  { key: 'briefing', label: 'Morning briefing', blurb: 'Every workday at 6 AM: miles per truck yesterday, where each one is, and what is broken.' },
   { key: 'evening', label: 'Evening digest', blurb: 'The end-of-day wrap for the whole company.' },
   { key: 'monday', label: 'Monday agenda', blurb: 'Last week’s problems as this week’s list.' },
   { key: 'nag', label: 'Still on the clock', blurb: 'Who never clocked out.' },
@@ -49,11 +50,12 @@ export const PUSH_KIND_META: PushKindMeta[] = [
  */
 export function defaultPersonNotify(role: Role): PersonNotifyPrefs {
   // A Prospective Client is looking, not working: nothing reaches their phone.
-  if (role === 'prospect') return { alerts: false, receipts: false, evening: false, monday: false, nag: false, shares: false }
+  if (role === 'prospect') return { alerts: false, receipts: false, briefing: false, evening: false, monday: false, nag: false, shares: false }
   const runsTheCompany = role === 'admin' || role === 'manager' || role === 'foreman'
   return {
     alerts: true,
     receipts: true,
+    briefing: role === 'admin' || role === 'manager',
     evening: runsTheCompany,
     monday: runsTheCompany,
     nag: role === 'admin' || role === 'manager',

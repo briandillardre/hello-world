@@ -79,9 +79,31 @@ export default async function AssetsPage() {
     if (gw) carriers[assoc.tool_asset_id] = { name: gw.name, lastSeen: assoc.last_seen }
   }
 
+  // Miles today + this week per road vehicle, off the hourly driving rows
+  // (Nov 6: Craig's only questions were "how many miles did the truck
+  // drive"). Under the caller's RLS; a failed read shows nothing.
+  const miles: Record<string, { today: number; week: number }> = {}
+  try {
+    const { createClient } = await import('@/lib/supabase-server')
+    const tz = 'America/New_York'
+    const dayKey = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ms))
+    const today = dayKey(Date.now())
+    const weekStart = dayKey(Date.now() - 6 * 86_400_000)
+    const ids = assets.filter((a) => a.type === 'vehicle').map((a) => a.id)
+    if (ids.length) {
+      const { data } = await createClient().from('driving_daily').select('asset_id, day, miles').in('asset_id', ids).gte('day', weekStart)
+      for (const r of (data ?? []) as { asset_id: string; day: string; miles: number }[]) {
+        const m = miles[r.asset_id] ?? { today: 0, week: 0 }
+        m.week += Number(r.miles) || 0
+        if (r.day === today) m.today += Number(r.miles) || 0
+        miles[r.asset_id] = m
+      }
+    }
+  } catch { /* pre-129 DB or a failed read: no miles line */ }
+
   return (
     <div className="h-full overflow-hidden flex flex-col pb-[54px] md:pb-20">
-      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} placeNames={placeNames} divisions={divisions} />
+      <AssetList assets={assets} toolCounts={toolCounts} carriers={carriers} zoneNames={zoneNames} placeNames={placeNames} divisions={divisions} miles={miles} />
     </div>
   )
 }
