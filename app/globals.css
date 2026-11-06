@@ -422,28 +422,30 @@ input[type='range'].slider-heat::-moz-range-thumb {
    OPEN = the same tab pushed flush against its drawer: dark, teal text, no
    shadow, a teal seam where it meets the panel, chevron pointing home. */
 .ht-edge-tab {
-  --tab-grip: rgba(5, 18, 32, .55);
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 10px 5px; min-width: 24px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  background: linear-gradient(90deg, #5eead4 0%, #2dd4bf 55%, #14b8a6 100%);
-  color: #061423; border: 1px solid #0f766e; cursor: pointer; user-select: none;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .55);
-  transition: background .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease, left .25s ease, right .25s ease;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  width: 32px; height: 58px; padding: 0; cursor: pointer; user-select: none;
+  color: #5eead4;
+  background: rgba(8, 20, 34, .82);
+  -webkit-backdrop-filter: blur(10px) saturate(140%); backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid rgba(148, 197, 230, .18);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+  transition: background .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease, left .25s ease, right .25s ease;
 }
-.ht-edge-tab.is-right { border-radius: 10px 0 0 10px; border-right: 0; background: linear-gradient(270deg, #5eead4 0%, #2dd4bf 55%, #14b8a6 100%); }
-.ht-edge-tab.is-left  { border-radius: 0 10px 10px 0; border-left: 0; }
-.ht-edge-tab:hover { filter: brightness(1.08); }
-.ht-edge-tab:active { transform: scale(.97); }
-.ht-edge-tab .grip { width: 12px; height: 9px; border-radius: 2px; flex: none;
-  background: repeating-linear-gradient(0deg, var(--tab-grip) 0 1.5px, transparent 1.5px 4px); opacity: .7; }
-.ht-edge-tab .lbl { writing-mode: vertical-rl; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; }
-.ht-edge-tab.is-open {
-  --tab-grip: rgba(45, 212, 191, .9);
-  background: #0b1a2b; color: #2dd4bf; border-color: #1e3a52; box-shadow: none;
-}
-.ht-edge-tab.is-open.is-left  { border-left: 3px solid #2dd4bf; border-radius: 0 10px 10px 0; }
-.ht-edge-tab.is-open.is-right { border-right: 3px solid #2dd4bf; border-radius: 10px 0 0 10px; }
+.ht-edge-tab.is-left  { border-radius: 0 12px 12px 0; border-left: 0; box-shadow: inset 2px 0 0 rgba(45, 212, 191, .9), 0 4px 14px rgba(0, 0, 0, .35); }
+.ht-edge-tab.is-right { border-radius: 12px 0 0 12px; border-right: 0; box-shadow: inset -2px 0 0 rgba(45, 212, 191, .9), 0 4px 14px rgba(0, 0, 0, .35); }
+.ht-edge-tab .chev { opacity: .65; transition: transform .2s ease; }
+.ht-edge-tab:hover { color: #99f6e4; border-color: rgba(94, 234, 212, .4); }
+.ht-edge-tab:active { transform: scale(.96); }
+.ht-edge-tab:focus-visible { outline: 2px solid #2dd4bf; outline-offset: 2px; }
+/* Open: the handle becomes part of its drawer — teal-filled, no edge shadow. */
+.ht-edge-tab.is-open { background: #14b8a6; color: #04131f; border-color: #14b8a6; }
+.ht-edge-tab.is-open.is-left  { box-shadow: 4px 0 12px rgba(0, 0, 0, .3); }
+.ht-edge-tab.is-open.is-right { box-shadow: -4px 0 12px rgba(0, 0, 0, .3); }
+.ht-edge-tab.is-open .chev { opacity: .9; }
+/* The other doors (PANELS, MENU) keep a label on the same shell. */
+.ht-edge-tab .lbl { writing-mode: vertical-rl; font-family: var(--font-mono, ui-monospace, monospace); font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; }
+.ht-edge-tab:has(.lbl) { height: auto; padding: 9px 0; }
+.ht-edge-tab .grip { display: none; }
 @media (prefers-reduced-motion: reduce) { .ht-edge-tab { transition: none; } }
 .ht-layers-tab { transition: left .25s ease, color .15s ease; }
 /* Phones: the drawer is the same min(320px, 55vw) panel WeatherControl draws;
