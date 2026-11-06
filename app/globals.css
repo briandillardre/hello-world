@@ -415,6 +415,36 @@ input[type='range'].slider-heat::-moz-range-thumb {
    set by CommandCenter's KioskNav) and the layers drawer (--ht-layers-w, set
    by WeatherControl) publish their widths; everything that used to sit
    underneath steps right by that much. Phones leave both at 0. */
+/* ── Edge tabs (LAYERS · MAP TOOLS · PANELS · MENU) — one language, two
+   states (Brian, Nov 6: tabs should "feel like they are being pulled out
+   or collapsed back in"). CLOSED = a solid teal pull handle standing off
+   the edge: grip ridges, a bright outer rim, a shadow thrown onto the map.
+   OPEN = the same tab pushed flush against its drawer: dark, teal text, no
+   shadow, a teal seam where it meets the panel, chevron pointing home. */
+.ht-edge-tab {
+  --tab-grip: rgba(5, 18, 32, .55);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 5px; min-width: 24px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: linear-gradient(90deg, #5eead4 0%, #2dd4bf 55%, #14b8a6 100%);
+  color: #061423; border: 1px solid #0f766e; cursor: pointer; user-select: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .55);
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease, left .25s ease, right .25s ease;
+}
+.ht-edge-tab.is-right { border-radius: 10px 0 0 10px; border-right: 0; background: linear-gradient(270deg, #5eead4 0%, #2dd4bf 55%, #14b8a6 100%); }
+.ht-edge-tab.is-left  { border-radius: 0 10px 10px 0; border-left: 0; }
+.ht-edge-tab:hover { filter: brightness(1.08); }
+.ht-edge-tab:active { transform: scale(.97); }
+.ht-edge-tab .grip { width: 12px; height: 9px; border-radius: 2px; flex: none;
+  background: repeating-linear-gradient(0deg, var(--tab-grip) 0 1.5px, transparent 1.5px 4px); opacity: .7; }
+.ht-edge-tab .lbl { writing-mode: vertical-rl; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; }
+.ht-edge-tab.is-open {
+  --tab-grip: rgba(45, 212, 191, .9);
+  background: #0b1a2b; color: #2dd4bf; border-color: #1e3a52; box-shadow: none;
+}
+.ht-edge-tab.is-open.is-left  { border-left: 3px solid #2dd4bf; border-radius: 0 10px 10px 0; }
+.ht-edge-tab.is-open.is-right { border-right: 3px solid #2dd4bf; border-radius: 10px 0 0 10px; }
+@media (prefers-reduced-motion: reduce) { .ht-edge-tab { transition: none; } }
 .ht-layers-tab { transition: left .25s ease, color .15s ease; }
 /* Phones: the drawer is the same min(320px, 55vw) panel WeatherControl draws;
    while it is open the LAYERS tab rides its right edge instead of sitting on
