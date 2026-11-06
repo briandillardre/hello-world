@@ -499,7 +499,10 @@ export async function POST(request: NextRequest) {
           })
           if (!error) {
             const { data: a } = await supabase.from('assets').select('name').eq('id', assetId).single()
-            healthNotes.push({ reason: `${a?.name ?? 'Vehicle'}: ${c.reason}`, severity: c.severity })
+            // Low fuel / weak battery are logged, not pushed (Nov 6: the
+            // phone rings only for theft, left site, lost truck power,
+            // check engine and a dark tracker). Critical still pushes.
+            if (c.severity === 'critical') healthNotes.push({ reason: `${a?.name ?? 'Vehicle'}: ${c.reason}`, severity: c.severity })
           }
         }
       }

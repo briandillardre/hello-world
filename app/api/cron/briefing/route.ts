@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveDigestPrefs, localNow } from '@/lib/weekly-digest'
-import { gatherBriefingFacts, briefingEmailHtml, briefingSms } from '@/lib/briefing'
+import { gatherBriefingFacts, briefingEmailHtml, briefingSms, briefingPush } from '@/lib/briefing'
+import { resolvePersonNotify, notifyRole } from '@/lib/person-notify'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -57,10 +58,36 @@ export async function GET(req: NextRequest) {
       const r = await sendAlertSms(co.alert_phone, briefingSms(facts, manageUrl))
       delivered = delivered || r.ok
     }
+    // Each manager gets it too — their own email and a push to their phone,
+    // behind their own "Morning briefing" switch (Nov 6: the briefing went
+    // only to the office inbox, so JT and Nate never saw it). Email skips
+    // the address the company copy already went to.
+    let people = 0
+    try {
+      const { data: profs } = await db.from('profiles').select('id, company_id, role, email, notify_prefs').eq('company_id', co.id)
+      const push = briefingPush(facts)
+      const { sendPushToUser } = await import('@/lib/push')
+      const { sendEmail } = await import('@/lib/email')
+      const sentTo = new Set([(b.email && co.alert_email ? String(co.alert_email) : '').toLowerCase()])
+      for (const p of profs ?? []) {
+        const role = notifyRole(p.id as string, co.id, p.role as string | null)
+        // The email carries yesterday's site $ — managers and up only.
+        if (role !== 'admin' && role !== 'manager') continue
+        if (!resolvePersonNotify(p.notify_prefs, role).briefing) continue
+        try { await sendPushToUser(co.id, p.id as string, { title: push.title, body: push.body, url: '/assets' }, { strict: true, kind: 'briefing' }) } catch { /* best-effort */ }
+        const em = String(p.email ?? '').toLowerCase()
+        if (em && !sentTo.has(em)) {
+          sentTo.add(em)
+          const r = await sendEmail(em, `${facts.company} — morning briefing · ${facts.dateLabel}`, briefingEmailHtml(facts, manageUrl))
+          delivered = delivered || r.ok
+        }
+        people++
+      }
+    } catch (err) { console.error('briefing per-person delivery failed', err) }
     // Stamp even when no channel is configured — otherwise this retries
     // hourly all morning for a send that can never work.
     await db.from('companies').update({ last_briefing_at: new Date().toISOString() }).eq('id', co.id)
-    results.push({ company: co.name ?? co.id, sent: delivered ? 'briefing' : 'briefing (no channel configured)' })
+    results.push({ company: co.name ?? co.id, sent: delivered ? `briefing (+${people} people)` : 'briefing (no channel configured)' })
   }
 
   return NextResponse.json({ ok: true, at: new Date().toISOString(), results })

@@ -28,6 +28,16 @@ export interface SiteBrief {
   milestonesSoon: { name: string; date: string | null }[]
 }
 
+export interface TruckBrief {
+  name: string
+  milesYesterday: number
+  /** Where its newest fix sits: a zone name, or null when off every zone. */
+  at: string | null
+  /** Hours since its newest fix — dark past 24. */
+  silentH: number | null
+  checkEngine: number
+}
+
 export interface BriefingFacts {
   company: string
   dateLabel: string                 // "Tue, Aug 5"
@@ -38,6 +48,10 @@ export interface BriefingFacts {
   alertsYesterday: number
   /** Insight-engine headlines (≤3) — trends the morning read should open with. */
   noticed: string[]
+  /** One line per road vehicle with a hardware tracker (Nov 6 — Brian:
+   *  "needs to be a daily helper and help run a business"; Craig's only
+   *  questions were miles per truck). Newest-first by miles. */
+  trucks: TruckBrief[]
 }
 
 /** Today's essentials at a point — Open-Meteo, free + keyless, ~200ms. */
@@ -155,6 +169,7 @@ export async function gatherBriefingFacts(
     .map((a) => a.name).slice(0, 5)
 
   const nameOf = new Map(((assets ?? []) as AssetRow[]).map((a) => [a.id, a.name]))
+  const trucks = await gatherTrucks(db, companyId, tz, (assets ?? []) as TruckAsset[], (zones ?? []) as ZoneRow[])
 
   return {
     company: companyName,
@@ -168,6 +183,7 @@ export async function gatherBriefingFacts(
       .slice(0, 6),
     openWorkOrders: (wos ?? []).filter((w) => w.status !== 'done' && w.status !== 'canceled').length,
     alertsYesterday: (alertsYest ?? []).length,
+    trucks,
     noticed: await (async () => {
       try {
         const { getInsightHeadlines } = await import('./insights')
@@ -176,6 +192,79 @@ export async function gatherBriefingFacts(
       } catch { return [] }
     })(),
   }
+}
+
+type TruckAsset = { id: string; name: string; type?: string; tracker_id?: string | null }
+
+/** Miles yesterday off the safety builder's day rows (driving_daily, built
+ *  hourly in the company's own day), the newest fix per truck, the zone it
+ *  sits in, and the check-engine count off the telemetry map. Each read
+ *  degrades to "unknown", never to an error. */
+async function gatherTrucks(
+  db: SupabaseClient, companyId: string, tz: string,
+  assets: TruckAsset[],
+  zones: { id: string; name: string; kind?: string | null; geometry?: { coordinates?: [number, number][][] } }[],
+): Promise<TruckBrief[]> {
+  const vehicles = assets.filter((a) => a.type === 'vehicle' && /^\d{15}$/.test(String(a.tracker_id ?? '')))
+  if (!vehicles.length) return []
+  const ids = vehicles.map((v) => v.id)
+  const yday = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(Date.now() - 86_400_000))
+  const [dd, tel] = await Promise.all([
+    db.from('driving_daily').select('asset_id, miles').in('asset_id', ids).eq('day', yday).then((r) => r.data ?? [], () => []),
+    db.from('asset_telemetry_latest').select('asset_id, readings').in('asset_id', ids).then((r) => r.data ?? [], () => []),
+  ])
+  const miles = new Map((dd as { asset_id: string; miles: number }[]).map((r) => [r.asset_id, Number(r.miles) || 0]))
+  const codes = new Map((tel as { asset_id: string; readings: Record<string, { v?: unknown }> | null }[])
+    .map((r) => [r.asset_id, Number(r.readings?.['can.dtc.number']?.v ?? 0) || 0]))
+  const { pointInPolygon } = await import('./alerts-engine')
+  const out: TruckBrief[] = []
+  for (const v of vehicles) {
+    const { data } = await db.from('asset_locations').select('lat, lng, timestamp')
+      .eq('asset_id', v.id).order('timestamp', { ascending: false }).limit(1)
+    const fix = (data ?? [])[0] as { lat: number; lng: number; timestamp: string } | undefined
+    let at: string | null = null
+    if (fix) {
+      for (const z of zones) {
+        if ((z.kind ?? 'site') === 'boundary') continue
+        const ring = z.geometry?.coordinates?.[0]
+        if (ring && ring.length >= 3 && pointInPolygon([fix.lng, fix.lat], ring)) { at = z.name; break }
+      }
+    }
+    out.push({
+      name: v.name,
+      milesYesterday: Math.round(miles.get(v.id) ?? 0),
+      at,
+      silentH: fix ? (Date.now() - Date.parse(fix.timestamp)) / 3_600_000 : null,
+      checkEngine: codes.get(v.id) ?? 0,
+    })
+  }
+  return out.sort((a, b) => b.milesYesterday - a.milesYesterday)
+}
+
+/** "F350 — 112 mi · at Magley" / "RAM 2500 — dark 28 days" */
+export function truckLine(t: TruckBrief): string {
+  if (t.silentH == null) return `${t.name} — never reported`
+  if (t.silentH > 24) return `${t.name} — dark ${t.silentH > 48 ? `${Math.round(t.silentH / 24)} days` : `${Math.round(t.silentH)} h`}`
+  const bits = [t.milesYesterday ? `${t.milesYesterday} mi` : 'parked']
+  bits.push(t.at ? `at ${t.at}` : 'off site')
+  if (t.checkEngine) bits.push(`check engine (${t.checkEngine})`)
+  return `${t.name} — ${bits.join(' · ')}`
+}
+
+/** The push: one line a manager reads on the lock screen. */
+export function briefingPush(f: BriefingFacts): { title: string; body: string } {
+  const live = f.trucks.filter((t) => t.silentH != null && t.silentH <= 24)
+  const miles = live.reduce((s, t) => s + t.milesYesterday, 0)
+  const dark = f.trucks.filter((t) => t.silentH == null || t.silentH > 24).length
+  const cel = f.trucks.filter((t) => t.checkEngine && t.silentH != null && t.silentH <= 24).length
+  const top = live.filter((t) => t.milesYesterday > 0).slice(0, 3).map((t) => `${t.name} ${t.milesYesterday} mi`)
+  const bits: string[] = []
+  if (top.length) bits.push(`Yesterday: ${top.join(', ')}${live.filter((t) => t.milesYesterday > 0).length > 3 ? ` (${Math.round(miles)} mi total)` : ''}`)
+  else bits.push('No truck moved yesterday')
+  if (dark) bits.push(`${dark} tracker${dark === 1 ? '' : 's'} dark`)
+  if (cel) bits.push(`${cel} check engine`)
+  if (f.alertsYesterday) bits.push(`${f.alertsYesterday} alert${f.alertsYesterday === 1 ? '' : 's'}`)
+  return { title: `☀ ${f.company} · ${f.dateLabel}`, body: bits.join(' · ') }
 }
 
 // ── Composition ────────────────────────────────────────────────────────────
@@ -187,6 +276,10 @@ export function briefingEmailHtml(f: BriefingFacts, manageUrl?: string | null): 
   if (f.noticed.length) {
     inner += h2('Noticed')
     for (const n of f.noticed) inner += li(`✨ ${escapeHtml(n)}`)
+  }
+  if (f.trucks.length) {
+    inner += h2('Trucks')
+    for (const t of f.trucks) inner += li(escapeHtml(truckLine(t)))
   }
   if (f.sites.length) {
     for (const s of f.sites) {

@@ -282,7 +282,7 @@ export function AlertList({ alerts, onAcknowledge, onAcknowledgeMany, canRecover
             onClick={() => pickTab('activity')}
             className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${tab === 'activity' ? 'bg-teal/20 text-teal' : 'text-faint hover:text-ink'}`}
           >
-            Zone log{unreadActivity.length > 0 ? ` (${unreadActivity.length} new)` : ''}
+            Log{unreadActivity.length > 0 ? ` (${unreadActivity.length} new)` : ''}
           </button>
         </div>
         {tab === 'activity' && (
