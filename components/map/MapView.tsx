@@ -9059,11 +9059,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         }}
         className={`ht-edge-tab is-right ${railHidden ? '' : 'is-open'} absolute z-20 touch-none`}
       >
-        <span className="grip" aria-hidden />
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {railHidden ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
-        </svg>
-        <span className="lbl">Map tools</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+        <svg className="chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{railHidden ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}</svg>
+        <span className="sr-only">Map tools</span>
       </button>
 
       {/* LEFT tray handle — the layers entry on /map AND /command (Brian,
@@ -9101,11 +9099,9 @@ map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bo
         // travels with its pullout). Same handle opens and closes it.
         className={`ht-edge-tab is-left ht-layers-tab ${layersOpen ? 'is-open' : ''} absolute left-0 top-[44%] ${kiosk ? 'z-[46]' : 'z-[31]'} touch-none`}
       >
-        <span className="grip" aria-hidden />
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {!layersOpen ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}
-        </svg>
-        <span className="lbl">Layers</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /><path d="m3 17 9 5 9-5" /></svg>
+        <svg className="chev" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{layersOpen ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />}</svg>
+        <span className="sr-only">Layers</span>
       </button>
 
       {/* Search box: top-center overlay, opened from the rail's search
