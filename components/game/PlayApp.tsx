@@ -13,7 +13,11 @@ import type { KidProfile, RoundResult, SkillId } from '@/lib/game/types'
 import { AnswerDelta, BallGame } from './BallGame'
 import { FunZone } from './FunZone'
 import { MissionCard } from './MissionCard'
-import { MISSION_COINS } from '@/lib/game/missions'
+import { dayKey, MISSION_COINS } from '@/lib/game/missions'
+
+/** 🤝 Brothers mode pay: per right answer the brother gets, + a strong-round bonus */
+const COACH_COINS_PER = 2
+const COACH_ROUND_BONUS = 5
 import { MissReview } from './MissReview'
 import { ParentDashboard } from './ParentDashboard'
 import { PersonalityQuiz } from './PersonalityQuiz'
@@ -53,6 +57,9 @@ export function PlayApp() {
   const [gameDayLatch, setGameDayLatch] = useState(false)
   const [lastResult, setLastResult] = useState<RoundResult | null>(null)
   const [gameKey, setGameKey] = useState(0)
+  // 🤝 Brothers mode: while set, the ACTIVE kid is the brother playing and
+  // this is the big brother coaching; cleared the moment we're back home
+  const [coachId, setCoachId] = useState<string | null>(null)
 
   useEffect(() => {
     const local = loadProfiles()
@@ -95,6 +102,17 @@ export function PlayApp() {
   }, [profiles])
 
   const kid = useMemo(() => profiles.find((p) => p.id === activeId) ?? null, [profiles, activeId])
+  const coachKid = useMemo(() => (coachId ? profiles.find((p) => p.id === coachId) ?? null : null), [profiles, coachId])
+  const coachProp = useMemo(() => (coachKid ? { name: coachKid.name, avatar: coachKid.avatar } : undefined), [coachKid])
+
+  // a coach round ends wherever it ends (summary → home, quit, shop → back):
+  // home always belongs to the coach again
+  useEffect(() => {
+    if (screen === 'home' && coachId) {
+      setActiveId(coachId)
+      setCoachId(null)
+    }
+  }, [screen, coachId])
 
   const updateKid = useCallback((id: string, fn: (k: KidProfile) => KidProfile) => {
     // pure updater — persistence is handled by the debounced save effect
@@ -105,6 +123,17 @@ export function PlayApp() {
   const handleAnswer = useCallback(
     (delta: AnswerDelta) => {
       if (!activeId) return
+      if (coachId) {
+        // 🤝 coached: coins, XP and a marked history row — but the ability
+        // estimate stays put (we can't tell whose brain answered)
+        updateKid(activeId, (k) => ({
+          ...k,
+          coins: k.coins + delta.coins,
+          xp: k.xp + delta.xp,
+          history: [...k.history, { t: Date.now(), skill: delta.skill, difficulty: delta.difficulty, correct: delta.correct, ms: delta.ms, coached: true }].slice(-HISTORY_CAP),
+        }))
+        return
+      }
       updateKid(activeId, (k) => ({
         ...k,
         coins: k.coins + delta.coins,
@@ -126,7 +155,7 @@ export function PlayApp() {
         },
       }))
     },
-    [activeId, updateKid]
+    [activeId, coachId, updateKid]
   )
 
   const handleComplete = useCallback(
@@ -154,10 +183,18 @@ export function PlayApp() {
         reviewQueue: result.reviewQueue ?? k.reviewQueue,
         // per-skill bestStreak already persisted per answer in handleAnswer
       }))
-      setLastResult({ ...result, questBonus })
+      // 🤝 the coach earns for every answer their brother got right, plus a
+      // bonus for a strong round — teaching is the job, so it pays
+      let coach: RoundResult['coach']
+      if (coachKid) {
+        const coachCoins = result.correct * COACH_COINS_PER + (result.correct >= Math.ceil(result.total * 0.7) ? COACH_ROUND_BONUS : 0)
+        updateKid(coachKid.id, (k) => ({ ...k, coins: k.coins + coachCoins, xp: k.xp + 1, coachRounds: (k.coachRounds ?? 0) + 1 }))
+        coach = { name: coachKid.name, avatar: coachKid.avatar, coins: coachCoins }
+      }
+      setLastResult({ ...result, questBonus, coach })
       setScreen('summary')
     },
-    [activeId, kid, updateKid]
+    [activeId, kid, coachKid, updateKid]
   )
 
   const handlePersonality = useCallback(
@@ -176,8 +213,9 @@ export function PlayApp() {
   useEffect(() => {
     if (screen !== 'summary' || !lastResult || !kid || kid.isTester) return
     const r = lastResult
-    const line =
-      r.correct === r.total
+    const line = r.coach
+      ? `Team Whalehogs! ${r.coach.name} coached ${kid.name} to ${r.correct} out of ${r.total}! ${r.coach.name} earned ${r.coach.coins} coach coins!`
+      : r.correct === r.total
         ? `Perfect! ${r.correct} out of ${r.total}! You're on fire, ${kid.name}!`
         : r.stars >= 2
         ? `Great job ${kid.name}! You got ${r.correct} out of ${r.total}!`
@@ -186,6 +224,20 @@ export function PlayApp() {
     return () => window.clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen])
+
+  /** 🤝 big brother coaches little brother through a Mix round */
+  const startCoaching = (coachKidId: string, playerId: string) => {
+    const player = profiles.find((p) => p.id === playerId)
+    if (!player || coachKidId === playerId) return
+    const mode = player.gameMode ?? 'ball'
+    setCoachId(coachKidId)
+    setActiveId(playerId)
+    setGameSkill('mix')
+    setGameFootball(mode !== 'ball')
+    setGameDayLatch(mode === 'gameday')
+    setGameKey((k) => k + 1)
+    setScreen('game')
+  }
 
   const startGame = (skillChoice: SkillId | 'mix') => {
     const mode = kid?.gameMode ?? 'ball'
@@ -312,6 +364,7 @@ export function PlayApp() {
           football={gameFootball}
           gameday={gameDayLatch}
           dailyDouble={isDailyDouble}
+          coach={coachProp}
           onAnswer={handleAnswer}
           onComplete={handleComplete}
           onQuit={() => setScreen('home')}
@@ -382,6 +435,15 @@ export function PlayApp() {
             {'⭐'.repeat(r.stars)}
             <span className="opacity-20">{'⭐'.repeat(3 - r.stars)}</span>
           </div>
+          {r.coach && (
+            <div className="rounded-2xl bg-gradient-to-r from-amber-100 to-orange-100 border-2 border-amber-300 shadow p-3 mb-2">
+              <p className="text-base font-black text-amber-900">🤝 Team Whalehogs!</p>
+              <p className="text-sm font-bold text-amber-800">
+                {r.coach.avatar} {r.coach.name} coached {kid.avatar} {kid.name} — {r.coach.name} earned +{r.coach.coins} 🪙 coach coins
+              </p>
+              <p className="text-[11px] font-semibold text-amber-700 mt-0.5">Practice round — it doesn&apos;t change anyone&apos;s skill scores.</p>
+            </div>
+          )}
           <div className="rounded-2xl bg-white border-2 border-yellow-200 shadow p-4 mb-2">
             {r.footballScore && (
               <p className="text-lg font-black text-slate-800">
@@ -480,7 +542,7 @@ export function PlayApp() {
                 🎮 Fun Zone! <span className="block text-xs font-semibold opacity-80">{mmss(kid.playSeconds ?? 0)} of play time banked — go spend it!</span>
               </BigButton>
             )}
-            <BigButton color="green" onClick={() => startGame(gameSkill)}>
+            <BigButton color="green" onClick={() => (coachId && kid ? startCoaching(coachId, kid.id) : startGame(gameSkill))}>
               ▶️ Play again
             </BigButton>
             <BigButton color="blue" onClick={() => setScreen('shop')}>
@@ -616,13 +678,22 @@ export function PlayApp() {
           <MissionCard
             kid={kid}
             onConfirm={(m) =>
-              updateKid(kid.id, (k) => ({
-                ...k,
-                coins: k.coins + MISSION_COINS,
-                missionDoneDay: today,
-                missionsDone: (k.missionsDone ?? 0) + 1,
-                missionLog: [...(k.missionLog ?? []), { day: today, id: m.id, title: m.title }].slice(-14),
-              }))
+              updateKid(kid.id, (k) => {
+                // the day is read at CONFIRM time (a home screen left open past
+                // midnight stamped yesterday), and a day pays once — even if a
+                // second device or a stale screen asks again (ship-check)
+                const day = dayKey()
+                if (k.missionDoneDay === day) return k
+                return {
+                  ...k,
+                  coins: k.coins + MISSION_COINS,
+                  // +1 xp so the cloud merge (attempts → xp → play spent) sees the confirm
+                  xp: k.xp + 1,
+                  missionDoneDay: day,
+                  missionsDone: (k.missionsDone ?? 0) + 1,
+                  missionLog: [...(k.missionLog ?? []), { day, id: m.id, title: m.title, at: Date.now() }].slice(-14),
+                }
+              })
             }
           />
         )}
@@ -655,6 +726,29 @@ export function PlayApp() {
         <BigButton color="green" onClick={() => startGame('mix')}>
           🎲 Mix it up! <span className="block text-xs font-semibold opacity-80">A little of everything{roundsToday === 0 ? ' · 🌅 2× coins!' : ''}</span>
         </BigButton>
+
+        {/* 🤝 Brothers mode — big brother coaches a younger brother's round */}
+        {!kid.isTester &&
+          profiles
+            .filter((p) => !p.isTester && p.id !== kid.id && p.birthdate > kid.birthdate)
+            .map((bro) => (
+              <button
+                key={bro.id}
+                onClick={() => startCoaching(kid.id, bro.id)}
+                className="w-full mt-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 border-b-4 border-orange-700 text-white px-4 py-3 text-left flex items-center gap-3 shadow active:scale-95 active:border-b-2 transition-transform"
+              >
+                <span className="text-3xl leading-none">
+                  {kid.avatar}🤝{bro.avatar}
+                </span>
+                <span className="flex-1">
+                  <span className="block font-black">Coach {bro.name}!</span>
+                  <span className="block text-[11px] font-semibold opacity-90">
+                    {bro.name} taps, you help with words · +{COACH_COINS_PER} 🪙 for every one he gets right
+                    {(kid.coachRounds ?? 0) > 0 ? ` · coached ${kid.coachRounds}×` : ''}
+                  </span>
+                </span>
+              </button>
+            ))}
 
         {/* 🎮 earned play time — right answers are the arcade's coin slot */}
         <div className="mt-3">

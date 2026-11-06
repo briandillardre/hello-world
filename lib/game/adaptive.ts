@@ -223,7 +223,7 @@ export function percentileLabel(p: number): string {
 
 /** accuracy over the last n answers for a skill (or all skills) */
 export function recentAccuracy(history: AnswerRecord[], skill: SkillId | null, n = 20): number | null {
-  const relevant = skill ? history.filter((h) => h.skill === skill) : history
+  const relevant = (skill ? history.filter((h) => h.skill === skill) : history).filter((h) => !h.coached)
   if (relevant.length === 0) return null
   const recent = relevant.slice(-n)
   return recent.filter((r) => r.correct).length / recent.length
@@ -231,7 +231,7 @@ export function recentAccuracy(history: AnswerRecord[], skill: SkillId | null, n
 
 /** compare recent window vs the one before it: 'up' | 'down' | 'flat' | null */
 export function trend(history: AnswerRecord[], skill: SkillId, n = 15): 'up' | 'down' | 'flat' | null {
-  const relevant = history.filter((h) => h.skill === skill)
+  const relevant = history.filter((h) => h.skill === skill && !h.coached)
   if (relevant.length < n * 2) return null
   const recent = relevant.slice(-n)
   const prior = relevant.slice(-n * 2, -n)

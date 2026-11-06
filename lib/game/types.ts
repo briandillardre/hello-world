@@ -56,6 +56,8 @@ export interface Question {
 export interface MissedQuestion {
   skill: SkillId
   prompt: string
+  /** the spoken version — for listening questions it's the only place the target lives */
+  speech?: string
   visual?: string
   picked: string
   answer: string
@@ -70,6 +72,9 @@ export interface AnswerRecord {
   correct: boolean
   /** time to answer, in ms */
   ms?: number
+  /** 🤝 answered with a big brother coaching — practice, not measurement:
+   *  never moves the ability estimate, never counts toward accuracy/benchmarks */
+  coached?: boolean
 }
 
 export interface SkillState {
@@ -109,6 +114,8 @@ export interface RoundResult {
   playSecondsEarned?: number
   /** 🏈 Game Day final score (Whalehogs vs Robots) */
   footballScore?: { us: number; them: number }
+  /** 🤝 Brothers mode: who coached this round and what they earned for it */
+  coach?: { name: string; avatar: string; coins: number }
 }
 
 export interface ReviewItem {
@@ -157,8 +164,10 @@ export interface KidProfile {
   missionDoneDay?: string
   /** lifetime count of confirmed real-world missions */
   missionsDone?: number
+  /** 🤝 rounds this kid has coached a brother through */
+  coachRounds?: number
   /** the last few confirmed missions (newest last) for the grown-ups report */
-  missionLog?: Array<{ day: string; id: string; title: string }>
+  missionLog?: Array<{ day: string; id: string; title: string; /** epoch ms of the confirm */ at?: number }>
 }
 
 export interface BallSkin {

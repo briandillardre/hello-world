@@ -56,6 +56,8 @@ interface BallGameProps {
   football?: boolean
   /** 🏈 Game Day: full rules — call the play, downs, kicks, defense, a scoreboard */
   gameday?: boolean
+  /** 🤝 Brothers mode: a big brother coaches this round (practice, not measurement) */
+  coach?: { name: string; avatar: string }
   onAnswer: (delta: AnswerDelta) => void
   onComplete: (result: RoundResult) => void
   onQuit: () => void
@@ -204,7 +206,7 @@ function drawPigskin(ctx: CanvasRenderingContext2D, x: number, y: number, r: num
   ctx.restore()
 }
 
-export function BallGame({ profile, skill, dailyDouble = false, football = false, gameday = false, onAnswer, onComplete, onQuit }: BallGameProps) {
+export function BallGame({ profile, skill, dailyDouble = false, football = false, gameday = false, coach, onAnswer, onComplete, onQuit }: BallGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -452,7 +454,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         spokeRef.current = true
         autoReadTimerRef.current = window.setTimeout(() => {
           autoReadTimerRef.current = null
-          if (questionRef.current === q) speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
+          if (questionRef.current === q && world.current.phase === 'idle') speak(bonus ? `Bonus question! Double coins! ${q.speech}` : q.speech)
         }, 450)
         return
       }
@@ -491,6 +493,9 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
       micSessionRef.current?.stop()
       return
     }
+    // a listening question that hasn't been said yet: let it speak first —
+    // clearing its timer would leave the kid with nothing to find (ship-check)
+    if (questionRef.current?.listen && autoReadTimerRef.current !== null) return
     // never transcribe our own narration
     if (autoReadTimerRef.current !== null) {
       window.clearTimeout(autoReadTimerRef.current)
@@ -535,6 +540,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
 
   // start round — Game Day opens on the play-call sheet instead of a question
   useEffect(() => {
+    if (coach) speak(`Team Whalehogs! ${profile.name}, you tap the answers. ${coach.name}, you're the coach — help with words, not fingers!`, true)
     if (gameday) setPicking(true)
     else nextQuestion(0)
     warmVoices()
@@ -623,12 +629,12 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           const speedCoins = speedBoost === 1 ? 2 : 1
           coinsDelta += speedCoins
           stats.speedBonuses += 1
-          w.floaters.push({ x: w.w * 0.25, y: w.h * 0.48, text: `⚡ Fast! +${speedCoins}`, life: 1.2, color: '#f59e0b' })
+          w.floaters.push({ x: w.w * 0.25, y: midY(w) + 34, text: `⚡ Fast! +${speedCoins}`, life: 1.2, color: '#f59e0b' })
         }
         if (!spokeRef.current) {
           coinsDelta += 2
           stats.readBonuses += 1
-          w.floaters.push({ x: w.w * 0.75, y: w.h * 0.48, text: '📖 Read it! +2', life: 1.2, color: '#3b82f6' })
+          w.floaters.push({ x: w.w * 0.75, y: midY(w) + 34, text: '📖 Read it! +2', life: 1.2, color: '#3b82f6' })
         }
         // 🎮 earned play time: every correct answer banks Fun Zone seconds
         // (speed answers bank extra) — the better you score, the more you play
@@ -710,6 +716,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         missesRef.current.push({
           skill: q.skill,
           prompt: q.prompt,
+          speech: q.speech,
           visual: q.visual,
           picked: q.choices[bubbleIndex],
           answer: q.choices[q.answer],
@@ -779,7 +786,8 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
           const stars: 1 | 2 | 3 = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : 1
           const chestBonus = stars === 3 ? 5 + Math.floor(Math.random() * 11) : 0
           if (stats.correct === stats.answered) stats.playSeconds += 15 // perfect round: extra Fun Zone time
-          const deltas = (Object.keys(skillsRef.current) as SkillId[])
+          // a coached round never moves skill levels (practice, not measurement)
+          const deltas = coach ? [] : (Object.keys(skillsRef.current) as SkillId[])
             .filter((k) => Math.round(skillsRef.current[k].theta) !== Math.round(startThetasRef.current[k]))
             .map((k) => ({ skill: k, from: Math.round(startThetasRef.current[k]), to: Math.round(skillsRef.current[k].theta) }))
           onComplete({
@@ -807,7 +815,7 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         }
       }, delay)
     },
-    [onComplete, nextQuestion, skill, dailyDouble, gameday]
+    [onComplete, nextQuestion, skill, dailyDouble, gameday, coach]
   )
 
   // ------------------------------------------------------------- 🏈 the live play
@@ -1863,6 +1871,11 @@ export function BallGame({ profile, skill, dailyDouble = false, football = false
         </div>
       </div>
 
+      {coach && (
+        <div className="mx-3 mb-3 -mt-0.5 rounded-full bg-gradient-to-r from-amber-100 to-orange-100 border-2 border-amber-300 px-3 py-1 text-center text-[12px] font-extrabold text-amber-800">
+          🤝 {coach.avatar} {coach.name} is coaching · {profile.avatar} {profile.name} taps · help with words, not fingers!
+        </div>
+      )}
       {/* Question banner */}
       <div className="mx-3 mb-2 rounded-2xl bg-white shadow-md border-2 border-blue-200 px-4 py-3 text-center relative">
         {skillMeta && (

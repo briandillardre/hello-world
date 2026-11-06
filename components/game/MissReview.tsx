@@ -29,9 +29,9 @@ export function MissReview({ misses, kidName, onDone }: MissReviewProps) {
 
   // read each question aloud as it appears
   useEffect(() => {
-    const t = window.setTimeout(() => speak(`Let's try this one again. ${m.prompt}`, { rate: 0.95 }), 400)
+    const t = window.setTimeout(() => speak(`Let's try this one again. ${m.speech ?? m.prompt}`, { rate: 0.95 }), 400)
     return () => window.clearTimeout(t)
-  }, [index, m.prompt])
+  }, [index, m.prompt, m.speech])
 
   const pick = (choice: string) => {
     if (solved) return
@@ -69,7 +69,7 @@ export function MissReview({ misses, kidName, onDone }: MissReviewProps) {
         <div className="flex items-center justify-center gap-2">
           <p className="text-xl font-extrabold text-slate-800">{m.prompt}</p>
           <button
-            onClick={() => speak(m.prompt, { rate: 0.95 })}
+            onClick={() => speak(m.speech ?? m.prompt, { rate: 0.95 })}
             aria-label="Hear the question"
             className="shrink-0 w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shadow active:scale-95"
           >

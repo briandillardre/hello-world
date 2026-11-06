@@ -57,6 +57,8 @@ export interface KidReport {
   strongest?: string
   focus?: string
   assessment?: KidProfile['assessment']
+  /** 🤝 questions answered with a big brother coaching (not in the scores) */
+  coached: number
   /** 🔨 real-world missions a grown-up confirmed inside the window */
   missions: string[]
   /** the narrated writeup: where they are and what's known vs peers, in plain English */
@@ -75,10 +77,14 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
     const history = p.history.slice(-2000)
     const windowAnswers = history.filter((h) => h && typeof h.t === 'number' && h.t >= sinceMs && h.t <= cutoff)
     if (windowAnswers.length === 0) continue
-    const correct = windowAnswers.filter((a) => a.correct).length
+    // 🤝 coached answers are practice, not measurement — they get their own
+    // line and never touch accuracy, streaks or the benchmarks
+    const coachedCount = windowAnswers.filter((a) => a.coached).length
+    const measured = windowAnswers.filter((a) => !a.coached)
+    const correct = measured.filter((a) => a.correct).length
     let bestStreak = 0
     let run = 0
-    for (const a of windowAnswers) {
+    for (const a of measured) {
       run = a.correct ? run + 1 : 0
       bestStreak = Math.max(bestStreak, run)
     }
@@ -105,9 +111,10 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
       name: String(p.name ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 40),
       avatar: String(p.avatar ?? '').slice(0, 8),
       age: ageLabel(p.birthdate, now),
-      answered: windowAnswers.length,
+      answered: measured.length,
       correct,
-      accuracy: Math.round((correct / windowAnswers.length) * 100),
+      accuracy: measured.length > 0 ? Math.round((correct / measured.length) * 100) : 0,
+      coached: coachedCount,
       bestStreak,
       skills,
       overallPct,
@@ -116,8 +123,16 @@ export function buildDailyReports(profiles: KidProfile[], sinceMs: number, now =
       assessment: p.assessment,
       // days are the kid's local (Eastern) days — count any mission confirmed
       // on or after the day the window opened
-      missions: (Array.isArray(p.missionLog) ? p.missionLog : [])
-        .filter((m) => m && typeof m.day === 'string' && m.day >= new Date(sinceMs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }))
+      // by the confirm TIME when we have it: the window opens yesterday
+      // evening, so a day filter re-listed yesterday's mission every night
+      // (ship-check). Older entries without a time fall back to "a later day
+      // than the one the window opened on".
+      missions: (Array.isArray(p.missionLog) ? p.missionLog.slice(-50) : [])
+        .filter((m) =>
+          m && typeof m.at === 'number'
+            ? m.at >= sinceMs && m.at <= cutoff
+            : !!m && typeof m.day === 'string' && m.day > new Date(sinceMs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+        )
         .map((m) => String(m.title ?? '').replace(/[\r\n\t]+/g, ' ').slice(0, 80))
         .slice(-5),
     }
@@ -234,7 +249,8 @@ function kidHtml(r: KidReport): string {
   <div style="max-width:520px;margin:0 auto 16px;background:#ffffff;border:1px solid #dbe4ec;border-radius:14px;padding:22px">
     <h2 style="margin:0 0 2px;font-size:18px;color:#0f172a">${escapeHtml(r.avatar)} ${name} <span style="font-size:12px;color:#94a3b8;font-weight:600">· ${escapeHtml(r.age)}</span></h2>
     <p style="margin:0 0 12px;font-size:13px;color:#475569;font-weight:600">
-      Today: ${r.answered} questions · ${r.accuracy}% right${r.bestStreak >= 3 ? ` · 🔥 best streak ${r.bestStreak}` : ''}
+      ${r.answered > 0 ? `Today: ${r.answered} questions · ${r.accuracy}% right${r.bestStreak >= 3 ? ` · 🔥 best streak ${r.bestStreak}` : ''}` : 'Today: practice with a coach only'}
+      ${r.coached > 0 ? `<br>🤝 ${r.coached} more with big-brother coaching (practice — not in the scores)` : ''}
       ${r.overallPct !== null ? `<br>Overall: scored better than <b>~${r.overallPct}%</b> of kids their age (across ${r.skills.length} skills)` : ''}
     </p>
     <p style="margin:0 0 12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid #3b82f6;border-radius:10px;font-size:13px;line-height:1.65;color:#334155">${escapeHtml(r.story)}</p>

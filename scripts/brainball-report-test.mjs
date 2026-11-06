@@ -167,5 +167,38 @@ const answers = (n, { skill = 'words', correctPattern = () => true, startMs = T0
   ok('no missions = no mission line', none.missions.length === 0 && !renderReportEmail([none], NOW, 'America/New_York').html.includes('Real-world mission'))
 }
 
+// ---- yesterday's mission (confirmed before last night's email) is NOT re-listed
+{
+  const since = T0 - 86400_000 // yesterday 7:30 PM ET
+  const k = kid({
+    history: answers(3),
+    missionLog: [
+      { day: '2026-10-28', id: 'a', title: 'Yesterday morning mission', at: since - 9 * 3600_000 },
+      { day: '2026-10-28', id: 'b', title: 'Yesterday late-evening mission', at: since + 3600_000 },
+      { day: '2026-10-29', id: 'c', title: 'Today mission', at: T0 - 3600_000 },
+    ],
+  })
+  const [r] = buildDailyReports([k], since, NOW)
+  ok('missions filter by confirm time: no double listing, late-evening kept', r.missions.join('|') === 'Yesterday late-evening mission|Today mission', r.missions.join('|'))
+}
+
+// ---- 🤝 coached answers: they trigger the email, but never touch the scores
+{
+  const mixed = kid({
+    history: [
+      ...answers(4, { correctPattern: (i) => i < 2 }),
+      ...answers(6, { startMs: T0 - 1800_000 }).map((a) => ({ ...a, coached: true })),
+    ],
+  })
+  const [r] = buildDailyReports([mixed], T0 - 86400_000, NOW)
+  ok('coached answers are counted apart', r.answered === 4 && r.coached === 6)
+  ok('accuracy uses only measured answers', r.accuracy === 50)
+  const onlyCoached = kid({ history: answers(5).map((a) => ({ ...a, coached: true })) })
+  const [c] = buildDailyReports([onlyCoached], T0 - 86400_000, NOW)
+  ok('a coached-only day still reports, with no NaN', c && c.answered === 0 && c.accuracy === 0 && c.coached === 5)
+  const { html } = renderReportEmail([c], NOW, 'America/New_York')
+  ok('email says coached practice is not in the scores', html.includes('practice with a coach only') && html.includes('not in the scores') && !html.includes('NaN'))
+}
+
 console.log(fail === 0 ? `brainball-report: ${pass} assertions pass` : `${fail} FAILURES (${pass} passed)`)
 process.exit(fail === 0 ? 0 : 1)

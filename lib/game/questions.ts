@@ -1028,7 +1028,9 @@ const recentFacts: string[] = []
 
 function pickFresh<T extends { q: string }>(pool: T[]): T {
   const fresh = pool.filter((f) => !recentFacts.includes(f.q))
-  const f = pick(fresh.length ? fresh : pool)
+  // a tiny tier can run out of fresh facts — even then, never the last 3 shown
+  const notLast = pool.filter((f) => !recentFacts.slice(-3).includes(f.q))
+  const f = pick(fresh.length ? fresh : notLast.length ? notLast : pool)
   recentFacts.push(f.q)
   if (recentFacts.length > 40) recentFacts.shift()
   return f
